@@ -46,7 +46,7 @@ const messages = defineMessages({
 });
 
 /**
- * Left-hand panel of the "design from scratch" approach.
+ * Left-hand panel of the "start from scratch" approach.
  *
  * The visual designer is not hosted in the console; it ships as the API
  * Designer VS Code extension. So rather than promising a canvas here, this

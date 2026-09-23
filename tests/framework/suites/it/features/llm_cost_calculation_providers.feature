@@ -38,13 +38,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-gemini" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-gemini" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -98,13 +98,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-anthropic-geo-speed" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-anthropic-geo-speed" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -148,13 +148,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-anthropic-cache1hr" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-anthropic-cache1hr" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -198,13 +198,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-anthropic-websearch" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-anthropic-websearch" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -248,13 +248,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-gemini-cached" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-gemini-cached" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -308,13 +308,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-gemini-thinking" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-gemini-thinking" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -368,13 +368,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-anthropic-cache-read" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-anthropic-cache-read" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -428,13 +428,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-cached" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-cached" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -477,13 +477,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-flex" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-flex" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -526,13 +526,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-priority" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-priority" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -575,13 +575,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-batch" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-batch" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -625,13 +625,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-reasoning" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-reasoning" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -675,13 +675,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-openai-web-search" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-openai-web-search" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -724,13 +724,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-mistral" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-mistral" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -783,13 +783,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-no-model" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-no-model" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -831,13 +831,13 @@ Feature: LLM cost calculation across provider response shapes
     And I generate a unique API version from "cblp-bedrock" and store it as "providerVersion"
     And I generate a unique API context from "/cblp-bedrock" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:templateName}              |
       | displayName | ${CTX:templateDisplayName}       |
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |

@@ -176,6 +176,10 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 		s.sendAuthenticated)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until status (\d+)$`,
 		s.sendAuthenticatedUntilStatus)
+	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until the response body contains "([^"]*)"$`,
+		s.sendAuthenticatedUntilBodyContains)
+	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until the top-level JSON response array field "([^"]*)" has (\d+) items?$`,
+		s.sendAuthenticatedUntilJSONArrayLength)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" with header "([^"]*)" set to "([^"]*)"$`,
 		s.sendAuthenticatedWithHeader)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" with JSON body:$`,
@@ -1315,6 +1319,112 @@ func (s *Steps) sendAuthenticatedUntilStatus(ctx context.Context, method, path, 
 		return fmt.Errorf("API Portal %s %s never answered %d (last %d)", method, path, want, last)
 	}
 	return nil
+}
+
+// sendAuthenticatedUntilBodyContains waits for a read to expose a value written
+// by an earlier request. It deliberately accepts only GET: retrying a mutation
+// would repeat its side effects rather than wait for its committed state to become
+// observable.
+func (s *Steps) sendAuthenticatedUntilBodyContains(ctx context.Context, method, path, role, want string) error {
+	if !strings.EqualFold(strings.TrimSpace(method), http.MethodGet) {
+		return fmt.Errorf("API Portal response-body readiness requires GET, got %q", method)
+	}
+	want, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	if want == "" {
+		return fmt.Errorf("API Portal response-body readiness requires a non-empty value")
+	}
+
+	last := "no response"
+	result, err := retry.Until(ctx, retry.Options{Interval: time.Second},
+		func(ctx context.Context) (bool, error) {
+			if err := s.sendPortal(ctx, http.MethodGet, path, role, nil); err != nil {
+				last = err.Error()
+				return false, retry.Transient(err)
+			}
+			response, err := httpx.Published(ctx)
+			if err != nil {
+				return false, err
+			}
+			last = response.Describe()
+			return response.StatusCode == http.StatusOK && strings.Contains(string(response.Body), want), nil
+		}, func(matched bool) bool { return matched })
+	if err != nil {
+		return fmt.Errorf("waiting for API Portal GET %s to expose %q (last %s): %w", path, want, last, err)
+	}
+	if !result {
+		return fmt.Errorf("API Portal GET %s never exposed %q (last %s)", path, want, last)
+	}
+	return nil
+}
+
+// sendAuthenticatedUntilJSONArrayLength waits for an API Portal read to observe an exact
+// top-level JSON array length. It deliberately accepts only GET: retrying a mutation would
+// repeat its side effects rather than wait for its committed state to become observable.
+func (s *Steps) sendAuthenticatedUntilJSONArrayLength(ctx context.Context, method, path, role, field string, want int) error {
+	if !strings.EqualFold(strings.TrimSpace(method), http.MethodGet) {
+		return fmt.Errorf("API Portal JSON array readiness requires GET, got %q", method)
+	}
+	field, err := stepscommon.Expand(ctx, field)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(field) == "" {
+		return fmt.Errorf("API Portal JSON array readiness requires a field")
+	}
+	if strings.ContainsAny(field, ".[") {
+		return fmt.Errorf("API Portal JSON array readiness supports only top-level fields, got %q", field)
+	}
+
+	last := "no response"
+	result, err := retry.Until(ctx, retry.Options{Interval: time.Second},
+		func(ctx context.Context) (bool, error) {
+			if err := s.sendPortal(ctx, http.MethodGet, path, role, nil); err != nil {
+				last = err.Error()
+				return false, retry.Transient(err)
+			}
+			response, err := httpx.Published(ctx)
+			if err != nil {
+				return false, err
+			}
+			if response.StatusCode != http.StatusOK {
+				last = response.Describe()
+				return false, nil
+			}
+			got, err := topLevelJSONArrayLength(response.Body, field)
+			if err != nil {
+				return false, err
+			}
+			last = fmt.Sprintf("field %q had %d items", field, got)
+			return got == want, nil
+		}, func(matched bool) bool { return matched })
+	if err != nil {
+		return fmt.Errorf("waiting for API Portal GET %s to expose %d items in JSON array field %q (last %s): %w",
+			path, want, field, last, err)
+	}
+	if !result {
+		return fmt.Errorf("API Portal GET %s never exposed %d items in JSON array field %q (last %s)",
+			path, want, field, last)
+	}
+	return nil
+}
+
+func topLevelJSONArrayLength(body []byte, field string) (int, error) {
+	var document map[string]any
+	if err := json.Unmarshal(body, &document); err != nil {
+		return 0, fmt.Errorf("response is not a JSON object: %w", err)
+	}
+	value, ok := document[field]
+	if !ok {
+		return 0, fmt.Errorf("JSON array field %q is absent", field)
+	}
+	array, ok := value.([]any)
+	if !ok {
+		return 0, fmt.Errorf("JSON field %q is not an array", field)
+	}
+	return len(array), nil
 }
 
 func (s *Steps) sendAuthenticatedWithHeader(ctx context.Context, method, path, role, name, value string) error {

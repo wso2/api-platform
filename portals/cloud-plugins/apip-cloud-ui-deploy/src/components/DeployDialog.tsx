@@ -50,6 +50,12 @@ export type DeployDialogProps = {
   builds: Build[];
   /** The backend URL the API is defined against; the endpoint field starts from it. */
   apiEndpointUrl?: string;
+  /**
+   * Whether this artifact's deployments take a backend URL of their own. When false
+   * the endpoint fields are not shown, not required, and no endpoint is sent — the
+   * artifact's upstream comes from its own definition.
+   */
+  takesEndpoint: boolean;
   initialBuildId?: string;
   /** A new build will be created on confirmation; the latest build is informational. */
   createBuild: boolean;
@@ -87,6 +93,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
   sourceEnvironment,
   builds,
   apiEndpointUrl,
+  takesEndpoint,
   initialBuildId,
   createBuild,
   submitting,
@@ -163,7 +170,9 @@ const DeployDialog: FC<DeployDialogProps> = ({
   const inactiveSelectable = inactiveSelected.filter(
     (gateway) => !lockedIds.includes(gateway.id)
   );
-  const missingUrls = selected.filter((gateway) => endpointFor(gateway).trim().length === 0);
+  const missingUrls = takesEndpoint
+    ? selected.filter((gateway) => endpointFor(gateway).trim().length === 0)
+    : [];
   const canConfirm =
     selected.length > 0 &&
     inactiveSelected.length === 0 &&
@@ -185,11 +194,12 @@ const DeployDialog: FC<DeployDialogProps> = ({
         {actionLabel} to {environment.name}
       </DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {mode === 'deploy'
-            ? `Deploys this API as it stands now to ${environment.name}. Select the gateway to deploy to.`
-            : `Carries a build running in ${sourceEnvironment?.name ?? 'the previous environment'} forward to ${environment.name}, with the endpoint you give here.`}
-        </Typography>
+        {mode === 'promote' ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Carries the build running in{' '}
+            {sourceEnvironment?.name ?? 'the previous environment'} forward.
+          </Typography>
+        ) : null}
 
         {inactiveSelectable.length > 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -241,33 +251,35 @@ const DeployDialog: FC<DeployDialogProps> = ({
               </Box>
               <StatusPill tone={gatewayStatusTone(selected[0].status)} />
             </Box>
-            <TextField
-              fullWidth
-              size="small"
-              required
-              sx={{ mt: 1 }}
-              label="Endpoint URL"
-              placeholder="https://api.example.com"
-              value={endpointFor(selected[0])}
-              onChange={(event) =>
-                setEndpointDrafts({ ...endpointDrafts, [selected[0].id]: event.target.value })
-              }
-              onBlur={() => setUrlTouched(true)}
-              error={urlTouched && endpointFor(selected[0]).trim().length === 0}
-              helperText={
-                urlTouched && endpointFor(selected[0]).trim().length === 0
-                  ? 'Endpoint URL is required.'
-                  : ' '
-              }
-            />
+            {takesEndpoint ? (
+              <TextField
+                fullWidth
+                size="small"
+                required
+                sx={{ mt: 1 }}
+                label="Endpoint URL"
+                placeholder="https://api.example.com"
+                value={endpointFor(selected[0])}
+                onChange={(event) =>
+                  setEndpointDrafts({ ...endpointDrafts, [selected[0].id]: event.target.value })
+                }
+                onBlur={() => setUrlTouched(true)}
+                error={urlTouched && endpointFor(selected[0]).trim().length === 0}
+                helperText={
+                  urlTouched && endpointFor(selected[0]).trim().length === 0
+                    ? 'Endpoint URL is required.'
+                    : ' '
+                }
+              />
+            ) : null}
           </Box>
         ) : (
           <Box sx={{ mb: 2.5 }}>
             <FormLabel sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}>Gateways</FormLabel>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
               {lockedIds.length > 0
-                ? 'Every gateway this API is already deployed on stays selected — an environment runs one build at a time. Undeploy a gateway to stop deploying to it.'
-                : 'Select the gateways to deploy to. They all receive the same build.'}
+                ? 'Gateways already deployed on stay selected. Undeploy one to drop it.'
+                : 'All selected gateways receive the same build.'}
             </Typography>
             <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               {environment.gateways.map((gateway, index) => {
@@ -317,7 +329,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
                     {/* The endpoint is per gateway: two gateways of one environment
                         can serve different backends, so each selected one gets its
                         own field rather than sharing a single value. */}
-                    {isSelected ? (
+                    {isSelected && takesEndpoint ? (
                       <TextField
                         fullWidth
                         size="small"
@@ -407,7 +419,7 @@ const DeployDialog: FC<DeployDialogProps> = ({
             onConfirm(
               selected.map((gateway) => ({
                 gatewayId: gateway.id,
-                endpointUrl: endpointFor(gateway).trim(),
+                ...(takesEndpoint ? { endpointUrl: endpointFor(gateway).trim() } : {}),
               })),
               createBuild ? undefined : selectedBuildId
             )

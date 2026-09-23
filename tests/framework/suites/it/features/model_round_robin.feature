@@ -32,7 +32,7 @@ Feature: Model round-robin load balancing policy
     And I generate a unique API version from "mrr-two" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-two" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -72,13 +72,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Round-robin with three models
     Given I generate a unique value from "mrr-three" and store it as "apiName"
     And I generate a unique API version from "mrr-three" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-three" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -119,13 +120,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Round-robin with four models
     Given I generate a unique value from "mrr-four" and store it as "apiName"
     And I generate a unique API version from "mrr-four" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-four" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -165,13 +167,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with header location
     Given I generate a unique value from "mrr-header" and store it as "apiName"
     And I generate a unique API version from "mrr-header" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -211,13 +214,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with query parameter location
     Given I generate a unique value from "mrr-query" and store it as "apiName"
     And I generate a unique API version from "mrr-query" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-query" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -245,13 +249,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with path parameter location
     Given I generate a unique value from "mrr-path" and store it as "apiName"
     And I generate a unique API version from "mrr-path" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -285,13 +290,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with nested JSONPath
     Given I generate a unique value from "mrr-nested" and store it as "apiName"
     And I generate a unique API version from "mrr-nested" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -325,13 +331,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Suspend model on 5xx error with recovery
     Given I generate a unique value from "mrr-suspend-5xx" and store it as "apiName"
     And I generate a unique API version from "mrr-suspend-5xx" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-suspend-5xx" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -381,13 +388,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Suspend model on 429 rate limit error
     Given I generate a unique value from "mrr-suspend-429" and store it as "apiName"
     And I generate a unique API version from "mrr-suspend-429" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-suspend-429" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -420,13 +428,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: All models suspended returns 503
     Given I generate a unique value from "mrr-all-suspended" and store it as "apiName"
     And I generate a unique API version from "mrr-all-suspended" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-all-suspended" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -458,13 +467,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: No suspension when suspendDuration is 0
     Given I generate a unique value from "mrr-no-suspend" and store it as "apiName"
     And I generate a unique API version from "mrr-no-suspend" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-no-suspend" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -498,13 +508,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle empty request body
     Given I generate a unique value from "mrr-empty-body" and store it as "apiName"
     And I generate a unique API version from "mrr-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -522,13 +533,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle invalid JSON in request body
     Given I generate a unique value from "mrr-invalid-json" and store it as "apiName"
     And I generate a unique API version from "mrr-invalid-json" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-invalid-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -547,13 +559,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle an unresolved requestModel path
     Given I generate a unique value from "mrr-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "mrr-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-invalid-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -572,13 +585,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle missing model field in payload
     Given I generate a unique value from "mrr-missing-model" and store it as "apiName"
     And I generate a unique API version from "mrr-missing-model" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-missing-model" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -597,13 +611,14 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: High availability with automatic failover
     Given I generate a unique value from "mrr-ha-failover" and store it as "apiName"
     And I generate a unique API version from "mrr-ha-failover" and store it as "apiVersion"
     And I generate a unique API context from "/mrr-ha-failover" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -630,3 +645,4 @@ Feature: Model round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

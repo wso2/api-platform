@@ -88,8 +88,14 @@ import {
   swaggerHubSpecUrl,
   type SwaggerHubApi,
 } from '../utils/swaggerHub';
+import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
 import { isValidUrl } from '../../utils/developEdit';
-import { validateApiSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
+import {
+  collectSpecWarnings,
+  readDialectFromSpec,
+  type SpecDialect,
+  type SpecIssue,
+} from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
 import { type ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
@@ -296,10 +302,6 @@ const messages = defineMessages({
     id: 'api.create.fromContract.source.url',
     defaultMessage: 'URL',
   },
-  specOversized: {
-    id: 'api.create.fromContract.spec.oversized',
-    defaultMessage: 'That file is too large to validate in the browser.',
-  },
   specUnsupportedSource: {
     id: 'api.create.fromContract.spec.unsupportedSource',
     defaultMessage: 'Importing from this source is not available yet.',
@@ -434,6 +436,11 @@ const messages = defineMessages({
   urlRequired: {
     id: 'api.create.fromContract.url.required',
     defaultMessage: 'The URL for the API contract cannot be empty',
+  },
+  specInvalidByBackend: {
+    id: 'api.create.fromContract.spec.invalidByBackend',
+    defaultMessage: 'The specification is not a valid OpenAPI document:',
+    description: 'Heading above the list of backend validation errors.',
   },
 });
 
@@ -597,9 +604,6 @@ type ContractFileControlProps = {
   onReject: (reason: ContractFileRejection) => void;
   onSelect: (file: File) => void;
 };
-
-/** Ceiling for in-browser parsing — a huge document would freeze the tab. */
-const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
 
 /** Bytes rendered as a locale-aware "13 kB" / "1.4 MB". */
 const formatFileSize = (intl: IntlShape, bytes: number): string => {
@@ -826,6 +830,13 @@ export type FetchedContract = {
    * has something to show in both cases.
    */
   spec: SpecDocument;
+  /**
+   * The original text exactly as uploaded or downloaded. Preserved so the
+   * source view shows what the user actually gave us (comments, anchors,
+   * original format) and so draft submission can send the same bytes to the
+   * backend without a lossy round-trip through the parsed object.
+   */
+  rawText: string;
   /** The source it came from, for whoever consumes this step. */
   values: ContractValues;
   /** Things worth saying about it that didn't stop the import. */
@@ -834,17 +845,13 @@ export type FetchedContract = {
 
 /** Why a fetch produced nothing to preview. */
 export type ContractFetchFailure =
-  | 'oversized'
   | 'unreachable'
   | 'unreadable'
   /** The source has no fetching behind it yet, GitHub, SwaggerHub. */
   | 'unsupportedSource';
 
 export type ContractFetchResult =
-  | { contract: FetchedContract; status: 'fetched' }
-  /** Read and parsed, but not a definition this step can use. */
-  | { issues: SpecIssue[]; status: 'invalidSpec' }
-  | { status: ContractFetchFailure };
+  { contract: FetchedContract; status: 'fetched' } | { status: ContractFetchFailure };
 
 /**
  * The file's text. `Blob.text()` where it exists, `FileReader` otherwise —
@@ -876,25 +883,25 @@ const parseContractText = (text: string): SpecDocument | null => {
 };
 
 /**
- * The last gate a parsed document passes: is it an OpenAPI definition this
- * step can preview and create from?
+ * Wraps a parsed document into a fetched contract ready for preview.
  *
- * Applied to every source, so a file dropped on the upload tab is held to the
- * same standard as one downloaded from a URL.
+ * Dialect is read from the spec but validation is deferred entirely to the
+ * backend validate-openapi call; warnings are filled in there and merged in
+ * once that response arrives. Warnings start empty here so the preview renders
+ * immediately while the backend call is still in-flight.
  */
-const acceptSpec = (spec: SpecDocument, values: ContractValues): ContractFetchResult => {
-  const validation = validateApiSpec(spec);
-  return validation.status === 'valid'
-    ? {
-        contract: {
-          dialect: validation.dialect,
-          spec,
-          values,
-          warnings: validation.warnings,
-        },
-        status: 'fetched',
-      }
-    : { issues: validation.issues, status: 'invalidSpec' };
+const acceptSpec = (
+  rawText: string,
+  spec: SpecDocument,
+  values: ContractValues,
+): ContractFetchResult => {
+  const dialectResult = readDialectFromSpec(spec);
+  const dialect: SpecDialect =
+    dialectResult === null || dialectResult === 'unsupported' ? 'openapi-3.0' : dialectResult;
+  return {
+    contract: { dialect, rawText, spec, values, warnings: [] },
+    status: 'fetched',
+  };
 };
 
 /**
@@ -917,23 +924,14 @@ const fetchDocumentFrom = async (
     if (!response.ok) {
       return { status: 'unreachable' };
     }
-    // Check length before reading; chunked responses are backstopped later.
-    const declaredBytes = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_CONTRACT_BYTES) {
-      return { status: 'oversized' };
-    }
     text = await response.text();
   } catch {
     // Network failure, a timeout, or the host refused the cross-origin read.
     // The reason is developer-facing, so it stays in the console, not the UI.
     return { status: 'unreachable' };
   }
-  // Backstop for responses with no declared length.
-  if (text.length > MAX_CONTRACT_BYTES) {
-    return { status: 'oversized' };
-  }
   const spec = parseContractText(text);
-  return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+  return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
 };
 
 /**
@@ -958,12 +956,10 @@ export const fetchContractForPreview = async (
       if (values.file === undefined) {
         return { status: 'unreadable' };
       }
-      if (values.file.size > MAX_CONTRACT_BYTES) {
-        return { status: 'oversized' };
-      }
       try {
-        const spec = parseContractText(await readContractText(values.file));
-        return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+        const text = await readContractText(values.file);
+        const spec = parseContractText(text);
+        return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
       } catch {
         // Malformed YAML/JSON — js-yaml's own message is developer-facing.
         return { status: 'unreadable' };
@@ -1061,6 +1057,7 @@ export const ContractSourceForm = ({
   onRefreshSwaggerHubOrganizations,
 }: ContractSourceFormProps) => {
   const intl = useIntl();
+  const validateSpec = useValidateOpenApiSpec();
 
   const [apiTypeKey] = useState(() => initialApiTypeKey ?? apiTypes[0]?.key ?? '');
   const [sourceKey, setSourceKey] = useState<ContractSourceKey>(
@@ -1118,6 +1115,9 @@ export const ContractSourceForm = ({
     { status: 'fetched' }
   > | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [backendValidationErrors, setBackendValidationErrors] = useState<
+    OpenAPIValidationError[] | null
+  >(null);
   /**
    * The source a fetch has been asked for, or `null` while none has. Held as
    * state so the request is made by an effect rather than inside the handler
@@ -1306,11 +1306,20 @@ export const ContractSourceForm = ({
 
   const handleSourceChange = (next: ContractSourceKey) => {
     setSourceKey(next);
+    // Reset every source's input so the previous tab's values don't persist
+    contractUrl.setValue('');
+    setFile(null);
+    setFileError(null);
+    setFetched(null);
+    setRequest(null);
+    setFetching(false);
     setFetchError(null);
+    setBackendValidationErrors(null);
   };
 
   /** An accepted file is a finished selection, so it is read straight away. */
   const handleFileSelect = (next: File) => {
+    setFetched(null);
     setFileError(null);
     setFetchError(null);
     setFile(next);
@@ -1419,6 +1428,10 @@ export const ContractSourceForm = ({
    * Reads whatever was last asked for. An effect rather than an `await` in the
    * handler that asked: a request the form has already moved past is dropped
    * on arrival instead of landing in the preview behind the current one.
+   *
+   * After the frontend parse succeeds the spec is sent to the backend
+   * validator (libopenapi). Backend errors are shown as a separate Alert;
+   * the contract is only handed to the preview if both passes succeed.
    */
   useEffect(() => {
     if (request === null) {
@@ -1427,24 +1440,63 @@ export const ContractSourceForm = ({
 
     let current = true;
     setFetchError(null);
+    setBackendValidationErrors(null);
     setFetching(true);
-    void fetchContractForPreview(request).then((result) => {
-      if (!current) {
-        return;
-      }
-      setFetching(false);
+
+    void (async () => {
+      const result = await fetchContractForPreview(request);
+      if (!current) return;
+
       if (result.status !== 'fetched') {
+        setFetching(false);
         setFetchError(result);
+        setFetched(null);
         return;
       }
-      // Fetched: the effect further down hands it to the panel, which renders
-      // it in the preview and unlocks Next.
+
+      // Backend validation — send the original text so format, comments and
+      // anchors are preserved in the validated bytes. A network failure is
+      // non-fatal: we proceed so a temporary outage doesn't block the create
+      // flow entirely.
+      try {
+        // Extend to other api types by selecting a validator for the
+        // detected dialect if required
+        const validation =
+          request.apiTypeKey === 'rest'
+            ? await validateSpec.mutateAsync(result.contract.rawText)
+            : { isValid: true, errors: [], warnings: [] };
+        if (!current) return;
+
+        if (!validation.isValid) {
+          setFetching(false);
+          setBackendValidationErrors(validation.errors);
+          setFetched(null);
+          return;
+        }
+
+        // FE warning check: missingTitle, missingVersion, noServers.
+        // Structural errors (noPaths, noOperations, badPathKeys) and external
+        // $refs are handled by BE.
+        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec);
+
+        if (!current) return;
+        setFetching(false);
+        setFetched({ ...result.contract, warnings });
+        return;
+      } catch {
+        // Network/auth error — don't block the user; validation is best-effort here.
+      }
+
+      if (!current) return;
+      setFetching(false);
       setFetched(result.contract);
-    });
+    })();
 
     return () => {
       current = false;
     };
+    // validateSpec.mutateAsync is stable across renders (TanStack Query guarantee).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request]);
 
   /**
@@ -1491,6 +1543,7 @@ export const ContractSourceForm = ({
    */
   useEffect(() => {
     setFetchError(null);
+    setBackendValidationErrors(null);
   }, [
     branch,
     contractFile,
@@ -1505,12 +1558,7 @@ export const ContractSourceForm = ({
 
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
-    if (fetchError?.status === 'invalidSpec') {
-      return <SpecIssueList issues={fetchError.issues} />;
-    }
     switch (fetchError?.status) {
-      case 'oversized':
-        return <FormattedMessage {...messages.specOversized} />;
       case 'unreachable':
         return <FormattedMessage {...messages.specUnreachable} />;
       case 'unreadable':
@@ -1970,6 +2018,20 @@ export const ContractSourceForm = ({
 
       {/* Fetch errors appear under the active source panel. */}
       {fetchErrorText === null ? null : <Alert severity="error">{fetchErrorText}</Alert>}
+
+      {/* Backend validation errors — shown when kin-openapi rejects the spec. */}
+      {backendValidationErrors !== null && backendValidationErrors.length > 0 ? (
+        <Alert severity="error">
+          <FormattedMessage {...messages.specInvalidByBackend} />
+          <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+            {backendValidationErrors.map((e, i) => (
+              <Typography component="li" key={i} variant="body2">
+                {e.message}
+              </Typography>
+            ))}
+          </Box>
+        </Alert>
+      ) : null}
 
       {/* Definition warnings; cleared with the contract, and withdrawn once
           the definition has been edited past the one they were raised on. */}

@@ -32,13 +32,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-deploy" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-deploy" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status.state" should be "deployed"
@@ -59,13 +59,13 @@ Feature: MCP proxy CRUD and connectivity
     And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
 
     When I update MCP proxy "${CTX:mcpName}" from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status.state" should be "deployed"
@@ -81,13 +81,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-notify" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-notify" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     And I set header "Content-Type" to "application/json"
@@ -117,13 +117,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-invalid-tools" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-invalid-tools" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     And I set header "Content-Type" to "application/json"
@@ -176,13 +176,13 @@ Feature: MCP proxy CRUD and connectivity
   Scenario: Update a non-existent MCP proxy returns 404
     Given I generate a unique resource name from "mcp-nonexistent-update" and store it as "mcpName"
     When I update MCP proxy "${CTX:mcpName}" from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | Nonexistent MCP Update              |
       | version           | v1.0                                |
       | context           | /nonexistent-mcp-update             |
       | specVersion       | 2025-06-18                          |
-      | spec.upstream.url | http://testbench:3009/mcp           |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response status code should be 404
     And the response should be valid JSON
 
@@ -192,13 +192,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-labeled" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-labeled" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion} |
       | name                    | ${CTX:mcpName}                    |
       | displayName             | ${CTX:mcpDisplayName}             |
       | version                 | ${CTX:mcpVersion}                 |
       | context                 | ${CTX:mcpContext}                 |
       | specVersion             | 2025-06-18                         |
-      | spec.upstream.url       | http://testbench:3009/mcp          |
+      | spec.upstream.url       | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
       | metadata.labels         | {"environment":"production","team":"mcp-team","service":"mcp-proxy"} |
     Then the response should be successful
     And the response should be valid JSON
@@ -218,13 +218,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-invalid-labels" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-invalid-labels" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | Invalid Labels MCP                  |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
       | metadata.labels   | {"Invalid Key":"value"}             |
     Then the response should be a client error
     And the response should be valid JSON
@@ -244,7 +244,7 @@ Feature: MCP proxy CRUD and connectivity
   Scenario: Deploy an MCP proxy with missing required fields returns an error
     Given I generate a unique resource name from "mcp-incomplete" and store it as "mcpName"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:mcpName}                    |
       | displayName | Ignored                           |
       | version     | v1.0                              |
@@ -259,13 +259,13 @@ Feature: MCP proxy CRUD and connectivity
     Given I generate a unique resource name from "mcp-invalid-spec-version" and store it as "mcpName"
     And I generate a unique API context from "/mcp-invalid-spec-version" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:mcpName}                    |
       | displayName | Invalid Spec Version MCP            |
       | version     | v1.0                                |
       | context     | ${CTX:mcpContext}                  |
       | specVersion | 2025-03-18                          |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response status code should be 400
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
@@ -274,7 +274,7 @@ Feature: MCP proxy CRUD and connectivity
     Given I generate a unique resource name from "mcp-missing-upstream" and store it as "mcpName"
     And I generate a unique API context from "/mcp-missing-upstream" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion  | gateway.api-platform.wso2.com/v1 |
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
       | name        | ${CTX:mcpName}                    |
       | displayName | Missing Upstream MCP                |
       | version     | v1.0                                |
@@ -290,23 +290,23 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-duplicate" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-duplicate" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response status code should be 409
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
@@ -330,13 +330,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-filter" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-filter" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     # Negative control: without it the filter could be ignored entirely and the
@@ -346,13 +346,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-filter-other" and store it as "otherMcpVersion"
     And I generate a unique API context from "/mcp-filter-other" and store it as "otherMcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:otherMcpName}               |
       | displayName       | ${CTX:otherMcpDisplayName}        |
       | version           | ${CTX:otherMcpVersion}            |
       | context           | ${CTX:otherMcpContext}            |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     When I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?displayName=${CTX:mcpDisplayName}"
@@ -371,13 +371,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-version-filter" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-version-filter" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     # Negative control: a version filter that is ignored returns both proxies, and a
@@ -387,13 +387,13 @@ Feature: MCP proxy CRUD and connectivity
     And I generate a unique API version from "mcp-version-filter-other" and store it as "otherMcpVersion"
     And I generate a unique API context from "/mcp-version-filter-other" and store it as "otherMcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:otherMcpName}               |
       | displayName       | ${CTX:otherMcpDisplayName}        |
       | version           | ${CTX:otherMcpVersion}            |
       | context           | ${CTX:otherMcpContext}            |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
     Then the response should be successful
 
     When I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?version=${CTX:mcpVersion}"

@@ -29,6 +29,9 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  */
 export const AI_WORKSPACE_SIDEBAR_SLOT = 'sidebar.main';
 
+/** Cloud-only controls rendered in the header immediately before the theme toggle. */
+export const AI_WORKSPACE_HEADER_ACTIONS_SLOT = 'header.actions';
+
 /**
  * A host-injected feature: a sidebar item plus its route. `path` is relative
  * to the same route group the built-in pages live in (e.g. `"billing"`, not
@@ -44,6 +47,10 @@ export type AIWorkspaceExtension = SlotEntry & {
   path: string;
   label: string;
   icon?: ReactNode;
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+};
+
+export type AIWorkspaceHeaderAction = SlotEntry & {
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
@@ -93,17 +100,19 @@ export type AIWorkspacePageOverride = SlotEntry & {
 };
 
 /**
- * Slots for overriding the built-in per-artifact Deploy pages — an MCP server's and
- * an LLM proxy's. LLM providers are organization-scoped rather than project-scoped,
- * so a pipeline cannot apply to them and their built-in page stays. Same Slot/Hideable split as the pages
- * above: each built-in route and sidebar entry stays, only the body changes.
+ * Slots for overriding the built-in per-artifact Deploy pages — an MCP server's, an
+ * LLM proxy's and an LLM provider's. Same Slot/Hideable split as the pages above:
+ * each built-in route and sidebar entry stays, only the body changes.
  *
  * There is one per kind rather than a single shared slot because the pages sit on
  * different routes and deploy different kinds of artifact, and a replacement has to
- * be registered for the kind it understands.
+ * be registered for the kind it understands. A provider is a case in point: it
+ * belongs to the organization rather than to a project, so a replacement for it has
+ * a different notion of where a deployment goes than the other two do.
  */
 export const AI_WORKSPACE_MCP_DEPLOY_SLOT = 'page.mcpDeploy';
 export const AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT = 'page.llmProxyDeploy';
+export const AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT = 'page.llmProviderDeploy';
 
 /**
  * `Hideable` region wrapping the built-in AI Gateways *sidebar item* (the page
@@ -120,7 +129,10 @@ export const hiddenRegionsOf = (
   entries.flatMap((entry) => ('hides' in entry ? (entry.hides ?? []) : []));
 
 /** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
-export type AIWorkspaceCloudEntry = AIWorkspaceExtension | AIWorkspacePageOverride;
+export type AIWorkspaceCloudEntry =
+  | AIWorkspaceExtension
+  | AIWorkspacePageOverride
+  | AIWorkspaceHeaderAction;
 
 export function ExtensionsProvider({
   extensions,

@@ -64,7 +64,9 @@ export function RoutingPage() {
     <ScopeGate
       prompt={intl.formatMessage(messages.scopePrompt)}
       requires="api"
-      to={routes.apiDevelopRouting}
+      // `to` points at the Definition page rather than a scope-less alias of this
+      // one: the develop/routing route was retired and its resources UI moved there.
+      to={routes.apiDevelopDefinition}
     >
       {content}
     </ScopeGate>

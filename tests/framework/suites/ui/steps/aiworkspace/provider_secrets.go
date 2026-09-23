@@ -282,6 +282,11 @@ func (u *Steps) tracker(ctx context.Context) (*callTracker, error) {
 // submitsProviderWithCredential fills and submits the OpenAI template's provider form with
 // an explicit credential, recording the /secrets and /llm-providers calls it makes.
 func (u *Steps) submitsProviderWithCredential(ctx context.Context, name, credential string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	if credential != "" {
 		if err := u.markSensitive(ctx); err != nil {
 			return err
@@ -343,6 +348,11 @@ func (u *Steps) opensProviderConnectionTab(ctx context.Context) error {
 // fetched earlier in this scenario reflects the provider just created, searches for it so
 // it is not lost among others the org has accumulated, and opens its card.
 func (u *Steps) opensProviderFromList(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

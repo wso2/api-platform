@@ -31,7 +31,7 @@ Feature: Sentence count guardrail policy
     And I generate a unique API version from "scg-max" and store it as "apiVersion"
     And I generate a unique API context from "/scg-max" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -55,13 +55,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request below the minimum sentence count is blocked
     Given I generate a unique value from "scg-min" and store it as "apiName"
     And I generate a unique API version from "scg-min" and store it as "apiVersion"
     And I generate a unique API context from "/scg-min" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -85,13 +86,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted field sentence count is enforced
     Given I generate a unique value from "scg-jsonpath" and store it as "apiName"
     And I generate a unique API version from "scg-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/scg-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -123,13 +125,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Nested JSONPath-extracted field sentence count is enforced
     Given I generate a unique value from "scg-nested" and store it as "apiName"
     And I generate a unique API version from "scg-nested" and store it as "apiVersion"
     And I generate a unique API context from "/scg-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -166,13 +169,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "scg-invalid-path" and store it as "apiName"
     And I generate a unique API version from "scg-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/scg-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -195,13 +199,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted range blocks content that falls inside the excluded window
     Given I generate a unique value from "scg-invert" and store it as "apiName"
     And I generate a unique API version from "scg-invert" and store it as "apiVersion"
     And I generate a unique API context from "/scg-invert" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -231,13 +236,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the assessment detail when showAssessment is enabled
     Given I generate a unique value from "scg-assessment" and store it as "apiName"
     And I generate a unique API version from "scg-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/scg-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -257,13 +263,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body is blocked
     Given I generate a unique value from "scg-empty" and store it as "apiName"
     And I generate a unique API version from "scg-empty" and store it as "apiVersion"
     And I generate a unique API context from "/scg-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -280,13 +287,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Sentence counts exactly at the boundaries are accepted
     Given I generate a unique value from "scg-boundary" and store it as "apiName"
     And I generate a unique API version from "scg-boundary" and store it as "apiVersion"
     And I generate a unique API context from "/scg-boundary" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -322,13 +330,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A request-only sentence count policy still declares a response threshold without enforcing it
     Given I generate a unique value from "scg-combined" and store it as "apiName"
     And I generate a unique API version from "scg-combined" and store it as "apiVersion"
     And I generate a unique API context from "/scg-combined" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -352,13 +361,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Multiple punctuation marks do not distort the sentence count
     Given I generate a unique value from "scg-punctuation" and store it as "apiName"
     And I generate a unique API version from "scg-punctuation" and store it as "apiVersion"
     And I generate a unique API context from "/scg-punctuation" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -383,13 +393,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Plain-text content is sentence-counted the same as JSON content
     Given I generate a unique value from "scg-plaintext" and store it as "apiName"
     And I generate a unique API version from "scg-plaintext" and store it as "apiVersion"
     And I generate a unique API context from "/scg-plaintext" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -415,13 +426,14 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response carries the complete guardrail error contract
     Given I generate a unique value from "scg-error-structure" and store it as "apiName"
     And I generate a unique API version from "scg-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/scg-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -445,3 +457,4 @@ Feature: Sentence count guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

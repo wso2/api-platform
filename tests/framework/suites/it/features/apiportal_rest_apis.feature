@@ -276,7 +276,7 @@ Feature: API Portal REST API management
       {"name":"Unlabeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
       """
     Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until the response body contains "${CTX:labelId}"
     Then the response body should contain "${CTX:labelId}"
 
   Scenario: API update removes all labels when an empty list is sent

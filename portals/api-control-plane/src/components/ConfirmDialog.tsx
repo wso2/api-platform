@@ -38,6 +38,8 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   /** Use the error color for the confirm button (destructive actions). */
   destructive?: boolean;
+  /** Confirm button color when neither the default nor the `destructive` one fits, e.g. `warning`. */
+  confirmColor?: 'primary' | 'error' | 'warning';
   /**
    * When set, the user must type this exact phrase before confirm is enabled
    * (legacy "type the name to confirm" pattern for irreversible deletes).
@@ -59,6 +61,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive,
+  confirmColor,
   confirmPhrase,
   confirmInputLabel,
   loading,
@@ -121,7 +124,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
-            color={destructive ? 'error' : 'primary'}
+            color={confirmColor ?? (destructive ? 'error' : 'primary')}
             disabled={!canConfirm}
             type="submit"
             variant="contained"

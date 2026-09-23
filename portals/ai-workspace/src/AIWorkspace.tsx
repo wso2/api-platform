@@ -38,6 +38,10 @@ import { BASE_PATH } from "./paths";
 import { BFFAuthProvider } from "./contexts/BFFAuthProvider";
 import { useAppAuth } from "./contexts/AppAuthContext";
 import BasicAuthLoginPage from "./pages/login/BasicAuthLoginPage";
+import {
+  BrandLogoProvider,
+  type BrandLogo,
+} from "./branding/BrandLogoProvider";
 import type { AIWorkspaceCloudEntry } from "./extensions";
 
 function LoadingScreen({ message }: { message?: string }) {
@@ -109,36 +113,43 @@ function AppGate({
 
 export type AIWorkspaceProps = {
   extensions?: readonly AIWorkspaceCloudEntry[];
+  /** Optional logo for the header, login, and register pages. */
+  brandLogo?: BrandLogo;
 };
 
-export default function AIWorkspace({ extensions = [] }: AIWorkspaceProps) {
+export default function AIWorkspace({
+  brandLogo,
+  extensions = [],
+}: AIWorkspaceProps) {
   return (
-    <OxygenUIThemeProvider
-      themes={[
-        {
-          key: "acrylicOrange",
-          label: "Acrylic Orange Theme",
-          theme: AcrylicOrangeTheme,
-        },
-        {
-          key: "acrylicPurple",
-          label: "Acrylic Purple Theme",
-          theme: AcrylicPurpleTheme,
-        },
-        {
-          key: "highContrast",
-          label: "High Contrast Theme",
-          theme: HighContrastTheme,
-        },
-        { key: "classic", label: "Classic Theme", theme: ClassicTheme },
-      ]}
-      initialTheme="acrylicOrange"
-    >
-      <BrowserRouter basename={BASE_PATH}>
-        <BFFAuthProvider>
-          <AppGate extensions={extensions} />
-        </BFFAuthProvider>
-      </BrowserRouter>
-    </OxygenUIThemeProvider>
+    <BrandLogoProvider brandLogo={brandLogo}>
+      <OxygenUIThemeProvider
+        themes={[
+          {
+            key: "acrylicOrange",
+            label: "Acrylic Orange Theme",
+            theme: AcrylicOrangeTheme,
+          },
+          {
+            key: "acrylicPurple",
+            label: "Acrylic Purple Theme",
+            theme: AcrylicPurpleTheme,
+          },
+          {
+            key: "highContrast",
+            label: "High Contrast Theme",
+            theme: HighContrastTheme,
+          },
+          { key: "classic", label: "Classic Theme", theme: ClassicTheme },
+        ]}
+        initialTheme="acrylicOrange"
+      >
+        <BrowserRouter basename={BASE_PATH}>
+          <BFFAuthProvider>
+            <AppGate extensions={extensions} />
+          </BFFAuthProvider>
+        </BrowserRouter>
+      </OxygenUIThemeProvider>
+    </BrandLogoProvider>
   );
 }

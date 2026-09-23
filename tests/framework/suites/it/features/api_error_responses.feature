@@ -29,7 +29,7 @@ Feature: API error responses
   Scenario: Creating an API with missing required fields returns field errors
     Given I generate a unique value from "error-missing-fields-api" and store it as "apiName"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Missing-Fields              |
       | spec.version           | v1.0                               |
@@ -47,7 +47,7 @@ Feature: API error responses
     Given I generate a unique value from "error-invalid-policy-api" and store it as "apiName"
     And I generate a unique API context from "error-invalid-policy" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Invalid-Policy              |
       | spec.version           | v1.0                               |
@@ -66,7 +66,7 @@ Feature: API error responses
     Given I generate a unique value from "error-unknown-policy-api" and store it as "apiName"
     And I generate a unique API context from "error-unknown-policy" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Unknown-Policy              |
       | spec.version           | v1.0                               |
@@ -85,7 +85,7 @@ Feature: API error responses
   Scenario: Creating an API without a metadata name returns a validation error
     Given I generate a unique API context from "error-missing-name" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   |                                  |
       | spec.displayName       | Error-Missing-Name                |
       | spec.version           | v1.0                               |
@@ -103,7 +103,7 @@ Feature: API error responses
     Given I generate a unique value from "error-invalid-version-api" and store it as "apiName"
     And I generate a unique API context from "error-invalid-version" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Invalid-Version             |
       | spec.version           | v1.0.0-beta                       |
@@ -121,7 +121,7 @@ Feature: API error responses
     Given I generate a unique value from "error-update-parse-api" and store it as "apiName"
     And I generate a unique API context from "error-update-parse" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Valid-API                   |
       | spec.version           | v1.0                               |
@@ -146,7 +146,7 @@ Feature: API error responses
     Given I generate a unique value from "error-update-validation-api" and store it as "apiName"
     And I generate a unique API context from "error-update-validation" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Valid-API                   |
       | spec.version           | v1.0                               |
@@ -155,7 +155,7 @@ Feature: API error responses
       | spec.operations        | [{"method":"GET","path":"/test"}] |
     Then the response should be successful
     When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | Error-Invalid-Update              |
       | spec.version           | v1.0                               |

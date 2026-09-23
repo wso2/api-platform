@@ -87,6 +87,7 @@ func PlatformGateway() *components.Definition {
 			ExpectStatus: 200,
 			Timeout:      3 * time.Minute, Interval: 2 * time.Second,
 		},
+		VersionedHealth: gatewayVersionedHealthChecks(),
 
 		DB: &components.DBContract{
 			Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
@@ -106,6 +107,7 @@ func PlatformGateway() *components.Definition {
 			},
 			ContainerPath: "/config.toml",
 			Format:        components.TOML,
+			Versioned:     gatewayConfigProfiles(),
 		},
 
 		Wiring: components.TypedWiring[PlatformGatewayWiring](),

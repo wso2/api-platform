@@ -16,51 +16,66 @@
  * under the License.
  */
 
-import { Box, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import {
+  alpha,
+  Box,
+  Chip,
+  IconButton,
+  Stack,
+  Tooltip,
+  Typography,
+  type Theme,
+} from '@wso2/oxygen-ui';
 import { Trash2 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { FormattedMessage } from 'react-intl';
 
 import type { Operation } from '@/api/resources/restApis';
-import { SwaggerResourceRow } from './SwaggerResourceRow';
 
-const messages = defineMessages({
-  delete: {
-    id: 'apiControlPlane.components.SwaggerOperationsView.delete',
-    defaultMessage: 'Delete resource',
-    description: 'Tooltip on the button that removes one API resource from the list. Verb phrase.',
-  },
-  deleteLabel: {
-    id: 'apiControlPlane.components.SwaggerOperationsView.deleteLabel',
-    defaultMessage: 'Delete {method} {path}',
-    description:
-      'Accessible label for the delete button on one resource. {method} is an HTTP verb such as GET; {path} is a URL path such as /books/{id}. Neither is translated.',
-  },
-  empty: {
-    id: 'apiControlPlane.components.SwaggerOperationsView.empty',
-    defaultMessage: 'No operations available.',
-  },
-});
+type ChipColor = 'default' | 'error' | 'info' | 'primary' | 'secondary' | 'success' | 'warning';
+
+const methodColor = (method: string): ChipColor => {
+  switch (method.toUpperCase()) {
+    case 'GET':
+      return 'info';
+    case 'POST':
+      return 'success';
+    case 'PUT':
+      return 'warning';
+    case 'DELETE':
+      return 'error';
+    case 'PATCH':
+      return 'secondary';
+    default:
+      return 'default';
+  }
+};
+
+const methodTone = (theme: Theme, method: string) => {
+  const color = methodColor(method);
+  return color === 'default' ? theme.palette.text.primary : theme.palette[color].main;
+};
 
 export type SwaggerOperationsViewProps = {
+  operations: Operation[];
   isOperationDisabled?: (operation: Operation, index: number) => boolean;
   onDelete?: (index: number) => void;
-  operations: Operation[];
   showDelete?: boolean;
 };
 
-/** Compact Swagger-style operation summary shared by pages that do not need Swagger's detail UI. */
+/** Compact operation summary shared by pages that do not need the full spec viewer UI. */
 export function SwaggerOperationsView({
+  operations,
   isOperationDisabled,
   onDelete,
-  operations,
   showDelete = false,
 }: SwaggerOperationsViewProps) {
-  const intl = useIntl();
-
   if (operations.length === 0) {
     return (
       <Typography color="text.secondary" variant="body2">
-        <FormattedMessage {...messages.empty} />
+        <FormattedMessage
+          id="apiControlPlane.components.SwaggerOperationsView.empty"
+          defaultMessage="No operations available."
+        />
       </Typography>
     );
   }
@@ -71,32 +86,58 @@ export function SwaggerOperationsView({
         const { method, path } = operation.request;
         const disabled = isOperationDisabled?.(operation, index) ?? false;
         return (
-          <SwaggerResourceRow
-            actions={
-              showDelete && onDelete ? (
-                <Tooltip title={intl.formatMessage(messages.delete)}>
-                  {/* A disabled button fires no events, so the Tooltip listens
-                      on this wrapper instead of on the button itself. */}
-                  <Box component="span" sx={{ display: 'inline-flex' }}>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.deleteLabel, { method, path })}
-                      color="error"
-                      disabled={disabled}
-                      onClick={() => onDelete(index)}
-                      size="small"
-                    >
-                      <Trash2 size={17} />
-                    </IconButton>
-                  </Box>
-                </Tooltip>
-              ) : undefined
-            }
-            description={operation.description}
-            disabled={disabled}
+          <Box
             key={`${method}-${path}-${index}`}
-            method={method}
-            path={path}
-          />
+            sx={(theme) => {
+              const tone = methodTone(theme, method);
+              return {
+                alignItems: 'center',
+                bgcolor: alpha(tone, 0.08),
+                border: '1px solid',
+                borderColor: alpha(tone, 0.3),
+                borderRadius: 0.5,
+                display: 'flex',
+                gap: 1.5,
+                minHeight: 48,
+                opacity: disabled ? 0.45 : 1,
+                px: 1,
+                py: 0.75,
+              };
+            }}
+          >
+            <Chip
+              color={methodColor(method)}
+              label={method}
+              size="small"
+              sx={{ borderRadius: 0.4, flexShrink: 0, fontWeight: 700, minWidth: 80 }}
+            />
+            <Typography sx={{ flexShrink: 0, fontSize: '0.95rem', fontWeight: 700 }}>
+              {path}
+            </Typography>
+            <Typography
+              color="text.secondary"
+              noWrap
+              sx={{ flex: 1, minWidth: 0 }}
+              variant="body2"
+            >
+              {operation.description ?? operation.name ?? ''}
+            </Typography>
+            {showDelete && onDelete && (
+              <Tooltip title="Delete resource">
+                <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>
+                  <IconButton
+                    aria-label={`Delete ${method} ${path}`}
+                    color="error"
+                    disabled={disabled}
+                    onClick={() => onDelete(index)}
+                    size="small"
+                  >
+                    <Trash2 size={17} />
+                  </IconButton>
+                </Box>
+              </Tooltip>
+            )}
+          </Box>
         );
       })}
     </Stack>

@@ -54,9 +54,10 @@ src/
   components/     app-wide: StateViews (Loading/Empty/Error), ConfirmDialog, Notifications,
                   ErrorBoundary, AppLoader, ComingSoon, cards/*, common/*
   contexts/auth/  AuthProvider + AuthStateContext
-  hooks/          cross-cutting hooks (ProductActivation)
+  hooks/          cross-cutting hooks (ProductActivation, useDocumentTitle)
   i18n/           I18nProvider, useLocale, useFormatters, formats.ts, messages/ (source catalogs)
-  navigation/     navigationRegistry.tsx (the sidebar), navigationTypes, useNavigationItems
+  navigation/     navigationRegistry.tsx (the sidebar), navigationTypes, useNavigationItems,
+                  usePageTitle (browser tab title)
   pages/
     auth/         LoginPage, AuthCallbackPage
     appShell/     AppLayout, AppHeader, AppSidebar, *QuickSelector
@@ -334,6 +335,7 @@ Adding a page, end to end:
    (`apiScopedPaths` for API-level pages; a single `<Route>` only when the page has no alias.)
 3. **The page** wraps its body in `ScopeGate` with `requires` + `to={routes.thingDetail}`.
 4. **`src/navigation/navigationRegistry.tsx`** — add the sidebar entry. Build `to`/`match` from the *same* builder via the helpers, never by hand: `orgLevelTo`, `apiLevelTo`, `matchRoutes`, `submenu([...])` for a parent with children, `adaptive([...tiers])` for one item that degrades across scopes, `apiCapability(...)` for capability gating (which only applies once an API is in scope).
+5. **Browser tab title** — free once step 4 is done: `AppLayout` calls `useDocumentTitle(usePageTitle())` for every page in the shell, and `usePageTitle` (`src/navigation/usePageTitle.ts`) names it `"<Page> | WSO2 API Platform"` from the active sidebar item's label. A page the sidebar can't name — no item of its own, or a URL another item's `match` also claims (`/apis/new` matches Overview's `.../apis/:apiHandler`) — needs a `ROUTE_TITLES` entry there, built from its `routes.*` builder. Never call `useDocumentTitle` from a page inside the shell: effects run child-before-parent, so `AppLayout` wins on mount and the page on every change after. Only pages outside the shell (login, the error pages) call it themselves.
 
 Never hand-write a path string or a `match` regex: `routes.*` is the single source, and
 `paths.test.ts` / `navigationRegistry.test.ts` guard the pairing.

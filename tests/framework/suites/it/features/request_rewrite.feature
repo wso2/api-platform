@@ -31,7 +31,7 @@ Feature: Request transformation routing
     Given I generate a unique value from "request-rewrite-1" and store it as "apiName1"
     And I generate a unique API context from "/request-rewrite-1" and store it as "apiContext1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName1}                    |
       | spec.displayName       | Request Transformation Prefix     |
       | spec.version           | v1.0                               |
@@ -45,12 +45,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/api/v2"
 
+    When I delete the API "${CTX:apiName1}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext1}/v1.0/api/v1" until status 404
+
 
   Scenario: ReplaceFullPath rewrites the entire path
     Given I generate a unique value from "request-rewrite-2" and store it as "apiName2"
     And I generate a unique API context from "/request-rewrite-2" and store it as "apiContext2"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName2}                    |
       | spec.displayName       | Request Transformation Full Path  |
       | spec.version           | v1.0                               |
@@ -64,12 +68,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/fixed/path"
 
+    When I delete the API "${CTX:apiName2}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/api/v1" until status 404
+
 
   Scenario: ReplaceRegexMatch rewrites using regex substitution
     Given I generate a unique value from "request-rewrite-3" and store it as "apiName3"
     And I generate a unique API context from "/request-rewrite-3" and store it as "apiContext3"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName3}                    |
       | spec.displayName       | Request Transformation Regex      |
       | spec.version           | v1.0                               |
@@ -83,12 +91,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/api/v2"
 
+    When I delete the API "${CTX:apiName3}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/api/v1" until status 404
+
 
   Scenario: ReplaceRegexMatch reorders captured segments
     Given I generate a unique value from "request-rewrite-4" and store it as "apiName4"
     And I generate a unique API context from "/request-rewrite-4" and store it as "apiContext4"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName4}                    |
       | spec.displayName       | Request Transformation Regex Capture |
       | spec.version           | v1.0                               |
@@ -102,12 +114,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/v1/api/instance/foo"
 
+    When I delete the API "${CTX:apiName4}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext4}/v1.0/service/foo/v1/api" until status 404
+
 
   Scenario: ReplaceRegexMatch is case-insensitive
     Given I generate a unique value from "request-rewrite-5" and store it as "apiName5"
     And I generate a unique API context from "/request-rewrite-5" and store it as "apiContext5"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName5}                    |
       | spec.displayName       | Request Transformation Regex Case Insensitive |
       | spec.version           | v1.0                               |
@@ -121,12 +137,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/aaa/yyy/bbb"
 
+    When I delete the API "${CTX:apiName5}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext5}/v1.0/aaa/XxX/bbb" until status 404
+
 
   Scenario: ReplaceRegexMatch replaces all matches
     Given I generate a unique value from "request-rewrite-6" and store it as "apiName6"
     And I generate a unique API context from "/request-rewrite-6" and store it as "apiContext6"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName6}                    |
       | spec.displayName       | Request Transformation Regex Replace All |
       | spec.version           | v1.0                               |
@@ -140,12 +160,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/xxx/two/yyy/two/zzz"
 
+    When I delete the API "${CTX:apiName6}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext6}/v1.0/xxx/one/yyy/one/zzz" until status 404
+
 
   Scenario: Query rewrite adds, replaces, and removes parameters
     Given I generate a unique value from "request-rewrite-7" and store it as "apiName7"
     And I generate a unique API context from "/request-rewrite-7" and store it as "apiContext7"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName7}                    |
       | spec.displayName       | Request Transformation Query      |
       | spec.version           | v1.0                               |
@@ -161,12 +185,16 @@ Feature: Request transformation routing
     And the JSON response field "args.q" should be "new-value"
     And the JSON response field "args.debug" should not exist
 
+    When I delete the API "${CTX:apiName7}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext7}/v1.0/search" until status 404
+
 
   Scenario: Method rewrite changes the request method
     Given I generate a unique value from "request-rewrite-8" and store it as "apiName8"
     And I generate a unique API context from "/request-rewrite-8" and store it as "apiContext8"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName8}                    |
       | spec.displayName       | Request Transformation Method     |
       | spec.version           | v1.0                               |
@@ -180,12 +208,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "method" should be "POST"
 
+    When I delete the API "${CTX:apiName8}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext8}/v1.0/test/hello" until status 404
+
 
   Scenario: API-level policy rewrites the path prefix
     Given I generate a unique value from "request-rewrite-9" and store it as "apiName9"
     And I generate a unique API context from "/request-rewrite-9" and store it as "apiContext9"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName9}                    |
       | spec.displayName       | Request Transformation API Level Prefix |
       | spec.version           | v1.0                               |
@@ -200,12 +232,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/api/v2"
 
+    When I delete the API "${CTX:apiName9}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext9}/v1.0/api/v1" until status 404
+
 
   Scenario: API-level policy rewrites the method
     Given I generate a unique value from "request-rewrite-10" and store it as "apiName10"
     And I generate a unique API context from "/request-rewrite-10" and store it as "apiContext10"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName10}                   |
       | spec.displayName       | Request Transformation API Level Method |
       | spec.version           | v1.0                               |
@@ -220,12 +256,16 @@ Feature: Request transformation routing
     Then the response status code should be 200
     And the JSON response field "method" should be "POST"
 
+    When I delete the API "${CTX:apiName10}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext10}/v1.0/test/hello" until status 404
+
 
   Scenario: Match conditions gate transformations
     Given I generate a unique value from "request-rewrite-11" and store it as "apiName11"
     And I generate a unique API context from "/request-rewrite-11" and store it as "apiContext11"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName11}                   |
       | spec.displayName       | Request Transformation Match      |
       | spec.version           | v1.0                               |
@@ -242,3 +282,7 @@ Feature: Request transformation routing
     When I send a "GET" request to "${CTX:apiContext11}/v1.0/api/v1"
     Then the response status code should be 200
     And the JSON response field "url" should contain "/anything/api/v2"
+
+    When I delete the API "${CTX:apiName11}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext11}/v1.0/api/v1" until status 404

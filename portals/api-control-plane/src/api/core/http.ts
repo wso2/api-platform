@@ -381,17 +381,16 @@ const classifyTransportFailure = (
 
 
 /**
- * Issues one request and resolves it against the spec's contract.
- *
- * Always rejects with a `ApiError`, never an `AxiosError`, never a
- * raw body, so a caller has exactly one error type to handle and the
- * transport stays swappable behind this module.
+ * Sends one request and returns the raw success response, or throws `ApiError`.
+ * `responseType: 'text'` keeps the body exactly as sent instead of letting axios
+ * guess at JSON.
  */
-export async function request<T>(
+async function send(
   method: string,
   path: string,
-  options: RequestOptions = {}
-) : Promise<T> {
+  options: RequestOptions,
+  responseType?: 'text'
+): Promise<AxiosResponse<unknown>> {
   const verb = method.toUpperCase();
   const requestId = newRequestId();
   const deadline = withDeadline(
@@ -407,6 +406,7 @@ export async function request<T>(
     orgId: options.orgId,
     requestId,
     operationName: options.operationName,
+    ...(responseType ? { responseType } : {}),
     // FormData is passed through untouched; anything else is serialized here
     // so the Content-Type set above is always accurate.
     ...(options.body !== undefined
@@ -447,7 +447,45 @@ export async function request<T>(
     throw platformErrorFromBody(response.status, body, requestId, options.operationName);
   }
 
-  return parseBody<T>(response);
+  return response;
+}
+
+/**
+ * Issues one request and resolves it against the spec's contract.
+ *
+ * Always rejects with a `ApiError`, never an `AxiosError`, never a
+ * raw body, so a caller has exactly one error type to handle and the
+ * transport stays swappable behind this module.
+ */
+export async function request<T>(
+  method: string,
+  path: string,
+  options: RequestOptions = {}
+): Promise<T> {
+  return parseBody<T>(await send(method, path, options));
+}
+
+/** A response body left as text, with the content type the server labelled it with. */
+export type TextResponse = {
+  text: string;
+  contentType: string;
+};
+
+/**
+ * Like {@link request}, for endpoints that return a stored document in whatever
+ * serialization it was saved in (JSON, YAML, ...). The body is not parsed here;
+ * the caller decides how to read it. Errors are still `ApiError`.
+ */
+export async function requestText(
+  method: string,
+  path: string,
+  options: RequestOptions = {}
+): Promise<TextResponse> {
+  const response = await send(method, path, options, 'text');
+  return {
+    text: typeof response.data === 'string' ? response.data : '',
+    contentType: String(response.headers['content-type'] ?? ''),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -467,6 +505,10 @@ type BodylessOptions = Omit<RequestOptions, 'body'>;
 export const http = {
   get: <T>(path: string, options?: BodylessOptions) =>
     request<T>('GET', path, options),
+
+  /** GET a stored document as text plus its content type, without parsing it. */
+  getText: (path: string, options?: BodylessOptions) =>
+    requestText('GET', path, options),
 
   post: <T>(path: string, body?: unknown, options?: BodylessOptions) =>
     request<T>('POST', path, { ...options, body }),

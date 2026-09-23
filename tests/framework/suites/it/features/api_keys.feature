@@ -31,7 +31,7 @@ Feature: API key management
     Given I generate a unique value from "apikey-lifecycle-api" and store it as "apiKeyName1_1"
     Given I generate a unique API context from "/apikey-lifecycle" and store it as "apiKeyContext1_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName1_1}              |
       | spec.displayName       | APIKey-Lifecycle-API              |
       | spec.version           | v1.0                               |
@@ -81,7 +81,7 @@ Feature: API key management
     Given I generate a unique value from "multi-key-api" and store it as "apiKeyName2_1"
     Given I generate a unique API context from "/multi-key" and store it as "apiKeyContext2_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName2_1}              |
       | spec.displayName       | Multi-Key-API                     |
       | spec.version           | v1.0                               |
@@ -117,7 +117,7 @@ Feature: API key management
     Given I generate a unique value from "no-keys-api" and store it as "apiKeyName3_1"
     Given I generate a unique API context from "/no-keys" and store it as "apiKeyContext3_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName3_1}              |
       | spec.displayName       | No-Keys-API                       |
       | spec.version           | v1.0                               |
@@ -147,7 +147,7 @@ Feature: API key management
     Given I generate a unique value from "key-validation-api" and store it as "apiKeyName5_1"
     Given I generate a unique API context from "/key-validation" and store it as "apiKeyContext5_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName5_1}              |
       | spec.displayName       | Key-Validation-API                |
       | spec.version           | v1.0                               |
@@ -186,7 +186,7 @@ Feature: API key management
     Given I generate a unique value from "revoke-error-api" and store it as "apiKeyName9_1"
     Given I generate a unique API context from "/revoke-error" and store it as "apiKeyContext9_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName9_1}              |
       | spec.displayName       | Revoke-Error-API                  |
       | spec.version           | v1.0                               |
@@ -213,7 +213,7 @@ Feature: API key management
     Given I generate a unique value from "test-regenerate-api" and store it as "apiKeyName11_1"
     Given I generate a unique API context from "/test-regen" and store it as "apiKeyContext11_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName11_1}             |
       | spec.displayName       | Test-Regenerate-Api               |
       | spec.version           | v1.0                               |
@@ -241,7 +241,7 @@ Feature: API key management
     Given I generate a unique value from "invalid-json-key-api" and store it as "apiKeyName13_1"
     Given I generate a unique API context from "/invalid-json-key" and store it as "apiKeyContext13_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName13_1}             |
       | spec.displayName       | Invalid-JSON-Key-API              |
       | spec.version           | v1.0                               |
@@ -262,7 +262,7 @@ Feature: API key management
     Given I generate a unique value from "special-char-key-api" and store it as "apiKeyName14_1"
     Given I generate a unique API context from "/special-char-key" and store it as "apiKeyContext14_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName14_1}             |
       | spec.displayName       | Special-Char-Key-API              |
       | spec.version           | v1.0                               |
@@ -286,7 +286,7 @@ Feature: API key management
     Given I generate a unique value from "paginated-keys-api" and store it as "apiKeyName15_1"
     Given I generate a unique API context from "/paginated-keys" and store it as "apiKeyContext15_1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiKeyName15_1}             |
       | spec.displayName       | Paginated-Keys-API                |
       | spec.version           | v1.0                               |

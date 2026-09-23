@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { BarChart3, Layers, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, Layers, PanelTop, ScrollText, Workflow } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
@@ -15,10 +15,12 @@ import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature } from '@wso2-enterprise/apip-cloud-ui-logs';
+import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
+import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import {
   PAGE_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
@@ -28,6 +30,14 @@ import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
+import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
+import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
+
+/** Cloud console branding used by the host header and login page. */
+export const cloudBrandLogo: BrandLogo = {
+  dark: cloudLogoDark,
+  light: cloudLogoLight,
+};
 
 /**
  * The kinds of gateway this host manages. Module scope, not a literal at the
@@ -68,10 +78,15 @@ const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
  * what renders there changes. It is the one API-scoped feature here, so it needs
  * the API in scope, which the Port carries as `apiHandle`. Because the override
  * replaces the whole page, it also replaces the `ScopeGate` the built-in page
- * wraps itself in — so it is re-applied here. Without it, reaching Deploy from an
+ * wraps itself in - so it is re-applied here. Without it, reaching Deploy from an
  * organization- or project-level page (which the sidebar allows, and is a normal
  * thing to do) left a dead end instead of the project/API picker that navigates
  * to the scoped URL.
+ *
+ * `managed-api-portals` is an organization-level sidebar item, one WSO2-managed
+ * developer portal per entry in the org. Talks to apip-platform-api's cloud-only
+ * `/managed-api-portals` resource via the host port; SaaS-only, distinct from
+ * the OSS `/api-portals` registry (SaaS lifecycle vs plain registry).
  *
  * `insights` registers org/project sidebar Moesif embeds and hides the
  * built-in Insights parent outside API scope when loaded. Gated on
@@ -205,13 +220,31 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
     ],
   }),
   defineCloudPlugin({
+    id: 'managed-api-portals',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'managed-api-portals',
+        slot: 'sidebar.organization',
+        // Placed after Pipelines (50); no built-in item competes for 60.
+        order: 60,
+        routePath: 'managed-api-portals',
+        render: (port) => <ManagedPortalsPage port={port} />,
+        label: 'Portals',
+        icon: <PanelTop size={20} />,
+        level: 'organization',
+      },
+    ],
+  }),
+  defineCloudPlugin({
     id: 'insights',
     version: '0.1.0',
     extensions: [
       {
         id: 'organization-insights',
         slot: 'sidebar.organization',
-        order: 60,
+        // Placed after managed-api-portals (60).
+        order: 70,
         routePath: 'insights',
         label: 'Insights',
         group: 'api',

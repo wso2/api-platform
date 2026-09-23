@@ -69,29 +69,22 @@ const renderSidebar = (route: string, isApiScope: boolean) =>
  * is decided entirely by whether the item has children — see `renderItem`.
  */
 describe('AppSidebar submenus', () => {
-  it('opens Test as a submenu in API scope rather than navigating', async () => {
-    const { user } = renderSidebar(routes.api(ORG, PROJECT, API), true);
+  it('navigates straight to Test in API scope, with nothing to disclose', () => {
+    renderSidebar(routes.api(ORG, PROJECT, API), true);
 
     const test = screen.getByRole('button', { name: /^Test$/ });
-    // A disclosure, not a link: no href to follow.
-    expect(test.closest('a')).toBeNull();
-    expect(test).toHaveAttribute('aria-expanded', 'false');
 
-    await user.click(test);
-
-    expect(test).toHaveAttribute('aria-expanded', 'true');
-    for (const label of ['API Console', 'Curl', 'API Chat']) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
+    // A leaf, not a disclosure: the console, the cURL builder and the response
+    // are one page, so there is no submenu to open.
+    expect(test.closest('a')).toHaveAttribute('href', routes.apiTest(ORG, PROJECT, API));
+    expect(test).not.toHaveAttribute('aria-expanded');
   });
 
-  it('links Test at its first child scope gate when no API is open', () => {
+  it('links Test at its scope gate when no API is open', () => {
     renderSidebar(routes.organizationHome(ORG), false);
 
     const link = screen.getByRole('button', { name: /^Test$/ }).closest('a');
-    expect(link).toHaveAttribute('href', routes.apiTestConsole(ORG, null, null));
-    // Nothing to disclose, so no submenu entries and no chevron state.
-    expect(screen.queryByText('API Console')).not.toBeInTheDocument();
+    expect(link).toHaveAttribute('href', routes.apiTest(ORG, null, null));
   });
 
   it('opens Develop onto the three panels lifted off the overview page', async () => {
@@ -99,7 +92,7 @@ describe('AppSidebar submenus', () => {
 
     await user.click(screen.getByRole('button', { name: /^Develop$/ }));
 
-    for (const label of ['Policies', 'Resources', 'Documents']) {
+    for (const label of ['Policies', 'Definition', 'Documents']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });

@@ -31,7 +31,7 @@ Feature: Dynamic endpoint routing
     Given I generate a unique value from "dynamic-operation" and store it as "apiName1"
     And I generate a unique API context from "/dynamic-operation" and store it as "apiContext1"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName1}                    |
       | spec.displayName              | Dynamic-Endpoint-API               |
       | spec.version                  | v1.0                               |
@@ -59,7 +59,7 @@ Feature: Dynamic endpoint routing
     Given I generate a unique value from "dynamic-base-paths" and store it as "apiName2"
     And I generate a unique API context from "/dynamic-base-paths" and store it as "apiContext2"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName2}                    |
       | spec.displayName              | Dynamic-Endpoint-Routes-API       |
       | spec.version                  | v1.0                               |
@@ -93,7 +93,7 @@ Feature: Dynamic endpoint routing
     Given I generate a unique value from "dynamic-missing-target" and store it as "apiName3"
     And I generate a unique API context from "/dynamic-missing-target" and store it as "apiContext3"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName3}                    |
       | spec.displayName       | Dynamic-Endpoint-Missing-Param-API |
       | spec.version           | v1.0                               |
@@ -112,7 +112,7 @@ Feature: Dynamic endpoint routing
     And I generate a unique resource name from "dynamic-main" and store it as "mainHost4"
     And I generate a unique resource name from "dynamic-sandbox" and store it as "sandboxHost4"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName4}                    |
       | spec.displayName              | Dynamic-Endpoint-Sandbox-API      |
       | spec.version                  | v1.0                               |
@@ -147,7 +147,7 @@ Feature: Dynamic endpoint routing
     And I generate a unique resource name from "dynamic-api-main" and store it as "mainHost5"
     And I generate a unique resource name from "dynamic-api-sandbox" and store it as "sandboxHost5"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName5}                    |
       | spec.displayName              | Dynamic-Endpoint-API-Sandbox-API |
       | spec.version                  | v1.0                               |
@@ -183,7 +183,7 @@ Feature: Dynamic endpoint routing
     And I generate a unique resource name from "dynamic-fallback-main" and store it as "mainHost6"
     And I generate a unique resource name from "dynamic-fallback-sandbox" and store it as "sandboxHost6"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName6}                    |
       | spec.displayName              | Dynamic-Endpoint-Sandbox-Mixed-API |
       | spec.version                  | v1.0                               |
@@ -216,7 +216,7 @@ Feature: Dynamic endpoint routing
     Given I generate a unique value from "dynamic-rewrite" and store it as "apiName7"
     And I generate a unique API context from "/dynamic-rewrite" and store it as "apiContext7"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName7}                    |
       | spec.displayName              | Dynamic-Endpoint-Rewrite-API      |
       | spec.version                  | v1.0                               |
@@ -240,7 +240,7 @@ Feature: Dynamic endpoint routing
     And I generate a unique resource name from "dynamic-rewrite-main" and store it as "mainHost8"
     And I generate a unique resource name from "dynamic-rewrite-sandbox" and store it as "sandboxHost8"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}         |
       | name                          | ${CTX:apiName8}                    |
       | spec.displayName              | Dynamic-Endpoint-Rewrite-Sandbox-API |
       | spec.version                  | v1.0                               |

@@ -33,7 +33,7 @@ Feature: Model weighted round-robin load balancing policy
     And I generate a unique API version from "wrr-basic" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-basic" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -82,13 +82,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Equal weight distribution
     Given I generate a unique value from "wrr-equal" and store it as "apiName"
     And I generate a unique API version from "wrr-equal" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-equal" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -122,13 +123,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Three models with different weights
     Given I generate a unique value from "wrr-three" and store it as "apiName"
     And I generate a unique API version from "wrr-three" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-three" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -206,13 +208,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with header location
     Given I generate a unique value from "wrr-header" and store it as "apiName"
     And I generate a unique API version from "wrr-header" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -242,13 +245,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with query parameter location
     Given I generate a unique value from "wrr-query" and store it as "apiName"
     And I generate a unique API version from "wrr-query" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-query" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -273,13 +277,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Model selection with path parameter location
     Given I generate a unique value from "wrr-path" and store it as "apiName"
     And I generate a unique API version from "wrr-path" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -305,13 +310,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Suspend model on 5xx error with recovery
     Given I generate a unique value from "wrr-susp-5xx" and store it as "apiName"
     And I generate a unique API version from "wrr-susp-5xx" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-susp-5xx" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -346,13 +352,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Suspend model on 429 rate limit error
     Given I generate a unique value from "wrr-susp-429" and store it as "apiName"
     And I generate a unique API version from "wrr-susp-429" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-susp-429" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -387,13 +394,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: All models suspended returns 503
     Given I generate a unique value from "wrr-all-susp" and store it as "apiName"
     And I generate a unique API version from "wrr-all-susp" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-all-susp" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -427,13 +435,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: No suspension when suspendDuration is 0
     Given I generate a unique value from "wrr-no-susp" and store it as "apiName"
     And I generate a unique API version from "wrr-no-susp" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-no-susp" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -468,13 +477,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle empty request body
     Given I generate a unique value from "wrr-empty" and store it as "apiName"
     And I generate a unique API version from "wrr-empty" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -492,13 +502,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle invalid JSON in request body
     Given I generate a unique value from "wrr-inv-json" and store it as "apiName"
     And I generate a unique API version from "wrr-inv-json" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-inv-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -517,13 +528,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle invalid JSONPath
     Given I generate a unique value from "wrr-inv-path" and store it as "apiName"
     And I generate a unique API version from "wrr-inv-path" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-inv-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -542,13 +554,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle missing model field in payload
     Given I generate a unique value from "wrr-missing" and store it as "apiName"
     And I generate a unique API version from "wrr-missing" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-missing" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -567,13 +580,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Fallback to secondary models on primary failure
     Given I generate a unique value from "wrr-fallback" and store it as "apiName"
     And I generate a unique API version from "wrr-fallback" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-fallback" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -600,13 +614,14 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Canary deployment with small weight for new model
     Given I generate a unique value from "wrr-canary" and store it as "apiName"
     And I generate a unique API version from "wrr-canary" and store it as "apiVersion"
     And I generate a unique API context from "/wrr-canary" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -690,3 +705,4 @@ Feature: Model weighted round-robin load balancing policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

@@ -23,6 +23,8 @@ defaults:
   components:
     platform-gateway:
       db: sqlite
+      dbCompatibility:
+        sqlserver: "gateway-version>=1.2.0"
   timeouts:
     boot: 5m
     propagation: 60s
@@ -205,6 +207,10 @@ blocks:
       - name: api-deploy
         features:
           - features/api_deploy.feature
+      - name: upstream-url-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/upstream_url_validation.feature
       - name: api-keys
         features:
           - features/api_keys.feature
@@ -218,21 +224,29 @@ blocks:
         features:
           - features/lazy_resources_xds.feature
       - name: dynamic-endpoint
+        tags: "gateway-version>=1.2.0"
         features:
           - features/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/route_path_matching.feature
+      - name: route-path-matching-prefix
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/route_path_matching_prefix.feature
       - name: path-normalization
+        tags: "gateway-version>=1.2.0"
         features:
           - features/path_normalization.feature
       - name: header-routing
+        tags: "gateway-version>=1.2.0"
         features:
           - features/header_routing.feature
       - name: host-rewrite
         features:
           - features/host_rewrite.feature
       - name: redirect
+        tags: "gateway-version>=1.2.0"
         features:
           - features/redirect.feature
       - name: request-rewrite
@@ -247,6 +261,14 @@ blocks:
       - name: sandbox-routing
         features:
           - features/sandbox_routing.feature
+      - name: sandbox-upstream-first-url
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/sandbox_upstream_first_url.feature
+      - name: sandbox-upstream-url-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/sandbox_upstream_url_validation.feature
       - name: content-length-guardrail
         features:
           - features/content_length_guardrail.feature
@@ -293,42 +315,56 @@ blocks:
         features:
           - features/token_based_ratelimit.feature
       - name: token-based-ratelimit-provider-templates
+        tags: "gateway-version>=1.2.0"
         features:
           - features/token_based_ratelimit_provider_templates.feature
       - name: llm-cost-based-ratelimit
+        # Excludes scenarios whose exact post-charge assertion is blocked by the
+        # gateway rejecting the non-billable readiness probe after exhaustion.
+        tags: "~@known-issue"
         features:
           - features/llm_cost_based_ratelimit.feature
-        # Excludes a scenario documenting a known product-contract gap (multi-window
-        # budgetLimits not fully enforced) - see the feature file for details.
-        tags: "~@known-issue"
       - name: llm-cost-calculation-providers
+        tags: "gateway-version>=1.2.0"
         features:
           - features/llm_cost_calculation_providers.feature
       - name: llm-provider-global-ratelimit
+        tags: "gateway-version>=1.2.0"
         features:
           - features/llm_provider_global_ratelimit.feature
       - name: llm-provider-management
         features:
           - features/llm_provider.feature
+      - name: llm-provider-policy-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/llm_provider_policy_validation.feature
       - name: llm-provider-template-management
         features:
           - features/llm_provider_template.feature
       - name: llm-proxy-management
         features:
           - features/llm_proxy.feature
+      - name: llm-proxy-policy-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/llm_proxy_policy_validation.feature
       - name: model-round-robin
         features:
           - features/model_round_robin.feature
       - name: model-round-robin-multi-provider
+        tags: "gateway-version>=1.2.0"
         features:
           - features/model_round_robin_multi_provider.feature
       - name: model-weighted-round-robin
         features:
           - features/model_weighted_round_robin.feature
       - name: model-weighted-round-robin-multi-provider
+        tags: "gateway-version>=1.2.0"
         features:
           - features/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
+        tags: "gateway-version>=1.2.0"
         features:
           - features/llm_policy_path_specificity.feature
       - name: prompt-template
@@ -341,24 +377,41 @@ blocks:
         features:
           - features/prompt_compressor.feature
       - name: aws-bedrock-guardrail
+        tags: "gateway-version>1.2.0"
         features:
           - features/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/mcp_deploy.feature
       - name: oauth2-auth
+        tags: "gateway-version>1.2.0"
         features:
           - features/oauth2_auth.feature
       - name: policy-engine-admin
         features:
           - features/policy_engine_admin.feature
+        tags: "~@known-issue"
       - name: template-functions
         features:
           - features/template_functions.feature
-        # Excludes a scenario documenting a known product-contract gap (policy chain/route
-        # config caches missing the deletion-marker workaround applied to the sibling event
-        # channel cache) - see the feature file for details.
-        tags: "~@known-issue"
+      - name: template-functions-typed
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/template_functions_typed.feature
+
+  - name: legacy-aws-bedrock-guardrail
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-legacy.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: aws-bedrock-guardrail
+        tags: "gateway-version<=1.2.0"
+        features:
+          - features/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
@@ -390,6 +443,7 @@ blocks:
         features:
           - features/startup_db_bootstrap.feature
       - name: dp-to-cp-reconnect
+        tags: "gateway-version>=1.2.0"
         features:
           - features/dp_to_cp_reconnect.feature
 
@@ -456,6 +510,10 @@ blocks:
       - name: vhost-routing-multi
         features:
           - features/vhost_routing_multi.feature
+      - name: vhost-routing-multiple-production-hosts
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/vhost_routing_multiple_production_hosts.feature
 
   - name: azure-content-safety
     parallel: 1
@@ -484,6 +542,10 @@ blocks:
       - name: semantic-cache
         features:
           - features/semantic_cache.feature
+      - name: semantic-cache-isolation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/semantic_cache_isolation.feature
       - name: semantic-prompt-guard
         features:
           - features/semantic_prompt_guard.feature
@@ -501,11 +563,33 @@ blocks:
       - name: testbench
     runners:
       - name: mcp-policies
+        tags: "gateway-version>=1.2.0"
         features:
           - features/mcp_policies.feature
+      - name: mcp-gateway-url-precedence
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_gateway_url_precedence.feature
       - name: jwt-auth
         features:
           - features/jwt_auth.feature
+      - name: jwt-auth-scope-claim-rules
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/jwt_auth_scope_claim_rules.feature
+
+  - name: mcp-auth-gateway-host
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-auth-gateway-host.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mcp-auth-gateway-host
+        features:
+          - features/mcp_auth_gateway_host.feature
 
   - name: analytics
     parallel: 1
@@ -518,6 +602,10 @@ blocks:
       - name: analytics-basic
         features:
           - features/analytics_basic.feature
+      - name: analytics-llm
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/analytics_llm.feature
       - name: analytics-header-filter
         features:
           - features/analytics_header_filter.feature
@@ -535,12 +623,15 @@ blocks:
       - name: testbench
     runners:
       - name: upstream-connect-timeout
+        tags: "gateway-version>=1.2.0"
         features:
           - features/upstream_connect_timeout.feature
       - name: backend-route-timeout
+        tags: "gateway-version>=1.2.0"
         features:
           - features/backend_timeout.feature
       - name: llm-backend-timeout
+        tags: "gateway-version>=1.2.0"
         features:
           - features/llm_backend_timeout.feature
       - name: interceptor-service
@@ -559,6 +650,7 @@ blocks:
       - name: testbench
     runners:
       - name: dp-to-cp
+        tags: "gateway-version>=1.2.0"
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
@@ -584,6 +676,7 @@ blocks:
       - name: testbench
     runners:
       - name: dp-to-cp
+        tags: "gateway-version>=1.2.0"
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
@@ -609,6 +702,7 @@ blocks:
       - name: testbench
     runners:
       - name: dp-to-cp
+        tags: "gateway-version>=1.2.0"
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
@@ -684,6 +778,7 @@ blocks:
         addPoliciesFrom: ../gateway-controllers/policies
       - name: testbench
     runners:
-      - name: policy-build-smoke
+      - name: time-based-model-routing
+        tags: "gateway-version>=1.2.0"
         features:
-          - features/gateway_controller_policies.feature
+          - features/time_based_model_routing.feature

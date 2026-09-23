@@ -270,6 +270,37 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 	return &CreateResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
 
+// CreateFromYAML applies a control-plane-originated Agent definition, giving the
+// control-plane apply paths (deploy event, bulk sync) the same one-call shape the
+// other kinds get from utils.CreateAPIFromYAML / CreateMCPProxyFromYAML /
+// CreateLLMProxyFromYAML, and enforcing the same precondition they do.
+//
+// It sits here rather than in pkg/utils alongside its counterparts because this
+// package imports pkg/utils; a utils.CreateAgentFromYAML would close an import
+// cycle. The asymmetry is in where the function lives, not in what a caller writes.
+func (s *AgentService) CreateFromYAML(yamlData []byte, agentID, deploymentID string,
+	deployedAt *time.Time, correlationID string, log *slog.Logger) (*CreateResult, error) {
+	if deploymentID == "" || deployedAt == nil || deployedAt.IsZero() {
+		return nil, fmt.Errorf("control-plane deployments require non-empty deploymentID and deployedAt")
+	}
+
+	result, err := s.Create(CreateParams{
+		Body:          yamlData,
+		ContentType:   "application/yaml",
+		ID:            agentID,
+		DeploymentID:  deploymentID,
+		Origin:        models.OriginControlPlane,
+		DeployedAt:    deployedAt,
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to deploy agent configuration from YAML: %w", err)
+	}
+
+	return result, nil
+}
+
 // List returns Agent configurations, optionally filtered.
 func (s *AgentService) List(params api.ListAgentsParams) (*ListResult, error) {
 	configs, err := s.db.GetAllConfigsByKind(models.KindAgent)
@@ -396,6 +427,82 @@ func (s *AgentService) Update(params UpdateParams) (*UpdateResult, error) {
 		slog.String("desired_state", string(desiredState)))
 
 	return &UpdateResult{Config: existing}, nil
+}
+
+// UndeployParams holds parameters for the Undeploy operation.
+type UndeployParams struct {
+	// ID is the artifact UUID. Undeploy is addressed by id rather than handle
+	// because its only caller is the control plane, which knows the artifact it
+	// deployed but not the handle the gateway stored it under.
+	ID           string
+	DeploymentID string
+	// PerformedAt stamps the undeployment and decides the timestamp-guarded
+	// upsert below. Defaults to now.
+	PerformedAt   *time.Time
+	CorrelationID string
+	Logger        *slog.Logger
+}
+
+// Undeploy marks an Agent as undeployed while preserving its configuration for a
+// later redeploy.
+//
+// This is deliberately not Update: an undeploy event carries identifiers only,
+// with no document to parse, render, or validate — and re-rendering a stored
+// artifact just to take it out of service could fail on an unrelated secret that
+// has since gone missing, leaving the Agent serving traffic the control plane
+// believes is stopped.
+func (s *AgentService) Undeploy(params UndeployParams) (*UpdateResult, error) {
+	log := s.loggerFor(params.Logger)
+
+	cfg, err := s.db.GetConfig(params.ID)
+	if err != nil {
+		if storage.IsDatabaseUnavailableError(err) {
+			return nil, err
+		}
+		return nil, ErrNotFound
+	}
+	// An entity id is unique across kinds, so a kind mismatch means the event and
+	// the row disagree; undeploying anyway would take down another kind's
+	// artifact through the Agent lane.
+	if cfg.Kind != models.KindAgent {
+		return nil, ErrNotFound
+	}
+
+	// A stored deployment ID that names a different deployment means this event
+	// describes a revision this gateway never applied.
+	if cfg.DeploymentID != "" && params.DeploymentID != "" && cfg.DeploymentID != params.DeploymentID {
+		return nil, ErrDeploymentIDMismatch
+	}
+
+	undeployedAt := time.Now().Truncate(time.Millisecond)
+	if params.PerformedAt != nil && !params.PerformedAt.IsZero() {
+		undeployedAt = params.PerformedAt.Truncate(time.Millisecond)
+	}
+
+	updated := *cfg
+	updated.DesiredState = models.StateUndeployed
+	updated.DeploymentID = params.DeploymentID
+	updated.DeployedAt = &undeployedAt
+	updated.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: affected=false means a newer version of this
+	// artifact is already stored, so this request lost a race and must not
+	// publish an event that would make replicas converge backwards.
+	affected, err := s.db.UpsertConfig(&updated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to persist agent undeployment: %w", err)
+	}
+	if !affected {
+		return nil, ErrUndeployStale
+	}
+
+	s.publishEvent("UPDATE", updated.UUID, params.CorrelationID, log)
+
+	log.Info("Agent configuration undeployed",
+		slog.String("agent_id", updated.UUID),
+		slog.String("handle", updated.Handle))
+
+	return &UpdateResult{Config: &updated}, nil
 }
 
 // DeleteParams holds parameters for the Delete operation.

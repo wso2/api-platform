@@ -69,7 +69,10 @@ func (u *Steps) mockLLMURL() (string, error) {
 
 // --- projects ---
 
-const keyLatestProjectID = "uiLatestProjectID"
+const (
+	keyLatestProjectID  = "uiLatestProjectID"
+	keyLatestProviderID = "uiLatestProviderID"
+)
 
 // opensProjectsList navigates to the organization's project list.
 func (u *Steps) opensProjectsList(ctx context.Context) error {
@@ -84,6 +87,11 @@ func (u *Steps) opensProjectsList(ctx context.Context) error {
 }
 
 func (u *Steps) createProject(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	if err := u.opensProjectsList(ctx); err != nil {
 		return err
 	}
@@ -155,6 +163,11 @@ func (u *Steps) latestProjectID(ctx context.Context) (string, error) {
 }
 
 func (u *Steps) seesAmongProjects(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -168,6 +181,11 @@ func (u *Steps) seesAmongProjects(ctx context.Context, name string) error {
 // template's card, returning the page positioned on either the provider form or, for a
 // template with more than one version, the version-selection screen.
 func (u *Steps) opensProviderFromTemplateCard(ctx context.Context, templateName string) (playwright.Locator, error) {
+	var err error
+	templateName, err = expandUIValue(ctx, templateName)
+	if err != nil {
+		return nil, err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return nil, err
@@ -287,6 +305,28 @@ func providerAutoContext(name string) string {
 // upstreamURL is filled only when non-nil; a nil value matches a template whose form has
 // no such field to begin with (ProviderTemplateFormFields.tsx renders it conditionally).
 func (u *Steps) submitProviderForm(ctx context.Context, name string, upstreamURL *string) error {
+	return u.submitProviderFormForTemplate(ctx, name, upstreamURL, "")
+}
+
+// submitProviderFormForTemplate submits a provider and, when expectedTemplateID is set,
+// verifies that the selected version was actually submitted. The returned provider is then
+// polled through the management API until the same association is visible there. This keeps
+// the subsequent template-delete assertion about committed product state rather than a
+// browser redirect or an eventually-consistent list.
+func (u *Steps) submitProviderFormForTemplate(ctx context.Context, name string, upstreamURL *string,
+	expectedTemplateID string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
+	if upstreamURL != nil {
+		expanded, expandErr := expandUIValue(ctx, *upstreamURL)
+		if expandErr != nil {
+			return expandErr
+		}
+		upstreamURL = &expanded
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -313,16 +353,47 @@ func (u *Steps) submitProviderForm(ctx context.Context, name string, upstreamURL
 	if err := fillCyidInput(page, "provider-api-key-input", "sk-ui-suite-provider-key"); err != nil {
 		return err
 	}
-	if err := cyid(page, "add-provider-button").Click(); err != nil {
+	resp, err := page.ExpectResponse(func(r playwright.Response) bool {
+		return strings.Contains(r.URL(), "/llm-providers") && r.Request().Method() == "POST"
+	}, func() error {
+		return cyid(page, "add-provider-button").Click()
+	})
+	if err != nil {
 		return fmt.Errorf("submitting the provider: %w", err)
 	}
-	// The id is a client-computed slug the backend stores verbatim, so cleanup can register
-	// it without waiting on the create response. A submission the backend goes on to reject
-	// registers a provider that never existed; the deleter treats that as an already-gone
-	// resource rather than an error.
-	return cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindLLMProvider, ID: toProviderID(name), Actor: u.topo.Admin.Username,
-	})
+	if resp.Status() < 200 || resp.Status() >= 300 {
+		body, _ := resp.Text()
+		return fmt.Errorf("creating provider %q returned HTTP %d: %s", name, resp.Status(), body)
+	}
+	var body struct {
+		ID       string `json:"id"`
+		Template string `json:"template"`
+	}
+	if err := resp.JSON(&body); err != nil {
+		return fmt.Errorf("reading the created provider %q: %w", name, err)
+	}
+	if body.ID == "" {
+		return fmt.Errorf("the provider %q create response carried no id", name)
+	}
+	if body.Template == "" {
+		return fmt.Errorf("the provider %q create response carried no template association", name)
+	}
+	if expectedTemplateID != "" && body.Template != expectedTemplateID {
+		return fmt.Errorf("provider %q used template %q, want %q", name, body.Template, expectedTemplateID)
+	}
+	if err := tcontext.Set(ctx, keyLatestProviderID, body.ID); err != nil {
+		return err
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: cleanup.KindLLMProvider, ID: body.ID, Actor: u.topo.Admin.Username,
+	}); err != nil {
+		deleteErr := u.deleteProviderID(ctx, body.ID)
+		if deleteErr != nil {
+			return fmt.Errorf("registering provider %q cleanup: %w; best-effort deletion also failed: %v", name, err, deleteErr)
+		}
+		return fmt.Errorf("registering provider %q cleanup: %w; provider was deleted", name, err)
+	}
+	return u.waitForProviderTemplateAssociation(ctx, body.ID, body.Template)
 }
 
 func (u *Steps) onProviderOverview(ctx context.Context) error {
@@ -373,6 +444,15 @@ func (u *Steps) createProxyInProjectUsingAPIKeyPlaceholder(ctx context.Context, 
 }
 
 func (u *Steps) submitProxyForm(ctx context.Context, proxyName, projectName, apiKey string) error {
+	var err error
+	proxyName, err = expandUIValue(ctx, proxyName)
+	if err != nil {
+		return err
+	}
+	projectName, err = expandUIValue(ctx, projectName)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -477,6 +557,11 @@ func (u *Steps) backOnProxyList(ctx context.Context) error {
 // --- generic visibility ---
 
 func (u *Steps) seesOnPage(ctx context.Context, text string) error {
+	var err error
+	text, err = expandUIValue(ctx, text)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -485,6 +570,11 @@ func (u *Steps) seesOnPage(ctx context.Context, text string) error {
 }
 
 func (u *Steps) noLongerSees(ctx context.Context, text string) error {
+	var err error
+	text, err = expandUIValue(ctx, text)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

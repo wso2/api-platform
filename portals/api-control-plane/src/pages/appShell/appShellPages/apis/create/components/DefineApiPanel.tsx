@@ -17,294 +17,332 @@
  */
 
 import {
-  alpha,
   Box,
-  Card,
+  Button,
   Divider,
+  FormControl,
+  FormLabel,
+  InputAdornment,
+  OutlinedInput,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
+import { FileCode2, Link as LinkIcon, Pencil, Zap } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
-import type { ApiCreationWizardDraftState, ApiType } from '../types';
+import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import type { ApiCreationWizardDraftState } from '../types';
+import { extractApiDetails } from '../utils/specDetails';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
-import { DesignWithAiPanel } from './DesignWithAiPanel';
-import { extractApiDetails } from '../utils/specDetails';
-import type { SpecDocument } from '../utils/specText';
-import type { SpecIssue } from '../utils/specValidation';
+import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 
-/** The two ways this step can produce a definition. */
 type ApproachKey = 'contract' | 'scratch';
 
-/**
- * A definition after it has been edited in the preview pane, with what its
- * re-check said about it. Held separately from what was imported so that
- * re-fetching a contract restores the fetched document rather than the edit,
- * and so the import's own warnings can stop being reported once they describe
- * a document that has since been changed.
- */
-type EditedSpec = {
-  spec: SpecDocument;
-  warnings: SpecIssue[];
-};
-
 const messages = defineMessages({
-  approachLabel: {
-    id: 'api.create.defineApi.approach.label',
-    defaultMessage: 'How do you want to define this API?',
-    description: 'Accessible name for the pair of approach tabs at the top of the step.',
-  },
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import from a URL or a file.',
+    defaultMessage: 'Import an API contract from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
     defaultMessage: 'Start with a contract',
   },
+  endpointDescription: {
+    id: 'api.create.defineApi.scratch.endpoint.description',
+    defaultMessage:
+      'Route every resource to a running service. Calls are proxied through as soon as you publish.',
+  },
+  endpointLabel: {
+    id: 'api.create.defineApi.scratch.endpoint.label',
+    defaultMessage: 'Endpoint URL',
+  },
+  endpointHeading: {
+    id: 'api.create.defineApi.scratch.endpoint.heading',
+    defaultMessage: 'Backend endpoint',
+  },
+  endpointPreviewDescription: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.description',
+    defaultMessage: 'Every API resource will route to the backend endpoint you provide.',
+  },
+  endpointPreviewTitle: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.title',
+    defaultMessage: 'Ready to connect',
+  },
+  sampleUrl: {
+    id: 'api.create.defineApi.scratch.endpoint.sampleUrl',
+    defaultMessage: 'Try with Sample URL',
+  },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Start blank and chat with AI to build it.',
+    defaultMessage: 'Begin with a blank API and fill in the details.',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Design from scratch',
+    defaultMessage: 'Start from scratch',
   },
 });
 
-type Approach = {
-  description: MessageDescriptor;
-  icon: ReactNode;
-  key: ApproachKey;
-  title: MessageDescriptor;
-};
-
-const APPROACHES: Approach[] = [
-  {
-    description: messages.contractDescription,
-    icon: <FileCode2 size={18} />,
-    key: 'contract',
-    title: messages.contractTitle,
-  },
-  {
-    description: messages.scratchDescription,
-    icon: <Pencil size={18} />,
-    key: 'scratch',
-    title: messages.scratchTitle,
-  },
-];
-
 export type DefineApiPanelProps = {
-  /** Types offered to the contract form. */
-  apiTypes?: ApiType[];
-  /** Type the step works with. Owned by the wizard's earlier step. */
   initialApiTypeKey?: string;
-  /** Starts the GitHub OAuth flow. The button renders either way, inert until wired. */
-  onAuthorizeGitHub?: () => void;
-  /** Keeps the wizard footer supplied with the definition currently on screen. */
   onDraftChange: (data: ApiCreationWizardDraftState | null) => void;
-  /** Re-fetches the SwaggerHub organizations. Inert until the import is wired. */
-  onRefreshSwaggerHubOrganizations?: () => void;
+  onApproachChange?: (approach: ApproachKey) => void;
+  onContinue?: () => void;
 };
 
-/**
- * The wizard's "how do you want to define this API?" step.
- *
- * Two approaches sit across the top and share one preview pane: importing a
- * contract fills it with what was fetched, designing from scratch fills it with
- * a skeleton to edit. Back and Next belong to the panel rather than to either
- * approach, so switching between them doesn't move the buttons.
- */
+type ApproachTabProps = {
+  active: boolean;
+  description: ReactNode;
+  icon: ReactNode;
+  onClick: () => void;
+  title: ReactNode;
+};
+
+const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
+
+const SampleLink = ({ onClick }: { onClick: () => void }) => (
+  <Button
+    onClick={onClick}
+    size="small"
+    startIcon={<Zap size={16} />}
+    sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+    type="button"
+    variant="text"
+  >
+    <FormattedMessage {...messages.sampleUrl} />
+  </Button>
+);
+
+const ApproachTab = ({ active, description, icon, onClick, title }: ApproachTabProps) => (
+  <Box
+    aria-pressed={active}
+    component="button"
+    onClick={onClick}
+    sx={{
+      alignItems: 'center',
+      bgcolor: active ? 'action.selected' : 'transparent',
+      border: 1,
+      borderColor: active ? 'primary.main' : 'divider',
+      borderRadius: '8px 8px 0 0',
+      color: 'text.primary',
+      cursor: 'pointer',
+      display: 'flex',
+      flex: 1,
+      gap: 1.5,
+      minHeight: 68,
+      px: 2,
+      py: 1.25,
+      textAlign: 'left',
+    }}
+    type="button"
+  >
+    <Box
+      sx={{
+        alignItems: 'center',
+        bgcolor: active ? 'primary.main' : 'action.hover',
+        borderRadius: 1,
+        color: active ? 'primary.contrastText' : 'text.secondary',
+        display: 'flex',
+        flexShrink: 0,
+        height: 40,
+        justifyContent: 'center',
+        width: 40,
+      }}
+    >
+      {icon}
+    </Box>
+    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontWeight: 700 }} variant="body1">
+        {title}
+      </Typography>
+      <Typography color="text.secondary" sx={{ opacity: 0.65 }} variant="body2">
+        {description}
+      </Typography>
+    </Stack>
+  </Box>
+);
+
 export const DefineApiPanel = ({
-  apiTypes,
   initialApiTypeKey,
-  onAuthorizeGitHub,
   onDraftChange,
-  onRefreshSwaggerHubOrganizations,
+  onApproachChange,
 }: DefineApiPanelProps) => {
   const intl = useIntl();
-  const [approach, setApproach] = useState<ApproachKey>('contract');
+  const [approach, setApproach] = useState<ApproachKey>('scratch');
+  const [endpointUrl, setEndpointUrl] = useState('');
   const [contract, setContract] = useState<FetchedContract | null>(null);
-  // One edit per approach, so switching tabs to look at the other one and back
-  // doesn't throw away what was typed.
-  const [contractEdit, setContractEdit] = useState<EditedSpec | null>(null);
-  const [scratchEdit, setScratchEdit] = useState<EditedSpec | null>(null);
 
-  /**
-   * A different contract underneath - fetched, or cleared because the form's
-   * inputs moved on from it; retires the edit built on the previous one.
-   *
-   * Stable identity matters: the form reports the current contract from an
-   * effect keyed on this callback, so a fresh function each render would fire
-   * that effect every render and wipe the edit as fast as it was made.
-   */
-  const handleContractChange = useCallback((next: FetchedContract | null) => {
-    setContract(next);
-    setContractEdit(null);
-  }, []);
-
-  const handleSpecChange = (next: SpecDocument, warnings: SpecIssue[]) => {
-    const edit: EditedSpec = { spec: next, warnings };
-    if (approach === 'scratch') {
-      setScratchEdit(edit);
-      return;
-    }
-    setContractEdit(edit);
+  const selectApproach = (next: ApproachKey) => {
+    setApproach(next);
+    onApproachChange?.(next);
   };
 
-  // Scratch always has something to show and carry forward; a contract has to
-  // be fetched first. Either way an edit made here supersedes what it started
-  // from.
-  const edit = approach === 'scratch' ? scratchEdit : contractEdit;
-  const spec = edit?.spec ?? (approach === 'scratch' ? DEFAULT_API_SKELETON : contract?.spec);
+  const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
+    const upstreamUrl = endpointUrl.trim();
+    if (!upstreamUrl) return null;
 
-  const draft = useMemo(() => (spec === undefined ? null : extractApiDetails(spec)), [spec]);
+    const details = extractApiDetails(DEFAULT_API_SKELETON);
+    const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
+    return {
+      ...details,
+      upstream: {
+        main: { url: upstreamUrl },
+      },
+      contractImport: {
+        specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
+      },
+    };
+  }, [endpointUrl]);
+
+  const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
+    if (contract?.spec === undefined) return null;
+    const base = extractApiDetails(contract.spec);
+    const rawText = contract.rawText;
+    if (rawText !== undefined) {
+      const isJson = rawText.trimStart().startsWith('{');
+      const contentType = isJson ? 'application/json' : 'application/yaml';
+      let fileName = contract.values.file?.name;
+      if (!fileName) {
+        fileName = isJson ? 'api_definition.json' : 'api_definition.yaml';
+      }
+      const rawBlob = new Blob([rawText], { type: contentType });
+      return {
+        ...base,
+        contractImport: {
+          specFile: new File([rawBlob], fileName, { type: contentType }),
+        },
+      };
+    }
+    return null;
+  }, [contract]);
 
   useEffect(() => {
-    onDraftChange(draft);
+    onDraftChange(approach === 'contract' ? contractDraft : scratchDraft);
     return () => onDraftChange(null);
-  }, [draft, onDraftChange]);
+  }, [approach, contractDraft, onDraftChange, scratchDraft]);
 
   return (
-    <Stack spacing={3}>
-      {/* One surface for the whole step: the two approaches sit flush on top of
-          the panels they open, like tabs on their own body, rather than
-          floating above as separate cards. */}
-      <Card sx={{ border: 0, overflow: 'visible' }} variant="outlined">
-        <ToggleButtonGroup
-          aria-label={intl.formatMessage(messages.approachLabel)}
-          exclusive
-          fullWidth
-          onChange={(_event, next: ApproachKey | null) => {
-            // `exclusive` reports null when the active button is clicked
-            // again; keep the current approach rather than clearing it.
-            if (next !== null) {
-              setApproach(next);
-            }
-          }}
-          sx={(theme) => ({
-            p: 0,
-            '& .MuiToggleButtonGroup-grouped': {
-              border: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-              borderBottom: 0,
-              borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
-              flex: 1,
-              justifyContent: 'flex-start',
-              p: 2,
-              textTransform: 'none',
-              '&:not(:first-of-type)': {
-                borderLeft: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-                marginLeft: 0,
-              },
-              '&.Mui-selected, &.Mui-selected:hover': {
-                bgcolor: 'action.selected',
-                border: `1px solid ${theme.palette.primary.main}`,
-                borderBottom: 0,
-                borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
-              },
-            },
-          })}
-          value={approach}
-        >
-          {APPROACHES.map((candidate) => {
-            const selected = candidate.key === approach;
-
-            return (
-              <ToggleButton key={candidate.key} value={candidate.key}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', width: '100%' }}>
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      bgcolor: selected ? 'primary.main' : 'action.hover',
-                      borderRadius: 1,
-                      color: selected ? 'primary.contrastText' : 'text.secondary',
-                      display: 'flex',
-                      flexShrink: 0,
-                      height: 34,
-                      justifyContent: 'center',
-                      width: 34,
-                    }}
-                  >
-                    {candidate.icon}
-                  </Box>
-                  <Stack spacing={0.25} sx={{ minWidth: 0, textAlign: 'left' }}>
-                    <Typography color="text.primary" sx={{ fontWeight: 700 }} variant="body1">
-                      <FormattedMessage {...candidate.title} />
-                    </Typography>
-                    <Typography color="text.secondary" variant="body2">
-                      <FormattedMessage {...candidate.description} />
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </ToggleButton>
-            );
-          })}
-        </ToggleButtonGroup>
-
-        <Stack
-          direction={{ lg: 'row', xs: 'column' }}
-          divider={
+    <Box>
+      <Stack
+        direction={{ md: 'row', xs: 'column' }}
+        sx={{
+          '& > button + button': { ml: { md: '-1px', xs: 0 }, mt: { md: 0, xs: '-1px' } },
+        }}
+      >
+        <ApproachTab
+          active={approach === 'scratch'}
+          description={<FormattedMessage {...messages.scratchDescription} />}
+          icon={<Pencil size={20} />}
+          onClick={() => selectApproach('scratch')}
+          title={<FormattedMessage {...messages.scratchTitle} />}
+        />
+        <ApproachTab
+          active={approach === 'contract'}
+          description={<FormattedMessage {...messages.contractDescription} />}
+          icon={<FileCode2 size={20} />}
+          onClick={() => selectApproach('contract')}
+          title={<FormattedMessage {...messages.contractTitle} />}
+        />
+      </Stack>
+      <Stack
+        direction={{ lg: 'row', xs: 'column' }}
+        sx={{
+          border: 1,
+          borderColor: 'primary.main',
+          borderRadius: '0 0 8px 8px',
+          minHeight: 520,
+          mt: '-1px',
+          overflow: 'hidden',
+        }}
+      >
+        {approach === 'contract' ? (
+          <>
+            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+              <ContractSourceForm
+                initialApiTypeKey={initialApiTypeKey}
+                onContractChange={setContract}
+              />
+            </Box>
             <Divider
               flexItem
               orientation="vertical"
-              // One rule that reads correctly both ways: a vertical line
-              // between the halves side by side, a horizontal one once the
-              // layout stacks them.
               sx={{
                 borderBottomWidth: { lg: 0, xs: 'thin' },
                 borderRightWidth: { lg: 'thin', xs: 0 },
               }}
             />
-          }
-          sx={(theme) => ({
-            border: 1,
-            borderColor: 'primary.main',
-            borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
-            borderTop: 0,
-            position: 'relative',
-            '&::before': {
-              bgcolor: 'primary.main',
-              content: '""',
-              height: '1px',
-              left: approach === 'contract' ? '50%' : 0,
-              position: 'absolute',
-              top: 0,
-              width: '50%',
-            },
-          })}
-        >
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            {approach === 'contract' ? (
-              <ContractSourceForm
-                apiTypes={apiTypes}
-                // Fetched warnings describe the import; after edits they no
-                // longer match and the pane shows new warnings.
-                definitionEdited={contractEdit !== null}
-                initialApiTypeKey={initialApiTypeKey}
-                onAuthorizeGitHub={onAuthorizeGitHub}
-                onContractChange={handleContractChange}
-                onRefreshSwaggerHubOrganizations={onRefreshSwaggerHubOrganizations}
-              />
-            ) : (
-              <DesignWithAiPanel />
-            )}
-          </Box>
-
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            <ApiResourcesPreview
-              onSpecChange={handleSpecChange}
-              spec={spec}
-              warnings={edit?.warnings}
+            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+              <ApiResourcesPreview height={472} rawText={contract?.rawText} spec={contract?.spec} />
+            </Box>
+          </>
+        ) : (
+          <>
+            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+              <Stack spacing={2.5}>
+                <Box>
+                  <Typography sx={{ fontWeight: 700 }} variant="h3">
+                    <FormattedMessage {...messages.endpointHeading} />
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
+                    <FormattedMessage {...messages.endpointDescription} />
+                  </Typography>
+                </Box>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="backend-endpoint">
+                    <FormattedMessage {...messages.endpointLabel} />
+                  </FormLabel>
+                  <OutlinedInput
+                    id="backend-endpoint"
+                    onChange={(event) => setEndpointUrl(event.target.value)}
+                    placeholder={PLACEHOLDER_UPSTREAM_URL}
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <LinkIcon size={18} />
+                      </InputAdornment>
+                    }
+                    sx={{ mt: 0.75 }}
+                    value={endpointUrl}
+                  />
+                  <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
+                </FormControl>
+              </Stack>
+            </Box>
+            <Divider
+              flexItem
+              orientation="vertical"
+              sx={{
+                borderBottomWidth: { lg: 0, xs: 'thin' },
+                borderRightWidth: { lg: 'thin', xs: 0 },
+              }}
             />
-          </Box>
-        </Stack>
-      </Card>
-    </Stack>
+            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+              <Stack
+                sx={{
+                  alignItems: 'center',
+                  // bgcolor: 'action.hover',
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  height: '100%',
+                  justifyContent: 'center',
+                  minHeight: 420,
+                  p: 3,
+                  textAlign: 'center',
+                }}
+              >
+                <GatewayIllustration />
+                <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
+                  {intl.formatMessage(messages.endpointPreviewTitle)}
+                </Typography>
+                <Typography color="text.secondary" sx={{ maxWidth: 360, mt: 0.5 }} variant="body2">
+                  {intl.formatMessage(messages.endpointPreviewDescription)}
+                </Typography>
+              </Stack>
+            </Box>
+          </>
+        )}
+      </Stack>
+    </Box>
   );
 };

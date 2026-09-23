@@ -32,7 +32,7 @@ Feature: Analytics header filter policy
     And I generate a unique API version from "ahf-both" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-both" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -50,18 +50,21 @@ Feature: Analytics header filter policy
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain request header "x-api-key"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should contain response header "content-type"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/test" should not contain response header "x-custom-header"
+    And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   Scenario: Only request header filtering configured
     Given I generate a unique value from "ahf-request" and store it as "apiName"
     And I generate a unique API version from "ahf-request" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -78,18 +81,21 @@ Feature: Analytics header filter policy
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should contain request header "content-type"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should contain request header "user-agent"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/data" should not contain request header "authorization"
+    And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   Scenario: Only response header filtering configured
     Given I generate a unique value from "ahf-response" and store it as "apiName"
     And I generate a unique API version from "ahf-response" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-response" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -103,17 +109,20 @@ Feature: Analytics header filter policy
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "server"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-powered-by"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/headers" should not contain response header "x-internal-debug"
+    And I wait for the analytics collector to settle
 
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/headers" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   Scenario: An invalid policy configuration missing the mode field is rejected
     Given I generate a unique value from "ahf-invalid-mode" and store it as "apiName"
     And I generate a unique API version from "ahf-invalid-mode" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-invalid-mode" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -130,7 +139,7 @@ Feature: Analytics header filter policy
     And I generate a unique API version from "ahf-invalid-op" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-invalid-op" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -147,7 +156,7 @@ Feature: Analytics header filter policy
     And I generate a unique API version from "ahf-no-headers" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-no-headers" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -158,16 +167,19 @@ Feature: Analytics header filter policy
 
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 200
     Then the response should be successful
+    And I wait for the analytics collector to settle
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   Scenario: Header matching is case-insensitive with allow mode
     Given I generate a unique value from "ahf-case" and store it as "apiName"
     And I generate a unique API version from "ahf-case" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-case" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -186,18 +198,21 @@ Feature: Analytics header filter policy
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should contain request header "user-agent"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should contain request header "x-custom-header"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/case-test" should not contain request header "authorization"
+    And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/case-test" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"
 
   Scenario: An empty headers array with deny mode denies nothing
     Given I generate a unique value from "ahf-empty" and store it as "apiName"
     And I generate a unique API version from "ahf-empty" and store it as "apiVersion"
     And I generate a unique API context from "/ahf-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -212,8 +227,11 @@ Feature: Analytics header filter policy
 
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-test" should contain request header "content-type"
     And the latest analytics event for path "${CTX:apiContext}/${CTX:apiVersion}/empty-test" should contain request header "authorization"
+    And I wait for the analytics collector to settle
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
     And I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/empty-test" until status 404
+    And I wait for the config dump to stop containing a route with base path "${CTX:apiContext}"

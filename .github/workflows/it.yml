@@ -30,14 +30,92 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  integration:
+  # Unit tests gate every suite leg.
+  unit:
+    name: Unit tests
     runs-on: ubuntu-24.04
     env:
       CGO_ENABLED: "1"
     steps:
       - name: Checkout code
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803b # v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Gateway-controller unit tests
+        run: cd gateway/gateway-controller && make test
+
+      - name: Policy-engine unit tests
+        run: cd gateway/gateway-runtime && make test
+
+      - name: Platform-API unit tests
+        run: cd platform-api && make test
+
+      - name: Upload gateway-controller unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-controller/unit-test-coverage.txt
+          flags: gateway-controller-unit
+
+      - name: Upload policy-engine unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
+          flags: policy-engine-unit
+
+      - name: Upload platform-api unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: platform-api/unit-test-coverage.txt
+          flags: platform-api-unit
+
+  integration:
+    name: Integration suite (${{ matrix.leg }})
+    needs: unit
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    strategy:
+      # Each leg is an independent compatibility verdict
+      fail-fast: false
+      matrix:
+        include:
+          # The source-built coverage instrumented Gateway.
+          - leg: gateway-latest
+            suite_flags: '-coverage'
+          # The released 1.2.0 Gateway.
+          - leg: gateway-1.2.0
+            suite_flags: '-gateway-version=1.2.0'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
@@ -63,38 +141,42 @@ jobs:
       - name: Raise the conntrack table limit
         run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
 
-      # Unit tests run first and gate the job like everything else here - a broken unit
-      # test should fail this workflow, not just quietly under-report coverage.
-      - name: Gateway-controller unit tests
-        run: cd gateway/gateway-controller && make test
-
-      - name: Policy-engine unit tests
-        run: cd gateway/gateway-runtime && make test
-
-      - name: Platform-API unit tests
-        run: cd platform-api && make test
-
       - name: Build testbench image
         run: make -C tests/framework testbench
 
-      - name: Run the integration suite with coverage
+      - name: Run the integration suite
         working-directory: tests/framework
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
           IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
         # The gateway-controller policy block requires a sibling gateway-controllers repo
         # checkout and is exercised by that repository's workflow.
-        run: go test -v ./suites/it -count=1 -timeout=60m -coverage -logs -skip-blocks=gateway-controller-policies
+        run: |
+          go test -v ./suites/it -count=1 -timeout=60m -logs \
+            ${{ matrix.suite_flags }} \
+            -skip-blocks=gateway-controller-policies
 
-      - name: Generate integration coverage report
+      # always(), and per leg: a failing run is exactly when the container logs are needed,
+      # and each leg's artifact name must be unique or upload-artifact rejects the second.
+      - name: Upload container log captures
         if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-logs-${{ matrix.leg }}
+          path: tests/framework/suites/it/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      # Coverage belongs to the source-built leg only.
+      - name: Generate integration coverage report
+        if: matrix.leg == 'gateway-latest'
         run: make -C tests/framework coverage-report
 
       - name: Upload coverage HTML reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: matrix.leg == 'gateway-latest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-reports
+          name: coverage-reports-${{ matrix.leg }}
           # The whole report tree: splitting by extension dropped the LCOV files Codecov
           # actually consumes and the CSS/JS/images the HTML reports need to render. The
           # raw per-run inputs live under a dot-prefixed .run-* directory, which
@@ -102,53 +184,14 @@ jobs:
           path: tests/framework/suites/it/coverage-out/**
           if-no-files-found: warn
 
-      - name: Upload container log captures
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: container-logs
-          path: tests/framework/suites/it/logs-out/**/*.log
-          if-no-files-found: warn
-          include-hidden-files: true
-
-      # Unit flags. continue-on-error here (Codecov's own availability is not this job's
-      # problem to enforce), but NOT on the test/report steps above - those are ours.
-      - name: Upload gateway-controller unit coverage to Codecov
-        if: always()
-        continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          disable_search: true
-          files: gateway/gateway-controller/unit-test-coverage.txt
-          flags: gateway-controller-unit
-
-      - name: Upload policy-engine unit coverage to Codecov
-        if: always()
-        continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          disable_search: true
-          files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
-          flags: policy-engine-unit
-
-      - name: Upload platform-api unit coverage to Codecov
-        if: always()
-        continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          disable_search: true
-          files: platform-api/unit-test-coverage.txt
-          flags: platform-api-unit
-
-      # Integration flags. Same component paths as codecov.yml's component_management,
-      # so unit and integration uploads for one component roll up into one component view.
+      # Integration flags. Same component paths as codecov.yml's component_management, so
+      # unit and integration uploads for one component roll up into one component view.
+      # Gated on the report above having been generated from a clean run; continue-on-error
+      # keeps Codecov's availability from failing an otherwise green suite.
       - name: Upload gateway-controller integration coverage to Codecov
-        if: always()
+        if: matrix.leg == 'gateway-latest'
         continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           disable_search: true
@@ -156,9 +199,9 @@ jobs:
           flags: gateway-controller-integration
 
       - name: Upload policy-engine integration coverage to Codecov
-        if: always()
+        if: matrix.leg == 'gateway-latest'
         continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           disable_search: true
@@ -166,9 +209,9 @@ jobs:
           flags: policy-engine-integration
 
       - name: Upload platform-api integration coverage to Codecov
-        if: always()
+        if: matrix.leg == 'gateway-latest'
         continue-on-error: true
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           disable_search: true

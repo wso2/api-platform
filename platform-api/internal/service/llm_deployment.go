@@ -61,8 +61,11 @@ type LLMProviderDeploymentService struct {
 	orgRepo              repository.OrganizationRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
-	cfg                  *config.Server
-	slogger              *slog.Logger
+	// secretService resolves the {{ secret "handle" }} reference a per-deployment
+	// upstream credential is given as. Injected after construction (SetSecretService).
+	secretService *SecretService
+	cfg           *config.Server
+	slogger       *slog.Logger
 }
 
 // LLMProxyDeploymentService handles business logic for LLM proxy deployment operations
@@ -106,6 +109,13 @@ func NewLLMProviderDeploymentService(
 		cfg:                  cfg,
 		slogger:              slogger,
 	}
+}
+
+// SetSecretService injects the SecretService used to check that a per-deployment
+// upstream credential names a secret this organization actually has. Called after
+// both services are constructed, to avoid a circular dependency.
+func (s *LLMProviderDeploymentService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
 }
 
 // NewLLMProxyDeploymentService creates a new LLM proxy deployment service
@@ -283,28 +293,19 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
-	// Ensure a gateway association exists for the target gateway before deploying, and
-	// resolve the deployment metadata. The first deployment to a gateway creates the
-	// association and seeds its metadata from this deployment. For an existing
-	// association the deploy request value overrides for this deployment; when the
-	// metadata field is omitted, the association's stored metadata is used. An existing
-	// association's metadata is never modified at deploy time.
-	//
 	// metadataProvided distinguishes an omitted metadata field from one explicitly set
 	// (even to empty), so a deploy can request empty metadata while the association
 	// keeps its creation-time value.
 	metadataProvided := req.Metadata != nil
-	deployMetaJSON, err := marshalDeploymentMetadata(metadata)
+	requestMetadata := metadata
+	deployMetaJSON, err := marshalDeploymentMetadata(requestMetadata)
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
-	}
-	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
-		return nil, err
-	}
+
+	// The credential this gateway is running now, read before the new deployment
+	// replaces it, so a rotation can release the secret it rotated away from.
+	previousCredential := s.currentDeploymentCredential(provider.UUID, gatewayID, orgUUID)
 
 	// What this deploy ships: a build prepared earlier, or a snapshot of the
 	// provider as it stands now. A snapshot comes back unstored so it commits with
@@ -317,6 +318,43 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if !ok {
 		return nil, fmt.Errorf("artifact %s did not render as an LLM provider definition", provider.UUID)
 	}
+	// Validate what the request itself carries, before the association can be seeded
+	// with it below. A first deployment seeds the association from this request and an
+	// association is never rewritten, so metadata that seeds and is then rejected stays
+	// on the gateway for good, and every later deploy that omits metadata inherits it
+	// and fails the same way. A request that omitted the field carries nothing, so this
+	// does nothing; when it did carry something, it is exactly what the effective
+	// metadata below resolves to, and re-applying it is setting the same values twice.
+	if err := s.applyUpstreamOverrides(providerDeployment, requestMetadata, orgUUID); err != nil {
+		return nil, err
+	}
+
+	// Ensure a gateway association exists for the target gateway, and resolve the
+	// metadata this deployment runs with. The first deployment to a gateway creates the
+	// association and seeds its metadata from this deployment. For an existing
+	// association the deploy request value overrides for this deployment; when the
+	// metadata field is omitted, the association's stored metadata is used. An existing
+	// association's metadata is never modified at deploy time.
+	//
+	// One call does both, so a deployment racing another onto the same gateway renders
+	// with whatever metadata the association actually ended up holding.
+	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(
+		provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
+	}
+	if metadata, err = unmarshalDeploymentMetadata(effectiveMetaJSON); err != nil {
+		return nil, err
+	}
+
+	// Customized for this deployment before it is translated, exactly as an API's
+	// endpoint and vhosts are: the build is a snapshot of the provider's definition,
+	// and what a single gateway authenticates with is a property of the deployment
+	// rather than of that snapshot.
+	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID); err != nil {
+		return nil, err
+	}
+
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
 	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 	if err := gatewaytranslator.Translate(
@@ -382,6 +420,13 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, fmt.Errorf("failed to set deployment status for LLM provider: %w", err)
 	}
 
+	// Best-effort: release the secret this gateway's credential was rotated away from,
+	// as an update to the provider's own credential does. It runs after the status is
+	// set above, because that is what rewrites this gateway's secret references — until
+	// it has, the old handle still looks in use by this very gateway and the delete
+	// would be refused.
+	s.cleanupRotatedCredential(orgUUID, previousCredential, metadata, createdBy)
+
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
@@ -400,7 +445,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -412,6 +457,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		deployment.UpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // RestoreLLMProviderDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
@@ -492,7 +538,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
@@ -504,6 +550,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		&updatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, targetDeployment.BuildID)
 }
 
 // UndeployLLMProviderDeployment undeploys an active deployment
@@ -578,7 +625,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		}
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -590,6 +637,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		&newUpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // DeleteLLMProviderDeployment permanently deletes an undeployed deployment artifact
@@ -680,6 +728,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 		if err != nil {
 			return nil, err
 		}
+		mapped.BuildId = d.BuildID
 		items = append(items, *mapped)
 	}
 
@@ -707,7 +756,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		return nil, apperror.DeploymentNotFound.New()
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -719,6 +768,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		deployment.UpdatedAt,
 		deployment.StatusReason,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID string) (string, error) {
@@ -733,6 +783,228 @@ func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID s
 		return "", apperror.LLMProviderTemplateNotFound.Wrap(apperror.LLMProviderDeploymentValidationFailed.New("The referenced LLM provider template could not be found."))
 	}
 	return tpl.ID, nil
+}
+
+// currentDeploymentCredential reads the per-deployment credential the gateway is
+// running now, or "" when it is running nothing, has no credential of its own, or
+// cannot be read. A failure to read it only means no secret is released, which is why
+// it is not surfaced: it must never be the reason a deploy fails.
+func (s *LLMProviderDeploymentService) currentDeploymentCredential(artifactUUID, gatewayID, orgUUID string) string {
+	current, err := s.deploymentRepo.GetCurrentByGateway(artifactUUID, gatewayID, orgUUID)
+	if err != nil || current == nil {
+		return ""
+	}
+	value, _ := current.Metadata[constants.MetadataKeyUpstreamAuthValue].(string)
+	return value
+}
+
+// cleanupRotatedCredential releases the secret a gateway's credential was rotated away
+// from, mirroring what an update to the provider's own credential does
+// (LLMProviderService.Update). Deleting is soft and is refused outright while anything
+// still references the handle, so a secret another gateway — or this provider itself —
+// is still using survives.
+//
+// Best-effort by design: the deployment is already live by the time this runs, and a
+// secret left behind is not a reason to report the deploy as failed.
+func (s *LLMProviderDeploymentService) cleanupRotatedCredential(
+	orgUUID, previousCredential string, metadata map[string]interface{}, actor string) {
+
+	if s.secretService == nil || previousCredential == "" {
+		return
+	}
+	current, _ := metadata[constants.MetadataKeyUpstreamAuthValue].(string)
+	if strings.TrimSpace(current) == "" {
+		// Nothing replaced it, so nothing was rotated. A deploy that carries no
+		// credential of its own is not a removal: it runs on the provider's own, and a
+		// client that knows nothing about per-deployment credentials sends metadata
+		// like that on every redeploy. Releasing here would destroy a secret nobody
+		// asked to remove, and because the value is write-only no client could resend
+		// it to get it back. Left in place it is merely unreferenced, which the
+		// organization's secrets page can clear.
+		return
+	}
+	s.secretService.cleanupRotatedSecret(orgUUID, previousCredential, current, actor, s.slogger)
+}
+
+// namingBuild reports the build a deployment runs alongside the rest of its response.
+//
+// LLM providers, LLM proxies and MCP proxies are all built the way a REST API is — `base:
+// build` runs the build it names and `base: current` stores what it renders — so each can
+// say which build it is running. The shared response builder does not set it, because a
+// kind that has no builds shares that builder too.
+func namingBuild(resp *api.DeploymentResponse, err error, buildID *string) (*api.DeploymentResponse, error) {
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	resp.BuildId = buildID
+	return resp, nil
+}
+
+// applyUpstreamOverrides customizes the upstream this deployment talks to: which backend,
+// and what it authenticates with. The provider's own definition is untouched, so a build
+// stays what it was.
+func (s *LLMProviderDeploymentService) applyUpstreamOverrides(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+
+	if err := applyUpstreamURLOverride(providerDeployment, metadata); err != nil {
+		return err
+	}
+	return s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID)
+}
+
+// applyUpstreamURLOverride replaces the backend this deployment routes to, under the same
+// metadata key a REST API's endpoint uses, so one gateway can be pointed at a regional or
+// proxied endpoint without changing the provider.
+//
+// It clears any `ref`: the platform requires exactly one of url and ref, and a deployment
+// that names a URL has chosen the url form.
+func applyUpstreamURLOverride(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}) error {
+
+	raw, given := metadata[constants.MetadataKeyEndpointUrl]
+	if !given {
+		return nil
+	}
+	endpoint, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyEndpointUrl, raw))
+	}
+	if endpoint = strings.TrimSpace(endpoint); endpoint == "" {
+		return nil
+	}
+	if err := validateEndpointURL(endpoint); err != nil {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q is not a valid endpoint URL: %s.", constants.MetadataKeyEndpointUrl, err))
+	}
+	providerDeployment.Spec.Upstream.URL = endpoint
+	providerDeployment.Spec.Upstream.Ref = ""
+	return nil
+}
+
+// applyUpstreamAuthOverride replaces the credential this deployment authenticates to
+// the provider's upstream with, leaving the provider's own definition untouched. It is
+// what lets one provider be deployed to several gateways, each holding a different
+// account with the same LLM vendor.
+//
+// The value is a {{ secret "handle" }} reference, never the credential itself, and is
+// refused otherwise. Deployment metadata is returned with every read of a deployment,
+// so a literal here would be a credential readable by anyone who can list deployments —
+// whereas a reference names a secret the platform already guards. It also costs nothing
+// to carry: the rendered content's references are recorded per gateway on deploy
+// (upsertDeploymentSecretRefs), which is what syncs the secret and protects it from
+// being deleted while a gateway is serving it.
+//
+// An absent or empty value leaves the provider's own credential in place, matching how
+// the endpoint and vhost overrides treat one.
+func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+
+	raw, given := metadata[constants.MetadataKeyUpstreamAuthValue]
+	if !given {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyUpstreamAuthValue, raw))
+	}
+	if value = strings.TrimSpace(value); value == "" {
+		return nil
+	}
+	if !isSecretReference(value) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a secret reference of the form {{ secret \"handle\" }}, so the credential itself is not stored on the deployment.",
+			constants.MetadataKeyUpstreamAuthValue))
+	}
+	if s.secretService != nil {
+		if err := s.secretService.ValidateSecretRefs(orgUUID, value); err != nil {
+			// The validator names the handles it could not resolve, which is how it
+			// reports a whole config at once. Here there is exactly one, and the caller
+			// supplied it, so naming it back buys nothing and puts a secret handle into
+			// the response body and the request log. Say only that it did not resolve.
+			if apperror.ValidationFailed.Is(err) {
+				return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+					"Metadata %q references a secret that does not exist in this organization.",
+					constants.MetadataKeyUpstreamAuthValue))
+			}
+			return err
+		}
+	}
+
+	// Only an upstream that authenticates at all can have its credential replaced.
+	// Setting one on a provider whose upstream takes none would ship an auth block the
+	// gateway has no use for, and would read as though the deployment were authenticating
+	// when it is not.
+	auth := providerDeployment.Spec.Upstream.Auth
+	if auth == nil || auth.Type == nil || isCredentialLessUpstreamAuthType(string(*auth.Type)) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"This provider's upstream takes no credential, so %q cannot be set for a deployment of it.",
+			constants.MetadataKeyUpstreamAuthValue))
+	}
+	auth.Value = &value
+
+	return s.applyUpstreamAuthHeaderOverride(auth, metadata)
+}
+
+// applyUpstreamAuthHeaderOverride replaces the header this deployment sends its upstream
+// credential in.
+//
+// It applies only to an api-key upstream, because that is the only type whose header is a
+// choice: basic and bearer both send Authorization by definition, and changing it would
+// produce a request the vendor does not recognise. It is also only read alongside a
+// credential — a header on its own would name where to put a key this deployment does not
+// have.
+func (s *LLMProviderDeploymentService) applyUpstreamAuthHeaderOverride(
+	auth *api.UpstreamAuth, metadata map[string]interface{}) error {
+
+	raw, given := metadata[constants.MetadataKeyUpstreamAuthHeader]
+	if !given {
+		return nil
+	}
+	header, ok := raw.(string)
+	if !ok {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a string, got %T.", constants.MetadataKeyUpstreamAuthHeader, raw))
+	}
+	if header = strings.TrimSpace(header); header == "" {
+		return nil
+	}
+	if normalizeUpstreamAuthType(string(*auth.Type)) != string(api.ApiKey) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q applies only to an upstream that authenticates with an api-key.",
+			constants.MetadataKeyUpstreamAuthHeader))
+	}
+	if !isHTTPHeaderName(header) {
+		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
+			"Metadata %q must be a valid HTTP header name.", constants.MetadataKeyUpstreamAuthHeader))
+	}
+	auth.Header = &header
+	return nil
+}
+
+// isHTTPHeaderName reports whether s is a valid HTTP field name (RFC 9110 token), so a
+// header override cannot inject a second header or a request line.
+func isHTTPHeaderName(s string) bool {
+	if s == "" || len(s) > 256 {
+		return false
+	}
+	for _, c := range s {
+		isAlphaNum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if isAlphaNum || strings.ContainsRune("!#$%&'*+-.^_`|~", c) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// isSecretReference reports whether s is exactly a {{ secret "handle" }} placeholder,
+// rather than merely containing one — a credential with a placeholder appended to it
+// must not pass as a reference.
+func isSecretReference(s string) bool {
+	loc := constants.SecretPlaceholderRe.FindStringIndex(s)
+	return loc != nil && loc[0] == 0 && loc[1] == len(s)
 }
 
 func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHandle string) (dto.LLMProviderDeploymentYAML, error) {
@@ -1545,7 +1817,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -1557,6 +1829,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		deployment.UpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // RestoreLLMProxyDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
@@ -1637,7 +1910,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
 		targetDeployment.Name,
@@ -1649,6 +1922,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		&updatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, targetDeployment.BuildID)
 }
 
 // UndeployLLMProxyDeployment undeploys an active deployment
@@ -1723,7 +1997,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		}
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -1735,6 +2009,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		&newUpdatedAt,
 		nil,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 // DeleteLLMProxyDeployment permanently deletes an undeployed deployment artifact
@@ -1822,6 +2097,9 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 			d.UpdatedAt,
 			d.StatusReason,
 		)
+		if err == nil && mapped != nil {
+			mapped.BuildId = d.BuildID
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1852,7 +2130,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		return nil, apperror.DeploymentNotFound.New()
 	}
 
-	return toAPIDeploymentResponse(
+	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
 		deployment.Name,
@@ -1864,6 +2142,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		deployment.UpdatedAt,
 		deployment.StatusReason,
 	)
+	return namingBuild(resp, err, deployment.BuildID)
 }
 
 func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeploymentYAML, error) {

@@ -32,7 +32,7 @@ Feature: Interceptor service policies
     And I generate a unique API version from "interceptor-request" and store it as "apiVersion"
     And I generate a unique API context from "/interceptor-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
       | name                  | ${CTX:apiName}                   |
       | spec.displayName      | ${CTX:apiDisplayName}             |
       | spec.version          | ${CTX:apiVersion}                 |
@@ -63,7 +63,7 @@ Feature: Interceptor service policies
     And I generate a unique API version from "interceptor-direct" and store it as "apiVersion"
     And I generate a unique API context from "/interceptor-direct" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
       | name                  | ${CTX:apiName}                   |
       | spec.displayName      | ${CTX:apiDisplayName}             |
       | spec.version          | ${CTX:apiVersion}                 |
@@ -85,7 +85,7 @@ Feature: Interceptor service policies
     And I generate a unique API version from "interceptor-response" and store it as "apiVersion"
     And I generate a unique API context from "/interceptor-response" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion}        |
       | name                  | ${CTX:apiName}                   |
       | spec.displayName      | ${CTX:apiDisplayName}             |
       | spec.version          | ${CTX:apiVersion}                 |

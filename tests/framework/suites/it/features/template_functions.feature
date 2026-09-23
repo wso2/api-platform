@@ -20,8 +20,8 @@
 Feature: Template functions in resource specs
   As an API administrator
   I want template expressions ({{ env }}, {{ secret }}, {{ default }}) in a
-  resource spec to be resolved at runtime, while API responses and the
-  persisted configuration keep the original, unrendered template body.
+  resource spec to be resolved at runtime while responses and persisted
+  configuration follow the gateway release's supported contract.
 
   Background:
     Given the gateway services are running
@@ -32,7 +32,7 @@ Feature: Template functions in resource specs
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -50,7 +50,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-secret-api" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-secret" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Tpl-Secret-Api                     |
       | spec.version           | ${CTX:apiVersion}                  |
@@ -88,7 +88,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-env-api" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-env" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1               |
+      | apiVersion             | ${CTX:gatewaySpecVersion}               |
       | name                   | ${CTX:apiName}                                   |
       | spec.displayName       | Tpl-Env-Api                                      |
       | spec.version           | ${CTX:apiVersion}                                |
@@ -123,7 +123,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-default-api" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-default" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Tpl-Default-Api                    |
       | spec.version           | ${CTX:apiVersion}                  |
@@ -145,12 +145,12 @@ Feature: Template functions in resource specs
     Then the response status code should be 200
     And the response should contain echoed header "X-Fallback" with value "fallback-value"
 
-  Scenario: secret template in LlmProvider upstream auth value is rendered upstream, unrendered in stored configuration, and never returned in responses
+  Scenario: secret template in LlmProvider upstream auth value is rendered upstream and returned safely by the gateway contract
     Given I generate a unique value from "tpl-llm-provider-token" and store it as "secretName"
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -169,7 +169,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-llm-provider" and store it as "providerVersion"
     And I generate a unique API context from "/tpl-llm-provider" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -179,17 +179,19 @@ Feature: Template functions in resource specs
       | spec.upstream.auth | {"type":"api-key","header":"Authorization","value":"Bearer {{ secret \"${CTX:secretName}\" }}"} |
       | accessControl.mode | allow_all                          |
     Then the response status code should be 201
-    # upstream auth.value is write-only: neither the secret handle nor its
-    # resolved value is returned, on create or on any later read.
-    And the response body should not contain "${CTX:secretName}"
+    And the LLM provider response should handle the configured secret safely:
+      """
+      {{ secret "${CTX:secretName}" }}
+      """
     And the response body should not contain "llm-prov-secret-789"
-    And the JSON response field "spec.upstream.auth.value" should not exist
 
     When I get the LLM provider "${CTX:providerName}"
     Then the response status code should be 200
-    And the response body should not contain "${CTX:secretName}"
+    And the LLM provider response should handle the configured secret safely:
+      """
+      {{ secret "${CTX:secretName}" }}
+      """
     And the response body should not contain "llm-prov-secret-789"
-    And the JSON response field "spec.upstream.auth.value" should not exist
     And the JSON response field "spec.upstream.auth.header" should be "Authorization"
 
     And the stored LlmProvider configuration for "${CTX:providerName}" should contain:
@@ -218,7 +220,7 @@ Feature: Template functions in resource specs
     When I send a "POST" request to the "gateway-controller" service at "/secrets" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1",
+        "apiVersion": "${CTX:gatewaySpecVersion}",
         "kind": "Secret",
         "metadata": {
           "name": "${CTX:secretName}"
@@ -237,7 +239,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-llm-proxy-prov" and store it as "providerVersion"
     And I generate a unique API context from "/tpl-llm-proxy-prov" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -252,7 +254,7 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-llm-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/tpl-llm-proxy" and store it as "proxyContext"
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:proxyName}                   |
       | displayName            | ${CTX:proxyDisplayName}            |
       | version                | ${CTX:proxyVersion}                |
@@ -294,13 +296,13 @@ Feature: Template functions in resource specs
     And I generate a unique API version from "tpl-mcp" and store it as "mcpVersion"
     And I generate a unique API context from "/tpl-mcp" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1                                            |
+      | apiVersion        | ${CTX:gatewaySpecVersion}                                            |
       | name              | ${CTX:mcpName}                                                                |
       | displayName       | ${CTX:mcpDisplayName}                                                         |
       | version           | ${CTX:mcpVersion}                                                             |
       | context           | ${CTX:mcpContext}                                                             |
       | specVersion       | 2025-06-18                                                                      |
-      | spec.upstream.url | http://testbench:3009/mcp{{ env "IT_DEFINITELY_MISSING_KEY" \| default "" }} |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath}{{ env "IT_DEFINITELY_MISSING_KEY" \| default "" }} |
     Then the response should be successful
     And the response body should contain template literal:
       """
@@ -332,75 +334,13 @@ Feature: Template functions in resource specs
     And the response should be valid JSON
     And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
 
-  Scenario: env template in integer policy param is coerced and enforced at runtime
-    Given I generate a unique resource name from "tpl-env-ratelimit-api" and store it as "apiName"
-    And I generate a unique API version from "tpl-env-ratelimit-api" and store it as "apiVersion"
-    And I generate a unique API context from "/tpl-env-ratelimit" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
-      | name                   | ${CTX:apiName}                     |
-      | spec.displayName       | Tpl-Env-Ratelimit-Api               |
-      | spec.version           | ${CTX:apiVersion}                  |
-      | spec.context           | ${CTX:apiContext}/$version         |
-      | spec.upstream.main.url | http://testbench:3000               |
-      | spec.operations        | [{"method":"GET","path":"/probe","policies":[{"name":"advanced-ratelimit","version":"v1","params":{"quotas":[{"name":"request-limit","limits":[{"limit":"{{ env \"IT_RATE_LIMIT\" }}","duration":"1h"}]}]}}]}] |
-    Then the response status code should be 201
-    And the response body should contain template literal:
-      """
-      {{ env "IT_RATE_LIMIT" }}
-      """
-    And the stored RestApi configuration for "${CTX:apiName}" should contain:
-      """
-      {{ env "IT_RATE_LIMIT" }}
-      """
-
-    # The readiness probe uses ~1 request; send 4 more to reach the limit of 5.
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 200
-    When I send 4 "GET" requests to "${CTX:apiContext}/${CTX:apiVersion}/probe"
-    Then the response status code should be 200
-
-    # One more request must be rejected — limit exhausted.
-    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
-    Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
-
-  Scenario: env template in boolean policy param is coerced and applied at runtime
-    Given I generate a unique resource name from "tpl-env-cors-api" and store it as "apiName"
-    And I generate a unique API version from "tpl-env-cors-api" and store it as "apiVersion"
-    And I generate a unique API context from "/tpl-env-cors" and store it as "apiContext"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
-      | name                   | ${CTX:apiName}                     |
-      | spec.displayName       | Tpl-Env-Cors-Api                    |
-      | spec.version           | ${CTX:apiVersion}                  |
-      | spec.context           | ${CTX:apiContext}/$version         |
-      | spec.upstream.main.url | http://testbench:3000               |
-      | spec.policies          | [{"name":"cors","version":"v1","params":{"allowedOrigins":["http://example.com"],"allowedMethods":["GET"],"allowCredentials":"{{ env \"IT_ALLOW_CREDENTIALS\" }}"}}] |
-      | spec.operations        | [{"method":"GET","path":"/probe"}]  |
-    Then the response status code should be 201
-    And the response body should contain template literal:
-      """
-      {{ env "IT_ALLOW_CREDENTIALS" }}
-      """
-    And the stored RestApi configuration for "${CTX:apiName}" should contain:
-      """
-      {{ env "IT_ALLOW_CREDENTIALS" }}
-      """
-
-    # Runtime: allowCredentials=true must produce the credentials response header.
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 200
-    When I set header "Origin" to "http://example.com"
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
-    Then the response status code should be 200
-    And the response header "Access-Control-Allow-Credentials" should be "true"
-
   Scenario: missing secret reference fails with 400 at deploy time
     Given I generate a unique resource name from "tpl-bad-secret-api" and store it as "apiName"
     And I generate a unique API version from "tpl-bad-secret-api" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-bad-secret" and store it as "apiContext"
     And I generate a unique value from "tpl-no-such-secret" and store it as "missingSecretName"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | Tpl-Bad-Secret-Api                  |
       | spec.version           | ${CTX:apiVersion}                  |

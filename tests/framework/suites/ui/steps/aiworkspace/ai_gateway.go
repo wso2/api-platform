@@ -66,6 +66,15 @@ func (u *Steps) opensAIGateways(ctx context.Context) error {
 
 // createsAIGateway registers a new AI gateway with the given name and endpoint URL.
 func (u *Steps) createsAIGateway(ctx context.Context, name, url string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
+	url, err = expandUIValue(ctx, url)
+	if err != nil {
+		return err
+	}
 	if err := u.opensAIGateways(ctx); err != nil {
 		return err
 	}
@@ -113,6 +122,11 @@ func (u *Steps) onAIGatewayOverview(ctx context.Context) error {
 // deletesAIGateway opens the delete confirmation for the named gateway's row on the AI
 // Gateways list and confirms it.
 func (u *Steps) deletesAIGateway(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

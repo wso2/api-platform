@@ -31,7 +31,7 @@ Feature: URL guardrail policy
     And I generate a unique API version from "ug-http-check" and store it as "apiVersion"
     And I generate a unique API context from "/ug-http-check" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -57,13 +57,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Request without any URLs is allowed
     Given I generate a unique value from "ug-no-urls" and store it as "apiName"
     And I generate a unique API version from "ug-no-urls" and store it as "apiVersion"
     And I generate a unique API context from "/ug-no-urls" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -81,13 +82,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Every URL in a multi-URL request must be reachable
     Given I generate a unique value from "ug-multiple" and store it as "apiName"
     And I generate a unique API version from "ug-multiple" and store it as "apiVersion"
     And I generate a unique API context from "/ug-multiple" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -111,13 +113,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: DNS-only mode accepts a resolvable domain and rejects a non-resolvable one
     Given I generate a unique value from "ug-dns-only" and store it as "apiName"
     And I generate a unique API version from "ug-dns-only" and store it as "apiVersion"
     And I generate a unique API context from "/ug-dns-only" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -141,13 +144,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted URL is validated while other fields are ignored
     Given I generate a unique value from "ug-jsonpath" and store it as "apiName"
     And I generate a unique API version from "ug-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/ug-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -179,13 +183,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Nested JSONPath-extracted URL is validated
     Given I generate a unique value from "ug-nested" and store it as "apiName"
     And I generate a unique API version from "ug-nested" and store it as "apiVersion"
     And I generate a unique API context from "/ug-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -222,13 +227,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "ug-invalid-path" and store it as "apiName"
     And I generate a unique API version from "ug-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/ug-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -251,13 +257,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A short custom timeout still allows a reachable URL through
     Given I generate a unique value from "ug-timeout" and store it as "apiName"
     And I generate a unique API version from "ug-timeout" and store it as "apiVersion"
     And I generate a unique API context from "/ug-timeout" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -275,13 +282,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the invalid URLs in its assessment detail
     Given I generate a unique value from "ug-assessment" and store it as "apiName"
     And I generate a unique API version from "ug-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/ug-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -302,13 +310,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body has no URLs to reject
     Given I generate a unique value from "ug-empty" and store it as "apiName"
     And I generate a unique API version from "ug-empty" and store it as "apiVersion"
     And I generate a unique API context from "/ug-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -325,13 +334,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Text resembling a URL but using an unsupported scheme is not treated as a URL
     Given I generate a unique value from "ug-malformed" and store it as "apiName"
     And I generate a unique API version from "ug-malformed" and store it as "apiVersion"
     And I generate a unique API context from "/ug-malformed" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -349,13 +359,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A request-only URL policy still declares a response check without enforcing it
     Given I generate a unique value from "ug-combined" and store it as "apiName"
     And I generate a unique API version from "ug-combined" and store it as "apiVersion"
     And I generate a unique API context from "/ug-combined" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -379,13 +390,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A URL with query parameters is validated correctly
     Given I generate a unique value from "ug-special-chars" and store it as "apiName"
     And I generate a unique API version from "ug-special-chars" and store it as "apiVersion"
     And I generate a unique API context from "/ug-special-chars" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -403,13 +415,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Plain-text content is scanned for URLs the same as JSON content
     Given I generate a unique value from "ug-plaintext" and store it as "apiName"
     And I generate a unique API version from "ug-plaintext" and store it as "apiVersion"
     And I generate a unique API context from "/ug-plaintext" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -435,13 +448,14 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response carries the complete guardrail error contract
     Given I generate a unique value from "ug-error-structure" and store it as "apiName"
     And I generate a unique API version from "ug-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/ug-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -465,3 +479,4 @@ Feature: URL guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

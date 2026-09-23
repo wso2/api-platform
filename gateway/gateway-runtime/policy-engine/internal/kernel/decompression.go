@@ -20,34 +20,145 @@ package kernel
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
+
+// Content-coding tokens the kernel can round-trip. These are the values stored
+// in requestContentEncoding/responseContentEncoding — already lowercased, and
+// for "deflate" already resolved to one of the two wire variants below.
+const (
+	encodingGzip = "gzip"
+	encodingBr   = "br"
+	encodingZstd = "zstd"
+	// encodingDeflate is "deflate" in its RFC 9110 / RFC 1950 form: DEFLATE data
+	// inside a zlib wrapper.
+	encodingDeflate = "deflate"
+	// encodingDeflateRaw is an INTERNAL token, never a wire value. Some servers
+	// and clients send "Content-Encoding: deflate" carrying bare RFC 1951 DEFLATE
+	// with no zlib wrapper. Both are decodable, but the two are not interchangeable
+	// on output — re-encoding raw input as zlib-wrapped (or vice versa) hands the
+	// peer a body its decoder rejects. Recording which variant arrived lets the
+	// kernel emit the same one back; the Content-Encoding header itself is never
+	// rewritten and stays "deflate" either way.
+	encodingDeflateRaw = "deflate-raw"
+	// encodingIdentity is the no-op coding: present in the header but meaning the
+	// body is not encoded at all.
+	encodingIdentity = "identity"
+)
+
+// zstdDecoderConcurrency/zstdEncoderConcurrency pin the zstd codec to a single
+// goroutine per stream. The library defaults to GOMAXPROCS workers per
+// encoder/decoder, which on a proxy handling many concurrent bodies multiplies
+// into thousands of goroutines for no throughput gain at these body sizes.
+const (
+	zstdDecoderConcurrency = 1
+	zstdEncoderConcurrency = 1
+)
+
+// deflateVariantProbeBytes is how many leading compressed bytes are needed to
+// tell zlib-wrapped deflate from raw deflate: the RFC 1950 header is two bytes.
+const deflateVariantProbeBytes = 2
+
+// needsMoreDeflateVariantEvidence reports whether a streaming decoder for this
+// encoding must wait for more compressed input before it can be constructed.
+// Only "deflate" is ambiguous, and only until deflateVariantProbeBytes have
+// accumulated; at end-of-stream nothing more is coming, so whatever arrived is
+// what the decision is made on.
+func needsMoreDeflateVariantEvidence(encoding string, buffered []byte, endOfStream bool) bool {
+	return encoding == encodingDeflate && !endOfStream && len(buffered) < deflateVariantProbeBytes
+}
+
+// resolveDeflateVariant inspects the first bytes of a "deflate" body and reports
+// the concrete variant token to record for it.
+//
+// A zlib stream (RFC 1950) starts with a 2-byte header: the low nibble of the
+// first byte is the compression method (8 == DEFLATE) and the big-endian pair is
+// a multiple of 31. Bare DEFLATE data effectively never satisfies both, so this
+// check distinguishes the two reliably. Too few bytes to tell yet falls back to
+// the RFC-conformant zlib form — a streaming caller must instead buffer
+// deflateVariantProbeBytes before deciding (see needsMoreDeflateVariantEvidence),
+// because a first chunk of one byte would otherwise pin a raw-deflate stream to
+// the zlib decoder for good.
+func resolveDeflateVariant(body []byte) string {
+	if len(body) < deflateVariantProbeBytes {
+		return encodingDeflate
+	}
+	if body[0]&0x0f == 0x08 && (uint16(body[0])<<8|uint16(body[1]))%31 == 0 {
+		return encodingDeflate
+	}
+	return encodingDeflateRaw
+}
+
+// zstdDecoderOptions builds the zstd decoder options for a body ceiling of
+// maxBytes. WithDecoderMaxMemory doubles as the window-size ceiling for
+// streaming decodes, so a frame *declaring* a window larger than the ceiling is
+// rejected before the decoder allocates a buffer for it — readLimited alone
+// only catches a bomb after that allocation has already happened. maxBytes <= 0
+// means unbounded, leaving the library default in place. A ceiling below
+// zstd.MinWindowSize is raised to it: every conformant frame declares at least a
+// 1 KiB window, so a lower cap would reject all zstd bodies rather than just
+// hostile ones.
+func zstdDecoderOptions(maxBytes int64) []zstd.DOption {
+	opts := []zstd.DOption{zstd.WithDecoderConcurrency(zstdDecoderConcurrency)}
+	if maxBytes > 0 {
+		maxMemory := uint64(maxBytes)
+		if maxMemory < zstd.MinWindowSize {
+			maxMemory = zstd.MinWindowSize
+		}
+		opts = append(opts, zstd.WithDecoderMaxMemory(maxMemory))
+	}
+	return opts
+}
 
 // ErrDecompressedTooLarge is returned when decompressed output exceeds the
 // configured ceiling — the signature of a decompression bomb.
 var ErrDecompressedTooLarge = errors.New("decompressed body exceeds maximum allowed size")
 
 // decompressBody decompresses body bytes based on the Content-Encoding value.
-// Supported encodings: "gzip", "br" (Brotli). Unknown encodings are returned as-is.
+// Supported encodings: gzip, br, zstd, and both deflate variants. Unknown
+// encodings are returned as-is — callers must not reach this with one, since
+// isRecompressibleEncoding gates every call site (an unsupported encoding is
+// rejected outright rather than handed to policies as opaque bytes).
 // Output is capped at maxBytes (<= 0 means unbounded); exceeding it returns
 // ErrDecompressedTooLarge, never a truncated body.
 func decompressBody(body []byte, encoding string, maxBytes int64) ([]byte, error) {
 	switch encoding {
-	case "gzip":
+	case encodingGzip:
 		r, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, fmt.Errorf("gzip reader: %w", err)
 		}
 		defer r.Close()
 		return readLimited(r, maxBytes)
-	case "br":
+	case encodingBr:
 		r := brotli.NewReader(bytes.NewReader(body))
+		return readLimited(r, maxBytes)
+	case encodingZstd:
+		r, err := zstd.NewReader(bytes.NewReader(body), zstdDecoderOptions(maxBytes)...)
+		if err != nil {
+			return nil, fmt.Errorf("zstd reader: %w", err)
+		}
+		defer r.Close()
+		return readLimited(r, maxBytes)
+	case encodingDeflate:
+		r, err := zlib.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("deflate (zlib) reader: %w", err)
+		}
+		defer r.Close()
+		return readLimited(r, maxBytes)
+	case encodingDeflateRaw:
+		r := flate.NewReader(bytes.NewReader(body))
+		defer r.Close()
 		return readLimited(r, maxBytes)
 	default:
 		return body, nil
@@ -180,9 +291,13 @@ func newStreamDecompressor(encoding string, maxBytes int64) *streamDecompressor 
 	go func() {
 		defer close(outChan)
 		defer close(decoderDone)
+		// gzip/zlib/zstd readers consume their stream header eagerly, so
+		// construction blocks here until the first chunk arrives. That is why the
+		// decoder lives on its own goroutine: newStreamDecompressor must return
+		// before any body byte has been seen.
 		var r io.Reader
 		switch encoding {
-		case "gzip":
+		case encodingGzip:
 			gr, err := gzip.NewReader(input)
 			if err != nil {
 				select {
@@ -193,8 +308,34 @@ func newStreamDecompressor(encoding string, maxBytes int64) *streamDecompressor 
 			}
 			defer gr.Close()
 			r = gr
-		case "br":
+		case encodingBr:
 			r = brotli.NewReader(input)
+		case encodingZstd:
+			zr, err := zstd.NewReader(input, zstdDecoderOptions(maxBytes)...)
+			if err != nil {
+				select {
+				case errChan <- fmt.Errorf("zstd.NewReader: %w", err):
+				default:
+				}
+				return
+			}
+			defer zr.Close()
+			r = zr
+		case encodingDeflate:
+			zr, err := zlib.NewReader(input)
+			if err != nil {
+				select {
+				case errChan <- fmt.Errorf("zlib.NewReader: %w", err):
+				default:
+				}
+				return
+			}
+			defer zr.Close()
+			r = zr
+		case encodingDeflateRaw:
+			fr := flate.NewReader(input)
+			defer fr.Close()
+			r = fr
 		default:
 			r = input
 		}
@@ -344,32 +485,144 @@ func (sd *streamDecompressor) Close() {
 	}
 }
 
-// recompressBody re-compresses body bytes using the original Content-Encoding.
-// Used to restore compression after policies have processed the decompressed body.
-// Supported encodings: "gzip", "br" (Brotli). Unknown encodings are returned as-is.
-func recompressBody(body []byte, encoding string) ([]byte, error) {
+// ─── Streaming re-compression ────────────────────────────────────────────────
+//
+// A streamed response must be re-compressed as ONE compressed stream spanning
+// the whole body, not one per chunk. Calling recompressBody per chunk produces
+// N independent members: for gzip that is a multi-member stream, and a client
+// that stops at the end of the first member silently sees a truncated body
+// (multi-member support is not something a server may assume — Go's gzip reader
+// happens to be multistream by default, others are not); for brotli, which has
+// no multi-member concatenation at all, the remainder is undecodable.
+//
+// streamCompressor keeps a single writer alive for the lifetime of the response
+// and flushes after each chunk so data still reaches the client incrementally.
+type streamCompressor struct {
+	encoding string
+	buf      bytes.Buffer
+	// w and flush are the encoder for this stream. Every supported codec exposes
+	// Write/Close/Flush, so they are held behind these two fields rather than one
+	// typed field per codec — a per-codec field forces every method here to grow a
+	// new case, and a missed one silently degrades to "no compression applied".
+	w      io.WriteCloser
+	flush  func() error
+	closed bool
+}
+
+// newStreamCompressor returns a compressor for the encoding, or nil when the
+// encoding needs no re-compression (callers then forward bytes unchanged).
+// Encodings must be pre-validated with isRecompressibleEncoding; nil here means
+// "forward untouched", which is only correct for an unencoded body.
+func newStreamCompressor(encoding string) *streamCompressor {
+	sc := &streamCompressor{encoding: encoding}
 	switch encoding {
-	case "gzip":
-		var buf bytes.Buffer
-		w := gzip.NewWriter(&buf)
-		if _, err := w.Write(body); err != nil {
-			return nil, fmt.Errorf("gzip write: %w", err)
+	case encodingGzip:
+		w := gzip.NewWriter(&sc.buf)
+		sc.w, sc.flush = w, w.Flush
+	case encodingBr:
+		w := brotli.NewWriter(&sc.buf)
+		sc.w, sc.flush = w, w.Flush
+	case encodingZstd:
+		// Error is unreachable: it reports invalid encoder options, and the
+		// options here are compile-time constants.
+		w, err := zstd.NewWriter(&sc.buf, zstd.WithEncoderConcurrency(zstdEncoderConcurrency))
+		if err != nil {
+			return nil
 		}
-		if err := w.Close(); err != nil {
-			return nil, fmt.Errorf("gzip close: %w", err)
+		sc.w, sc.flush = w, w.Flush
+	case encodingDeflate:
+		w := zlib.NewWriter(&sc.buf)
+		sc.w, sc.flush = w, w.Flush
+	case encodingDeflateRaw:
+		// Error is unreachable: it reports an out-of-range level, and the level
+		// here is a library constant.
+		w, err := flate.NewWriter(&sc.buf, flate.DefaultCompression)
+		if err != nil {
+			return nil
 		}
-		return buf.Bytes(), nil
-	case "br":
-		var buf bytes.Buffer
-		w := brotli.NewWriter(&buf)
-		if _, err := w.Write(body); err != nil {
-			return nil, fmt.Errorf("brotli write: %w", err)
-		}
-		if err := w.Close(); err != nil {
-			return nil, fmt.Errorf("brotli close: %w", err)
-		}
-		return buf.Bytes(), nil
+		sc.w, sc.flush = w, w.Flush
 	default:
-		return body, nil
+		return nil
 	}
+	return sc
+}
+
+// Compress writes one chunk into the single ongoing compressed stream and
+// returns the bytes produced so far. When endOfStream is set the stream is
+// finalised (footer/checksum written) and the compressor must not be reused.
+//
+// A flush is emitted per chunk so the client receives data incrementally; this
+// costs a few bytes of framing per chunk versus a single whole-body compress,
+// which is the correct trade for a streaming response.
+func (sc *streamCompressor) Compress(body []byte, endOfStream bool) ([]byte, error) {
+	if sc.closed {
+		return nil, fmt.Errorf("%s stream compressor already closed", sc.encoding)
+	}
+	sc.buf.Reset()
+
+	if len(body) > 0 {
+		if _, err := sc.w.Write(body); err != nil {
+			return nil, fmt.Errorf("%s write: %w", sc.encoding, err)
+		}
+	}
+	if endOfStream {
+		if err := sc.w.Close(); err != nil {
+			return nil, fmt.Errorf("%s close: %w", sc.encoding, err)
+		}
+		sc.closed = true
+	} else if err := sc.flush(); err != nil {
+		return nil, fmt.Errorf("%s flush: %w", sc.encoding, err)
+	}
+
+	out := make([]byte, sc.buf.Len())
+	copy(out, sc.buf.Bytes())
+	return out, nil
+}
+
+// Close finalises the stream on error paths where endOfStream never arrives.
+func (sc *streamCompressor) Close() {
+	if sc.closed {
+		return
+	}
+	sc.closed = true
+	_ = sc.w.Close()
+}
+
+// isRecompressibleEncoding reports whether the kernel can decompress and
+// re-compress this Content-Encoding. Anything else is rejected outright by
+// execution_context.go: the kernel neither runs body policies on bytes they
+// cannot read nor forwards a body it could not have inspected.
+func isRecompressibleEncoding(encoding string) bool {
+	switch encoding {
+	case encodingGzip, encodingBr, encodingZstd, encodingDeflate, encodingDeflateRaw:
+		return true
+	default:
+		return false
+	}
+}
+
+// recompressBody re-compresses body bytes using the original Content-Encoding.
+// Used for the BUFFERED response path, where the whole body is compressed in a
+// single call. Streaming responses must use streamCompressor instead so the
+// response is one compressed stream rather than one per chunk.
+// Supported encodings: gzip, br, zstd, and both deflate variants. Unknown
+// encodings are returned as-is; call sites are gated by isRecompressibleEncoding
+// so that case is unreachable for a body policies actually touched.
+func recompressBody(body []byte, encoding string) ([]byte, error) {
+	// Reuse the streaming encoder in a single write+finalise, so the buffered and
+	// streaming paths cannot drift apart on which encodings they support or how
+	// each one is framed.
+	sc := newStreamCompressor(encoding)
+	if sc == nil {
+		// An encoding this function does not encode at all: return the body
+		// untouched, as it always has.
+		if !isRecompressibleEncoding(encoding) {
+			return body, nil
+		}
+		// A supported encoding whose codec refused its options. Returning the body
+		// here would emit plaintext under a compressed Content-Encoding header —
+		// the exact corruption this file exists to prevent.
+		return nil, fmt.Errorf("no compressor available for encoding %q", encoding)
+	}
+	return sc.Compress(body, true)
 }

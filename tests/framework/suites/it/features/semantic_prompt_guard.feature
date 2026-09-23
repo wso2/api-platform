@@ -30,7 +30,7 @@ Feature: Semantic prompt guard policy
     And I generate a unique API version from "pg-deny-block" and store it as "apiVersion"
     And I generate a unique API context from "/pg-deny-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -50,13 +50,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A prompt not matching any denied phrase is allowed
     Given I generate a unique value from "pg-deny-allow" and store it as "apiName"
     And I generate a unique API version from "pg-deny-allow" and store it as "apiVersion"
     And I generate a unique API context from "/pg-deny-allow" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -74,13 +75,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A prompt matching an allowed phrase is permitted
     Given I generate a unique value from "pg-allow-match" and store it as "apiName"
     And I generate a unique API version from "pg-allow-match" and store it as "apiVersion"
     And I generate a unique API context from "/pg-allow-match" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -98,13 +100,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A prompt not matching any allowed phrase is blocked
     Given I generate a unique value from "pg-allow-block" and store it as "apiName"
     And I generate a unique API version from "pg-allow-block" and store it as "apiVersion"
     And I generate a unique API context from "/pg-allow-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -123,13 +126,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A denied phrase match takes priority over an allowed phrase match
     Given I generate a unique value from "pg-both-deny" and store it as "apiName"
     And I generate a unique API version from "pg-both-deny" and store it as "apiVersion"
     And I generate a unique API context from "/pg-both-deny" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -148,13 +152,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A prompt matching an allowed phrase and no denied phrase is permitted
     Given I generate a unique value from "pg-both-allow" and store it as "apiName"
     And I generate a unique API version from "pg-both-allow" and store it as "apiVersion"
     And I generate a unique API context from "/pg-both-allow" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -172,6 +177,7 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Measured similarity between these two prompts is ~0.33 (via the embeddings mock's
   # /debug/similarity endpoint) - well below 0.99, so this is a genuine strict-match test.
@@ -180,7 +186,7 @@ Feature: Semantic prompt guard policy
     And I generate a unique API version from "pg-high-allow-threshold" and store it as "apiVersion"
     And I generate a unique API context from "/pg-high-allow-threshold" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -204,6 +210,7 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Measured similarity between "malicious attack" and "malicious attack 1" is ~0.85 -
   # above 0.5 but below 0.99, driving the low- and high-threshold scenarios below.
@@ -212,7 +219,7 @@ Feature: Semantic prompt guard policy
     And I generate a unique API version from "pg-low-deny-threshold" and store it as "apiVersion"
     And I generate a unique API context from "/pg-low-deny-threshold" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -230,13 +237,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A high deny threshold requires a near-exact match
     Given I generate a unique value from "pg-high-deny-threshold" and store it as "apiName"
     And I generate a unique API version from "pg-high-deny-threshold" and store it as "apiVersion"
     And I generate a unique API context from "/pg-high-deny-threshold" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -260,13 +268,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: JSONPath extraction validates only the targeted field
     Given I generate a unique value from "pg-jsonpath" and store it as "apiName"
     And I generate a unique API version from "pg-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/pg-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -293,13 +302,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: A JSONPath that does not resolve is rejected as a policy error
     Given I generate a unique value from "pg-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "pg-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/pg-invalid-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -318,13 +328,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: showAssessment true includes detailed similarity information
     Given I generate a unique value from "pg-assessment-true" and store it as "apiName"
     And I generate a unique API version from "pg-assessment-true" and store it as "apiVersion"
     And I generate a unique API context from "/pg-assessment-true" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -344,13 +355,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: showAssessment false returns minimal information
     Given I generate a unique value from "pg-assessment-false" and store it as "apiName"
     And I generate a unique API version from "pg-assessment-false" and store it as "apiVersion"
     And I generate a unique API context from "/pg-assessment-false" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -369,13 +381,14 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: An empty request body is rejected
     Given I generate a unique value from "pg-empty-body" and store it as "apiName"
     And I generate a unique API version from "pg-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/pg-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -393,6 +406,7 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Unlike semantic-cache (which passes the request through unmodified on an embedding
   # failure), semantic-prompt-guard cannot verify a prompt is safe without an embedding, so
@@ -402,7 +416,7 @@ Feature: Semantic prompt guard policy
     And I generate a unique API version from "pg-embed-error" and store it as "apiVersion"
     And I generate a unique API context from "/pg-embed-error" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -422,6 +436,7 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # The embedding mock lowercases before hashing, so an uppercase denied phrase still
   # matches a lowercase request - confirmed identical (~1.0) via /debug/similarity.
@@ -430,7 +445,7 @@ Feature: Semantic prompt guard policy
     And I generate a unique API version from "pg-case-insensitive" and store it as "apiVersion"
     And I generate a unique API context from "/pg-case-insensitive" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -448,3 +463,4 @@ Feature: Semantic prompt guard policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

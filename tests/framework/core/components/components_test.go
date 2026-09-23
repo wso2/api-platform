@@ -1074,6 +1074,66 @@ listenPort = 9090
 	})
 }
 
+func TestConfigInjectionForVersion(t *testing.T) {
+	injection := &ConfigInjection{
+		BaseConfigPath:    "config/current.toml",
+		SharedOverlayPath: "overlays/current.toml",
+		ExtraOverlays:     []string{"overlays/extra.toml"},
+		Versioned: map[string]ConfigProfile{
+			"1.1.0": {
+				BaseConfigPath:    "resources/1.1.0/config.toml",
+				SharedOverlayPath: "resources/1.1.0/storage.toml",
+			},
+			"1.2.0": {
+				BaseConfigPath:    "resources/1.2.0/config.toml",
+				SharedOverlayPath: "resources/1.2.0/storage.toml",
+			},
+		},
+	}
+
+	t.Run("source builds retain the current configuration", func(t *testing.T) {
+		selected, err := injection.ForVersion("")
+		require.NoError(t, err)
+		require.Same(t, injection, selected)
+	})
+
+	t.Run("released images select their exact profile without mutating defaults", func(t *testing.T) {
+		selected, err := injection.ForVersion(" 1.1.0 ")
+		require.NoError(t, err)
+		require.Equal(t, "resources/1.1.0/config.toml", selected.BaseConfigPath)
+		require.Equal(t, "resources/1.1.0/storage.toml", selected.SharedOverlayPath)
+		require.Equal(t, []string{"overlays/extra.toml"}, selected.ExtraOverlays)
+		require.Equal(t, injection.Versioned, selected.Versioned)
+
+		selected.ExtraOverlays[0] = "changed"
+		selected.Versioned["1.1.0"] = ConfigProfile{BaseConfigPath: "changed"}
+		require.Equal(t, "config/current.toml", injection.BaseConfigPath)
+		require.Equal(t, "overlays/current.toml", injection.SharedOverlayPath)
+		require.Equal(t, []string{"overlays/extra.toml"}, injection.ExtraOverlays)
+		require.Equal(t, "resources/1.1.0/config.toml", injection.Versioned["1.1.0"].BaseConfigPath)
+	})
+
+	t.Run("a selected profile can be superseded by another explicit version", func(t *testing.T) {
+		selected, err := injection.ForVersion("1.1.0")
+		require.NoError(t, err)
+		superseded, err := selected.ForVersion("1.2.0")
+		require.NoError(t, err)
+		require.Equal(t, "resources/1.2.0/config.toml", superseded.BaseConfigPath)
+		require.Equal(t, "resources/1.2.0/storage.toml", superseded.SharedOverlayPath)
+	})
+
+	t.Run("an unsupported released version is rejected", func(t *testing.T) {
+		_, err := injection.ForVersion("1.3.0")
+		require.ErrorContains(t, err, `no profile for version "1.3.0"`)
+	})
+
+	t.Run("a nil injection is rejected", func(t *testing.T) {
+		var nilInjection *ConfigInjection
+		_, err := nilInjection.ForVersion("1.1.0")
+		require.ErrorContains(t, err, "config injection is required")
+	})
+}
+
 func TestOverlayVariableSubstitution(t *testing.T) {
 	dir := t.TempDir()
 	base := writeTOML(t, dir, "base.toml", "logLevel = \"info\"\n")
@@ -1279,6 +1339,38 @@ func TestDefinitionWithImageVersion(t *testing.T) {
 	})
 }
 
+func TestDefinitionWithConfigVersion(t *testing.T) {
+	definition := &Definition{
+		Name:   "gateway",
+		Image:  ImageRef{Ref: "gateway:current"},
+		Health: &HealthCheck{Endpoint: "admin", Path: "/api/admin/v1/health", ExpectStatus: 200, Timeout: time.Minute, Interval: time.Second},
+		VersionedHealth: map[string]HealthCheck{
+			"1.1.0": {Endpoint: "admin", Path: "/api/admin/v0.9/health", ExpectStatus: 200, Timeout: time.Minute, Interval: time.Second},
+		},
+		Config: &ConfigInjection{
+			BaseConfigPath: "config/current.toml",
+			Versioned: map[string]ConfigProfile{
+				"1.1.0": {BaseConfigPath: "resources/1.1.0/config.toml"},
+			},
+		},
+	}
+
+	updated, err := definition.WithConfigVersion("1.1.0")
+	require.NoError(t, err)
+	require.NotSame(t, definition, updated)
+	require.Equal(t, "resources/1.1.0/config.toml", updated.Config.BaseConfigPath)
+	require.Equal(t, "config/current.toml", definition.Config.BaseConfigPath)
+
+	_, err = definition.WithConfigVersion("1.2.0")
+	require.ErrorContains(t, err, `component "gateway": config injection has no profile for version "1.2.0"`)
+
+	updated, err = definition.WithReleaseVersion("1.1.0")
+	require.NoError(t, err)
+	require.Equal(t, "gateway:1.1.0", updated.Image.Ref)
+	require.Equal(t, "/api/admin/v0.9/health", updated.Health.Path)
+	require.Equal(t, "/api/admin/v1/health", definition.Health.Path)
+}
+
 func TestConfigAndFileValidation(t *testing.T) {
 	t.Run("valid configuration passes", func(t *testing.T) {
 		d := controllerLike()
@@ -1304,6 +1396,35 @@ func TestConfigAndFileValidation(t *testing.T) {
 		require.ErrorContains(t, err, "must be absolute")
 		require.ErrorContains(t, err, "no hostPath")
 		require.ErrorContains(t, err, "two file mounts target")
+	})
+
+	t.Run("invalid versioned profiles are rejected", func(t *testing.T) {
+		d := controllerLike()
+		d.Config = &ConfigInjection{
+			BaseConfigPath: "config/base.toml",
+			ContainerPath:  "/opt/app/config.toml",
+			Format:         TOML,
+			Versioned: map[string]ConfigProfile{
+				"":      {BaseConfigPath: "config/versioned.toml"},
+				"1.1.0": {},
+			},
+		}
+		err := d.Validate()
+		require.ErrorContains(t, err, "empty versioned profile key")
+		require.ErrorContains(t, err, `config profile "1.1.0" has no baseConfigPath`)
+	})
+
+	t.Run("invalid versioned health profiles are rejected", func(t *testing.T) {
+		d := controllerLike()
+		d.VersionedHealth = map[string]HealthCheck{
+			"":      {Endpoint: "missing", Path: "ready", ExpectStatus: 600},
+			"1.1.0": {Endpoint: "admin", Path: "/health", ExpectStatus: 200, Timeout: time.Second, Interval: time.Second},
+		}
+		err := d.Validate()
+		require.ErrorContains(t, err, "empty versioned health profile key")
+		require.ErrorContains(t, err, `health profile "" references unknown endpoint "missing"`)
+		require.ErrorContains(t, err, `health profile "" path "ready" must start with /`)
+		require.ErrorContains(t, err, `health profile "" expectStatus 600 is not a valid HTTP status`)
 	})
 }
 

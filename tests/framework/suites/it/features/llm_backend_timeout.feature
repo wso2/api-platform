@@ -32,7 +32,7 @@ Feature: LLM backend route timeouts
     And I generate a unique API version from "llm-resilience-timeout" and store it as "providerVersion"
     And I generate a unique API context from "/llm-resilience-timeout" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion} |
       | name                    | ${CTX:providerName}              |
       | displayName             | ${CTX:providerDisplayName}       |
       | version                 | ${CTX:providerVersion}           |
@@ -54,7 +54,7 @@ Feature: LLM backend route timeouts
     And I generate a unique API version from "llm-deny-resilience-timeout" and store it as "providerVersion"
     And I generate a unique API context from "/llm-deny-resilience-timeout" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion                    | gateway.api-platform.wso2.com/v1                                      |
+      | apiVersion                    | ${CTX:gatewaySpecVersion}                                      |
       | name                          | ${CTX:providerName}                                                   |
       | displayName                   | ${CTX:providerDisplayName}                                            |
       | version                       | ${CTX:providerVersion}                                                |
@@ -77,7 +77,7 @@ Feature: LLM backend route timeouts
     And I generate a unique API version from "llm-default-timeout" and store it as "providerVersion"
     And I generate a unique API context from "/llm-default-timeout" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}              |
       | displayName        | ${CTX:providerDisplayName}       |
       | version            | ${CTX:providerVersion}           |
@@ -103,7 +103,7 @@ Feature: LLM backend route timeouts
     And I generate a unique API version from "llm-proxy-timeout" and store it as "proxyVersion"
     And I generate a unique API context from "/llm-proxy-timeout" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}              |
       | displayName        | ${CTX:providerDisplayName}       |
       | version            | ${CTX:providerVersion}           |
@@ -113,7 +113,7 @@ Feature: LLM backend route timeouts
       | accessControl.mode | allow_all                         |
     Then the response status code should be 201
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:proxyName}                 |
       | displayName                | ${CTX:proxyDisplayName}          |
       | version                    | ${CTX:proxyVersion}              |
@@ -139,7 +139,7 @@ Feature: LLM backend route timeouts
     And I generate a unique API version from "llm-both-timeout-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/llm-both-timeout-proxy" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion              | gateway.api-platform.wso2.com/v1 |
+      | apiVersion              | ${CTX:gatewaySpecVersion} |
       | name                    | ${CTX:providerName}              |
       | displayName             | ${CTX:providerDisplayName}       |
       | version                 | ${CTX:providerVersion}           |
@@ -150,7 +150,7 @@ Feature: LLM backend route timeouts
       | spec.resilience.timeout | 2s                                |
     Then the response status code should be 201
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:proxyName}                 |
       | displayName                | ${CTX:proxyDisplayName}          |
       | version                    | ${CTX:proxyVersion}              |

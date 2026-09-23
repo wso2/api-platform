@@ -185,6 +185,44 @@ const (
 	OperationRequestMethodPATCH   OperationRequestMethod = "PATCH"
 	OperationRequestMethodPOST    OperationRequestMethod = "POST"
 	OperationRequestMethodPUT     OperationRequestMethod = "PUT"
+	OperationRequestMethodTRACE   OperationRequestMethod = "TRACE"
+)
+
+// Defines values for PublicationAgentVisibility.
+const (
+	PublicationAgentVisibilityHIDDEN  PublicationAgentVisibility = "HIDDEN"
+	PublicationAgentVisibilityVISIBLE PublicationAgentVisibility = "VISIBLE"
+)
+
+// Defines values for PublicationStatus.
+const (
+	PublicationStatusDEPRECATED PublicationStatus = "DEPRECATED"
+	PublicationStatusPUBLISHED  PublicationStatus = "PUBLISHED"
+)
+
+// Defines values for PublicationDetailsCoreAgentVisibility.
+const (
+	PublicationDetailsCoreAgentVisibilityHIDDEN  PublicationDetailsCoreAgentVisibility = "HIDDEN"
+	PublicationDetailsCoreAgentVisibilityVISIBLE PublicationDetailsCoreAgentVisibility = "VISIBLE"
+)
+
+// Defines values for PublicationDraftDetailsAgentVisibility.
+const (
+	PublicationDraftDetailsAgentVisibilityHIDDEN  PublicationDraftDetailsAgentVisibility = "HIDDEN"
+	PublicationDraftDetailsAgentVisibilityVISIBLE PublicationDraftDetailsAgentVisibility = "VISIBLE"
+)
+
+// Defines values for PublicationDraftDetailsInputAgentVisibility.
+const (
+	PublicationDraftDetailsInputAgentVisibilityHIDDEN  PublicationDraftDetailsInputAgentVisibility = "HIDDEN"
+	PublicationDraftDetailsInputAgentVisibilityVISIBLE PublicationDraftDetailsInputAgentVisibility = "VISIBLE"
+)
+
+// Defines values for PublicationSummaryItemStatus.
+const (
+	PublicationSummaryItemStatusDEPRECATED   PublicationSummaryItemStatus = "DEPRECATED"
+	PublicationSummaryItemStatusNOTPUBLISHED PublicationSummaryItemStatus = "NOT_PUBLISHED"
+	PublicationSummaryItemStatusPUBLISHED    PublicationSummaryItemStatus = "PUBLISHED"
 )
 
 // Defines values for RESTAPILifeCycleStatus.
@@ -370,6 +408,18 @@ const (
 	ListApiPortalsParamsSortOrderDesc ListApiPortalsParamsSortOrder = "desc"
 )
 
+// Defines values for ListApiPublicationsParamsSortBy.
+const (
+	ListApiPublicationsParamsSortByCreatedAt ListApiPublicationsParamsSortBy = "createdAt"
+	ListApiPublicationsParamsSortByName      ListApiPublicationsParamsSortBy = "name"
+)
+
+// Defines values for ListApiPublicationsParamsSortOrder.
+const (
+	ListApiPublicationsParamsSortOrderAsc  ListApiPublicationsParamsSortOrder = "asc"
+	ListApiPublicationsParamsSortOrderDesc ListApiPublicationsParamsSortOrder = "desc"
+)
+
 // Defines values for ListApplicationsParamsSortBy.
 const (
 	ListApplicationsParamsSortByCreatedAt ListApplicationsParamsSortBy = "createdAt"
@@ -445,14 +495,14 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
+	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	Name      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
-	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
+	Asc  ListRESTAPIsParamsSortOrder = "asc"
+	Desc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -1168,7 +1218,9 @@ type DeployRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the target gateway for this deployment
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 
-	// Metadata Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+	// Metadata Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes `endpointUrl` too, which replaces the backend it routes to, and `upstreamAuthValue` — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
+	//
+	// `upstreamAuthHeader` names the header that credential is sent in. It is read only alongside `upstreamAuthValue`, and only where the upstream authenticates with an api-key — basic and bearer send `Authorization` by definition.
 	Metadata *map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
@@ -1190,15 +1242,14 @@ type DeploymentResponse struct {
 	// BaseDeploymentId UUID of the base deployment this was created from
 	BaseDeploymentId *openapi_types.UUID `json:"baseDeploymentId" yaml:"baseDeploymentId"`
 
-	// BuildId Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-	// has one: `base: build` runs the build it names, and `base: current` stores what
-	// it renders as a build and runs that.
+	// BuildId Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+	// LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+	// it names, and `base: current` stores what it renders as a build and runs that.
 	//
-	// Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-	// deployments — including one promoted from another deployment, which reuses that
-	// deployment's rendered artifact. Also null once the build it ran has been pruned.
-	// Null means only that no build can be named; the deployment keeps its own
-	// rendered artifact either way.
+	// Null for artifact kinds that have no builds, and for a deployment promoted from
+	// another, which reuses that deployment's rendered artifact. Also null once the
+	// build it ran has been pruned. Null means only that no build can be named; the
+	// deployment keeps its own rendered artifact either way.
 	BuildId *string `json:"buildId" yaml:"buildId"`
 
 	// CreatedAt Timestamp when the deployment artifact was created
@@ -1240,6 +1291,9 @@ type DeploymentResponse struct {
 // - FAILED: Deployment or undeployment failed (see statusReason for error code)
 // - ARCHIVED: Historical deployment, can be rolled back
 type DeploymentResponseStatus string
+
+// DocIdList defines model for DocIdList.
+type DocIdList = []string
 
 // Error The single error shape returned by every failed request across the API.
 type Error struct {
@@ -1399,6 +1453,28 @@ type GatewayTokenListResponse struct {
 	// List List of active tokens
 	List       []TokenInfoResponse `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
+type ImportOpenAPIRequest struct {
+	Context     string  `binding:"required" json:"context" yaml:"context"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -2042,6 +2118,36 @@ type MappedAPIKeyListResponse struct {
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
+// OpenAPIContent defines model for OpenAPIContent.
+type OpenAPIContent struct {
+	// Content Raw spec content
+	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
+}
+
+// OpenAPISpecFileRequest defines model for OpenAPISpecFileRequest.
+type OpenAPISpecFileRequest struct {
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+}
+
+// OpenAPISpecInfo defines model for OpenAPISpecInfo.
+type OpenAPISpecInfo struct {
+	// Title Value of info.title from the spec
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
+
+	// Version Value of info.version from the spec
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// OpenAPIValidationError defines model for OpenAPIValidationError.
+type OpenAPIValidationError struct {
+	// Message Human-readable description of the validation error
+	Message string `binding:"required" json:"message" yaml:"message"`
+
+	// Path JSON Pointer path within the spec where the error was found
+	Path *string `json:"path,omitempty" yaml:"path,omitempty"`
+}
+
 // Operation Defines a single operation (resource) within the API
 type Operation struct {
 	// Description Description of the operation
@@ -2184,6 +2290,209 @@ type ProjectListResponse struct {
 	Count      int        `binding:"required" json:"count" yaml:"count"`
 	List       []Project  `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
+// Publication defines model for Publication.
+type Publication struct {
+	AgentVisibility *PublicationAgentVisibility `json:"agentVisibility,omitempty" yaml:"agentVisibility,omitempty"`
+
+	// ApiPortalId The API Portal's handle.
+	ApiPortalId   *string    `json:"apiPortalId,omitempty" yaml:"apiPortalId,omitempty"`
+	ApiPortalName *string    `json:"apiPortalName,omitempty" yaml:"apiPortalName,omitempty"`
+	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy     *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description   *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName   *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	DocIds        *DocIdList `json:"docIds,omitempty" yaml:"docIds,omitempty"`
+
+	// Endpoints Author-entered; not derived from the API.
+	Endpoints *struct {
+		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+		SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+	} `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
+	// HasLandingPage Whether this publication stores a landing page.
+	HasLandingPage *bool `json:"hasLandingPage,omitempty" yaml:"hasLandingPage,omitempty"`
+
+	// HasThumbnail Whether this publication stores a thumbnail.
+	HasThumbnail *bool `json:"hasThumbnail,omitempty" yaml:"hasThumbnail,omitempty"`
+
+	// Labels API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+	Labels *[]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
+	// Owners Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+	Owners *struct {
+		BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+		BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+	} `json:"owners,omitempty" yaml:"owners,omitempty"`
+	Status              *PublicationStatus      `json:"status,omitempty" yaml:"status,omitempty"`
+	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
+	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Who made that most recent change.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+	Version   *string `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// PublicationAgentVisibility defines model for Publication.AgentVisibility.
+type PublicationAgentVisibility string
+
+// PublicationStatus defines model for Publication.Status.
+type PublicationStatus string
+
+// PublicationAuditFields defines model for PublicationAuditFields.
+type PublicationAuditFields struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Who made that most recent change.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+}
+
+// PublicationDetailsCore defines model for PublicationDetailsCore.
+type PublicationDetailsCore struct {
+	AgentVisibility *PublicationDetailsCoreAgentVisibility `json:"agentVisibility,omitempty" yaml:"agentVisibility,omitempty"`
+	Description     *string                                `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName     *string                                `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Endpoints Author-entered; not derived from the API.
+	Endpoints *struct {
+		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+		SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+	} `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
+	// Labels API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+	Labels *[]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
+	// Owners Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+	Owners *struct {
+		BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+		BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+	} `json:"owners,omitempty" yaml:"owners,omitempty"`
+	Tags    *[]string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Version *string   `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// PublicationDetailsCoreAgentVisibility defines model for PublicationDetailsCore.AgentVisibility.
+type PublicationDetailsCoreAgentVisibility string
+
+// PublicationDraftDetails defines model for PublicationDraftDetails.
+type PublicationDraftDetails struct {
+	AgentVisibility *PublicationDraftDetailsAgentVisibility `json:"agentVisibility,omitempty" yaml:"agentVisibility,omitempty"`
+	CreatedAt       *time.Time                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy       *string                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description     *string                                 `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName     string                                  `json:"displayName" yaml:"displayName"`
+	DocIds          *DocIdList                              `json:"docIds,omitempty" yaml:"docIds,omitempty"`
+
+	// Endpoints Author-entered; not derived from the API.
+	Endpoints *struct {
+		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+		SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+	} `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
+	// HasLandingPage Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.
+	HasLandingPage *bool `json:"hasLandingPage,omitempty" yaml:"hasLandingPage,omitempty"`
+
+	// HasThumbnail Whether this draft stores a thumbnail of its own.
+	HasThumbnail *bool `json:"hasThumbnail,omitempty" yaml:"hasThumbnail,omitempty"`
+
+	// Labels API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+	Labels *[]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
+	// Owners Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+	Owners *struct {
+		BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+		BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+	} `json:"owners,omitempty" yaml:"owners,omitempty"`
+	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
+	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Who made that most recent change.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+	Version   string  `json:"version" yaml:"version"`
+}
+
+// PublicationDraftDetailsAgentVisibility defines model for PublicationDraftDetails.AgentVisibility.
+type PublicationDraftDetailsAgentVisibility string
+
+// PublicationDraftDetailsInput defines model for PublicationDraftDetailsInput.
+type PublicationDraftDetailsInput struct {
+	AgentVisibility *PublicationDraftDetailsInputAgentVisibility `json:"agentVisibility,omitempty" yaml:"agentVisibility,omitempty"`
+	Description     *string                                      `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName     string                                       `json:"displayName" yaml:"displayName"`
+	DocIds          *DocIdList                                   `json:"docIds,omitempty" yaml:"docIds,omitempty"`
+
+	// Endpoints Author-entered; not derived from the API.
+	Endpoints *struct {
+		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
+		SandboxUrl    *string `json:"sandboxUrl,omitempty" yaml:"sandboxUrl,omitempty"`
+	} `json:"endpoints,omitempty" yaml:"endpoints,omitempty"`
+
+	// Labels API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+	Labels *[]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
+	// Owners Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+	Owners *struct {
+		BusinessOwner       *string              `json:"businessOwner,omitempty" yaml:"businessOwner,omitempty"`
+		BusinessOwnerEmail  *openapi_types.Email `json:"businessOwnerEmail,omitempty" yaml:"businessOwnerEmail,omitempty"`
+		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
+		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
+	} `json:"owners,omitempty" yaml:"owners,omitempty"`
+	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
+	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Version             string                  `json:"version" yaml:"version"`
+}
+
+// PublicationDraftDetailsInputAgentVisibility defines model for PublicationDraftDetailsInput.AgentVisibility.
+type PublicationDraftDetailsInputAgentVisibility string
+
+// PublicationSummaryItem defines model for PublicationSummaryItem.
+type PublicationSummaryItem struct {
+	// ApiPortalDescription The API Portal's own description, as set at registration.
+	ApiPortalDescription *string `json:"apiPortalDescription" yaml:"apiPortalDescription"`
+
+	// ApiPortalId The API Portal's handle.
+	ApiPortalId *string `json:"apiPortalId,omitempty" yaml:"apiPortalId,omitempty"`
+
+	// ApiPortalName The API Portal's display name.
+	ApiPortalName *string `json:"apiPortalName,omitempty" yaml:"apiPortalName,omitempty"`
+
+	// ApiPortalUrl The API Portal's URL, as set at registration.
+	ApiPortalUrl *string `json:"apiPortalUrl" yaml:"apiPortalUrl"`
+
+	// DraftUpdatedAt The draft's own updatedAt; null when no draft exists.
+	DraftUpdatedAt *time.Time `json:"draftUpdatedAt" yaml:"draftUpdatedAt"`
+
+	// PublicationUpdatedAt The publication's own updatedAt; null when not published.
+	PublicationUpdatedAt *time.Time `json:"publicationUpdatedAt" yaml:"publicationUpdatedAt"`
+
+	// Status NOT_PUBLISHED covers both never published and unpublished since.
+	Status *PublicationSummaryItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// PublicationSummaryItemStatus NOT_PUBLISHED covers both never published and unpublished since.
+type PublicationSummaryItemStatus string
+
+// PublicationSummaryResponse defines model for PublicationSummaryResponse.
+type PublicationSummaryResponse struct {
+	List       []PublicationSummaryItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination               `json:"pagination" yaml:"pagination"`
 }
 
 // RESTAPI defines model for RESTAPI.
@@ -2582,6 +2891,9 @@ type SubscriptionPlan struct {
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
 type SubscriptionPlanStatus string
 
+// SubscriptionPlanIdList defines model for SubscriptionPlanIdList.
+type SubscriptionPlanIdList = []string
+
 // SubscriptionPlanLimit defines model for SubscriptionPlanLimit.
 type SubscriptionPlanLimit struct {
 	// LimitCount Number of requests (or units, for BANDWIDTH/TOTAL_TOKEN_COUNT) allowed in the throttle window
@@ -2816,11 +3128,33 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
+type ValidateOpenAPIResponse struct {
+	// Errors Validation errors; empty when isValid is true
+	Errors []OpenAPIValidationError `binding:"required" json:"errors" yaml:"errors"`
+	Info   *OpenAPISpecInfo         `json:"info,omitempty" yaml:"info,omitempty"`
+
+	// IsValid Whether the spec passed validation
+	IsValid bool `binding:"required" json:"isValid" yaml:"isValid"`
+}
+
+// ApiHandle defines model for apiHandle.
+type ApiHandle = string
+
+// ApiHandleQ defines model for apiHandle-Q.
+type ApiHandleQ = string
+
 // ApiId defines model for apiId.
 type ApiId = string
 
 // ApiPortalId defines model for apiPortalId.
 type ApiPortalId = string
+
+// ApiType defines model for apiType.
+type ApiType = string
+
+// ApiTypeQ defines model for apiType-Q.
+type ApiTypeQ = string
 
 // AppId defines model for appId.
 type AppId = string
@@ -2891,6 +3225,24 @@ type InternalServerError = Error
 // NotFound The single error shape returned by every failed request across the API.
 type NotFound = Error
 
+// PayloadTooLarge The single error shape returned by every failed request across the API.
+type PayloadTooLarge = Error
+
+// PortalUnavailable The single error shape returned by every failed request across the API.
+type PortalUnavailable = Error
+
+// PublicationBadRequest The single error shape returned by every failed request across the API.
+type PublicationBadRequest = Error
+
+// PublicationConflict The single error shape returned by every failed request across the API.
+type PublicationConflict = Error
+
+// PublicationDefinitionResponse defines model for PublicationDefinitionResponse.
+type PublicationDefinitionResponse = openapi_types.File
+
+// PublicationTypeUnsupported The single error shape returned by every failed request across the API.
+type PublicationTypeUnsupported = Error
+
 // ServiceUnavailable The single error shape returned by every failed request across the API.
 type ServiceUnavailable = Error
 
@@ -2920,6 +3272,44 @@ type ListApiPortalsParamsSortBy string
 
 // ListApiPortalsParamsSortOrder defines parameters for ListApiPortals.
 type ListApiPortalsParamsSortOrder string
+
+// SaveApiPublicationDraftDefinitionJSONBody defines parameters for SaveApiPublicationDraftDefinition.
+type SaveApiPublicationDraftDefinitionJSONBody = openapi_types.File
+
+// SaveApiPublicationDraftThumbnailMultipartBody defines parameters for SaveApiPublicationDraftThumbnail.
+type SaveApiPublicationDraftThumbnailMultipartBody struct {
+	File openapi_types.File `json:"file" yaml:"file"`
+}
+
+// ListApiPublicationsParams defines parameters for ListApiPublications.
+type ListApiPublicationsParams struct {
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
+
+	// ApiId The API's handle, unique per organization within its own type.
+	ApiId ApiHandleQ `form:"apiId" json:"apiId" yaml:"apiId"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListApiPublicationsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListApiPublicationsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListApiPublicationsParamsSortBy defines parameters for ListApiPublications.
+type ListApiPublicationsParamsSortBy string
+
+// ListApiPublicationsParamsSortOrder defines parameters for ListApiPublications.
+type ListApiPublicationsParamsSortOrder string
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -3420,6 +3810,15 @@ type CreateApiPortalJSONRequestBody = CreateApiPortalRequest
 // UpdateApiPortalJSONRequestBody defines body for UpdateApiPortal for application/json ContentType.
 type UpdateApiPortalJSONRequestBody = UpdateApiPortalRequest
 
+// SaveApiPublicationDraftJSONRequestBody defines body for SaveApiPublicationDraft for application/json ContentType.
+type SaveApiPublicationDraftJSONRequestBody = PublicationDraftDetailsInput
+
+// SaveApiPublicationDraftDefinitionJSONRequestBody defines body for SaveApiPublicationDraftDefinition for application/json ContentType.
+type SaveApiPublicationDraftDefinitionJSONRequestBody = SaveApiPublicationDraftDefinitionJSONBody
+
+// SaveApiPublicationDraftThumbnailMultipartRequestBody defines body for SaveApiPublicationDraftThumbnail for multipart/form-data ContentType.
+type SaveApiPublicationDraftThumbnailMultipartRequestBody SaveApiPublicationDraftThumbnailMultipartBody
+
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
 
@@ -3507,6 +3906,12 @@ type UpdateProjectJSONRequestBody = Project
 // CreateRESTAPIJSONRequestBody defines body for CreateRESTAPI for application/json ContentType.
 type CreateRESTAPIJSONRequestBody = CreateRESTAPIRequest
 
+// ImportOpenAPIMultipartRequestBody defines body for ImportOpenAPI for multipart/form-data ContentType.
+type ImportOpenAPIMultipartRequestBody = ImportOpenAPIRequest
+
+// ValidateOpenAPISpecMultipartRequestBody defines body for ValidateOpenAPISpec for multipart/form-data ContentType.
+type ValidateOpenAPISpecMultipartRequestBody = OpenAPISpecFileRequest
+
 // UpdateRESTAPIJSONRequestBody defines body for UpdateRESTAPI for application/json ContentType.
 type UpdateRESTAPIJSONRequestBody = RESTAPI
 
@@ -3524,6 +3929,9 @@ type DeployAPIJSONRequestBody = DeployRequest
 
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
+
+// UpdateRESTAPISpecMultipartRequestBody defines body for UpdateRESTAPISpec for multipart/form-data ContentType.
+type UpdateRESTAPISpecMultipartRequestBody = OpenAPISpecFileRequest
 
 // CreateSecretMultipartRequestBody defines body for CreateSecret for multipart/form-data ContentType.
 type CreateSecretMultipartRequestBody = SecretCreateRequest
