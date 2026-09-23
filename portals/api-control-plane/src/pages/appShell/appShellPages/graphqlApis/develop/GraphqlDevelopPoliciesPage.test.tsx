@@ -61,7 +61,10 @@ beforeEach(() => {
 
 describe('GraphqlDevelopPoliciesPage', () => {
   it('lists the attached policy', async () => {
-    server.use(resource('/graphql-apis/:graphqlApiId', api));
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: 'type Query { a: String }' }),
+    );
 
     renderPage();
 

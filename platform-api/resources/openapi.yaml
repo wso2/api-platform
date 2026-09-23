@@ -9066,6 +9066,20 @@ components:
             creation time. Informational only — storage and downstream behavior are
             identical either way.
           example: ENDPOINT
+        schemaSource:
+          type: string
+          readOnly: true
+          enum: [inline, url, file, introspection]
+          description: |
+            The exact source the current schema was declared with on the create or
+            last successful update — a finer-grained sibling of `introspectionMode`,
+            which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+            Resupply this value on a subsequent `PUT` that isn't meant to change the
+            schema, together with material satisfying that same source (`sdl` for
+            `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+            since `upstream.main.url` already suffices) — omitting it, or resupplying
+            a source without its required field, is a structural `400`, not a no-op.
+          example: introspection
         policies:
           type: array
           description: |

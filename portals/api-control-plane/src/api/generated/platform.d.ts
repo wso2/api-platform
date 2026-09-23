@@ -3954,6 +3954,19 @@ export interface components {
              */
             readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
             /**
+             * @description The exact source the current schema was declared with on the create or
+             *     last successful update — a finer-grained sibling of `introspectionMode`,
+             *     which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+             *     Resupply this value on a subsequent `PUT` that isn't meant to change the
+             *     schema, together with material satisfying that same source (`sdl` for
+             *     `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+             *     since `upstream.main.url` already suffices) — omitting it, or resupplying
+             *     a source without its required field, is a structural `400`, not a no-op.
+             * @example introspection
+             * @enum {string}
+             */
+            readonly schemaSource?: "inline" | "url" | "file" | "introspection";
+            /**
              * @description List of policies to be applied on the API. Reused unmodified from
              *     REST APIs. A GraphQL API has no per-operation list to add an
              *     explicit `OPTIONS` entry to the way a REST API does, so when a

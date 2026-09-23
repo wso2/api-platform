@@ -278,6 +278,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 			Context:           &context,
 			SDL:               resolution.SDL,
 			IntrospectionMode: resolution.IntrospectionMode,
+			SchemaSource:      resolution.SchemaSource,
 			Upstream:          *upstream,
 			Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 			SubscriptionPlans: subscriptionPlans,
@@ -323,7 +324,16 @@ func (s *GraphQLAPIService) ValidateSchema(req api.ValidateGraphQLSchemaRequest)
 type graphQLSchemaResolution struct {
 	SDL               string
 	IntrospectionMode string
-	Resolved          bool
+	// SchemaSource is the effective schemaSource this resolution ran under —
+	// the request's own declared value, or the inferred one when the request
+	// left it blank (see the inference block below). Set on every return path
+	// past inference, including a Resolved=false one: Create persists it
+	// unconditionally (the caller's declared intent still matters even when
+	// this attempt didn't produce usable SDL), while Update only adopts it
+	// when Resolved is true, falling back to the existing stored value
+	// otherwise — mirroring how it already treats SDL/IntrospectionMode.
+	SchemaSource string
+	Resolved     bool
 	// SDLErrors is set when resolution failed on SDL text the caller
 	// effectively authored: schemaSource inline/file always, and url once its
 	// fetch itself succeeded. Never set for a url fetch failure or an
@@ -434,14 +444,14 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 	case string(api.GraphQLAPISchemaSourceInline), string(api.GraphQLAPISchemaSourceFile):
 		if issues := validateGraphQLSDL(suppliedSDL); len(issues) > 0 {
 			s.slogger.Warn("Supplied GraphQL SDL failed validation", "schemaSource", schemaSource, "issues", issues)
-			return graphQLSchemaResolution{SDLErrors: issues}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource, SDLErrors: issues}, nil
 		}
-		return graphQLSchemaResolution{SDL: suppliedSDL, IntrospectionMode: "SDL", Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: suppliedSDL, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	case string(api.GraphQLAPISchemaSourceUrl):
 		fetched, err := utils.FetchOpenAPISpecFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes)
 		if err != nil {
 			s.slogger.Warn("Failed to fetch GraphQL SDL from sdlUrl", "error", err)
-			return graphQLSchemaResolution{}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
 		fetched = strings.TrimSpace(fetched)
 		// The fetch itself succeeded — this is a parse failure on the text it
@@ -449,16 +459,16 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 		// doc comment); only the fetch failure above stays sterile.
 		if issues := validateGraphQLSDL(fetched); len(issues) > 0 {
 			s.slogger.Warn("Fetched GraphQL SDL failed validation", "issues", issues)
-			return graphQLSchemaResolution{SDLErrors: issues}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource, SDLErrors: issues}, nil
 		}
-		return graphQLSchemaResolution{SDL: fetched, IntrospectionMode: "SDL", Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: fetched, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	default: // introspection
 		derived, err := fetchAndConvertGraphQLSchema(upstream.Main.URL)
 		if err != nil {
 			s.slogger.Warn("GraphQL introspection failed", "error", err)
-			return graphQLSchemaResolution{}, nil
+			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
-		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", SchemaSource: schemaSource, Resolved: true}, nil
 	}
 }
 
@@ -674,10 +684,12 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	// Unlike Create, a failed resolution on update keeps the previously-stored
 	// schema instead of blanking it out — the whole point of best-effort
 	// resolution is that a metadata-only edit (or a transient upstream issue)
-	// shouldn't destroy a schema that was working before this request.
-	sdl, introspectionMode := existing.Configuration.SDL, existing.Configuration.IntrospectionMode
+	// shouldn't destroy a schema that was working before this request. The
+	// stored schemaSource follows the same rule: it only changes alongside a
+	// successful re-resolution, never left dangling out of sync with SDL.
+	sdl, introspectionMode, storedSchemaSource := existing.Configuration.SDL, existing.Configuration.IntrospectionMode, existing.Configuration.SchemaSource
 	if resolution.Resolved {
-		sdl, introspectionMode = resolution.SDL, resolution.IntrospectionMode
+		sdl, introspectionMode, storedSchemaSource = resolution.SDL, resolution.IntrospectionMode, resolution.SchemaSource
 	}
 
 	var subscriptionPlans []string
@@ -699,6 +711,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		Context:           &context,
 		SDL:               sdl,
 		IntrospectionMode: introspectionMode,
+		SchemaSource:      storedSchemaSource,
 		Upstream:          *upstream,
 		Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 		SubscriptionPlans: subscriptionPlans,

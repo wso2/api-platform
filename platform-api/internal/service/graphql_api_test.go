@@ -1603,6 +1603,86 @@ func TestGraphQLUpdate_SDLUrlFetchFailure_PreservesExistingSchema(t *testing.T) 
 	}
 }
 
+// TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospection
+// pins the fix for schemaSource not being persisted/echoed back: a caller
+// editing only metadata (displayName here) on an inline-sourced API resupplies
+// schemaSource="inline" plus the unchanged sdl — exactly what GraphQLAPIDetail
+// now lets a caller read back and resupply — and Update must resolve that
+// through the SDL path, leaving Configuration.SDL/IntrospectionMode/
+// SchemaSource unchanged and never touching upstream.main.url at all. Before
+// this fix there was nothing faithful to resupply, so a caller either forced
+// "introspection" (silently re-deriving the schema from upstream, or 400ing
+// if upstream isn't a literal reachable URL) or omitted schemaSource entirely
+// (inferring "introspection" by default) — both wrong for a schema that was
+// never meant to be introspected.
+func TestGraphQLUpdate_ResupplyInlineSchemaSource_MetadataOnlyEdit_SkipsIntrospection(t *testing.T) {
+	introspectionCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		introspectionCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	repo := &mockGraphQLAPIRepo{}
+	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
+	svc := newGraphQLTestService(repo, project)
+
+	createSchemaSource := api.CreateGraphQLAPIRequestSchemaSourceInline
+	createReq := &api.CreateGraphQLAPIRequest{
+		DisplayName:  "Countries GraphQL API",
+		Context:      graphQLStrPtr("/countries"),
+		Version:      "v1.0",
+		ProjectId:    "project-uuid",
+		SchemaSource: &createSchemaSource,
+		Sdl:          graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
+		},
+	}
+	if _, err := svc.Create("org-1", "creator-uuid", createReq); err != nil {
+		t.Fatalf("unexpected error on create: %v", err)
+	}
+	if repo.created.Configuration.SchemaSource != "inline" {
+		t.Fatalf("expected the created API to persist schemaSource inline, got %q", repo.created.Configuration.SchemaSource)
+	}
+	stored := repo.created
+
+	repo.getByHandleFunc = func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+		return stored, nil
+	}
+
+	updateSchemaSource := api.GraphQLAPISchemaSourceInline
+	updateReq := &api.GraphQLAPI{
+		DisplayName:  "Countries GraphQL API (renamed)",
+		Context:      graphQLStrPtr("/countries"),
+		Version:      "v1.0",
+		SchemaSource: &updateSchemaSource,
+		Sdl:          graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{Url: graphQLStrPtr(server.URL)},
+		},
+	}
+	if _, err := svc.Update("org-1", stored.Handle, "updater-uuid", updateReq); err != nil {
+		t.Fatalf("unexpected error on update: %v", err)
+	}
+
+	if introspectionCalls != 0 {
+		t.Errorf("expected no introspection call for a resupplied inline schemaSource, got %d", introspectionCalls)
+	}
+	if repo.updated.Configuration.SDL != validCountriesGraphQLSDL {
+		t.Errorf("expected Configuration.SDL to remain unchanged, got %q", repo.updated.Configuration.SDL)
+	}
+	if repo.updated.Configuration.IntrospectionMode != "SDL" {
+		t.Errorf("expected Configuration.IntrospectionMode to remain SDL, got %q", repo.updated.Configuration.IntrospectionMode)
+	}
+	if repo.updated.Configuration.SchemaSource != "inline" {
+		t.Errorf("expected Configuration.SchemaSource to remain inline, got %q", repo.updated.Configuration.SchemaSource)
+	}
+	if repo.updated.Name != "Countries GraphQL API (renamed)" {
+		t.Errorf("expected the displayName edit to still apply, got %q", repo.updated.Name)
+	}
+}
+
 func TestGraphQLUpdate_DPOriginated_Blocked(t *testing.T) {
 	stored := &model.GraphQLAPI{
 		ID:             "some-uuid",
