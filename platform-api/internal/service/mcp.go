@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -230,14 +231,15 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		Configuration: model.MCPProxyConfiguration{
-			Name:         req.DisplayName,
-			Version:      req.Version,
-			Context:      req.Context,
-			Vhost:        req.Vhost,
-			SpecVersions: mcpSpecVersionsFromRequest(req),
-			Upstream:     *mapUpstreamAPIToModel(req.Upstream),
-			Policies:     mapMCPPoliciesAPIToModel(req.Policies),
-			Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
+			Name:                 req.DisplayName,
+			Version:              req.Version,
+			Context:              req.Context,
+			Vhost:                req.Vhost,
+			SpecVersions:         mcpSpecVersionsFromRequest(req),
+			Upstream:             *mapUpstreamAPIToModel(req.Upstream),
+			Policies:             mapMCPPoliciesAPIToModel(req.Policies),
+			Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
+			UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
 		},
 		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
@@ -433,14 +435,15 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	existing.UpdatedBy = updatedBy
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.Configuration = model.MCPProxyConfiguration{
-		Name:         req.DisplayName,
-		Version:      req.Version,
-		Context:      req.Context,
-		Vhost:        req.Vhost,
-		SpecVersions: mcpSpecVersionsFromRequest(req),
-		Upstream:     *mapUpstreamAPIToModel(req.Upstream),
-		Policies:     mapMCPPoliciesAPIToModel(req.Policies),
-		Capabilities: mapMcpCapabilitiesAPIToModel(req.Capabilities),
+		Name:                 req.DisplayName,
+		Version:              req.Version,
+		Context:              req.Context,
+		Vhost:                req.Vhost,
+		SpecVersions:         mcpSpecVersionsFromRequest(req),
+		Upstream:             *mapUpstreamAPIToModel(req.Upstream),
+		Policies:             mapMCPPoliciesAPIToModel(req.Policies),
+		Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
+		UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
 	}
 
 	// Preserve existing upstream auth credential if not provided in update request
@@ -682,6 +685,16 @@ func mcpSpecVersionsFromRequest(req *api.MCPProxy) []string {
 	return model.FoldSpecVersions(versions, singleVersion)
 }
 
+// upstreamSpecVersionsFromRequest takes the revisions the caller says the upstream reported,
+// stored as given: narrowing them to what this platform serves would make the record a claim
+// about us rather than about the server.
+func upstreamSpecVersionsFromRequest(req *api.MCPProxy) []string {
+	if req.UpstreamMcpSpecVersions == nil {
+		return nil
+	}
+	return slices.Clone(*req.UpstreamMcpSpecVersions)
+}
+
 // mcpSpecVersionsToAPI returns the stored list for the API response, reading a pre-change
 // row's deprecated scalar when the list is absent. Returns nil when neither is set.
 func mcpSpecVersionsToAPI(cfg model.MCPProxyConfiguration) *[]string {
@@ -711,15 +724,16 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Vhost:       m.Configuration.Vhost,
 		// The deprecated field is never returned; a pre-change row's scalar surfaces inside
 		// the list instead, converted on read and never written back.
-		McpSpecVersion:  nil,
-		McpSpecVersions: mcpSpecVersionsToAPI(m.Configuration),
-		Upstream:        mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
-		Policies:        mapMCPPoliciesModelToAPI(m.Configuration.Policies),
-		Capabilities:    mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
-		ReadOnly:        utils.BoolPtr(m.Origin == constants.OriginDP),
-		CreatedAt:       utils.TimePtr(m.CreatedAt),
-		UpdatedAt:       utils.TimePtr(m.UpdatedAt),
-		UpdatedBy:       utils.StringPtrIfNotEmpty(m.UpdatedBy),
+		McpSpecVersion:          nil,
+		McpSpecVersions:         mcpSpecVersionsToAPI(m.Configuration),
+		UpstreamMcpSpecVersions: utils.StringSlicePtr(m.Configuration.UpstreamSpecVersions),
+		Upstream:                mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
+		Policies:                mapMCPPoliciesModelToAPI(m.Configuration.Policies),
+		Capabilities:            mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
+		ReadOnly:                utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedAt:               utils.TimePtr(m.CreatedAt),
+		UpdatedAt:               utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:               utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
 	if associated := mapAssociatedGatewaysModelToAPI(m.AssociatedGateways); associated != nil {
 		out.AssociatedGateways = associated

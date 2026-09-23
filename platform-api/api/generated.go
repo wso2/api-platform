@@ -1988,6 +1988,9 @@ type MCPProxy struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
+	// UpstreamMcpSpecVersions MCP specification versions the upstream server reported when it was discovered by /mcp-proxies/fetch-server-info. A snapshot of what the server said, recorded for reference: it restricts nothing and is not sent to a gateway.
+	UpstreamMcpSpecVersions *[]string `json:"upstreamMcpSpecVersions,omitempty" yaml:"upstreamMcpSpecVersions,omitempty"`
+
 	// Version Semantic version of the MCP proxy
 	Version string `binding:"required" json:"version" yaml:"version"`
 
