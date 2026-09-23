@@ -111,6 +111,31 @@ func (t *LLMProviderTransformer) resolvePolicyVersionOverride(name string, overr
 	return "", fmt.Errorf("policy '%s' version '%s' was requested, but this gateway build only has '%s' loaded", name, trimmed, resolved)
 }
 
+// loopbackUpstreamDefinition builds the named upstream definition a policy can
+// redirect to: the router's own listener, with the provider's context kept as
+// the base path so the request is rewritten onto that provider's route rather
+// than losing it. One builder for every attachment, primary included, so the
+// two cannot drift apart.
+func loopbackUpstreamDefinition(name, providerContext string, listenerPort int) api.UpstreamDefinition {
+	normalizedCtx := strings.TrimRight(providerContext, "/")
+	if normalizedCtx != "" && !strings.HasPrefix(normalizedCtx, "/") {
+		normalizedCtx = "/" + normalizedCtx
+	}
+
+	url := fmt.Sprintf("%s://%s:%d", constants.SchemeHTTP, constants.LocalhostIP, listenerPort)
+	def := api.UpstreamDefinition{
+		Name: name,
+		Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: url}},
+	}
+	if normalizedCtx != "" && normalizedCtx != constants.BASE_PATH {
+		def.BasePath = &normalizedCtx
+	}
+	return def
+}
+
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
@@ -118,13 +143,22 @@ func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.Sto
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
 	output *api.RestAPI) (*api.RestAPI, error) {
 
-	// Step 1: Retrieve and validate provider reference
-	provider, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), proxy.Spec.Provider.Id)
+	// Step 0: Normalise whichever provider shape arrived into one attachment
+	// list, primary first. Nothing below this line looks at the raw shapes, so
+	// the canonical and legacy forms cannot diverge.
+	attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
+		return nil, err
+	}
+	primary := attachments[0]
+
+	// Step 1: Retrieve and validate provider reference
+	provider, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), primary.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up provider '%s': %w", primary.Id, err)
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", proxy.Spec.Provider.Id)
+		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", primary.Id)
 	}
 
 	// Step 1.5: Get provider's template and extract template params
@@ -133,9 +167,25 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
 	}
 
-	tmpl, err := t.getTemplateByHandle(providerConfig.Spec.Template)
+	// The template that drives extraction is a property of the PROXY, not of
+	// whichever provider happens to be primary: it describes the wire format
+	// clients send, so promoting a different provider must not move the model
+	// and token locations every attached policy reads. A proxy
+	// that declares no inbound interface falls back to the primary provider's
+	// own template, which is what every existing proxy does.
+	templateHandle := providerConfig.Spec.Template
+	declaredInbound := false
+	if proxy.Spec.InboundTemplate != nil && strings.TrimSpace(*proxy.Spec.InboundTemplate) != "" {
+		templateHandle = strings.TrimSpace(*proxy.Spec.InboundTemplate)
+		declaredInbound = true
+	}
+
+	tmpl, err := t.getTemplateByHandle(templateHandle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", providerConfig.Spec.Template, err)
+		if declaredInbound {
+			return nil, fmt.Errorf("failed to retrieve inbound interface template '%s': %w", templateHandle, err)
+		}
+		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", templateHandle, err)
 	}
 
 	// Step 2: Configure API metadata and basic spec
@@ -171,20 +221,25 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// per-provider loopback upstream auth (Step 3.5).
 	additionalValuePrefixByID := map[string]string{}
 
-	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
-	// exposed as a named UpstreamDefinition so policies can route to it via
-	// the loopback context. The primary provider above remains the default.
-	if proxy.Spec.AdditionalProviders != nil && len(*proxy.Spec.AdditionalProviders) > 0 {
-		seen := map[string]bool{proxy.Spec.Provider.Id: true}
-		var defs []api.UpstreamDefinition
-		for _, ap := range *proxy.Spec.AdditionalProviders {
+	// Step 3.1: Expose attached providers as named UpstreamDefinitions so
+	// policies can route to them via the loopback context.
+	//
+	// Every attached provider gets a definition, the primary included. The
+	// primary remains the default upstream — a definition does not replace that;
+	// it makes the provider *addressable by name*, which any policy selecting a
+	// provider needs. Deriving addressability from whether a provider happens to
+	// carry a transformer made routing depend on translation, and left a
+	// selected provider without one unreachable.
+	var defs []api.UpstreamDefinition
+	defs = append(defs, loopbackUpstreamDefinition(primary.EffectiveName(), providerContext, t.routerConfig.ListenerPort))
+
+	if len(attachments) > 1 {
+		seen := map[string]bool{primary.EffectiveName(): true}
+		for _, ap := range attachments[1:] {
 			if ap.Id == "" {
 				return nil, fmt.Errorf("additionalProviders entry must have a non-empty id")
 			}
-			name := ap.Id
-			if ap.As != nil && *ap.As != "" {
-				name = *ap.As
-			}
+			name := ap.EffectiveName()
 			if seen[name] {
 				return nil, fmt.Errorf("duplicate upstream name '%s' in additionalProviders (must be unique within the proxy and not collide with the primary provider id)", name)
 			}
@@ -213,20 +268,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if normalizedAddCtx != "" && !strings.HasPrefix(normalizedAddCtx, "/") {
 				normalizedAddCtx = "/" + normalizedAddCtx
 			}
-			addURL := fmt.Sprintf("%s://%s:%d",
-				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort)
-			def := api.UpstreamDefinition{
-				Name: name,
-				Upstreams: []struct {
-					Url    string `json:"url" yaml:"url"`
-					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
-				}{{Url: addURL}},
-			}
-			if normalizedAddCtx != "" && normalizedAddCtx != constants.BASE_PATH {
-				def.BasePath = &normalizedAddCtx
-			}
-			defs = append(defs, def)
+			defs = append(defs, loopbackUpstreamDefinition(name, normalizedAddCtx, t.routerConfig.ListenerPort))
 		}
+	}
+
+	if len(defs) > 0 {
 		spec.UpstreamDefinitions = &defs
 	}
 
@@ -268,45 +314,39 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// conditional policies so they run only when their provider is selected.
 	var upstreamAuthPolicies []api.Policy
 	var transformerPolicies []api.Policy
-	if proxy.Spec.Provider.Auth != nil {
-		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, apiKeyAuthValuePrefix(providerConfig.Spec.GlobalPolicies), "provider.auth")
-		if err != nil {
-			return nil, err
-		}
-		// "other"/"none" auth yield no policy - nothing to attach.
-		if pol != nil {
-			condition := selectedProviderExecutionCondition(proxy.Spec.Provider.Id, true)
-			pol.ExecutionCondition = &condition
-			upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
-		}
-	}
-	if proxy.Spec.AdditionalProviders != nil {
-		for _, ap := range *proxy.Spec.AdditionalProviders {
-			name := ap.Id
-			if ap.As != nil && *ap.As != "" {
-				name = *ap.As
-			}
+	// Every attachment is treated alike — the primary differs only in its
+	// execution condition, which is also true when no provider was selected.
+	for _, ap := range attachments {
+		name := ap.EffectiveName()
 
-			if ap.Auth != nil {
-				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, additionalValuePrefixByID[ap.Id], fmt.Sprintf("additionalProviders[%s].auth", name))
-				if err != nil {
-					return nil, err
-				}
-				// "other"/"none" auth yield no policy - nothing to attach.
-				if pol != nil {
-					condition := selectedProviderExecutionCondition(name, false)
-					pol.ExecutionCondition = &condition
-					upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
-				}
-			}
+		valuePrefix := additionalValuePrefixByID[ap.Id]
+		authField := fmt.Sprintf("additionalProviders[%s].auth", name)
+		transformerField := fmt.Sprintf("additionalProviders[%s].transformer", name)
+		if ap.IsPrimary {
+			valuePrefix = apiKeyAuthValuePrefix(providerConfig.Spec.GlobalPolicies)
+			authField = "provider.auth"
+			transformerField = "provider.transformer"
+		}
 
-			if ap.Transformer != nil {
-				pol, err := t.proxyTransformerPolicy(ap.Transformer, name, fmt.Sprintf("additionalProviders[%s].transformer", name))
-				if err != nil {
-					return nil, err
-				}
-				transformerPolicies = append(transformerPolicies, *pol)
+		if ap.Auth != nil {
+			pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, valuePrefix, authField)
+			if err != nil {
+				return nil, err
 			}
+			// "other"/"none" auth yield no policy - nothing to attach.
+			if pol != nil {
+				condition := selectedProviderExecutionCondition(name, ap.IsPrimary)
+				pol.ExecutionCondition = &condition
+				upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+			}
+		}
+
+		if ap.Transformer != nil {
+			pol, err := t.proxyTransformerPolicy(ap.Transformer, name, transformerField, ap.IsPrimary)
+			if err != nil {
+				return nil, err
+			}
+			transformerPolicies = append(transformerPolicies, *pol)
 		}
 	}
 
@@ -931,11 +971,16 @@ func (t *LLMProviderTransformer) proxyInternalLoopbackMarkerPolicy() (*api.Polic
 	}, nil
 }
 
-// proxyTransformerPolicy builds a translator policy for an additional provider's
-// inline transformer. The provider's upstream name is passed to the translator
-// as its "providerId" param so it targets the correct upstream, and gates
-// execution so the translator runs only when this provider is selected.
-func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
+// proxyTransformerPolicy builds the conditional translator policy for one
+// attached provider. The provider's effective name is passed to the translator
+// as its "providerId" param, which the translator uses both to target the
+// upstream and to decide whether it runs at all.
+//
+// includeDefault carries the primary provider's semantics: its condition is
+// also true when no provider was selected, so the primary's transformer runs on
+// an unrouted request and stands down when another provider was chosen.
+func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string,
+	includeDefault bool) (*api.Policy, error) {
 	if transformer == nil {
 		return nil, nil
 	}
@@ -954,7 +999,7 @@ func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProx
 	}
 	params["providerId"] = name
 
-	condition := selectedProviderExecutionCondition(name, false)
+	condition := selectedProviderExecutionCondition(name, includeDefault)
 	return &api.Policy{
 		Name:               transformer.Type,
 		Version:            transformer.Version,

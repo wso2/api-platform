@@ -1,0 +1,29 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "LlmProxy",
+  "metadata": { "name": "compat-multi-provider" },
+  "spec": {
+    "displayName": "compat-multi-provider",
+    "version": "v1.0",
+    "context": "/compat-multi",
+    "provider": {
+      "id": "openai-provider",
+      "auth": { "type": "api-key", "header": "Authorization", "value": "Bearer primary" }
+    },
+    "additionalProviders": [
+      {
+        "id": "anthropic-provider",
+        "auth": { "type": "api-key", "header": "X-Provider-Key", "value": "anthropic-loopback" }
+      }
+    ],
+    "policies": [
+      {
+        "name": "llm-header-router",
+        "version": "v1",
+        "paths": [
+          { "path": "/chat/completions", "methods": ["POST"], "params": { "defaultProvider": "openai-provider" } }
+        ]
+      }
+    ]
+  }
+}

@@ -339,7 +339,7 @@ func TestListLLMProxiesWithData(t *testing.T) {
 			Spec: api.LLMProxyConfigData{
 				DisplayName: "LLM Proxy 1",
 				Version:     "1.0.0",
-				Provider: api.LLMProxyProvider{
+				Provider: &api.LLMProxyProvider{
 					Id: "openai-provider",
 				},
 			},
