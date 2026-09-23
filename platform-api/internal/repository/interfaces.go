@@ -395,6 +395,21 @@ type APIPortalRepository interface {
 	// GET /api-publications rollup, which lists only these; a portal still
 	// provisioning or failed is absent entirely.
 	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
+	// UpdateStatus mutates only the status column for one portal; used by
+	// the cloud plugin's provisioning poller for pending -> active/failed
+	// transitions without touching the whitelisted mutable-metadata fields
+	// Update covers.
+	UpdateStatus(portalID, orgUUID, updatedBy, status string) error
+	// GetStatusByHandle returns just the status column for one portal.
+	GetStatusByHandle(handle, orgUUID string) (string, error)
+	// ListStatusesByOrg returns handle -> status for every portal in the org
+	// so the plugin's List projection can stamp status per row without an
+	// N+1 fanout.
+	ListStatusesByOrg(orgUUID string) (map[string]string, error)
+	// ListByStatus returns every portal across every org whose status matches.
+	// Cross-org by design: the cloud plugin's provisioning poller resumes
+	// tracking on startup without an org list.
+	ListByStatus(status string) ([]*model.APIPortal, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
