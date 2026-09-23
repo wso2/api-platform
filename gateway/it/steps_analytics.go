@@ -397,6 +397,10 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName 
 // *values* are asserted here rather than their absence — a real operation appearing on
 // a card fetch is precisely the leak this step guards against, and exempting the keys
 // without checking what is in them would let it through.
+//
+// agent_id and agent_name are exempt too: they are the callee agent's identity, which
+// the publisher sets on every Agent event whatever its shape. Their values are generated
+// per deployment, so they are asserted non-empty rather than pinned.
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldName string) error {
 	block, err := a.a2aAnalyticsBlock()
 	if err != nil {
@@ -411,9 +415,18 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldNam
 		}
 	}
 
+	identity := map[string]struct{}{"agent_id": {}, "agent_name": {}}
+	for name := range identity {
+		if got, ok := block[name]; !ok || fmt.Sprintf("%v", got) == "" {
+			return fmt.Errorf("expected the A2A block to carry a non-empty agent identity field '%s', but it carries '%v'",
+				name, got)
+		}
+	}
+
 	extra := make(map[string]interface{})
 	for name, value := range block {
-		if _, isRequired := required[name]; !isRequired && name != fieldName {
+		_, isIdentity := identity[name]
+		if _, isRequired := required[name]; !isRequired && !isIdentity && name != fieldName {
 			extra[name] = value
 		}
 	}

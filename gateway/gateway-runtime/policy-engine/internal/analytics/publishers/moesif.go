@@ -318,6 +318,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 		if a2aAnalytics, ok := event.Properties[a2aAnalyticsProperty]; ok && a2aAnalytics != nil {
 			if typed, ok := a2aAnalytics.(*dto.A2AAnalytics); ok {
 				a2aBlock = a2aEventBlock(typed)
+				setA2AAgentIdentity(a2aBlock, event.API)
 			} else {
 				slog.Warn("A2A analytics property cannot be converted to the required format")
 			}

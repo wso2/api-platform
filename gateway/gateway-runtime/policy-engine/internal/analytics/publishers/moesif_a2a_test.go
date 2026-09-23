@@ -326,3 +326,40 @@ func TestA2AEventBlock_StreamingTimingsAreCarried(t *testing.T) {
 	assert.EqualValues(t, 120, *block.Response.TimeToFirstEventMs)
 	assert.EqualValues(t, 8500, *block.Response.StreamDurationMs)
 }
+
+// The agent id and name come from the event's API identity, not the A2A dimensions:
+// for an Agent event the API is the callee agent.
+func TestSetA2AAgentIdentity_FromEventAPI(t *testing.T) {
+	block := a2aEventBlock(&dto.A2AAnalytics{RequestType: "operation", Operation: "SendMessage"})
+	setA2AAgentIdentity(block, &dto.ExtendedAPI{API: dto.API{APIID: "agent-42", APIName: "Weather Agent"}})
+
+	require.NotNil(t, block.AgentId)
+	require.NotNil(t, block.AgentName)
+	assert.Equal(t, "agent-42", *block.AgentId)
+	assert.Equal(t, "Weather Agent", *block.AgentName)
+}
+
+// An absent or out-of-bound identity is dropped rather than sent, like any other opaque
+// identifier, so one bad field cannot get the whole event rejected at ingest.
+func TestSetA2AAgentIdentity_DropsAbsentAndOutOfBoundValues(t *testing.T) {
+	block := a2aEventBlock(&dto.A2AAnalytics{RequestType: "operation"})
+	setA2AAgentIdentity(block, &dto.ExtendedAPI{API: dto.API{
+		APIID:   strings.Repeat("a", moesifA2AMaxIDLen+1),
+		APIName: "bad\nname",
+	}})
+	assert.Nil(t, block.AgentId)
+	assert.Nil(t, block.AgentName)
+
+	block = a2aEventBlock(&dto.A2AAnalytics{RequestType: "operation"})
+	setA2AAgentIdentity(block, &dto.ExtendedAPI{})
+	assert.Nil(t, block.AgentId)
+	assert.Nil(t, block.AgentName)
+}
+
+// Neither a missing block nor a missing API may panic the publisher.
+func TestSetA2AAgentIdentity_NilSafe(t *testing.T) {
+	setA2AAgentIdentity(nil, &dto.ExtendedAPI{})
+	block := a2aEventBlock(&dto.A2AAnalytics{})
+	setA2AAgentIdentity(block, nil)
+	assert.Nil(t, block.AgentId)
+}

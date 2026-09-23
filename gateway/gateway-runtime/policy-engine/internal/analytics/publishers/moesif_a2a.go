@@ -18,7 +18,8 @@
 package publishers
 
 // Translation of the gateway's own Agent analytics envelope into Moesif's first-class
-// `a2a` event block, which moesifapi-go v1.2.0 added to EventModel.
+// `a2a` event block, which moesifapi-go v1.2.0 added to EventModel (v1.2.1 added the
+// target agent's id and name to it).
 //
 // Until that version Moesif had no A2A schema, so the envelope travelled as a metadata
 // key — free-form JSON, queryable only as custom metadata. The block is now part of the
@@ -160,6 +161,21 @@ func a2aEventBlock(a2a *dto.A2AAnalytics) *models.A2aModel {
 		Outcome:         moesifEnum(a2a.Outcome, moesifA2AOutcomes, "UNKNOWN"),
 		FailureOrigin:   moesifEnum(a2a.FailureOrigin, moesifA2AFailureOrigins, "UNKNOWN"),
 	}
+}
+
+// setA2AAgentIdentity fills the block's agent id and name from the event's API identity.
+//
+// They are not A2A dimensions — an Agent's id and name are the event's API id and name,
+// which the collector carries on every event regardless of kind — so they are not
+// duplicated onto dto.A2AAnalytics. Moesif carries them inside the block anyway, so an
+// A2A dashboard can group by the callee agent without joining against metadata. Both are
+// bounded like any other opaque identifier: dropped, never truncated.
+func setA2AAgentIdentity(block *models.A2aModel, api *dto.ExtendedAPI) {
+	if block == nil || api == nil {
+		return
+	}
+	block.AgentId = moesifA2AOpaqueID(api.APIID)
+	block.AgentName = moesifA2AOpaqueID(api.APIName)
 }
 
 // moesifA2ARequest maps the caller-supplied side. Nil when the caller supplied none of
