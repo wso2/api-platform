@@ -29,6 +29,9 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  */
 export const AI_WORKSPACE_SIDEBAR_SLOT = 'sidebar.main';
 
+/** Cloud-only controls rendered in the header immediately before the theme toggle. */
+export const AI_WORKSPACE_HEADER_ACTIONS_SLOT = 'header.actions';
+
 /**
  * A host-injected feature: a sidebar item plus its route. `path` is relative
  * to the same route group the built-in pages live in (e.g. `"billing"`, not
@@ -44,6 +47,10 @@ export type AIWorkspaceExtension = SlotEntry & {
   path: string;
   label: string;
   icon?: ReactNode;
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+};
+
+export type AIWorkspaceHeaderAction = SlotEntry & {
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
@@ -122,7 +129,10 @@ export const hiddenRegionsOf = (
   entries.flatMap((entry) => ('hides' in entry ? (entry.hides ?? []) : []));
 
 /** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
-export type AIWorkspaceCloudEntry = AIWorkspaceExtension | AIWorkspacePageOverride;
+export type AIWorkspaceCloudEntry =
+  | AIWorkspaceExtension
+  | AIWorkspacePageOverride
+  | AIWorkspaceHeaderAction;
 
 export function ExtensionsProvider({
   extensions,

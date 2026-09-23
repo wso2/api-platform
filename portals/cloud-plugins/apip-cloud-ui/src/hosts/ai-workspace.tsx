@@ -25,7 +25,9 @@ import {
   DeployFeature,
   ProviderDeployFeature,
 } from "@wso2-enterprise/apip-cloud-ui-deploy";
+import { TrialStatusFeature } from "@wso2-enterprise/apip-cloud-ui-trial-status";
 import {
+  AI_WORKSPACE_HEADER_ACTIONS_SLOT,
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_INSIGHTS_SLOT,
@@ -35,6 +37,7 @@ import {
   type AIWorkspaceCloudEntry,
   type AIWorkspaceExtension,
 } from "../../../../ai-workspace/src/extensions";
+import type { AIWorkspaceHostPort } from "../../../../ai-workspace/src/hostPort";
 import {
   defineCloudPlugin,
   getCloudExtensions,
@@ -81,6 +84,18 @@ const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
 export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
   [
     defineCloudPlugin({
+      id: "trial-status",
+      version: "0.1.0",
+      extensions: [
+        {
+          id: "trial-status",
+          slot: AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+          order: 10,
+          render: () => <TrialStatusFeature />,
+        },
+      ],
+    }),
+    defineCloudPlugin({
       id: "environments",
       version: "0.1.0",
       extensions: [
@@ -91,7 +106,9 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           path: "environments",
           label: "Environments",
           icon: <Boxes size={20} />,
-          render: (port) => <EnvironmentsFeature port={port} />,
+          render: (port: AIWorkspaceHostPort) => (
+            <EnvironmentsFeature port={port} />
+          ),
         },
       ],
     }),
@@ -108,7 +125,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           icon: <Workflow size={20} />,
           // One scope-adaptive "Pipelines" item: the project binding view when a
           // project is selected, the organization list/create/edit view otherwise.
-          render: (port) =>
+          render: (port: AIWorkspaceHostPort) =>
             port.projectHandle ? (
               <ProjectPipelinesFeature port={port} />
             ) : (
@@ -134,7 +151,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           label: "AI Gateways",
           icon: <Network size={20} />,
           hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
-          render: (port) => (
+          render: (port: AIWorkspaceHostPort) => (
             <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />
           ),
         },
@@ -149,7 +166,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           slot: AI_WORKSPACE_INSIGHTS_SLOT,
           order: 0,
           // Same Moesif ai-overview URL at org and project — no project_id filter.
-          render: (port) => (
+          render: (port: AIWorkspaceHostPort) => (
             <InsightsFeature port={port} embedProfile="ai-workspace" />
           ),
         },
