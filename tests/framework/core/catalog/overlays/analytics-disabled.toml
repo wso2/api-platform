@@ -1,0 +1,4 @@
+# Disables gateway analytics collection globally, overriding the shared gateway-analytics
+# overlay, so a block can verify behaviour when no analytics events are published.
+[analytics]
+enabled = false
