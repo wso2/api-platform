@@ -88,8 +88,9 @@ const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
  * `/managed-api-portals` resource via the host port; SaaS-only, distinct from
  * the OSS `/api-portals` registry (SaaS lifecycle vs plain registry).
  *
- * `insights` registers org/project sidebar Moesif embeds and hides the
- * built-in Insights parent outside API scope when loaded. Gated on
+ * `insights` registers org/project sidebar Moesif embeds. Both claim the
+ * built-in Insights item, so it gives way wherever one of them is visible (org
+ * and project scope) and comes back inside an API. Gated on
  * `cloudProxyEnabled` via `filterExtensionsForRuntime`.
  */
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
@@ -243,6 +244,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       {
         id: 'organization-insights',
         slot: 'sidebar.organization',
+        claims: 'insights',
         // Placed after managed-api-portals (60).
         order: 70,
         routePath: 'insights',
@@ -273,6 +275,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       {
         id: 'project-insights',
         slot: 'sidebar.project',
+        claims: 'insights',
         order: 60,
         routePath: 'insights',
         label: 'Insights',

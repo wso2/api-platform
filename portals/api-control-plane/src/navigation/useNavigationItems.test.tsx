@@ -212,14 +212,15 @@ describe('host-injected sidebar extensions', () => {
     expect(items.find((entry) => entry.id === settingsTab.id)).toBeUndefined();
   });
 
-  it('hides built-in Insights outside API scope when cloud Insights extensions load', () => {
+  it('drops built-in Insights while a visible extension claims it', () => {
     const orgInsights: ApiControlPlaneExtension = {
       id: 'organization-insights',
+      claims: 'insights',
       label: 'Insights',
       level: 'organization',
       order: 60,
       group: 'api',
-      render: () => <div>Cloud Insights</div>,
+      render: () => <div>Extension Insights</div>,
       routePath: 'insights',
       slot: 'sidebar.organization',
       isVisible: (scope) => {
@@ -251,14 +252,15 @@ describe('host-injected sidebar extensions', () => {
     expect(insightsIndex).toBeLessThan(observabilityIndex);
   });
 
-  it('keeps built-in Insights submenu in API scope with cloud extensions loaded', () => {
-    const cloudInsights: ApiControlPlaneExtension = {
+  it('keeps built-in Insights in API scope, where the claiming extension is hidden', () => {
+    const extensionInsights: ApiControlPlaneExtension = {
       id: 'organization-insights',
+      claims: 'insights',
       label: 'Insights',
       level: 'organization',
       order: 60,
       group: 'api',
-      render: () => <div>Cloud Insights</div>,
+      render: () => <div>Extension Insights</div>,
       routePath: 'insights',
       slot: 'sidebar.organization',
       isVisible: (scope) => {
@@ -286,14 +288,14 @@ describe('host-injected sidebar extensions', () => {
     const items = itemsWithExtensions(
       atApi(),
       `/organizations/${ORG}/projects/${PROJECT}/apis/${API}/insights/api`,
-      [cloudInsights],
+      [extensionInsights],
     );
 
     expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
     expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
   });
 
-  it('keeps built-in Insights at org scope when no cloud Insights extensions are registered', () => {
+  it('keeps built-in Insights at org scope when no extension claims it', () => {
     const items = itemsAt(atOrg(), routes.organizationHome(ORG));
 
     expect(items.find((entry) => entry.id === 'insights')).toBeDefined();

@@ -58,29 +58,6 @@ const isScopeSatisfied = (
   return true;
 };
 
-const CLOUD_INSIGHTS_SIDEBAR_IDS = new Set([
-  'organization-insights',
-  'project-insights',
-]);
-
-const hasCloudInsightsSidebar = (extensions: readonly ApiControlPlaneExtension[]) =>
-  extensions.some(
-    (extension) =>
-      isSidebarExtension(extension) &&
-      CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id)
-  );
-
-/**
- * The built-in Insights submenu and the cloud org/project Insights extensions
- * both link to Insights outside API scope — keep only the cloud entries then.
- */
-const isBuiltinInsightsHiddenByCloudPlugin = (
-  definition: NavigationDefinition,
-  scope: ConsoleScope,
-  cloudInsightsLoaded: boolean
-) =>
-  definition.id === 'insights' && cloudInsightsLoaded && !scope.isApiScope;
-
 /**
  * Built-in ids that a *visible* sidebar extension has claimed (see
  * `ApiControlPlaneExtension.claims`).
@@ -235,7 +212,6 @@ export const useNavigationItems = (): NavigationItem[] => {
         : definition;
     });
     warnOnRegistryConflicts(extensions);
-    const cloudInsightsLoaded = hasCloudInsightsSidebar(extensions);
     const claimed = claimedBuiltinIds(extensions, scope);
     const combinedRegistry = [
       ...registryWithOverrides.filter((definition) => !claimed.has(definition.id)),
@@ -250,15 +226,6 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
-      if (
-        isBuiltinInsightsHiddenByCloudPlugin(
-          definition,
-          scope,
-          cloudInsightsLoaded
-        )
-      ) {
-        return undefined;
-      }
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
 
       const to = definition.to(scope);
