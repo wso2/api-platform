@@ -26,9 +26,10 @@
 # Mistral key).
 #
 # The provider example's api-key-auth policy expects the proxy to send the
-# issued provider loopback key as "Authorization: Bearer <key>" -- matching
-# the provider's own client-facing convention. LLMUpstreamAuth has no
-# separate valuePrefix field, so "Bearer " must be included in value here.
+# issued provider loopback key as "Authorization: Bearer <key>". The gateway
+# builds that loopback credential itself, prefixing the raw key below with the
+# provider's own api-key-auth valuePrefix ("Bearer ") -- so value here must be
+# the bare key, or the header would end up as "Authorization: Bearer Bearer <key>".
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -46,7 +47,7 @@ spec:
     auth:
       type: api-key
       header: Authorization
-      value: Bearer REPLACE_WITH_MISTRAL_PROVIDER_LOOPBACK_KEY
+      value: REPLACE_WITH_MISTRAL_PROVIDER_LOOPBACK_KEY
   policies:
     - name: openai-to-mistral
       version: v1
