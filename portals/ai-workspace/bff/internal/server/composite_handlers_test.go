@@ -312,3 +312,149 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		t.Errorf("message = %q, want %q", body["message"], "Invalid or expired credentials.")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// handlePublishMCPProxy integration tests
+// ---------------------------------------------------------------------------
+
+// buildPublishTestServer returns a BFF test server whose only route is the
+// composite publish endpoint, with a session cookie injected on every request
+// when jwt is non-empty.
+func buildPublishTestServer(t *testing.T, platformURL, jwt string) *httptest.Server {
+	t.Helper()
+
+	transport, err := proxy.NewTransport(
+		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
+		proxy.TLSClientOptions{SkipVerify: true},
+	)
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
+
+	cfg := &config.Config{
+		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
+	}
+	s := &Server{
+		cfg:          cfg,
+		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), paths.Proxy, transport),
+		refreshLocks: make(map[string]*refreshLock),
+	}
+
+	// Registered on a real mux so r.PathValue resolves the same wildcards the
+	// production route declares.
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish", s.handlePublishMCPProxy)
+
+	bffSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if jwt != "" {
+			r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name, Value: jwt})
+		}
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(bffSrv.Close)
+	return bffSrv
+}
+
+const publishTestPath = "/api/api-portals/acme-portal/mcp-proxies/my-proxy/publish"
+
+func TestHandlePublishMCPProxy_SavesDraftThenPublishes(t *testing.T) {
+	platform, calls := fakeControlPlane(t, map[string]struct {
+		status int
+		body   string
+	}{
+		"PUT /api/v0.9/api-portals/acme-portal/apis/mcp-proxy/my-proxy/draft":    {http.StatusOK, `{"displayName":"My Proxy"}`},
+		"POST /api/v0.9/api-portals/acme-portal/apis/mcp-proxy/my-proxy/publish": {http.StatusCreated, `{"status":"PUBLISHED"}`},
+	})
+
+	bff := buildPublishTestServer(t, platform.URL, "test-jwt")
+
+	draft := `{"displayName":"My Proxy","version":"1.0.0"}`
+	resp, err := http.Post(bff.URL+publishTestPath, "application/json", strings.NewReader(draft))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// The publish response, not the draft's, is what the browser gets back.
+	if resp.StatusCode != http.StatusCreated {
+		t.Errorf("status = %d, want 201", resp.StatusCode)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	if strings.TrimSpace(string(got)) != `{"status":"PUBLISHED"}` {
+		t.Errorf("body = %q, want the publish response", got)
+	}
+
+	if len(*calls) != 2 {
+		t.Fatalf("platform calls = %d, want 2", len(*calls))
+	}
+	if (*calls)[0].method != http.MethodPut || (*calls)[0].body != draft {
+		t.Errorf("first call = %s %q, want PUT with the draft body verbatim", (*calls)[0].method, (*calls)[0].body)
+	}
+	if (*calls)[1].method != http.MethodPost || (*calls)[1].body != "" {
+		t.Errorf("second call = %s %q, want POST with no body", (*calls)[1].method, (*calls)[1].body)
+	}
+	if (*calls)[1].auth != "Bearer test-jwt" {
+		t.Errorf("publish auth = %q, want the session's bearer token", (*calls)[1].auth)
+	}
+}
+
+func TestHandlePublishMCPProxy_DraftFailureSkipsPublish(t *testing.T) {
+	platform, calls := fakeControlPlane(t, map[string]struct {
+		status int
+		body   string
+	}{
+		"PUT /api/v0.9/api-portals/acme-portal/apis/mcp-proxy/my-proxy/draft": {http.StatusBadRequest, `{"error":"bad draft"}`},
+	})
+
+	bff := buildPublishTestServer(t, platform.URL, "test-jwt")
+
+	resp, err := http.Post(bff.URL+publishTestPath, "application/json", strings.NewReader(`{"displayName":"My Proxy"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want the relayed 400", resp.StatusCode)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("platform calls = %d, want 1 (publish must not run after a failed draft)", len(*calls))
+	}
+}
+
+func TestHandlePublishMCPProxy_EmptyBodyRejected(t *testing.T) {
+	platform, calls := fakeControlPlane(t, nil)
+	bff := buildPublishTestServer(t, platform.URL, "test-jwt")
+
+	resp, err := http.Post(bff.URL+publishTestPath, "application/json", strings.NewReader("  "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("platform calls = %d, want 0", len(*calls))
+	}
+}
+
+func TestHandlePublishMCPProxy_Unauthenticated(t *testing.T) {
+	platform, calls := fakeControlPlane(t, nil)
+	bff := buildPublishTestServer(t, platform.URL, "") // no session cookie
+
+	resp, err := http.Post(bff.URL+publishTestPath, "application/json", strings.NewReader(`{"displayName":"My Proxy"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("platform calls = %d, want 0", len(*calls))
+	}
+}

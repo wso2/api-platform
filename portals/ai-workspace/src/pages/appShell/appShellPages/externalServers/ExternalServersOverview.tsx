@@ -499,28 +499,32 @@ export default function ExternalServersOverview(): JSX.Element {
     }
   };
 
-  const selectedGateway = useMemo(
-    () =>
-      deployedGateways.find((gateway) => gateway.id === selectedGatewayId) ??
-      null,
-    [deployedGateways, selectedGatewayId]
+  // Shared by the Overview's "invoke URL" display and by the publish flow,
+  // which writes the chosen gateway's URL into the publication draft.
+  const buildGatewayInvokeUrl = useCallback(
+    (gatewayId: string) => {
+      const gateway = deployedGateways.find((candidate) => candidate.id === gatewayId);
+      const vhost = (gateway?.endpoints?.[0] || gateway?.vhost)?.trim();
+      if (!vhost) return '';
+
+      const normalizedBase = /^https?:\/\//i.test(vhost)
+        ? vhost.replace(/\/+$/, '')
+        : `https://${vhost.replace(/\/+$/, '')}`;
+      const context = (server?.context || '/').trim();
+      const normalizedContext = context
+        ? context.startsWith('/')
+          ? context
+          : `/${context}`
+        : '/';
+      return `${normalizedBase}${normalizedContext}`;
+    },
+    [deployedGateways, server?.context]
   );
 
-  const generatedInvokeUrl = useMemo(() => {
-    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
-    if (!vhost) return '';
-
-    const normalizedBase = /^https?:\/\//i.test(vhost)
-      ? vhost.replace(/\/+$/, '')
-      : `https://${vhost.replace(/\/+$/, '')}`;
-    const context = (server?.context || '/').trim();
-    const normalizedContext = context
-      ? context.startsWith('/')
-        ? context
-        : `/${context}`
-      : '/';
-    return `${normalizedBase}${normalizedContext}`;
-  }, [server?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
+  const generatedInvokeUrl = useMemo(
+    () => buildGatewayInvokeUrl(selectedGatewayId),
+    [buildGatewayInvokeUrl, selectedGatewayId]
+  );
 
   const handleCopyInvokeUrl = async () => {
     if (!generatedInvokeUrl) return;
@@ -923,7 +927,7 @@ export default function ExternalServersOverview(): JSX.Element {
         );
         if (cancelled) return;
         setIsPublished(true);
-        setApiPortalUrl(publication.productionUrl);
+        setApiPortalUrl(publication.endpoints?.productionUrl);
         setIsPublishStatusUnknown(false);
       } catch (err) {
         if (cancelled) return;
@@ -963,14 +967,21 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsPublishActionLoading(true);
     setIsPublishDialogOpen(false);
     try {
+      // The BFF saves this as the publication draft and then publishes it:
+      // publish itself takes no body, so the gateway picked in the dialog
+      // reaches the listing as the draft's production endpoint.
       const publication = await mcpProxiesApis.publishMcpProxyToApiPortal(
         DEFAULT_API_PORTAL_ID,
         server.id,
-        publishDialogGatewayId,
-        apimBaseUrl
+        {
+          displayName: server.displayName,
+          version: server.version || '1.0.0',
+          description: server.description,
+          endpoints: { productionUrl: buildGatewayInvokeUrl(publishDialogGatewayId) },
+        }
       );
       setIsPublished(true);
-      setApiPortalUrl(publication.productionUrl);
+      setApiPortalUrl(publication.endpoints?.productionUrl);
       showSnackbar('MCP Proxy published to the API Portal.', 'success');
     } catch (err) {
       showSnackbar(getErrorMessage(err, 'Failed to publish MCP Proxy.'), 'error');

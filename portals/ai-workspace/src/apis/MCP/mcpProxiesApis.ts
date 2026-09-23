@@ -26,6 +26,7 @@ import type {
   CreateMCPServerRequest,
   UpdateMCPServerRequest,
   Publication,
+  PublicationDraftDetailsInput,
 } from '../../utils/types';
 
 // ============================================================================
@@ -171,36 +172,62 @@ export async function deleteMCPServer(
 
 const MCP_PROXY_API_TYPE = 'mcp-proxy';
 
-function mcpProxyPublicationPath(apiPortalId: string, mcpProxyId: string, suffix: string): string {
+/** Base path for every publication-related call on one (MCP proxy, portal) pairing. */
+function mcpProxyPortalPath(apiPortalId: string, mcpProxyId: string, suffix: string): string {
   return `/api-portals/${encodeURIComponent(apiPortalId)}/apis/${MCP_PROXY_API_TYPE}/${encodeURIComponent(mcpProxyId)}${suffix}`;
 }
 
-/** Throws on a 404 (no publication record — i.e. not currently published);
+/**
+ * Get the live listing for this MCP proxy on the given API Portal.
+ *
+ * Throws on a 404 (no publication record — i.e. not currently published);
  * callers should treat that specifically as "unpublished", any other error
- * as a genuine failure. */
+ * as a genuine failure.
+ */
 export async function getMcpProxyApiPortalPublication(
   apiPortalId: string,
   mcpProxyId: string,
   baseUrl: string
 ): Promise<Publication> {
-  return get<Publication>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/publication'), undefined, baseUrl);
+  return get<Publication>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/publication'), undefined, baseUrl);
 }
 
+/**
+ * Save the publication draft and publish it, in one call.
+ *
+ * Handled by the BFF, which does the two Platform-API calls the contract needs
+ * — PUT .../draft with `draft`, then the body-less POST .../publish — so a
+ * saved draft is never left unpublished because the tab went away in between.
+ * A rejected draft is relayed back and publish never runs.
+ *
+ * Returns the resulting listing — 201 on a first publish or a re-publish after
+ * unpublish, 200 otherwise; both carry the same `Publication` body.
+ */
 export async function publishMcpProxyToApiPortal(
   apiPortalId: string,
   mcpProxyId: string,
-  gatewayId: string,
-  baseUrl: string
+  draft: PublicationDraftDetailsInput
 ): Promise<Publication> {
-  return post<Publication>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/publish'), { gatewayId }, baseUrl);
+  return post<Publication>(
+    `/api-portals/${encodeURIComponent(apiPortalId)}/mcp-proxies/${encodeURIComponent(mcpProxyId)}/publish`,
+    draft,
+    BFF_API_BASE_URL
+  );
 }
 
+/**
+ * Remove the listing (and its subscriptions and API keys) from the API Portal.
+ *
+ * A draft always survives: the publication is demoted into a draft when none
+ * exists, otherwise the existing draft is kept. Valid only when currently
+ * published or deprecated; responds 204 with no body.
+ */
 export async function unpublishMcpProxyFromApiPortal(
   apiPortalId: string,
   mcpProxyId: string,
   baseUrl: string
 ): Promise<void> {
-  await post<void>(mcpProxyPublicationPath(apiPortalId, mcpProxyId, '/unpublish'), undefined, baseUrl);
+  await post<void>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/unpublish'), undefined, baseUrl);
 }
 
 export const mcpProxiesApis = {
