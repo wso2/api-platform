@@ -4617,9 +4617,12 @@ components:
             $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           description: >
-            The backend A2A agent url and auth configuration. The URL is the base the
-            gateway forwards A2A operation traffic to, and — in public passthrough card
-            mode — the origin of the standard /.well-known/agent-card.json document.
+            The backend A2A agent and its auth configuration. Set exactly one of `url`
+            (a direct backend URL) or `ref` (the name of an entry in
+            `upstreamDefinitions`, resolved to that definition's first URL and
+            `basePath`). The resolved URL is the base the gateway forwards A2A
+            operation traffic to, and — in public passthrough card mode — the origin
+            of the standard /.well-known/agent-card.json document.
           allOf:
             - $ref: "#/components/schemas/Upstream"
             - $ref: "#/components/schemas/UpstreamAuth"

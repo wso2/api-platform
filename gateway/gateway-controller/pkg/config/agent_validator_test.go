@@ -261,17 +261,67 @@ func TestAgentValidator_FieldErrors(t *testing.T) {
 			field: "spec.context",
 		},
 		{
-			name:  "missing upstream url",
+			name:  "neither upstream url nor ref",
 			spoil: func(c *api.AgentConfiguration) { c.Spec.Upstream.Url = nil },
-			field: "spec.upstream.url",
+			field: "spec.upstream",
 		},
 		{
-			name: "empty upstream url",
+			name: "empty upstream url and no ref",
 			spoil: func(c *api.AgentConfiguration) {
 				empty := ""
 				c.Spec.Upstream.Url = &empty
 			},
+			field: "spec.upstream",
+		},
+		{
+			// Both would silently prefer the url and leave the ref unread.
+			name: "both upstream url and ref",
+			spoil: func(c *api.AgentConfiguration) {
+				defs := []api.UpstreamDefinition{upstreamDef("weather-pool", "")}
+				c.Spec.UpstreamDefinitions = &defs
+				c.Spec.Upstream.Ref = stringPtr("weather-pool")
+			},
+			field: "spec.upstream",
+		},
+		{
+			name: "upstream ref naming no definition",
+			spoil: func(c *api.AgentConfiguration) {
+				defs := []api.UpstreamDefinition{upstreamDef("other-pool", "")}
+				c.Spec.UpstreamDefinitions = &defs
+				c.Spec.Upstream.Url = nil
+				c.Spec.Upstream.Ref = stringPtr("weather-pool")
+			},
+			field: "spec.upstream.ref",
+		},
+		{
+			name: "upstream ref with no definitions at all",
+			spoil: func(c *api.AgentConfiguration) {
+				c.Spec.Upstream.Url = nil
+				c.Spec.Upstream.Ref = stringPtr("weather-pool")
+			},
+			field: "spec.upstream.ref",
+		},
+		{
+			name:  "upstream url with an unsupported scheme",
+			spoil: func(c *api.AgentConfiguration) { c.Spec.Upstream.Url = stringPtr("ftp://weather.internal") },
 			field: "spec.upstream.url",
+		},
+		{
+			name:  "upstream url without a host",
+			spoil: func(c *api.AgentConfiguration) { c.Spec.Upstream.Url = stringPtr("https://") },
+			field: "spec.upstream.url",
+		},
+		{
+			// Definitions are validated whether or not upstream.ref uses them:
+			// a policy can route to any of them through the cluster header.
+			name: "upstream definition url carrying a path",
+			spoil: func(c *api.AgentConfiguration) {
+				def := upstreamDef("weather-pool", "")
+				def.Upstreams[0].Url = "http://backend:8080/a2a"
+				defs := []api.UpstreamDefinition{def}
+				c.Spec.UpstreamDefinitions = &defs
+			},
+			field: "spec.upstreamDefinitions[0].upstreams[0].url",
 		},
 		{
 			name: "malformed agent-level timeout",
@@ -292,6 +342,20 @@ func TestAgentValidator_FieldErrors(t *testing.T) {
 			assert.Contains(t, fieldsOf(errs), tt.field)
 		})
 	}
+}
+
+// TestAgentValidator_RefOnlyUpstream covers an Agent whose one upstream is a
+// named definition rather than a direct URL, the form every other kind accepts.
+func TestAgentValidator_RefOnlyUpstream(t *testing.T) {
+	cfg := validAgent()
+	def := upstreamDef("weather-pool", "5s")
+	def.BasePath = stringPtr("/a2a")
+	defs := []api.UpstreamDefinition{def}
+	cfg.Spec.UpstreamDefinitions = &defs
+	cfg.Spec.Upstream.Url = nil
+	cfg.Spec.Upstream.Ref = stringPtr("weather-pool")
+
+	assert.Empty(t, validateAgent(&cfg))
 }
 
 // TestAgentValidator_OptionalContext covers the Agent served at the root of its
@@ -1114,7 +1178,7 @@ func TestAgentValidator_ReportsEveryProblemAtOnce(t *testing.T) {
 	// problem would make fixing an artifact an iterative guessing game.
 	assert.Contains(t, fields, "spec.displayName")
 	assert.Contains(t, fields, "spec.version")
-	assert.Contains(t, fields, "spec.upstream.url")
+	assert.Contains(t, fields, "spec.upstream")
 }
 
 func TestJoinAgentPath(t *testing.T) {

@@ -233,15 +233,8 @@ func (v *AgentValidator) validateSpec(spec *api.AgentConfigData) []ValidationErr
 	contextErrors := v.validateContext(spec.Context)
 	errors = append(errors, contextErrors...)
 
-	// An Agent forwards A2A operation traffic to exactly one upstream, and in
-	// passthrough card mode also fetches the Agent Card from it, so a URL is
-	// required rather than optional-with-a-ref like the generic upstream shape.
-	if spec.Upstream.Url == nil || *spec.Upstream.Url == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.upstream.url",
-			Message: "Upstream url is required",
-		})
-	}
+	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
+	errors = append(errors, validateAgentUpstream(&spec.Upstream, spec.UpstreamDefinitions)...)
 
 	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
@@ -251,6 +244,64 @@ func (v *AgentValidator) validateSpec(spec *api.AgentConfigData) []ValidationErr
 	// context is sound — it resolves to the virtual host root.
 	errors = append(errors, v.validateA2A(AgentContextPath(spec.Context), len(contextErrors) == 0, &spec.A2a)...)
 
+	return errors
+}
+
+// validateAgentUpstream applies the same url-or-ref rule as the other kinds.
+//
+// An Agent forwards A2A operation traffic to exactly one upstream, and in
+// passthrough card mode also fetches the Agent Card from it. Either form names
+// that one origin: a ref resolves to its definition's first URL and base path
+// through the same addUpstreamCluster path a direct URL takes, so the card fetch
+// and the operation routes land on the same cluster whichever form is used.
+//
+// Exactly one is required. Accepting both would silently prefer the url, since
+// resolveUpstreamURL takes url whenever it is set, and leave the ref unread.
+func validateAgentUpstream(upstream *api.AgentConfigData_Upstream, definitions *[]api.UpstreamDefinition) []ValidationError {
+	hasURL := upstream.Url != nil && strings.TrimSpace(*upstream.Url) != ""
+	hasRef := upstream.Ref != nil && strings.TrimSpace(*upstream.Ref) != ""
+
+	switch {
+	case hasURL && hasRef:
+		return []ValidationError{{
+			Field:   "spec.upstream",
+			Message: "Specify exactly one of 'url' or 'ref'",
+		}}
+	case !hasURL && !hasRef:
+		return []ValidationError{{
+			Field:   "spec.upstream",
+			Message: "Must specify either 'url' or 'ref'",
+		}}
+	case hasRef:
+		if !upstreamRefResolves(*upstream.Ref, definitions) {
+			return []ValidationError{{
+				Field:   "spec.upstream.ref",
+				Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", strings.TrimSpace(*upstream.Ref)),
+			}}
+		}
+		return nil
+	}
+
+	parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
+	if err != nil {
+		return []ValidationError{{
+			Field:   "spec.upstream.url",
+			Message: fmt.Sprintf("Invalid URL format: %v", err),
+		}}
+	}
+	var errors []ValidationError
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream.url",
+			Message: "Upstream URL must use http or https scheme",
+		})
+	}
+	if parsedURL.Host == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream.url",
+			Message: "Upstream URL must include a host",
+		})
+	}
 	return errors
 }
 
