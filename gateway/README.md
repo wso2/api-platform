@@ -2,7 +2,7 @@
 
 A complete API gateway system consisting of Gateway-Controller (xDS control plane), Router (Envoy Proxy data plane), Policy Engine (request/response processing), and Policy Builder (policy compilation tooling).
 
-For end-user documentation, see [docs/gateway/](../docs/gateway/).
+For end-user documentation, see the [Gateway distribution README](distribution/README.md).
 
 ## Components
 
@@ -68,7 +68,7 @@ password, and rewrite `api-platform.env`).
 
 For the full setup reference — flags (`--force`, `--certs-only`), control-plane
 connection, at-rest encryption, and how configuration is delivered — see
-[docs/gateway/quick-start-guide.md](../docs/gateway/quick-start-guide.md).
+[distribution/README.md](distribution/README.md).
 
 ### Test
 
