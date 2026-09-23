@@ -73,6 +73,15 @@ export function useManagedPortal(id: string) {
   return { portal, isLoading, error, refetch, update, remove };
 }
 
+/**
+ * Poll interval for the pending-portal watch. Short enough that the "Visit"
+ * button flips promptly after the backend poller marks a portal active,
+ * long enough that a busy org does not hammer the BFF. Only fires when at
+ * least one row in the current list has status=pending; steady state (every
+ * row active) leaves polling off entirely.
+ */
+const PENDING_POLL_INTERVAL_MS = 3_000;
+
 /** List + create + update + delete managed portals via the feature's PortalPort. */
 export function useManagedPortalList() {
   const { port, host } = usePortalFeature();
@@ -93,9 +102,34 @@ export function useManagedPortalList() {
     }
   }, [port]);
 
+  // Silent variant used by the pending-portal poll: refreshes state without
+  // toggling isLoading (which would flicker skeletons every tick). Errors are
+  // swallowed too - a transient BFF hiccup during background polling should
+  // not tear down the whole list view; the next tick recovers.
+  const silentRefetch = useCallback(async () => {
+    try {
+      setPortals(await port.list());
+    } catch {
+      // ignore
+    }
+  }, [port]);
+
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  // Watch for any pending portal in the current list; re-poll at
+  // PENDING_POLL_INTERVAL_MS until every row is non-pending. The interval is
+  // torn down on the transition to steady state and on unmount, so an org
+  // whose portals are all active does zero background work.
+  const hasPending = portals.some((p) => p.status === 'pending');
+  useEffect(() => {
+    if (!hasPending) return undefined;
+    const id = window.setInterval(() => {
+      void silentRefetch();
+    }, PENDING_POLL_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [hasPending, silentRefetch]);
 
   const create = useCallback(
     async (input: CreateManagedPortalInput) => {

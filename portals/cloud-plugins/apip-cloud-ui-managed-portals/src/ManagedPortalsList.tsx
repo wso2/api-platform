@@ -38,7 +38,42 @@ import {
 import { ExternalLink, PanelTop, Pencil, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
 import { useManagedPortalList } from './hooks';
-import type { ManagedPortal } from './types';
+import type { ManagedPortal, ManagedPortalStatus } from './types';
+
+/**
+ * Row-level rendering rules for the three provisioning states.
+ *
+ * `pending`: portal is still coming up. Show a Provisioning chip and a
+ *   disabled Visit button with a spinner so the user has a clear "wait" cue
+ *   without an obviously broken CTA.
+ * `failed`: provisioning gave up. Show a Failed chip and a disabled Visit
+ *   button; recovery is Delete + Add again. A dedicated Retry button is
+ *   a possible future enhancement, not day one.
+ * `active` (default): steady state. Show an Active chip and a live Visit
+ *   button that opens the portal URL in a new tab.
+ *
+ * Missing status (undefined) is treated as active so a backend that has not
+ * yet been upgraded to write the field still shows a working Visit button.
+ */
+type StatusRendering = {
+  label: string;
+  color: 'default' | 'success' | 'warning' | 'error';
+  visitDisabled: boolean;
+  visitLabel: string;
+  visitBusy: boolean;
+};
+
+function renderingForStatus(status: ManagedPortalStatus | undefined): StatusRendering {
+  switch (status) {
+    case 'pending':
+      return { label: 'Provisioning', color: 'warning', visitDisabled: true, visitLabel: 'Provisioning…', visitBusy: true };
+    case 'failed':
+      return { label: 'Failed', color: 'error', visitDisabled: true, visitLabel: 'Visit', visitBusy: false };
+    case 'active':
+    default:
+      return { label: 'Active', color: 'success', visitDisabled: false, visitLabel: 'Visit', visitBusy: false };
+  }
+}
 
 export type ManagedPortalsListProps = {
   /** Switches parent to the create view; create is a full page, not a modal. */
@@ -171,6 +206,7 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                         <TableCell>Name</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell>Login environment</TableCell>
+                        <TableCell>Status</TableCell>
                         <TableCell>Updated</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
@@ -178,14 +214,16 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                     <TableBody>
                       {filteredPortals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={6}>
                             <Typography variant="body2" color="text.secondary">
                               No portals match your search.
                             </Typography>
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredPortals.map((portal) => (
+                        filteredPortals.map((portal) => {
+                          const rendering = renderingForStatus(portal.status);
+                          return (
                           <TableRow key={portal.id} hover>
                             <TableCell sx={{ minWidth: 220 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -229,41 +267,57 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                               )}
                             </TableCell>
                             <TableCell>
+                              <Chip label={rendering.label} size="small" color={rendering.color} variant="outlined" />
+                            </TableCell>
+                            <TableCell>
                               <Typography variant="body2" color="text.secondary">
                                 {shortRelative(portal.updatedAt) || '-'}
                               </Typography>
                             </TableCell>
                             <TableCell align="right">
-                              <IconButton
-                                size="small"
-                                aria-label={`Edit ${portal.name}`}
-                                onClick={() => onEdit(portal)}
-                              >
-                                <Pencil size={16} />
-                              </IconButton>
-                              {portal.url && (
+                              <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                                {/* Visit is the primary CTA for this row - a labeled button rather than */}
+                                {/* an icon so the pending "Provisioning..." state reads naturally instead of */}
+                                {/* swapping icons under the same shape. Missing URL (rare, pre-provisioning */}
+                                {/* race) is treated the same as the button being disabled. */}
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  disabled={rendering.visitDisabled || !portal.url}
+                                  aria-label={`Visit ${portal.name}`}
+                                  startIcon={
+                                    rendering.visitBusy ? (
+                                      <CircularProgress size={14} color="inherit" />
+                                    ) : (
+                                      <ExternalLink size={14} />
+                                    )
+                                  }
+                                  {...(portal.url && !rendering.visitDisabled
+                                    ? { component: 'a', href: portal.url, target: '_blank', rel: 'noopener noreferrer' }
+                                    : {})}
+                                >
+                                  {rendering.visitLabel}
+                                </Button>
                                 <IconButton
                                   size="small"
-                                  aria-label={`Visit ${portal.name}`}
-                                  component="a"
-                                  href={portal.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                  aria-label={`Edit ${portal.name}`}
+                                  onClick={() => onEdit(portal)}
                                 >
-                                  <ExternalLink size={16} />
+                                  <Pencil size={16} />
                                 </IconButton>
-                              )}
-                              <IconButton
-                                size="small"
-                                color="error"
-                                aria-label={`Delete ${portal.name}`}
-                                onClick={() => setDeleteTarget(portal)}
-                              >
-                                <Trash2 size={16} />
-                              </IconButton>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label={`Delete ${portal.name}`}
+                                  onClick={() => setDeleteTarget(portal)}
+                                >
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              </Stack>
                             </TableCell>
                           </TableRow>
-                        ))
+                        );
+                        })
                       )}
                     </TableBody>
                   </Table>
