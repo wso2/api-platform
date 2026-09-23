@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2199,4 +2200,57 @@ func assertRewriteBlock(t *testing.T, card map[string]interface{}) {
 func protectedChainKey(t *testing.T, rdc *models.RuntimeDeployConfig) string {
 	t.Helper()
 	return rdc.ChainKeyFor("main.local", string(agentproto.GetExtendedAgentCard))
+}
+
+// withRefUpstream replaces the Agent's direct URL with a ref to a named
+// definition, the form every other kind already accepts.
+func withRefUpstream(def api.UpstreamDefinition) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.Upstream.Url = nil
+		cfg.Spec.Upstream.Ref = ptrStr(def.Name)
+		cfg.Spec.UpstreamDefinitions = &[]api.UpstreamDefinition{def}
+	}
+}
+
+// A ref-only Agent resolves through the same addUpstreamCluster path a direct URL
+// takes: one cluster from the definition's first URL, its base path taken from
+// basePath and its connect timeout from the definition, and every route — the
+// operations and the passthrough card fetch alike — pointed at that cluster.
+func TestAgentRefOnlyUpstreamResolvesTheDefinition(t *testing.T) {
+	def := api.UpstreamDefinition{
+		Name:     "weather-pool",
+		BasePath: ptrStr("/a2a"),
+		Timeout:  &api.UpstreamTimeout{Connect: ptrStr("3s")},
+		Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "https://weather-pool.internal:8443"}},
+	}
+
+	rdc, err := agentTransformer().Transform(testAgent(withRefUpstream(def), withPassthroughCard()))
+	require.NoError(t, err)
+
+	const clusterKey = "upstream_main_weather-pool.internal_8443"
+	cluster, exists := rdc.UpstreamClusters[clusterKey]
+	require.True(t, exists, "the ref did not produce the definition's cluster; got %v", rdc.UpstreamClusters)
+	assert.Equal(t, "/a2a", cluster.BasePath)
+	require.Len(t, cluster.Endpoints, 1)
+	assert.Equal(t, "weather-pool.internal", cluster.Endpoints[0].Host)
+	assert.Equal(t, 8443, cluster.Endpoints[0].Port)
+	require.NotNil(t, cluster.TLS)
+	assert.True(t, cluster.TLS.Enabled)
+	require.NotNil(t, cluster.ConnectTimeout)
+	assert.Equal(t, 3*time.Second, *cluster.ConnectTimeout)
+
+	require.NotEmpty(t, rdc.Routes)
+	for key, route := range rdc.Routes {
+		assert.Equal(t, clusterKey, route.Upstream.ClusterKey, "route %s", key)
+		require.NotNil(t, route.Upstream.Default, "route %s", key)
+		assert.Equal(t, "https://weather-pool.internal:8443", route.Upstream.Default.URL, "route %s", key)
+		assert.Equal(t, "/a2a", route.Upstream.Default.BasePath, "route %s", key)
+	}
+
+	card, exists := rdc.Routes[testCardRouteKey]
+	require.True(t, exists, "the passthrough card route is missing")
+	assert.Equal(t, config.DefaultAgentCardPath, card.UpstreamPathOverride)
 }

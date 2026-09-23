@@ -2059,7 +2059,7 @@ and
 |context|string|false|none|Gateway context path for the agent (must start with /, no trailing slash). Optional: when omitted the agent is served at the root of its virtual host, which is where an A2A client probes for `/.well-known/agent-card.json` during cold discovery. Every A2A route the gateway generates — the transport base paths and the Agent Card path — is relative to this value.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
-|upstream|any|true|none|The backend A2A agent url and auth configuration. The URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
+|upstream|any|true|none|The backend A2A agent and its auth configuration. Set exactly one of `url` (a direct backend URL) or `ref` (the name of an entry in `upstreamDefinitions`, resolved to that definition's first URL and `basePath`). The resolved URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
 
 allOf
 
