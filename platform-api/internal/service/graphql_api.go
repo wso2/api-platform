@@ -250,9 +250,20 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 	if err != nil {
 		return nil, err
 	}
-	// resolution.Resolved false is not an error on create — there is no
-	// previous schema to fall back to, so an unresolved schema just means the
-	// new API's sdl/introspectionMode start out empty (see resolveSchema).
+	// resolution.Resolved false is not an error on create in general — there
+	// is no previous schema to fall back to, so a network-layer failure
+	// (unreachable sdlUrl, introspection failing) just means the new API's
+	// sdl/introspectionMode start out empty (see resolveSchema). The one
+	// exception: SDLErrors is only ever populated for text the caller
+	// effectively authored (inline/file always, url once its own fetch
+	// succeeded — see SDLErrors' doc comment) — silently creating a
+	// schema-less API from a typo in that text with no signal beyond a
+	// server-side WARN is worse than a 400 telling them exactly what's wrong
+	// with the text they just supplied.
+	if !resolution.Resolved && len(resolution.SDLErrors) > 0 {
+		return nil, apperror.ValidationFailed.New("The supplied GraphQL SDL could not be parsed.").
+			WithDetails(map[string]any{"sdlErrors": resolution.SDLErrors})
+	}
 
 	var subscriptionPlans []string
 	if req.SubscriptionPlans != nil {
@@ -442,11 +453,20 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 	// it just means Resolved is false.
 	switch schemaSource {
 	case string(api.GraphQLAPISchemaSourceInline), string(api.GraphQLAPISchemaSourceFile):
-		if issues := validateGraphQLSDL(suppliedSDL); len(issues) > 0 {
+		// `.json` is an accepted extension for this source (an introspection
+		// result, not hand-written SDL) — detect and convert it before
+		// falling through to SDL validation, which would otherwise always
+		// fail on it. Not recognizably that shape (including genuine SDL
+		// text) falls through unchanged.
+		effectiveSDL := suppliedSDL
+		if converted, ok := tryConvertIntrospectionJSONToSDL(suppliedSDL); ok {
+			effectiveSDL = converted
+		}
+		if issues := validateGraphQLSDL(effectiveSDL); len(issues) > 0 {
 			s.slogger.Warn("Supplied GraphQL SDL failed validation", "schemaSource", schemaSource, "issues", issues)
 			return graphQLSchemaResolution{SchemaSource: schemaSource, SDLErrors: issues}, nil
 		}
-		return graphQLSchemaResolution{SDL: suppliedSDL, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
+		return graphQLSchemaResolution{SDL: effectiveSDL, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	case string(api.GraphQLAPISchemaSourceUrl):
 		fetched, err := utils.FetchOpenAPISpecFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes)
 		if err != nil {
