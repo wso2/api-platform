@@ -55,3 +55,26 @@ export const publicationChipMeta = (
   if (item.status === 'DEPRECATED') return { color: 'warning', label: messages.deprecated };
   return null;
 };
+
+// api-portal's own app mount prefix (portals/api-portal/src/utils/constants.js:
+// PORTAL_BASE_PATH) — hardcoded there too, not per-deployment configurable.
+const PORTAL_APP_BASE_PATH = 'api-portal';
+// Handle of the view every org is seeded with. Not a real per-API value: the
+// publication summary carries no field for which view an API actually resolved
+// into on the portal (that's driven by portal-side label matching), so this is
+// a best-effort assumption, not a genuine parameter.
+const DEFAULT_PORTAL_VIEW_HANDLE = 'default';
+
+/**
+ * api-portal serves an API's own page at
+ * `/{PORTAL_APP_BASE_PATH}/{orgHandle}/views/{viewHandle}/api/{apiHandle}`.
+ * The publication summary carries neither the portal-side view an API
+ * resolved into nor confirmation that the portal's org handle matches this
+ * console's — so this is a best-effort link: it assumes the seeded default
+ * view, and that the portal reuses this console's API/org handles as its own,
+ * which holds unless an operator has since renamed them on the portal. Good
+ * enough to open the right page in the common case; a renamed view/org handle
+ * would need surfacing a real field to fix properly.
+ */
+export const buildViewInPortalUrl = (portalUrl: string, orgHandle: string, apiHandle: string): string =>
+  `${portalUrl.replace(/\/+$/, '')}/${PORTAL_APP_BASE_PATH}/${orgHandle}/views/${DEFAULT_PORTAL_VIEW_HANDLE}/api/${apiHandle}`;

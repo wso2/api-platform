@@ -99,6 +99,8 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('Published')).toBeInTheDocument();
+    // Published, so there's a live listing to link to.
+    expect(screen.getByText('View in Portal')).toBeInTheDocument();
   });
 
   it('shows Draft instead of Published when a draft is pending, even once live', async () => {
@@ -121,6 +123,8 @@ describe('ApiPortalPublicationsList', () => {
     expect(screen.queryByText('Published')).not.toBeInTheDocument();
     expect(screen.queryByText('Draft')).not.toBeInTheDocument();
     expect(screen.queryByText('Deprecated')).not.toBeInTheDocument();
+    // Never published, so there's no listing on the portal to link to yet.
+    expect(screen.queryByText('View in Portal')).not.toBeInTheDocument();
   });
 
   it('shows the shared empty state when the organization has no portals', async () => {
@@ -166,6 +170,8 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('Deprecated')).toBeInTheDocument();
+    // Deprecated listings are still live on the portal, so the link stays.
+    expect(screen.getByText('View in Portal')).toBeInTheDocument();
   });
 
   it('titles the page with the API handle until its display name is known', async () => {
