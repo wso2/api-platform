@@ -427,13 +427,25 @@ type ClaimMappingConfig struct {
 // unconditionally true; there is no supported plain-HTTP deployment that would need it
 // false.
 type CookieConfig struct {
-	Name     string
+	// Name1 and Name2 carry the session JWT split across two HttpOnly cookies, so a
+	// single Set-Cookie value stays under browsers' and intermediate proxies'
+	// per-cookie size ceiling even when the JWT's scope list is large (see
+	// defaultOIDCScopes below).
+	Name1    string
+	Name2    string
 	Secure   bool
 	SameSite string // "lax" | "strict" | "none"
 }
 
-// cookieName is the session cookie's name.
-const cookieName = "_ai_workspace_session"
+// cookieName1 and cookieName2 are the session cookie names. LegacyCookieName is the
+// single-cookie name used before the session was split in two; exported because
+// server.clearSessionCookie also expires it so a browser holding a pre-upgrade cookie
+// doesn't keep it alive forever (see cookies.go).
+const (
+	cookieName1      = "_ai_workspace_session_1"
+	cookieName2      = "_ai_workspace_session_2"
+	LegacyCookieName = "_ai_workspace_session"
+)
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
 // the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
@@ -599,7 +611,7 @@ func (c *Config) normalize() {
 		c.Auth.OIDC.TokenExchange.Scopes = c.Auth.OIDC.Scopes
 	}
 
-	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
+	c.Cookie = CookieConfig{Name1: cookieName1, Name2: cookieName2, Secure: true, SameSite: "lax"}
 }
 
 // TokenExchangeEnabled derives the switch from both flags, so the feature can never

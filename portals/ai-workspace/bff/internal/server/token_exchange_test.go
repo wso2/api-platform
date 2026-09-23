@@ -168,7 +168,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	}
 
 	cfg := &config.Config{
-		Cookie: config.CookieConfig{Name: "_ai_workspace_session", Secure: true, SameSite: "lax"},
+		Cookie: config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2", Secure: true, SameSite: "lax"},
 		Auth: config.AuthConfig{
 			Mode: config.AuthModeOIDC,
 			OIDC: config.OIDCConfig{
@@ -226,7 +226,7 @@ func (h *exchangeTestHarness) subjectSession(t *testing.T) string {
 
 func (h *exchangeTestHarness) proxyRequest(subject string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, paths.Base+paths.Proxy+"/api/v0.9/projects", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleProxy(rec, req)
 	return rec
@@ -449,7 +449,7 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 	subject := h.subjectSession(t)
 
 	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleSession(rec, req)
 
@@ -495,16 +495,27 @@ func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 	return req
 }
 
-// sessionCookieValue returns the value the response set the session cookie to, or ""
-// when it set none or cleared it. Clearing writes the cookie with an empty value, so
-// "no usable session cookie" and "no cookie at all" are the same assertion.
+// sessionCookieValue returns the session token the response set, reassembled from
+// its two cookie parts, or "" when it set none or cleared it. Clearing writes each
+// part with an empty value, so "no usable session cookie" and "no cookie at all" are
+// the same assertion. Both parts must be present, matching tokenFromCookie.
 func sessionCookieValue(h *exchangeTestHarness, rec *httptest.ResponseRecorder) string {
+	var part1, part2 string
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == h.server.cfg.Cookie.Name && c.Value != "" && c.MaxAge >= 0 {
-			return c.Value
+		if c.Value == "" || c.MaxAge < 0 {
+			continue
+		}
+		switch c.Name {
+		case h.server.cfg.Cookie.Name1:
+			part1 = c.Value
+		case h.server.cfg.Cookie.Name2:
+			part2 = c.Value
 		}
 	}
-	return ""
+	if part1 == "" || part2 == "" {
+		return ""
+	}
+	return joinSessionToken(part1, part2)
 }
 
 // TestLoginClassifiesExchangeFailure: the login path must tell its two failure classes
@@ -582,7 +593,7 @@ func TestLoginClassifiesExchangeFailure(t *testing.T) {
 func TestSessionFailsClosedWhenExchangeFails(t *testing.T) {
 	sessionRequest := func(h *exchangeTestHarness, subject string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-		req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+		addSessionCookies(req, h.server.cfg.Cookie, subject)
 		rec := httptest.NewRecorder()
 		h.server.handleSession(rec, req)
 		return rec
@@ -809,7 +820,7 @@ func TestSessionReportsExchangedScopesWithCachingDisabled(t *testing.T) {
 	subject := h.subjectSession(t)
 
 	req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleSession(rec, req)
 
@@ -1005,7 +1016,7 @@ func TestCallbackWithLiveSessionIsTreatedAsARevisit(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet,
 		paths.Base+"/api/auth/callback?code=stale&state=stale", nil)
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleOIDCCallback(rec, req)
 
