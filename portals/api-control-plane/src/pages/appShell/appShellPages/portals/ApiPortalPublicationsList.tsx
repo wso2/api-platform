@@ -191,8 +191,10 @@ export function ApiPortalPublicationsList() {
             >
               {visiblePublications.map((publication) => (
                 <PortalPublicationCard
+                  apiHandle={apiHandler}
                   key={publication.apiPortalId}
                   onOpen={openPublication}
+                  orgHandle={orgHandle}
                   publication={publication}
                 />
               ))}

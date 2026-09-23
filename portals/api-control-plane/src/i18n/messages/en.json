@@ -2163,6 +2163,10 @@
     "defaultMessage": "Go To Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal": {
+    "defaultMessage": "View in Portal",
+    "description": "Link opening this API's own page on the portal, in a new tab."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenMessage": {
     "defaultMessage": "You don’t have permission to publish APIs to API portals. Contact your organization admin to request access."
   },
