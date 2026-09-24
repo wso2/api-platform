@@ -483,21 +483,55 @@ func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, e
 // separate from the single-flight locks above, which only dedupe concurrent
 // callers of the *same* operation.
 func (s *Server) withSessionLock(token string, fn func()) {
-	s.sessionMu.Lock()
-	mu, ok := s.sessionLocks[token]
-	if !ok {
-		mu = &sync.Mutex{}
-		s.sessionLocks[token] = mu
-	}
-	s.sessionMu.Unlock()
-
-	mu.Lock()
+	l := s.acquireSessionLock(token)
+	l.mu.Lock()
+	defer s.releaseSessionLock(token, l)
 	fn()
-	mu.Unlock()
+}
+
+// sessionLock is one token's mutex plus a count of the callers currently holding or
+// waiting for it. The count exists because the entry cannot simply be deleted when a
+// caller finishes: a waiter already blocked on this mutex still needs the map to
+// hand the SAME mutex to whoever arrives next. Deleting it there lets the next
+// arrival create a second mutex for the same token and run concurrently with the
+// waiter — which is exactly the doExchange/doRefresh overlap this lock exists to
+// prevent, and it would appear only under load.
+type sessionLock struct {
+	mu sync.Mutex
+	// users is guarded by Server.sessionMu, never by mu: it is read and written
+	// while deciding whether the entry may leave the map, which must not require
+	// holding the per-token lock.
+	users int
+}
+
+// acquireSessionLock returns the token's lock, registering this caller as a user of
+// it so the entry survives until the last of them is done.
+func (s *Server) acquireSessionLock(token string) *sessionLock {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+
+	l, ok := s.sessionLocks[token]
+	if !ok {
+		l = &sessionLock{}
+		s.sessionLocks[token] = l
+	}
+	l.users++
+	return l
+}
+
+// releaseSessionLock unlocks and drops the entry once no one else wants it, so the
+// map does not grow with one entry per token ever seen. Deferred as a unit with the
+// unlock, so a panic inside fn cannot leave the token's lock held forever.
+func (s *Server) releaseSessionLock(token string, l *sessionLock) {
+	l.mu.Unlock()
 
 	s.sessionMu.Lock()
-	delete(s.sessionLocks, token)
-	s.sessionMu.Unlock()
+	defer s.sessionMu.Unlock()
+
+	l.users--
+	if l.users == 0 {
+		delete(s.sessionLocks, token)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -717,9 +751,13 @@ func (s *Server) handleSwitchOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Both authentication failures below — no session cookie, and a cookie whose
+	// session is gone — answer with one identical 401. Branching the payload on
+	// which it was tells a caller whether a token they hold is merely unknown here
+	// or was valid until recently, and nothing legitimate needs to tell them apart.
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
-		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
 		return
 	}
 
@@ -736,7 +774,7 @@ func (s *Server) handleSwitchOrg(w http.ResponseWriter, r *http.Request) {
 		sessionErr = s.store.Put(r.Context(), sess)
 	})
 	if sessionErr != nil {
-		writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
+		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
 		return
 	}
 

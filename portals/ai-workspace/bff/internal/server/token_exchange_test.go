@@ -162,7 +162,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		exchanger:     auth.NewExchanger(idp.Client(), teCfg, oidcClient.TokenEndpoint()),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
-		sessionLocks:  make(map[string]*sync.Mutex),
+		sessionLocks:  make(map[string]*sessionLock),
 	}
 	t.Cleanup(func() { _ = h.server.store.Close() })
 	return h

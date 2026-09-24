@@ -22,7 +22,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/paths"
@@ -154,5 +156,165 @@ func TestSwitchOrgMissingSession(t *testing.T) {
 	h.server.handleSwitchOrg(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 with no session cookie", rec.Code)
+	}
+}
+
+// TestWithSessionLockIsMutuallyExclusive pins the property the lock exists for: two
+// callers for the same token never run inside it at once.
+//
+// The ordering is staged rather than a burst of goroutines, because the defect it
+// guards against has a narrow window. Before the entry was reference-counted, a
+// caller finishing deleted it from the map even while another was still blocked on
+// that mutex — so an arrival AFTER the delete built a second mutex for the same token
+// and ran alongside the waiter. A burst mostly misses it: every goroutine has already
+// taken the pointer before the first delete. The three stages below reproduce it
+// every run: hold, queue a waiter, release (deleting the entry under the bug), then
+// arrive fresh while the waiter is still inside.
+func TestWithSessionLockIsMutuallyExclusive(t *testing.T) {
+	s := &Server{sessionLocks: make(map[string]*sessionLock)}
+
+	var concurrent atomic.Int32
+	var overlaps atomic.Int32
+	enter := func(entered chan<- struct{}, release <-chan struct{}) {
+		s.withSessionLock("same-token", func() {
+			if concurrent.Add(1) > 1 {
+				overlaps.Add(1)
+			}
+			close(entered)
+			<-release
+			concurrent.Add(-1)
+		})
+	}
+
+	// Stage 1: one caller inside, holding.
+	first, releaseFirst := make(chan struct{}), make(chan struct{})
+	go enter(first, releaseFirst)
+	<-first
+
+	// Stage 2: a second caller queued on that same mutex.
+	second, releaseSecond := make(chan struct{}), make(chan struct{})
+	go enter(second, releaseSecond)
+	time.Sleep(50 * time.Millisecond) // let it reach the map and block
+
+	// Stage 3: the first leaves — under the bug this drops the entry the waiter is
+	// still using — and the waiter takes the lock.
+	close(releaseFirst)
+	<-second
+
+	// A caller arriving now must block behind the waiter. Under the bug it finds no
+	// entry, makes its own mutex, and walks straight in.
+	third, releaseThird := make(chan struct{}), make(chan struct{})
+	go enter(third, releaseThird)
+	select {
+	case <-third:
+		t.Error("a third caller entered while another held the same token's lock — the lock was not shared")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(releaseSecond)
+	<-third // the third caller may now proceed
+	close(releaseThird)
+
+	if got := overlaps.Load(); got != 0 {
+		t.Errorf("%d overlapping entries — callers for the same token were not serialized", got)
+	}
+	// The entry must not outlive its last user, or the map grows by one per token
+	// for the life of the process.
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.sessionMu.Lock()
+		n := len(s.sessionLocks)
+		s.sessionMu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("sessionLocks still holds %d entries, want 0 once every caller is done", n)
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Different tokens must not serialize against each other: one slow session's store
+// write would otherwise stall every other session's.
+func TestWithSessionLockIsPerToken(t *testing.T) {
+	s := &Server{sessionLocks: make(map[string]*sessionLock)}
+
+	held := make(chan struct{})
+	released := make(chan struct{})
+	go func() {
+		s.withSessionLock("token-a", func() {
+			close(held)
+			<-released
+		})
+	}()
+	<-held
+
+	done := make(chan struct{})
+	go func() {
+		s.withSessionLock("token-b", func() {})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("a second token blocked on the first token's lock")
+	}
+	close(released)
+}
+
+// A panic inside fn must not leave the token's lock held: the deferred release is
+// what keeps one failed request from wedging that session for the process's life.
+func TestWithSessionLockReleasesOnPanic(t *testing.T) {
+	s := &Server{sessionLocks: make(map[string]*sessionLock)}
+
+	func() {
+		defer func() { _ = recover() }()
+		s.withSessionLock("tok", func() { panic("boom") })
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		s.withSessionLock("tok", func() {})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lock still held after a panic inside fn")
+	}
+}
+
+// TestSwitchOrgAuthFailuresAreIndistinguishable: both ways the switch can fail to
+// authenticate — no session cookie at all, and a cookie whose session is gone — must
+// produce byte-identical 401s (error-handling.md directive 4). Branching the payload
+// tells a caller whether a token they hold was valid until recently or was never
+// known here, which is an oracle nothing legitimate needs.
+func TestSwitchOrgAuthFailuresAreIndistinguishable(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) { c.OrgParam = "orgHandle" })
+
+	// No cookie at all.
+	noCookie := httptest.NewRequest(http.MethodPost, h.server.path("/api/session/org"),
+		strings.NewReader(`{"org":"org-a"}`))
+	noCookie.Header.Set("Content-Type", "application/json")
+	recNoCookie := httptest.NewRecorder()
+	h.server.handleSwitchOrg(recNoCookie, noCookie)
+
+	// A cookie whose session was never stored.
+	recUnknown := h.switchOrgRequest("unknown-token", "org-a")
+
+	if recNoCookie.Code != http.StatusUnauthorized || recUnknown.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d and %d, want 401 for both", recNoCookie.Code, recUnknown.Code)
+	}
+	if got, want := recUnknown.Body.String(), recNoCookie.Body.String(); got != want {
+		t.Errorf("payloads differ:\n missing cookie: %s\n unknown session: %s", want, got)
+	}
+	// And the body must not name which check failed.
+	for _, leak := range []string{"not authenticated", "session expired", "NOT_AUTHENTICATED", "SESSION_EXPIRED"} {
+		if strings.Contains(recNoCookie.Body.String(), leak) {
+			t.Errorf("response names the specific failure (%q): %s", leak, recNoCookie.Body.String())
+		}
 	}
 }

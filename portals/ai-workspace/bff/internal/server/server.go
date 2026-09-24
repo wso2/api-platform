@@ -72,7 +72,7 @@ type Server struct {
 	// deletes the old entry, then doExchange writes it back under the now-deleted
 	// old key, resurrecting a stale session after its token has rotated out.
 	sessionMu    sync.Mutex
-	sessionLocks map[string]*sync.Mutex
+	sessionLocks map[string]*sessionLock
 }
 
 // exchangeLock single-flights one session's exchange, so the burst of parallel calls
@@ -120,7 +120,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
-		sessionLocks:  make(map[string]*sync.Mutex),
+		sessionLocks:  make(map[string]*sessionLock),
 	}
 
 	if cfg.ControlPlane.CloudURL != "" {
