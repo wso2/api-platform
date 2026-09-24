@@ -636,6 +636,18 @@
 
 .cfg-form-input--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; }
 
+/* Explanatory line under a field. Matches .ok-form-hint on the OAuth2 Keys page
+   so the two forms read alike. Used only where the field name genuinely is not
+   enough — the scopes and resource-indicator inputs. */
+.cfg-form-hint {
+  margin: 7px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-subtle);
+}
+
+
+
 /* Read-only fields — handles, and values the operator sets elsewhere. A handle is
    a resource's identity and is immutable after creation, so the field must not
    look typeable. Attribute selector (0,2,0) outranks .cfg-form-input (0,1,0),
@@ -989,6 +1001,20 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* The key manager's Enabled switch, shown only when editing. Pinned to the left
+   of the action row by its own auto margin, so the buttons stay right-aligned
+   exactly as they are in every other modal. */
+.cfg-km-enabled {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 0 0;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: var(--text-strong);
+  cursor: pointer;
 }
 
 .cfg-btn-danger {

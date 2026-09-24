@@ -29,6 +29,12 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# Local config overlays, layered over configs/config.toml by the start scripts
+# whenever they exist. Machine-specific endpoints and credentials — never
+# committed.
+configs/config.local.toml
+configs/*.local.toml
+
 # vercel
 .vercel
 

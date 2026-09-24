@@ -17,8 +17,8 @@ driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
 
 [api_portal.security]
-encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
-session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
+encryption_key = '{{ file "resources/keys/api-portal-encryption.key" }}'
+session_secret = '{{ file "resources/keys/api-portal-session-secret" }}'
 
 [api_portal.auth]
 mode = "local"
@@ -47,3 +47,12 @@ hash = ""
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "portal_id" }}'
+
+# Key managers for OAuth2 key generation (GET /key-managers/metadata,
+# POST /oauth2-keys) are NOT configured here — none ships enabled, so metadata
+# returns an empty list and key generation has nothing to register against.
+#
+# To configure one: copy the KEY MANAGERS section of configs/config-template.toml
+# into configs/config.local.toml. That file is git-ignored, and `npm start` /
+# `npm run start:local` / `npm run debug` layer it over this one automatically
+# whenever it exists — no extra flag, no separate script.

@@ -1,0 +1,314 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+{{#pageHead}}
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/oauth2-keys-page.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="{{basePath}}/technical-scripts/oauth2-keys-page.js" defer></script>
+{{/pageScripts}}
+
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">OAuth2 Keys</h1>
+      <p class="page-desc">OAuth2 applications you've registered on a key manager. Each one has its own client credentials for requesting access tokens.</p>
+    </div>
+    {{!-- Generating a key registers a real client on an external identity server, which
+          design mode has no way to reach — and which needs a configured key manager.
+          Both are gates on showing the button at all, rather than on it failing later. --}}
+    {{#unless (designMode)}}
+    {{#if oauth2Keys.length}}
+    <button class="dp-btn dp-btn--primary" id="ok-add-btn" type="button"
+      {{#unless generationAvailable}}disabled title="No key manager is configured for OAuth2 key generation"{{/unless}}>
+      <i class="bi bi-plus"></i> Add key
+    </button>
+    {{/if}}
+    {{/unless}}
+  </div>
+
+  {{!-- Server-rendered: the whole list is written into the page, so there is nothing to
+        wait for on first paint. oauth2-keys-page.js only drives the Add-key modal. --}}
+  <div id="oauth2-keys-root"
+       data-base-url="{{baseUrl}}"
+       data-generation-available="{{#if generationAvailable}}true{{else}}false{{/if}}">
+
+    {{#if keysLoadError}}
+    <div class="ok-load-error">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <span><strong>Unable to load OAuth2 keys.</strong> Refresh the page or try again later.</span>
+    </div>
+    {{else if oauth2Keys.length}}
+    <div class="ok-tablewrap">
+      <table class="ok-table" id="oauth2-keys-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Key manager</th><th>Consumer key</th><th>Application</th><th>Created</th><th class="ok-th-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each oauth2Keys}}
+          {{!-- The row itself opens the key: its properties live at the key manager,
+                not here, so selecting one has to fetch them. --}}
+          <tr class="ok-row" data-key-id="{{this.keyId}}" data-key-manager-id="{{this.keyManagerId}}"
+              data-application-id="{{this.applicationId}}" data-consumer-key="{{this.consumerKey}}"
+              tabindex="0" role="button" aria-label="Open {{#if this.name}}{{this.name}}{{else}}{{this.consumerKey}}{{/if}}">
+            {{!-- What the developer called it. Falls back to the consumer key, which
+                  is what a key created before names existed has to be found by. --}}
+            <td class="ok-name">{{#if this.name}}{{this.name}}{{else}}<span class="ok-unnamed">{{this.consumerKey}}</span>{{/if}}</td>
+            {{!-- The name only. The handle is on the row as a data attribute for the
+                  code that needs it, and repeating it here was noise. --}}
+            <td><span class="ok-km-name">{{this.keyManagerName}}</span></td>
+            {{!-- The consumer key is an identifier, not a secret: it is safe on screen.
+                  The consumer secret is returned by the create call and never again,
+                  so it is not stored and cannot appear in this list. --}}
+            <td>
+              <span class="ok-consumer-key" title="{{this.consumerKey}}">{{this.consumerKey}}</span>
+              <button type="button" class="ok-copy" data-copy="{{this.consumerKey}}" aria-label="Copy consumer key">
+                <i class="bi bi-copy"></i>
+              </button>
+            </td>
+            {{!-- An unassociated key is a normal state, not missing data: association
+                  is for attributing usage and has no bearing on the key working. --}}
+            <td class="ok-app">{{#if this.applicationName}}{{this.applicationName}}{{else}}—{{/if}}</td>
+            <td class="ok-created">{{#if this.createdAt}}{{formatExpiresAt this.createdAt}}{{else}}—{{/if}}</td>
+            <td>
+              <div class="ok-actions">
+                <button type="button" class="ok-btn-app ok-row-app">
+                  <i class="bi bi-grid"></i> {{#if this.applicationName}}Change app{{else}}Associate app{{/if}}
+                </button>
+                <button type="button" class="ok-btn-token ok-row-token">
+                  <i class="bi bi-shield-check"></i> Get token
+                </button>
+                <button type="button" class="ok-btn-edit ok-row-edit">
+                  <i class="bi bi-pencil"></i> Update
+                </button>
+                <button type="button" class="ok-btn-delete ok-row-delete">
+                  <i class="bi bi-trash"></i> Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <div class="dp-empty" id="no-oauth2-keys">
+      <span class="dp-empty-icon"><i class="bi bi-shield-lock-fill"></i></span>
+      <h2 class="dp-empty-title">No OAuth2 keys yet</h2>
+      {{#if generationAvailable}}
+      <p class="dp-empty-desc">Register an OAuth2 application on one of your key managers to get a client ID and secret for requesting access tokens.</p>
+      {{#unless (designMode)}}
+      <button class="dp-btn dp-btn--primary dp-btn--lg" id="ok-add-btn-empty" type="button">
+        <i class="bi bi-plus"></i> Add key
+      </button>
+      {{/unless}}
+      {{else}}
+      {{!-- Honest about the blocker rather than showing a button that can only fail:
+            key generation needs a key manager declared in the portal configuration. --}}
+      <p class="dp-empty-desc">No key manager is configured for OAuth2 key generation. Add an <code>[[api_portal.key_manager]]</code> entry to the portal configuration and restart, then you can register applications here.</p>
+      {{/if}}
+    </div>
+    {{/if}}
+  </div>
+
+  {{> alert }}
+
+  {{!-- The caller's applications, rendered once with the page. The picker is a
+        short list the server already had; fetching it again on open would be a
+        round trip to redisplay what is already here. --}}
+  <script type="application/json" id="ok-applications-data">{{{ json applications }}}</script>
+
+  {{!-- Generate a token for a key. The consumer secret is asked for every time
+        because the portal never stored it — the key manager returns it once, at
+        registration. It is sent for this one request and kept nowhere. --}}
+  <div class="ok-overlay" id="ok-token-modal">
+    <div class="ok-modal">
+      <div class="ok-modal-head">
+        <h2 class="ok-modal-title">Get an access token</h2>
+        <button type="button" class="ok-modal-close" id="ok-token-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ok-modal-body">
+        <div class="ok-form-group">
+          <label>Consumer key</label>
+          <p class="ok-token-fixed" id="ok-token-consumer-key"></p>
+        </div>
+        {{!-- Shown instead of the form when the client cannot use this grant at all:
+              a public client has no secret to give, and one registered only for
+              authorization_code gets its tokens by signing a user in. Asking for a
+              secret in either case invites a failure the developer cannot fix. --}}
+        <p class="ok-token-blocked" id="ok-token-blocked" hidden></p>
+        <div id="ok-token-form">
+        <div class="ok-form-group">
+          <label for="ok-token-secret">Consumer secret <span class="ok-required">*</span></label>
+          <input type="password" id="ok-token-secret" class="ok-form-input" autocomplete="off" />
+          <p class="ok-form-hint">Shown to you once, when the key was created. The portal does not keep it, so it is needed each time.</p>
+        </div>
+        <div class="ok-form-group">
+          <label for="ok-token-scopes">Scopes</label>
+          <input type="text" id="ok-token-scopes" class="ok-form-input" placeholder="read write" />
+          <p class="ok-form-hint">Space-separated, optional. The key manager decides what this client may actually have.</p>
+        </div>
+        </div>
+      </div>
+      <div class="ok-modal-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ok-token-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-token-submit">Get token</button>
+      </div>
+    </div>
+  </div>
+
+  {{!-- The issued token. Shown, copyable, and never persisted — closing this is
+        the end of it, exactly as with the consumer secret on create. --}}
+  <div class="ok-overlay" id="ok-token-result-modal">
+    <div class="ok-modal ok-modal--secret">
+      <button type="button" class="ok-modal-close ok-secret-close-abs" id="ok-token-result-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      <div class="ok-secret-hero">
+        <div class="ok-secret-success-icon"><i class="bi bi-check-lg"></i></div>
+        <h2 class="ok-secret-hero-title">Access token issued</h2>
+        <p class="ok-secret-hero-subtitle" id="ok-token-summary"></p>
+      </div>
+      <div class="ok-modal-body">
+        <div class="ok-secret-label"><i class="bi bi-shield-check"></i> Access token</div>
+        <div class="ok-key-field">
+          <code class="ok-key-code" id="ok-token-value"></code>
+          <button type="button" class="ok-copy ok-copy--field" data-copy-target="ok-token-value" aria-label="Copy access token"><i class="bi bi-copy"></i></button>
+        </div>
+        <div class="ok-warning-amber">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>This token is a live credential. It is not stored anywhere in the portal — close this and it is gone.</span>
+        </div>
+      </div>
+      <div class="ok-modal-footer">
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-token-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Delete removes the OAuth2 application at the key manager as well as the
+        portal's record, so it is confirmed rather than done on one click. --}}
+  <div class="ok-overlay" id="ok-delete-modal">
+    <div class="ok-confirm">
+      <div class="ok-confirm-head">
+        <span class="ok-confirm-icon"><i class="bi bi-trash"></i></span>
+        <h2 class="ok-confirm-title">Delete OAuth2 key</h2>
+      </div>
+      <p class="ok-confirm-body">
+        This deletes the OAuth2 application <strong id="ok-delete-name"></strong> at the key manager, not just the portal's record of it. Anything using these credentials will stop working immediately. This cannot be undone.
+      </p>
+      <div class="ok-confirm-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ok-delete-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary ok-btn-danger" id="ok-delete-confirm">Delete key</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ok-overlay" id="ok-app-modal">
+    <div class="ok-modal">
+      <div class="ok-modal-head">
+        <h2 class="ok-modal-title">Associate with an application</h2>
+        <button type="button" class="ok-modal-close" id="ok-app-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ok-modal-body">
+        <p class="ok-form-hint" style="margin-top:0;">Used to attribute this key's usage. It has no effect on whether the key works, and a key belongs to at most one application.</p>
+        <div class="ok-form-group">
+          <label for="ok-app-select">Application</label>
+          <select id="ok-app-select" class="ok-form-input">
+            <option value="">— None —</option>
+          </select>
+        </div>
+      </div>
+      <div class="ok-modal-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ok-app-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-app-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Add-key modal. The fields inside #ok-fields are built at open time from
+        GET /key-managers/metadata: each key manager declares which properties it
+        accepts, and that declaration is the authority on what POST /oauth2-keys
+        will take. Hardcoding a form here would drift from whatever driver the
+        operator actually configured. --}}
+  <div class="ok-overlay" id="ok-add-modal">
+    <div class="ok-modal">
+      <div class="ok-modal-head">
+        {{!-- One form for both modes. Update is the same set of fields as create —
+              PUT replaces the client metadata wholesale — so a second, near-identical
+              form would only be a place for the two to drift. --}}
+        <h2 class="ok-modal-title" id="ok-add-title">Add OAuth2 key</h2>
+        <button type="button" class="ok-modal-close" id="ok-add-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ok-modal-body">
+        <div class="ok-form-group">
+          <label for="ok-km-select">Key manager <span class="ok-required">*</span></label>
+          <select id="ok-km-select" class="ok-form-input"></select>
+          <p class="ok-form-hint" id="ok-km-hint"></p>
+        </div>
+        <div id="ok-fields"></div>
+      </div>
+      <div class="ok-modal-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ok-add-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-add-submit">Add key</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-edit-submit" hidden>Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Credentials modal. The consumer secret is in the create response and nowhere
+        else — the key manager will not hand it back — so this is the only chance to
+        copy it, and the page says so plainly. --}}
+  <div class="ok-overlay" id="ok-secret-modal">
+    <div class="ok-modal ok-modal--secret">
+      <button type="button" class="ok-modal-close ok-secret-close-abs" id="ok-secret-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      <div class="ok-secret-hero">
+        <div class="ok-secret-success-icon"><i class="bi bi-check-lg"></i></div>
+        {{!-- Reused for two events: a key just created, and an update where the key
+              manager issued a replacement secret (RFC 7592 §2.2 permits that). The
+              wording is set by the caller, because "created" would be wrong and
+              alarming on the second. --}}
+        <h2 class="ok-secret-hero-title" id="ok-secret-title">OAuth2 key created</h2>
+        <p class="ok-secret-hero-subtitle" id="ok-secret-subtitle">Registered on <strong id="ok-secret-km"></strong>.</p>
+      </div>
+      <div class="ok-modal-body">
+        <div class="ok-secret-label"><i class="bi bi-person-badge"></i> Consumer key</div>
+        <div class="ok-key-field">
+          <code class="ok-key-code" id="ok-secret-consumer-key"></code>
+          <button type="button" class="ok-copy ok-copy--field" data-copy-target="ok-secret-consumer-key" aria-label="Copy consumer key"><i class="bi bi-copy"></i></button>
+        </div>
+        <div class="ok-secret-label" id="ok-secret-label"><i class="bi bi-key"></i> Consumer secret</div>
+        <div class="ok-key-field" id="ok-secret-field">
+          <code class="ok-key-code" id="ok-secret-consumer-secret"></code>
+          <button type="button" class="ok-copy ok-copy--field" data-copy-target="ok-secret-consumer-secret" aria-label="Copy consumer secret"><i class="bi bi-copy"></i></button>
+        </div>
+        <div class="ok-warning-amber" id="ok-secret-warning">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>Copy the secret now. The key manager returns it only in this response and cannot be asked for it again.</span>
+        </div>
+        <div class="ok-public-note" id="ok-public-note" hidden>
+          <i class="bi bi-info-circle-fill"></i>
+          <span>No secret was issued — this is a public client.</span>
+        </div>
+      </div>
+      <div class="ok-modal-footer">
+        <button type="button" class="dp-btn dp-btn--primary" id="ok-secret-done">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
