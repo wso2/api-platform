@@ -108,6 +108,15 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
+	// An MCP proxy carries every logical operation — tools/call, tools/list,
+	// server/discover — on one POST endpoint, so that route's policy chain is selected
+	// by a resolver reading the request rather than by the route name. Decided once
+	// here; applied to that single route below. False for every other kind.
+	mcpResolved, err := mcpResolutionApplies(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
@@ -229,10 +238,20 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
+			// MCP POST routes use a resolver-generated chain key instead of the route key.
+			// The resolver and transformer must build the same key for policy-chain lookup.
+			// ResolverConfig and CanonicalChainKey are not needed for this resolver.
+			chainKey := routeKey
+			resolverBearing := mcpResolved && isMCPMultiplexedRoute(method, opPath)
+			if resolverBearing {
+				rdcRoute.ResolverName = MCPResolverName
+				chainKey = rdc.ChainKeyFor(vhost, mcpResolverOperation)
+			}
+
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
-			rdc.PolicyChains[routeKey] = sdkChainToModel(injected)
+			rdc.PolicyChains[chainKey] = sdkChainToModel(injected)
 		}
 	}
 

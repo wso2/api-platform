@@ -1645,6 +1645,12 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 
 // ─── Context builders ────────────────────────────────────────────────────────
 
+// metadataBodyResolved is the SharedContext.Metadata key set to true when a resolver bound an
+// operation for the request: its body has been read, and the facts from that parse are in
+// ResolutionAttributes. Policies read it to decide whether to parse the body themselves, so the
+// key is a contract with them - the MCP policies in the policy hub declare the same string.
+const metadataBodyResolved = "bodyResolved"
+
 // applyBoundResolution records the outcome of binding a chain: on the execution
 // context for logs, metrics and spans, and on the shared policy context so the
 // chain's own policies can see which operation they are running for.
@@ -1675,6 +1681,12 @@ func (ec *PolicyExecutionContext) applyBoundResolution(bound resolver.BoundResol
 		return
 	}
 	ec.sharedCtx.ResolvedOperation = bound.Operation
+	// Published in Metadata rather than as another first-class field: a policy may run on an
+	// older engine that never writes it, and an absent key reads as "no resolver" on every
+	// engine version without a new SDK field to depend on.
+	if bound.Operation != "" && ec.sharedCtx.Metadata != nil {
+		ec.sharedCtx.Metadata[metadataBodyResolved] = true
+	}
 	// Handed over by reference, not copied. Wrapping is what puts the map out of a
 	// policy's reach — policy.ResolutionAttributes exposes no mutation path — so
 	// there is nothing left for a per-request copy to defend against, and the

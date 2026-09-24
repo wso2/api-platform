@@ -322,19 +322,48 @@ Feature: Test MCP CRUD and connectivity
         And the response should be valid JSON
         And the JSON response field "status" should be "error"
 
-    Scenario: Deploy MCP proxy with invalid spec version returns 400
+    Scenario: Deploy MCP proxy declaring multiple spec versions
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
             apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
-              name: invalid-spec-version-mcp-v1.0
+              name: multi-spec-version-mcp-v1.0
             spec:
-              displayName: Invalid Spec Version MCP
+              displayName: Multi Spec Version MCP
               version: v1.0
-              context: /missing-upstream-mcp
-              specVersion: "2025-03-18"
+              context: /multi-spec-version-mcp
+              specVersions:
+                - "2025-06-18"
+                - "2026-07-28"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+    Scenario: Deploy MCP proxy declaring both spec version forms returns 400
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: both-spec-version-forms-mcp-v1.0
+            spec:
+              displayName: Both Spec Version Forms MCP
+              version: v1.0
+              context: /both-spec-version-forms-mcp
+              specVersion: "2025-06-18"
+              specVersions:
+                - "2026-07-28"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
               tools: []
               resources: []
               prompts: []
@@ -342,6 +371,99 @@ Feature: Test MCP CRUD and connectivity
         Then the response status should be 400
         And the response should be valid JSON
         And the JSON response field "status" should be "error"
+
+    # A revision this gateway does not support is a gateway limitation, not a bad configuration,
+    # so the proxy deploys. Both an older and a newer revision are covered, since the gateway
+    # used to reject revisions older than the ones it supports.
+    Scenario Outline: Deploy MCP proxy declaring a revision this gateway does not support (<reason>)
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: unsupported-spec-version-<slug>-v1.0
+            spec:
+              displayName: Unsupported Spec Version <slug>
+              version: v1.0
+              context: /unsupported-spec-version-<slug>
+              specVersions:
+                - "2025-06-18"
+                - "<version>"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+        Examples:
+            | slug   | version    | reason                               |
+            | older  | 2025-03-26 | released before the oldest supported |
+            | future | 2027-03-01 | released after this build            |
+
+    # A proxy whose only declared revision predates the protected-resource model deploys too.
+    # The upstream is present so the version is the only thing that could fail.
+    Scenario: Deploy MCP proxy declaring only a legacy revision
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: legacy-spec-version-mcp-v1.0
+            spec:
+              displayName: Legacy Spec Version MCP
+              version: v1.0
+              context: /legacy-spec-version-mcp
+              specVersion: "2025-03-26"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+
+    # A value that is not a revision date is a typo, not a limitation, and is still rejected.
+    # "banana" is the one that matters most: versions are compared as strings, and
+    # "banana" >= "2025-06-18" is true, so without the date check it would read as modern.
+    Scenario Outline: Deploy MCP proxy with a malformed spec version returns 400 (<reason>)
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: malformed-spec-version-<slug>-v1.0
+            spec:
+              displayName: Malformed Spec Version <slug>
+              version: v1.0
+              context: /malformed-spec-version-<slug>
+              specVersions:
+                - "<version>"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response status should be 400
+        And the response should be valid JSON
+        And the JSON response field "status" should be "error"
+        And the response body should contain "<version>"
+        And the response body should contain "expected a revision date"
+
+        Examples:
+            | slug       | version    | reason                          |
+            | singledigit| 2025-6-18  | not a padded date               |
+            | notaday    | 2025-13-45 | shaped like a date but is none  |
+            | notadate   | banana     | not a date at all               |
 
     Scenario: Deploy MCP proxy without upstream returns 400
         Given I authenticate using basic auth as "admin"

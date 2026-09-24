@@ -581,8 +581,8 @@ spec:
 // which would require a non-nil snapshot manager.
 // The core deployment logic is tested indirectly through other tests.
 
-func TestLatestSupportedMCPSpecVersion(t *testing.T) {
-	assert.Equal(t, "2025-06-18", LATEST_SUPPORTED_MCP_SPEC_VERSION)
+func TestMinSupportedMCPSpecVersion(t *testing.T) {
+	assert.Equal(t, "2025-06-18", MIN_SUPPORTED_MCP_SPEC_VERSION)
 }
 
 // Note: TestMCPDeploymentService_DeployMCPConfiguration_Update is skipped
@@ -697,7 +697,6 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 	assert.Equal(t, "corr-mcp-undeploy", mockHub.publishedEvents[0].event.EventID)
 }
 
-
 // A real resolver must resolve an unpinned oauth2 auth policy to this
 // gateway's actually-loaded version, not "".
 func TestHydrateStoredMCPConfig_ResolvesUnpinnedVersionWithRealResolver(t *testing.T) {
@@ -710,7 +709,7 @@ func TestHydrateStoredMCPConfig_ResolvesUnpinnedVersionWithRealResolver(t *testi
 				DisplayName: "test-mcp",
 				Version:     "1.0.0",
 				Context:     stringPtr("/mcp"),
-				SpecVersion: func() *string { v := LATEST_SUPPORTED_MCP_SPEC_VERSION; return &v }(),
+				SpecVersion: func() *string { v := MIN_SUPPORTED_MCP_SPEC_VERSION; return &v }(),
 				Upstream: api.MCPProxyConfigData_Upstream{
 					Url: &url,
 					Auth: &struct {

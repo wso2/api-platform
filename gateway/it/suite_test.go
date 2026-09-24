@@ -92,6 +92,7 @@ func getFeaturePaths() []string {
 		"features/api_deploy.feature",
 		"features/mcp_deploy.feature",
 		"features/mcp_policies.feature",
+		"features/mcp_analytics.feature",
 		"features/agent_deploy.feature",
 		"features/agent_policies.feature",
 		"features/agent_card.feature",

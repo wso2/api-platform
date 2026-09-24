@@ -22,12 +22,15 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
+
+// specVersionLayout is the shape every MCP revision takes: the spec numbers them by date.
+const specVersionLayout = "2006-01-02"
 
 // MCPValidator validates API configurations using rule-based validation
 type MCPValidator struct {
@@ -35,8 +38,6 @@ type MCPValidator struct {
 	versionRegex *regexp.Regexp
 	// urlFriendlyNameRegex matches URL-safe characters for API names
 	urlFriendlyNameRegex *regexp.Regexp
-	// supported MCP specification version
-	supportedSpecVersions []string
 	// policyValidator validates policies referenced in the MCP configuration
 	policyValidator *PolicyValidator
 }
@@ -44,9 +45,8 @@ type MCPValidator struct {
 // NewMCPValidator creates a new API configuration validator
 func NewMCPValidator() *MCPValidator {
 	return &MCPValidator{
-		versionRegex:          regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
-		urlFriendlyNameRegex:  regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
-		supportedSpecVersions: []string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2025_NOVEMBER}}
+		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
+		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`)}
 }
 
 // WithPolicyValidator sets the policy validator on the MCPValidator and returns it for chaining
@@ -134,9 +134,7 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 		})
 	}
 
-	if spec.SpecVersion != nil {
-		errors = append(errors, v.validateSupportedSpecVersion(spec.SpecVersion)...)
-	}
+	errors = append(errors, v.validateSpecVersions(spec)...)
 
 	// Validate context
 	errors = append(errors, v.validateContextAndVhost(spec.Context, spec.Vhost)...)
@@ -312,16 +310,77 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 	return errors
 }
 
-// validateSupportedSpecVersion checks if the provided version is supported
-func (v *MCPValidator) validateSupportedSpecVersion(version *string) []ValidationError {
+// validateSpecVersions checks the MCP specification versions the proxy declares, in whichever
+// form it authored them. Declaring none is allowed; the transformer applies its own default.
+//
+// Only the shape of each version is checked, not whether this gateway supports it. The versions
+// describe what the upstream MCP server speaks, and which revision a client and server use is
+// negotiated per session, so a revision this build does not support is a gateway limitation
+// rather than a bad configuration. Rejecting it would refuse a server that also speaks revisions
+// the gateway does serve - one reporting 2025-03-26 alongside 2025-06-18, for example.
+func (v *MCPValidator) validateSpecVersions(spec *api.MCPProxyConfigData) []ValidationError {
 	var errors []ValidationError
-	isSupported := slices.Contains(v.supportedSpecVersions, *version)
-	if !isSupported {
-		errors = append(errors, ValidationError{
-			Field: "spec.specVersion",
-			Message: fmt.Sprintf("Unsupported MCP spec version (supported versions: %s)",
-				strings.Join(v.supportedSpecVersions, ", ")),
+
+	if spec.SpecVersion != nil && spec.SpecVersions != nil {
+		return append(errors, ValidationError{
+			Field: "spec.specVersions",
+			Message: "The deprecated 'specVersion' field cannot be used together with 'specVersions'. " +
+				"Use either the deprecated 'specVersion' or the 'specVersions' list, not both.",
 		})
 	}
+
+	// An empty list declares nothing and is rejected here. An empty string inside the list
+	// is a declared version like any other, and fails below as malformed.
+	if spec.SpecVersions != nil {
+		if len(*spec.SpecVersions) == 0 {
+			return append(errors, ValidationError{
+				Field:   "spec.specVersions",
+				Message: "specVersions must list at least one MCP spec version",
+			})
+		}
+		return append(errors, v.validateSpecVersionFormat("spec.specVersions", *spec.SpecVersions)...)
+	}
+
+	if spec.SpecVersion != nil {
+		errors = append(errors,
+			v.validateSpecVersionFormat("spec.specVersion", []string{*spec.SpecVersion})...)
+	}
+
 	return errors
+}
+
+// isWellFormedSpecVersion reports whether a version is a revision date, which is how the MCP spec
+// numbers its revisions. The shape is checked by parsing rather than by comparing, because every
+// consumer compares revisions as strings and anything non-numeric sorts above a date:
+// "invalid-version" >= "2025-06-18" is true, so a typo would otherwise be read as a modern
+// revision and synthesize routes the proxy never declared.
+func isWellFormedSpecVersion(version string) bool {
+	parsed, err := time.Parse(specVersionLayout, version)
+	return err == nil && parsed.Format(specVersionLayout) == version
+}
+
+// validateSpecVersionFormat rejects versions that are not revision dates. A well-formed revision
+// this build does not implement is a gateway limitation rather than a bad configuration, so it
+// deploys and is warned about instead. Every rejected version is named in a single error, so a
+// rejected list says which entries failed.
+func (v *MCPValidator) validateSpecVersionFormat(field string, versions []string) []ValidationError {
+	var malformed []string
+	for _, version := range versions {
+		if !isWellFormedSpecVersion(version) {
+			malformed = append(malformed, strconv.Quote(version))
+		}
+	}
+	if len(malformed) == 0 {
+		return nil
+	}
+
+	label := "version"
+	if len(malformed) > 1 {
+		label = "versions"
+	}
+	return []ValidationError{{
+		Field: field,
+		Message: fmt.Sprintf("Invalid MCP spec %s %s (expected a revision date, YYYY-MM-DD)",
+			label, strings.Join(malformed, ", ")),
+	}}
 }

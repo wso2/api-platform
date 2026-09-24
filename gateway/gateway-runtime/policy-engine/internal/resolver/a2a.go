@@ -730,9 +730,13 @@ type a2aMessage struct {
 // truncated one is not a shorter identifier, it is a different one, and correlating on
 // it would silently group unrelated requests. Dropping leaves the attribute absent,
 // which is honest.
+// maxA2AIdentifierBytes caps what this resolver publishes. A2A's identifiers are
+// UUID-shaped, so this is far tighter than the framework backstop.
+const maxA2AIdentifierBytes = 256
+
 func (m a2aMessage) addIdentifiers(attrs map[string]string) {
 	add := func(name, value string) {
-		if value == "" || len(value) > MaxResolutionAttributeValueBytes {
+		if value == "" || len(value) > maxA2AIdentifierBytes {
 			return
 		}
 		attrs[name] = value

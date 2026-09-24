@@ -651,7 +651,7 @@ func TestA2AResolve_OmitsAbsentIdentifiers(t *testing.T) {
 // dropped, not truncated: a truncated opaque identifier is a *different* identifier,
 // and correlating on it would silently group unrelated requests.
 func TestA2AResolve_DropsOversizedIdentifiers(t *testing.T) {
-	oversized := strings.Repeat("x", MaxResolutionAttributeValueBytes+1)
+	oversized := strings.Repeat("x", maxA2AIdentifierBytes+1)
 	pr := sendMessageRoute(t)
 
 	res, err := pr.Resolver.Resolve(context.Background(), RequestView{
