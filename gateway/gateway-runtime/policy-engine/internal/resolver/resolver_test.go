@@ -233,7 +233,7 @@ func TestRegistry_NamesAreSorted(t *testing.T) {
 // resolver a deliberate change rather than a silent one.
 func TestDefaultRegistry_HoldsTheShippedResolversAndIsFrozen(t *testing.T) {
 	def := DefaultRegistry()
-	assert.Equal(t, []string{agentproto.ResolverName, RouteKeyResolverName}, def.Names())
+	assert.Equal(t, []string{agentproto.ResolverName, MCPResolverName, RouteKeyResolverName}, def.Names())
 
 	for _, name := range def.Names() {
 		r, ok := def.Get(name)
