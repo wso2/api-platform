@@ -2010,7 +2010,7 @@ func validProxyWithResilience(r *api.Resilience) api.LLMProxyConfiguration {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "my-proxy",
 			Version:     "v1.0",
-			Provider:    api.LLMProxyProvider{Id: "openai"},
+			Provider:    &api.LLMProxyProvider{Id: "openai"},
 			Resilience:  r,
 		},
 	}
@@ -2088,7 +2088,7 @@ func TestValidateLLMProxy_ReservedHealthPath(t *testing.T) {
 				DisplayName: "my-proxy",
 				Version:     "v1.0",
 				Context:     context,
-				Provider:    api.LLMProxyProvider{Id: "openai"},
+				Provider:    &api.LLMProxyProvider{Id: "openai"},
 			},
 		}
 	}
@@ -2193,7 +2193,7 @@ func validProxyWithAuth(auth *api.LLMUpstreamAuth) api.LLMProxyConfiguration {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "my-proxy",
 			Version:     "v1.0",
-			Provider:    api.LLMProxyProvider{Id: "openai", Auth: auth},
+			Provider:    &api.LLMProxyProvider{Id: "openai", Auth: auth},
 		},
 	}
 }
@@ -2553,4 +2553,170 @@ func TestValidateLLMProviderTemplate_ProviderFieldsErrorsAreKeyed(t *testing.T) 
 		"spec.providerFields.choices.location",
 		"spec.providerFields.searchContextSize.identifier",
 	}, fields)
+}
+
+// TestLLMValidator_ProviderShapeRejections covers the four ways a provider
+// shape can be malformed. Each must be rejected with a message naming the
+// problem rather than one shape silently winning.
+func TestLLMValidator_ProviderShapeRejections(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxyWith := func(spec api.LLMProxyConfigData) api.LLMProxyConfiguration {
+		spec.DisplayName = "shape-rejection"
+		spec.Version = "v1.0"
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "shape-rejection"},
+			Spec:       spec,
+		}
+	}
+
+	cases := []struct {
+		name        string
+		spec        api.LLMProxyConfigData
+		wantMessage string
+	}{
+		{
+			name: "both shapes supplied",
+			spec: api.LLMProxyConfigData{
+				Provider:  &api.LLMProxyProvider{Id: "openai-provider"},
+				Providers: &[]api.LLMProxyProviderEntry{{Id: "openai-provider", IsPrimary: true}},
+			},
+			wantMessage: "only one provider shape may be used",
+		},
+		{
+			name: "no entry marked primary",
+			spec: api.LLMProxyConfigData{
+				Providers: &[]api.LLMProxyProviderEntry{
+					{Id: "openai-provider"}, {Id: "anthropic-provider"},
+				},
+			},
+			wantMessage: "none is marked",
+		},
+		{
+			name: "several entries marked primary",
+			spec: api.LLMProxyConfigData{
+				Providers: &[]api.LLMProxyProviderEntry{
+					{Id: "openai-provider", IsPrimary: true}, {Id: "anthropic-provider", IsPrimary: true},
+				},
+			},
+			wantMessage: "2 are marked",
+		},
+		{
+			name:        "empty providers list",
+			spec:        api.LLMProxyConfigData{Providers: &[]api.LLMProxyProviderEntry{}},
+			wantMessage: "must not be empty",
+		},
+		{
+			name:        "no provider at all",
+			spec:        api.LLMProxyConfigData{},
+			wantMessage: "must declare a provider",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errors := validator.Validate(proxyWith(tc.spec))
+			if len(errors) == 0 {
+				t.Fatalf("expected the configuration to be rejected")
+			}
+			var messages []string
+			for _, e := range errors {
+				messages = append(messages, e.Message)
+			}
+			joined := strings.Join(messages, " | ")
+			if !strings.Contains(joined, tc.wantMessage) {
+				t.Errorf("errors = %s, want one mentioning %q", joined, tc.wantMessage)
+			}
+		})
+	}
+}
+
+// TestLLMValidator_AliasUniquenessIncludesPrimary: the primary carries an alias
+// now, so it takes part in the same uniqueness rule as every additional
+// provider.
+func TestLLMValidator_AliasUniquenessIncludesPrimary(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxy := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "alias-collision"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "alias-collision",
+			Version:     "v1.0",
+			Provider:    &api.LLMProxyProvider{Id: "openai-provider", As: stringPtr("shared-name")},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+				{Id: "anthropic-provider", As: stringPtr("shared-name")},
+			},
+		},
+	}
+
+	errors := validator.Validate(proxy)
+	var joined []string
+	for _, e := range errors {
+		joined = append(joined, e.Message)
+	}
+	if !strings.Contains(strings.Join(joined, " | "), "duplicate upstream name 'shared-name'") {
+		t.Errorf("expected a duplicate upstream name error, got %v", joined)
+	}
+}
+
+// TestValidateLLMProxy_CanonicalErrorsNameTheAuthoredEntry guards the field
+// paths reported for a canonical provider list. Normalisation moves the primary
+// to the front, so an error raised against it must still name the position the
+// author actually wrote — otherwise the message points at a different provider
+// and sends them to the wrong line.
+func TestValidateLLMProxy_CanonicalErrorsNameTheAuthoredEntry(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxyWithProviders := func(entries []api.LLMProxyProviderEntry) api.LLMProxyConfiguration {
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "openai-proxy"},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "my-proxy",
+				Version:     "v1.0",
+				Providers:   &entries,
+			},
+		}
+	}
+
+	t.Run("primary authored last is reported at its own index", func(t *testing.T) {
+		// The primary sits third as authored but leads after normalisation. Its
+		// id is invalid, so the error must name index 2, not index 0.
+		errs := validator.Validate(proxyWithProviders([]api.LLMProxyProviderEntry{
+			{Id: "anthropic", Alias: stringPtr("claude")},
+			{Id: "gemini"},
+			{Id: "Not A Valid Id", IsPrimary: true},
+		}))
+
+		assertHasFieldError(t, errs, "spec.providers[2].id")
+		for _, err := range errs {
+			assert.NotEqual(t, "spec.providers[0].id", err.Field,
+				"the error must not be attributed to the entry the primary displaced")
+		}
+	})
+
+	t.Run("non-primary entries keep their authored index", func(t *testing.T) {
+		errs := validator.Validate(proxyWithProviders([]api.LLMProxyProviderEntry{
+			{Id: "openai", IsPrimary: true},
+			{Id: "anthropic", Alias: stringPtr("not a valid alias")},
+		}))
+
+		assertHasFieldError(t, errs, "spec.providers[1].alias")
+	})
+
+	t.Run("legacy shape still names provider and additionalProviders", func(t *testing.T) {
+		proxy := validProxyWithAuth(nil)
+		proxy.Spec.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+			{Id: "anthropic", As: stringPtr("not a valid alias")},
+		}
+
+		errs := validator.Validate(proxy)
+
+		assertHasFieldError(t, errs, "spec.additionalProviders[0].as")
+	})
 }

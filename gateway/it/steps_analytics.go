@@ -73,6 +73,7 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have request method "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveRequestMethod)
 	ctx.Step(`^the latest analytics event should have response status (\d+)$`, a.theLatestAnalyticsEventShouldHaveResponseStatus)
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
+	ctx.Step(`^the latest analytics event should have MCP field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMCPField)
 	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
 	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
 	ctx.Step(`^the latest analytics event should carry only A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldCarryOnlyA2AField)
@@ -310,6 +311,50 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 	return nil
 }
 
+// theLatestAnalyticsEventShouldHaveMCPField verifies one property inside the MCP block of the
+// latest event.
+//
+// The MCP properties are published as one object under metadata.mcpAnalytics, not as flat
+// metadata keys, so theLatestAnalyticsEventShouldHaveMetadataField cannot read them. The
+// analytics policy hands them to the engine as a JSON string, mcp_request_properties, and the
+// engine flattens that into the object, so the string itself never reaches the collector.
+//
+// On a route carrying the operation resolver the policy takes these properties from the
+// resolver's attributes rather than parsing the body itself. Both paths must publish the same
+// properties, so this asserts the result rather than which path produced it.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMCPField(fieldName, expectedValue string) error {
+	event := a.lastMatchedEvent
+	if event == nil {
+		var err error
+		event, err = a.getLatestAnalyticsEvent("")
+		if err != nil {
+			return err
+		}
+	}
+	if event.Metadata == nil {
+		return fmt.Errorf("event has no metadata")
+	}
+
+	raw, ok := event.Metadata["mcpAnalytics"]
+	if !ok {
+		return fmt.Errorf("event carries no mcpAnalytics block (metadata keys: %s)", sortedKeys(event.Metadata))
+	}
+	props, ok := raw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("mcpAnalytics is %T, expected an object", raw)
+	}
+
+	actualValue, ok := props[fieldName]
+	if !ok {
+		return fmt.Errorf("MCP analytics property '%s' not found in {%s}", fieldName, sortedKeys(props))
+	}
+	if actualValueStr := fmt.Sprintf("%v", actualValue); actualValueStr != expectedValue {
+		return fmt.Errorf("expected MCP analytics property '%s' to be '%s', but got '%s'",
+			fieldName, expectedValue, actualValueStr)
+	}
+	return nil
+}
+
 // theLatestAnalyticsEventShouldHaveA2AField verifies a field inside the A2A
 // dimension block of the latest (or last matched) event.
 //
@@ -397,6 +442,10 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName 
 // *values* are asserted here rather than their absence — a real operation appearing on
 // a card fetch is precisely the leak this step guards against, and exempting the keys
 // without checking what is in them would let it through.
+//
+// agent_id and agent_name are exempt too: they are the callee agent's identity, which
+// the publisher sets on every Agent event whatever its shape. Their values are generated
+// per deployment, so they are asserted non-empty rather than pinned.
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldName string) error {
 	block, err := a.a2aAnalyticsBlock()
 	if err != nil {
@@ -411,9 +460,18 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldCarryOnlyA2AField(fieldNam
 		}
 	}
 
+	identity := map[string]struct{}{"agent_id": {}, "agent_name": {}}
+	for name := range identity {
+		if got, ok := block[name]; !ok || fmt.Sprintf("%v", got) == "" {
+			return fmt.Errorf("expected the A2A block to carry a non-empty agent identity field '%s', but it carries '%v'",
+				name, got)
+		}
+	}
+
 	extra := make(map[string]interface{})
 	for name, value := range block {
-		if _, isRequired := required[name]; !isRequired && name != fieldName {
+		_, isIdentity := identity[name]
+		if _, isRequired := required[name]; !isRequired && !isIdentity && name != fieldName {
 			extra[name] = value
 		}
 	}

@@ -431,6 +431,8 @@ func TestPublish_A2ABlockShape(t *testing.T) {
 		"operation": "SendMessage",
 		"transport": "JSONRPC",
 		"protocol_version": "1.0",
+		"agent_id": "api-123",
+		"agent_name": "test-api",
 		"request": {
 			"message_id": "msg-1",
 			"task_id": "task-existing",
@@ -490,7 +492,9 @@ func TestPublish_AgentCardEventCarriesRequestTypeAndCatchAlls(t *testing.T) {
 	assert.JSONEq(t, `{
 		"request_type": "agentCard",
 		"operation": "Unknown",
-		"transport": "UNKNOWN"
+		"transport": "UNKNOWN",
+		"agent_id": "api-123",
+		"agent_name": "test-api"
 	}`, string(encoded))
 }
 

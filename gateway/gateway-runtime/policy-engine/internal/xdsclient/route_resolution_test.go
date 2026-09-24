@@ -32,6 +32,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
@@ -516,4 +517,118 @@ func TestRouteConfigUpdate_ValidBodyLimitsAreAccepted(t *testing.T) {
 			assert.Equal(t, tc.want, rc.MaxRequestBodyBytes)
 		})
 	}
+}
+
+// ─── The MCP resolver, driven from wire data ─────────────────────────────────
+
+// The whole controller→runtime contract for MCP, exercised with the real resolver: a
+// route config shaped exactly as policyxds emits it arrives, and the route prepares.
+//
+// Every row prepares identically. The resolver reads no route configuration, so these
+// rows exist to prove that nothing on the wire — including fields an older controller
+// emitted — can change the shape a route prepares to.
+func TestRouteConfigUpdate_MCPRouteIngestsFromWire(t *testing.T) {
+	cases := []struct {
+		name           string
+		resolverConfig map[string]interface{}
+		wantBuffers    bool
+		wantStatic     bool
+	}{
+		{
+			name:           "no resolver config, as the controller emits",
+			resolverConfig: nil,
+			wantBuffers:    true,
+			wantStatic:     false,
+		},
+		{
+			name:           "a legacy spec version changes nothing",
+			resolverConfig: map[string]interface{}{"specVersion": "2025-06-18"},
+			wantBuffers:    true,
+			wantStatic:     false,
+		},
+		{
+			name:           "a modern spec version does not opt out of the body",
+			resolverConfig: map[string]interface{}{"specVersion": "2026-07-28"},
+			wantBuffers:    true,
+			wantStatic:     false,
+		},
+		{
+			name:           "the retired validateHeaderBody flag is inert on the wire",
+			resolverConfig: map[string]interface{}{"specVersion": "2026-07-28", "validateHeaderBody": false},
+			wantBuffers:    true,
+			wantStatic:     false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, k := newRouteHandler(t, registryWithResolvers(t, &resolver.MCPResolver{}))
+
+			err := h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+				routeConfigResource(t, map[string]interface{}{
+					"route_key":       "POST|/weather/mcp|example.com",
+					"resolver_name":   resolver.MCPResolverName,
+					"resolver_config": tc.resolverConfig,
+					"metadata": map[string]interface{}{
+						"uuid": "mcp-api-1", "vhost": "example.com", "path": "/weather/mcp",
+					},
+				}),
+			}, "v1")
+			require.NoError(t, err)
+
+			rc := k.GetRouteConfig("POST|/weather/mcp|example.com")
+			require.NotNil(t, rc, "a well-formed MCP route must not be skipped at ingest")
+			require.NotNil(t, rc.Prepared)
+
+			assert.False(t, rc.IsIdentity(), "an MCP POST route is resolver-bearing, not identity")
+			assert.Equal(t, tc.wantBuffers, rc.Prepared.Requirements.BuffersBody())
+			assert.Equal(t, tc.wantStatic, rc.Prepared.IsStatic())
+		})
+	}
+}
+
+// A route naming the MCP resolver with an unusable partition is dropped at ingest rather
+// than serving requests that could compose a key into someone else's partition. Dropping
+// one route must not NACK the snapshot: under State-of-the-World that would freeze route
+// updates for every API on the gateway.
+func TestRouteConfigUpdate_MCPRouteWithNoAPIIDIsSkipped(t *testing.T) {
+	// This path increments an ingest-failure counter, and the metric vars are nil until
+	// Init runs — in production main.go does it long before xDS starts, but a test that
+	// exercises a failure branch has to do it itself.
+	metrics.Init()
+
+	h, k := newRouteHandler(t, registryWithResolvers(t, &resolver.MCPResolver{}))
+
+	err := h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+		routeConfigResource(t, map[string]interface{}{
+			"route_key":     "POST|/weather/mcp|example.com",
+			"resolver_name": resolver.MCPResolverName,
+			"metadata": map[string]interface{}{
+				"vhost": "example.com", "path": "/weather/mcp", // no uuid
+			},
+		}),
+	}, "v1")
+	require.NoError(t, err, "a bad route is skipped, never NACKed")
+
+	assert.Nil(t, k.GetRouteConfig("POST|/weather/mcp|example.com"),
+		"the route must not be served at all")
+}
+
+// The control plane decides whether it may send resolver-bearing routes by reading what
+// this binary advertises. Registering the MCP resolver is therefore not enough on its own
+// — it has to reach this list, which it does because the list is built from the live
+// registry rather than a hand-maintained constant.
+func TestDiscoveryNode_ProductionRegistryAdvertisesMCP(t *testing.T) {
+	c := &Client{resolvers: resolver.DefaultRegistry()}
+
+	list := c.discoveryNode().Metadata.Fields["supported_resolvers"].GetListValue()
+	require.NotNil(t, list)
+
+	var names []string
+	for _, v := range list.Values {
+		names = append(names, v.GetStringValue())
+	}
+	assert.Contains(t, names, resolver.MCPResolverName,
+		"without this the controller withholds every MCP resolver-bearing route")
+	assert.Contains(t, names, resolver.RouteKeyResolverName)
 }

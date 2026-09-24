@@ -1527,7 +1527,7 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
 		}
-		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		providerUUID, err := s.resolveProviderUUID(tx, primaryProviderID(proxyConfig.Spec))
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve provider: %w", err)
 		}
@@ -1581,7 +1581,7 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
 		}
-		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		providerUUID, err := s.resolveProviderUUID(tx, primaryProviderID(proxyConfig.Spec))
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve provider: %w", err)
 		}
@@ -1653,7 +1653,7 @@ func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		if !ok {
 			return fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
 		}
-		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		providerUUID, err := s.resolveProviderUUID(tx, primaryProviderID(proxyConfig.Spec))
 		if err != nil {
 			return fmt.Errorf("failed to resolve provider: %w", err)
 		}
@@ -3924,4 +3924,16 @@ func (s *sqlStore) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) {
 	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
 	return secrets, nil
+}
+
+// primaryProviderID returns the provider id the proxy's FK target is taken
+// from: the entry marked primary in the canonical `providers` list, or the
+// legacy `provider` object. An unresolvable shape yields an empty id, which the
+// caller's own lookup then reports.
+func primaryProviderID(spec api.LLMProxyConfigData) string {
+	primary, err := models.PrimaryLLMProxyAttachment(spec)
+	if err != nil {
+		return ""
+	}
+	return primary.Id
 }

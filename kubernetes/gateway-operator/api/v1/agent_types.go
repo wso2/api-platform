@@ -52,28 +52,25 @@ type AgentUpstreamAuth struct {
 	Value *SecretValueSource `json:"value,omitempty"`
 }
 
-// AgentUpstream describes the backend A2A agent. The URL is the base the
-// gateway forwards A2A operation traffic to, and — in public passthrough card
-// mode — the origin of the standard /.well-known/agent-card.json document.
+// AgentUpstream describes the backend A2A agent: the base the gateway forwards
+// A2A operation traffic to, and — in public passthrough card mode — the origin
+// of the standard /.well-known/agent-card.json document.
 //
-// url is required, and there is no ref form. This is the one kind whose upstream
-// works that way: an Agent forwards to exactly one upstream and, in passthrough
-// card mode, fetches its card from that same origin, so the gateway-controller's
-// own validator requires a url (pkg/config/agent_validator.go, "Upstream url is
-// required") where RestApi, Mcp and LlmProvider all accept a ref instead.
-// Carrying a ref here was therefore admitting two shapes the controller never
-// honours: ref-only is rejected at deploy time, turning a kubectl-apply error
-// into a status condition, and url+ref silently ignores the ref, because
-// resolveUpstreamURL takes url whenever it is set.
-//
-// Named upstream definitions are still available to an Agent through
-// spec.upstreamDefinitions — a policy selects among them per request via the
-// cluster header. That is a separate mechanism from this field.
+// Exactly one of url or ref must be set, as for the other kinds. A ref names an
+// entry in spec.upstreamDefinitions; the gateway-controller resolves it to that
+// definition's first URL and basePath, so the card fetch and the operation
+// routes use the same origin whichever form is written.
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.ref)",message="exactly one of url or ref must be set"
 type AgentUpstream struct {
-	// Url is the direct backend URL. Required: an Agent has no ref form.
-	// +kubebuilder:validation:Required
+	// Url is the direct backend URL.
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	Url string `json:"url"`
+	Url *string `json:"url,omitempty"`
+
+	// Ref is the name of a predefined upstreamDefinition.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	Ref *string `json:"ref,omitempty"`
 
 	// HostRewrite controls how the Host header is handled.
 	// +optional
@@ -370,11 +367,9 @@ type AgentConfigData struct {
 	Vhost *string `json:"vhost,omitempty"`
 
 	// UpstreamDefinitions is the list of reusable upstream definitions (with
-	// optional connect timeout) an Agent's policies can route to.
-	//
-	// spec.upstream has no ref form (see AgentUpstream), so these are not
-	// referenced from there: declaring any of them turns on cluster-header
-	// routing, which lets a policy pick one of them per request.
+	// optional connect timeout) that upstream.ref can reference. Declaring any of
+	// them also turns on cluster-header routing, which lets a policy pick one of
+	// them per request.
 	// +optional
 	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
 

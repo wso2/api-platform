@@ -1,0 +1,14 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "LlmProxy",
+  "metadata": { "name": "compat-single-provider-auth" },
+  "spec": {
+    "displayName": "compat-single-provider-auth",
+    "version": "v1.0",
+    "context": "/compat-single-auth",
+    "provider": {
+      "id": "openai-provider",
+      "auth": { "type": "api-key", "header": "Authorization", "value": "Bearer primary" }
+    }
+  }
+}

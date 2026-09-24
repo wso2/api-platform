@@ -112,13 +112,14 @@ func agentWithPolicyScopes(t *testing.T) *apiv1.Agent {
 	t.Helper()
 	ctxPath := "/weather"
 	prefix := "/rpc"
+	upstreamURL := "https://weather.internal"
 	return &apiv1.Agent{
 		ObjectMeta: metav1.ObjectMeta{Name: "weather-agent", Namespace: "apigateway-demo"},
 		Spec: apiv1.AgentConfigData{
 			DisplayName: "Weather Agent",
 			Version:     "v1.0",
 			Context:     &ctxPath,
-			Upstream:    apiv1.AgentUpstream{Url: "https://weather.internal"},
+			Upstream:    apiv1.AgentUpstream{Url: &upstreamURL},
 			A2A: apiv1.A2AConfig{
 				ProtocolVersion: "1.0",
 				OperationConfigs: apiv1.A2AOperationConfigs{
