@@ -73,6 +73,9 @@ type agentProxyTestEnv struct {
 	handler http.Handler
 	db      *database.DB
 	vault   vault.SecretVault
+	// deployLogs captures the deployment service's log output, so a test can
+	// assert what a deploy reported.
+	deployLogs *lockedBuffer
 }
 
 // newAgentProxyTestEnv builds the full Agent proxy stack over a fresh SQLite DB,
@@ -137,12 +140,29 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		identity,
 	).WithSecretService(secretSvc)
 
+	deployLogs := &lockedBuffer{}
+	agentRepo := repository.NewAgentProxyRepo(db)
+	deploymentRepo := repository.NewDeploymentRepo(db, registry)
+	deploySvc := service.NewAgentDeploymentService(
+		agentRepo,
+		deploymentRepo,
+		repository.NewGatewayRepo(db),
+		repository.NewArtifactRepo(db, registry),
+		repository.NewAPIKeyRepo(db, registry),
+		nil, // gatewayEventsService — deployment notifications are Section 10
+		service.NewArtifactDefinitions(service.NewAgentProxyDefinition(agentRepo, &utils.AgentProxyUtils{})),
+		cfg,
+		slog.New(slog.NewJSONHandler(deployLogs, nil)),
+	)
+
 	mux := http.NewServeMux()
 	NewAgentProxyHandler(svc, identity, slog.Default()).RegisterRoutes(mux)
+	NewAgentProxyDeploymentHandler(deploySvc, identity, slog.Default()).RegisterRoutes(mux)
 	return &agentProxyTestEnv{
-		handler: middleware.NewTestContextMiddleware(mux),
-		db:      db,
-		vault:   v,
+		handler:    middleware.NewTestContextMiddleware(mux),
+		db:         db,
+		vault:      v,
+		deployLogs: deployLogs,
 	}
 }
 

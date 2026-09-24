@@ -269,6 +269,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
 		service.NewLLMProxyDefinition(llmProxyRepo),
 		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 	)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
@@ -314,6 +315,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		artifactRepo,
+		apiKeyRepo,
+		gatewayEventsService,
+		artifactDefinitions,
+		cfg,
+		slogger,
+	)
+	agentDeploymentService := service.NewAgentDeploymentService(
+		agentProxyRepo,
+		deploymentRepo,
+		gatewayRepo,
 		artifactRepo,
 		apiKeyRepo,
 		gatewayEventsService,
@@ -385,6 +397,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
 	agentProxyHandler := handler.NewAgentProxyHandler(agentProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
+	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
@@ -449,6 +462,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyHandler.RegisterRoutes(core)
 	mcpProxyDeploymentHandler.RegisterRoutes(core)
 	agentProxyHandler.RegisterRoutes(core)
+	agentProxyDeploymentHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.

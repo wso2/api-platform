@@ -165,6 +165,15 @@ var (
 	// is built on. The call site supplies a sterile reason sentence; the upstream
 	// URL, its credentials and its raw body never appear in it.
 	AgentProxyUpstreamUnreachable = def(CodeAgentProxyUpstreamUnreachable, http.StatusServiceUnavailable, "%s")
+	// AgentProxyDeploymentValidationFailed is a malformed deployment request
+	// (base, buildId, gatewayId). The call site supplies the sentence.
+	AgentProxyDeploymentValidationFailed = def(CodeAgentProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	// AgentProxyDeploymentNotUndeployed refuses to delete a deployment record
+	// that is not UNDEPLOYED. An active one gets DeploymentActive instead, whose
+	// "undeploy it first" is the actionable answer; this entry covers the states
+	// where undeploying is not the fix (in progress, failed, superseded).
+	AgentProxyDeploymentNotUndeployed = def(CodeAgentProxyDeploymentNotUndeployed, http.StatusConflict,
+		"Only an undeployed deployment can be deleted.")
 )
 
 // Organization / project / application entries.
