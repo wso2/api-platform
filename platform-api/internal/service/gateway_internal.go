@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -357,6 +358,37 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 	return proxyYamlMap, nil
 }
 
+// GetActiveAgentDeploymentByGateway returns the immutable artifact snapshot of the
+// Agent proxy's current deployment on the calling gateway, keyed by agentID.
+//
+// agentID is the internal artifact UUID carried in gateway events, not the
+// public handle; a handle does not resolve here. The lookup is scoped to the
+// gateway's organization, and only a deployment whose desired state is DEPLOYED
+// on this gateway is served. The stored snapshot is returned as-is: the Agent
+// proxy is never re-rendered at fetch time, so an edit to the Agent proxy
+// reaches the gateway only through a new deployment.
+func (s *GatewayInternalAPIService) GetActiveAgentDeploymentByGateway(agentID, orgID, gatewayID string) (map[string]string, error) {
+	proxy, err := s.agentProxyRepo.GetByUUID(agentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Agent proxy: %w", err)
+	}
+	if proxy == nil {
+		return nil, apperror.AgentProxyNotFound.New()
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, apperror.DeploymentNotActive.New("Agent proxy")
+	}
+
+	return map[string]string{
+		agentID: string(deployment.Content),
+	}, nil
+}
+
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
 	if s.websubAPIRepo == nil {
@@ -429,10 +461,17 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 	items := make([]dto.GatewayDeploymentInfo, len(deployments))
 	for i, dep := range deployments {
 		deployedAt := dep.PerformedAt
+		// The gateway sorts and dispatches sync work on its own artifact kind, so
+		// a kind whose gateway name differs (AgentProxy -> Agent) is translated
+		// here; an unmapped kind is sent unchanged, as before.
+		kind := dep.Type
+		if gatewayKind, ok := gatewaytranslator.GatewayKindForPlatformKind(dep.Type); ok {
+			kind = gatewayKind
+		}
 		items[i] = dto.GatewayDeploymentInfo{
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
-			Kind:         dep.Type,
+			Kind:         kind,
 			// The gateway reconciles towards the desired terminal state; sending a
 			// transitional DEPLOYING/UNDEPLOYING would not parse as a desired state
 			// and the deployment would be silently skipped by its sync diff.
