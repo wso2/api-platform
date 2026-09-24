@@ -956,6 +956,47 @@ func TestTranslateResponseHeaderActions_AnalyticsHeaderFilter(t *testing.T) {
 	assert.Equal(t, `{"x-public-info":["public"]}`, analyticsData.GetFields()["response_headers"].GetStringValue())
 }
 
+func TestTranslateResponseHeaderActions_AnalyticsHeaderFilterAllowMode(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"x-internal-token": {"secret"},
+			"x-public-info":    {"public"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseHeaderExecutionResult{
+		Results: []executor.ResponseHeaderPolicyResult{
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsHeaderFilter: policy.DropHeaderAction{Action: "allow", Headers: []string{"x-public-info"}},
+			}},
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsMetadata: map[string]any{"response_headers": `{"x-internal-token":"secret","x-public-info":"public"}`},
+			}},
+		},
+	}
+
+	resp, err := TranslateResponseHeaderActions(result, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	extProcNamespace := resp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	assert.Equal(t, `{"x-public-info":["public"]}`, analyticsData.GetFields()["response_headers"].GetStringValue())
+}
+
 // The body-merge variant (body-less responses) runs header- and body-phase policies in two
 // loops; the filter must win over a capture from either phase.
 func TestTranslateResponseHeaderActionsWithBodyMerge_AnalyticsHeaderFilter(t *testing.T) {
