@@ -23,8 +23,10 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -1634,7 +1636,63 @@ func (g *Gateway) serviceRequestWithBody(
 			headers["Content-Type"] = "application/json"
 		}
 	}
-	return g.invokeWith(ctx, method, url, headers, payload)
+	return g.invokeService(ctx, method, url, headers, payload)
+}
+
+// A shared component is one container for the whole run, attached to each block's network
+// as that block boots and detached as it ends. Docker re-programs the container's
+// networking on every attachment, and its published host ports stop forwarding for a
+// moment while that happens — so a call over 127.0.0.1 landing in that window is refused,
+// by a container that is up, answered the same port moments earlier, and answers it again
+// moments later. The block that draws the short straw is whichever one happened to call
+// while a *different* block was booting, and it fails for a reason that has nothing to do
+// with what it was testing.
+//
+// StableHostPorts already exists for this hazard, and pins the port number across
+// attachments; it cannot keep the forwarding continuously live. A few short re-dials cover
+// the rest. Deliberately not the retry package: that one waits for a value to propagate and
+// floors its deadline at a minute, where this waits only for forwarding to come back, which
+// happens at once or not at all. Anything that answers — including an error status — is the
+// component's own reply and is returned as it is, so a scenario's real failure stays a fast
+// one.
+const (
+	serviceDialAttempts = 4
+	serviceDialPause    = 400 * time.Millisecond
+)
+
+// neverConnected reports whether a request failed before a connection existed.
+//
+// Matched on the operation rather than on an errno: the refusal a dropped forwarding rule
+// produces is a different platform error on each operating system, and a check written
+// against one of them silently stops retrying everywhere else. "The dial did not complete"
+// is the property that matters and is the same everywhere — and it cannot be true of a
+// component that answered, however it answered, so an error status is never mistaken for
+// one.
+func neverConnected(err error) bool {
+	var dialErr *net.OpError
+	return errors.As(err, &dialErr) && dialErr.Op == "dial"
+}
+
+// invokeService calls a component's own API, re-dialling through a refused connection.
+func (g *Gateway) invokeService(
+	ctx context.Context, method, url string, headers map[string]string, payload []byte,
+) error {
+	var err error
+	for attempt := range serviceDialAttempts {
+		err = g.invokeWith(ctx, method, url, headers, payload)
+		if err == nil || !neverConnected(err) {
+			return err
+		}
+		if attempt == serviceDialAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(serviceDialPause):
+		}
+	}
+	return err
 }
 
 // serviceRequestUntilStatus polls a component endpoint until it returns the

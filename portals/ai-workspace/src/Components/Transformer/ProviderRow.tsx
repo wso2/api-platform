@@ -150,12 +150,18 @@ export default function ProviderRow({
         {(resolution.title || requestHandle) && (
           <Box display="flex" alignItems="center" gap={1} sx={{ pl: 0.5 }}>
             {resolution.status === 'none' ? (
-              <Typography variant="caption" color="info.main">
-                <FormattedMessage
-                  id="aiWorkspace.components.providerRow.noTransformerNeeded"
-                  defaultMessage="no transformer needed"
-                />
-              </Typography>
+              // Only where the formats were actually compared. A provider
+              // whose template has not loaded resolves to nothing at all, and
+              // announcing "no transformer needed" for it states a conclusion
+              // nothing has reached.
+              resolution.title ? (
+                <Typography variant="caption" color="info.main">
+                  <FormattedMessage
+                    id="aiWorkspace.components.providerRow.noTransformerNeeded"
+                    defaultMessage="no transformer needed"
+                  />
+                </Typography>
+              ) : null
             ) : resolution.policy ? (
               <>
                 {/*

@@ -2267,34 +2267,42 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		},
 	}
 
-	// Emit the canonical list, which the frozen gateway accepts and normalises
-	// back to the same attachments. The legacy pair is deliberately
-	// not emitted alongside it: the gateway rejects an artifact carrying both.
-	//
-	// Each attachment carries its own credential, so every provider a proxy can
-	// route to can authenticate — the gap this feature closes.
-	providers := make([]dto.LLMProxyDeploymentProviderEntry, 0, len(attachments))
-	for _, attachment := range attachments {
-		entry := dto.LLMProxyDeploymentProviderEntry{
-			ID:          attachment.ID,
-			Alias:       attachment.Alias,
-			IsPrimary:   attachment.IsPrimary,
-			Transformer: mapTransformerModelToAPI(attachment.Transformer),
+	// Exactly one provider shape reaches the gateway: it rejects an artifact
+	// carrying both. Prefer the legacy pair wherever it says the same thing, so
+	// a released gateway that predates the canonical list keeps serving the
+	// proxy; a gateway that understands both normalises the pair back to these
+	// same attachments, so nothing is lost by preferring it.
+	if legacyPrimary, legacyAdditional, ok := legacyProvidersFor(attachments, proxy.Configuration.InboundTemplate); ok {
+		proxyDeployment.Spec.Provider = legacyPrimary
+		proxyDeployment.Spec.AdditionalProviders = legacyAdditional
+	} else {
+		// Everything the pair cannot describe: each attachment carries its own
+		// credential, its own upstream name and its own transformer, so every
+		// provider a proxy routes to can authenticate — the gap this feature
+		// closes, and what the canonical list exists for.
+		providers := make([]dto.LLMProxyDeploymentProviderEntry, 0, len(attachments))
+		for _, attachment := range attachments {
+			entry := dto.LLMProxyDeploymentProviderEntry{
+				ID:          attachment.ID,
+				Alias:       attachment.Alias,
+				IsPrimary:   attachment.IsPrimary,
+				Transformer: mapTransformerModelToAPI(attachment.Transformer),
+			}
+			if attachment.IsPrimary {
+				// Auth type. "none"/"other" carry only the type (no credentials);
+				// "api-key" carries the header and value. Absent auth on the primary
+				// => "none", exactly as before.
+				entry.Auth = mapModelAuthToAPI(attachment.Auth)
+			} else if attachment.Auth != nil {
+				// An additional provider without a credential stays credential-less
+				// and is emitted without an auth block, rather than being
+				// defaulted to "none" the way the primary is.
+				entry.Auth = mapModelAuthToAPI(attachment.Auth)
+			}
+			providers = append(providers, entry)
 		}
-		if attachment.IsPrimary {
-			// Auth type. "none"/"other" carry only the type (no credentials);
-			// "api-key" carries the header and value. Absent auth on the primary
-			// => "none", exactly as before.
-			entry.Auth = mapModelAuthToAPI(attachment.Auth)
-		} else if attachment.Auth != nil {
-			// An additional provider without a credential stays credential-less
-			// and is emitted without an auth block, rather than being
-			// defaulted to "none" the way the primary is.
-			entry.Auth = mapModelAuthToAPI(attachment.Auth)
-		}
-		providers = append(providers, entry)
+		proxyDeployment.Spec.Providers = providers
 	}
-	proxyDeployment.Spec.Providers = providers
 
 	// Promote any legacy policies assembled by the generator into operationPolicies.
 	for _, p := range proxyDeployment.Spec.Policies {
@@ -2315,6 +2323,82 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	proxyDeployment.Spec.Policies = nil
 
 	return proxyDeployment, nil
+}
+
+// declaresNoCredential reports whether an attachment carries no credential at all —
+// either no auth block, or one that names `none`.
+func declaresNoCredential(auth *model.UpstreamAuth) bool {
+	if auth == nil {
+		return true
+	}
+	return normalizeUpstreamAuthType(auth.Type) == string(api.None)
+}
+
+// legacyProvidersFor expresses a proxy's providers as the `provider` /
+// `additionalProviders` pair a gateway released before the canonical list
+// reads, reporting whether the pair can say the same thing.
+//
+// That older pair is narrower than what the control plane stores, and narrow in
+// two different directions: the primary carries a credential but has no room
+// for an upstream name or a transformer, while an additional provider carries
+// both of those but has no room for a credential of its own. An inbound
+// interface it cannot express at all. Where any of that is in play the pair
+// would describe a different proxy than the one stored — quietly, since the
+// gateway would accept it — so report that it cannot, and let the caller emit
+// the canonical list instead and fail loudly on a gateway too old to read it.
+func legacyProvidersFor(
+	attachments []model.LLMProxyAttachment,
+	inboundTemplate string,
+) (*dto.LLMProxyDeploymentProvider, []dto.LLMProxyDeploymentAdditionalProvider, bool) {
+	if strings.TrimSpace(inboundTemplate) != "" {
+		return nil, nil, false
+	}
+
+	primaryIndex := -1
+	for i, attachment := range attachments {
+		if !attachment.IsPrimary {
+			continue
+		}
+		if primaryIndex >= 0 {
+			// Two primaries is not a proxy either shape describes; leave it to
+			// the canonical path rather than silently picking one.
+			return nil, nil, false
+		}
+		primaryIndex = i
+	}
+	if primaryIndex < 0 {
+		return nil, nil, false
+	}
+
+	primary := attachments[primaryIndex]
+	if primary.Alias != "" || primary.Transformer != nil {
+		return nil, nil, false
+	}
+
+	additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(attachments))
+	for i, attachment := range attachments {
+		if i == primaryIndex {
+			continue
+		}
+		// An additional provider that authenticates with nothing is what the pair
+		// describes by leaving auth out, so saying so explicitly does not put the
+		// proxy beyond it. Only `none` — `other` means the provider authenticates
+		// some way this contract does not name, which the pair cannot say at all.
+		if !declaresNoCredential(attachment.Auth) {
+			return nil, nil, false
+		}
+		additional = append(additional, dto.LLMProxyDeploymentAdditionalProvider{
+			ID:          attachment.ID,
+			As:          attachment.Alias,
+			Transformer: mapTransformerModelToAPI(attachment.Transformer),
+		})
+	}
+
+	return &dto.LLMProxyDeploymentProvider{
+		ID: primary.ID,
+		// Absent auth on the primary means "none", exactly as before.
+		Auth: mapModelAuthToAPI(primary.Auth),
+	}, additional, true
 }
 
 // mapModelAuthToAPI converts a stored model.UpstreamAuth into the api.UpstreamAuth

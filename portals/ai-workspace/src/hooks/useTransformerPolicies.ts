@@ -82,6 +82,33 @@ const readParameterDefinitions = (
   return [];
 };
 
+/**
+ * Every policy in a category, not the first page of them.
+ *
+ * The catalogue answers with a page, and a translator on a later page is one
+ * this application cannot match — a provider then reads as having no
+ * transformer available when one exists, and an automatic match silently
+ * misses it.
+ */
+const PAGE_SIZE = 100;
+
+const readEveryPolicy = async (
+  category: string
+): Promise<PolicyHubPolicy[]> => {
+  const collected: PolicyHubPolicy[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const page = await getGuardrails(category, PAGE_SIZE, offset);
+    const rows = page.data ?? [];
+    collected.push(...rows);
+    const total = page.pagination?.total ?? collected.length;
+    // Stop on an empty page as well as on the count, so a catalogue that
+    // ignores paging or reports a stale total cannot spin this forever.
+    if (rows.length === 0 || collected.length >= total) {
+      return collected;
+    }
+  }
+};
+
 const fromCataloguePolicy = (policy: PolicyHubPolicy): SelectablePolicy => ({
   name: policy.name,
   displayName: policy.displayName || policy.name,
@@ -129,17 +156,17 @@ export default function useTransformerPolicies(): TransformerPoliciesState {
     // the other returned, and a gateway with no policies of its own is normal.
     const [labelledResult, legacyResult, gatewayResult] =
       await Promise.allSettled([
-        getGuardrails(TRANSFORMER_POLICY_CATEGORY),
-        getGuardrails(FALLBACK_POLICY_CATEGORY),
+        readEveryPolicy(TRANSFORMER_POLICY_CATEGORY),
+        readEveryPolicy(FALLBACK_POLICY_CATEGORY),
         getGatewayCustomPolicies(),
       ]);
 
     const catalogueRows: PolicyHubPolicy[] = [];
     if (labelledResult.status === 'fulfilled') {
-      catalogueRows.push(...(labelledResult.value.data ?? []));
+      catalogueRows.push(...labelledResult.value);
     }
     if (legacyResult.status === 'fulfilled') {
-      catalogueRows.push(...(legacyResult.value.data ?? []));
+      catalogueRows.push(...legacyResult.value);
     }
 
     if (

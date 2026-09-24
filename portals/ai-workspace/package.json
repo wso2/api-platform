@@ -11,6 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://host.docker.internal:9643/ai-workspace} CYPRESS_ADMIN_USER=${CYPRESS_ADMIN_USER:-admin} CYPRESS_ADMIN_PASSWORD=${CYPRESS_ADMIN_PASSWORD:-admin} docker run --rm --add-host=host.docker.internal:host-gateway -v \"$(pwd):/e2e\" -w /e2e -e CYPRESS_BASE_URL -e CYPRESS_ADMIN_USER -e CYPRESS_ADMIN_PASSWORD cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "test:e2e:local": "cypress run --headless --config-file cypress.config.js",
     "test:e2e:open": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://localhost:9643/ai-workspace} cypress open --e2e --config-file cypress.config.js"
   },
@@ -51,7 +53,8 @@
     "cypress": "13.17.0",
     "typescript": "5.9.3",
     "vite": "5.4.21",
-    "vite-plugin-istanbul": "7.1.0"
+    "vite-plugin-istanbul": "7.1.0",
+    "vitest": "^2.1.9"
   },
   "overrides": {
     "swagger-ui-react": {

@@ -170,6 +170,11 @@ export default function ProviderSettingsDrawer({
       return undefined;
     }
     let abandoned = false;
+    // Dropped before the fetch, not after it. Held on to, it describes the
+    // provider that was selected a moment ago — whether it takes a key, and
+    // which header the key goes in — and a commit made in that moment saves
+    // the wrong header against the new provider.
+    setDetail(null);
     setIsDetailLoading(true);
     getLLMProvider(providerId, organizationId, PLATFORM_API_BASE_URL)
       .then((loaded) => {
@@ -663,7 +668,9 @@ export default function ProviderSettingsDrawer({
             </Button>
             <Button
               variant="contained"
-              disabled={disabled || !providerId}
+              // Not while the provider is still being read: everything this
+              // saves about it is unknown until then.
+              disabled={disabled || !providerId || isDetailLoading}
               onClick={handleSave}
               data-cyid="provider-settings-save"
             >

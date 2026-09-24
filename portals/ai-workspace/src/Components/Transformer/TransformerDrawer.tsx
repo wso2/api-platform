@@ -131,11 +131,16 @@ export default function TransformerDrawer({
     if (!selected) {
       setDefinition(null);
       setDefinitionError(null);
+      setDefinitionLoading(false);
       return undefined;
     }
     if (selected.definition) {
       setDefinition(definitionFromInline(selected));
       setDefinitionError(null);
+      // An earlier fetch may still be in flight and will never clear this
+      // itself, having been abandoned. Left set, the spinner outlives the
+      // policy that started it and the form never appears.
+      setDefinitionLoading(false);
       return undefined;
     }
 

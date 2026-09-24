@@ -36,6 +36,17 @@ type llmProxyImporter struct {
 	artifactRepo repository.ArtifactRepository
 }
 
+// attachmentAuthKey identifies one attachment for the purpose of carrying a
+// credential across a gateway push.
+//
+// The provider and the routing name together, because neither alone identifies
+// an attachment: a provider may appear twice under two names, and a name may
+// outlive a change of the provider behind it. The separator is a byte that
+// cannot occur in either, so no pair of values can collide with another.
+func attachmentAuthKey(attachment model.LLMProxyAttachment) string {
+	return attachment.ID + "\x00" + attachment.EffectiveName()
+}
+
 func newLLMProxyImporter(proxyRepo repository.LLMProxyRepository, providerRepo repository.LLMProviderRepository, artifactRepo repository.ArtifactRepository) *llmProxyImporter {
 	return &llmProxyImporter{proxyRepo: proxyRepo, providerRepo: providerRepo, artifactRepo: artifactRepo}
 }
@@ -110,15 +121,22 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		}
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: only update gateway-specific upstream auth. Every attachment
-		// now carries its own, so each is matched by provider id and updated in
-		// place — the control plane keeps ownership of everything else.
+		// now carries its own, so each is matched and updated in place — the
+		// control plane keeps ownership of everything else.
+		//
+		// Matched on the provider and the name together. Neither alone is
+		// enough: one provider may be attached twice under two names, so the id
+		// does not identify an attachment; and a name may be kept while the
+		// provider behind it is swapped, so the name does not either. An
+		// attachment with no exact counterpart keeps the credential it has,
+		// rather than being given one that belongs to something else.
 		if stored, err := model.NormaliseLLMProxyAttachments(existing.Configuration); err == nil {
 			incoming := make(map[string]*model.UpstreamAuth, len(cfg.Providers))
 			for _, attachment := range cfg.Providers {
-				incoming[attachment.ID] = attachment.Auth
+				incoming[attachmentAuthKey(attachment)] = attachment.Auth
 			}
 			for i := range stored {
-				if auth, ok := incoming[stored[i].ID]; ok {
+				if auth, ok := incoming[attachmentAuthKey(stored[i])]; ok {
 					stored[i].Auth = auth
 				}
 			}

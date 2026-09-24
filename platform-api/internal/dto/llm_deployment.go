@@ -77,11 +77,14 @@ type LLMProxyDeploymentSpec struct {
 	Version     string `yaml:"version"`
 	Context     string `yaml:"context,omitempty"`
 	VHost       string `yaml:"vhost,omitempty"`
-	// Providers is the canonical attachment list and the only provider shape the
-	// control plane emits. The frozen gateway rejects an artifact
-	// carrying both shapes at once, so Provider and AdditionalProviders below are
-	// now decode-only: they are how a gateway-pushed artifact written against the
-	// older shape still imports.
+	// Providers is the canonical attachment list. A gateway rejects an artifact
+	// carrying both shapes at once, so exactly one of these is written: the
+	// Provider/AdditionalProviders pair wherever it says the same thing, since a
+	// gateway released before the canonical list reads only that pair, and
+	// Providers for everything the pair cannot describe — an additional
+	// provider's own credential, the primary's upstream name or transformer, a
+	// declared inbound interface. Both shapes also decode, which is how a
+	// gateway-pushed artifact written against either one imports.
 	Providers           []LLMProxyDeploymentProviderEntry      `yaml:"providers,omitempty"`
 	InboundTemplate     string                                 `yaml:"inboundTemplate,omitempty"`
 	Provider            *LLMProxyDeploymentProvider            `yaml:"provider,omitempty"`

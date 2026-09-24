@@ -28,6 +28,7 @@ import * as proxyApis from '../../apis/proxyApis';
 import * as llmProxiesApis from '../../apis/llmProxiesApis';
 import {
   createSecret,
+  deleteSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
 } from '../../apis/secretApis';
@@ -124,6 +125,11 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
     if (!proxyId || !organizationId) {
       throw new Error('Proxy ID or Organization ID is missing');
     }
+    // Every secret minted for this save, declared out here so a failure below
+    // can take them back. Each holds a provider credential in plain text, and
+    // the local proxy still has the same values — so a retry mints a second
+    // full set and the first is left behind holding a live credential.
+    const mintedSecretIds: string[] = [];
     try {
       // A credential typed by a user arrives here in plain text. Each one is
       // stored as a secret and replaced by a placeholder before the proxy is
@@ -159,6 +165,7 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
             providerId: entry.id,
           });
           mintedByProviderId.set(entry.id, secretResponse.id);
+          mintedSecretIds.push(secretResponse.id);
         }
 
         updatesPayload = {
@@ -181,6 +188,18 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
 
       return updatedProxy;
     } catch (err) {
+      // Compensate: a secret minted for a save that did not happen is
+      // referenced by nothing and holds a credential, so it is taken back.
+      // Best effort — a failure here is logged and the original error is what
+      // the caller is told about.
+      for (const secretId of mintedSecretIds) {
+        deleteSecret(secretId).catch((cleanupError) => {
+          logger.warn('Could not delete an orphaned secret after a failed proxy update', {
+            secretHandle: secretId,
+            cleanupError,
+          });
+        });
+      }
       logger.error('Failed to update proxy:', err);
       throw err;
     }

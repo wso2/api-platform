@@ -586,9 +586,16 @@ function LLMProxyNewContent({
       ...prev.filter((entry) => entry.key !== draftKey),
       demotedPrimary,
     ]);
+    // Handed to the effect that clears credentials on a provider change rather
+    // than set alongside it. That effect runs after this batch, so a value set
+    // here would be wiped — and a generated key, shown once, would be gone.
+    pendingPrimaryRestore.current = {
+      providerId: promoted.providerId,
+      manualApiKeyValue: promoted.apiKeyValue,
+      generatedApiKeyValue: promoted.generatedApiKeyValue || null,
+    };
     setFormState((prev) => ({ ...prev, providerId: promoted.providerId }));
     onSelectedProviderIdChange(promoted.providerId);
-    setManualApiKeyValue(promoted.apiKeyValue);
     setPrimaryTransformer(promoted.transformer);
     setHasChosenInterface(true);
   };
@@ -600,6 +607,9 @@ function LLMProxyNewContent({
       return undefined;
     }
     let abandoned = false;
+    // Dropped before the fetch, for the same reason the panel does: a detail
+    // held over from the previous provider answers for the wrong one.
+    setOpenProviderDetail(null);
     setIsOpenProviderLoading(true);
     getLLMProvider(
       openProviderId,
@@ -738,6 +748,10 @@ function LLMProxyNewContent({
     !selectedProviderRequiresApiKey || isGeneratedKeyReady || isManualKeyReady;
 
   const isCreateProxyDisabled =
+    // A provider described but not yet added is not on the list Create reads.
+    // Creating anyway would quietly make a proxy without it, and without
+    // saying so — the entered credential and translator simply gone.
+    isProviderFormOpen ||
     !formState.name.trim() ||
     !formState.providerId ||
     !effectiveProject?.id ||
@@ -750,6 +764,11 @@ function LLMProxyNewContent({
   // blocker instead.
   const createProxyBlockedReason = (() => {
     if (!isCreateProxyDisabled || isCreating) return '';
+    if (isProviderFormOpen) {
+      return stagedProvider
+        ? 'Add the provider you are describing, or cancel it, before creating.'
+        : 'Finish editing the open provider before creating.';
+    }
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
@@ -1366,7 +1385,9 @@ function LLMProxyNewContent({
             </Button>
             <Button
               variant="contained"
-              disabled={!draft.providerId}
+              // Not while the provider is still being read: whether it takes a
+              // key, and which header the key goes in, are unknown until then.
+              disabled={!draft.providerId || isOpenProviderLoading}
               onClick={
                 isAdding
                   ? () => {

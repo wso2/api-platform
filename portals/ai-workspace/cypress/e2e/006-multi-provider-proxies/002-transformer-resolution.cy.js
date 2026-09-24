@@ -47,40 +47,66 @@ describe('AI Workspace - transformer resolution is consistent', () => {
       `/organizations/${orgHandle}/proxies/${multiProviderProxyId}`
     );
 
-  it('reports the same status on the Providers tab and the policies tab', () => {
+  const openProvidersTab = () => {
     openProxy();
     cy.contains('button', 'Providers', { timeout: 30000 }).click();
+    return cy.get('[data-cyid="proxy-provider-list"]', { timeout: 30000 });
+  };
 
-    const statusByProvider = {};
-    cy.get('[data-cyid="proxy-provider-list"]', { timeout: 30000 })
-      .find('[data-cyid^="provider-transformer-status-"]')
-      .each(($status) => {
-        const providerId = $status
-          .attr('data-cyid')
-          .replace('provider-transformer-status-', '');
-        statusByProvider[providerId] = $status.text().trim();
-      })
-      .then(() => {
-        cy.contains('button', 'Guardrails & Policies').click();
-        cy.get('[data-cyid="proxy-transformer-list"]', { timeout: 30000 }).should(
-          'exist'
-        );
-        Object.keys(statusByProvider).forEach((providerId) => {
-          // The same provider appears on both screens, resolved the same way.
-          cy.get(`[data-cyid="transformer-select-${providerId}"]`).should('exist');
-        });
+  it('gives every provider a row naming what a client routes on', () => {
+    openProvidersTab()
+      .find('[data-cyid^="provider-row-"][data-cyid$="-handle"]')
+      .should('have.length.greaterThan', 1)
+      .each(($handle) => {
+        // The handle is the alias where there is one and the id otherwise —
+        // either way the value a client puts in the routing header. A row
+        // showing something that does not route is worse than showing nothing.
+        expect($handle.text().trim()).to.not.equal('');
       });
   });
 
-  it('shows nothing for a provider that needs no translation', () => {
-    openProxy();
-    cy.contains('button', 'Providers', { timeout: 30000 }).click();
+  it('says the same thing about a provider on the row and in its settings', () => {
+    openProvidersTab()
+      .find('[data-cyid="provider-row-0"]')
+      .invoke('text')
+      .then((rowText) => {
+        cy.get('[data-cyid="provider-row-0-edit"]').click();
+        cy.get('[data-cyid="provider-settings-drawer"]', { timeout: 30000 })
+          .should('be.visible');
+        cy.get('[data-cyid="provider-settings-transformer"]')
+          .invoke('text')
+          .then((panelText) => {
+            // Both read the one decision. Where the row names a translator the
+            // panel names the same one; where the row says none is needed the
+            // panel says so too.
+            const named = rowText.match(/[a-z0-9-]+-transformer/);
+            if (named) {
+              expect(panelText).to.contain(named[0]);
+            } else {
+              expect(panelText).to.contain('No transformer');
+            }
+          });
+        cy.get('[data-cyid="provider-settings-cancel"]').click();
+      });
+  });
 
-    // A provider already speaking the proxy's own format reports nothing at
-    // all — not a tick, not "no transformer needed". The screen stays about
-    // what the user actually has to decide.
-    cy.get('[data-cyid="proxy-provider-list"]', { timeout: 30000 }).within(() => {
-      cy.get('[data-cyid^="provider-request-handle-"]').should('exist');
-    });
+  it('keeps transformers with their providers, not among the proxy policies', () => {
+    openProxy();
+    cy.contains('button', 'Guardrails & Policies', { timeout: 30000 }).click();
+
+    // A translator belongs to one provider rather than to the proxy. Listing
+    // it here as well meant two screens editing one setting.
+    cy.contains('Provider Transformers').should('not.exist');
+    cy.get('[data-cyid="proxy-transformer-list"]').should('not.exist');
+  });
+
+  it('reads the interface in effect, not only the one stored', () => {
+    openProvidersTab();
+    // A proxy created before the setting existed stores none and runs on its
+    // primary provider's format. Every provider on it reading "No transformer
+    // configured" is the symptom of passing the empty value through.
+    cy.get('[data-cyid="providers-inbound-interface"]')
+      .invoke('text')
+      .should('not.contain', '—');
   });
 });

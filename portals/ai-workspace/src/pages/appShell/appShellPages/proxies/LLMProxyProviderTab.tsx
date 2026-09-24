@@ -124,7 +124,12 @@ export default function LLMProxyProviderTab({
   const resolutionFor = (entry: ProxyProviderEntry) => {
     const provider = providerOptions.find((option) => option.id === entry.id);
     return resolveTransformer({
-      inboundTemplate: proxy?.inboundTemplate,
+      // The interface in effect, not only the one stored. A proxy created
+      // before the setting existed carries none and runs on its primary
+      // provider's format; passing the empty value would make every provider
+      // on it — the primary included — read as needing a translator that
+      // cannot be matched.
+      inboundTemplate: inboundHandle,
       providerTemplate: provider?.template,
       chosenTransformer: entry.transformer,
       // A saved proxy either names a translator or does not. Offering the one
@@ -201,12 +206,23 @@ export default function LLMProxyProviderTab({
       if (!prev) return prev;
       const entries = prev.providers ?? [];
       const isAdding = openIndex === 'add';
-      const replaced = isAdding
-        ? undefined
-        : entries[openIndex as number];
+      // The panel was opened on a position in the *displayed* list, which is
+      // sorted primary-first; the stored list is not. Making the primary a
+      // different provider changes one order and not the other, so a position
+      // carried across would write an edit over a different provider —
+      // removing it and duplicating the one being edited. The entry itself is
+      // carried across instead, and found by identity.
+      const target = isAdding ? null : openEntry;
+      const targetIndex = target ? entries.indexOf(target) : -1;
+      const replaced = targetIndex >= 0 ? entries[targetIndex] : undefined;
+      if (!isAdding && targetIndex < 0) {
+        // The provider being edited is no longer in the list. Writing it back
+        // would resurrect something already removed.
+        return prev;
+      }
       const providers = isAdding
         ? [...entries, { ...next, isPrimary: entries.length === 0 }]
-        : entries.map((entry, index) => (index === openIndex ? next : entry));
+        : entries.map((entry, index) => (index === targetIndex ? next : entry));
       // Re-derived only when the primary is actually a different provider.
       // Deriving it again from the same provider would rewrite fields nobody
       // edited, and a panel closed without a change would read as an edit.
@@ -326,7 +342,7 @@ export default function LLMProxyProviderTab({
         open={openIndex !== null}
         onClose={() => setOpenIndex(null)}
         entry={openEntry}
-        inboundTemplate={proxy?.inboundTemplate}
+        inboundTemplate={inboundHandle}
         interfaceLabel={interfaceLabel}
         providerOptions={providerOptions}
         attachedProviderIds={providerEntries

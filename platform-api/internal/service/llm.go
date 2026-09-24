@@ -136,9 +136,10 @@ func (s *LLMProviderService) SetSecretService(ss *SecretService) {
 }
 
 // SetProxyRepository injects the repository the deletion guard scans for
-// proxies still referencing a provider. Optional: when unset the
-// guard cannot see references and deletion falls back to its earlier behaviour,
-// which is why server wiring must set it.
+// proxies still referencing a provider. Required: the guard fails closed when
+// it is unset, because "no repository" is not the same answer as "nothing
+// depends on this provider" — so a missed wiring step refuses the delete
+// rather than allowing it.
 func (s *LLMProviderService) SetProxyRepository(repo repository.LLMProxyRepository) {
 	s.proxyRepo = repo
 }
@@ -158,8 +159,9 @@ func (s *LLMProxyService) SetSecretService(ss *SecretService) {
 
 // SetTemplateRepository injects the repository used to resolve a proxy's
 // declared inbound interface against the organization's template catalogue.
-// Optional: when unset the handle is accepted on its length alone,
-// which is the behaviour for a proxy that declares none.
+// Required wherever a request declares one: validation fails closed when it is
+// unset, because accepting a handle nothing can resolve stores a proxy that
+// cannot deploy. A request that declares no interface is unaffected.
 func (s *LLMProxyService) SetTemplateRepository(repo repository.LLMProviderTemplateRepository) {
 	s.templateRepo = repo
 }
@@ -1644,6 +1646,20 @@ func ensureLegacyWriteCanExpressProxy(req *api.LLMProxy, existing *model.LLMProx
 	if strings.TrimSpace(existing.Configuration.InboundTemplate) != "" {
 		reasons = append(reasons, "it declares an inbound interface")
 	}
+	// A single-provider proxy is not automatically safe. The primary carries an
+	// alias and a transformer of its own, and a client that predates those
+	// fields omits them — so the full replace would drop them silently, which
+	// for a transformer means the provider quietly stops translating. Refuse
+	// unless the request carries them back.
+	if len(stored) == 1 && req.Provider != nil {
+		primary := stored[0]
+		if primary.Alias != "" && strings.TrimSpace(utils.ValueOrEmpty(req.Provider.As)) == "" {
+			reasons = append(reasons, "its provider has an upstream name")
+		}
+		if primary.Transformer != nil && req.Provider.Transformer == nil {
+			reasons = append(reasons, "its provider has a transformer")
+		}
+	}
 	if len(reasons) == 0 {
 		return nil
 	}
@@ -1748,12 +1764,18 @@ func preserveAttachmentCredentials(existing, updated []model.LLMProxyAttachment)
 	if len(existing) == 0 {
 		return updated
 	}
+	// Keyed by the name that routes rather than the provider id. The same
+	// provider may be attached twice under two names — the same vendor with two
+	// accounts — and only the effective name is required to be unique, so an
+	// id key would give both attachments whichever credential came last and
+	// lose the other.
 	stored := make(map[string]*model.UpstreamAuth, len(existing))
 	for _, attachment := range existing {
-		stored[attachment.ID] = attachment.Auth
+		stored[attachment.EffectiveName()] = attachment.Auth
 	}
 	for i := range updated {
-		updated[i].Auth = preserveUpstreamAuthCredential(stored[updated[i].ID], updated[i].Auth)
+		updated[i].Auth = preserveUpstreamAuthCredential(
+			stored[updated[i].EffectiveName()], updated[i].Auth)
 	}
 	return updated
 }
@@ -2280,19 +2302,22 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	// Skip when switching to a credential-less type ("none"/"other"): the credential
 	// is dropped from this artifact.
 	if s.secretService != nil && storedErr == nil {
+		// Keyed by effective name for the same reason as the credential
+		// preservation above: two attachments of one provider must not be
+		// treated as one.
 		previous := make(map[string]*model.UpstreamAuth, len(storedAttachments))
 		for _, attachment := range storedAttachments {
-			previous[attachment.ID] = attachment.Auth
+			previous[attachment.EffectiveName()] = attachment.Auth
 		}
 		retained := make(map[string]bool, len(m.Configuration.Providers))
 		for _, attachment := range m.Configuration.Providers {
-			retained[attachment.ID] = true
+			retained[attachment.EffectiveName()] = true
 			if isCredentialLessUpstreamAuthType(upstreamAuthType(attachment.Auth)) {
 				continue
 			}
 			s.secretService.cleanupRotatedSecret(
 				orgUUID,
-				upstreamAuthValue(previous[attachment.ID]),
+				upstreamAuthValue(previous[attachment.EffectiveName()]),
 				upstreamAuthValue(attachment.Auth),
 				updatedBy,
 				s.slogger,
