@@ -64,6 +64,7 @@ var (
 	// control plane's imported AgentProxy copy, which platform-api only lets go once the
 	// gateway has reported the Agent undeployed.
 	KindAgent       = Kind{Name: "agent", Order: 52}
+	KindGraphQLAPI  = Kind{Name: "graphql-api", Order: 53}
 	KindMCPServer   = Kind{Name: "mcp-server", Order: 55}
 	KindPolicy      = Kind{Name: "policy", Order: 60}
 	KindSharedScope = Kind{Name: "shared-scope", Order: 70}
