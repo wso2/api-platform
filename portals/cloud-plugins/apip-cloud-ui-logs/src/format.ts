@@ -117,7 +117,13 @@ export function latencyOf(entry: LogEntry): string | undefined {
   try {
     const parsed: unknown = JSON.parse(entry.log);
     if (!parsed || typeof parsed !== 'object') return undefined;
-    const duration = Number((parsed as Record<string, unknown>).duration);
+    // Only a number or a non-empty string: `Number` turns null, "" and false
+    // into a 0 that would read as "instant".
+    const value = (parsed as Record<string, unknown>).duration;
+    if (typeof value !== 'number' && (typeof value !== 'string' || value.trim() === '')) {
+      return undefined;
+    }
+    const duration = Number(value);
     // Same shape as the one-line summary, or a row and its own detail grid
     // disagree about the number they both took from the same field.
     return Number.isFinite(duration) ? `${duration}ms` : undefined;

@@ -198,11 +198,12 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
       {
         id: 'observability',
         slot: 'sidebar.organization',
-        // The built-in item's own cluster and position, so this lands where that
-        // one did rather than below it.
+        // The built-in item's own cluster, and after organization-insights (70)
+        // so Insights stays above Observability here as it does in a project
+        // and inside an API.
         claims: 'observability',
         group: 'api',
-        order: 70,
+        order: 75,
         routePath: 'observability',
         // Organization scope only. Deeper in, this entry standing down is what
         // hands the claim back — to the project notice below, and inside an API

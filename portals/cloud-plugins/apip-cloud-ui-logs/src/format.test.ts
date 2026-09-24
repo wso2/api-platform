@@ -235,6 +235,13 @@ describe('latencyOf', () => {
     expect(latencyOf(anEntry({ log: 'not json' }))).toBeUndefined();
     expect(latencyOf(anEntry({ log: '{}' }))).toBeUndefined();
   });
+
+  it('reports nothing for a duration that is null, empty or not a number', () => {
+    for (const duration of [null, '', '  ', false, true, {}, []]) {
+      expect(latencyOf(anEntry({ log: JSON.stringify({ duration }) }))).toBeUndefined();
+    }
+    expect(latencyOf(anEntry({ log: JSON.stringify({ duration: '12' }) }))).toBe('12ms');
+  });
 });
 
 describe('downloadFilename', () => {
