@@ -28,6 +28,7 @@ import (
 	"unicode"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // LLMValidator validates LLM-related configurations (provider templates, providers, proxies)
@@ -789,66 +790,87 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*spec.Context))...)
 	}
 
-	// Validate provider id
-	if spec.Provider.Id == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.provider.id",
-			Message: "Provider is required",
-		})
+	// Normalise whichever provider shape arrived before validating anything
+	// about providers. The shape rejections — both shapes at once, a canonical
+	// list with no primary or several, an empty list — come from here, so the
+	// two shapes cannot drift apart.
+	attachments, shapeErr := models.NormaliseLLMProxyAttachments(*spec)
+	if shapeErr != nil {
+		field := "spec.provider"
+		if spec.Providers != nil {
+			field = "spec.providers"
+		}
+		errors = append(errors, ValidationError{Field: field, Message: shapeErr.Error()})
 		return errors
-	} else if !v.metadataNameRegex.MatchString(spec.Provider.Id) {
-		errors = append(errors, ValidationError{
-			Field:   "spec.provider.id",
-			Message: "spec.provider.id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
-		})
-	}
-	if spec.Provider.Auth != nil {
-		errors = append(errors, v.validateLLMUpstreamAuth("spec.provider.auth", spec.Provider.Auth)...)
 	}
 
-	if spec.AdditionalProviders != nil {
-		seen := map[string]bool{spec.Provider.Id: true}
-		for i, provider := range *spec.AdditionalProviders {
-			fieldPrefix := fmt.Sprintf("spec.additionalProviders[%d]", i)
-			if provider.Id == "" {
+	// Field paths still name the shape the author actually wrote, so an error
+	// points at a field they can find. The index comes from the attachment's
+	// source position rather than its position after normalisation: the primary
+	// is moved to the front, so a canonical list whose primary was authored
+	// third would otherwise report an error against the wrong entry.
+	usingCanonical := spec.Providers != nil
+	fieldPrefixFor := func(sourceIndex int) string {
+		if usingCanonical {
+			return fmt.Sprintf("spec.providers[%d]", sourceIndex)
+		}
+		if sourceIndex == 0 {
+			return "spec.provider"
+		}
+		return fmt.Sprintf("spec.additionalProviders[%d]", sourceIndex-1)
+	}
+	aliasField := "as"
+	if usingCanonical {
+		aliasField = "alias"
+	}
+
+	// Effective names must be unique across the primary and every additional
+	// provider together — the primary carries an alias now, so it takes part in
+	// the same uniqueness rule.
+	seen := map[string]bool{}
+	for i, attachment := range attachments {
+		fieldPrefix := fieldPrefixFor(attachment.SourceIndex)
+
+		if attachment.Id == "" {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".id",
+				Message: "Provider is required",
+			})
+			if i == 0 {
+				return errors
+			}
+		} else if !v.metadataNameRegex.MatchString(attachment.Id) {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".id",
+				Message: fieldPrefix + ".id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+			})
+		}
+
+		upstreamName := attachment.EffectiveName()
+		if attachment.Alias != nil && *attachment.Alias != "" {
+			if !regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`).MatchString(upstreamName) {
 				errors = append(errors, ValidationError{
-					Field:   fieldPrefix + ".id",
-					Message: "Provider is required",
+					Field:   fieldPrefix + "." + aliasField,
+					Message: fieldPrefix + "." + aliasField + " must contain only letters, numbers, hyphens, or underscores",
 				})
-			} else if !v.metadataNameRegex.MatchString(provider.Id) {
+			}
+		}
+		if upstreamName != "" {
+			if seen[upstreamName] {
 				errors = append(errors, ValidationError{
-					Field:   fieldPrefix + ".id",
-					Message: fieldPrefix + ".id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+					Field:   fieldPrefix,
+					Message: fmt.Sprintf("duplicate upstream name '%s' in additionalProviders", upstreamName),
 				})
 			}
+			seen[upstreamName] = true
+		}
 
-			upstreamName := provider.Id
-			if provider.As != nil && *provider.As != "" {
-				upstreamName = *provider.As
-				if !regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`).MatchString(upstreamName) {
-					errors = append(errors, ValidationError{
-						Field:   fieldPrefix + ".as",
-						Message: fieldPrefix + ".as must contain only letters, numbers, hyphens, or underscores",
-					})
-				}
-			}
-			if upstreamName != "" {
-				if seen[upstreamName] {
-					errors = append(errors, ValidationError{
-						Field:   fieldPrefix,
-						Message: fmt.Sprintf("duplicate upstream name '%s' in additionalProviders", upstreamName),
-					})
-				}
-				seen[upstreamName] = true
-			}
+		if attachment.Auth != nil {
+			errors = append(errors, v.validateLLMUpstreamAuth(fieldPrefix+".auth", attachment.Auth)...)
+		}
 
-			if provider.Auth != nil {
-				errors = append(errors, v.validateLLMUpstreamAuth(fieldPrefix+".auth", provider.Auth)...)
-			}
-
-			if provider.Transformer != nil {
-				errors = append(errors, v.validateLLMProxyTransformer(fieldPrefix+".transformer", provider.Transformer)...)
-			}
+		if attachment.Transformer != nil {
+			errors = append(errors, v.validateLLMProxyTransformer(fieldPrefix+".transformer", attachment.Transformer)...)
 		}
 	}
 

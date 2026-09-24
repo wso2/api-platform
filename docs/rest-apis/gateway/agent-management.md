@@ -550,7 +550,7 @@ Status Code **200**
 |»»»»» upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |»»»»»» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |»»»»»» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
-|»»»» upstream|any|true|none|The backend A2A agent url and auth configuration. The URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
+|»»»» upstream|any|true|none|The backend A2A agent and its auth configuration. Set exactly one of `url` (a direct backend URL) or `ref` (the name of an entry in `upstreamDefinitions`, resolved to that definition's first URL and `basePath`). The resolved URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
 
 *allOf*
 

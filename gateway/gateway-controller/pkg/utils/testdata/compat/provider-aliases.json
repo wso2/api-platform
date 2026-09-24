@@ -1,0 +1,15 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "LlmProxy",
+  "metadata": { "name": "compat-provider-aliases" },
+  "spec": {
+    "displayName": "compat-provider-aliases",
+    "version": "v1.0",
+    "context": "/compat-aliases",
+    "provider": { "id": "openai-provider" },
+    "additionalProviders": [
+      { "id": "anthropic-provider", "as": "claude", "auth": { "type": "api-key", "header": "X-Key", "value": "k" } },
+      { "id": "gemini-provider", "as": "flash" }
+    ]
+  }
+}

@@ -3109,7 +3109,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "test-llm-proxy",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "test-llm-provider",
 			},
 		},
@@ -3199,7 +3199,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "test-llm-proxy",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "test-llm-provider",
 			},
 		},
@@ -3366,7 +3366,7 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 			Spec: api.LLMProxyConfigData{
 				DisplayName: "test-llm-proxy",
 				Version:     "v1.0.0",
-				Provider: api.LLMProxyProvider{
+				Provider: &api.LLMProxyProvider{
 					Id: "provider-a",
 				},
 			},

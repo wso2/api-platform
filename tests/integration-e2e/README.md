@@ -241,7 +241,7 @@ resolution keeps the artifact from ever rendering, so it never shows up).
    provider's; deployment does not restart the controller. Note: `mcpSpecVersion`
    (e.g. `"2025-06-18"`) must be set explicitly on create — omitting it defaults to an
    empty string, which the gateway-controller's spec-version validator rejects at
-   deploy time with an unrelated-looking "Unsupported MCP spec version" error.
+   deploy time with an unrelated-looking "Invalid MCP spec version" error.
 10. **REST API upstream credential** (`@rest_api_secret`,
     `features/rest_api_secret.feature`) — a plain REST API's `upstream.main.auth.value`
     embeds the placeholder. Deployment attaches the gateway and creates the deployment

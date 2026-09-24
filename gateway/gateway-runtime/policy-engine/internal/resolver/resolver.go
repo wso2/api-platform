@@ -350,12 +350,13 @@ type Resolution struct {
 // small: the field is for a handful of identifiers, not for slicing up the payload.
 const (
 	// MaxResolutionAttributes bounds how many attributes one resolution may carry.
-	MaxResolutionAttributes = 8
+	MaxResolutionAttributes = 16
 
-	// MaxResolutionAttributeValueBytes bounds a single attribute value. Identifiers
-	// in the protocols this serves are UUID-shaped; anything far larger is a caller
-	// stuffing the field rather than naming something.
-	MaxResolutionAttributeValueBytes = 256
+	// MaxResolutionAttributeValueBytes bounds a single attribute value. It is the
+	// backstop only, so it admits the longest value any resolver legitimately
+	// publishes — an MCP resource URI. Each resolver caps its own values tighter:
+	// see maxA2AIdentifierBytes and maxMCPAttributeValueBytes.
+	MaxResolutionAttributeValueBytes = 1024
 )
 
 // BoundResolution is the outcome of binding a resolution to a chain that exists.
