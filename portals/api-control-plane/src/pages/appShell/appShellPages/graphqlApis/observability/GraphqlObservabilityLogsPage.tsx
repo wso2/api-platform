@@ -16,61 +16,18 @@
  * under the License.
  */
 
-import { Card, CardContent, CodeBlock, PageTitle } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useParams } from 'react-router-dom';
-
-import { ErrorState } from '@/components/StateViews';
-
-const messages = defineMessages({
-  apiNotFound: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.apiNotFound',
-    defaultMessage: 'GraphQL API not found',
-  },
-  header: {
-    id: 'appShell.runtimeLogsPage.header',
-    defaultMessage: 'Observability',
-  },
-  subHeader: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.subHeader',
-    defaultMessage: 'Runtime logs for {graphqlApiHandler}.',
-    description: '{graphqlApiHandler} is the API handle, user-supplied; do not translate it.',
-  },
-});
+import { RuntimeLogsContent } from '../../observability/RuntimeLogsContent';
+import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
 /**
- * Fork of `observability/RuntimeLogsPage.tsx` for a GraphQL API. No
- * `ScopeGate`: this route lives outside `ConsoleScopeProvider`'s REST-only
- * api-scope matching (see `graphqlApiPath`), so it guards on its own route
- * param instead, matching every other GraphQL page.
+ * GraphQL API entry point for `observability/RuntimeLogsContent.tsx` — the
+ * body is identical to REST's own runtime-logs page, so only the scope guard
+ * differs (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlObservabilityLogsPage() {
-  const intl = useIntl();
-  const { graphqlApiHandler } = useParams();
-
-  if (!graphqlApiHandler) {
-    return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
-  }
-
   return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.header} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subHeader} values={{ graphqlApiHandler }} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <Card variant="outlined">
-        <CardContent>
-          <CodeBlock
-            language="bash"
-            code={`[info] Runtime log streaming integration point
-            [info] Advanced filters and live tail are deferred from the MVP`}
-          />
-        </CardContent>
-      </Card>
-    </>
+    <GraphqlApiPageGuard>
+      {(graphqlApiHandler) => <RuntimeLogsContent apiHandler={graphqlApiHandler} />}
+    </GraphqlApiPageGuard>
   );
 }
