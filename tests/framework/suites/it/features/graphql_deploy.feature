@@ -526,13 +526,12 @@ Feature: GraphQL API CRUD and connectivity
     When I delete the GraphQL API "${CTX:graphqlName}"
     Then the response should be successful
 
-  # CONFIRMED via this test (not assumed): a GraphQL API resolves to exactly one POST route
-  # with an Exact path/method match, so an OPTIONS preflight never matches that route at
-  # all - Envoy 404s before the cors policy, or any policy, ever runs. REST's cors preflight
-  # support (which relies on an explicit "- method: OPTIONS" entry in operations[]) does not
-  # carry over to GraphQL; there is no operations[] to add one to. This is a genuine, current
-  # limitation, not yet supported.
-  Scenario: A GraphQL API with cors does not handle a preflight request - confirmed limitation
+  # A GraphQLApi has no operations[] list the way RestApi does, so it can't get an OPTIONS
+  # route the same way REST's cors preflight support does (an explicit "- method: OPTIONS"
+  # entry). Instead, GraphQLAPITransformer synthesizes one itself whenever a "cors" policy
+  # is attached (pkg/transform/graphql.go) - this used to 404 before that fix, since Envoy
+  # had no route to match an OPTIONS request against at all.
+  Scenario: A GraphQL API with cors answers a preflight request
     Given I generate a unique resource name from "graphql-cors" and store it as "graphqlName"
     And I generate a unique value from "graphql-cors" and store it as "graphqlDisplayName"
     And I generate a unique API context from "/graphql-cors" and store it as "graphqlContext"
@@ -555,7 +554,8 @@ Feature: GraphQL API CRUD and connectivity
     And I set header "Origin" to "http://example.com"
     And I set header "Access-Control-Request-Method" to "POST"
     And I send a "OPTIONS" request to "${CTX:graphqlContext}"
-    Then the response status code should be 404
+    Then the response should be successful
+    And the response header "Access-Control-Allow-Origin" should be "http://example.com"
 
     When I clear all headers
     And I authenticate using basic auth as "admin"
