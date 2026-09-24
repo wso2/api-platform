@@ -239,7 +239,8 @@ func (h *PublicationHandler) SaveDraftDefinition(w http.ResponseWriter, r *http.
 // whether a listing without a definition is acceptable.
 func validateRestDefinition(contentType string, data []byte) error {
 	if contentType != "application/json" && contentType != "application/x-yaml" {
-		return nil
+		return apperror.APIPublicationValidationFailed.New(
+			"A REST API definition must be application/json or application/x-yaml")
 	}
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" || trimmed == "{}" {

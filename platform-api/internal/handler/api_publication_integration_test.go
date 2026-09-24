@@ -274,6 +274,7 @@ func TestPublicationHandler_SaveDraftDefinition_ValidatesOpenAPI(t *testing.T) {
 		{"not openapi", "application/json", `{"foo":1}`},
 		{"swagger 2", "application/json", `{"swagger":"2.0","info":{"title":"t","version":"1"},"paths":{}}`},
 		{"invalid yaml spec", "application/x-yaml", "openapi: 3.0.0\n"},
+		{"unsupported content type", "application/xml", validSpec},
 	}
 	for _, tc := range rejected {
 		w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", tc.contentType, []byte(tc.body))
