@@ -46,12 +46,19 @@ const (
 	GatewayLLMProviderByIDPath = "/llm-providers/%s"
 	GatewayLLMProxiesPath      = "/llm-proxies"
 	GatewayLLMProxyByIDPath    = "/llm-proxies/%s"
+	GatewayGraphQLAPIsPath     = "/graphql-apis"
+	GatewayGraphQLAPIByIDPath  = "/graphql-apis/%s"
 	DevPortalHealthPath        = "/health"
 
 	// API Key Endpoints (scoped to a REST API)
 	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
 	GatewayAPIKeyByNamePath     = "/rest-apis/%s/api-keys/%s" // %s = REST API id, %s = api key name
 	GatewayAPIKeyRegeneratePath = "/rest-apis/%s/api-keys/%s/regenerate"
+
+	// API Key Endpoints (scoped to a GraphQL API)
+	GatewayGraphQLAPIKeysPath          = "/graphql-apis/%s/api-keys"    // %s = GraphQL API id
+	GatewayGraphQLAPIKeyByNamePath     = "/graphql-apis/%s/api-keys/%s" // %s = GraphQL API id, %s = api key name
+	GatewayGraphQLAPIKeyRegeneratePath = "/graphql-apis/%s/api-keys/%s/regenerate"
 
 	// Subscription Plan Endpoints
 	GatewaySubscriptionPlansPath    = "/subscription-plans"

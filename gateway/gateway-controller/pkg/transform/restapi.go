@@ -501,7 +501,10 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 // transformer calls it directly so that an Agent's cluster key, base path, Envoy
 // cluster name and TLS flag are derived by the identical code path as a REST API's
 // — those four values are what the route rewrite and the policy engine's
-// default-upstream both key off.
+// default-upstream both key off. GraphQLAPITransformer calls it directly for the
+// same reason, to resolve its own main/sandbox upstream clusters without
+// duplicating the resolution logic (URL/ref lookup, port defaulting, TLS
+// detection, connect-timeout resolution).
 func addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,

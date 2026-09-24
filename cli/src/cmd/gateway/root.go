@@ -20,6 +20,7 @@ package gateway
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/graphqlapi"
 	"github.com/wso2/api-platform/cli/cmd/gateway/image"
 	"github.com/wso2/api-platform/cli/cmd/gateway/mcp"
 	"github.com/wso2/api-platform/cli/cmd/gateway/restapi"
@@ -58,6 +59,7 @@ func init() {
 	GatewayCmd.AddCommand(applyCmd)
 	GatewayCmd.AddCommand(image.ImageCmd)
 	GatewayCmd.AddCommand(restapi.APICmd)
+	GatewayCmd.AddCommand(graphqlapi.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 	GatewayCmd.AddCommand(subscriptionplan.SubscriptionPlanCmd)
 	GatewayCmd.AddCommand(subscription.SubscriptionCmd)
