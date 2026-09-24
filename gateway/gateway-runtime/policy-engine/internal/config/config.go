@@ -1059,11 +1059,16 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 // DefaultLLMCostPricingFile is the model-pricing file the llm-cost policy fallback
 const DefaultLLMCostPricingFile = "/etc/policy-engine/llm-pricing/model_prices.json"
 
+// DefaultAzureLLMCostPricingFile is the model-pricing file the azure-llm-cost policy
+// fallback; it shares the llm-cost pricing file.
+const DefaultAzureLLMCostPricingFile = DefaultLLMCostPricingFile
+
 // defaultResolvableConfig returns defaults for config keys that policy definitions
 // reference via ${config...} system-parameter markers
 func defaultResolvableConfig() map[string]interface{} {
 	return map[string]interface{}{
-		"policy_configurations.llm_cost_v1.pricing_file": DefaultLLMCostPricingFile,
+		"policy_configurations.llm_cost_v1.pricing_file":       DefaultLLMCostPricingFile,
+		"policy_configurations.azure_llm_cost_v1.pricing_file": DefaultAzureLLMCostPricingFile,
 	}
 }
 

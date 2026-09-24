@@ -26,7 +26,10 @@
 # Mistral key).
 #
 # The provider example's api-key-auth policy expects the proxy to send the
-# issued provider loopback key in X-API-Key.
+# issued provider loopback key as "Authorization: Bearer <key>". The gateway
+# builds that loopback credential itself, prefixing the raw key below with the
+# provider's own api-key-auth valuePrefix ("Bearer ") -- so value here must be
+# the bare key, or the header would end up as "Authorization: Bearer Bearer <key>".
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -43,7 +46,7 @@ spec:
     id: mistral-provider
     auth:
       type: api-key
-      header: X-API-Key
+      header: Authorization
       value: REPLACE_WITH_MISTRAL_PROVIDER_LOOPBACK_KEY
   policies:
     - name: openai-to-mistral

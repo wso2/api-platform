@@ -25,7 +25,8 @@
 # set on upstream.auth (the policy does NOT inject the Anthropic key).
 #
 # The provider example's api-key-auth policy expects the proxy to send the
-# issued provider loopback key in X-API-Key.
+# issued provider loopback key in x-api-key (HTTP header names are
+# case-insensitive, matching the provider's own client-facing convention).
 # --------------------------------------------------------------------
 
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -42,7 +43,7 @@ spec:
     id: anthropic-provider
     auth:
       type: api-key
-      header: X-API-Key
+      header: x-api-key
       value: REPLACE_WITH_ANTHROPIC_PROVIDER_LOOPBACK_KEY
   policies:
     - name: openai-to-anthropic
