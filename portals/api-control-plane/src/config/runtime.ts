@@ -189,7 +189,7 @@ const resolvedPlatformApiBaseUrl =
   fromWindow().platformApiBaseUrl ||
   '';
 
-const DEV_POLICY_HUB_BASE_URL =
+const DEFAULT_POLICY_HUB_BASE_URL =
   'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0';
 
 const hostFromUrl = (url: string) => {
@@ -274,7 +274,7 @@ export const runtimeConfig: RuntimeConfig = {
   policyHubBaseUrl:
     fromWindow().POLICY_HUB_BASE_URL ||
     import.meta.env.VITE_POLICY_HUB_BASE_URL ||
-    (import.meta.env.DEV && import.meta.env.MODE === 'development' ? DEV_POLICY_HUB_BASE_URL : ''),
+    DEFAULT_POLICY_HUB_BASE_URL,
   policyHubWebUrl:
     fromWindow().POLICY_HUB_WEB_URL ||
     import.meta.env.VITE_POLICY_HUB_WEB_URL ||

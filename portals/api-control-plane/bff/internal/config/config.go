@@ -37,9 +37,7 @@ import (
 
 // Config is the fully-resolved BFF configuration. Its shape mirrors the
 // [api_control_plane.*] tables in config.toml, so koanf unmarshals straight into
-// it. Keys the BFF does not consume (browser-only values the SPA reads) are
-// deliberately not modeled here; they flow to RuntimeConfig straight from the
-// parsed config (see runtime_config.go).
+// it. Browser-facing values are explicitly exposed by buildRuntimeConfig.
 type Config struct {
 	// Domain is the externally-reachable host:port for this deployment, used only
 	// for the startup log banner. The browser never needs it — it already knows
@@ -51,8 +49,14 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
+	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// PolicyHubConfig configures the public catalog called directly by the browser.
+type PolicyHubConfig struct {
+	BaseURL string `koanf:"base_url"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -305,6 +309,7 @@ func (c *Config) normalize() {
 	c.Logging.Level = strings.ToLower(c.Logging.Level)
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
+	c.PolicyHub.BaseURL = strings.TrimRight(strings.TrimSpace(c.PolicyHub.BaseURL), "/")
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
