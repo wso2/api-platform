@@ -115,19 +115,17 @@ func ExpiryFromClaims(claims map[string]any) time.Time {
 // UserFromClaims builds the display User from decoded claims using the mapping.
 // idClaims (OIDC id_token) is optional and consulted first for name/email.
 func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
+	// Both lookups go through strClaim so a configured value may be a dot-separated
+	// path (see resolveClaimPath). The id_token is preferred where it has the claim:
+	// it carries the user's profile, while the access token often carries only ids.
 	get := func(key string) string {
 		if key == "" {
 			return ""
 		}
-		if idClaims != nil {
-			if s, ok := idClaims[key].(string); ok && s != "" {
-				return s
-			}
-		}
-		if s, ok := claims[key].(string); ok {
+		if s := strClaim(idClaims, key); s != "" {
 			return s
 		}
-		return ""
+		return strClaim(claims, key)
 	}
 
 	// Resolve a human-friendly display name from the configured username claim,
@@ -160,14 +158,57 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	return u
 }
 
+// resolveClaimPath walks a dot-separated path into nested claim objects. A path with
+// no "." is an ordinary flat lookup, so every claim_mappings value may name either a
+// top-level claim ("org_id") or a nested one ("organization.uuid").
+//
+// It mirrors the Platform API's resolveClaimPath (middleware/auth.go) deliberately:
+// the two services read the SAME token with the SAME configured mappings, so a path
+// one understands and the other does not means the UI and the API disagree about
+// which org the caller is in — the UI showing no org while the API happily scopes
+// every query to one. Nested organization claims are the common shape (Choreo STS
+// issues {"organization": {"handle": ..., "uuid": ...}}), not an edge case.
+func resolveClaimPath(obj map[string]any, path string) (any, bool) {
+	if path == "" || obj == nil {
+		return nil, false
+	}
+	parts := strings.SplitN(path, ".", 2)
+	val, ok := obj[parts[0]]
+	if !ok {
+		return nil, false
+	}
+	if len(parts) == 1 {
+		return val, true
+	}
+	nested, ok := val.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	return resolveClaimPath(nested, parts[1])
+}
+
+// ClaimString resolves a configured claim name — flat ("org_handle") or a
+// dot-separated path into a nested object ("organization.handle") — to its string
+// value, or "" when it is absent or not a string.
+//
+// Exported because the token-exchange layer reads the same claims from the same
+// configured mapping: two resolvers would mean a path that works for the session and
+// silently reads empty in a log line, which is exactly the confusion this is meant to
+// remove.
+func ClaimString(claims map[string]any, path string) string {
+	return strClaim(claims, path)
+}
+
 func strClaim(claims map[string]any, key string) string {
 	if key == "" || claims == nil {
 		return ""
 	}
-	if s, ok := claims[key].(string); ok {
-		return s
+	val, ok := resolveClaimPath(claims, key)
+	if !ok {
+		return ""
 	}
-	return ""
+	s, _ := val.(string)
+	return s
 }
 
 // strSliceClaim reads a claim that may be a single string, a space-delimited string,
@@ -177,7 +218,11 @@ func strSliceClaim(claims map[string]any, key string) []string {
 	if key == "" || claims == nil {
 		return nil
 	}
-	switch v := claims[key].(type) {
+	raw, ok := resolveClaimPath(claims, key)
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
 	case string:
 		return strings.Fields(v)
 	case []any:

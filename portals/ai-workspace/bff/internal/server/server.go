@@ -178,18 +178,46 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 				endpoint = o.TokenEndpoint()
 			}
 			te := cfg.Auth.OIDC.TokenExchange
-			s.exchanger = auth.NewExchanger(upstream, te, endpoint)
+			// The issued token's own claim names, which default per-field to the
+			// login mapping — so this is `claims` unless the STS re-shapes them.
+			exchangeClaims, err := buildClaimMapping(te.ClaimMappings, cfg.Auth.Authorization)
+			if err != nil {
+				return nil, err
+			}
+			s.exchanger = auth.NewExchanger(upstream, te, endpoint,
+				auth.WithClaimMapping(exchangeClaims))
 			slog.Info("token exchange enabled: upstream requests will carry an exchanged token",
 				"grant_type", te.GrantType,
 				"token_endpoint", endpoint,
+				"client_id", te.ClientID,
+				"client_auth", te.ClientAuth,
 				"audience", te.Audience,
 				"resource", te.Resource,
+				"subject_token_type", te.SubjectTokenType,
+				"requested_token_type", te.RequestedTokenType,
 				"cache_enabled", te.CacheEnabled,
 			)
 		}
 	}
 
 	s.handler = s.routes()
+
+	// One startup line carrying every value that decides whether a login can
+	// complete. Each of these has cost a debugging session on its own: a
+	// redirect_uri the IDP does not have registered, a callback path the server does
+	// not serve, and a tx cookie whose Path the callback route falls outside of.
+	// They are only meaningful together, so they are logged together, at Info — a
+	// failing login should not require turning debug on first.
+	if cfg.Auth.OIDCEnabled() {
+		slog.Info("oidc login wiring",
+			"issuer", cfg.Auth.OIDC.Issuer,
+			"client_id", cfg.Auth.OIDC.ClientID,
+			"redirect_uri", cfg.Auth.OIDC.RedirectURL,
+			"callback_served_at", s.path("/api/auth/callback"),
+			"tx_cookie_path", s.txCookiePath(),
+			"post_logout_redirect_uri", cfg.Auth.OIDC.PostLogoutRedirectURL,
+		)
+	}
 	return s, nil
 }
 

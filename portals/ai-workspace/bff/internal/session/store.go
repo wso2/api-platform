@@ -84,6 +84,12 @@ type ExchangedToken struct {
 	// configured. Compared against the session's current OrgHandle in Usable, so a
 	// switch to a different org always forces a fresh exchange.
 	OrgHandle string
+
+	// Org is what the issued token ASSERTS about the caller's org — distinct from
+	// OrgHandle above, which is what was requested. Cached with the token so a cache
+	// hit reports the same org a fresh exchange would, rather than falling back to
+	// the login token's org for the token's whole lifetime.
+	Org *Org
 }
 
 // Usable reports whether the cached token can still be forwarded upstream. An unknown

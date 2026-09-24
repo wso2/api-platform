@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/session"
 )
 
 // jwtWithClaims builds an unsigned JWT with the given claims. The BFF never verifies
@@ -82,6 +83,7 @@ func baseCfg() config.TokenExchangeConfig {
 		GrantType:          config.GrantTokenExchange,
 		ClientID:           "bff-client",
 		ClientSecret:       "bff-secret",
+		ClientAuth:         config.ClientAuthSecretPost,
 		Audience:           "platform-api",
 		Scopes:             "ap:project:read ap:gateway:read",
 		SubjectTokenType:   TokenTypeJWT,
@@ -130,6 +132,36 @@ func TestExchangeSendsRFC8693Form(t *testing.T) {
 	// The jwt-bearer-only parameter must never leak into the RFC 8693 grant.
 	if _, present := srv.lastForm["assertion"]; present {
 		t.Error("assertion must not be sent for the token_exchange grant")
+	}
+}
+
+// TestExchangePublicClient pins the public-client wire shape: client_id alone, with
+// client_secret ABSENT rather than present-and-empty. The distinction is not
+// cosmetic — an IDP reading an empty client_secret sees a failed secret and answers
+// invalid_client, which classifies as a configuration fault and 502s every request.
+func TestExchangePublicClient(t *testing.T) {
+	srv := newExchangeServer(t, http.StatusOK, map[string]any{
+		"access_token": "issued-token", "issued_token_type": TokenTypeAccessToken,
+		"token_type": "Bearer", "expires_in": 3600,
+	})
+
+	cfg := baseCfg()
+	cfg.ClientAuth = config.ClientAuthNone
+	cfg.ClientSecret = "" // config validation rejects a secret alongside client_auth = none
+	e := NewExchanger(srv.Client(), cfg, srv.URL)
+	if _, err := e.Exchange(context.Background(), "subject-token", ""); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	if got := srv.lastForm.Get("client_id"); got != "bff-client" {
+		t.Errorf("client_id = %q, want the exchange client", got)
+	}
+	if _, present := srv.lastForm["client_secret"]; present {
+		t.Error("client_secret must be absent entirely for a public client, not sent empty")
+	}
+	// The rest of the RFC 8693 request is unchanged by the auth method.
+	if got := srv.lastForm.Get("subject_token"); got != "subject-token" {
+		t.Errorf("subject_token = %q", got)
 	}
 }
 
@@ -915,8 +947,15 @@ func TestRejectionIsNotGated(t *testing.T) {
 func TestConfigFingerprintCoversEveryRequestAffectingField(t *testing.T) {
 	// Fields that genuinely do not change the issued token.
 	doesNotAffectIssuedToken := map[string]string{
-		"Enabled":       "switches the feature off entirely; there is no cached token to reuse",
-		"ClientSecret":  "authenticates the BFF without altering what is issued",
+		"Enabled":      "switches the feature off entirely; there is no cached token to reuse",
+		"ClientSecret": "authenticates the BFF without altering what is issued",
+		"ClaimMappings": "read-side: names how the ISSUED token is parsed, not what the IDP mints. " +
+			"Its Scope member does change the cached Scopes and is in the fingerprint (asserted in " +
+			"TestConfigFingerprintChangesWithScopeClaimName); the rest only shape a log line",
+		"ClientAuth": "selects HOW the BFF authenticates (secret in the body, or none for a public client) — like the secret itself, it does not alter what is issued",
+		"DefaultOrg": "resolved by the server into the org actually requested, which ExchangedToken.Usable " +
+			"compares separately via OrgHandle — so changing it already invalidates cached tokens minted " +
+			"for the previous org, without the fingerprint (asserted in TestDefaultOrgChangeInvalidatesCache)",
 		"CacheEnabled":  "decides whether to consult the cache, not what a cached token contains",
 		"MinValidity":   "decides when a cached token is too close to expiry, not what it contains",
 		"TokenEndpoint": "covered via the resolved endpoint passed to NewExchanger (asserted separately below)",
@@ -984,4 +1023,192 @@ func TestUnrequestedScopesWarnOncePerSet(t *testing.T) {
 	if !e.shouldWarnScopes([]string{"ap:admin:write", "ap:secret:read"}) {
 		t.Error("a different unrequested scope set must be reported")
 	}
+}
+
+// TestFormForLogRedactsSecrets pins what the request log line may contain. It exists
+// to be pasted into a ticket, so a credential or bearer token appearing there is a
+// disclosure (GO-AUTH-003) — while the diagnostic fields must survive, since the
+// whole point is showing which parameter an STS objected to.
+func TestFormForLogRedactsSecrets(t *testing.T) {
+	form := url.Values{
+		"client_id":            {"exchange-client"},
+		"client_secret":        {"super-secret-value"},
+		"subject_token":        {"eyJhbGciOiJSUzI1NiJ9.payload.signature"},
+		"grant_type":           {grantURITokenExchange},
+		"audience":             {"platform-api"},
+		"requested_token_type": {TokenTypeJWT},
+	}
+	out := formForLog(form)
+
+	for _, secret := range []string{"super-secret-value", "eyJhbGciOiJSUzI1NiJ9.payload.signature"} {
+		if strings.Contains(out, secret) {
+			t.Errorf("secret leaked into the log line: %q", out)
+		}
+	}
+	// Present-but-wrong must stay distinguishable from absent.
+	if !strings.Contains(out, "client_secret=[18 chars]") {
+		t.Errorf("client_secret should be reported as a length, got %q", out)
+	}
+	for _, want := range []string{"client_id=exchange-client", "audience=platform-api", "requested_token_type=" + TokenTypeJWT} {
+		if !strings.Contains(out, want) {
+			t.Errorf("diagnostic field missing from %q: want %q", out, want)
+		}
+	}
+}
+
+// A public client sends no client_secret at all, and the log must show that rather
+// than an empty-looking value — "absent" and "present but empty" are different bugs.
+func TestFormForLogPublicClient(t *testing.T) {
+	cfg := baseCfg()
+	cfg.ClientAuth = config.ClientAuthNone
+	cfg.ClientSecret = ""
+	e := NewExchanger(nil, cfg, "https://sts.example.com/token")
+
+	out := formForLog(e.buildForm("subject-token", ""))
+	if strings.Contains(out, "client_secret") {
+		t.Errorf("client_secret must not appear for a public client: %q", out)
+	}
+}
+
+// TestAudClaimHandlesBothForms: RFC 7519 allows aud to be a single string or an
+// array, and an STS-issued token commonly uses the array form (the client id
+// alongside the issuer). Reading only the string form would log an empty audience —
+// the one value an operator is reading this line to find.
+func TestAudClaimHandlesBothForms(t *testing.T) {
+	cases := []struct {
+		name   string
+		claims map[string]any
+		want   []string
+	}{
+		{"array form", map[string]any{"aud": []any{"login-client", "https://sts.example.com/oauth2/token"}},
+			[]string{"login-client", "https://sts.example.com/oauth2/token"}},
+		{"single string", map[string]any{"aud": "platform-api"}, []string{"platform-api"}},
+		{"absent", map[string]any{}, nil},
+		{"wrong type", map[string]any{"aud": 42}, nil},
+		{"array with non-strings", map[string]any{"aud": []any{"a", 7}}, []string{"a"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := audClaim(tc.claims)
+			if len(got) != len(tc.want) {
+				t.Fatalf("audClaim() = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("audClaim()[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestExchangerHonoursConfiguredClaimNames: the exchanger reads the issued token's
+// org and scope claims under the deployment's configured names, so a nested claim
+// ("organization.handle") resolves rather than reading empty. Asserted through
+// scopeClaim, the one path where the names change behaviour rather than only a log
+// line — /api/session reports these scopes, and an empty read shows a logged-in user
+// every action greyed out.
+func TestExchangerHonoursConfiguredClaimNames(t *testing.T) {
+	claims := map[string]any{
+		"permissions": map[string]any{"granted": "ap:project:manage ap:gateway:manage"},
+		"scope":       "should-not-be-read",
+	}
+
+	m := session.DefaultClaimMapping()
+	m.Scope = "permissions.granted"
+	e := NewExchanger(nil, baseCfg(), "https://sts.example.com/token", WithClaimMapping(m))
+
+	got := e.scopeClaim(claims)
+	if len(got) != 2 || got[0] != "ap:project:manage" {
+		t.Errorf("scopeClaim() = %v, want the two scopes under the configured name", got)
+	}
+}
+
+// Without the option the flat defaults apply, so an exchanger built by a caller that
+// passes no mapping behaves exactly as before.
+func TestExchangerDefaultsToFlatClaimNames(t *testing.T) {
+	e := NewExchanger(nil, baseCfg(), "https://sts.example.com/token")
+
+	got := e.scopeClaim(map[string]any{"scope": "ap:project:read"})
+	if len(got) != 1 || got[0] != "ap:project:read" {
+		t.Errorf("scopeClaim() = %v, want the flat scope claim", got)
+	}
+	// Entra's spelling stays supported as a fallback.
+	if got := e.scopeClaim(map[string]any{"scp": []any{"ap:project:read"}}); len(got) != 1 {
+		t.Errorf("scp fallback lost: %v", got)
+	}
+}
+
+// TestConfigFingerprintChangesWithScopeClaimName backs the ClaimMappings exemption
+// above. Renaming the scope claim changes the scope set derived from an otherwise
+// identical token, so a token cached under the old name must not be reused: the UI
+// would keep gating on scopes read the old way until the token expired.
+func TestConfigFingerprintChangesWithScopeClaimName(t *testing.T) {
+	cfg := baseCfg()
+	before := NewExchanger(nil, cfg, "https://sts.example.com/token").ConfigFingerprint()
+
+	m := session.DefaultClaimMapping()
+	m.Scope = "permissions.granted"
+	after := NewExchanger(nil, cfg, "https://sts.example.com/token", WithClaimMapping(m)).ConfigFingerprint()
+
+	if before == after {
+		t.Error("renaming the scope claim must invalidate cached tokens")
+	}
+}
+
+// TestExchangeResultCarriesIssuedOrg closes the loop from the STS response to what
+// the session reports: the org claims of the ISSUED token, read through the
+// exchange's own claim mapping, land on the Result. Built in the shape an STS issues
+// — org nested as an object, no org name — so the handle-as-display-name fallback is
+// exercised on the path the UI actually reads.
+func TestExchangeResultCarriesIssuedOrg(t *testing.T) {
+	issued := testJWT(t, map[string]any{
+		"scope": "ap:project:manage",
+		"organization": map[string]any{
+			"handle": "org-a",
+			"uuid":   "org-a-uuid",
+		},
+		// Present in the real token and deliberately not read: the org list comes
+		// from the login token, so an issued token carrying one must not override it.
+		"organizations": []any{"org-a-uuid", "org-b-uuid"},
+		"exp":           time.Now().Add(time.Hour).Unix(),
+	})
+	srv := newExchangeServer(t, http.StatusOK, map[string]any{
+		"access_token": issued, "issued_token_type": TokenTypeAccessToken,
+		"token_type": "Bearer", "expires_in": 3600,
+	})
+
+	m := session.DefaultClaimMapping()
+	m.OrgID = "organization.uuid"
+	m.OrgHandle = "organization.handle"
+	e := NewExchanger(srv.Client(), baseCfg(), srv.URL, WithClaimMapping(m))
+
+	res, err := e.Exchange(context.Background(), "subject-token", "")
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if res.Org == nil {
+		t.Fatal("Result.Org is nil — the issued token's org was not read")
+	}
+	if res.Org.Handle != "org-a" || res.Org.ID != "org-a-uuid" {
+		t.Errorf("Org = %+v", res.Org)
+	}
+	// No org name in the token: the handle stands in, so the UI never renders blank.
+	if res.Org.Name != "org-a" {
+		t.Errorf("Org.Name = %q, want the handle as fallback", res.Org.Name)
+	}
+}
+
+// testJWT builds an unsigned JWT with the given claims. The BFF only decodes these
+// (the Platform API verifies them), so a signature is unnecessary here.
+func testJWT(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	b64 := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	return b64(map[string]string{"alg": "none", "typ": "JWT"}) + "." + b64(claims) + ".sig"
 }

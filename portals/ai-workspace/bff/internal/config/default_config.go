@@ -95,6 +95,7 @@ func defaultConfig() *Config {
 				TokenExchange: TokenExchangeConfig{
 					Enabled:            false,
 					GrantType:          GrantTokenExchange,
+					ClientAuth:         ClientAuthSecretPost,
 					SubjectTokenType:   "urn:ietf:params:oauth:token-type:jwt",
 					RequestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
 					CacheEnabled:       true,

@@ -182,7 +182,13 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess, ret, err := s.oidc.Callback(r.Context(), txID, q.Get("state"), q.Get("code"))
 	if err != nil {
-		slog.Warn("oidc callback failed", "err", err)
+		// tx_cookie_present is the field that separates "the browser never sent the
+		// cookie" (a Path/SameSite problem) from "the server forgot the transaction"
+		// (a restart) — the two look identical in the error alone.
+		slog.Warn("oidc callback failed", "err", err,
+			"path", r.URL.Path,
+			"tx_cookie_present", txID != "",
+			"tx_cookie_path", s.txCookiePath())
 		http.Redirect(w, r, s.path("/login")+"?error=auth_failed", http.StatusFound)
 		return
 	}
@@ -318,35 +324,61 @@ func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 func (s *Server) userFromToken(ctx context.Context, jwt string, exchanged *auth.Result) session.User {
 	if s.oidc != nil {
 		if sess, ok, _ := s.store.Get(ctx, jwt); ok {
-			return s.withExchangedScopes(sess.User, exchanged, sess.Exchanged)
+			return s.withExchangedIdentity(sess.User, exchanged, sess.Exchanged)
 		}
 		return s.oidc.UserFromAccessToken(jwt)
 	}
 	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, s.claims)
 }
 
-// withExchangedScopes reports what the Platform API will authorize, which in exchange
-// mode the exchanged token decides. This is what lets an IDP that cannot mint ap:*
-// scopes run with [auth.authorization] mode = "scope" instead of mirroring a grant
-// table across two services.
+// withExchangedIdentity reports what the Platform API will actually see: in exchange
+// mode the exchanged token decides both what the caller may do AND which org they are
+// in, because that is the token every proxied request carries.
+//
+// Scopes are what let an IDP that cannot mint ap:* scopes run with
+// [auth.authorization] mode = "scope" instead of mirroring a grant table across two
+// services. The org matters for the same reason one step further on: the login token
+// names the IDP's own tenant (an Asgardeo org), while the STS resolves that to the
+// platform org it issues for. Reporting the login token's org would show the user one
+// org in the UI while every API call they make is scoped to another — and the org
+// they would then "create resources in" is the exchanged one regardless.
 //
 // A zero ExchangedToken (Token == "") is left alone: a freshly restored session has
 // not exchanged yet, and blanking scopes would show nothing as permitted for a fully
 // authorized session. Once a session has exchanged, its scopes are copied verbatim —
 // including a legitimately empty set — since that's what the Platform API authorizes.
-func (s *Server) withExchangedScopes(u session.User, fresh *auth.Result, cached session.ExchangedToken) session.User {
+//
+// The org is copied only when the issued token actually carries one. A nil Org means
+// the token said nothing about the org, not that the caller has none, so the login
+// token's org stands — an STS that passes org claims through untouched, or a
+// deployment with no org mapping configured, keeps working exactly as before.
+func (s *Server) withExchangedIdentity(u session.User, fresh *auth.Result, cached session.ExchangedToken) session.User {
 	if s.exchanger == nil {
 		return u
 	}
 	if fresh != nil {
 		u.Scopes = fresh.Scopes
+		applyExchangedOrg(&u, fresh.Org)
 		return u
 	}
 	if cached.Token == "" {
 		return u
 	}
 	u.Scopes = cached.Scopes
+	applyExchangedOrg(&u, cached.Org)
 	return u
+}
+
+// applyExchangedOrg overwrites the org the UI shows with the one the issued token
+// asserts, leaving it untouched when the token carries none.
+//
+// Only the current org. The org LIST stays as the login token stated it: which orgs
+// a user belongs to does not change because a token was minted for one of them, and
+// an STS is free to put something narrower (or nothing) in the issued token.
+func applyExchangedOrg(u *session.User, org *session.Org) {
+	if org != nil {
+		u.Org = org
+	}
 }
 
 // putRefreshState stores the OIDC refresh/id tokens keyed by the access JWT so
@@ -542,14 +574,26 @@ func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth
 	fingerprint := s.exchanger.ConfigFingerprint()
 
 	sess, ok, _ := s.store.Get(ctx, subjectToken)
-	var orgHandle string
+	// Resolved once and used for BOTH the cache check and the exchange below, so a
+	// cached token is never judged against a different org than the one it was
+	// minted for. The user's selection wins over the configured default; the default
+	// only fills the gap before they have made one.
+	orgHandle := s.cfg.Auth.OIDC.TokenExchange.DefaultOrg
 	if ok {
-		orgHandle = sess.OrgHandle
+		if sess.OrgHandle != "" {
+			orgHandle = sess.OrgHandle
+		}
 		if s.exchanger.CacheEnabled() && sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint, orgHandle) {
+			// Org travels with the cached token: a cache hit must describe the
+			// caller exactly as the exchange that produced it did. Omitted, the
+			// session would report the LOGIN token's org for the cached token's
+			// whole lifetime — visible only as the wrong org name in the UI while
+			// every API call is scoped to the right one.
 			return &auth.Result{
 				AccessToken: sess.Exchanged.Token,
 				Expiry:      sess.Exchanged.Expiry,
 				Scopes:      sess.Exchanged.Scopes,
+				Org:         sess.Exchanged.Org,
 			}, nil
 		}
 	}
@@ -619,6 +663,7 @@ func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint, orgH
 				Scopes:            res.Scopes,
 				ConfigFingerprint: fingerprint,
 				OrgHandle:         orgHandle,
+				Org:               res.Org,
 			}
 			if err := s.store.Put(ctx, sess); err != nil {
 				slog.Warn("failed to cache exchanged token on the session", "err", err)

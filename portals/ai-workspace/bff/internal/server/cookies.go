@@ -86,12 +86,19 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	}
 }
 
+// txCookiePath scopes the login-transaction cookie to the auth routes. It must cover
+// the callback route ("/api/auth/callback"), or the browser never sends the cookie there
+// and every login fails with a state mismatch — the transaction id simply absent,
+// indistinguishable from a forged one. One helper rather than the literal twice,
+// because setTxCookie and clearTxCookie must agree or the deletion silently misses.
+func (s *Server) txCookiePath() string { return s.path("/api/auth") }
+
 // setTxCookie writes the short-lived OIDC login-transaction cookie.
 func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    txID,
-		Path:     s.path("/api/auth"),
+		Path:     s.txCookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
@@ -99,11 +106,13 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 	})
 }
 
+// clearTxCookie must use the exact Path setTxCookie wrote, or the browser keeps the
+// original cookie alongside the deletion and the next login reads a stale txID.
 func (s *Server) clearTxCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    "",
-		Path:     s.path("/api/auth"),
+		Path:     s.txCookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,

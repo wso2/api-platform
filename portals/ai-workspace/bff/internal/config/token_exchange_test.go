@@ -143,6 +143,114 @@ scope = "ap:project:read"
 	}
 }
 
+// TestTokenExchangePublicClient covers an STS that registers the exchange as a
+// public client: client_id, no secret, client_auth = "none".
+func TestTokenExchangePublicClient(t *testing.T) {
+	cfg, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "login-client"
+client_secret = "login-secret"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+client_id = "public-exchange-client"
+client_auth = "none"
+`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	te := cfg.Auth.OIDC.TokenExchange
+	if te.ClientID != "public-exchange-client" {
+		t.Errorf("ClientID = %q", te.ClientID)
+	}
+	// The load-bearing assertion: a public exchange client must NOT end up holding
+	// the login application's secret, which is what pairwise inheritance prevents.
+	if te.ClientSecret != "" {
+		t.Errorf("ClientSecret = %q, want empty — a public client must never inherit the login secret", te.ClientSecret)
+	}
+	if te.ClientAuth != ClientAuthNone {
+		t.Errorf("ClientAuth = %q, want %q", te.ClientAuth, ClientAuthNone)
+	}
+}
+
+// TestTokenExchangeCredentialsInheritOnlyAsAPair is the regression guard for the
+// silent-secret-leak shape: naming a different exchange client_id with no secret
+// must never send THAT client the login application's secret. Before pairwise
+// inheritance this config loaded happily and posted client_id=exchange-client with
+// client_secret=login-secret — an invalid_client from the STS at best, and the login
+// secret disclosed to it either way.
+func TestTokenExchangeCredentialsInheritOnlyAsAPair(t *testing.T) {
+	_, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "login-client"
+client_secret = "login-secret"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+client_id = "exchange-client"
+`)
+	if err == nil {
+		t.Fatal("a client_id with no secret and no client_auth = none must fail startup, not inherit the login secret")
+	}
+	if !strings.Contains(err.Error(), "client_secret is required") || !strings.Contains(err.Error(), ClientAuthNone) {
+		t.Errorf("error must name the missing secret and point at the public-client option, got: %v", err)
+	}
+}
+
+// TestTokenExchangeClientAuthNoneRejectsASecret: the two settings contradict each
+// other, and guessing which the operator meant either drops authentication they
+// configured or sends a credential they asked to withhold.
+func TestTokenExchangeClientAuthNoneRejectsASecret(t *testing.T) {
+	_, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "login-client"
+client_secret = "login-secret"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+client_id = "exchange-client"
+client_secret = "exchange-secret"
+client_auth = "none"
+`)
+	if err == nil {
+		t.Fatal("client_auth = none alongside a configured client_secret must fail startup")
+	}
+}
+
+// TestTokenExchangeUnknownClientAuth is checked even when the feature is disabled,
+// like grant_type: a typo should surface when written, not on the deploy that turns
+// the exchange on.
+func TestTokenExchangeUnknownClientAuth(t *testing.T) {
+	_, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "basic"
+
+[ai_workspace.auth.oidc.token_exchange]
+client_auth = "client_secret_basic"
+`)
+	if err == nil || !strings.Contains(err.Error(), "client_auth") {
+		t.Fatalf("an unsupported client_auth must fail startup even while disabled, got: %v", err)
+	}
+}
+
 func TestTokenExchangeValidationErrors(t *testing.T) {
 	const oidcBase = `
 [ai_workspace.auth]
@@ -591,5 +699,83 @@ token_endpoint = "%s"
 		if !tc.wantErr && err != nil {
 			t.Errorf("token_endpoint %q: unexpected error: %v", tc.endpoint, err)
 		}
+	}
+}
+
+// TestTokenExchangeClaimMappingsInheritPerField: the issued token's claim names
+// default to the login token's, FIELD BY FIELD. Per-field matters — an STS that
+// nests only the org still uses the login names for everything else, and inheriting
+// the whole table only when empty would force an operator to restate every unchanged
+// name just to override one.
+func TestTokenExchangeClaimMappingsInheritPerField(t *testing.T) {
+	cfg, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.claim_mappings]
+organization = "org_id"
+org_handle = "org_handle"
+email = "email"
+username = "username"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "login-client"
+client_secret = "login-secret"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+
+[ai_workspace.auth.oidc.token_exchange.claim_mappings]
+organization = "organization.uuid"
+org_handle = "organization.handle"
+`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	te := cfg.Auth.OIDC.TokenExchange.ClaimMappings
+
+	// Overridden for the issued token.
+	if te.OrgID != "organization.uuid" || te.OrgHandle != "organization.handle" {
+		t.Errorf("org mappings = %q/%q, want the nested paths", te.OrgID, te.OrgHandle)
+	}
+	// Inherited, because the STS did not re-shape these.
+	if te.Email != "email" || te.Username != "username" {
+		t.Errorf("unset fields must inherit the login mapping, got %q/%q", te.Email, te.Username)
+	}
+	// The login mapping itself must be untouched — it names the LOGIN token's claims,
+	// which is what builds the session user shown in the UI.
+	if cfg.Auth.ClaimMappings.OrgHandle != "org_handle" {
+		t.Errorf("login mapping was modified: %q", cfg.Auth.ClaimMappings.OrgHandle)
+	}
+}
+
+// With no [token_exchange.claim_mappings] table at all, the issued token is read with
+// exactly the login names — the single-token deployment configures nothing.
+func TestTokenExchangeClaimMappingsDefaultToLogin(t *testing.T) {
+	cfg, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.claim_mappings]
+org_handle = "custom_handle"
+
+[ai_workspace.auth.oidc]
+authority = "https://idp.example.com"
+client_id = "login-client"
+client_secret = "login-secret"
+redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+`)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Auth.OIDC.TokenExchange.ClaimMappings.OrgHandle; got != "custom_handle" {
+		t.Errorf("OrgHandle = %q, want the inherited login value", got)
 	}
 }

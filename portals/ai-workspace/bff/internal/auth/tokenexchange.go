@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,6 +94,11 @@ type Exchanger struct {
 	cfg             config.TokenExchangeConfig
 	endpoint        string
 	requestedScopes []string
+	// claims names the org/scope claims in the ISSUED token. Only the
+	// deployment-specific ones are configurable: iss and aud are registered JWT
+	// claims (RFC 7519) whose names no IDP can change, so making them settable would
+	// offer a knob that can only ever be turned the wrong way.
+	claims session.ClaimMapping
 
 	// mu guards the upstream-health state below, which is shared by every session:
 	// the token endpoint is one upstream, so what one request learns about it is
@@ -109,14 +115,52 @@ type Exchanger struct {
 
 // NewExchanger builds an Exchanger for an already-validated config. endpoint is the
 // resolved token endpoint, so discovery stays with the OIDC client.
-func NewExchanger(client *http.Client, cfg config.TokenExchangeConfig, endpoint string) *Exchanger {
-	return &Exchanger{
+// resolveClaim walks a flat or dot-separated claim name to its raw value. scopeClaim
+// needs the raw value rather than a string (a scope claim may be an array), which is
+// why it cannot use session.ClaimString.
+func resolveClaim(claims map[string]any, path string) (any, bool) {
+	if path == "" || claims == nil {
+		return nil, false
+	}
+	parts := strings.SplitN(path, ".", 2)
+	val, ok := claims[parts[0]]
+	if !ok {
+		return nil, false
+	}
+	if len(parts) == 1 {
+		return val, true
+	}
+	nested, ok := val.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	return resolveClaim(nested, parts[1])
+}
+
+// ExchangerOption configures an Exchanger at construction. Options are variadic so
+// the common case — a caller with nothing to override — reads unchanged.
+type ExchangerOption func(*Exchanger)
+
+// WithClaimMapping supplies the deployment's [auth.claim_mappings], so the exchanger
+// reads the issued token's org and scope claims under the names this IDP actually
+// uses. Without it the defaults apply, which are the flat names.
+func WithClaimMapping(m session.ClaimMapping) ExchangerOption {
+	return func(e *Exchanger) { e.claims = m }
+}
+
+func NewExchanger(client *http.Client, cfg config.TokenExchangeConfig, endpoint string, opts ...ExchangerOption) *Exchanger {
+	e := &Exchanger{
 		client:          noRedirectClient(client),
 		cfg:             cfg,
 		endpoint:        endpoint,
 		requestedScopes: strings.Fields(cfg.Scopes),
 		warnedScopeSets: make(map[string]struct{}),
+		claims:          session.DefaultClaimMapping(),
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }
 
 // noRedirectClient copies client with redirects disabled: the exchange POST body
@@ -160,6 +204,7 @@ func (e *Exchanger) ConfigFingerprint() string {
 		e.cfg.SubjectTokenType,
 		e.cfg.RequestedTokenType,
 		e.cfg.OrgParam,
+		e.claims.Scope,
 	}, "\x1f")
 }
 
@@ -169,6 +214,7 @@ type Result struct {
 	AccessToken string
 	Expiry      time.Time
 	Scopes      []string
+	Org         *session.Org
 }
 
 type exchangeResponse struct {
@@ -304,8 +350,14 @@ func (e *Exchanger) noteUpstreamHealthy() {
 
 // exchangeOnce performs a single exchange request.
 func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken, orgHandle string) (*Result, error) {
+	form := e.buildForm(subjectToken, orgHandle)
+	// The exact parameter set on the wire, which is what an STS's rejection is
+	// usually about — a value it does not support, or one it expected and did not
+	// get. Credentials and the subject token never appear: formForLog drops them.
+	slog.Debug("token exchange request", "endpoint", e.endpoint, "form", formForLog(form))
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint,
-		strings.NewReader(e.buildForm(subjectToken, orgHandle).Encode()))
+		strings.NewReader(form.Encode()))
 	if err != nil {
 		// A request that cannot be built is a malformed endpoint, not a blip: it
 		// will fail identically on every attempt, so retrying only burns the
@@ -344,17 +396,89 @@ func (e *Exchanger) exchangeOnce(ctx context.Context, subjectToken, orgHandle st
 	}
 
 	claims := session.DecodeJWTClaims(tok.AccessToken)
+	// iss and aud of the ISSUED token are what the Platform API checks it against
+	// ([platform_api.auth.idp] issuer / audience), and they are knowable nowhere else
+	// — the STS decides them, and a mismatch surfaces only as a 401 on every proxied
+	// call, with nothing in either service naming the expected value. Claims only;
+	// the token itself is never logged.
+	slog.Debug("token exchange succeeded",
+		"issued_iss", session.ClaimString(claims, "iss"),
+		"issued_aud", audClaim(claims),
+		"issued_org_handle", session.ClaimString(claims, e.claims.OrgHandle),
+		"issued_org_id", session.ClaimString(claims, e.claims.OrgID),
+		"issued_scope", session.ClaimString(claims, e.claims.Scope),
+		"expires_in", tok.ExpiresIn,
+	)
+	// Built through UserFromClaims rather than read field by field, so the issued
+	// token's org goes through exactly the same mapping, path resolution and
+	// name-falls-back-to-handle rules as the login token's. Only the org is taken
+	// from it: the scopes come from grantedScopes, which prefers the response's own
+	// scope field over the claim.
+	issued := session.UserFromClaims(claims, nil, e.claims)
 	return &Result{
 		AccessToken: tok.AccessToken,
 		Expiry:      expiryFrom(tok.ExpiresIn, claims),
 		Scopes:      e.grantedScopes(tok.Scope, claims),
+		Org:         issued.Org,
 	}, nil
 }
 
+// audClaim renders the aud claim, which RFC 7519 allows to be either a single string
+// or an array — and which is an array here (Asgardeo issues both the client id and
+// the STS name), so reading only the string form would log nothing at all.
+func audClaim(claims map[string]any) []string {
+	switch v := claims["aud"].(type) {
+	case string:
+		return []string{v}
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, a := range v {
+			if s, ok := a.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// sensitiveFormFields never reach the log: two are credentials and two are bearer
+// tokens, and this log line exists to be pasted into a ticket (GO-AUTH-003).
+var sensitiveFormFields = map[string]bool{
+	"client_secret": true,
+	"subject_token": true,
+	"assertion":     true,
+	"code":          true,
+}
+
+// formForLog renders the request parameters with every secret replaced by a length,
+// which is enough to tell "absent" from "present but wrong" without disclosing it.
+func formForLog(form url.Values) string {
+	keys := make([]string, 0, len(form))
+	for k := range form {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if sensitiveFormFields[k] {
+			parts = append(parts, fmt.Sprintf("%s=[%d chars]", k, len(form.Get(k))))
+			continue
+		}
+		parts = append(parts, k+"="+form.Get(k))
+	}
+	return strings.Join(parts, " ")
+}
+
 func (e *Exchanger) buildForm(subjectToken, orgHandle string) url.Values {
-	form := url.Values{
-		"client_id":     {e.cfg.ClientID},
-		"client_secret": {e.cfg.ClientSecret},
+	form := url.Values{"client_id": {e.cfg.ClientID}}
+	// A public client (client_auth = "none") sends client_id alone. The key is
+	// omitted rather than sent empty: an empty client_secret is a *failed* secret to
+	// several IDPs (invalid_client), not an absent one.
+	if e.cfg.ClientAuth != config.ClientAuthNone {
+		form.Set("client_secret", e.cfg.ClientSecret)
 	}
 
 	// Entra ID does not implement RFC 8693 — it rejects that grant. Its on-behalf-of
@@ -533,7 +657,7 @@ func parseRetryAfter(header http.Header) time.Duration {
 func (e *Exchanger) grantedScopes(granted string, claims map[string]any) []string {
 	scopes := strings.Fields(granted)
 	if len(scopes) == 0 {
-		scopes = scopeClaim(claims)
+		scopes = e.scopeClaim(claims)
 	}
 	if len(e.requestedScopes) == 0 {
 		return scopes
@@ -616,8 +740,17 @@ func expiryFrom(expiresIn int64, claims map[string]any) time.Time {
 	return session.ExpiryFromClaims(claims)
 }
 
-func scopeClaim(claims map[string]any) []string {
-	raw, ok := claims["scope"]
+// scopeClaim reads the issued token's scopes, which /api/session reports as what the
+// UI may do. It honours the configured scope claim name for the same reason the log
+// line does — a deployment that renamed or nested it would otherwise have the UI
+// believe the user holds no scopes at all — and keeps the "scp" fallback for IDPs
+// that use Entra's spelling.
+func (e *Exchanger) scopeClaim(claims map[string]any) []string {
+	name := e.claims.Scope
+	if name == "" {
+		name = "scope"
+	}
+	raw, ok := resolveClaim(claims, name)
 	if !ok {
 		raw = claims["scp"]
 	}

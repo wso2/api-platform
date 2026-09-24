@@ -161,3 +161,24 @@ func TestRoutesPathTraversalContainedUnderBasePath(t *testing.T) {
 		})
 	}
 }
+
+// oidcRoutesTestServer is routesTestServer in OIDC mode with the given redirect_url,
+// which is what decides whether an extra callback route is registered.
+func oidcRoutesTestServer(t *testing.T, redirectURL string) *Server {
+	t.Helper()
+	s := &Server{cfg: &config.Config{
+		Server: config.ServerConfig{StaticDir: newStaticTestDir(t)},
+		Auth: config.AuthConfig{
+			Mode: config.AuthModeOIDC,
+			OIDC: config.OIDCConfig{
+				Issuer:       "https://idp.example.com",
+				ClientID:     "login-client",
+				ClientSecret: "login-secret",
+				RedirectURL:  redirectURL,
+			},
+		},
+		RuntimeConfig: map[string]string{"APIP_AIW_AUTH_MODE": "oidc"},
+	}}
+	s.handler = s.routes()
+	return s
+}

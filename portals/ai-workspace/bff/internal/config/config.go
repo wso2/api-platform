@@ -229,10 +229,20 @@ type TokenExchangeConfig struct {
 	// it only when the exchange happens at a different STS than login.
 	TokenEndpoint string `koanf:"token_endpoint"`
 
-	// ClientID and ClientSecret default to the login client's (see normalize). Set
-	// them when the STS registers the exchange as its own application.
+	// ClientID and ClientSecret default to the login client's, but only as a PAIR
+	// (see normalize): naming a different client_id without its secret must not
+	// send that client the login application's secret.
 	ClientID     string `koanf:"client_id"`
 	ClientSecret string `koanf:"client_secret"`
+
+	// ClientAuth is how the BFF authenticates AT the exchange endpoint:
+	// ClientAuthSecretPost (the default) sends client_secret in the form body;
+	// ClientAuthNone sends client_id alone, for an STS that registers the exchange
+	// as a public client. It is an explicit key rather than an inference from an
+	// empty secret because the two cases are indistinguishable from a typo, and a
+	// misread one either leaks the login secret to the STS or silently drops
+	// client authentication.
+	ClientAuth string `koanf:"client_auth"`
 
 	// Audience becomes the issued token's aud and must match
 	// [platform_api.auth.idp] audience. One pre-registered value only: WSO2 answers
@@ -257,6 +267,24 @@ type TokenExchangeConfig struct {
 	// OrgParam names an extra form field sent with the exchange request, carrying
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
+
+	// DefaultOrg is the org handle used before the user has selected one — the
+	// window between login and the first org switch, which for a single-org
+	// deployment is the whole session. Unset, the exchange sends no org and the STS
+	// resolves whichever org it considers the caller's default; pinning it here
+	// makes that choice explicit and stable, so the workspace does not silently
+	// follow a default changed elsewhere. A user's own switch always wins over it.
+	DefaultOrg string `koanf:"default_org"`
+
+	// ClaimMappings names the claims in the ISSUED token, which routinely differ
+	// from the login token's: the STS re-shapes what it received, commonly nesting
+	// the org as an object and parking the originating IDP's profile claims under
+	// their own key. One mapping for both tokens therefore cannot be right for both
+	// — the login token's user would resolve empty, or the exchanged token's org
+	// would. Each field falls back to the parent [auth.claim_mappings] value when
+	// unset (see normalize), so a deployment whose STS preserves the login shape
+	// configures nothing here.
+	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
 
 	// There is deliberately no refresh-token option: RFC 8693 §2.2.1 advises against
 	// one when trading temporary credentials, and it would outlive the login session
@@ -296,6 +324,23 @@ var grantTypeAliases = map[string]string{
 // is validated against, after normalize has resolved aliases. Adding a protocol means
 // adding it here and to Exchanger.buildForm.
 var SupportedTokenExchangeGrants = []string{GrantTokenExchange, GrantJWTBearer}
+
+// ClientAuthSecretPost and ClientAuthNone are the supported
+// [auth.oidc.token_exchange] client_auth values — the client-authentication half of
+// the exchange request, independent of which grant it carries.
+//
+// "none" is the OAuth term for a public client (RFC 6749 §2.1): the STS identifies
+// the application by client_id and holds no secret for it. RFC 8693 permits it, and
+// an STS fronting a separate exchange application commonly registers it that way.
+// The BFF is still a confidential server-side component — "public" describes the
+// registration at the STS, not where this code runs.
+const (
+	ClientAuthSecretPost = "client_secret_post"
+	ClientAuthNone       = "none"
+)
+
+// SupportedClientAuthMethods is the closed set client_auth is validated against.
+var SupportedClientAuthMethods = []string{ClientAuthSecretPost, ClientAuthNone}
 
 // supportedGrantSpellings is what the startup error lists. It names every accepted
 // spelling, not just the canonical ones: an operator who wrote the registered URI
@@ -477,12 +522,42 @@ func (c *Config) normalize() {
 		c.Auth.OIDC.TokenExchange.GrantType = canonical
 	}
 
-	if c.Auth.OIDC.TokenExchange.ClientID == "" {
+	c.Auth.OIDC.TokenExchange.ClientAuth = strings.ToLower(c.Auth.OIDC.TokenExchange.ClientAuth)
+
+	// Inherited as a PAIR, and only when neither half is set: the single-application
+	// deployment omits both and reuses the login client wholesale. An operator who
+	// names a different client_id has left the login client behind, so inheriting its
+	// secret would send one application's credential under another's identity — the
+	// STS answers invalid_client, and the login secret has been disclosed to it. A
+	// client_id with no secret is instead either a public client (client_auth =
+	// ClientAuthNone) or a mistake, and validateTokenExchange decides which.
+	if c.Auth.OIDC.TokenExchange.ClientID == "" && c.Auth.OIDC.TokenExchange.ClientSecret == "" {
 		c.Auth.OIDC.TokenExchange.ClientID = c.Auth.OIDC.ClientID
-	}
-	if c.Auth.OIDC.TokenExchange.ClientSecret == "" {
 		c.Auth.OIDC.TokenExchange.ClientSecret = c.Auth.OIDC.ClientSecret
 	}
+	// Per FIELD, not per table: an STS that nests only the org still uses the login
+	// token's names for everything else, so inheriting the whole table only when it
+	// is entirely empty would force an operator to restate every unchanged name.
+	te := &c.Auth.OIDC.TokenExchange.ClaimMappings
+	parent := c.Auth.ClaimMappings
+	for _, f := range []struct {
+		dst *string
+		src string
+	}{
+		{&te.Username, parent.Username},
+		{&te.Email, parent.Email},
+		{&te.Roles, parent.Roles},
+		{&te.Scope, parent.Scope},
+		{&te.OrgID, parent.OrgID},
+		{&te.OrgName, parent.OrgName},
+		{&te.OrgHandle, parent.OrgHandle},
+		{&te.Organizations, parent.Organizations},
+	} {
+		if *f.dst == "" {
+			*f.dst = f.src
+		}
+	}
+
 	// Not inherited for jwt_bearer, where scope names the target API rather than
 	// requesting permissions; validate requires an explicit value there.
 	if c.Auth.OIDC.TokenExchange.Scopes == "" && c.Auth.OIDC.TokenExchange.GrantType != GrantJWTBearer {
@@ -677,6 +752,11 @@ func (c *Config) validateTokenExchange() error {
 			te.GrantType, strings.Join(supportedGrantSpellings, ", "))
 	}
 
+	if !slices.Contains(SupportedClientAuthMethods, te.ClientAuth) {
+		return fmt.Errorf("invalid [auth.oidc.token_exchange] client_auth %q: supported values are %s",
+			te.ClientAuth, strings.Join(SupportedClientAuthMethods, ", "))
+	}
+
 	if !te.Enabled {
 		return nil
 	}
@@ -685,9 +765,27 @@ func (c *Config) validateTokenExchange() error {
 		return fmt.Errorf("[auth.oidc.token_exchange] enabled = true requires [auth] mode = %q, got %q",
 			AuthModeOIDC, c.Auth.Mode)
 	}
-	if te.ClientID == "" || te.ClientSecret == "" {
-		return fmt.Errorf("[auth.oidc.token_exchange] client_id and client_secret are required " +
-			"(they default to client_id / client_secret on the parent [auth.oidc] table — set either pair)")
+	if te.ClientID == "" {
+		return fmt.Errorf("[auth.oidc.token_exchange] client_id is required " +
+			"(it defaults to client_id on the parent [auth.oidc] table, but only when client_secret " +
+			"is also unset — the two are inherited as a pair)")
+	}
+	switch te.ClientAuth {
+	case ClientAuthSecretPost:
+		if te.ClientSecret == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] client_secret is required with client_auth = %q; "+
+				"set client_auth = %q if the STS registers the exchange as a public client",
+				ClientAuthSecretPost, ClientAuthNone)
+		}
+	case ClientAuthNone:
+		// Contradictory rather than harmless: one of the two is wrong, and guessing
+		// which would either drop authentication the operator configured or send a
+		// credential they asked to withhold.
+		if te.ClientSecret != "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] client_auth = %q sends no client_secret, "+
+				"but one is configured — remove the secret or set client_auth = %q",
+				ClientAuthNone, ClientAuthSecretPost)
+		}
 	}
 
 	if te.TokenEndpoint != "" {

@@ -240,3 +240,123 @@ func TestExpiryFromClaims(t *testing.T) {
 		t.Error("expected zero time when exp absent")
 	}
 }
+
+// TestUserFromClaims_NestedOrganization covers a token that carries the org as an
+// object rather than as flat claims, the shape an STS commonly issues:
+//
+//	"organization": { "handle": "org-a", "uuid": "e2c2..." }
+//
+// The org the UI shows and the org the Platform API scopes every query to come from
+// this one claim, so reading it as an empty string does not fail loudly — it silently
+// drops the caller's org, and the two services disagree about who the caller is.
+func TestUserFromClaims_NestedOrganization(t *testing.T) {
+	claims := map[string]any{
+		"sub":   "a39ea41a-4382-47ed-84bf-56376168955d",
+		"email": "alice@example.com",
+		"scope": "ap:project:read",
+		"organization": map[string]any{
+			"handle": "org-a",
+			"uuid":   "org-a-uuid",
+			"name":   "Org A",
+		},
+	}
+	m := DefaultClaimMapping()
+	m.OrgID = "organization.uuid"
+	m.OrgHandle = "organization.handle"
+	m.OrgName = "organization.name"
+
+	u := UserFromClaims(claims, nil, m)
+	if u.Org == nil {
+		t.Fatal("Org is nil — the nested organization claim was not resolved")
+	}
+	if u.Org.ID != "org-a-uuid" {
+		t.Errorf("Org.ID = %q", u.Org.ID)
+	}
+	if u.Org.Handle != "org-a" {
+		t.Errorf("Org.Handle = %q, want org-a", u.Org.Handle)
+	}
+	if u.Org.Name != "Org A" {
+		t.Errorf("Org.Name = %q, want Org A", u.Org.Name)
+	}
+}
+
+// A dotted path must not invent values when the claim is missing, a leaf is not an
+// object, or the path runs past a string — each would otherwise scope the session to
+// a wrong or empty org rather than reporting none.
+func TestResolveClaimPathEdgeCases(t *testing.T) {
+	claims := map[string]any{
+		"organization": map[string]any{"handle": "org-a", "uuid": 42},
+		"org_handle":   "flat-handle",
+	}
+	cases := []struct {
+		name, path, want string
+	}{
+		{"flat claim still works", "org_handle", "flat-handle"},
+		{"nested string", "organization.handle", "org-a"},
+		{"nested non-string value", "organization.uuid", ""},
+		{"missing top-level segment", "nope.handle", ""},
+		{"missing nested segment", "organization.missing", ""},
+		{"path through a string", "org_handle.deeper", ""},
+		{"empty path", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := strClaim(claims, tc.path); got != tc.want {
+				t.Errorf("strClaim(%q) = %q, want %q", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUserFromClaims_ExchangedTokenShape maps a token in the shape an STS issues.
+// Every field the UI gates on comes out of this one mapping, and each of the three
+// shapes here is one the default flat mapping would silently read as empty: the org
+// nested under "organization", the identity nested under "idp_claims" (an STS
+// typically keeps the originating IDP's claims in their own object), and an org list
+// of bare uuids.
+func TestUserFromClaims_ExchangedTokenShape(t *testing.T) {
+	claims := map[string]any{
+		"sub":   "a39ea41a-4382-47ed-84bf-56376168955d",
+		"scope": "ap:api_key:all:manage ap:application:manage ap:project:manage",
+		"organization": map[string]any{
+			"handle": "org-a",
+			"uuid":   "org-a-uuid",
+		},
+		"organizations": []any{
+			"org-b-uuid",
+			"org-a-uuid",
+		},
+		"idp_claims": map[string]any{
+			"name":  "Alice",
+			"email": "alice@example.com",
+		},
+	}
+	m := DefaultClaimMapping()
+	m.OrgID = "organization.uuid"
+	m.OrgHandle = "organization.handle"
+	m.Username = "idp_claims.name"
+	m.Email = "idp_claims.email"
+
+	u := UserFromClaims(claims, nil, m)
+
+	if u.Name != "Alice" {
+		t.Errorf("Name = %q — the identity under idp_claims was not resolved", u.Name)
+	}
+	if u.Email != "alice@example.com" {
+		t.Errorf("Email = %q", u.Email)
+	}
+	if u.Org == nil || u.Org.Handle != "org-a" || u.Org.ID != "org-a-uuid" {
+		t.Fatalf("Org = %+v, want the nested organization claim", u.Org)
+	}
+	// No org name claim exists in this token, so the display name falls back to the
+	// handle rather than rendering an empty org switcher.
+	if u.Org.Name != "org-a" {
+		t.Errorf("Org.Name = %q, want the handle as fallback", u.Org.Name)
+	}
+	if len(u.Organizations) != 2 || u.Organizations[1] != "org-a-uuid" {
+		t.Errorf("Organizations = %v", u.Organizations)
+	}
+	if len(u.Scopes) != 3 {
+		t.Errorf("Scopes = %v, want the three ap:* scopes", u.Scopes)
+	}
+}

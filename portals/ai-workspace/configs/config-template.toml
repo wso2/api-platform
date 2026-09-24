@@ -429,16 +429,34 @@ scope = "openid profile email offline_access ap:api_key:read ap:organization:rea
 # basic mode the JWT held is one the Platform API signed for itself, so there is no
 # subject token to exchange and startup fails rather than ignoring the setting.
 enabled = false
-grant_type = "token_exchange"
+grant_type = "urn:ietf:params:oauth:grant-type:token-exchange"
 
 # Where to post the exchange. Empty (the default) reuses the token endpoint already
 # discovered from `authority` on the parent table, which is correct when the same IDP
 # both authenticates and exchanges.
 token_endpoint = ""
 
-# Credentials the AI Workspace authenticates with at the exchange endpoint
+# Credentials the AI Workspace authenticates with at the exchange endpoint. Both
+# default to the login client's above — but only as a PAIR, when neither is set. A
+# client_id named here with no client_secret is a different application, so it does
+# NOT inherit the login secret: either give it its own, or declare it a public
+# client via client_auth below. Startup fails rather than guessing.
 client_id = ""
 client_secret = ""
+
+# How the BFF authenticates AT the exchange endpoint (the client-authentication
+# method, independent of grant_type):
+#   "client_secret_post" (default) — client_id + client_secret in the form body.
+#   "none"                         — client_id alone, for an STS that registers the
+#                                    exchange application as a public client (RFC
+#                                    6749 §2.1; RFC 8693 permits it). client_secret
+#                                    must then be empty, and the parameter is omitted
+#                                    from the request entirely rather than sent
+#                                    blank — several IDPs read an empty secret as a
+#                                    failed one and answer invalid_client.
+# "public" describes the registration at the STS, not this code: the BFF remains a
+# confidential server-side component either way.
+client_auth = "client_secret_post"
 
 # The target the issued token is minted for; becomes its aud claim. Set this to the
 # value [platform_api.auth.idp] audience carries, or the Platform API rejects every
@@ -455,7 +473,7 @@ scope = ""
 subject_token_type = "urn:ietf:params:oauth:token-type:jwt"
 
 # The token type asked for back.
-requested_token_type = "urn:ietf:params:oauth:token-type:access_token"
+requested_token_type = "urn:ietf:params:oauth:token-type:jwt"
 
 # Reuse the issued token across requests until it nears expiry, instead of exchanging
 # on every proxied call — an exchange is a blocking round trip, and repeating it per

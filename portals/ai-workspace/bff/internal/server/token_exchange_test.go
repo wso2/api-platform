@@ -578,3 +578,162 @@ func TestSessionReportsExchangedScopesWithCachingDisabled(t *testing.T) {
 		t.Errorf("scopes = %v, want the two granted by the exchange", got.User.Scopes)
 	}
 }
+
+// TestExchangedOrgReplacesLoginOrg is the property the whole exchange rests on for
+// org-scoped deployments: the org the UI reports must be the org the Platform API
+// will scope requests to, and that is the EXCHANGED token's org. The login token
+// names the IDP's own tenant ("login-tenant"), which the STS resolves to a platform
+// org ("org-a") — reporting the login one would show a user an org they are not, in
+// fact, operating in.
+func TestExchangedOrgReplacesLoginOrg(t *testing.T) {
+	loginUser := session.User{
+		Name:          "Alice",
+		Scopes:        []string{"openid"},
+		Org:           &session.Org{ID: "login-tenant-uuid", Name: "Login Tenant", Handle: "login-tenant"},
+		Organizations: []string{"login-tenant-uuid"},
+	}
+	exchanged := &auth.Result{
+		Scopes: []string{"ap:project:manage"},
+		Org:    &session.Org{ID: "org-a-uuid", Name: "org-a", Handle: "org-a"},
+	}
+
+	s := &Server{exchanger: &auth.Exchanger{}}
+	got := s.withExchangedIdentity(loginUser, exchanged, session.ExchangedToken{})
+
+	if got.Org == nil || got.Org.Handle != "org-a" {
+		t.Fatalf("Org = %+v, want the exchanged token's org", got.Org)
+	}
+	// The org LIST is the login token's and stays put: belonging to an org is a
+	// property of the user, not of the token minted for one of them.
+	if len(got.Organizations) != 1 || got.Organizations[0] != "login-tenant-uuid" {
+		t.Errorf("Organizations = %v, want the login token's list untouched", got.Organizations)
+	}
+	if len(got.Scopes) != 1 || got.Scopes[0] != "ap:project:manage" {
+		t.Errorf("Scopes = %v", got.Scopes)
+	}
+	// Everything the issued token says nothing about stays as the login token had it.
+	if got.Name != "Alice" {
+		t.Errorf("Name = %q — only org and scopes come from the exchange", got.Name)
+	}
+}
+
+// A cache hit must report the same org a fresh exchange would, or the UI would show
+// the login token's org for the cached token's whole lifetime.
+func TestExchangedOrgFromCache(t *testing.T) {
+	loginUser := session.User{Org: &session.Org{Handle: "login-tenant"}}
+	cached := session.ExchangedToken{
+		Token:  "cached-token",
+		Scopes: []string{"ap:project:manage"},
+		Org:    &session.Org{ID: "org-a-uuid", Handle: "org-a"},
+	}
+
+	s := &Server{exchanger: &auth.Exchanger{}}
+	got := s.withExchangedIdentity(loginUser, nil, cached)
+
+	if got.Org == nil || got.Org.Handle != "org-a" {
+		t.Errorf("Org = %+v, want the cached exchange's org", got.Org)
+	}
+}
+
+// An STS that passes org claims through untouched (or a deployment with no org
+// mapping) reports no org on the exchange. That is "no information", not "no org" —
+// blanking it would empty the org switcher for a perfectly valid session.
+func TestExchangedOrgAbsentKeepsLoginOrg(t *testing.T) {
+	loginUser := session.User{
+		Org:           &session.Org{Handle: "login-tenant"},
+		Organizations: []string{"login-tenant-uuid"},
+	}
+	s := &Server{exchanger: &auth.Exchanger{}}
+
+	got := s.withExchangedIdentity(loginUser, &auth.Result{Scopes: []string{"ap:project:read"}}, session.ExchangedToken{})
+
+	if got.Org == nil || got.Org.Handle != "login-tenant" {
+		t.Errorf("Org = %+v, want the login org kept when the issued token carries none", got.Org)
+	}
+}
+
+// TestDefaultOrgChangeInvalidatesCache backs the DefaultOrg fingerprint exemption:
+// the configured default is resolved into the org actually requested, and Usable
+// compares that against the org the cached token was minted for. Changing the
+// default therefore invalidates the cache on its own — a token minted for one org
+// must never be forwarded while the deployment now asks for another.
+func TestDefaultOrgChangeInvalidatesCache(t *testing.T) {
+	cached := session.ExchangedToken{
+		Token:             "token-for-org-a",
+		Expiry:            time.Now().Add(time.Hour),
+		ConfigFingerprint: "fp",
+		OrgHandle:         "org-a",
+	}
+	if !cached.Usable(time.Now(), time.Minute, "fp", "org-a") {
+		t.Fatal("token must be usable for the org it was minted for")
+	}
+	if cached.Usable(time.Now(), time.Minute, "fp", "org-b") {
+		t.Error("a token minted for org-a must not be reused once org-b is requested")
+	}
+}
+
+// TestDefaultOrgSentBeforeAnySwitch: the configured default is what the exchange
+// carries from the very first request, so the org the workspace operates in is the
+// one stated in config rather than whichever org the STS happens to treat as the
+// caller's default. Before this, no org parameter was sent at all until the user
+// switched org — which for a single-org deployment was never.
+func TestDefaultOrgSentBeforeAnySwitch(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) {
+		c.OrgParam = "orgHandle"
+		c.DefaultOrg = "org-a"
+	})
+	subject := h.subjectSession(t)
+
+	if rec := h.proxyRequest(subject); rec.Code != http.StatusOK {
+		t.Fatalf("proxy request: status %d", rec.Code)
+	}
+
+	form, _ := h.idpLastForm.Load().(url.Values)
+	if got := form.Get("orgHandle"); got != "org-a" {
+		t.Errorf("orgHandle = %q, want the configured default on the first exchange", got)
+	}
+}
+
+// A user's own switch wins over the configured default — the default only fills the
+// gap before one has been made.
+func TestSwitchedOrgOverridesDefaultOrg(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) {
+		c.OrgParam = "orgHandle"
+		c.DefaultOrg = "org-a"
+	})
+	subject := h.subjectSession(t)
+
+	sess, ok, _ := h.server.store.Get(context.Background(), subject)
+	if !ok {
+		t.Fatal("session not found")
+	}
+	sess.OrgHandle = "org-b"
+	if err := h.server.store.Put(context.Background(), sess); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	if rec := h.proxyRequest(subject); rec.Code != http.StatusOK {
+		t.Fatalf("proxy request: status %d", rec.Code)
+	}
+	form, _ := h.idpLastForm.Load().(url.Values)
+	if got := form.Get("orgHandle"); got != "org-b" {
+		t.Errorf("orgHandle = %q, want the switched org to win over the default", got)
+	}
+}
+
+// With no default configured and no switch made, nothing is sent — the behaviour
+// every existing deployment has today.
+func TestNoOrgParamWithoutDefaultOrSwitch(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) {
+		c.OrgParam = "orgHandle"
+	})
+	subject := h.subjectSession(t)
+
+	if rec := h.proxyRequest(subject); rec.Code != http.StatusOK {
+		t.Fatalf("proxy request: status %d", rec.Code)
+	}
+	form, _ := h.idpLastForm.Load().(url.Values)
+	if _, present := form["orgHandle"]; present {
+		t.Errorf("orgHandle must be absent with no default and no switch, got %q", form.Get("orgHandle"))
+	}
+}
