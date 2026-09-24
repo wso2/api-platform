@@ -36,9 +36,9 @@ import (
 )
 
 func (g *Gateway) registerResourceTemplateSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) from "([^"]*)" with values:$`,
+	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|GraphQL API) from "([^"]*)" with values:$`,
 		g.createResourceFromTemplate)
-	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)" from "([^"]*)" with values:$`,
+	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|GraphQL API) "([^"]*)" from "([^"]*)" with values:$`,
 		g.updateResourceFromTemplate)
 	sc.Step(`^the first attached LLM provider policy should be "([^"]*)" version "([^"]*)"$`,
 		g.firstLLMProviderPolicyIs)

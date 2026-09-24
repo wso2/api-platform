@@ -383,6 +383,14 @@ blocks:
       - name: mcp-deploy
         features:
           - features/mcp_deploy.feature
+      - name: graphql-deploy
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/graphql_deploy.feature
+      - name: graphql-api-keys
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/graphql_api_keys.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -577,6 +585,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/jwt_auth_scope_claim_rules.feature
+      - name: graphql-policies
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/graphql_policies.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1
