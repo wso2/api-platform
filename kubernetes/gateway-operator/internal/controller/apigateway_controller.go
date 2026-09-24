@@ -225,21 +225,29 @@ func (r *GatewayReconciler) decideAndProcess(
 	// Check if config has changed
 	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
 
-	// Case 1: CR generation == status observed generation and Programmed=True
-	// This means the Gateway is already deployed (or controller restarted after successful deploy)
-	if crGeneration == statusObservedGen && programmedCond != nil && programmedCond.Status == metav1.ConditionTrue {
-		// If config changed, we need to redeploy
+	// Case 1: CR generation == status observed generation.
+	// This means the current generation has already been fully processed for this
+	// generation - either deployed successfully (Programmed=True) or permanently
+	// failed after exhausting retries (Programmed=False, reason=DeploymentFailed;
+	// see handleGatewayDeploymentError, which also sets ObservedGeneration to the
+	// failed generation). A legitimate configuration change must be able to trigger
+	// a fresh deployment attempt in EITHER case - gating this solely on Programmed=True
+	// leaves a permanently-failed Gateway stuck forever, since Case 2 below never fires
+	// again (ObservedGeneration already equals crGeneration).
+	if crGeneration == statusObservedGen && programmedCond != nil {
+		// If config changed, we need to (re)deploy regardless of prior success/failure
 		if configChanged {
 			log.Info("Configuration changed, triggering redeployment",
 				slog.String("oldHash", gatewayConfig.Status.ConfigHash),
-				slog.String("newHash", currentConfigHash))
+				slog.String("newHash", currentConfigHash),
+				slog.String("previousProgrammedReason", programmedCond.Reason))
 
 			// Update status to Programmed=False to trigger a new reconciliation loop
 			// This effectively resets the state machine to "Not Ready"
 			// The next reconciliation will see Programmed=False and trigger processGatewayDeployment
 
-			// Reset tracking status to ConfigChanged with current generation.
-			// This explicitly signals that we are pending a deployment due to config change.
+			// Reset tracking status to ConfigChanged with current generation, clearing any
+			// previous retry count (including one left at maxRetries from a prior permanent failure).
 			r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
 				Generation: crGeneration,
 				Status:     GatewayTrackingStatusConfigChanged,
@@ -258,23 +266,28 @@ func (r *GatewayReconciler) decideAndProcess(
 			return ctrl.Result{Requeue: true}, nil
 		}
 
-		// Already deployed - update tracker and skip
-		r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
-			Generation: crGeneration,
-			Status:     GatewayTrackingStatusDeployed,
-		})
-		log.Debug("APIGateway already deployed, skipping",
-			slog.String("name", gatewayConfig.Name),
-			slog.Int64("generation", crGeneration))
+		if programmedCond.Status == metav1.ConditionTrue {
+			// Already deployed - update tracker and skip
+			r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
+				Generation: crGeneration,
+				Status:     GatewayTrackingStatusDeployed,
+			})
+			log.Debug("APIGateway already deployed, skipping",
+				slog.String("name", gatewayConfig.Name),
+				slog.Int64("generation", crGeneration))
 
-		// Ensure gateway is registered in the in-memory registry (controller may have restarted)
-		if err := r.registerAPIGateway(ctx, gatewayConfig); err != nil {
-			log.Error("failed to register gateway in registry after restart; will retry", slog.Any("error", err))
-			// Return error so reconcile is retried and registration can be re-attempted
-			return ctrl.Result{}, err
+			// Ensure gateway is registered in the in-memory registry (controller may have restarted)
+			if err := r.registerAPIGateway(ctx, gatewayConfig); err != nil {
+				log.Error("failed to register gateway in registry after restart; will retry", slog.Any("error", err))
+				// Return error so reconcile is retried and registration can be re-attempted
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, nil
+		// Programmed=False (e.g. permanently failed with no config change yet) - nothing
+		// to do until the config changes or the CR spec is updated (bumping generation).
 	}
 
 	// Case 2: CR generation > status observed generation
