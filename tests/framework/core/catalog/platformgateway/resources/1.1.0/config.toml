@@ -22,6 +22,9 @@ level = "info"
 [controller.logging]
 level = "info"
 
+[controller.event_hub]
+poll_interval = "10ms"
+
 [controller.controlplane]
 insecure_skip_verify = true
 gateway_name = "default"

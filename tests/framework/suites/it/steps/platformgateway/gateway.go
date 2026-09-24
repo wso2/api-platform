@@ -1613,6 +1613,9 @@ func (g *Gateway) serviceRequestWithBody(
 	if err != nil {
 		return err
 	}
+	if err := g.awaitMappedTestbenchService(ctx, service); err != nil {
+		return err
+	}
 
 	// The config dump lags the deploy by one event-hub poll and nothing else exposes that, so
 	// the framework waits here rather than making every scenario encode the timing.
@@ -1635,6 +1638,38 @@ func (g *Gateway) serviceRequestWithBody(
 		}
 	}
 	return g.invokeWith(ctx, method, url, headers, payload)
+}
+
+// awaitMappedTestbenchService verifies the host-side mapped port used by a direct
+// testbench request. Testbench exposes one health endpoint per service port; probing the
+// same endpoint as the request catches a stale or unavailable mapped port without changing
+// the request or its response assertion.
+func (g *Gateway) awaitMappedTestbenchService(ctx context.Context, service string) error {
+	spec, ok := serviceEndpoints[service]
+	if !ok || spec.component != "testbench" {
+		return nil
+	}
+	base, err := g.topo.URL(spec.component, spec.endpoint)
+	if err != nil {
+		return err
+	}
+	healthURL := strings.TrimRight(base, "/") + "/testbench/health"
+	return retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
+				Method: http.MethodGet,
+				URL:    healthURL,
+			}, 0, 0)
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool {
+			return resp != nil && resp.StatusCode == http.StatusOK
+		},
+		fmt.Sprintf("waiting for testbench service %q mapped endpoint", service),
+	)
 }
 
 // serviceRequestUntilStatus polls a component endpoint until it returns the

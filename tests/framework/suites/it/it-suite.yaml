@@ -654,6 +654,7 @@ blocks:
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
           - features/platform_api_secret_deploy.feature
       - name: platform-api-deployment
@@ -680,6 +681,7 @@ blocks:
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
           - features/platform_api_secret_deploy.feature
       - name: platform-api-deployment
@@ -706,6 +708,7 @@ blocks:
         features:
           - features/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
           - features/platform_api_secret_deploy.feature
       - name: platform-api-deployment

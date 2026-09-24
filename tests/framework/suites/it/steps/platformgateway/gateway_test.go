@@ -22,7 +22,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +38,35 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 )
+
+func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/testbench/health", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	definition := &components.Definition{
+		Name:  "testbench",
+		Alias: "testbench",
+		Endpoints: []components.Endpoint{{
+			Name: "capture", Port: capture.Port, Scheme: "http",
+		}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{capture.Port: port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	gateway := &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: time.Second}), 0, 0),
+	}
+	require.NoError(t, gateway.awaitMappedTestbenchService(context.Background(), "capture"))
+}
 
 func TestServiceUpstreamURLPreservesServiceBasePath(t *testing.T) {
 	definition := &components.Definition{

@@ -270,7 +270,7 @@ Feature: API management
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name | ${CTX:apiName19} |
       | metadata.labels | {"environment":"production","team":"api-team","version":"v1"} |
-      | spec | {"displayName":"Labeled-API","version":"v1.0","context":"${CTX:apiContext19}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
+      | spec | {"displayName":"${CTX:apiName19}","version":"v1.0","context":"${CTX:apiContext19}","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/data"}]} |
     Then the response should be successful
     And the response should be valid JSON
     When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName19}"

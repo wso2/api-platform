@@ -59,7 +59,7 @@ Feature: API deployment and invocation
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                     |
-      | spec.displayName       | Labeled-API                        |
+      | spec.displayName       | ${CTX:apiName}                     |
       | spec.version           | v1.0                               |
       | spec.context           | ${CTX:apiContext}/$version         |
       | metadata.labels        | {"environment":"production","team":"backend","version":"v1"} |

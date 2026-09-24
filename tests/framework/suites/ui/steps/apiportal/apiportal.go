@@ -2470,12 +2470,22 @@ func (u *Steps) openAPIPortal(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := page.Goto(base+"/api-portal", playwright.PageGotoOptions{
+	portalURL := base + "/api-portal"
+	if err := retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
 		// The portal is an SPA. Waiting for every asset's load event makes the
 		// navigation unnecessarily sensitive to unrelated concurrent requests.
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-	}); err != nil {
-		return fmt.Errorf("opening API Portal: %w", err)
+		if _, err := page.Goto(portalURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		}); err != nil {
+			return false, retry.Transient(fmt.Errorf("opening API Portal: %w", err))
+		}
+		visible, err := page.Locator("body").IsVisible()
+		if err != nil {
+			return false, retry.Transient(fmt.Errorf("checking API Portal shell: %w", err))
+		}
+		return visible, nil
+	}, func(ready bool) bool { return ready }, "waiting for API Portal shell"); err != nil {
+		return err
 	}
 	if err := u.expect.Locator(page.Locator("body")).ToBeVisible(); err != nil {
 		return fmt.Errorf("API Portal shell was not ready: %w", err)
