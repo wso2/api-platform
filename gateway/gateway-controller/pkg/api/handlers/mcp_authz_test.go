@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // newAuthzTestHandler builds an McpHandler with only the pieces the tool-layer
@@ -225,4 +226,102 @@ func TestCallerIdentityFailsClosedOnEmptyUserID(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "authenticated user identity")
+}
+
+// newWriteGateTestHandler builds a handler with a hand-written kind registry.
+// routeKeysForCall needs only Kind, Routable and Collection on each entry, so
+// no service is wired; the collection paths are spelled as in
+// mcp_management_kinds.go so the expected route keys below match production.
+func newWriteGateTestHandler() *McpHandler {
+	return &McpHandler{kinds: map[string]*kindOps{
+		models.KindRestApi: {Kind: models.KindRestApi, Routable: true, Collection: "/rest-apis"},
+		models.KindMcp:     {Kind: models.KindMcp, Routable: true, Collection: "/mcp-proxies"},
+		models.KindSecret:  {Kind: models.KindSecret, Routable: false, Collection: "/secrets"},
+	}}
+}
+
+// The gate must derive the route key for a write from the "kind" argument
+// alone — the same value the tool resolves — and never from the manifest.
+func TestWriteGateResolvesKindArgument(t *testing.T) {
+	h := newWriteGateTestHandler()
+
+	tests := []struct {
+		name string
+		tool string
+		in   deployInput
+		want []string
+		ok   bool
+	}{
+		{"deploy create", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "RestApi", Yaml: "kind: RestApi\n"}, []string{"POST /rest-apis"}, true},
+		{"deploy update", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "RestApi", Yaml: "kind: RestApi\n", ID: "orders"}, []string{"PUT /rest-apis/{id}"}, true},
+		{"deploy alias spelling", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "rest-api", Yaml: "kind: RestApi\n"}, []string{"POST /rest-apis"}, true},
+		{"apply create", "wso2_apip_gw_apply_config",
+			deployInput{Kind: "Secret", Yaml: "kind: Secret\n"}, []string{"POST /secrets"}, true},
+		{"apply update", "wso2_apip_gw_apply_config",
+			deployInput{Kind: "Secret", Yaml: "kind: Secret\n", ID: "db-pass"}, []string{"PUT /secrets/{id}"}, true},
+
+		// Class mismatches and unknown kinds are unmappable: the gate passes
+		// them through and the tool reports the specific error.
+		{"deploy rejects config kind", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "Secret", Yaml: "kind: Secret\n"}, nil, false},
+		{"apply rejects routable kind", "wso2_apip_gw_apply_config",
+			deployInput{Kind: "Mcp", Yaml: "kind: Mcp\n"}, nil, false},
+		{"unknown kind", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "Widget", Yaml: "kind: Widget\n"}, nil, false},
+		{"missing kind", "wso2_apip_gw_deploy_api",
+			deployInput{Yaml: "kind: RestApi\n"}, nil, false},
+
+		// The manifest is never opened by the gate: a yaml that names one kind
+		// while the argument names another resolves on the argument. The
+		// disagreement is caught later, by the service's own kind validation.
+		{"manifest kind ignored", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "RestApi", Yaml: "kind: Mcp\n"}, []string{"POST /rest-apis"}, true},
+		{"unparseable manifest still maps", "wso2_apip_gw_deploy_api",
+			deployInput{Kind: "RestApi", Yaml: ": not yaml ["}, []string{"POST /rest-apis"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args, err := json.Marshal(tt.in)
+			require.NoError(t, err)
+
+			got, ok := h.routeKeysForCall(tt.tool, args)
+
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// The gate and the tool must resolve the same kind from the same argument;
+// if they could disagree, the gate would authorize one collection while the
+// handler wrote to another.
+func TestWriteGateAgreesWithHandler(t *testing.T) {
+	h := newWriteGateTestHandler()
+
+	for _, tc := range []struct {
+		tool  string
+		class kindClass
+		kind  string
+	}{
+		{"wso2_apip_gw_deploy_api", classRoutable, "RestApi"},
+		{"wso2_apip_gw_deploy_api", classRoutable, "MCP"},
+		{"wso2_apip_gw_apply_config", classConfig, "secret"},
+	} {
+		t.Run(tc.tool+"/"+tc.kind, func(t *testing.T) {
+			args, err := json.Marshal(deployInput{Kind: tc.kind, Yaml: "x", ID: "r1"})
+			require.NoError(t, err)
+
+			gateKeys, ok := h.routeKeysForCall(tc.tool, args)
+			require.True(t, ok)
+			require.Len(t, gateKeys, 1)
+
+			ops, err := h.resolveKind(tc.kind, tc.class)
+			require.NoError(t, err)
+			assert.Equal(t, routeKey(http.MethodPut, ops, true), gateKeys[0])
+		})
+	}
 }

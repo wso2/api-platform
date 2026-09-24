@@ -24,8 +24,6 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -63,7 +61,7 @@ const (
 	classConfig                    // wso2_apip_gw_apply_config, wso2_apip_gw_delete_config
 )
 
-// kindOps adapts one artifact kind onto the verbs the six tools expose.
+// kindOps adapts one artifact kind onto the verbs the tools expose.
 type kindOps struct {
 	Kind     string
 	Routable bool
@@ -246,7 +244,6 @@ func (h *McpHandler) keyBearingKinds() []string {
 var kindAliases = map[string]string{
 	"agent":               models.KindAgent,
 	"restapi":             models.KindRestApi,
-	"api":                 models.KindRestApi,
 	"mcp":                 models.KindMcp,
 	"mcpproxy":            models.KindMcp,
 	"llmproxy":            models.KindLlmProxy,
@@ -281,36 +278,6 @@ func canonicalKinds() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// manifestEnvelope is the minimum read from a manifest to route it. Every kind
-// carries apiVersion/kind/metadata, so the kind never has to be passed
-// alongside the body.
-type manifestEnvelope struct {
-	Kind     string `yaml:"kind"`
-	Metadata struct {
-		Name string `yaml:"name"`
-	} `yaml:"metadata"`
-}
-
-// readManifestEnvelope extracts kind and metadata.name. JSON is valid YAML, so
-// this handles both content types the services accept. Everything beyond these
-// two fields is left to the service layer to parse and validate.
-//
-// This function is called twice per write call — once by the authorization gate
-// and once by the tool — deliberately: both decisions must be made from the
-// same bytes by the same code, or they can disagree.
-func readManifestEnvelope(manifest []byte) (manifestEnvelope, error) {
-	var env manifestEnvelope
-	if err := yaml.Unmarshal(manifest, &env); err != nil {
-		return env, fmt.Errorf("manifest is not valid YAML or JSON: %w", err)
-	}
-	if strings.TrimSpace(env.Kind) == "" {
-		return env, fmt.Errorf(
-			`manifest has no "kind" field; every manifest must declare one of: %s`,
-			strings.Join(canonicalKinds(), ", "))
-	}
-	return env, nil
 }
 
 // buildKindRegistry wires every supported kind to its service calls. Called once
