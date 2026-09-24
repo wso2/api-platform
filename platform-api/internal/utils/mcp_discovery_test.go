@@ -35,6 +35,7 @@ type stubRequest struct {
 	method          string
 	mcpMethodHeader string
 	protocolVersion string
+	sessionID       string
 	metaKeys        []string
 }
 
@@ -77,6 +78,7 @@ func (s *mcpStub) start(t *testing.T) *httptest.Server {
 			method:          req.Method,
 			mcpMethodHeader: r.Header.Get(McpMethodHeader),
 			protocolVersion: r.Header.Get(McpProtocolVersionHeader),
+			sessionID:       r.Header.Get(McpSessionHeader),
 		}
 		for key := range req.Params.Meta {
 			recorded.metaKeys = append(recorded.metaKeys, key)
@@ -400,6 +402,11 @@ func TestFetchMCPServerInfo_LegacyRequestsCarryNeither(t *testing.T) {
 	if len(req.metaKeys) != 0 {
 		t.Errorf("params._meta = %v on a legacy call, want it absent", req.metaKeys)
 	}
+	// It does carry the negotiated revision: the spec has an HTTP client send the version the
+	// handshake settled on with every later request in that session.
+	if req.protocolVersion != "2025-06-18" {
+		t.Errorf("MCP-Protocol-Version = %q, want the negotiated 2025-06-18", req.protocolVersion)
+	}
 }
 
 // After server/discover the client addresses the server under a revision it reported, not under
@@ -424,6 +431,70 @@ func TestFetchMCPServerInfo_NegotiatesTheVersionTheServerReported(t *testing.T) 
 	}
 	if len(req.metaKeys) != 0 {
 		t.Errorf("params._meta = %v, want it absent below 2026-07-28", req.metaKeys)
+	}
+}
+
+// A server can answer server/discover and still report a set whose highest shared revision
+// predates 2026-07-28. Those revisions make the initialize lifecycle mandatory, so the handshake
+// has to run for its session: without one a stateful server rejects every catalogue call, and the
+// fetch would return success with nothing in it.
+func TestFetchMCPServerInfo_LegacyNegotiationAfterDiscoverStillInitializes(t *testing.T) {
+	stub := newMCPStub().
+		on(MethodServerDiscover, func(w http.ResponseWriter) {
+			writeJSON(w, `{"jsonrpc":"2.0","id":1,"result":{"supportedVersions":["2025-06-18","2025-11-25"]}}`)
+		}).
+		on(MethodInitialize, func(w http.ResponseWriter) {
+			w.Header().Set(McpSessionHeader, "sess-legacy")
+			// initialize negotiates one revision, and a narrower one than discovery reported.
+			writeJSON(w, `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}`)
+		})
+	srv := stub.start(t)
+
+	resp, err := FetchMCPServerInfo(srv.URL, "", "")
+	if err != nil {
+		t.Fatalf("server should be reachable: %v", err)
+	}
+
+	called := stub.called()
+	if len(called) < 2 || called[0] != MethodServerDiscover || called[1] != MethodInitialize {
+		t.Fatalf("call order = %v, want server/discover then initialize", called)
+	}
+
+	req, ok := stub.recorded(MethodToolsList)
+	if !ok {
+		t.Fatal("tools/list was never sent")
+	}
+	if req.sessionID != "sess-legacy" {
+		t.Errorf("tools/list mcp-session-id = %q, want the session initialize established", req.sessionID)
+	}
+	// The handshake settles the revision for the session, so its answer outranks the one
+	// discovery advertised: the stub reported 2025-11-25 but initialize negotiated 2025-06-18,
+	// and a strict server rejects a header naming a revision it never agreed to.
+	if req.protocolVersion != "2025-06-18" {
+		t.Errorf("MCP-Protocol-Version = %q, want the handshake's 2025-06-18", req.protocolVersion)
+	}
+
+	// The notification closing the handshake belongs to that same session and carries it too.
+	notified, ok := stub.recorded(MethodInitialized)
+	if !ok {
+		t.Fatal("notifications/initialized was never sent")
+	}
+	if notified.protocolVersion != "2025-06-18" {
+		t.Errorf("notifications/initialized MCP-Protocol-Version = %q, want 2025-06-18",
+			notified.protocolVersion)
+	}
+	if notified.sessionID != "sess-legacy" {
+		t.Errorf("notifications/initialized mcp-session-id = %q, want the handshake's session",
+			notified.sessionID)
+	}
+
+	// What discovery reported outranks what initialize negotiated: the handshake is here for the
+	// session, not to narrow the server's own answer about which revisions it serves.
+	if resp.SupportedVersions == nil {
+		t.Fatal("supportedVersions is absent, want what discovery reported")
+	}
+	if got := *resp.SupportedVersions; len(got) != 2 || got[0] != "2025-06-18" || got[1] != "2025-11-25" {
+		t.Errorf("supportedVersions = %v, want both revisions discovery reported", got)
 	}
 }
 

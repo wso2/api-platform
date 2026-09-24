@@ -295,7 +295,8 @@ func negotiateVersion(reported []string) (string, error) {
 //
 // server/discover is tried first: mandatory from 2026-07-28, it returns supportedVersions,
 // capabilities and serverInfo in a single call and establishes no session. A refusal falls back to
-// the initialize handshake; a transport failure propagates.
+// the initialize handshake; a transport failure propagates. The handshake also runs when discovery
+// succeeded but the negotiated revision is legacy, since those revisions require a session.
 func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api.MCPServerInfoFetchResponse, error) {
 	resp := &api.MCPServerInfoFetchResponse{}
 
@@ -309,6 +310,28 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 		if catalogue.protocolVersion, err = negotiateVersion(versions); err != nil {
 			return nil, err
 		}
+		// A server that answered server/discover can still report a set whose highest shared
+		// revision predates 2026-07-28, and those revisions make the initialize lifecycle
+		// mandatory: a stateful one rejects every later call for want of a session. Run the
+		// handshake for that session, but keep what discovery reported - initialize yields only
+		// the single revision it negotiated, which is a narrower answer than the server gave.
+		if !catalogue.isModern() {
+			handshakeVersions, legacyServerInfo, sessionID, initErr := initializeMCPServerLegacy(url, headerName, headerValue)
+			if initErr != nil {
+				return nil, initErr
+			}
+			catalogue.sessionID = sessionID
+			// The handshake, not discovery, settles the revision for this session: the client
+			// offers one version and the server answers with the one it will serve, which can
+			// be lower than discovery advertised. Later calls must carry that answer, since a
+			// strict server rejects a header naming a revision it did not negotiate.
+			if len(handshakeVersions) > 0 {
+				catalogue.protocolVersion = handshakeVersions[0]
+			}
+			if serverInfo == nil {
+				serverInfo = legacyServerInfo
+			}
+		}
 	case errors.Is(err, errServerDiscoverUnsupported):
 		var sessionID string
 		versions, serverInfo, sessionID, err = initializeMCPServerLegacy(url, headerName, headerValue)
@@ -316,6 +339,11 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 			return nil, err
 		}
 		catalogue.sessionID = sessionID
+		// Same rule with no discovery to fall back on: the handshake's answer is the only
+		// revision this session has, so the catalogue calls must name it.
+		if len(versions) > 0 {
+			catalogue.protocolVersion = versions[0]
+		}
 	default:
 		return nil, fmt.Errorf("failed to discover MCP server: %w", err)
 	}
@@ -416,9 +444,10 @@ func initializeMCPServerLegacy(url string, headerName string, headerValue string
 		Method:  MethodInitialized,
 	}
 	if _, err := postJSONRPC(url, notifyReq, mcpRequestHeaders{
-		headerName:  headerName,
-		headerValue: headerValue,
-		sessionID:   sessionID,
+		headerName:      headerName,
+		headerValue:     headerValue,
+		sessionID:       sessionID,
+		protocolVersion: protocolVersion,
 	}); err != nil {
 		return nil, nil, "", fmt.Errorf("failed to send notification: %w", err)
 	}
