@@ -233,7 +233,7 @@ func parseGatewayVersionConstraint(raw string) (gatewayVersionConstraint, error)
 func parseGatewayReleaseVersion(raw string) (gatewayReleaseVersion, error) {
 	original := raw
 	raw = strings.TrimPrefix(raw, "v")
-	if idx := strings.IndexByte(raw, '_'); idx >= 0 {
+	if idx := strings.IndexByte(raw, '-'); idx >= 0 {
 		raw = raw[:idx]
 	}
 	parts := strings.Split(raw, ".")

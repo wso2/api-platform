@@ -418,7 +418,7 @@ func (d *Definition) WithReleaseVersion(version string) (*Definition, error) {
 }
 
 func ReleaseVersion(version string) string {
-	if idx := strings.IndexByte(version, '_'); idx >= 0 {
+	if idx := strings.IndexByte(version, '-'); idx >= 0 {
 		return version[:idx]
 	}
 	return version

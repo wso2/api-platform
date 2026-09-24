@@ -37,13 +37,15 @@ const (
 )
 
 const (
-	patchVersionSuffix     = "_patch"
+	patchVersionSuffix     = "-PATCH"
 	GatewayReleaseRegistry = "ghcr.io/wso2/api-platform"
 	gatewayPatchRegistry   = "docker.io/isurangaws"
 )
 
 func IsPatchVersion(version string) bool {
-	return strings.HasSuffix(strings.TrimSpace(version), patchVersionSuffix)
+	trimmed := strings.TrimSpace(version)
+	return len(trimmed) >= len(patchVersionSuffix) &&
+		strings.EqualFold(trimmed[len(trimmed)-len(patchVersionSuffix):], patchVersionSuffix)
 }
 
 func GatewayPatchRegistryRoot() string {
