@@ -374,6 +374,11 @@ func (c *Config) validate() error {
 	if err := validateUpstream("control_plane", c.ControlPlane.URL, c.ControlPlane.CAFile, c.ControlPlane.TLSSkipVerify); err != nil {
 		return err
 	}
+	if c.PolicyHub.BaseURL != "" {
+		if err := validateAbsoluteURL("[policy_hub] base_url", c.PolicyHub.BaseURL); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, u := range c.ControlPlane.Upstreams {
 		if u.Name == "" {
