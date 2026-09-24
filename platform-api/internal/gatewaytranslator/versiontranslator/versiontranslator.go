@@ -37,7 +37,7 @@ import (
 // payload implements the target package's deploymentArtifact interface,
 // listed here or not — see v1alpha1.DownConvert's default apiVersion swap.
 var knownKinds = []string{
-	"RestApi", "WebSubApi", "WebBrokerApi", "Mcp", "LlmProvider", "LlmProxy",
+	"RestApi", "WebSubApi", "WebBrokerApi", "Mcp", "LlmProvider", "LlmProxy", "Agent",
 }
 
 // KnownKinds returns the artifact kinds this translator is aware of.
