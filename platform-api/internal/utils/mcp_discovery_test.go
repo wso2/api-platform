@@ -223,8 +223,8 @@ func TestFetchMCPServerInfo_DiscoverNotRouted(t *testing.T) {
 }
 
 // A session-bearing legacy server rejects anything preceding initialize with a status AND a
-// JSON-RPC body. The status alone is not in isMethodUnsupportedStatus, so the body is what
-// establishes the refusal.
+// JSON-RPC body. The body is what names the server's own reason, so it is read before the
+// status is judged.
 func TestFetchMCPServerInfo_DiscoverRefusedWithStatusAndJSONRPCBody(t *testing.T) {
 	stub := newMCPStub().
 		on(MethodServerDiscover, func(w http.ResponseWriter) {
@@ -247,6 +247,80 @@ func TestFetchMCPServerInfo_DiscoverRefusedWithStatusAndJSONRPCBody(t *testing.T
 	called := stub.called()
 	if len(called) < 2 || called[0] != MethodServerDiscover || called[1] != MethodInitialize {
 		t.Errorf("call order = %v, want server/discover tried before initialize", called)
+	}
+}
+
+// A server can reject an unknown method before any JSON-RPC layer sees it, answering a bare 400
+// with plain text or HTML. That is still the server refusing the method, so the handshake has to
+// follow: treating it as a hard failure makes a perfectly reachable legacy server unusable.
+func TestFetchMCPServerInfo_DiscoverRefusedWithPlainTextStatus(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotAcceptable, http.StatusUnsupportedMediaType} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			stub := newMCPStub().
+				on(MethodServerDiscover, func(w http.ResponseWriter) {
+					w.Header().Set("Content-Type", "text/plain")
+					w.WriteHeader(status)
+					_, _ = w.Write([]byte("Bad Request: unknown method"))
+				}).
+				on(MethodInitialize, func(w http.ResponseWriter) {
+					w.Header().Set(McpSessionHeader, "sess-1")
+					writeJSON(w, `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}`)
+				})
+			srv := stub.start(t)
+
+			resp, err := FetchMCPServerInfo(srv.URL, "", "")
+			if err != nil {
+				t.Fatalf("a plain-text %d should fall back to initialize, got: %v", status, err)
+			}
+			called := stub.called()
+			if len(called) < 2 || called[0] != MethodServerDiscover || called[1] != MethodInitialize {
+				t.Fatalf("call order = %v, want server/discover then initialize", called)
+			}
+			if resp.SupportedVersions == nil || (*resp.SupportedVersions)[0] != "2025-06-18" {
+				t.Errorf("SupportedVersions = %v, want the handshake's revision", resp.SupportedVersions)
+			}
+		})
+	}
+}
+
+// A refusal of the caller is not evidence about the method. Retrying the same credentials through
+// initialize would fail the same way while replacing a precise error with a vaguer one, so these
+// propagate instead of triggering the fallback.
+//
+// The body shape is varied because a JSON-RPC one is what a rate limiter in front of the server
+// sends - this platform's own mcp-ratelimit policy answers 429 with a JSON-RPC envelope - and it
+// must not be read as the server naming its own reason for not serving the method.
+func TestFetchMCPServerInfo_DiscoverRefusingTheCallerDoesNotFallBack(t *testing.T) {
+	bodies := map[string]struct {
+		contentType string
+		body        string
+	}{
+		"plain text": {"text/plain", "nope"},
+		"JSON-RPC":   {"application/json", `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"refused"}}`},
+	}
+
+	for _, status := range []int{http.StatusForbidden, http.StatusTooManyRequests} {
+		for name, shape := range bodies {
+			t.Run(http.StatusText(status)+" with a "+name+" body", func(t *testing.T) {
+				stub := newMCPStub().
+					on(MethodServerDiscover, func(w http.ResponseWriter) {
+						w.Header().Set("Content-Type", shape.contentType)
+						w.WriteHeader(status)
+						_, _ = w.Write([]byte(shape.body))
+					}).
+					on(MethodInitialize, func(w http.ResponseWriter) {
+						writeJSON(w, `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}`)
+					})
+				srv := stub.start(t)
+
+				if _, err := FetchMCPServerInfo(srv.URL, "", ""); err == nil {
+					t.Fatalf("a %d should surface, not be read as an absent method", status)
+				}
+				if called := stub.called(); len(called) != 1 || called[0] != MethodServerDiscover {
+					t.Errorf("calls = %v, want server/discover alone", called)
+				}
+			})
+		}
 	}
 }
 

@@ -466,8 +466,9 @@ var errServerDiscoverUnsupported = errors.New("server does not implement server/
 // alongside its identity. It takes no params and needs no session.
 //
 // errServerDiscoverUnsupported is returned for any refusal: a JSON-RPC error at any status below
-// 500, or HTTP 404/405 from a router with no handler. A timeout, transport error or 5xx is
-// returned as itself, since none of them establishes that the method is absent.
+// 500, or any 4xx that refuses the request rather than the caller. A timeout, transport error,
+// 5xx, 401, 403 or 429 is returned as itself, since none of them establishes that the method is
+// absent.
 func discoverMCPServer(url string, headerName string, headerValue string) ([]string, map[string]any, error) {
 	req := JsonRPCRequest{
 		JSONRPC: JsonRpcVersion,
@@ -483,14 +484,24 @@ func discoverMCPServer(url string, headerName string, headerValue string) ([]str
 		method:          MethodServerDiscover,
 	})
 	if err != nil {
-		// A router with no handler for the method answers 404 or 405 before any JSON-RPC
-		// layer sees the request.
-		if isMethodUnsupportedStatus(err) {
-			return nil, nil, errServerDiscoverUnsupported
+		// A refusal of the caller is settled before the body is read at all: a 403 or a 429 can
+		// carry a JSON-RPC error of its own, and reading one would restate "these credentials are
+		// refused" as "this method is absent".
+		if refusesTheCaller(err) {
+			return nil, nil, err
 		}
-		// A non-2xx status can still carry a JSON-RPC error body.
+		// A non-2xx status can still carry a JSON-RPC error body, which names the server's own
+		// reason. Checked before the status so that reason reaches the log rather than being
+		// subsumed by the status check below.
 		if rpcErr, ok := jsonRPCErrorFrom(statusErrorBody(err)); ok {
 			logServerDiscoverRefusal(url, rpcErr)
+			return nil, nil, errServerDiscoverUnsupported
+		}
+		// Any other 4xx is the server refusing this request whatever its body looks like: a
+		// router with no handler answers 404 or 405, and a server that rejects an unknown
+		// method before its JSON-RPC layer answers 400 with plain text or HTML. Falling back
+		// costs one request; not falling back makes a legacy server unreachable.
+		if isClientRefusalStatus(err) {
 			return nil, nil, errServerDiscoverUnsupported
 		}
 		return nil, nil, err
@@ -659,14 +670,41 @@ func logServerDiscoverRefusal(url string, rpcErr *JsonRPCError) {
 		"url", url, "code", rpcErr.Code, "message", rpcErr.Message)
 }
 
-// isMethodUnsupportedStatus reports whether err is a status that means the server does not serve
-// this method.
-func isMethodUnsupportedStatus(err error) bool {
+// refusesTheCaller reports a status that refuses the *caller* rather than the method: 401 and 403
+// deny these credentials, 429 denies for now. None is evidence that server/discover is absent, so
+// none may trigger the fallback whatever body it carries - a rate limiter in front of the server
+// may well answer 429 with a JSON-RPC envelope of its own, as this platform's own mcp-ratelimit
+// policy does. A 401 never reaches here in any case: postJSONRPC maps it to
+// MCPProxyUpstreamUnauthorized before it can become a status error.
+func refusesTheCaller(err error) bool {
 	var statusErr *httpStatusError
 	if !errors.As(err, &statusErr) {
 		return false
 	}
-	return statusErr.StatusCode == http.StatusNotFound || statusErr.StatusCode == http.StatusMethodNotAllowed
+	switch statusErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		return true
+	}
+	return false
+}
+
+// isClientRefusalStatus reports a 4xx that refuses the request itself, which is evidence the
+// method is not served: the server answered rather than failing to answer.
+//
+// The statuses that refuse the caller are excluded through refusesTheCaller, so the rule lives in
+// one place and cannot drift from the earlier check in discoverMCPServer.
+//
+// 5xx and transport errors are excluded by the 4xx bound: an intermediary can produce either
+// without the request ever reaching the server, so neither says anything about the method.
+func isClientRefusalStatus(err error) bool {
+	if refusesTheCaller(err) {
+		return false
+	}
+	var statusErr *httpStatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	return statusErr.StatusCode >= 400 && statusErr.StatusCode < 500
 }
 
 // mcpRequestHeaders are the per-call headers layered onto the fixed Content-Type and Accept:
