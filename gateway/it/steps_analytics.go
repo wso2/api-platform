@@ -282,9 +282,7 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveResponseStatus(expecte
 	return nil
 }
 
-// theLatestAnalyticsEventShouldHaveMetadataField verifies a metadata field in the latest event.
-// fieldName may be a dot-separated path (e.g. "graphqlAnalytics.operationType") to reach into a
-// nested metadata object such as the mcpAnalytics/graphqlAnalytics maps.
+// theLatestAnalyticsEventShouldHaveMetadataField verifies a metadata field in the latest event
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldName, expectedValue string) error {
 	// Use the last matched event if available, otherwise fetch latest without filter
 	event := a.lastMatchedEvent
@@ -300,9 +298,9 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 		return fmt.Errorf("event has no metadata")
 	}
 
-	actualValue, err := lookupNestedMetadataField(event.Metadata, fieldName)
-	if err != nil {
-		return err
+	actualValue, ok := event.Metadata[fieldName]
+	if !ok {
+		return fmt.Errorf("metadata field '%s' not found", fieldName)
 	}
 
 	actualValueStr := fmt.Sprintf("%v", actualValue)
@@ -550,25 +548,6 @@ func sortedKeys(m map[string]interface{}) string {
 		return "none"
 	}
 	return strings.Join(keys, ", ")
-}
-
-// lookupNestedMetadataField resolves a dot-separated field path against a metadata map,
-// descending into nested map[string]interface{} values one segment at a time.
-func lookupNestedMetadataField(metadata map[string]interface{}, fieldPath string) (interface{}, error) {
-	segments := strings.Split(fieldPath, ".")
-	var current interface{} = metadata
-	for i, segment := range segments {
-		currentMap, ok := current.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("metadata field '%s' not found: '%s' is not a nested object", fieldPath, strings.Join(segments[:i], "."))
-		}
-		value, exists := currentMap[segment]
-		if !exists {
-			return nil, fmt.Errorf("metadata field '%s' not found", fieldPath)
-		}
-		current = value
-	}
-	return current, nil
 }
 
 // iSendGETRequestToAnalyticsCollectorEvents sends a GET request to the analytics collector events endpoint

@@ -621,6 +621,10 @@ blocks:
       - name: analytics-header-filter
         features:
           - features/analytics_header_filter.feature
+      - name: graphql-analytics
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/graphql_analytics.feature
       - name: subscription-analytics
         features:
           - features/subscription_analytics.feature

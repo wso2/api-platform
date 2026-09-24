@@ -2081,14 +2081,35 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	if err != nil {
 		return err
 	}
-	value, ok := event.Metadata[field]
-	if !ok {
-		return fmt.Errorf("latest analytics event metadata has no field %q", field)
+	value, err := lookupNestedMetadataField(event.Metadata, field)
+	if err != nil {
+		return err
 	}
 	if got := fmt.Sprintf("%v", value); got != resolved {
 		return fmt.Errorf("latest analytics event metadata field %q is %q, want %q", field, got, resolved)
 	}
 	return nil
+}
+
+// lookupNestedMetadataField resolves a dot-separated field path against a metadata map,
+// descending into nested map[string]any values one segment at a time. A plain top-level key
+// (no dots) resolves in one step, same as a direct map lookup.
+func lookupNestedMetadataField(metadata map[string]any, fieldPath string) (any, error) {
+	segments := strings.Split(fieldPath, ".")
+	var current any = metadata
+	for i, segment := range segments {
+		currentMap, ok := current.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("latest analytics event metadata has no field %q: %q is not a nested object",
+				fieldPath, strings.Join(segments[:i], "."))
+		}
+		value, exists := currentMap[segment]
+		if !exists {
+			return nil, fmt.Errorf("latest analytics event metadata has no field %q", fieldPath)
+		}
+		current = value
+	}
+	return current, nil
 }
 
 func analyticsHeaderValue(headers map[string][]string, wanted string) (string, bool) {

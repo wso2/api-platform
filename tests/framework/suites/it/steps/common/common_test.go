@@ -274,6 +274,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 
 	root := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates")
 	want := map[string]string{
+		"graphql-api.yaml":           "GraphQLApi",
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",

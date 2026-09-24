@@ -482,6 +482,40 @@ func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
 	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
 }
 
+func TestLookupNestedMetadataField(t *testing.T) {
+	metadata := map[string]any{
+		"apiName": "countries-api",
+		"graphqlAnalytics": map[string]any{
+			"operationType": "mutation",
+			"isError":       true,
+		},
+	}
+
+	value, err := lookupNestedMetadataField(metadata, "apiName")
+	require.NoError(t, err)
+	require.Equal(t, "countries-api", value)
+
+	value, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.operationType")
+	require.NoError(t, err)
+	require.Equal(t, "mutation", value)
+
+	value, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.isError")
+	require.NoError(t, err)
+	require.Equal(t, true, value)
+
+	_, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.missing")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(metadata, "missing")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(metadata, "apiName.tooDeep")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(map[string]any{}, "anything")
+	require.Error(t, err)
+}
+
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}
