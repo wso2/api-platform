@@ -32,7 +32,7 @@ Feature: Single-domain vhost routing
     And I generate a unique API context from "/vhost-routing-single-1" and store it as "apiContext1"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName1}                  |
       | spec.displayName            | VHost-Single-Defaults             |
       | spec.version                | v1.0                              |
@@ -66,6 +66,10 @@ Feature: Single-domain vhost routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName1}"
     Then the response should be successful
+    And I clear all headers
+    And I set request host to "api.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami" until status 404
+    Then the response status code should be 404
 
 
   Scenario: API vhost override should take precedence over gateway defaults
@@ -75,7 +79,7 @@ Feature: Single-domain vhost routing
     And I generate a unique resource name from "sandboxHost2-vhost-routing-single-2" and store it as "sandboxHost2"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName2}                  |
       | spec.displayName            | VHost-Single-Override             |
       | spec.version                | v1.0                              |
@@ -110,6 +114,10 @@ Feature: Single-domain vhost routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName2}"
     Then the response should be successful
+    And I clear all headers
+    And I set request host to "${CTX:mainHost2}"
+    And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami" until status 404
+    Then the response status code should be 404
 
 
   Scenario: Sentinel vhost resolves to gateway defaults at deploy time
@@ -117,7 +125,7 @@ Feature: Single-domain vhost routing
     And I generate a unique API context from "/vhost-routing-single-3" and store it as "apiContext3"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName3}                  |
       | spec.displayName            | VHost-Single-Sentinel              |
       | spec.version                | v1.0                              |
@@ -153,3 +161,7 @@ Feature: Single-domain vhost routing
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName3}"
     Then the response should be successful
+    And I clear all headers
+    And I set request host to "api.wso2.com"
+    And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 404
+    Then the response status code should be 404

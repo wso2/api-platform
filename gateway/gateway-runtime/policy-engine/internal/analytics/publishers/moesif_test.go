@@ -385,126 +385,135 @@ func TestPublish_ForwardsTotalDuration(t *testing.T) {
 	assert.Equal(t, int64(100), metadata["backendLatency"])
 }
 
-// The published Agent contract, asserted at its actual boundary: what a downstream
-// consumer reads is the serialized metadata, so the whole envelope is checked as JSON
-// rather than field by field through Go accessors. It pins that the envelope keeps its
-// agentAnalytics.a2a nesting while the a2a section itself is one flat level, with a
-// `response` prefix only on the two identifiers a request field also carries.
-func TestPublish_AgentAnalyticsEnvelopeNesting(t *testing.T) {
+// The published A2A contract, asserted at its actual boundary: what Moesif ingests is
+// the serialized event, so the whole block is checked as JSON rather than field by
+// field through Go accessors. It pins the three things the move to the schema block
+// changed — snake_case names, the request/response nesting, and the two response
+// identifiers losing the `response` prefix the flat model needed to keep them apart.
+func TestPublish_A2ABlockShape(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	partCount := 2
-	returnImmediately, isError := false, false
+	returnImmediately, isError, terminal := false, false, true
 	event := createBaseEvent()
 	event.API.APIType = "Agent"
-	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
-		A2A: &dto.A2AAnalytics{
-			RequestType:     "operation",
-			Operation:       "SendMessage",
-			Transport:       "JSONRPC",
-			ProtocolVersion: "1.0",
-			A2ARequestAnalytics: dto.A2ARequestAnalytics{
-				MessageID:         "msg-1",
-				TaskID:            "task-existing",
-				InputPartCount:    &partCount,
-				ReturnImmediately: &returnImmediately,
-			},
-			A2AResponseAnalytics: dto.A2AResponseAnalytics{
-				IsError:           &isError,
-				PayloadType:       "task",
-				ResponseTaskID:    "task-9",
-				ResponseContextID: "ctx-9",
-				TaskState:         "TASK_STATE_COMPLETED",
-			},
-			Outcome: "SUCCESS",
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{
+		RequestType:     "operation",
+		Operation:       "SendMessage",
+		Transport:       "JSONRPC",
+		ProtocolVersion: "1.0",
+		A2ARequestAnalytics: dto.A2ARequestAnalytics{
+			MessageID:         "msg-1",
+			TaskID:            "task-existing",
+			InputPartCount:    &partCount,
+			ReturnImmediately: &returnImmediately,
 		},
+		A2AResponseAnalytics: dto.A2AResponseAnalytics{
+			IsError:           &isError,
+			PayloadType:       "task",
+			ResponseTaskID:    "task-9",
+			ResponseContextID: "ctx-9",
+			TaskState:         "TASK_STATE_COMPLETED",
+		},
+		Terminal: &terminal,
+		Outcome:  "SUCCESS",
 	}
 
 	moesif.Publish(event)
 
 	require.Len(t, moesif.events, 1)
-	metadata := getMetadata(moesif.events[0])
-	require.NotNil(t, metadata[agentAnalyticsProperty])
+	require.NotNil(t, moesif.events[0].A2a, "an Agent event must carry the a2a block")
 
-	encoded, err := json.Marshal(metadata[agentAnalyticsProperty])
+	encoded, err := json.Marshal(moesif.events[0].A2a)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{
-		"a2a": {
-			"requestType": "operation",
-			"operation": "SendMessage",
-			"transport": "JSONRPC",
-			"protocolVersion": "1.0",
-			"messageId": "msg-1",
-			"taskId": "task-existing",
-			"inputPartCount": 2,
-			"returnImmediately": false,
-			"isError": false,
-			"payloadType": "task",
-			"responseTaskId": "task-9",
-			"responseContextId": "ctx-9",
-			"taskState": "TASK_STATE_COMPLETED",
-			"outcome": "SUCCESS"
-		}
+		"request_type": "operation",
+		"operation": "SendMessage",
+		"transport": "JSONRPC",
+		"protocol_version": "1.0",
+		"agent_id": "api-123",
+		"agent_name": "test-api",
+		"request": {
+			"message_id": "msg-1",
+			"task_id": "task-existing",
+			"input_part_count": 2,
+			"return_immediately": false
+		},
+		"response": {
+			"is_error": false,
+			"payload_type": "task",
+			"task_id": "task-9",
+			"context_id": "ctx-9",
+			"task_state": "TASK_STATE_COMPLETED"
+		},
+		"terminal": true,
+		"outcome": "SUCCESS"
 	}`, string(encoded))
 }
 
-// The flat a2aAnalytics key this envelope replaced must not be published alongside it.
-// A consumer that found both would be reading two shapes of the same event depending
-// on which gateway version produced it, and whichever it picked would go stale
-// silently when the other stopped being written.
-func TestPublish_LegacyFlatA2AAnalyticsKeyIsNotPublished(t *testing.T) {
+// The block is the schema's field, not a metadata key. Neither the `agentAnalytics`
+// envelope it replaced nor the flat `a2aAnalytics` key before that may be published
+// alongside it: a consumer finding the same event in two shapes would pick one, and
+// whichever it picked would go stale silently when the other stopped being written.
+func TestPublish_A2ADimensionsAreNotAlsoPublishedAsMetadata(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
 	event.API.APIType = "Agent"
-	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
-		A2A: &dto.A2AAnalytics{RequestType: "operation", Operation: "SendMessage"},
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{
+		RequestType: "operation", Operation: "SendMessage",
 	}
 
 	moesif.Publish(event)
 
 	require.Len(t, moesif.events, 1)
 	metadata := getMetadata(moesif.events[0])
-	assert.NotContains(t, metadata, "a2aAnalytics",
-		"the legacy flat key must not be published, not even alongside the envelope")
-	assert.Contains(t, metadata, agentAnalyticsProperty)
+	assert.NotContains(t, metadata, "a2aAnalytics")
+	assert.NotContains(t, metadata, "agentAnalytics")
+	assert.NotNil(t, moesif.events[0].A2a, "the dimensions travel in the schema block instead")
 }
 
-// A card fetch carries only requestType, so it stays distinguishable from an
-// invocation all the way out to the consumer rather than only inside the gateway.
-func TestPublish_AgentCardEventCarriesOnlyRequestType(t *testing.T) {
+// A card fetch carries only its request type. Operation and transport are required by
+// the schema, so they carry the catch-alls rather than being sent absent — requestType
+// is what keeps the fetch distinguishable from an invocation, out at the consumer and
+// not only inside the gateway.
+func TestPublish_AgentCardEventCarriesRequestTypeAndCatchAlls(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
 	event.API.APIType = "Agent"
-	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
-		A2A: &dto.A2AAnalytics{RequestType: "agentCard"},
-	}
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{RequestType: "agentCard"}
 
 	moesif.Publish(event)
 
 	require.Len(t, moesif.events, 1)
-	encoded, err := json.Marshal(getMetadata(moesif.events[0])[agentAnalyticsProperty])
+	encoded, err := json.Marshal(moesif.events[0].A2a)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"a2a": {"requestType": "agentCard"}}`, string(encoded))
+	assert.JSONEq(t, `{
+		"request_type": "agentCard",
+		"operation": "Unknown",
+		"transport": "UNKNOWN",
+		"agent_id": "api-123",
+		"agent_name": "test-api"
+	}`, string(encoded))
 }
 
 // The block is gated on the API kind, the way the MCP block is: an Agent's dimensions
-// are meaningless on any other kind, and forwarding the key unconditionally would put
-// an empty object on every event the gateway publishes.
-func TestPublish_AgentAnalyticsNotForwardedForOtherKinds(t *testing.T) {
+// are meaningless on any other kind, and building it unconditionally would put an
+// empty object on every event the gateway publishes. Non-A2A traffic must ingest
+// exactly as it did before the field existed.
+func TestPublish_A2ABlockNotForwardedForOtherKinds(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
 	event.API.APIType = "RestApi"
-	event.Properties[agentAnalyticsProperty] = &dto.AgentAnalytics{
-		A2A: &dto.A2AAnalytics{Operation: "SendMessage"},
-	}
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{Operation: "SendMessage"}
 
 	moesif.Publish(event)
 
-	assert.Len(t, moesif.events, 1)
-	assert.Nil(t, getMetadata(moesif.events[0])[agentAnalyticsProperty])
+	require.Len(t, moesif.events, 1)
+	assert.Nil(t, moesif.events[0].A2a)
+	assert.NotContains(t, getMetadata(moesif.events[0]), "a2aAnalytics")
 }
 
 // The fault taxonomy reaches Moesif, not only the OTLP publisher: both read the
@@ -775,6 +784,9 @@ func (f *fakeMoesifAPI) QueueSubscriptions([]*models.SubscriptionModel) error { 
 func (f *fakeMoesifAPI) CreateEvent(*models.EventModel) (http.Header, error)  { return nil, nil }
 func (f *fakeMoesifAPI) CreateEventsBatch([]*models.EventModel) (http.Header, error) {
 	return nil, nil
+}
+func (f *fakeMoesifAPI) CreateEventSync(*models.EventModel) (int, http.Header, error) {
+	return 0, nil, nil
 }
 func (f *fakeMoesifAPI) UpdateUser(*models.UserModel) error                         { return nil }
 func (f *fakeMoesifAPI) UpdateUsersBatch([]*models.UserModel) error                 { return nil }

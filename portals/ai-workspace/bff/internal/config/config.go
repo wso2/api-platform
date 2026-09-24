@@ -145,6 +145,14 @@ type ControlPlaneConfig struct {
 	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
 	CloudCAFile        string `koanf:"cloud_ca_file"`
 	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
+	// BillingURL is an optional hop to the billing service. When set,
+	// <base>/proxy/billing/* is proxied there instead of the primary control plane.
+	// Cloud-only: every standalone deployment leaves it empty, which is what keeps
+	// the SPA from attempting a subscription activation that has nowhere to go.
+	BillingURL string `koanf:"billing_url"`
+	// BillingCAFile / BillingTLSSkipVerify apply only to BillingURL when that hop uses TLS.
+	BillingCAFile        string `koanf:"billing_ca_file"`
+	BillingTLSSkipVerify bool   `koanf:"billing_tls_skip_verify"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -282,7 +290,10 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
 	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
+	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
+	" ap:api_portal:publication:read" +
 	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
+	" ap:api_publication:read" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one path
@@ -345,6 +356,7 @@ func (c *Config) normalize() {
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
+	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
@@ -441,6 +453,22 @@ func (c *Config) validate() error {
 		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
 			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
 				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		}
+	}
+
+	if c.ControlPlane.BillingURL != "" {
+		bu, err := url.Parse(c.ControlPlane.BillingURL)
+		if err != nil || (bu.Scheme != "http" && bu.Scheme != "https") || bu.Host == "" {
+			return fmt.Errorf("[control_plane] billing_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.BillingURL)
+		}
+		if bu.Scheme == "http" {
+			if c.ControlPlane.BillingCAFile != "" || c.ControlPlane.BillingTLSSkipVerify {
+				return fmt.Errorf("[control_plane] billing_ca_file / billing_tls_skip_verify are set but billing_url is http:// (no TLS on that hop)")
+			}
+		}
+		if bu.Scheme == "https" && c.ControlPlane.BillingTLSSkipVerify {
+			slog.Warn("[control_plane] billing_tls_skip_verify = true — billing upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] billing_ca_file instead.")
 		}
 	}
 

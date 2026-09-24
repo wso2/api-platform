@@ -30,7 +30,7 @@ Feature: Prompt template
     And I generate a unique API version from "pt-simple" and store it as "apiVersion"
     And I generate a unique API context from "/pt-simple" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -49,13 +49,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Replace template without query parameters
     Given I generate a unique value from "pt-no-params" and store it as "apiName"
     And I generate a unique API version from "pt-no-params" and store it as "apiVersion"
     And I generate a unique API context from "/pt-no-params" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -74,13 +75,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Use multiple templates in configuration
     Given I generate a unique value from "pt-multi-config" and store it as "apiName"
     And I generate a unique API version from "pt-multi-config" and store it as "apiVersion"
     And I generate a unique API context from "/pt-multi-config" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -107,13 +109,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Use multiple template references in a single request
     Given I generate a unique value from "pt-multi-ref" and store it as "apiName"
     And I generate a unique API version from "pt-multi-ref" and store it as "apiVersion"
     And I generate a unique API context from "/pt-multi-ref" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -133,13 +136,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle URL encoded parameters
     Given I generate a unique value from "pt-encoded" and store it as "apiName"
     And I generate a unique API version from "pt-encoded" and store it as "apiVersion"
     And I generate a unique API context from "/pt-encoded" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -158,13 +162,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Replace template in nested message content
     Given I generate a unique value from "pt-message" and store it as "apiName"
     And I generate a unique API version from "pt-message" and store it as "apiVersion"
     And I generate a unique API context from "/pt-message" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -183,13 +188,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle template not found error
     Given I generate a unique value from "pt-not-found" and store it as "apiName"
     And I generate a unique API version from "pt-not-found" and store it as "apiVersion"
     And I generate a unique API context from "/pt-not-found" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -215,13 +221,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle empty request body
     Given I generate a unique value from "pt-empty" and store it as "apiName"
     And I generate a unique API version from "pt-empty" and store it as "apiVersion"
     And I generate a unique API context from "/pt-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -240,13 +247,14 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle request without a template reference
     Given I generate a unique value from "pt-no-ref" and store it as "apiName"
     And I generate a unique API version from "pt-no-ref" and store it as "apiVersion"
     And I generate a unique API context from "/pt-no-ref" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -265,6 +273,7 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   # Domain-specific templates that only differ in their template content and reference
   # parameters from the mechanics already covered above (parameter substitution into a
@@ -275,7 +284,7 @@ Feature: Prompt template
     And I generate a unique API version from "pt-domain" and store it as "apiVersion"
     And I generate a unique API context from "/pt-domain" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -293,6 +302,7 @@ Feature: Prompt template
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
     Examples:
       | templateName | template                                                                            | reference                                                              | expected                                                       |

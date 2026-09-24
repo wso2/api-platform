@@ -32,7 +32,7 @@ Feature: Data-plane to control-plane artifact push
     Given I generate a unique resource name from "dp2cp-tmpl" and store it as "templateName"
     And I generate a unique value from "dp2cp-tmpl-display" and store it as "templateDisplayName"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateDisplayName}        |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -54,7 +54,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique API version from "dp2cp-chain-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/dp2cp-chain-proxy" and store it as "proxyContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateDisplayName}        |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -62,7 +62,7 @@ Feature: Data-plane to control-plane artifact push
     Then the response should be successful
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -75,7 +75,7 @@ Feature: Data-plane to control-plane artifact push
     And the control plane copy of the "LlmProvider" artifact "${CTX:providerName}" should reference template "${CTX:templateName}"
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion          | gateway.api-platform.wso2.com/v1 |
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
       | name                | ${CTX:proxyName}                  |
       | displayName         | ${CTX:proxyDisplayName}           |
       | version             | ${CTX:proxyVersion}               |
@@ -92,7 +92,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique API version from "dp2cp-mcp" and store it as "mcpVersion"
     And I generate a unique API context from "/dp2cp-mcp" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:mcpName}                    |
       | displayName           | ${CTX:mcpDisplayName}             |
       | version               | ${CTX:mcpVersion}                 |
@@ -110,7 +110,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique API version from "dp2cp-rest" and store it as "apiVersion"
     And I generate a unique API context from "/dp2cp-rest" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                     |
       | spec.displayName       | ${CTX:apiDisplayName}              |
       | spec.version           | ${CTX:apiVersion}                  |
@@ -129,7 +129,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique API version from "dp2cp-upd-prov" and store it as "providerVersion"
     And I generate a unique API context from "/dp2cp-upd-prov" and store it as "providerContext"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateName}               |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -137,7 +137,7 @@ Feature: Data-plane to control-plane artifact push
     Then the response should be successful
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName}        |
       | version            | ${CTX:providerVersion}            |
@@ -149,7 +149,7 @@ Feature: Data-plane to control-plane artifact push
     And the control plane should receive the "LlmProvider" artifact "${CTX:providerName}"
 
     When I update LLM provider "${CTX:providerName}" from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:providerName}               |
       | displayName        | ${CTX:providerDisplayName} Updated |
       | version            | ${CTX:providerVersion}            |
@@ -165,7 +165,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique value from "dp2cp-tmpl-upd-display" and store it as "templateDisplayNameBefore"
     And I generate a unique value from "dp2cp-tmpl-upd-display-after" and store it as "templateDisplayNameAfter"
     When I create LLM provider template from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateDisplayNameBefore}  |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -174,7 +174,7 @@ Feature: Data-plane to control-plane artifact push
     And the control plane should receive the "LlmProviderTemplate" artifact "${CTX:templateName}"
 
     When I update LLM provider template "${CTX:templateName}" from "resources/templates/llm-provider-template.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:templateName}               |
       | displayName        | ${CTX:templateDisplayNameAfter}   |
       | spec.requestModel  | {"location":"payload","identifier":"$.model"} |
@@ -189,7 +189,7 @@ Feature: Data-plane to control-plane artifact push
     And I generate a unique API version from "dp2cp-mcp-del" and store it as "mcpVersion"
     And I generate a unique API context from "/dp2cp-mcp-del" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1 |
+      | apiVersion            | ${CTX:gatewaySpecVersion} |
       | name                  | ${CTX:mcpName}                    |
       | displayName           | ${CTX:mcpDisplayName}             |
       | version               | ${CTX:mcpVersion}                 |

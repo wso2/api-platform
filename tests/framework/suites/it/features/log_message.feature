@@ -30,7 +30,7 @@ Feature: Log message policy
     And I generate a unique API version from "log-message" and store it as "apiVersion"
     And I generate a unique API context from "/log-message" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion            | gateway.api-platform.wso2.com/v1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+      | apiVersion            | ${CTX:gatewaySpecVersion}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
       | name                  | ${CTX:apiName}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
       | spec.displayName      | ${CTX:apiDisplayName}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
       | spec.version          | ${CTX:apiVersion}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -51,12 +51,18 @@ Feature: Log message policy
     Then the response status code should be 200
     And the response body should contain "request-payload-headers"
     And the "gateway-runtime" service logs should contain "request-payload-headers"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log response payload and headers
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-payload-headers"
     Then the response status code should be 200
     And the response should be valid JSON
     And the "gateway-runtime" service logs should contain "response-payload-headers"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log both request and response
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/request-response" with body:
@@ -66,16 +72,25 @@ Feature: Log message policy
     Then the response status code should be 200
     And the response body should contain "request-response"
     And the "gateway-runtime" service logs should contain "request-response"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log only request headers without payload
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers"
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "request-headers"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log only response headers without payload
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-headers"
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "response-headers"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log only request payload without headers
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/request-payload" with body:
@@ -84,11 +99,17 @@ Feature: Log message policy
       """
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "request-payload"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log only response payload without headers
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-payload"
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "response-payload"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log request headers with exclusions
     And I set header "X-Excluded-Request" to "excluded-request"
@@ -96,23 +117,35 @@ Feature: Log message policy
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-exclusions"
     Then the response status code should be 200
     And the "gateway-runtime" service log event containing "included-request" should not contain "excluded-request"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log response headers with exclusions
     And I set header "X-Log-Response" to "response-exclusions"
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/response-exclusions"
     Then the response status code should be 200
     And the "gateway-runtime" service log event containing "response-exclusions" should not contain "Content-Type"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message policy combined with set-headers
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/combined"
     Then the response status code should be 200
     And the response should contain echoed header "x-custom-header" with value "CustomValue"
     And the "gateway-runtime" service logs should contain "CustomValue"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message supports GET
     When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/methods-get"
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "methods-get"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message supports POST
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/methods-post" with body:
@@ -121,6 +154,9 @@ Feature: Log message policy
       """
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "methods-post"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message supports PUT
     When I send a "PUT" request to "${CTX:apiContext}/${CTX:apiVersion}/methods-put" with body:
@@ -129,11 +165,17 @@ Feature: Log message policy
       """
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "methods-put"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message supports DELETE
     When I send a "DELETE" request to "${CTX:apiContext}/${CTX:apiVersion}/methods-delete"
     Then the response status code should be 200
     And the "gateway-runtime" service logs should contain "methods-delete"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404
 
   Scenario: Log message handles a large request payload
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/large-payload" with body:
@@ -144,3 +186,6 @@ Feature: Log message policy
     And the response body should contain "Item One"
     And the response body should contain "Item Three"
     And the "gateway-runtime" service logs should contain "large-payload"
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/request-headers" until status 404

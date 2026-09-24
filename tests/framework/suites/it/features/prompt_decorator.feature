@@ -30,7 +30,7 @@ Feature: Prompt decorator
     And I generate a unique API version from "pd-prepend" and store it as "apiVersion"
     And I generate a unique API context from "/pd-prepend" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -50,13 +50,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Append a system message to chat completion messages
     Given I generate a unique value from "pd-append" and store it as "apiName"
     And I generate a unique API version from "pd-append" and store it as "apiVersion"
     And I generate a unique API context from "/pd-append" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -76,13 +77,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Prepend multiple decoration messages to chat
     Given I generate a unique value from "pd-multi" and store it as "apiName"
     And I generate a unique API version from "pd-multi" and store it as "apiVersion"
     And I generate a unique API context from "/pd-multi" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -103,13 +105,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Prepend an instruction to a text prompt string
     Given I generate a unique value from "pd-text-prepend" and store it as "apiName"
     And I generate a unique API version from "pd-text-prepend" and store it as "apiVersion"
     And I generate a unique API context from "/pd-text-prepend" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -128,13 +131,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Append an instruction to a text prompt string
     Given I generate a unique value from "pd-text-append" and store it as "apiName"
     And I generate a unique API version from "pd-text-append" and store it as "apiVersion"
     And I generate a unique API context from "/pd-text-append" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -153,13 +157,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Decorate the last message's content, appended
     Given I generate a unique value from "pd-last-append" and store it as "apiName"
     And I generate a unique API version from "pd-last-append" and store it as "apiVersion"
     And I generate a unique API context from "/pd-last-append" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -179,13 +184,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Decorate the last message's content, prepended
     Given I generate a unique value from "pd-last-prepend" and store it as "apiName"
     And I generate a unique API version from "pd-last-prepend" and store it as "apiVersion"
     And I generate a unique API context from "/pd-last-prepend" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -204,13 +210,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Decorate a nested prompt field
     Given I generate a unique value from "pd-nested" and store it as "apiName"
     And I generate a unique API version from "pd-nested" and store it as "apiVersion"
     And I generate a unique API context from "/pd-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -230,13 +237,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle empty request body
     Given I generate a unique value from "pd-empty" and store it as "apiName"
     And I generate a unique API version from "pd-empty" and store it as "apiVersion"
     And I generate a unique API context from "/pd-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -260,13 +268,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle a JSONPath that does not resolve
     Given I generate a unique value from "pd-invalid-path" and store it as "apiName"
     And I generate a unique API version from "pd-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/pd-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -285,13 +294,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Handle an invalid JSON payload
     Given I generate a unique value from "pd-invalid-json" and store it as "apiName"
     And I generate a unique API version from "pd-invalid-json" and store it as "apiVersion"
     And I generate a unique API context from "/pd-invalid-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -316,13 +326,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Add safety instructions to all requests
     Given I generate a unique value from "pd-safety" and store it as "apiName"
     And I generate a unique API version from "pd-safety" and store it as "apiVersion"
     And I generate a unique API context from "/pd-safety" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                                                                                                               |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                               |
       | name                   | ${CTX:apiName}                                                                                                                                                  |
       | spec.displayName       | ${CTX:apiName}                                                                                                                                                  |
       | spec.version           | ${CTX:apiVersion}                                                                                                                                               |
@@ -342,13 +353,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Enforce JSON output format
     Given I generate a unique value from "pd-json-format" and store it as "apiName"
     And I generate a unique API version from "pd-json-format" and store it as "apiVersion"
     And I generate a unique API context from "/pd-json-format" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                                                                                  |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                  |
       | name                   | ${CTX:apiName}                                                                                                                     |
       | spec.displayName       | ${CTX:apiName}                                                                                                                     |
       | spec.version           | ${CTX:apiVersion}                                                                                                                  |
@@ -368,13 +380,14 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
   Scenario: Add context to an existing conversation
     Given I generate a unique value from "pd-context" and store it as "apiName"
     And I generate a unique API version from "pd-context" and store it as "apiVersion"
     And I generate a unique API context from "/pd-context" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1                                                                                                                                   |
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                                   |
       | name                   | ${CTX:apiName}                                                                                                                                                      |
       | spec.displayName       | ${CTX:apiName}                                                                                                                                                      |
       | spec.version           | ${CTX:apiVersion}                                                                                                                                                   |
@@ -397,3 +410,4 @@ Feature: Prompt decorator
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404

@@ -21,12 +21,11 @@
 # dimension a downstream A2A dashboard needs is present and correct — not that
 # anything was aggregated.
 #
-# The A2A block is nested under metadata.agentAnalytics.a2a on the published
-# event — an envelope keyed by domain, so a later Agent analytics domain can be
-# added as a sibling of a2a rather than mixed into its fields — and the request
-# and response facts sit in their own objects inside it. That is why these
-# assertions need their own steps rather than the flat metadata-field one, and
-# why a field is named by a path: "response.taskState", not "taskState".
+# The A2A block is a first-class field of the published event — Moesif's own A2A
+# schema, a sibling of metadata rather than a key inside it — and the request and
+# response facts sit in their own objects within it. That is why these assertions
+# need their own steps rather than the flat metadata-field one, and why a field is
+# named by its published path: "response.task_state", not "taskState".
 #
 # Two dimensions carry most of the weight. `operation` is stamped by the kernel
 # from the bound chain key rather than by anything that re-parsed the request, so
@@ -115,10 +114,10 @@ Feature: Agent analytics event dimensions
 
     # The HTTP+JSON call.
     Then the latest analytics event should have request URI "/agent-analytics-transport/v1/tasks"
-    And the latest analytics event should have A2A field "requestType" with value "operation"
+    And the latest analytics event should have A2A field "request_type" with value "operation"
     And the latest analytics event should have A2A field "operation" with value "ListTasks"
     And the latest analytics event should have A2A field "transport" with value "HTTP+JSON"
-    And the latest analytics event should have A2A field "protocolVersion" with value "1.0"
+    And the latest analytics event should have A2A field "protocol_version" with value "1.0"
     And the latest analytics event should have A2A field "outcome" with value "SUCCESS"
 
     # The JSON-RPC call: same operation, different transport.
@@ -130,7 +129,7 @@ Feature: Agent analytics event dimensions
     # without changing this: the filter would then select the HTTP+JSON event
     # and the transport assertion would fail confusingly.
     Then the latest analytics event should have request URI "/agent-analytics-transport"
-    And the latest analytics event should have A2A field "requestType" with value "operation"
+    And the latest analytics event should have A2A field "request_type" with value "operation"
     And the latest analytics event should have A2A field "operation" with value "ListTasks"
     And the latest analytics event should have A2A field "transport" with value "JSONRPC"
     And the latest analytics event should have A2A field "outcome" with value "SUCCESS"
@@ -220,12 +219,14 @@ Feature: Agent analytics event dimensions
 
     When I wait 5 seconds for analytics to be published
 
-    # The card fetch: visible as traffic, but carrying neither an operation nor
-    # an outcome, so nothing downstream can roll it in with an invocation.
-    Then the latest analytics event should have A2A field "requestType" with value "agentCard"
-    # requestType is the only thing such an event carries — no operation, no
-    # outcome, no transport, and none of the request or response dimensions.
-    And the latest analytics event should carry only A2A field "requestType"
+    # The card fetch: visible as traffic, but naming no operation it resolved to
+    # and no outcome, so nothing downstream can roll it in with an invocation.
+    Then the latest analytics event should have A2A field "request_type" with value "agentCard"
+    # request_type is the only dimension such an event determines. operation and
+    # transport are present because the schema requires them on every event, and
+    # the step asserts they hold their catch-alls (Unknown/UNKNOWN) rather than a
+    # real value; no outcome and none of the request or response dimensions appear.
+    And the latest analytics event should carry only A2A field "request_type"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-card"
@@ -282,8 +283,8 @@ Feature: Agent analytics event dimensions
     Then the response status code should be 204
 
     When I wait 5 seconds for analytics to be published
-    Then the latest analytics event should have A2A field "requestType" with value "preflight"
-    And the latest analytics event should carry only A2A field "requestType"
+    Then the latest analytics event should have A2A field "request_type" with value "preflight"
+    And the latest analytics event should carry only A2A field "request_type"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-preflight"
@@ -341,7 +342,7 @@ Feature: Agent analytics event dimensions
 
     When I wait 5 seconds for analytics to be published
     Then the latest analytics event should have A2A field "operation" with value "CancelTask"
-    And the latest analytics event should have A2A field "isError" with value "true"
+    And the latest analytics event should have A2A field "response.is_error" with value "true"
     And the latest analytics event should have A2A field "outcome" with value "FAILURE"
 
     Given I authenticate using basic auth as "admin"
@@ -395,7 +396,7 @@ Feature: Agent analytics event dimensions
     When I wait 5 seconds for analytics to be published
     Then the latest analytics event should have A2A field "operation" with value "GetTask"
     And the latest analytics event should have A2A field "outcome" with value "FAILURE"
-    And the latest analytics event should have A2A field "failureOrigin" with value "POLICY"
+    And the latest analytics event should have A2A field "failure_origin" with value "POLICY"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-denial"
@@ -473,7 +474,7 @@ Feature: Agent analytics event dimensions
     And the response body should contain "gateway_managed_skill"
 
     When I wait 5 seconds for analytics to be published
-    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    Then the latest analytics event should have A2A field "request_type" with value "operation"
     And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
     And the latest analytics event should have A2A field "transport" with value "HTTP+JSON"
     And the latest analytics event should have A2A field "outcome" with value "SUCCESS"
@@ -490,7 +491,7 @@ Feature: Agent analytics event dimensions
     Then the response status code should be 200
 
     When I wait 5 seconds for analytics to be published
-    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    Then the latest analytics event should have A2A field "request_type" with value "operation"
     And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
     And the latest analytics event should have A2A field "transport" with value "JSONRPC"
 
@@ -501,10 +502,10 @@ Feature: Agent analytics event dimensions
     Then the response status code should be 401
 
     When I wait 5 seconds for analytics to be published
-    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    Then the latest analytics event should have A2A field "request_type" with value "operation"
     And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
     And the latest analytics event should have A2A field "outcome" with value "FAILURE"
-    And the latest analytics event should have A2A field "failureOrigin" with value "POLICY"
+    And the latest analytics event should have A2A field "failure_origin" with value "POLICY"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-protected"
@@ -563,13 +564,14 @@ Feature: Agent analytics event dimensions
     When I wait 5 seconds for analytics to be published
     Then the latest analytics event should have request URI "/agent-analytics-properties"
     And the latest analytics event should have A2A field "operation" with value "SendMessage"
-    And the latest analytics event should have A2A field "inputPartCount" with value "2"
-    And the latest analytics event should have A2A field "returnImmediately" with value "false"
-    And the latest analytics event should not have A2A field "historyLength"
-    And the latest analytics event should have A2A field "payloadType" with value "task"
-    And the latest analytics event should have A2A field "taskState" with value "TASK_STATE_COMPLETED"
-    And the latest analytics event should have a non-empty A2A field "responseTaskId"
-    And the latest analytics event should have a non-empty A2A field "responseContextId"
+    And the latest analytics event should have A2A field "request.input_part_count" with value "2"
+    And the latest analytics event should have A2A field "request.return_immediately" with value "false"
+    And the latest analytics event should not have A2A field "request.history_length"
+    And the latest analytics event should have A2A field "response.payload_type" with value "task"
+    And the latest analytics event should have A2A field "response.task_state" with value "TASK_STATE_COMPLETED"
+    And the latest analytics event should have A2A field "terminal" with value "true"
+    And the latest analytics event should have a non-empty A2A field "response.task_id"
+    And the latest analytics event should have a non-empty A2A field "response.context_id"
 
     # GetTask is a GET on the HTTP+JSON binding, so its history length is in the
     # query string and nowhere else. A body-phase extraction would have dropped
@@ -582,14 +584,15 @@ Feature: Agent analytics event dimensions
     Then the latest analytics event should have request URI "/agent-analytics-properties/v1/tasks/"
     And the latest analytics event should have A2A field "operation" with value "GetTask"
     And the latest analytics event should have A2A field "transport" with value "HTTP+JSON"
-    And the latest analytics event should have A2A field "historyLength" with value "2"
-    And the latest analytics event should have A2A field "payloadType" with value "task"
-    And the latest analytics event should have A2A field "taskState" with value "TASK_STATE_COMPLETED"
+    And the latest analytics event should have A2A field "request.history_length" with value "2"
+    And the latest analytics event should have A2A field "response.payload_type" with value "task"
+    And the latest analytics event should have A2A field "response.task_state" with value "TASK_STATE_COMPLETED"
+    And the latest analytics event should have A2A field "terminal" with value "true"
     # An operation whose request shape has no message reports neither send-only
     # summary: emitting returnImmediately here would state that the caller chose
     # the default on a field its request does not have.
-    And the latest analytics event should not have A2A field "inputPartCount"
-    And the latest analytics event should not have A2A field "returnImmediately"
+    And the latest analytics event should not have A2A field "request.input_part_count"
+    And the latest analytics event should not have A2A field "request.return_immediately"
 
     # The same three summaries over the other binding, where they are at the top
     # level of the body rather than under params.
@@ -604,10 +607,10 @@ Feature: Agent analytics event dimensions
     Then the latest analytics event should have request URI "/agent-analytics-properties/v1/message:send"
     And the latest analytics event should have A2A field "operation" with value "SendMessage"
     And the latest analytics event should have A2A field "transport" with value "HTTP+JSON"
-    And the latest analytics event should have A2A field "inputPartCount" with value "1"
-    And the latest analytics event should have A2A field "returnImmediately" with value "true"
-    And the latest analytics event should have A2A field "historyLength" with value "4"
-    And the latest analytics event should have A2A field "payloadType" with value "task"
+    And the latest analytics event should have A2A field "request.input_part_count" with value "1"
+    And the latest analytics event should have A2A field "request.return_immediately" with value "true"
+    And the latest analytics event should have A2A field "request.history_length" with value "4"
+    And the latest analytics event should have A2A field "response.payload_type" with value "task"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-properties"
@@ -659,12 +662,13 @@ Feature: Agent analytics event dimensions
 
     When I wait 5 seconds for analytics to be published
     Then the latest analytics event should have A2A field "operation" with value "SendStreamingMessage"
-    And the latest analytics event should have A2A field "isStreaming" with value "true"
-    And the latest analytics event should have A2A field "inputPartCount" with value "1"
-    And the latest analytics event should have A2A field "payloadType" with value "status_update"
-    And the latest analytics event should have A2A field "taskState" with value "TASK_STATE_COMPLETED"
-    And the latest analytics event should have a non-empty A2A field "responseTaskId"
-    And the latest analytics event should have a non-empty A2A field "responseContextId"
+    And the latest analytics event should have A2A field "response.is_streaming" with value "true"
+    And the latest analytics event should have A2A field "request.input_part_count" with value "1"
+    And the latest analytics event should have A2A field "response.payload_type" with value "status_update"
+    And the latest analytics event should have A2A field "response.task_state" with value "TASK_STATE_COMPLETED"
+    And the latest analytics event should have A2A field "terminal" with value "true"
+    And the latest analytics event should have a non-empty A2A field "response.task_id"
+    And the latest analytics event should have a non-empty A2A field "response.context_id"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-stream-props"

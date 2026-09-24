@@ -46,6 +46,15 @@ func (u *Steps) opensLLMProviderTemplates(ctx context.Context) error {
 // createsLLMProviderTemplate creates a new custom LLM provider template with the given
 // display name and endpoint URL, registering its first version (v1.0) for cleanup.
 func (u *Steps) createsLLMProviderTemplate(ctx context.Context, name, url string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
+	url, err = expandUIValue(ctx, url)
+	if err != nil {
+		return err
+	}
 	if err := u.opensLLMProviderTemplates(ctx); err != nil {
 		return err
 	}
@@ -77,6 +86,11 @@ func (u *Steps) createsLLMProviderTemplate(ctx context.Context, name, url string
 // opensLLMProviderTemplate opens the named template's own overview page from the LLM
 // Provider Templates list.
 func (u *Steps) opensLLMProviderTemplate(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	if err := u.opensLLMProviderTemplates(ctx); err != nil {
 		return err
 	}
@@ -94,6 +108,19 @@ func (u *Steps) opensLLMProviderTemplate(ctx context.Context, name string) error
 // starting from the version selector's current entry, and registers the new version for
 // cleanup.
 func (u *Steps) createsLLMProviderTemplateVersion(ctx context.Context, fromVersion, toVersion, url string) error {
+	var err error
+	fromVersion, err = expandUIValue(ctx, fromVersion)
+	if err != nil {
+		return err
+	}
+	toVersion, err = expandUIValue(ctx, toVersion)
+	if err != nil {
+		return err
+	}
+	url, err = expandUIValue(ctx, url)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -176,10 +203,31 @@ func (u *Steps) seesVersionButton(ctx context.Context, version string) error {
 // createsProviderFromTemplateVersion creates a provider from the named template's specific
 // version.
 func (u *Steps) createsProviderFromTemplateVersion(ctx context.Context, providerName, templateName, version string) error {
+	var err error
+	providerName, err = expandUIValue(ctx, providerName)
+	if err != nil {
+		return err
+	}
+	templateName, err = expandUIValue(ctx, templateName)
+	if err != nil {
+		return err
+	}
+	version, err = expandUIValue(ctx, version)
+	if err != nil {
+		return err
+	}
 	if err := u.startAddingProviderFromTemplateVersion(ctx, templateName, version); err != nil {
 		return err
 	}
-	return u.submitProviderForm(ctx, providerName, nil)
+	ids, err := u.templateVersionIDs(ctx)
+	if err != nil {
+		return err
+	}
+	expectedTemplateID, ok := ids[version]
+	if !ok || expectedTemplateID == "" {
+		return fmt.Errorf("no recorded template id for version %q", version)
+	}
+	return u.submitProviderFormForTemplate(ctx, providerName, nil, expectedTemplateID)
 }
 
 // confirmsTemplateVersionDelete opens the delete confirmation for the template version

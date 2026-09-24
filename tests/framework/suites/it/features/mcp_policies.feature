@@ -29,7 +29,7 @@ Feature: MCP proxy behavior under attached policies
     Given I generate a unique resource name from "mcp-nonexistent-policy" and store it as "mcpName"
     And I generate a unique API context from "/mcp-nonexistent-policy" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | MCP Non-Existing Policy Test        |
       | version           | v1.0                                |
@@ -46,7 +46,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-auth" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -81,7 +81,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-auth-valid" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-valid" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -114,7 +114,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-auth-tools-only" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-tools-only" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -145,13 +145,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-auth accepts token-forwarding parameters and preserves the auth flow
     Given I generate a unique resource name from "mcp-auth-forward" and store it as "mcpName"
     And I generate a unique value from "mcp-auth-forward" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-auth-forward" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-forward" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -183,13 +184,14 @@ Feature: MCP proxy behavior under attached policies
   # A peer policy (set-headers) overwriting the live Authorization header during the header
   # phase must not break mcp-auth: it validates the client's ORIGINAL Authorization from the
   # downstream request snapshot, not the peer-mutated live value.
+  @gateway-v1.2
   Scenario: mcp-auth authenticates the client token even when set-headers overwrites Authorization
     Given I generate a unique resource name from "mcp-auth-setheaders" and store it as "mcpName"
     And I generate a unique value from "mcp-auth-setheaders" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-auth-setheaders" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-setheaders" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -220,13 +222,14 @@ Feature: MCP proxy behavior under attached policies
 
   # The exact failing combination from a past regression: token forwarding AND set-headers
   # together, forwarding under a DIFFERENT header than the one set-headers owns.
+  @gateway-v1.2
   Scenario: mcp-auth forwardToken coexists with set-headers injecting Authorization
     Given I generate a unique resource name from "mcp-auth-forward-setheaders" and store it as "mcpName"
     And I generate a unique value from "mcp-auth-forward-setheaders" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-auth-forward-setheaders" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-forward-setheaders" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -258,13 +261,14 @@ Feature: MCP proxy behavior under attached policies
   # Collision variant: forwardedTokenHeader names the SAME header set-headers owns
   # (Authorization). mcp-auth must skip forwarding rather than overwrite the peer's value, but
   # must still validate the client's snapshot token.
+  @gateway-v1.2
   Scenario: mcp-auth skips forwarding when forwardedTokenHeader collides with a set-headers-owned header
     Given I generate a unique resource name from "mcp-auth-collision" and store it as "mcpName"
     And I generate a unique value from "mcp-auth-collision" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-auth-collision" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-collision" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -299,7 +303,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-authz" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -340,7 +344,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-authz-valid" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-valid" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -369,13 +373,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz new scopes format (allOf and anyOf) is enforced
     Given I generate a unique resource name from "mcp-authz-scopes" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-scopes" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-scopes" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-scopes" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -425,13 +430,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz new claims format (allOf and anyOf) is enforced
     Given I generate a unique resource name from "mcp-authz-claims" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-claims" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-claims" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-claims" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -479,13 +485,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz new scopes take precedence over deprecated requiredScopes
     Given I generate a unique resource name from "mcp-authz-scope-prec" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-scope-prec" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-scope-prec" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-scope-prec" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -522,13 +529,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz new claims take precedence over deprecated requiredClaims
     Given I generate a unique resource name from "mcp-authz-claim-prec" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-claim-prec" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-claim-prec" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-claim-prec" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -564,13 +572,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz requires all matching rules to pass (specific rule and wildcard rule)
     Given I generate a unique resource name from "mcp-authz-multirule" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-multirule" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-multirule" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-multirule" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -614,13 +623,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: mcp-authz mixes new scopes with deprecated requiredClaims on one rule
     Given I generate a unique resource name from "mcp-authz-mixed" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-mixed" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-mixed" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-mixed" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -667,13 +677,14 @@ Feature: MCP proxy behavior under attached policies
   # no rule targets is not governed and passes through untouched, even with no authenticated
   # context, while a governed capability still fails closed. Here mcp-authz alone (no
   # mcp-auth) governs "add" only.
+  @gateway-v1.2
   Scenario: mcp-authz passes through capabilities no rule targets and fails closed on governed ones
     Given I generate a unique resource name from "mcp-authz-passthrough" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-passthrough" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-passthrough" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-passthrough" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -708,13 +719,14 @@ Feature: MCP proxy behavior under attached policies
   # A capability the mcp-auth policy excludes from authentication (tools.exceptions) and that
   # mcp-authz does not govern must not be blocked by mcp-authz - it legitimately arrives with
   # no auth context. The protected, governed capability must still be enforced.
+  @gateway-v1.2
   Scenario: mcp-authz does not block an mcp-auth-excluded tool while still enforcing governed tools
     Given I generate a unique resource name from "mcp-authz-excluded" and store it as "mcpName"
     And I generate a unique value from "mcp-authz-excluded" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-authz-excluded" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-excluded" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -760,7 +772,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-acl" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-acl" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -787,7 +799,7 @@ Feature: MCP proxy behavior under attached policies
 
     Given I authenticate using basic auth as "admin"
     When I update MCP proxy "${CTX:mcpName}" from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -821,7 +833,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-rewrite" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-rewrite" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -848,13 +860,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: An MCP proxy with mcp-ratelimit throttles a specific tool
     Given I generate a unique resource name from "mcp-ratelimit-tool" and store it as "mcpName"
     And I generate a unique value from "mcp-ratelimit-tool" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-ratelimit-tool" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-ratelimit-tool" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -903,13 +916,14 @@ Feature: MCP proxy behavior under attached policies
     And I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
 
+  @gateway-v1.2
   Scenario: An MCP proxy with mcp-ratelimit throttles a JSON-RPC method
     Given I generate a unique resource name from "mcp-ratelimit-method" and store it as "mcpName"
     And I generate a unique value from "mcp-ratelimit-method" and store it as "mcpDisplayName"
     And I generate a unique API version from "mcp-ratelimit-method" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-ratelimit-method" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -964,7 +978,7 @@ Feature: MCP proxy behavior under attached policies
     And I generate a unique API version from "mcp-cors" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-cors" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |

@@ -31,6 +31,11 @@ import (
 // opensProject navigates from the organization's project list into the named project's
 // own scoped workspace.
 func (u *Steps) opensProject(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -73,6 +78,11 @@ func (u *Steps) startsCreatingMCPProxy(ctx context.Context) error {
 // proxy. The probe is a real backend call validating the sample endpoint, and the Next
 // button only appears once it resolves.
 func (u *Steps) createsMCPProxyUsingSampleURL(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	if err := u.startsCreatingMCPProxy(ctx); err != nil {
 		return err
 	}
@@ -134,6 +144,11 @@ func (u *Steps) onMCPProxyOverview(ctx context.Context) error {
 // deletesMCPProxy opens the delete confirmation for the named proxy's row on the MCP
 // Proxies list and confirms it.
 func (u *Steps) deletesMCPProxy(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -172,6 +187,11 @@ func (u *Steps) returnsToOrganizationLevel(ctx context.Context) error {
 // deletesProject opens the delete confirmation for the named project's card on the
 // project list and confirms it.
 func (u *Steps) deletesProject(ctx context.Context, name string) error {
+	var err error
+	name, err = expandUIValue(ctx, name)
+	if err != nil {
+		return err
+	}
 	page, err := u.page(ctx)
 	if err != nil {
 		return err

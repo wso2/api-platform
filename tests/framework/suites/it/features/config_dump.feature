@@ -45,7 +45,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-api" and store it as "apiVersion"
     And I generate a unique API context from "/config-dump-api" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -63,13 +63,14 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 404
 
   Scenario: Config dump includes multiple deployed APIs
     Given I generate a unique value from "config-dump-api1" and store it as "api1Name"
     And I generate a unique API version from "config-dump-api1" and store it as "api1Version"
     And I generate a unique API context from "/config-dump-api1" and store it as "api1Context"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:api1Name}                   |
       | spec.displayName       | ${CTX:api1Name}                   |
       | spec.version           | ${CTX:api1Version}                |
@@ -82,7 +83,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-api2" and store it as "api2Version"
     And I generate a unique API context from "/config-dump-api2" and store it as "api2Context"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:api2Name}                   |
       | spec.displayName       | ${CTX:api2Name}                   |
       | spec.version           | ${CTX:api2Version}                |
@@ -99,15 +100,17 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:api1Name}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:api1Context}/${CTX:api1Version}/resource1" until status 404
     When I delete the API "${CTX:api2Name}"
     Then the response should be successful
+    And I send a "POST" request to "${CTX:api2Context}/${CTX:api2Version}/resource2" until status 404
 
   Scenario: Config dump includes an API with a CORS policy
     Given I generate a unique value from "config-dump-cors" and store it as "apiName"
     And I generate a unique API version from "config-dump-cors" and store it as "apiVersion"
     And I generate a unique API context from "/config-dump-cors" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -124,13 +127,14 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
 
   Scenario: Config dump statistics reflect a newly deployed API
     Given I generate a unique value from "config-dump-stats" and store it as "apiName"
     And I generate a unique API version from "config-dump-stats" and store it as "apiVersion"
     And I generate a unique API context from "/config-dump-stats" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -149,6 +153,7 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 404
 
   Scenario: Config dump includes a deployed MCP proxy
     Given I generate a unique resource name from "config-dump-mcp" and store it as "mcpName"
@@ -156,7 +161,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-mcp" and store it as "mcpVersion"
     And I generate a unique API context from "/config-dump-mcp" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}       |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -180,7 +185,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-llm" and store it as "providerVersion"
     And I generate a unique API context from "/config-dump-llm" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
       | name               | ${CTX:providerName}                |
       | displayName        | ${CTX:providerDisplayName}         |
       | version            | ${CTX:providerVersion}              |
@@ -204,7 +209,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-mixed-api" and store it as "apiVersion"
     And I generate a unique API context from "/config-dump-mixed-api" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -218,7 +223,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-mixed-mcp" and store it as "mcpVersion"
     And I generate a unique API context from "/config-dump-mixed-mcp" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}       |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
@@ -232,7 +237,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-mixed-llm" and store it as "providerVersion"
     And I generate a unique API context from "/config-dump-mixed-llm" and store it as "providerContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
       | name               | ${CTX:providerName}                |
       | displayName        | ${CTX:providerDisplayName}         |
       | version            | ${CTX:providerVersion}              |
@@ -252,6 +257,7 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/test" until status 404
     When I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
     When I delete the LLM provider "${CTX:providerName}"
@@ -262,7 +268,7 @@ Feature: Configuration dump endpoint
     And I generate a unique API version from "config-dump-deletion" and store it as "apiVersion"
     And I generate a unique API context from "/config-dump-deletion" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                    |
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
@@ -277,5 +283,6 @@ Feature: Configuration dump endpoint
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/data" until status 404
 
     When I send a "GET" request to the "gateway-controller-admin" service at "/config_dump" until the response body does not contain "${CTX:apiName}"

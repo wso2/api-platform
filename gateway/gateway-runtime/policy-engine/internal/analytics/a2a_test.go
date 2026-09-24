@@ -125,19 +125,19 @@ func a2aLogEntry(opts a2aEntryOptions) *v3.HTTPAccessLogEntry {
 	return entry
 }
 
-// a2aBlock builds one Agent event and returns its A2A section.
+// a2aBlock builds one Agent event and returns its A2A dimensions.
 //
-// Typed, like the published model: these assertions are the contract with a downstream
-// consumer, and asserting them against a map would pass just as happily on a field
-// whose value quietly changed type.
+// Typed, like the value the collector assembles: these assertions are the input to the
+// contract with a downstream consumer, and asserting them against a map would pass just
+// as happily on a field whose value quietly changed type.
 func a2aBlock(t *testing.T, entry *v3.HTTPAccessLogEntry) *dto.A2AAnalytics {
 	t.Helper()
 	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 	require.NotNil(t, event)
-	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
-	require.True(t, ok, "expected an %s envelope on an Agent event", AgentAnalyticsProperty)
-	require.NotNil(t, envelope.A2A, "the envelope must carry an a2a section")
-	return envelope.A2A
+	a2a, ok := event.Properties[A2AAnalyticsProperty].(*dto.A2AAnalytics)
+	require.True(t, ok, "expected %s on an Agent event", A2AAnalyticsProperty)
+	require.NotNil(t, a2a)
+	return a2a
 }
 
 // ─── Transport convergence ───────────────────────────────────────────────────
@@ -514,10 +514,10 @@ func TestA2AAnalytics_CarriesTheConsumerIdentifierAlongsideTheA2ADimensions(t *t
 
 	assert.Equal(t, "client-123", event.Properties[dto.PropKeyAuthCredentialID],
 		"a stable consumer identifier must reach the event for the active-consumers family")
-	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	a2a, ok := event.Properties[A2AAnalyticsProperty].(*dto.A2AAnalytics)
 	require.True(t, ok)
-	require.NotNil(t, envelope.A2A)
-	assert.Equal(t, "SendMessage", envelope.A2A.Operation,
+	require.NotNil(t, a2a)
+	assert.Equal(t, "SendMessage", a2a.Operation,
 		"consumer identity and the A2A dimensions must be on the same event, "+
 			"or volume-per-consumer cannot be broken down by operation")
 }
@@ -546,19 +546,19 @@ func TestA2AAnalytics_NotEmittedForOtherKinds(t *testing.T) {
 			})
 			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 			require.NotNil(t, event)
-			assert.NotContains(t, event.Properties, AgentAnalyticsProperty)
+			assert.NotContains(t, event.Properties, A2AAnalyticsProperty)
 		})
 	}
 }
 
-// ─── The published envelope shape ───────────────────────────────────────────
+// ─── The assembled A2A shape ────────────────────────────────────────────────
 
-// The whole published model in one assertion: the envelope's domain key, the A2A
-// section's four scalars, and the two flat objects with every field the policy can
-// contribute. This is the contract a downstream dashboard is written against, so it is
-// pinned as a shape rather than field by field — a field silently moved between the
-// A2A level and one of the objects would still satisfy per-field assertions.
-func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
+// The whole assembled model in one assertion: the four scalars, the derived outcome and
+// terminality, and every field either direction can contribute. This is what a publisher
+// maps onto its sink's schema, so it is pinned as a shape rather than field by field — a
+// field silently moved between the two directions would still satisfy per-field
+// assertions.
+func TestA2AAnalytics_AssembledShape(t *testing.T) {
 	requestProps, err := json.Marshal(map[string]any{
 		"transport":         "JSONRPC",
 		"protocolVersion":   "1.0",
@@ -593,19 +593,18 @@ func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
 
 	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 	require.NotNil(t, event)
-	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
-	require.True(t, ok, "the Agent envelope must be published as a typed value, not a map")
-	require.NotNil(t, envelope.A2A)
+	a2a, ok := event.Properties[A2AAnalyticsProperty].(*dto.A2AAnalytics)
+	require.True(t, ok, "the A2A dimensions must be carried as a typed value, not a map")
+	require.NotNil(t, a2a)
 
-	// The four A2A-level scalars plus the derived outcome.
-	assert.Equal(t, A2ARequestTypeOperation, envelope.A2A.RequestType)
-	assert.Equal(t, "SendMessage", envelope.A2A.Operation)
-	assert.Equal(t, "JSONRPC", envelope.A2A.Transport)
-	assert.Equal(t, "1.0", envelope.A2A.ProtocolVersion)
-	assert.Equal(t, A2AOutcomeSuccess, envelope.A2A.Outcome)
-	assert.Empty(t, envelope.A2A.FailureOrigin)
+	// The four scalars plus the derived outcome.
+	assert.Equal(t, A2ARequestTypeOperation, a2a.RequestType)
+	assert.Equal(t, "SendMessage", a2a.Operation)
+	assert.Equal(t, "JSONRPC", a2a.Transport)
+	assert.Equal(t, "1.0", a2a.ProtocolVersion)
+	assert.Equal(t, A2AOutcomeSuccess, a2a.Outcome)
+	assert.Empty(t, a2a.FailureOrigin)
 
-	a2a := envelope.A2A
 	assert.Equal(t, "msg-1", a2a.MessageID)
 	assert.Equal(t, "task-existing", a2a.TaskID)
 	assert.Equal(t, "ctx-1", a2a.ContextID)
@@ -626,6 +625,8 @@ func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
 	assert.EqualValues(t, 850, *a2a.StreamDurationMs)
 	assert.Equal(t, "task", a2a.PayloadType)
 	assert.Equal(t, "TASK_STATE_COMPLETED", a2a.TaskState)
+	require.NotNil(t, a2a.Terminal)
+	assert.True(t, *a2a.Terminal, "COMPLETED is a state the task cannot leave")
 
 	// The identifiers the caller sent and the ones the agent answered with are
 	// carried under distinct names on the one flat object, so a disagreement
@@ -635,12 +636,12 @@ func TestAgentAnalytics_PublishedEnvelopeShape(t *testing.T) {
 	assert.NotEqual(t, a2a.TaskID, a2a.ResponseTaskID)
 }
 
-// The published JSON is the actual contract — a consumer reads names, not Go fields —
-// so the serialized document is asserted directly. It pins that the a2a section is one
+// The serialized form, as the debug/log sinks emit it. It pins that the object is one
 // flat level, that the two colliding response identifiers are the only prefixed names,
-// and the two omissions the model depends on: an absent optional is missing rather than
-// null or zero, and there is no schema-version property.
-func TestAgentAnalytics_SerializesToTheDocumentedJSON(t *testing.T) {
+// and the omission the model depends on: an absent optional is missing rather than null
+// or zero. The Moesif block is a different shape and is pinned in that publisher's own
+// tests — this is deliberately not that contract.
+func TestA2AAnalytics_SerializesToOneFlatObject(t *testing.T) {
 	requestProps, err := json.Marshal(map[string]any{
 		"transport": "JSONRPC", "protocolVersion": "1.0", "messageId": "msg-1",
 		"taskId": "task-existing",
@@ -663,29 +664,27 @@ func TestAgentAnalytics_SerializesToTheDocumentedJSON(t *testing.T) {
 		}))
 	require.NotNil(t, event)
 
-	encoded, err := json.Marshal(event.Properties[AgentAnalyticsProperty])
+	encoded, err := json.Marshal(event.Properties[A2AAnalyticsProperty])
 	require.NoError(t, err)
 	assert.JSONEq(t, `{
-		"a2a": {
-			"requestType": "operation",
-			"operation": "SendMessage",
-			"transport": "JSONRPC",
-			"protocolVersion": "1.0",
-			"messageId": "msg-1",
-			"taskId": "task-existing",
-			"isError": false,
-			"payloadType": "task",
-			"taskState": "TASK_STATE_COMPLETED",
-			"responseTaskId": "task-456",
-			"outcome": "SUCCESS"
-		}
+		"requestType": "operation",
+		"operation": "SendMessage",
+		"transport": "JSONRPC",
+		"protocolVersion": "1.0",
+		"messageId": "msg-1",
+		"taskId": "task-existing",
+		"isError": false,
+		"payloadType": "task",
+		"taskState": "TASK_STATE_COMPLETED",
+		"responseTaskId": "task-456",
+		"terminal": true,
+		"outcome": "SUCCESS"
 	}`, string(encoded))
 }
 
-// A card fetch and a preflight use the same envelope and carry only requestType, so a
-// consumer cannot mistake either for an invocation — and so neither needs a separate
-// shape to be recognised by.
-func TestAgentAnalytics_CardAndPreflightSerializeToRequestTypeAlone(t *testing.T) {
+// A card fetch and a preflight carry only requestType, so a consumer cannot mistake
+// either for an invocation — and so neither needs a separate shape to be recognised by.
+func TestA2AAnalytics_CardAndPreflightSerializeToRequestTypeAlone(t *testing.T) {
 	for name, method := range map[string]corev3.RequestMethod{
 		"agentCard": corev3.RequestMethod_GET,
 		"preflight": corev3.RequestMethod_OPTIONS,
@@ -697,9 +696,9 @@ func TestAgentAnalytics_CardAndPreflightSerializeToRequestTypeAlone(t *testing.T
 				}))
 			require.NotNil(t, event)
 
-			encoded, err := json.Marshal(event.Properties[AgentAnalyticsProperty])
+			encoded, err := json.Marshal(event.Properties[A2AAnalyticsProperty])
 			require.NoError(t, err)
-			assert.JSONEq(t, `{"a2a": {"requestType": "`+name+`"}}`, string(encoded))
+			assert.JSONEq(t, `{"requestType": "`+name+`"}`, string(encoded))
 		})
 	}
 }
@@ -747,7 +746,7 @@ func TestAgentAnalyticsWireFieldNamesArePinned(t *testing.T) {
 // ─── Robustness of the block decode ─────────────────────────────────────────
 
 // A block that will not parse costs its own section and nothing else. The earlier flat
-// map kept the raw string on the event under its own key; a typed envelope has nowhere
+// map kept the raw string on the event under its own key; a typed model has nowhere
 // honest to put it, and a consumer reading a named field sees it as absent either way.
 func TestDecodeA2ABlocks_UnparseableYieldsAnEmptySectionAndDoesNotBreakTheEvent(t *testing.T) {
 	entry := createLogEntryWithMetadata(map[string]string{
@@ -761,14 +760,14 @@ func TestDecodeA2ABlocks_UnparseableYieldsAnEmptySectionAndDoesNotBreakTheEvent(
 
 	event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 	require.NotNil(t, event)
-	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	a2a, ok := event.Properties[A2AAnalyticsProperty].(*dto.A2AAnalytics)
 	require.True(t, ok)
-	require.NotNil(t, envelope.A2A)
+	require.NotNil(t, a2a)
 
-	assert.Equal(t, "SendMessage", envelope.A2A.Operation,
+	assert.Equal(t, "SendMessage", a2a.Operation,
 		"the operation is kernel-stamped and must survive an unreadable policy block")
-	assert.Equal(t, dto.A2ARequestAnalytics{}, envelope.A2A.A2ARequestAnalytics)
-	assert.Equal(t, dto.A2AResponseAnalytics{}, envelope.A2A.A2AResponseAnalytics)
+	assert.Equal(t, dto.A2ARequestAnalytics{}, a2a.A2ARequestAnalytics)
+	assert.Equal(t, dto.A2AResponseAnalytics{}, a2a.A2AResponseAnalytics)
 }
 
 func TestDecodeA2ABlocks_EmptyYieldsNoDimensions(t *testing.T) {
@@ -789,15 +788,15 @@ func TestDecodeA2ABlocks_CannotOverrideKernelStampedDimensions(t *testing.T) {
 				`"outcome":"SUCCESS","failureOrigin":"client","messageId":"m-1"}`,
 		}))
 	require.NotNil(t, event)
-	envelope, ok := event.Properties[AgentAnalyticsProperty].(*dto.AgentAnalytics)
+	a2a, ok := event.Properties[A2AAnalyticsProperty].(*dto.A2AAnalytics)
 	require.True(t, ok)
-	require.NotNil(t, envelope.A2A)
+	require.NotNil(t, a2a)
 
-	assert.Equal(t, "SendMessage", envelope.A2A.Operation)
-	assert.Equal(t, A2ARequestTypeOperation, envelope.A2A.RequestType)
-	assert.Equal(t, A2AOutcomeUnknown, envelope.A2A.Outcome)
-	assert.Empty(t, envelope.A2A.FailureOrigin)
-	assert.Equal(t, "m-1", envelope.A2A.MessageID, "the fields it does own still arrive")
+	assert.Equal(t, "SendMessage", a2a.Operation)
+	assert.Equal(t, A2ARequestTypeOperation, a2a.RequestType)
+	assert.Equal(t, A2AOutcomeUnknown, a2a.Outcome)
+	assert.Empty(t, a2a.FailureOrigin)
+	assert.Equal(t, "m-1", a2a.MessageID, "the fields it does own still arrive")
 }
 
 // ─── Cross-module and cross-package key spellings ───────────────────────────
@@ -811,11 +810,69 @@ func TestA2AMetadataKeySpellingsArePinned(t *testing.T) {
 	assert.Equal(t, "a2a_response_properties", A2AResponsePropertiesKey)
 	assert.Equal(t, "x-wso2-resolved-operation", ResolvedOperationKey)
 	assert.Equal(t, "x-wso2-terminal-reason", TerminalReasonKey)
-	assert.Equal(t, "agentAnalytics", AgentAnalyticsProperty)
+
+	// Not a wire spelling — this one is an in-process handle between the collector
+	// and the publishers, pinned only so the two halves stay in step.
+	assert.Equal(t, "a2aAnalytics", A2AAnalyticsProperty)
 
 	// The transport value arrives as an opaque string out of Envoy dynamic metadata,
 	// having been spelled by gateway/common/agentproto at the other end of the pipeline. This
 	// package compares it (to decide whether a 2xx is itself an outcome), so a
 	// divergence would silently turn every HTTP+JSON success into UNKNOWN.
 	assert.Equal(t, "HTTP+JSON", a2aTransportHTTPJSON)
+}
+
+// ─── Terminality ────────────────────────────────────────────────────────────
+
+// Which task states are final is protocol knowledge, so it is derived here rather than
+// left to each consumer to hard-code. The in-flight states are asserted alongside the
+// terminal ones because the distinction is the whole point: a task still working and a
+// task that completed both carry a state, and only the second one is done.
+func TestA2ATerminal_DerivedFromTheTaskState(t *testing.T) {
+	for _, state := range []string{
+		"TASK_STATE_COMPLETED", "TASK_STATE_CANCELED",
+		"TASK_STATE_FAILED", "TASK_STATE_REJECTED",
+	} {
+		t.Run(state, func(t *testing.T) {
+			got := a2aTerminal(state)
+			require.NotNil(t, got)
+			assert.True(t, *got)
+		})
+	}
+	for _, state := range []string{
+		"TASK_STATE_SUBMITTED", "TASK_STATE_WORKING",
+		"TASK_STATE_INPUT_REQUIRED", "TASK_STATE_AUTH_REQUIRED",
+	} {
+		t.Run(state, func(t *testing.T) {
+			got := a2aTerminal(state)
+			require.NotNil(t, got)
+			assert.False(t, *got)
+		})
+	}
+}
+
+// Absent and false are different answers, so a state that says nothing yields neither.
+// Reporting false would claim the task is still running, which is a positive claim
+// nobody made — the same reason isError is omitted rather than defaulted.
+func TestA2ATerminal_UndeterminedStateYieldsNoAnswer(t *testing.T) {
+	assert.Nil(t, a2aTerminal(""), "no task state was observed at all")
+	assert.Nil(t, a2aTerminal("TASK_STATE_UNSPECIFIED"), "the protocol's own no-state value")
+}
+
+// A response that reported no task state must not acquire a terminality claim on the
+// way onto the event — the field is absent, not false.
+func TestA2ATerminal_OmittedWhenTheResponseCarriedNoTaskState(t *testing.T) {
+	responseProps, err := json.Marshal(map[string]any{"isError": false, "payloadType": "message"})
+	require.NoError(t, err)
+
+	a2a := a2aBlock(t, createLogEntryWithMetadata(map[string]string{
+		APITypeKey:               string(policy.APIKindAgent),
+		APIIDKey:                 "agent-1",
+		APINameKey:               "WeatherAgent",
+		ResolvedOperationKey:     "SendMessage",
+		A2AResponsePropertiesKey: string(responseProps),
+	}))
+
+	assert.Empty(t, a2a.TaskState)
+	assert.Nil(t, a2a.Terminal)
 }

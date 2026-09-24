@@ -4617,9 +4617,12 @@ components:
             $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           description: >
-            The backend A2A agent url and auth configuration. The URL is the base the
-            gateway forwards A2A operation traffic to, and — in public passthrough card
-            mode — the origin of the standard /.well-known/agent-card.json document.
+            The backend A2A agent and its auth configuration. Set exactly one of `url`
+            (a direct backend URL) or `ref` (the name of an entry in
+            `upstreamDefinitions`, resolved to that definition's first URL and
+            `basePath`). The resolved URL is the base the gateway forwards A2A
+            operation traffic to, and — in public passthrough card mode — the origin
+            of the standard /.well-known/agent-card.json document.
           allOf:
             - $ref: "#/components/schemas/Upstream"
             - $ref: "#/components/schemas/UpstreamAuth"
@@ -5650,8 +5653,57 @@ components:
           type: string
           description: Unique id of a deployed llm provider
           example: wso2-openai-provider
+        as:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique across the primary and all additional providers. Defaults to
+            `id` when omitted.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: openai-upstream
         auth:
           $ref: '#/components/schemas/LLMUpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
+
+    LLMProxyProviderEntry:
+      type: object
+      required:
+        - id
+        - isPrimary
+      description: >
+        One provider attached to this proxy in the canonical `providers` list.
+        Every entry is uniform: exactly one carries `isPrimary: true` and becomes
+        the proxy's provider identity and default upstream; the rest are
+        selectable upstreams. Equivalent to the legacy `provider` plus
+        `additionalProviders` shape, which remains supported.
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        alias:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted. The same field
+            as `as` in the legacy shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
+        isPrimary:
+          type: boolean
+          description: >
+            Marks this entry as the proxy's primary provider. Exactly one entry in
+            the list must set it to true.
+          example: true
+        auth:
+          $ref: '#/components/schemas/LLMUpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
 
     LLMProxyAdditionalProvider:
       type: object
@@ -5903,7 +5955,6 @@ components:
       required:
         - displayName
         - version
-        - provider
       properties:
         displayName:
           type: string
@@ -5937,6 +5988,26 @@ components:
           example: "api.openai.com"
         provider:
           $ref: '#/components/schemas/LLMProxyProvider'
+        providers:
+          type: array
+          minItems: 1
+          description: >
+            Canonical list of providers attached to this proxy. Each entry is
+            uniform and exactly one carries `isPrimary: true`. Mutually exclusive
+            with the legacy `provider` plus `additionalProviders` pair - supplying
+            both is rejected. The legacy shape remains supported indefinitely.
+          items:
+            $ref: '#/components/schemas/LLMProxyProviderEntry'
+        inboundTemplate:
+          type: string
+          description: >
+            Handle of the provider template describing the wire format this proxy
+            accepts from clients. Drives the extraction fields (model and token
+            locations) merged into every attached policy. When omitted, the primary
+            provider's own template is used, preserving existing behaviour.
+          minLength: 1
+          maxLength: 253
+          example: openai
         globalPolicies:
           type: array
           description: Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.

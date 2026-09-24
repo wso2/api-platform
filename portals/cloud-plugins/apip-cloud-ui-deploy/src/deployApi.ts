@@ -17,7 +17,8 @@
  */
 
 import type { ApiFetch } from './hostPort';
-import type { Build, DeploymentStatus, Environment, Gateway, GatewayHealth } from './types';
+import type { Build, Environment } from './types';
+import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type StageDTO } from './wire';
 
 /**
  * The artifact kinds this page can deploy, named as the platform names them. A
@@ -43,47 +44,38 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
  * against — kept here only to narrow the gateways the page asks for, never as the
  * rule itself. A kind absent from this map asks for every gateway.
  */
-const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
+export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   RestApi: ['regular'],
   Mcp: ['ai'],
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
 };
 
-/** Wire shapes. These mirror the deployment endpoints field for field. */
-type GatewayDeploymentDTO = {
-  gatewayId: string;
-  deploymentId?: string;
-  status?: DeploymentStatus;
-  statusReason?: string;
-  createdAt?: string;
-  buildId?: string;
-  endpointUrl?: string;
-  isDefault?: boolean;
+/**
+ * Whether a deployment of this kind is made with a backend URL of its own.
+ *
+ * Only a REST API is: it proxies a backend, and which backend can differ per
+ * gateway. An MCP server or an LLM proxy carries its upstream in its own
+ * definition — there is nothing per-deployment to ask for, and asking made the
+ * form impossible to complete, since nothing could fill it in either.
+ *
+ * An unclassified kind is assumed not to take one: the worst case is a parameter
+ * nobody sets, rather than a required field with no answer.
+ */
+const KIND_TAKES_ENDPOINT: Record<ArtifactKind, boolean> = {
+  RestApi: true,
+  Mcp: false,
+  LlmProxy: false,
+  LlmProvider: false,
 };
 
-type StageDTO = {
-  environment: string;
-  gateways?: GatewayDeploymentDTO[];
-};
+export const takesEndpointUrl = (kind: ArtifactKind): boolean => KIND_TAKES_ENDPOINT[kind] ?? false;
 
 type BuildDTO = {
   buildId: string;
   description?: string;
   createdBy?: string;
   createdAt?: string;
-};
-
-/**
- * The gateways resource, which owns a gateway's identity and health. The
- * deployment endpoints key everything by gateway handle and say nothing about
- * the gateway itself, so the name, host and whether it is up are read from here.
- */
-type ManagedGatewayDTO = {
-  id: string;
-  displayName?: string;
-  host?: string;
-  isActive?: boolean;
 };
 
 /**
@@ -118,12 +110,7 @@ export function createDeployClient(
   // Derived from the kind, not passed in by the host: the server refuses a deploy
   // across the same mapping, and a page that asked for a different set than the
   // server accepts would offer a target the deploy then rejects.
-  const gatewayTypes = GATEWAY_TYPES_FOR_KIND[kind] ?? [];
-  const managedGatewaysPath = gatewayTypes.length
-    ? `/managed-gateways?${gatewayTypes
-        .map((t) => `functionalityType=${encodeURIComponent(t)}`)
-        .join('&')}`
-    : '/managed-gateways';
+  const gatewaysPath = managedGatewaysPath(GATEWAY_TYPES_FOR_KIND[kind] ?? []);
   const withKind = (path: string) => (path.includes('?') ? `${path}&${forKind}` : `${path}?${forKind}`);
 
   return {
@@ -136,32 +123,9 @@ export function createDeployClient(
     async listEnvironments(): Promise<Environment[]> {
       const [stages, gateways] = await Promise.all([
         apiFetch<{ list?: StageDTO[] }>('GET', withKind(`${base}/deployments`)),
-        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', managedGatewaysPath).catch(() => undefined),
+        apiFetch<{ list?: ManagedGatewayDTO[] }>('GET', gatewaysPath).catch(() => undefined),
       ]);
-
-      const known = new Map<string, ManagedGatewayDTO>();
-      for (const gateway of gateways?.list ?? []) known.set(gateway.id, gateway);
-
-      return (stages?.list ?? []).map((stage) => ({
-        name: stage.environment,
-        gateways: (stage.gateways ?? []).map((dto): Gateway => {
-          const gateway = known.get(dto.gatewayId);
-          const health: GatewayHealth = gateway?.isActive === false ? 'inactive' : 'active';
-          return {
-            id: dto.gatewayId,
-            name: gateway?.displayName || dto.gatewayId,
-            host: gateway?.host,
-            health,
-            status: dto.status ?? 'NOT_DEPLOYED',
-            isDefault: dto.isDefault,
-            deploymentId: dto.deploymentId,
-            buildId: dto.buildId,
-            deployedAt: dto.createdAt,
-            endpointUrl: dto.endpointUrl,
-            statusReason: dto.statusReason,
-          };
-        }),
-      }));
+      return toEnvironments(stages?.list, gateways?.list);
     },
 
     /** The API's builds, newest first. */

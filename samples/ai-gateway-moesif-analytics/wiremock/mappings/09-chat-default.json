@@ -1,0 +1,26 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "url": "/v1/chat/completions"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 60,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "chatcmpl-mock-default",
+      "object": "chat.completion",
+      "created": 1700000000,
+      "model": "gpt-4o-mini",
+      "choices": [
+        {
+          "index": 0,
+          "message": { "role": "assistant", "content": "Fallback reply for an unrecognised model." },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": { "prompt_tokens": 40, "completion_tokens": 60, "total_tokens": 100 }
+    }
+  }
+}

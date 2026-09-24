@@ -18,9 +18,8 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
-  FormControl,
-  FormLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -36,37 +35,39 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ExternalLink, Globe, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ExternalLink, PanelTop, Pencil, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
 import { useManagedPortalList } from './hooks';
 import type { ManagedPortal } from './types';
 
 export type ManagedPortalsListProps = {
-  /** Invoked when a row's non-action area is clicked; the delete icon stops propagation to avoid double-firing. */
-  onSelect: (id: string) => void;
+  /** Switches parent to the create view; create is a full page, not a modal. */
+  onCreate: () => void;
+  /** Switches parent to the edit view for the given portal; edit is a full page, not a modal. */
+  onEdit: (portal: ManagedPortal) => void;
 };
 
-export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps) {
-  const { portals, isLoading, error, create, remove } = useManagedPortalList();
+/**
+ * Short relative-time formatter local to this feature so the package stays
+ * dependency-free. Picks the coarsest unit that fits a table cell ("3h ago",
+ * "5d ago", "2mo ago"). Clock skew that puts the stamp in the future collapses
+ * to "just now" rather than the misleading "3h ago".
+ */
+function shortRelative(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  if (seconds < 2592000) return `${Math.round(seconds / 86400)}d ago`;
+  if (seconds < 31536000) return `${Math.round(seconds / 2592000)}mo ago`;
+  return `${Math.round(seconds / 31536000)}y ago`;
+}
 
-  // No loginEnvironment on create: server is authoritative on org bootstrap; Edit exposes the switch later.
-  const [createOpen, setCreateOpen] = useState(false);
-  const [handle, setHandle] = useState('');
-  // Handle validation is client-side only. Backend allows up to 40 chars, but the
-  // effective K8s label ceiling for openchoreo's RenderedRelease name derivation
-  // caps the practical length lower; keep the UI aligned with what actually
-  // succeeds so users don't have to submit to discover the ceiling.
-  const handleError = useMemo(() => {
-    if (handle === '') return '';
-    if (handle.length < 3) return 'Handle must be at least 3 characters.';
-    if (handle.length > 34) return 'Handle must be at most 34 characters.';
-    if (!/^[a-z0-9-]+$/.test(handle)) return 'Handle can contain only lowercase letters, digits, and hyphens.';
-    return '';
-  }, [handle]);
-  const handleValid = handle !== '' && handleError === '';
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsListProps) {
+  const { portals, isLoading, error, remove } = useManagedPortalList();
 
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -85,32 +86,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
     );
   }, [portals, searchQuery]);
 
-  const resetCreateForm = () => {
-    setHandle('');
-    setName('');
-    setDescription('');
-  };
-
-  const handleCreate = async () => {
-    setSubmitting(true);
-    try {
-      await create({
-        handle: handle.trim(),
-        name: name.trim(),
-        description: description.trim() || undefined,
-        // loginEnvironment omitted; server picks the org's preferred env.
-      });
-      resetCreateForm();
-      setCreateOpen(false);
-    } catch {
-      // Hook already notified; leave the dialog open with user input for retry.
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleDeleteConfirm = async () => {
-    // Mirror gateways: keep the dialog open with a busy button until the delete settles.
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
@@ -129,14 +105,14 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
         <Grid size={{ xs: 12 }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 2 }}>
             <PageTitle sx={{ minWidth: 0, flex: 1 }}>
-              <PageTitle.Header>API Portals</PageTitle.Header>
-              <PageTitle.SubHeader>Manage and monitor your API portals.</PageTitle.SubHeader>
+              <PageTitle.Header>Portals</PageTitle.Header>
+              <PageTitle.SubHeader>Manage the portals for this organization.</PageTitle.SubHeader>
             </PageTitle>
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {portals.length > 0 ? (
-                <Button variant="contained" onClick={() => setCreateOpen(true)} startIcon={<Plus size={20} />}>
-                  Create Portal
+                <Button variant="contained" onClick={onCreate} startIcon={<Plus size={20} />}>
+                  Add Portal
                 </Button>
               ) : null}
             </Stack>
@@ -157,14 +133,11 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
           </Grid>
         ) : portals.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
-              <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
-                <Globe size={120} color="var(--mui-palette-action-disabled)" />
-                <Typography variant="body1" color="text.secondary">
-                  No API portals yet
-                </Typography>
-                <Button variant="contained" onClick={() => setCreateOpen(true)} startIcon={<Plus size={20} />}>
-                  Create Portal
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
+              <Stack spacing={2} alignItems="center" justifyContent="center" sx={{ textAlign: 'center', maxWidth: 480 }}>
+                <PanelTop size={64} color="var(--mui-palette-action-disabled)" />
+                <Button variant="contained" onClick={onCreate} startIcon={<Plus size={20} />}>
+                  Add Portal
                 </Button>
               </Stack>
             </Box>
@@ -174,7 +147,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
             <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
-                placeholder="Search API portals..."
+                placeholder="Search portals..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 slotProps={{
@@ -198,35 +171,22 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                         <TableCell>Name</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell>Login environment</TableCell>
+                        <TableCell>Updated</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {filteredPortals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4}>
+                          <TableCell colSpan={5}>
                             <Typography variant="body2" color="text.secondary">
-                              No portals found.
+                              No portals match your search.
                             </Typography>
                           </TableCell>
                         </TableRow>
                       ) : (
                         filteredPortals.map((portal) => (
-                          <TableRow
-                            key={portal.id}
-                            hover
-                            tabIndex={0}
-                            role="button"
-                            aria-label={`Open ${portal.name}`}
-                            onClick={() => onSelect(portal.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                onSelect(portal.id);
-                              }
-                            }}
-                            sx={{ cursor: 'pointer' }}
-                          >
+                          <TableRow key={portal.id} hover>
                             <TableCell sx={{ minWidth: 220 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Avatar
@@ -256,7 +216,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                                 color="text.secondary"
                                 sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}
                               >
-                                {portal.description || '—'}
+                                {portal.description || '-'}
                               </Typography>
                             </TableCell>
                             <TableCell>
@@ -264,17 +224,23 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                                 <Chip label={portal.loginEnvironment} size="small" variant="outlined" />
                               ) : (
                                 <Typography variant="body2" color="text.secondary">
-                                  —
+                                  -
                                 </Typography>
                               )}
                             </TableCell>
-                            <TableCell
-                              align="right"
-                              // The row's onKeyDown reacts to Enter/Space and would fire on the
-                              // Visit/Delete buttons too, opening the detail view on top of the
-                              // button's own action. Neutralize keydown for the whole action cell.
-                              onKeyDown={(event) => event.stopPropagation()}
-                            >
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {shortRelative(portal.updatedAt) || '-'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right">
+                              <IconButton
+                                size="small"
+                                aria-label={`Edit ${portal.name}`}
+                                onClick={() => onEdit(portal)}
+                              >
+                                <Pencil size={16} />
+                              </IconButton>
                               {portal.url && (
                                 <IconButton
                                   size="small"
@@ -283,7 +249,6 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                                   href={portal.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  onClick={(event) => event.stopPropagation()}
                                 >
                                   <ExternalLink size={16} />
                                 </IconButton>
@@ -292,11 +257,7 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
                                 size="small"
                                 color="error"
                                 aria-label={`Delete ${portal.name}`}
-                                onClick={(event) => {
-                                  // Stop the row's onSelect from firing on delete.
-                                  event.stopPropagation();
-                                  setDeleteTarget(portal);
-                                }}
+                                onClick={() => setDeleteTarget(portal)}
                               >
                                 <Trash2 size={16} />
                               </IconButton>
@@ -313,89 +274,13 @@ export default function ManagedPortalsList({ onSelect }: ManagedPortalsListProps
         )}
       </Grid>
 
-      {/* Create portal */}
-      <Dialog
-        open={createOpen}
-        onClose={() => {
-          if (submitting) return;
-          resetCreateForm();
-          setCreateOpen(false);
-        }}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Create Portal</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <FormControl fullWidth error={Boolean(handleError)}>
-              <FormLabel>Handle</FormLabel>
-              <TextField
-                fullWidth
-                autoFocus
-                placeholder="e.g. acme-portal"
-                value={handle}
-                onChange={(event) => setHandle(event.target.value)}
-                disabled={submitting}
-                error={Boolean(handleError)}
-                helperText={handleError || 'Lowercase letters, digits, and hyphens; 3-34 characters.'}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel>Name</FormLabel>
-              <TextField
-                fullWidth
-                placeholder="e.g. Acme Developer Portal"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={submitting}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel>Description</FormLabel>
-              <TextField
-                fullWidth
-                multiline
-                minRows={2}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={submitting}
-              />
-            </FormControl>
-            {/* No Login-environment field on Create; the server picks the org's preferred env, and Edit exposes the picker later. */}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => {
-              resetCreateForm();
-              setCreateOpen(false);
-            }}
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={submitting || !handleValid || !name.trim()}
-            onClick={handleCreate}
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete portal */}
       <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
         <DialogTitle>Delete Portal</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
-          </Typography>
+          <DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button variant="outlined" color="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary" disabled={deleting}>
             Cancel
           </Button>
           <Button

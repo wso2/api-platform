@@ -188,7 +188,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "db-proxy",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "db-provider",
 			},
 		},
@@ -2538,7 +2538,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "OpenAI Proxy",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "openai-provider",
 				Auth: &api.LLMUpstreamAuth{
 					Type:   api.LLMUpstreamAuthTypeApiKey,
@@ -2636,7 +2636,7 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 				Spec: api.LLMProxyConfigData{
 					DisplayName: "OpenAI Proxy",
 					Version:     "v1.0",
-					Provider: api.LLMProxyProvider{
+					Provider: &api.LLMProxyProvider{
 						Id: "openai-provider",
 						Auth: &api.LLMUpstreamAuth{
 							Type:         tc.authType,
@@ -2730,7 +2730,7 @@ func TestTransformProxy_WithOAuth2UpstreamAuth(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "OpenAI Proxy (OAuth2)",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "openai-provider-oauth2-proxy",
 				Auth: &api.LLMUpstreamAuth{
 					Type: api.LLMUpstreamAuthTypeOauth2,
@@ -2819,7 +2819,7 @@ func TestTransformProxy_ApiKeyWithPolicyParams(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "OpenAI Proxy (api-key via policyParams)",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "openai-provider-apikey-pp",
 				Auth: &api.LLMUpstreamAuth{
 					Type: api.LLMUpstreamAuthTypeApiKey,
@@ -2926,7 +2926,7 @@ func TestTransformProxy_WithOAuth2PasswordGrantScope(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "OpenAI Proxy (OAuth2 password grant)",
 			Version:     "v1.0",
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: "openai-provider-oauth2-proxy-password",
 				Auth: &api.LLMUpstreamAuth{
 					Type: api.LLMUpstreamAuthTypeOauth2,
@@ -3007,4 +3007,100 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	_, err = transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported access control mode")
+}
+
+// primaryUpstreamDefinition returns the named upstream definition for the given
+// provider, or nil when the transform produced none for it.
+func primaryUpstreamDefinition(result *api.RestAPI, name string) *api.UpstreamDefinition {
+	if result.Spec.UpstreamDefinitions == nil {
+		return nil
+	}
+	for i, def := range *result.Spec.UpstreamDefinitions {
+		if def.Name == name {
+			return &(*result.Spec.UpstreamDefinitions)[i]
+		}
+	}
+	return nil
+}
+
+// TestLLMProviderTransformer_PrimaryIsAlwaysAddressable: every attached
+// provider, the primary included, must have a named upstream definition so any
+// policy that selects it by name can route to it. Before this feature the
+// primary only got one when it carried a transformer, which made routing depend
+// on translation.
+//
+// The default cluster is asserted alongside it: a named definition makes a
+// provider addressable, it does not replace the default.
+func TestLLMProviderTransformer_PrimaryIsAlwaysAddressable(t *testing.T) {
+	proxyWith := func(transformer *api.LLMProxyTransformer) *api.LLMProxyConfiguration {
+		return &api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "addressable"},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "addressable", Version: "v1.0", Context: stringPtr("/addressable"),
+				Provider: &api.LLMProxyProvider{Id: "openai-provider", Transformer: transformer},
+			},
+		}
+	}
+
+	cases := []struct {
+		name        string
+		transformer *api.LLMProxyTransformer
+	}{
+		{"primary without a transformer", nil},
+		{"primary with a transformer", &api.LLMProxyTransformer{
+			Type: "openai-to-anthropic-transformer", Version: "v0"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transformer, _ := newCompatEnvironment(t)
+			result, err := transformer.Transform(proxyWith(tc.transformer), &api.RestAPI{})
+			require.NoError(t, err)
+
+			def := primaryUpstreamDefinition(result, "openai-provider")
+			require.NotNil(t, def,
+				"the primary must be addressable by name whether or not it carries a transformer")
+			require.NotNil(t, def.BasePath)
+			assert.Equal(t, "/openai-provider", *def.BasePath)
+			require.Len(t, def.Upstreams, 1)
+			assert.Equal(t, "http://127.0.0.1:8080", def.Upstreams[0].Url)
+
+			// The default cluster still points at the primary.
+			require.NotNil(t, result.Spec.Upstream.Main.Url)
+			assert.Equal(t, "http://127.0.0.1:8080/openai-provider", *result.Spec.Upstream.Main.Url,
+				"a named definition must not replace the default cluster")
+		})
+	}
+}
+
+// TestLLMProviderTransformer_SingleProviderUnaffected guards that adding a
+// definition for the primary must not disturb a single-provider proxy's routing
+// — its default cluster is still the provider, and nothing routes by name.
+func TestLLMProviderTransformer_SingleProviderUnaffected(t *testing.T) {
+	transformer, _ := newCompatEnvironment(t)
+	result, err := transformer.Transform(&api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "single"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "single", Version: "v1.0", Context: stringPtr("/single"),
+			Provider: &api.LLMProxyProvider{Id: "openai-provider"},
+		},
+	}, &api.RestAPI{})
+	require.NoError(t, err)
+
+	require.NotNil(t, result.Spec.Upstream.Main.Url)
+	assert.Equal(t, "http://127.0.0.1:8080/openai-provider", *result.Spec.Upstream.Main.Url)
+
+	for _, op := range result.Spec.Operations {
+		if op.Policies == nil {
+			continue
+		}
+		for _, pol := range *op.Policies {
+			assert.NotEqual(t, "llm-header-router", pol.Name,
+				"a single-provider proxy attaches no router, so nothing selects by name")
+		}
+	}
 }

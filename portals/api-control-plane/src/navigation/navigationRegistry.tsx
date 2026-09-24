@@ -28,15 +28,13 @@ import {
   Gauge,
   Home,
   Layers,
-  MessagesSquare,
+  Megaphone,
   Network,
-  PanelTop,
   Rocket,
   ScrollText,
   Settings,
   ShieldCheck,
-  SquareTerminal,
-  Terminal,
+  FlaskConical,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -311,28 +309,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Test',
     group: CLUSTER.api,
     order: 40,
-    icon: <Terminal />,
+    icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
-    ...submenu([
-      {
-        icon: <SquareTerminal />,
-        id: 'test-console',
-        label: 'API Console',
-        to: routes.apiTestConsole,
-      },
-      {
-        icon: <Terminal />,
-        id: 'test-curl',
-        label: 'Curl',
-        to: routes.apiTestCurl,
-      },
-      {
-        icon: <MessagesSquare />,
-        id: 'test-chat',
-        label: 'API Chat',
-        to: routes.apiTestChat,
-      },
-    ]),
+    // A leaf, not a parent: the console, the cURL builder and the response all
+    // live on one page, so there is nothing to disclose beneath it.
+    to: apiLevelTo(routes.apiTest),
+    match: matchRoutes(...apiScopedPaths(routes.apiTest)),
   },
   {
     id: 'deploy',
@@ -390,16 +372,20 @@ export const navigationRegistry: NavigationDefinition[] = [
     ]),
   },
   {
-    id: 'portals',
-    label: 'Portals',
+    // "Publish this API to a portal": the API-level counterpart of the org-level
+    // portal registry, which lives in the cloud-plugin sidebar as "Portals".
+    // Shows at every scope. Out of API scope it links to the scope-less alias so
+    // `PortalsPage`'s ScopeGate can walk the user down to an API.
+    id: 'publish',
+    label: 'Publish',
     group: CLUSTER.api,
-    order: 80,
-    icon: <PanelTop />,
-    ...adaptive([
-      { level: 'api', to: routes.apiPortals },
-      { level: 'project', to: routes.projectPortals },
-      { level: 'organization', to: routes.organizationPortals },
-    ]),
+    order: 55,
+    icon: <Megaphone />,
+    to: apiLevelTo(routes.apiPortals),
+    match: matchRoutes(
+      ...apiScopedPaths(routes.apiPortals),
+      routes.apiPortalPublish(),
+    ),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.

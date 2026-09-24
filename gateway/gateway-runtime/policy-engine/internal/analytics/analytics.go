@@ -706,7 +706,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindAgent) {
-		event.Properties[AgentAnalyticsProperty] = buildAgentAnalytics(
+		event.Properties[A2AAnalyticsProperty] = buildA2AAnalytics(
 			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
 	}
 
@@ -725,18 +725,17 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	return event
 }
 
-// AgentAnalyticsProperty is the event property the Agent analytics envelope is
-// assembled under.
+// A2AAnalyticsProperty is the event property the A2A dimensions are assembled under,
+// for a publisher to read on its way to whatever shape that sink defines.
 //
-// It is an envelope keyed by domain rather than a flat block named after one protocol,
-// so a later Agent analytics domain can be added as a sibling of `a2a` without its
-// fields having to be told apart from A2A's by name. It replaces the earlier flat
-// `a2aAnalytics` property; nothing publishes that key any more, and a publisher test
-// asserts its absence, because a consumer reading both would silently see two
-// different shapes of the same event depending on the gateway version.
-const AgentAnalyticsProperty = "agentAnalytics"
+// It is an in-process handle and no longer a key on any published event: Moesif's A2A
+// event schema is what the dimensions are serialized into, and its publisher maps them
+// field by field. The name matches the type it carries — the earlier `agentAnalytics`
+// envelope it replaced existed to give the published JSON a domain-keyed nesting that
+// nothing reads any more.
+const A2AAnalyticsProperty = "a2aAnalytics"
 
-// buildAgentAnalytics assembles the published Agent analytics envelope for one event.
+// buildA2AAnalytics assembles the A2A dimensions for one event.
 //
 // Every dimension a downstream A2A dashboard needs that is not already a first-class
 // field on the event lives here. Latency stays on event.Latencies, which the ALS
@@ -745,19 +744,19 @@ const AgentAnalyticsProperty = "agentAnalytics"
 // facts specific to A2A — which operation, over which transport, and whether the agent
 // actually succeeded — are assembled here.
 //
-// The result is typed rather than a map. What this function produces is an external
+// The result is typed rather than a map. These dimensions are the input to an external
 // contract, and a map is a contract only by convention: a renamed key or a value that
 // quietly changes type stays invisible until a dashboard goes blank.
 //
 // Nothing in here is aggregated. Counts, distinct-consumer rollups and success rates
 // are computed downstream; this function's whole contract is that the dimensions each
 // of those needs are present, bounded where they must be, and derived correctly.
-func buildAgentAnalytics(
+func buildA2AAnalytics(
 	metadata map[string]string,
 	logEntry *v3.HTTPAccessLogEntry,
 	requestMethod string,
 	statusCode int,
-) *dto.AgentAnalytics {
+) *dto.A2AAnalytics {
 	a2a := &dto.A2AAnalytics{}
 
 	// The canonical operation, stamped by the kernel from the bound chain key rather
@@ -772,7 +771,7 @@ func buildAgentAnalytics(
 		// A card fetch or a preflight. It gets no operation, no outcome and no
 		// transport: it is reported so the traffic is visible, and deliberately not
 		// shaped like an invocation so nothing downstream can roll it in with one.
-		return &dto.AgentAnalytics{A2A: a2a}
+		return a2a
 	}
 
 	if operation == "" {
@@ -799,12 +798,14 @@ func buildAgentAnalytics(
 
 	applyA2AResolverAttributes(a2a, metadata)
 
+	a2a.Terminal = a2aTerminal(a2a.TaskState)
+
 	outcome, origin := a2aOutcome(a2a, terminalReason, statusCode,
 		logEntry.GetCommonProperties().GetUpstreamRemoteAddress() != nil)
 	a2a.Outcome = outcome
 	a2a.FailureOrigin = origin
 
-	return &dto.AgentAnalytics{A2A: a2a}
+	return a2a
 }
 
 // a2aRequestBlock is the wire shape of the analytics system policy's request block:
@@ -876,6 +877,39 @@ func applyA2AResolverAttributes(a2a *dto.A2AAnalytics, metadata map[string]strin
 	if a2a.ProtocolVersion == "" {
 		a2a.ProtocolVersion = metadata[A2AProtocolVersionAttributeKey]
 	}
+}
+
+// a2aTerminal reports whether an observed task state is one the task cannot leave.
+//
+// Derived here rather than downstream because which A2A states are final is protocol
+// knowledge, and a consumer that hard-codes the list goes quietly wrong the release a
+// state is added. The four below are A2A 1.0's terminal set; the four in-flight states
+// (SUBMITTED, WORKING, INPUT_REQUIRED, AUTH_REQUIRED) are explicitly not terminal, and
+// TASK_STATE_UNSPECIFIED says nothing either way.
+//
+// An unobserved or unspecified state yields nil rather than false, because false is a
+// positive claim that the task is still running — the same reason IsError is omitted
+// rather than defaulted when no body was read.
+func a2aTerminal(taskState string) *bool {
+	if taskState == "" || taskState == a2aTaskStateUnspecified {
+		return nil
+	}
+	_, terminal := a2aTerminalTaskStates[taskState]
+	return &terminal
+}
+
+// a2aTaskStateUnspecified is the protocol's own "no state reported" value. It arrives
+// as an ordinary member of the closed set the analytics policy validates against, so it
+// is named here rather than treated as absent.
+const a2aTaskStateUnspecified = "TASK_STATE_UNSPECIFIED"
+
+// a2aTerminalTaskStates is A2A 1.0's set of final task states — the states from which
+// no further update follows.
+var a2aTerminalTaskStates = map[string]struct{}{
+	"TASK_STATE_COMPLETED": {},
+	"TASK_STATE_CANCELED":  {},
+	"TASK_STATE_FAILED":    {},
+	"TASK_STATE_REJECTED":  {},
 }
 
 // a2aRequestType classifies a request on an Agent's routes.

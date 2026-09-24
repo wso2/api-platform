@@ -241,10 +241,6 @@ func expandContext(ctx context.Context, s string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("names: resolving %s%s}: %w", ContextPlaceholder, name, err)
 		}
-		if value == "" {
-			return "", fmt.Errorf("names: resolving %s%s}: resolved to an empty value",
-				ContextPlaceholder, name)
-		}
 		b.WriteString(value)
 		rest = after[end+1:]
 	}

@@ -32,7 +32,7 @@ Feature: Redirect responses
     And I generate a unique API context from "/redirect-1" and store it as "apiContext1"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}        |
       | name                       | ${CTX:apiName1}                  |
       | spec.displayName            | Redirect-Host-Test                |
       | spec.version                | v1.0.0                            |
@@ -51,7 +51,7 @@ Feature: Redirect responses
     And I generate a unique API context from "/redirect-2" and store it as "apiContext2"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}        |
       | name                       | ${CTX:apiName2}                  |
       | spec.displayName            | Redirect-Permanent-Test           |
       | spec.version                | v1.0.0                            |
@@ -70,7 +70,7 @@ Feature: Redirect responses
     And I generate a unique API context from "/redirect-3" and store it as "apiContext3"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}        |
       | name                       | ${CTX:apiName3}                  |
       | spec.displayName            | Redirect-Scheme-Test              |
       | spec.version                | v1.0.0                            |
@@ -89,7 +89,7 @@ Feature: Redirect responses
     And I generate a unique API context from "/redirect-4" and store it as "apiContext4"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}        |
       | name                       | ${CTX:apiName4}                  |
       | spec.displayName            | Redirect-FullPath-Test            |
       | spec.version                | v1.0.0                            |
@@ -108,7 +108,7 @@ Feature: Redirect responses
     And I generate a unique API context from "/redirect-5" and store it as "apiContext5"
 
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion}        |
       | name                       | ${CTX:apiName5}                  |
       | spec.displayName            | Redirect-Full-Override-Test       |
       | spec.version                | v1.0.0                            |

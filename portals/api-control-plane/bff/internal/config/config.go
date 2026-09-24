@@ -140,8 +140,8 @@ type UpstreamConfig struct {
 // the cookie attributes the browser receives it under.
 type SessionConfig struct {
 	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
-	IdleTimeout time.Duration `koanf:"idle_timeout"`  // sliding idle window
-	AbsoluteTTL time.Duration `koanf:"absolute_ttl"`  // hard cap regardless of activity / token exp
+	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 	Cookie      CookieConfig  `koanf:"cookie"`
 }
 

@@ -143,11 +143,6 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/policies'),
-  apiDevelopRouting: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/routing'),
   apiDevelopDocuments: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
@@ -163,24 +158,13 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'deploy'),
-  // Test, Observability and Manage are sidebar *parents*: in API scope they open
-  // a submenu rather than a page, so only their children have paths. There is no
-  // bare `.../test` route — nothing links to one.
-  apiTestConsole: (
+  apiTest: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/console'),
-  apiTestCurl: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/curl'),
-  apiTestChat: (
-    orgHandle = ':orgHandle',
-    projectHandler: ScopeHandle = ':projectHandler',
-    apiHandler: ScopeHandle = ':apiHandler',
-  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test/chat'),
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'test'),
+  // Observability and Manage are sidebar *parents*: in API scope they open a
+  // submenu rather than a page, so only their children have paths.
   apiManageMonetize: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',
@@ -220,14 +204,23 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
-  organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
-  projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
-    projectPath(orgHandle, projectHandler, 'portals'),
+  // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
+  // the well-known link the built-in Publish page uses for its "register a portal"
+  // empty-state so the core does not encode the plugin's routePath literal.
+  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
   apiPortals: (
     orgHandle = ':orgHandle',
-    projectHandler = ':projectHandler',
-    apiHandler = ':apiHandler',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'portals'),
+  // Reached only from the Portals page's own card — like `apiEdit`/`newApi`,
+  // there is no sidebar link to it and so no scope-less alias to register.
+  apiPortalPublish: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler',
+    apiPortalId = ':apiPortalId',
+  ) => apiPath(orgHandle, projectHandler, apiHandler, `portals/${apiPortalId}`),
   apiAdmin: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

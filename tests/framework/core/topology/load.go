@@ -50,6 +50,25 @@ type Resolved struct {
 
 	// Blocks are fully expanded matrix variants.
 	Blocks []ResolvedBlock
+
+	// SkippedRunners records runners excluded by framework compatibility selection.
+	SkippedRunners []SkippedRunner
+
+	// SkippedBlocks records database variants excluded by framework compatibility selection.
+	SkippedBlocks []SkippedBlock
+}
+
+// SkippedRunner records a runner excluded before its block is booted.
+type SkippedRunner struct {
+	Block  string
+	Runner string
+	Reason string
+}
+
+// SkippedBlock records a block excluded before its topology is booted.
+type SkippedBlock struct {
+	Block  string
+	Reason string
 }
 
 // ResolvedBlock is one concrete topology variant.
@@ -85,6 +104,9 @@ type ResolvedComponent struct {
 
 	// DB is the resolved component engine, or empty for a stateless component.
 	DB components.DBType
+
+	// DBCompatibility restricts a Platform Gateway database engine to compatible releases.
+	DBCompatibility GatewayDBCompatibility
 
 	// Image is the database server image selected for this component.
 	Image components.ImageRef
@@ -231,14 +253,20 @@ func resolve(suite *Suite, registry *components.Registry) (*Resolved, error) {
 	}
 
 	for i := range suite.Blocks {
-		block := &suite.Blocks[i]
-		variants, err := expandMatrix(block)
+		block := suite.Blocks[i]
+		runners, err := parseRunnerTags(block.Name, block.Runners)
+		if err != nil {
+			errs.add(err)
+			continue
+		}
+		block.Runners = runners
+		variants, err := expandMatrix(&block)
 		if err != nil {
 			errs.add(err)
 			continue
 		}
 		for _, variant := range variants {
-			rb, err := resolveBlock(block, variant, defaults, registry)
+			rb, err := resolveBlock(&block, variant, defaults, registry)
 			if err != nil {
 				errs.add(err)
 				continue
@@ -408,6 +436,20 @@ func validateDefaults(defaults map[string]ComponentDefaults, registry *component
 			errs.addf("defaults.components[%q]: unknown component (registered: %v)", name, registry.Names())
 			continue
 		}
+		if len(spec.DBCompatibility) > 0 {
+			if name != "platform-gateway" {
+				errs.addf("defaults.components[%q].dbCompatibility: only platform-gateway supports Gateway database compatibility", name)
+			}
+			if def.DB == nil {
+				errs.addf("defaults.components[%q].dbCompatibility: component has no storage", name)
+			} else {
+				for engine := range spec.DBCompatibility {
+					if !def.DB.Supports(engine) {
+						errs.addf("defaults.components[%q].dbCompatibility: component does not support db %q", name, engine)
+					}
+				}
+			}
+		}
 		if db.IsZero() {
 			continue
 		}
@@ -490,7 +532,12 @@ func resolveBlock(
 				errs.addf("block %q: external component %q does not support a version", name, c.Name)
 				continue
 			}
-			def = def.WithImageVersion(version)
+			versionedDef, versionErr := def.WithReleaseVersion(version)
+			if versionErr != nil {
+				errs.addf("block %q: %v", name, versionErr)
+				continue
+			}
+			def = versionedDef
 		}
 
 		dbType, err := def.ResolveDBType(engineFor(c, v, defaults, block, registry), "")
@@ -527,7 +574,8 @@ func resolveBlock(
 		_, dbVariant, _ := componentVariant(c, v, defaults)
 		rb.Components = append(rb.Components, ResolvedComponent{
 			Def: def, Version: version, BuildFromSource: version == "", AddPoliciesFrom: strings.TrimSpace(c.AddPoliciesFrom), DB: dbType,
-			Image: dbVariant.Image, Overlay: c.Overlay, StagedFiles: maps.Clone(c.StagedFiles),
+			DBCompatibility: maps.Clone(defaults[c.Name].DBCompatibility),
+			Image:           dbVariant.Image, Overlay: c.Overlay, StagedFiles: maps.Clone(c.StagedFiles),
 			Replicas: replicas, Wiring: wiring,
 			DependsOn: append([]string(nil), c.DependsOn...),
 		})

@@ -31,7 +31,7 @@ Feature: Regex guardrail policy
     And I generate a unique API version from "rg-match" and store it as "apiVersion"
     And I generate a unique API context from "/rg-match" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -57,13 +57,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted pattern blocks banned words
     Given I generate a unique value from "rg-profanity" and store it as "apiName"
     And I generate a unique API version from "rg-profanity" and store it as "apiVersion"
     And I generate a unique API context from "/rg-profanity" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -87,13 +88,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Email address format is validated
     Given I generate a unique value from "rg-email" and store it as "apiName"
     And I generate a unique API version from "rg-email" and store it as "apiVersion"
     And I generate a unique API context from "/rg-email" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -117,13 +119,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted logic passes content without a social-security-number pattern
     Given I generate a unique value from "rg-invert-ssn" and store it as "apiName"
     And I generate a unique API version from "rg-invert-ssn" and store it as "apiVersion"
     And I generate a unique API context from "/rg-invert-ssn" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -147,13 +150,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted logic blocks a credit-card-number pattern
     Given I generate a unique value from "rg-invert-cc" and store it as "apiName"
     And I generate a unique API version from "rg-invert-cc" and store it as "apiVersion"
     And I generate a unique API context from "/rg-invert-cc" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -177,13 +181,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath-extracted field is validated against the pattern
     Given I generate a unique value from "rg-jsonpath" and store it as "apiName"
     And I generate a unique API version from "rg-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/rg-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -215,13 +220,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Nested JSONPath-extracted field is validated against the pattern
     Given I generate a unique value from "rg-nested" and store it as "apiName"
     And I generate a unique API version from "rg-nested" and store it as "apiVersion"
     And I generate a unique API context from "/rg-nested" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -257,13 +263,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction of a missing field is blocked
     Given I generate a unique value from "rg-invalid-path" and store it as "apiName"
     And I generate a unique API version from "rg-invalid-path" and store it as "apiVersion"
     And I generate a unique API context from "/rg-invalid-path" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -286,13 +293,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the assessment detail when showAssessment is enabled
     Given I generate a unique value from "rg-assessment" and store it as "apiName"
     And I generate a unique API version from "rg-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/rg-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -313,13 +321,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Empty request body passes an unrestricted pattern
     Given I generate a unique value from "rg-empty" and store it as "apiName"
     And I generate a unique API version from "rg-empty" and store it as "apiVersion"
     And I generate a unique API context from "/rg-empty" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -336,13 +345,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: An alternation pattern accepts any of its listed values
     Given I generate a unique value from "rg-complex" and store it as "apiName"
     And I generate a unique API version from "rg-complex" and store it as "apiVersion"
     And I generate a unique API context from "/rg-complex" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -372,13 +382,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Matching is case-sensitive by default
     Given I generate a unique value from "rg-case-sensitive" and store it as "apiName"
     And I generate a unique API version from "rg-case-sensitive" and store it as "apiVersion"
     And I generate a unique API context from "/rg-case-sensitive" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -402,13 +413,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: An inline case-insensitive flag matches regardless of letter case
     Given I generate a unique value from "rg-case-insensitive" and store it as "apiName"
     And I generate a unique API version from "rg-case-insensitive" and store it as "apiVersion"
     And I generate a unique API context from "/rg-case-insensitive" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -438,13 +450,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A request-only regex policy still declares a response pattern without enforcing it
     Given I generate a unique value from "rg-combined" and store it as "apiName"
     And I generate a unique API version from "rg-combined" and store it as "apiVersion"
     And I generate a unique API context from "/rg-combined" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -468,13 +481,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: International phone number format is validated
     Given I generate a unique value from "rg-phone" and store it as "apiName"
     And I generate a unique API version from "rg-phone" and store it as "apiVersion"
     And I generate a unique API context from "/rg-phone" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -498,13 +512,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response carries the complete guardrail error contract
     Given I generate a unique value from "rg-error-structure" and store it as "apiName"
     And I generate a unique API version from "rg-error-structure" and store it as "apiVersion"
     And I generate a unique API context from "/rg-error-structure" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -528,13 +543,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A response-side pattern is validated against a reflected JSON field
     Given I generate a unique value from "rg-response-json" and store it as "apiName"
     And I generate a unique API version from "rg-response-json" and store it as "apiVersion"
     And I generate a unique API context from "/rg-response-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -553,13 +569,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: An inverted response-side pattern allows a response with no forbidden words
     Given I generate a unique value from "rg-response-block" and store it as "apiName"
     And I generate a unique API version from "rg-response-block" and store it as "apiVersion"
     And I generate a unique API context from "/rg-response-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -574,13 +591,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: A response-side pattern validates the reflected host header format
     Given I generate a unique value from "rg-response-format" and store it as "apiName"
     And I generate a unique API version from "rg-response-format" and store it as "apiVersion"
     And I generate a unique API context from "/rg-response-format" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -598,13 +616,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Unicode letters and numbers are accepted, symbols are blocked
     Given I generate a unique value from "rg-unicode" and store it as "apiName"
     And I generate a unique API version from "rg-unicode" and store it as "apiVersion"
     And I generate a unique API context from "/rg-unicode" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -628,13 +647,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Content in different international scripts is accepted
     Given I generate a unique value from "rg-international" and store it as "apiName"
     And I generate a unique API version from "rg-international" and store it as "apiVersion"
     And I generate a unique API context from "/rg-international" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -664,13 +684,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted alphanumeric-only pattern allows emoji through
     Given I generate a unique value from "rg-emoji" and store it as "apiName"
     And I generate a unique API version from "rg-emoji" and store it as "apiVersion"
     And I generate a unique API context from "/rg-emoji" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -694,13 +715,14 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Letters with diacritics are accepted, digits are blocked
     Given I generate a unique value from "rg-diacritics" and store it as "apiName"
     And I generate a unique API version from "rg-diacritics" and store it as "apiVersion"
     And I generate a unique API context from "/rg-diacritics" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}        |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -724,3 +746,4 @@ Feature: Regex guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

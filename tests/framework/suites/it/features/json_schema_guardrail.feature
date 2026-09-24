@@ -31,7 +31,7 @@ Feature: JSON schema guardrail policy
     And I generate a unique API version from "jsg-valid-request" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-valid-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -49,13 +49,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Invalid request fails schema validation
     Given I generate a unique value from "jsg-invalid-request" and store it as "apiName"
     And I generate a unique API version from "jsg-invalid-request" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-invalid-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -74,13 +75,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Missing required field fails validation
     Given I generate a unique value from "jsg-missing-field" and store it as "apiName"
     And I generate a unique API version from "jsg-missing-field" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-missing-field" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -99,13 +101,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Wrong type fails validation
     Given I generate a unique value from "jsg-wrong-type" and store it as "apiName"
     And I generate a unique API version from "jsg-wrong-type" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-wrong-type" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -123,13 +126,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Valid response passes schema validation
     Given I generate a unique value from "jsg-valid-response" and store it as "apiName"
     And I generate a unique API version from "jsg-valid-response" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-valid-response" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -144,13 +148,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Both request and response are validated against their own schemas
     Given I generate a unique value from "jsg-both-validation" and store it as "apiName"
     And I generate a unique API version from "jsg-both-validation" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-both-validation" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -168,13 +173,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate specific field with JSONPath
     Given I generate a unique value from "jsg-jsonpath" and store it as "apiName"
     And I generate a unique API version from "jsg-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -192,13 +198,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: JSONPath extraction with invalid data
     Given I generate a unique value from "jsg-jsonpath-invalid" and store it as "apiName"
     And I generate a unique API version from "jsg-jsonpath-invalid" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-jsonpath-invalid" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -216,13 +223,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate nested object with JSONPath
     Given I generate a unique value from "jsg-nested-jsonpath" and store it as "apiName"
     And I generate a unique API version from "jsg-nested-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-nested-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -240,13 +248,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Invert logic passes when schema validation fails
     Given I generate a unique value from "jsg-invert-pass" and store it as "apiName"
     And I generate a unique API version from "jsg-invert-pass" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-invert-pass" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -264,13 +273,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Invert logic blocks when schema validation succeeds
     Given I generate a unique value from "jsg-invert-block" and store it as "apiName"
     And I generate a unique API version from "jsg-invert-block" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-invert-block" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -288,13 +298,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Inverted schema targeting a malicious pattern passes safe content
     Given I generate a unique value from "jsg-block-malicious" and store it as "apiName"
     And I generate a unique API version from "jsg-block-malicious" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-block-malicious" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -312,13 +323,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Blocked response includes the assessment detail when showAssessment is enabled
     Given I generate a unique value from "jsg-show-assessment" and store it as "apiName"
     And I generate a unique API version from "jsg-show-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-show-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -337,13 +349,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Hide assessment details when showAssessment is false
     Given I generate a unique value from "jsg-hide-assessment" and store it as "apiName"
     And I generate a unique API version from "jsg-hide-assessment" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-hide-assessment" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -362,13 +375,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate string length constraints
     Given I generate a unique value from "jsg-string-length" and store it as "apiName"
     And I generate a unique API version from "jsg-string-length" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-string-length" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -386,13 +400,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate numeric range constraints
     Given I generate a unique value from "jsg-numeric-range" and store it as "apiName"
     And I generate a unique API version from "jsg-numeric-range" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-numeric-range" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -410,13 +425,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate array constraints
     Given I generate a unique value from "jsg-array-constraints" and store it as "apiName"
     And I generate a unique API version from "jsg-array-constraints" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-array-constraints" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -434,13 +450,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate enum constraints
     Given I generate a unique value from "jsg-enum-constraints" and store it as "apiName"
     And I generate a unique API version from "jsg-enum-constraints" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-enum-constraints" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -458,13 +475,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate pattern constraints
     Given I generate a unique value from "jsg-pattern-constraints" and store it as "apiName"
     And I generate a unique API version from "jsg-pattern-constraints" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-pattern-constraints" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -482,13 +500,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate nested object schema
     Given I generate a unique value from "jsg-nested-object" and store it as "apiName"
     And I generate a unique API version from "jsg-nested-object" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-nested-object" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -506,13 +525,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Validate array of objects
     Given I generate a unique value from "jsg-array-objects" and store it as "apiName"
     And I generate a unique API version from "jsg-array-objects" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-array-objects" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -530,13 +550,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Handle empty request body
     Given I generate a unique value from "jsg-empty-body" and store it as "apiName"
     And I generate a unique API version from "jsg-empty-body" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-empty-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -553,13 +574,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Handle invalid JSON
     Given I generate a unique value from "jsg-invalid-json" and store it as "apiName"
     And I generate a unique API version from "jsg-invalid-json" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-invalid-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -577,13 +599,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Handle invalid JSONPath
     Given I generate a unique value from "jsg-invalid-jsonpath" and store it as "apiName"
     And I generate a unique API version from "jsg-invalid-jsonpath" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-invalid-jsonpath" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -601,13 +624,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: User registration with comprehensive validation
     Given I generate a unique value from "jsg-registration" and store it as "apiName"
     And I generate a unique API version from "jsg-registration" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-registration" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -625,13 +649,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: Block SQL injection patterns
     Given I generate a unique value from "jsg-sql-injection" and store it as "apiName"
     And I generate a unique API version from "jsg-sql-injection" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-sql-injection" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -649,13 +674,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: E-commerce order validation
     Given I generate a unique value from "jsg-ecommerce-order" and store it as "apiName"
     And I generate a unique API version from "jsg-ecommerce-order" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-ecommerce-order" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -673,13 +699,14 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404
 
   Scenario: API response contract enforcement
     Given I generate a unique value from "jsg-response-contract" and store it as "apiName"
     And I generate a unique API version from "jsg-response-contract" and store it as "apiVersion"
     And I generate a unique API context from "/jsg-response-contract" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -694,3 +721,4 @@ Feature: JSON schema guardrail policy
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/get" until status 404

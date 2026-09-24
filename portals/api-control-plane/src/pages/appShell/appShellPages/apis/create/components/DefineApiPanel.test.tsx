@@ -18,122 +18,52 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { fireEvent, renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen } from '@/test/utils';
 import { DefineApiPanel } from './DefineApiPanel';
 
-// swagger-ui-react bundles its own copy of React, which react-dom refuses to
-// render inside this suite ("a React Element from an older version of React").
-// The rendered resources are not what these tests are about — the pane's other
-// half is; so the component is stubbed rather than the assertions bent around
-// it. The Source view under test renders no Swagger UI at all.
 vi.mock('swagger-ui-react', () => ({ default: () => null }));
 
-// Monaco needs a canvas and real font metrics, neither of which jsdom has.
-// These tests are about what the step does with an edited definition, not
-// about how the text got typed, so the editor is a plain text area here.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
-    onChange,
-    readOnly,
-    value,
-  }: {
-    onChange?: (next: string) => void;
-    readOnly?: boolean;
-    value: string;
-  }) => (
-    <textarea
-      aria-label="API definition source"
-      onChange={(event) => onChange?.(event.target.value)}
-      readOnly={readOnly}
-      value={value}
-    />
-  ),
-}));
+describe('DefineApiPanel — start from scratch', () => {
+  it('does not produce a draft until a backend endpoint is entered', () => {
+    const onDraftChange = vi.fn();
 
-/**
- * The step is exercised through "Design from scratch": it is the approach that
- * has a definition on screen without a fetch standing between the test and the
- * editor, and the edit path under test is the same one a fetched contract takes.
- */
-const openScratchSource = async (onDraftChange = vi.fn()) => {
-  const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
+    renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
 
-  await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
-  await user.click(screen.getByRole('checkbox', { name: 'Source' }));
-  return { onDraftChange, user };
-};
+    expect(onDraftChange).toHaveBeenLastCalledWith(null);
+  });
 
-/** The editor arrives in its own chunk, so the first look at it is awaited. */
-const editor = async (): Promise<HTMLTextAreaElement> =>
-  (await screen.findByRole('textbox', {
-    name: 'API definition source',
-  })) as HTMLTextAreaElement;
+  it('shows only the endpoint form after Start from scratch is selected', async () => {
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
 
-describe('DefineApiPanel — editing the definition', () => {
-  it('carries the edited definition forward instead of the one it started from', async () => {
-    const { onDraftChange, user } = await openScratchSource();
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'Edited by hand', version: '3.2.1' },
-          servers: [{ url: 'https://orders.example.com' }],
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
-    });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('heading', { name: 'Backend endpoint' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Endpoint URL')).toHaveValue('');
+    expect(screen.queryByText('How do you want to start?')).not.toBeInTheDocument();
+    expect(screen.queryByText('API resources')).not.toBeInTheDocument();
+  });
 
-    expect(onDraftChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        displayName: 'Edited by hand',
-        upstream: { main: { url: 'https://orders.example.com' } },
-        version: '3.2.1',
-      }),
+  it('fills the reading-list service when the sample URL action is used', async () => {
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Try with Sample URL' }));
+
+    expect(screen.getByLabelText('Endpoint URL')).toHaveValue(
+      'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books',
     );
   });
 
-  it('reports what the edited definition is missing, once it is the one on screen', async () => {
-    const { user } = await openScratchSource();
+  it('carries an edited endpoint into the scratch draft', async () => {
+    const onDraftChange = vi.fn();
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    // Importable, but with nothing to read a backend off.
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'No backend', version: '1.0.0' },
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
-    });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    const endpoint = screen.getByLabelText('Endpoint URL');
+    await user.clear(endpoint);
+    await user.type(endpoint, 'https://api.acme.com/v1');
 
-    expect(await screen.findByText(/No server URL in this definition/)).toBeInTheDocument();
-  });
-
-  it('keeps each approach’s edit while the other one is looked at', async () => {
-    const { user } = await openScratchSource();
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await editor(), {
-      target: {
-        value: JSON.stringify({
-          openapi: '3.0.3',
-          info: { title: 'Scratch edit', version: '1.0.0' },
-          paths: { '/orders': { get: { responses: { '200': { description: 'A page.' } } } } },
-        }),
-      },
-    });
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    // Over to the contract approach, which has nothing fetched, and back.
-    await user.click(screen.getByRole('button', { name: /Start with a contract/ }));
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-    expect((await editor()).value).toContain('Scratch edit');
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ upstream: { main: { url: 'https://api.acme.com/v1' } } }),
+    );
   });
 });

@@ -31,7 +31,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-none" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-none" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -55,7 +55,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-response-body" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-response-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -94,7 +94,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-clamp" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-clamp" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -126,7 +126,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-request-body" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-request-body" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -165,7 +165,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-request-header" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-request-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -209,7 +209,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-default" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-default" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -248,7 +248,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-partial-source" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-partial-source" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -299,7 +299,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-sum" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-sum" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -335,7 +335,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-response-cel" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-response-cel" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -365,7 +365,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-response-header" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-response-header" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -391,7 +391,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-fractional" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-fractional" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -435,7 +435,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-zero" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-zero" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -472,7 +472,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-malformed-json" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-malformed-json" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -511,7 +511,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-quota-multiplier" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-quota-multiplier" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |
@@ -549,7 +549,7 @@ Feature: Advanced rate limit dynamic cost extraction
     And I generate a unique API version from "arl-cost-prompt-completion" and store it as "apiVersion"
     And I generate a unique API context from "/arl-cost-prompt-completion" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | gateway.api-platform.wso2.com/v1 |
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:apiName}                   |
       | spec.displayName       | ${CTX:apiName}                   |
       | spec.version           | ${CTX:apiVersion}                |

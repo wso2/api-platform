@@ -13,7 +13,7 @@ require (
 	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
-	github.com/moesif/moesifapi-go v1.1.5
+	github.com/moesif/moesifapi-go v1.2.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71

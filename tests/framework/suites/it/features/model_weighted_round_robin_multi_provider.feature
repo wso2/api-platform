@@ -49,7 +49,7 @@ Feature: Model weighted round-robin multi-provider routing
     And I generate a unique API version from "mpw-rotate-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/mpw-rotate-proxy" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:primaryProviderName}         |
       | displayName        | ${CTX:primaryProviderDisplayName}  |
       | version            | ${CTX:primaryProviderVersion}      |
@@ -60,7 +60,7 @@ Feature: Model weighted round-robin multi-provider routing
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:anthropicProviderName}       |
       | displayName        | ${CTX:anthropicProviderDisplayName} |
       | version            | ${CTX:anthropicProviderVersion}    |
@@ -71,7 +71,7 @@ Feature: Model weighted round-robin multi-provider routing
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:bedrockProviderName}         |
       | displayName        | ${CTX:bedrockProviderDisplayName}  |
       | version            | ${CTX:bedrockProviderVersion}      |
@@ -83,7 +83,7 @@ Feature: Model weighted round-robin multi-provider routing
 
     # Weights 2 / 1 / 1 -> sequence: gpt-4o, gpt-4o, claude, bedrock
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:proxyName}                  |
       | displayName              | ${CTX:proxyDisplayName}           |
       | version                  | ${CTX:proxyVersion}               |
@@ -160,7 +160,7 @@ Feature: Model weighted round-robin multi-provider routing
     And I generate a unique API version from "mpw-susp-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/mpw-susp-proxy" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:primaryProviderName}         |
       | displayName        | ${CTX:primaryProviderDisplayName}  |
       | version            | ${CTX:primaryProviderVersion}      |
@@ -171,7 +171,7 @@ Feature: Model weighted round-robin multi-provider routing
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:altProviderName}             |
       | displayName        | ${CTX:altProviderDisplayName}      |
       | version            | ${CTX:altProviderVersion}          |
@@ -183,7 +183,7 @@ Feature: Model weighted round-robin multi-provider routing
 
     # Equal weights, SAME model name, different providers
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:proxyName}                  |
       | displayName              | ${CTX:proxyDisplayName}           |
       | version                  | ${CTX:proxyVersion}               |
@@ -245,7 +245,7 @@ Feature: Model weighted round-robin multi-provider routing
     And I generate a unique API version from "mpw-default-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/mpw-default-proxy" and store it as "proxyContext"
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:primaryProviderName}         |
       | displayName        | ${CTX:primaryProviderDisplayName}  |
       | version            | ${CTX:primaryProviderVersion}      |
@@ -256,7 +256,7 @@ Feature: Model weighted round-robin multi-provider routing
     Then the response status code should be 201
 
     When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
-      | apiVersion         | gateway.api-platform.wso2.com/v1 |
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
       | name               | ${CTX:extraProviderName}           |
       | displayName        | ${CTX:extraProviderDisplayName}    |
       | version            | ${CTX:extraProviderVersion}        |
@@ -268,7 +268,7 @@ Feature: Model weighted round-robin multi-provider routing
 
     # An additional provider is declared but NO target references it
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
-      | apiVersion               | gateway.api-platform.wso2.com/v1 |
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:proxyName}                  |
       | displayName              | ${CTX:proxyDisplayName}           |
       | version                  | ${CTX:proxyVersion}               |

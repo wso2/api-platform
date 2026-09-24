@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -51,7 +52,20 @@ func limitBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		next.ServeHTTP(w, r)
-		_, _ = io.Copy(io.Discard, r.Body)
+		drained, err := io.Copy(io.Discard, r.Body)
+		info, ok := requestInfoFrom(r.Context())
+		if ok {
+			info.bodyBytes += drained
+		}
+		if err != nil {
+			// Reported rather than swallowed: this is where an oversized body surfaces for
+			// a handler that never read it, and the only place it is observable at all.
+			if ok {
+				info.truncated = true
+			}
+			ServiceLogger(r.Context()).Warn("testbench could not drain the request body",
+				"drained_bytes", drained, "limit_bytes", maxBodyBytes, "error", err)
+		}
 	})
 }
 
@@ -70,10 +84,27 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 		return err
 	}
 
+	// The testbench is its own binary, so making the configured logger the default lets any
+	// service log through slog without threading a logger into all thirteen of them.
+	slog.SetDefault(log)
+
 	services := reg.Services()
 	if len(services) == 0 {
 		return errors.New("testbench: no services registered")
 	}
+	names := make([]string, 0, len(services))
+	for _, svc := range services {
+		names = append(names, svc.Name())
+	}
+	log.Info("testbench starting",
+		"services", strings.Join(names, ","),
+		"service_count", len(services),
+		"read_timeout", readTimeout,
+		"write_timeout", writeTimeout,
+		"idle_timeout", idleTimeout,
+		"max_body_bytes", maxBodyBytes,
+		"max_header_bytes", maxHeaderBytes,
+	)
 
 	listeners := make([]net.Listener, 0, len(services))
 	servers := make([]*http.Server, 0, len(services))
@@ -84,6 +115,8 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 			for _, opened := range listeners {
 				_ = opened.Close()
 			}
+			log.Error("testbench could not listen",
+				"service", svc.Name(), "port", svc.Port(), "error", err)
 			return fmt.Errorf("testbench: service %q: listening on port %d: %w",
 				svc.Name(), svc.Port(), err)
 		}
@@ -100,7 +133,7 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 
 		srv := &http.Server{
 			Addr:              fmt.Sprintf(":%d", svc.Port()),
-			Handler:           limitBody(mux),
+			Handler:           observability(svc.Name(), limitBody(mux)),
 			ReadTimeout:       readTimeout,
 			WriteTimeout:      writeTimeout,
 			IdleTimeout:       idleTimeout,
@@ -118,30 +151,41 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 		wg.Add(1)
 		go func(svc Service, srv *http.Server) {
 			defer wg.Done()
-			log.Info("testbench service listening", "service", svc.Name(), "port", svc.Port())
+			log.Info("testbench service listening",
+				"service", svc.Name(), "port", svc.Port(), "stateful", svc.Stateful())
 			if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- fmt.Errorf("testbench: service %q: %w", svc.Name(), err)
 			}
 		}(svc, server)
 	}
 
-	shutdown := func() error {
+	shutdown := func(reason string) error {
+		log.Info("testbench shutting down", "reason", reason, "servers", len(servers))
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var shutdownErrs []error
-		for _, srv := range servers {
+		for i, srv := range servers {
 			if err := srv.Shutdown(shutdownCtx); err != nil {
+				log.Error("testbench service shutdown failed",
+					"service", services[i].Name(), "port", services[i].Port(), "error", err)
 				shutdownErrs = append(shutdownErrs, err)
+				continue
 			}
+			log.Debug("testbench service stopped",
+				"service", services[i].Name(), "port", services[i].Port())
 		}
 		wg.Wait()
+		if len(shutdownErrs) == 0 {
+			log.Info("testbench stopped cleanly", "reason", reason)
+		}
 		return errors.Join(shutdownErrs...)
 	}
 
 	select {
 	case <-ctx.Done():
-		return shutdown()
+		return shutdown("context cancelled")
 	case err := <-errCh:
-		return errors.Join(err, shutdown())
+		log.Error("testbench service failed; stopping every service", "error", err)
+		return errors.Join(err, shutdown("service failure"))
 	}
 }

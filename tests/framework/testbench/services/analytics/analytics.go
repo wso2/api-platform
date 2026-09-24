@@ -54,6 +54,7 @@ type Event struct {
 	Direction    string          `json:"direction,omitempty"`
 	Weight       int             `json:"weight,omitempty"`
 	Tags         string          `json:"tags,omitempty"`
+	A2A          any             `json:"a2a,omitempty"`
 }
 
 // RequestDetails is the request half of an event.

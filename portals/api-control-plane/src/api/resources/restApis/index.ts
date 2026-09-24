@@ -39,6 +39,8 @@ export type {
   ValidateOpenAPIResponse,
 } from './restApis.endpoints';
 
+export type { OpenApiDocument, RestApiDefinition } from './restApis.utils';
+
 export type { RestApiListFilters } from './restApis.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
@@ -58,3 +60,5 @@ export {
   useUpdateRestApi,
   useValidateOpenApiSpec,
 } from './restApis.hooks';
+
+export { parseSpecContent, toRestApiDefinition } from './restApis.utils';

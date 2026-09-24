@@ -42,7 +42,7 @@ Feature: Gateway metrics
     And I generate a unique API version from "metrics-controller" and store it as "apiVersion"
     And I generate a unique API context from "/metrics-controller" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName}                    |
       | spec.displayName            | ${CTX:apiDisplayName}             |
       | spec.version                | ${CTX:apiVersion}                 |
@@ -59,6 +59,8 @@ Feature: Gateway metrics
     And the response should contain metric "gateway_controller_apis_total"
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
+    Then the response status code should be 404
 
   Scenario: Policy engine metrics reflect request processing
     Given I authenticate using basic auth as "admin"
@@ -67,7 +69,7 @@ Feature: Gateway metrics
     And I generate a unique API version from "metrics-request" and store it as "apiVersion"
     And I generate a unique API context from "/metrics-request" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName}                    |
       | spec.displayName            | ${CTX:apiDisplayName}             |
       | spec.version                | ${CTX:apiVersion}                 |
@@ -85,6 +87,8 @@ Feature: Gateway metrics
     And the response should contain metric "policy_engine_requests_total"
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
+    Then the response status code should be 404
 
   Scenario: Policy engine exposes system metrics
     When I send a "GET" request to the "policy-engine-metrics" service at "/metrics" until status 200
@@ -118,7 +122,7 @@ Feature: Gateway metrics
     And I generate a unique API version from "metrics-policy" and store it as "apiVersion"
     And I generate a unique API context from "/metrics-policy" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName}                    |
       | spec.displayName            | ${CTX:apiDisplayName}             |
       | spec.version                | ${CTX:apiVersion}                 |
@@ -137,6 +141,8 @@ Feature: Gateway metrics
     And the response should contain metric "policy_engine_context_build_duration_seconds"
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
+    Then the response status code should be 404
 
   Scenario: Policy engine tracks policy chain configuration
     Given I authenticate using basic auth as "admin"
@@ -145,7 +151,7 @@ Feature: Gateway metrics
     And I generate a unique API version from "metrics-chain" and store it as "apiVersion"
     And I generate a unique API context from "/metrics-chain" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion                 | gateway.api-platform.wso2.com/v1 |
+      | apiVersion                 | ${CTX:gatewaySpecVersion} |
       | name                       | ${CTX:apiName}                    |
       | spec.displayName            | ${CTX:apiDisplayName}             |
       | spec.version                | ${CTX:apiVersion}                 |
@@ -162,3 +168,5 @@ Feature: Gateway metrics
     And the response should contain metric "policy_engine_snapshot_size"
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
+    Then the response status code should be 404

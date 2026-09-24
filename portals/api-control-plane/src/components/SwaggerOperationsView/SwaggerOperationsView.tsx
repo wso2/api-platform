@@ -120,7 +120,7 @@ export function SwaggerOperationsView({
               sx={{ flex: 1, minWidth: 0 }}
               variant="body2"
             >
-              {operation.name ?? ''}
+              {operation.description ?? operation.name ?? ''}
             </Typography>
             {showDelete && onDelete && (
               <Tooltip title="Delete resource">

@@ -165,6 +165,12 @@ func TestIntegrationSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applying the selection: %v", err)
 	}
+	for _, skipped := range narrowed.SkippedRunners {
+		t.Logf("skipped runner %s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason)
+	}
+	for _, skipped := range narrowed.SkippedBlocks {
+		t.Logf("skipped block %s: %s", skipped.Block, skipped.Reason)
+	}
 	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}, selection.Coverage); err != nil {
 		t.Fatalf("building source images: %v", err)
 	}
@@ -290,6 +296,51 @@ func TestSuiteShapeRejectsMissingSuiteFile(t *testing.T) {
 	}
 }
 
+func TestGatewayDatabaseCompatibilityExcludesSQLServerForGatewayV110(t *testing.T) {
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	registry, err := catalog.Registry()
+	require.NoError(t, err)
+	resolved, err := topology.LoadFile(filepath.Join(dir, "it-suite.yaml"), registry)
+	require.NoError(t, err)
+
+	selected, err := (topology.Selection{GatewayVersion: "1.1.0"}).Apply(resolved)
+	require.NoError(t, err)
+	require.NotEmpty(t, selected.SkippedBlocks)
+	for _, block := range selected.Blocks {
+		for _, component := range block.Components {
+			if component.Def != nil && component.Def.Name == "platform-gateway" {
+				require.NotEqual(t, components.SQLServer, component.DB, "unsupported Gateway 1.1.0 block %q was retained", block.Name)
+			}
+		}
+	}
+	for _, skipped := range selected.SkippedBlocks {
+		require.Contains(t, skipped.Block, "/sqlserver")
+		require.Contains(t, skipped.Reason, "Gateway version 1.1.0")
+	}
+
+	_, err = (topology.Selection{
+		GatewayVersion: "1.1.0",
+		Blocks:         []string{"gateway-core/sqlserver"},
+	}).Apply(resolved)
+	require.ErrorContains(t, err, `selected block "gateway-core/sqlserver" is incompatible`)
+
+	for _, selection := range []topology.Selection{{GatewayVersion: "1.2.0"}, {}} {
+		selected, err := selection.Apply(resolved)
+		require.NoError(t, err)
+		foundSQLServer := false
+		for _, block := range selected.Blocks {
+			for _, component := range block.Components {
+				if component.Def != nil && component.Def.Name == "platform-gateway" && component.DB == components.SQLServer {
+					foundSQLServer = true
+				}
+			}
+		}
+		require.True(t, foundSQLServer, "compatible Gateway selection unexpectedly removed every SQL Server variant")
+		require.Empty(t, selected.SkippedBlocks)
+	}
+}
+
 func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	root := repoRoot(t)
 
@@ -319,10 +370,14 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 		if err != nil {
 			return err
 		}
+		version, err := topo.ComponentVersion("platform-gateway")
+		if err != nil {
+			return err
+		}
 
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + platformgateway.ManagementBasePath + "/rest-apis/" + res.ID,
+			URL:    base + platformgateway.ManagementBasePathForVersion(version) + "/rest-apis/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},
@@ -358,9 +413,13 @@ func registerControllerDeleter(
 		if err != nil {
 			return err
 		}
+		version, err := topo.ComponentVersion("platform-gateway")
+		if err != nil {
+			return err
+		}
 		resp, err := client.Do(ctx, httpx.Request{
 			Method: http.MethodDelete,
-			URL:    base + platformgateway.ManagementBasePath + collection + "/" + res.ID,
+			URL:    base + platformgateway.ManagementBasePathForVersion(version) + collection + "/" + res.ID,
 			Headers: map[string]string{
 				"Authorization": basicAuthFor(topo),
 			},

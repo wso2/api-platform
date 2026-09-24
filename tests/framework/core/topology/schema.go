@@ -65,8 +65,53 @@ type ComponentDefaults struct {
 	// DB selects the component's default engine. Matrix values are not allowed here.
 	DB DBSpec `yaml:"db"`
 
+	// DBCompatibility restricts database engines to Platform Gateway releases that
+	// support them. Each engine maps to a strict gateway-version comparison, such
+	// as sqlserver: "gateway-version>=1.2.0".
+	DBCompatibility GatewayDBCompatibility `yaml:"dbCompatibility"`
+
 	// Version overrides the version read from the component's VERSION file.
 	Version string `yaml:"version"`
+}
+
+// GatewayDBCompatibility maps a Platform Gateway database engine to the Gateway
+// release constraint required to run it.
+type GatewayDBCompatibility map[components.DBType]gatewayVersionConstraint
+
+// UnmarshalYAML accepts database-engine keys and strict gateway-version comparisons.
+func (c *GatewayDBCompatibility) UnmarshalYAML(value *yaml.Node) error {
+	for value.Kind == yaml.AliasNode {
+		if value.Alias == nil {
+			return fmt.Errorf("topology: dbCompatibility alias has no value")
+		}
+		value = value.Alias
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("topology: dbCompatibility must map database engines to gateway-version comparisons")
+	}
+
+	var raw map[string]string
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("topology: dbCompatibility is empty; omit it when no engine has a version boundary")
+	}
+
+	parsed := make(GatewayDBCompatibility, len(raw))
+	for engineName, selector := range raw {
+		engine := components.DBType(engineName)
+		if !engine.Valid() {
+			return fmt.Errorf("topology: dbCompatibility has unknown database engine %q", engineName)
+		}
+		constraint, err := parseGatewayVersionConstraint(selector)
+		if err != nil {
+			return fmt.Errorf("topology: dbCompatibility[%q]: %w", engineName, err)
+		}
+		parsed[engine] = constraint
+	}
+	*c = parsed
+	return nil
 }
 
 // Timeouts are the suite's time limits.
@@ -141,8 +186,13 @@ type Runner struct {
 	// Features lists feature files in execution order.
 	Features []string `yaml:"features"`
 
-	// Tags filters which scenarios in these features run, using Gherkin tag expressions.
+	// Tags optionally begins with a framework gateway-version selector followed by ';', then
+	// filters which scenarios in these features run using a Gherkin tag expression.
 	Tags string `yaml:"tags"`
+
+	// GatewayVersion is parsed from the optional framework selector in Tags. It is not a
+	// suite-file field and must never be passed to Godog as a Gherkin tag expression.
+	GatewayVersion *gatewayVersionConstraint `yaml:"-"`
 
 	// Hook names an optional registered runner hook.
 	Hook string `yaml:"hook"`

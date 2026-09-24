@@ -194,6 +194,10 @@ func (s *Server) handleCloudProxy(w http.ResponseWriter, r *http.Request) {
 	s.serveProxy(s.cloudProxy, w, r)
 }
 
+func (s *Server) handleBillingProxy(w http.ResponseWriter, r *http.Request) {
+	s.serveProxy(s.billingProxy, w, r)
+}
+
 func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r *http.Request) {
 	if rp == nil {
 		http.NotFound(w, r)

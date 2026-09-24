@@ -27,9 +27,10 @@ export type EnvironmentCardProps = {
   environment: Environment;
   nextEnvironment?: Environment;
   busy: boolean;
+  /** Whether this artifact's deployments carry a backend URL worth showing per gateway. */
+  takesEndpoint: boolean;
   onPromoteClick: () => void;
   onStopGateway: (gatewayId: string) => void;
-  onRetryGateway: (gatewayId: string) => void;
 };
 
 const sectionLabelSx = {
@@ -44,9 +45,9 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
   environment,
   nextEnvironment,
   busy,
+  takesEndpoint,
   onPromoteClick,
   onStopGateway,
-  onRetryGateway,
 }) => {
   const { gateways } = environment;
   const activeCount = activeGatewayCount(gateways);
@@ -158,7 +159,7 @@ const EnvironmentCard: FC<EnvironmentCardProps> = ({
                 gateway={gateway}
                 environmentName={environment.name}
                 busy={busy}
-                onRetry={() => onRetryGateway(gateway.id)}
+                showEndpointUrl={takesEndpoint}
                 onStop={() => onStopGateway(gateway.id)}
               />
             ))}

@@ -34,6 +34,8 @@ import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { usePageTitle } from '../../navigation/usePageTitle';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
@@ -44,14 +46,16 @@ import { AppSidebar } from './AppSidebar';
 import { FormattedMessage, useIntl } from 'react-intl';
 
 /**
- * Full-page creation flows, which the shell renders without a breadcrumb trail.
+ * Full-page flows, which the shell renders without a breadcrumb trail.
  *
- * A wizard is creating the very scope a trail would describe, so the crumbs can
- * only point at where the user came from — noise beside a form that owns the
- * whole page. Built from the route builders rather than written out, so a path
- * change cannot silently stop matching (`routes.*` is the single source).
+ * A creation wizard is building the very scope a trail would describe, and the
+ * API publication page has its own back button to the list it came from, so the
+ * crumbs can only repeat where the user came from — noise beside a form that
+ * owns the whole page. Built from the route builders rather than written out,
+ * so a path change cannot silently stop matching (`routes.*` is the single
+ * source).
  */
-const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway()];
+const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway(), routes.apiPortalPublish()];
 
 export default function AppLayout() {
   const intl = useIntl();
@@ -59,6 +63,10 @@ export default function AppLayout() {
   const location = useLocation();
   const { project, component, params } = useConsoleScope();
   const { notify } = useNotifications();
+
+  // Every page inside the shell gets its tab title from here, so a new route
+  // is named by its sidebar entry without touching the page itself.
+  useDocumentTitle(usePageTitle());
 
   const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
     (path) => matchPath(path, location.pathname) !== null,
@@ -167,7 +175,10 @@ export default function AppLayout() {
           <Box id={APP_FOOTER_ID}>
             <Footer>
               <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
-              <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              {/* Show the environment label only for pinned on-prem builds. */}
+              {runtimeConfig.deploymentMode === 'onprem' && (
+                <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              )}
               <Footer.Link href={runtimeConfig.termsOfUseLink}>
                 <FormattedMessage
                   id="appLayout.footer.termsOfUse"

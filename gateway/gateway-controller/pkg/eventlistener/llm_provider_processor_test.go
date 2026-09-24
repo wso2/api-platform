@@ -99,7 +99,7 @@ func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLM
 			DisplayName: "Test Proxy",
 			Version:     "v1.0.0",
 			Context:     stringPtr("/llm-proxy"),
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: provider,
 			},
 			Policies: policies,

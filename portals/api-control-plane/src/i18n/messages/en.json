@@ -88,9 +88,6 @@
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
   },
-  "api.create.ApiCreationWizard.title": {
-    "defaultMessage": "Create an API"
-  },
   "api.create.ApiTypeSelector.badge.available": {
     "defaultMessage": "Available",
     "description": "Badge on an API type that can be selected now."
@@ -170,34 +167,35 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.defineApi.changeSource": {
-    "defaultMessage": "Change source",
-    "description": "Back button label in the contract import view."
-  },
-  "api.create.defineApi.continue": {
-    "defaultMessage": "Continue",
-    "description": "Button that advances the wizard from the contract view to the next step."
-  },
   "api.create.defineApi.contract.description": {
     "defaultMessage": "Import an API contract from a URL or a file."
   },
-  "api.create.defineApi.contract.heading": {
-    "defaultMessage": "Point us at your contract"
-  },
-  "api.create.defineApi.contract.subheading": {
-    "defaultMessage": "Import OpenAPI or Swagger definition"
-  },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a Contract"
+    "defaultMessage": "Start with a contract"
   },
   "api.create.defineApi.scratch.description": {
     "defaultMessage": "Begin with a blank API and fill in the details."
   },
-  "api.create.defineApi.scratch.hasEndpoint": {
-    "defaultMessage": "I have an endpoint URL"
+  "api.create.defineApi.scratch.endpoint.description": {
+    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
+  },
+  "api.create.defineApi.scratch.endpoint.heading": {
+    "defaultMessage": "Backend endpoint"
+  },
+  "api.create.defineApi.scratch.endpoint.label": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "api.create.defineApi.scratch.endpoint.preview.description": {
+    "defaultMessage": "Every API resource will route to the backend endpoint you provide."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.title": {
+    "defaultMessage": "Ready to connect"
+  },
+  "api.create.defineApi.scratch.endpoint.sampleUrl": {
+    "defaultMessage": "Try with Sample URL"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Start from Scratch"
+    "defaultMessage": "Start from scratch"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
@@ -276,9 +274,6 @@
   "api.create.fromContract.spec.invalidByBackend": {
     "defaultMessage": "The specification is not a valid OpenAPI document:",
     "description": "Heading above the list of backend validation errors."
-  },
-  "api.create.fromContract.spec.oversized": {
-    "defaultMessage": "That file is too large to validate in the browser."
   },
   "api.create.fromContract.spec.unreachable": {
     "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
@@ -515,9 +510,6 @@
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
   },
-  "api.create.specIssue.externalRefs": {
-    "defaultMessage": "This definition references files outside itself, which are not read: {detail}"
-  },
   "api.create.specIssue.missingTitle": {
     "defaultMessage": "No title in this definition — name the API on the next step."
   },
@@ -550,6 +542,10 @@
   "api.create.specSourceEditor.backendInvalid": {
     "defaultMessage": "The specification has issues:",
     "description": "Heading above backend validation errors shown when Save is clicked."
+  },
+  "api.create.specSourceEditor.editorLabel": {
+    "defaultMessage": "API definition source",
+    "description": "Accessible name for the editor holding the definition’s own text. A noun naming what the field contains."
   },
   "api.create.specSourceEditor.editorLoading": {
     "defaultMessage": "Loading editor",
@@ -678,6 +674,38 @@
     "defaultMessage": "Open {name}",
     "description": "Accessible name of a card or row that opens what it describes."
   },
+  "apiControlPlane.navigation.usePageTitle.admin": {
+    "defaultMessage": "Admin",
+    "description": "Browser tab title for the API admin page."
+  },
+  "apiControlPlane.navigation.usePageTitle.alerts": {
+    "defaultMessage": "Alerts",
+    "description": "Browser tab title for the API observability alerts page."
+  },
+  "apiControlPlane.navigation.usePageTitle.apiEdit": {
+    "defaultMessage": "Edit API",
+    "description": "Browser tab title for the page editing an API's basic information."
+  },
+  "apiControlPlane.navigation.usePageTitle.apis": {
+    "defaultMessage": "APIs",
+    "description": "Browser tab title for the API listing page."
+  },
+  "apiControlPlane.navigation.usePageTitle.lifecycle": {
+    "defaultMessage": "Lifecycle",
+    "description": "Browser tab title for the API lifecycle page."
+  },
+  "apiControlPlane.navigation.usePageTitle.monetize": {
+    "defaultMessage": "Monetize",
+    "description": "Browser tab title for the API monetization page."
+  },
+  "apiControlPlane.navigation.usePageTitle.newApi": {
+    "defaultMessage": "Create API",
+    "description": "Browser tab title for the API creation wizard."
+  },
+  "apiControlPlane.navigation.usePageTitle.settings": {
+    "defaultMessage": "Settings",
+    "description": "Browser tab title for any Settings tab."
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
@@ -748,6 +776,19 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
+    "defaultMessage": "Open API Designer",
+    "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.body": {
+    "defaultMessage": "Design, edit, and validate OpenAPI 3.x APIs directly in VS Code. Includes Spectral governance checks and AI-readiness assessment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.docs": {
+    "defaultMessage": "How to get started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.title": {
+    "defaultMessage": "API Designer"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.DesignWithAiPanel.action": {
     "defaultMessage": "Open API Designer",
@@ -1055,8 +1096,35 @@
     "defaultMessage": "2 days ago",
     "description": "Temporary relative update time for demo document data."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.close": {
+    "defaultMessage": "Close endpoint editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.drawerTitle": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.edit": {
+    "defaultMessage": "Edit endpoint"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
+    "defaultMessage": "Enter a valid endpoint URL."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saveError": {
+    "defaultMessage": "Unable to update the backend endpoint."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.saved": {
+    "defaultMessage": "Backend endpoint updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.title": {
     "defaultMessage": "Endpoints"
@@ -1911,7 +1979,7 @@
     "defaultMessage": "Publish APIs so consumers can discover them and request access."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle": {
-    "defaultMessage": "Developer portals"
+    "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
     "defaultMessage": "Connect a gateway"
@@ -1970,8 +2038,176 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription": {
+    "defaultMessage": "An organization admin needs to register an API portal before this API can be published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
+    "defaultMessage": "No API portals available",
+    "description": "Shown when the organization has not registered any API Portal yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {
+    "defaultMessage": "Unable to load API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading": {
+    "defaultMessage": "Loading API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription": {
+    "defaultMessage": "Try a different portal name or clear the search."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle": {
+    "defaultMessage": "No matching API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder": {
+    "defaultMessage": "Search API portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
+    "defaultMessage": "Choose the API portal to publish this API to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
+    "defaultMessage": "Publish {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
+    "defaultMessage": "Back to Available Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmAction": {
+    "defaultMessage": "Confirm",
+    "description": "Button on the unpublish and deprecate confirmation dialogs. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field. {name} is the API name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject": {
+    "defaultMessage": "The definition must be an object, not a list or a single value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage": {
+    "defaultMessage": "This marks the API \"{name}\" as deprecated on {portalName}. It stays visible there."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmTitle": {
+    "defaultMessage": "Deprecate this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
+    "defaultMessage": "Deprecated on {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
+    "defaultMessage": "Draft saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
+    "defaultMessage": "Unable to load this portal’s draft and publication state"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
+    "defaultMessage": "Loading publish details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published": {
+    "defaultMessage": "Published to {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
+    "defaultMessage": "{apiName} · v{version}",
+    "description": "Byline under the heading. Both values are user-supplied; do not translate them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails": {
+    "defaultMessage": "API Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDocumentations": {
+    "defaultMessage": "Documentation"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage": {
+    "defaultMessage": "Landing Page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSpecification": {
+    "defaultMessage": "Specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabSubscriptionPlans": {
+    "defaultMessage": "Subscription Plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title": {
+    "defaultMessage": "Publish to {portalName}",
+    "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
+    "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmTitle": {
+    "defaultMessage": "Unpublish this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
+    "defaultMessage": "Unpublished from {portalName}."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature": {
     "defaultMessage": "Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
+    "defaultMessage": "What this API does, in one or two sentences."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.productionUrlLabel": {
+    "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
+    "defaultMessage": "Sandbox URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
+    "defaultMessage": "Version"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
+    "defaultMessage": "Go To Publish",
+    "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
+    "defaultMessage": "Deprecate"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
+    "defaultMessage": "More publish actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
+    "defaultMessage": "Publish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
+    "defaultMessage": "Save Draft"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
+    "defaultMessage": "Unpublish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
+    "defaultMessage": "Loading editor"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
+    "defaultMessage": "Source format",
+    "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
+    "defaultMessage": "This is not valid {format}: {detail}",
+    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft": {
+    "defaultMessage": "Draft",
+    "description": "Status chip: this API has unpublished changes saved as a draft on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published": {
+    "defaultMessage": "Published",
+    "description": "Status chip: this API is live on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
+    "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
+    "defaultMessage": "Enter a version."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
     "defaultMessage": "Grid view",
@@ -2106,6 +2342,10 @@
     "defaultMessage": "Loading organization",
     "description": "Shown while the signed-in user's organizations are being fetched."
   },
+  "apiControlPlane.pages.appShell.appShellPages.system.OrganizationRedirectPage.provisioning": {
+    "defaultMessage": "Setting up your organization",
+    "description": "Shown on first sign-in while the organization is still being created."
+  },
   "apiControlPlane.pages.appShell.appShellPages.system.ServerErrorPage.message": {
     "defaultMessage": "The console could not complete the request. Try again shortly."
   },
@@ -2140,20 +2380,55 @@
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.apiNotFound": {
     "defaultMessage": "API not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.consoleView": {
+    "defaultMessage": "Console view",
+    "description": "Toggle option showing the interactive spec console."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.curlView": {
+    "defaultMessage": "cURL view",
+    "description": "Toggle option showing the command builder."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.definitionUnavailable": {
+    "defaultMessage": "This API’s definition could not be loaded.",
+    "description": "Shown when fetching or parsing the API's OpenAPI definition failed — distinct from the API simply not having one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.deployAction": {
+    "defaultMessage": "Deploy API",
+    "description": "Button in the not-deployed banner that opens the Deploy page. A command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.deploymentUnavailable": {
+    "defaultMessage": "This API’s deployments could not be loaded.",
+    "description": "Shown when fetching the gateways or deployments failed — distinct from the API genuinely not being deployed anywhere."
+  },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading": {
     "defaultMessage": "Loading test console",
-    "description": "Shown while the API the curl command is built from is being fetched."
+    "description": "Shown while the API and its definition are being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.noDefinitionTitle": {
+    "defaultMessage": "You must add an API definition to start testing.",
+    "description": "Heading of the empty state shown when the API has no stored OpenAPI definition, so there are no resources to test."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.notDeployedTitle": {
+    "defaultMessage": "You must deploy the API to start testing.",
+    "description": "Heading of the empty state shown when the API is not deployed anywhere, so there is no endpoint to send requests to."
   },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt": {
-    "defaultMessage": "The curl console runs against a single API.",
+    "defaultMessage": "The test console runs against a single API.",
     "description": "Explains why an API must be picked before this page can render."
   },
-  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle": {
-    "defaultMessage": "Use the following curl command to test the API."
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle.console": {
+    "defaultMessage": "Send requests to a deployed gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle.curl": {
+    "defaultMessage": "Copy a command to run in a terminal."
   },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.title": {
-    "defaultMessage": "Test {apiName}",
-    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+    "defaultMessage": "Test",
+    "description": "Page heading."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.viewLabel": {
+    "defaultMessage": "Console or cURL view",
+    "description": "Accessible label for the toggle between the two views."
   },
   "apiControlPlane.pages.auth.LoginPage.brandLockup": {
     "defaultMessage": "<brand>WSO2</brand> API Platform",
@@ -2229,6 +2504,10 @@
     "defaultMessage": "<emphasis>API</emphasis> Platform",
     "description": "Product name under the WSO2 wordmark. The emphasis tag marks the part set in the stronger weight."
   },
+  "apiControlPlane.pages.auth.LoginPage.redirecting": {
+    "defaultMessage": "Signing you in",
+    "description": "Shown while the browser is being handed over to the identity provider."
+  },
   "apiControlPlane.pages.auth.LoginPage.sessionExpired": {
     "defaultMessage": "Your session has expired. Sign in again to continue."
   },
@@ -2251,6 +2530,314 @@
   },
   "apiControlPlane.pages.auth.LoginPage.usernamePlaceholder": {
     "defaultMessage": "Enter your username"
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.bodyLabel": {
+    "defaultMessage": "Request body",
+    "description": "Accessible label for the request body text area."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.editorLoading": {
+    "defaultMessage": "Loading editor",
+    "description": "Shown in place of the request body editor while it is being fetched."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.fieldHelp": {
+    "defaultMessage": "Type in the last row to add a field. Uncheck a row to exclude it.",
+    "description": "Instruction under the form-field table of a form or url-encoded body."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.fieldName": {
+    "defaultMessage": "New field",
+    "description": "Placeholder in the blank row where a new body field name is typed."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.fieldValue": {
+    "defaultMessage": "Value",
+    "description": "Placeholder in the blank row where a new body field value is typed."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.formData": {
+    "defaultMessage": "Form data",
+    "description": "Body type option for multipart/form-data, edited as key/value fields. A noun."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.format": {
+    "defaultMessage": "Format",
+    "description": "Button that re-indents the JSON body. A command."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.formatLabel": {
+    "defaultMessage": "Raw body format",
+    "description": "Accessible label for the raw body format dropdown (JSON, XML or plain text)."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.insertSample": {
+    "defaultMessage": "Insert sample",
+    "description": "Button that fills the body with an example built from the API's schema."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.invalid": {
+    "defaultMessage": "Invalid {format}: {reason}",
+    "description": "Validation message under the body editor. {format} is JSON or XML; {reason} is the parser's own message and is not translated."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.modeLabel": {
+    "defaultMessage": "Body type",
+    "description": "Accessible label for the body type dropdown (none, raw, form data, URL encoded). Not shown on screen."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.none": {
+    "defaultMessage": "None",
+    "description": "Body type option meaning the request carries no body."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.placeholderJson": {
+    "defaultMessage": "Enter a JSON request body",
+    "description": "Placeholder inside the empty request body editor, in JSON mode."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.placeholderText": {
+    "defaultMessage": "Enter the request body",
+    "description": "Placeholder inside the empty request body editor, in plain-text mode."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.placeholderXml": {
+    "defaultMessage": "Enter an XML request body",
+    "description": "Placeholder inside the empty request body editor, in XML mode."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.raw": {
+    "defaultMessage": "Raw",
+    "description": "Body type option for a body typed as text, in JSON, XML or plain text."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.sentAs": {
+    "defaultMessage": "Sent as {contentType}",
+    "description": "Note under the body editor naming the Content-Type the body implies. {contentType} is a media type and is not translated."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.sentAsMultipart": {
+    "defaultMessage": "Sent as multipart/form-data, with a boundary curl generates.",
+    "description": "Note under a form-data body, explaining that the Content-Type is not set by the console."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.text": {
+    "defaultMessage": "Text",
+    "description": "Raw body format option for plain text."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.urlEncoded": {
+    "defaultMessage": "URL encoded",
+    "description": "Body type option for application/x-www-form-urlencoded, edited as key/value fields."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.valid": {
+    "defaultMessage": "Valid {format}",
+    "description": "Validation message confirming the body parses. {format} is JSON or XML, not translated."
+  },
+  "apiControlPlane.pages.test.console.CopyButton.copied": {
+    "defaultMessage": "Copied",
+    "description": "Tooltip and button label confirming the value reached the clipboard."
+  },
+  "apiControlPlane.pages.test.console.CopyButton.copy": {
+    "defaultMessage": "Copy",
+    "description": "Default accessible label for a button that copies a value to the clipboard."
+  },
+  "apiControlPlane.pages.test.console.CopyButton.failed": {
+    "defaultMessage": "Copy failed",
+    "description": "Tooltip and button label shown when the browser refused the clipboard write. A statement, not a command."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.bodyTab": {
+    "defaultMessage": "Body",
+    "description": "Tab holding the request body editor. A noun."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.headerHelp": {
+    "defaultMessage": "Type in the last row to add a header, or pick a standard name from the list. Uncheck a row to exclude it.",
+    "description": "Instruction under the headers table."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.headerName": {
+    "defaultMessage": "New header",
+    "description": "Placeholder in the blank row where a new header name is typed."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.headersTab": {
+    "defaultMessage": "Headers",
+    "description": "Tab holding the request headers table. A noun."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.methodLabel": {
+    "defaultMessage": "HTTP method",
+    "description": "Accessible label for the method picker."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.pathLabel": {
+    "defaultMessage": "Request path",
+    "description": "Accessible label for the field holding the path after the gateway URL."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.queryHelp": {
+    "defaultMessage": "Type in the last row to add a query parameter. Uncheck a row to exclude it.",
+    "description": "Instruction under the query parameters table."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.queryName": {
+    "defaultMessage": "New parameter",
+    "description": "Placeholder in the blank row where a new query parameter name is typed."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.queryTab": {
+    "defaultMessage": "Query parameters",
+    "description": "Tab holding the query parameters table. A noun."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.title": {
+    "defaultMessage": "cURL builder",
+    "description": "Heading of the panel where a request is composed by hand. A noun."
+  },
+  "apiControlPlane.pages.test.console.CurlBuilder.value": {
+    "defaultMessage": "Value",
+    "description": "Placeholder in the blank row where a new value is typed."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.copyCommand": {
+    "defaultMessage": "Copy command",
+    "description": "Button that copies the whole curl command. A command."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.hideKey": {
+    "defaultMessage": "Key hidden",
+    "description": "State of the toggle when the credential is masked in the displayed command. An adjective, not a command."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.showKey": {
+    "defaultMessage": "Key shown",
+    "description": "State of the toggle when the credential is visible in the displayed command. An adjective, not a command."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.summary": {
+    "defaultMessage": "{method} · {headerCount, plural, =0 {no headers} one {# header} other {# headers}}{bodyKind, select, json { · JSON body} xml { · XML body} text { · text body} formData { · form data} urlEncoded { · URL-encoded body} other {}}",
+    "description": "One-line description of the command. {method} is an HTTP verb and is not translated. {bodyKind} selects how the body is encoded, or \"none\" for no body."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.title": {
+    "defaultMessage": "cURL command",
+    "description": "Heading of the generated command block. A noun."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.copyEndpoint": {
+    "defaultMessage": "Copy endpoint URL",
+    "description": "Accessible label for the button copying the gateway invoke URL."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.endpoint": {
+    "defaultMessage": "Endpoint",
+    "description": "Label above the URL that requests from this console are sent to. Shown in capitals by the layout, so translate it as ordinary words."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.gatewayLabel": {
+    "defaultMessage": "Gateway",
+    "description": "Label of the picker choosing which deployed gateway to test against."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.noGateways": {
+    "defaultMessage": "No deployed gateway.",
+    "description": "Shown in place of the picker when the API is not deployed anywhere. States the fact only — the page-level banner carries the call to action, so this must not repeat it."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.title": {
+    "defaultMessage": "Gateway",
+    "description": "Heading of the section selecting which gateway the console tests against."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.auto": {
+    "defaultMessage": "Auto",
+    "description": "Badge on a row the console filled in itself rather than the user, such as the test key header."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.closeOptions": {
+    "defaultMessage": "Close the list of standard names",
+    "description": "Accessible label for the button that closes the name suggestion list. A command."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.exclude": {
+    "defaultMessage": "Include this row",
+    "description": "Accessible label for the checkbox that includes or excludes a row."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.keyColumn": {
+    "defaultMessage": "Key",
+    "description": "Column heading for the name of a query parameter or header."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.noOptions": {
+    "defaultMessage": "No standard name matches. Typing one of your own is fine.",
+    "description": "Shown in the name suggestion list when what has been typed matches none of the standard names."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.openOptions": {
+    "defaultMessage": "Pick a standard name",
+    "description": "Accessible label for the button that opens the name suggestion list. A command."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.regenerate": {
+    "defaultMessage": "Issue a new key",
+    "description": "Accessible label for the button replacing the test key from within the row."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.remove": {
+    "defaultMessage": "Remove row",
+    "description": "Accessible label for the button deleting a query parameter or header row."
+  },
+  "apiControlPlane.pages.test.console.KeyValueEditor.valueColumn": {
+    "defaultMessage": "Value",
+    "description": "Column heading for the value of a query parameter or header."
+  },
+  "apiControlPlane.pages.test.console.SecretValue.copy": {
+    "defaultMessage": "Copy key",
+    "description": "Accessible label for the button copying the test key to the clipboard."
+  },
+  "apiControlPlane.pages.test.console.SecretValue.hide": {
+    "defaultMessage": "Hide key",
+    "description": "Accessible label for the button that re-masks a revealed test key."
+  },
+  "apiControlPlane.pages.test.console.SecretValue.reveal": {
+    "defaultMessage": "Show key",
+    "description": "Accessible label for the button that reveals the masked test key."
+  },
+  "apiControlPlane.pages.test.console.SecretValue.testKey": {
+    "defaultMessage": "Test key",
+    "description": "Accessible label for the field showing the test key."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible label for the HTTP method filter above the resource list."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or description"
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.expired": {
+    "defaultMessage": "The key has expired.",
+    "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.expiresIn": {
+    "defaultMessage": "Expires in {minutes, plural, =0 {less than a minute} one {# min} other {# min}}.",
+    "description": "Countdown to the test key expiring, following the sentence about how the key is sent. {minutes} is the whole minutes remaining."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.failed": {
+    "defaultMessage": "Could not create a test key.",
+    "description": "Shown when minting a test key failed."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.newKey": {
+    "defaultMessage": "Get Test API Key",
+    "description": "Button that issues a replacement test key. A command."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.placeholder": {
+    "defaultMessage": "No key yet",
+    "description": "Stand-in shown where the key value would be, before one exists."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.scopedToHeader": {
+    "defaultMessage": "Sent as the {name} header on requests to this gateway.",
+    "description": "Explains how the key travels when the policy sends it in a header. {name} is the HTTP header name, editable in the cURL view."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.scopedToQuery": {
+    "defaultMessage": "Sent as the {name} query parameter on requests to this gateway.",
+    "description": "Explains how the key travels when the policy sends it in the query string. {name} is the query parameter name, editable in the cURL view."
+  },
+  "apiControlPlane.pages.test.console.TestKeySection.title": {
+    "defaultMessage": "Test key",
+    "description": "Heading of the section holding the credential the console sends. A noun."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
+    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
   },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
@@ -2382,12 +2969,6 @@
   "appShell.alertsPage.feature": {
     "defaultMessage": "Observability alerts for this API"
   },
-  "appShell.apiChatPage.feature": {
-    "defaultMessage": "Testing this API through chat"
-  },
-  "appShell.apiConsolePage.feature": {
-    "defaultMessage": "An interactive API console"
-  },
   "appShell.compliancePage.feature": {
     "defaultMessage": "Compliance reporting for this API"
   },
@@ -2415,8 +2996,8 @@
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
   },
-  "appShell.header.notifications": {
-    "defaultMessage": "Notifications"
+  "appShell.header.brand.aria": {
+    "defaultMessage": "Go to organization overview"
   },
   "appShell.header.org.aria": {
     "defaultMessage": "Organizations"
@@ -2453,6 +3034,9 @@
   },
   "appShell.header.project.select": {
     "defaultMessage": "Select Project"
+  },
+  "appShell.header.signOut": {
+    "defaultMessage": "Sign out"
   },
   "appShell.header.title": {
     "defaultMessage": "API Platform"
@@ -2511,6 +3095,9 @@
   "develop.definition.DefinitionPanel.addResourceTitle": {
     "defaultMessage": "Add Resource"
   },
+  "develop.definition.DefinitionPanel.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
   "develop.definition.DefinitionPanel.dialogCancel": {
     "defaultMessage": "Cancel"
   },
@@ -2560,12 +3147,12 @@
   "develop.definition.DefinitionPanel.fileReadError": {
     "defaultMessage": "Failed to read the selected file."
   },
-  "develop.definition.DefinitionPanel.fileTooLarge": {
-    "defaultMessage": "The specification exceeds the maximum allowed size (5 MB)."
-  },
   "develop.definition.DefinitionPanel.formatLabel": {
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "develop.definition.DefinitionPanel.lastUpdated": {
+    "defaultMessage": "Last updated {relative}"
   },
   "develop.definition.DefinitionPanel.loadError": {
     "defaultMessage": "Unable to load the API definition."
@@ -2581,10 +3168,28 @@
     "defaultMessage": "Or",
     "description": "Separator between the URL input and the file upload button."
   },
+  "develop.definition.DefinitionPanel.pathLabel": {
+    "defaultMessage": "Path"
+  },
   "develop.definition.DefinitionPanel.reset": {
     "defaultMessage": "Reset"
   },
+  "develop.definition.DefinitionPanel.resourceCount": {
+    "defaultMessage": "{count, plural, one {# resource} other {# resources}}"
+  },
   "develop.definition.DefinitionPanel.save": {
+    "defaultMessage": "Save"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.title": {
+    "defaultMessage": "Update API"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.definitionBody": {
+    "defaultMessage": "Are you sure you want to save the updated API Definition?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.resourcesBody": {
+    "defaultMessage": "Are you sure you want to save the updated resources?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.action": {
     "defaultMessage": "Save"
   },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
@@ -2594,6 +3199,9 @@
   "develop.definition.DefinitionPanel.saveValidationUnavailable": {
     "defaultMessage": "Spec validation is currently unavailable. Please try again.",
     "description": "Error shown when the validation service itself fails (network/auth error)."
+  },
+  "develop.definition.DefinitionPanel.title": {
+    "defaultMessage": "Definition"
   },
   "develop.definition.DefinitionPanel.updateOpenApi": {
     "defaultMessage": "Import Definition"

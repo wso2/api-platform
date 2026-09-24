@@ -84,7 +84,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
 
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpauth/mcp"
         Then the response status code should be 401
-        And the response header "WWW-Authenticate" should contain "http://localhost:8080/mcpauth/.well-known/oauth-protected-resource"
+        And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777/mcpauth/.well-known/oauth-protected-resource"
         And I send a GET request to "http://localhost:8080/mcpauth/.well-known/oauth-protected-resource"
         Then the response should be successful
         And the response should be valid JSON
@@ -169,7 +169,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
 
         And I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcptoolsonly/mcp"
         Then the response status code should be 401
-        And the response header "WWW-Authenticate" should contain "http://localhost:8080/mcptoolsonly/.well-known/oauth-protected-resource"
+        And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777/mcptoolsonly/.well-known/oauth-protected-resource"
         
         When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
         And I use the MCP Client to send a tools/call request to "http://127.0.0.1:8080/mcptoolsonly/mcp" with the JWT token
@@ -455,7 +455,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
 
         And I use the MCP Client to send a tools/call request to "http://localhost:8080/mcpauthz/mcp" with the JWT token
         Then the response status code should be 403
-        And the response header "WWW-Authenticate" should contain "http://localhost:8080/mcpauthz/.well-known/oauth-protected-resource"
+        And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777/mcpauthz/.well-known/oauth-protected-resource"
         And the response header "WWW-Authenticate" should contain "add-scope"
 
         And I send a GET request to "http://localhost:8080/mcpauthz/.well-known/oauth-protected-resource"
@@ -1009,6 +1009,118 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         And I clear all headers
         Given I authenticate using basic auth as "admin"
         When I delete the MCP proxy "mcp-authz-excluded-tool"
+        Then the response should be successful
+
+    # gatewayurl (policy_configurations.mcpauth_v1, set in test-config.toml) takes
+    # precedence over BOTH the deployed vhost AND the deprecated gatewayhost
+    # systemParameter (also set, to a distinctly different value, specifically to
+    # prove this). mcp-auth's 401 and mcp-authz's 403 each independently build
+    # their own WWW-Authenticate header from the same shared gatewayurl metadata,
+    # so both need their own proof.
+    Scenario: gatewayurl wins over vhost and gatewayhost in mcp-auth's 401 response and protected-resource metadata
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: mcp-gatewayurl-precedence-test
+            spec:
+              displayName: MCP GatewayUrl Precedence Test
+              version: v1.0
+              context: /gwurlprecedence
+              vhost: mcp-e2e-vhost.example.com
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              policies:
+                - name: mcp-auth
+                  version: v1
+                  params:
+                    issuers:
+                      - mock-jwks
+              tools: []
+              resources: []
+              prompts: []
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        # An explicit Host header is what makes Envoy match this request to the
+        # vhost-scoped route at all — without it this would 404, proving the
+        # vhost route is genuinely live and gatewayurl overrides real routing,
+        # not just an unused config value.
+        Given I set request host to "mcp-e2e-vhost.example.com"
+        When I use the MCP Client to send an initialize request to "http://localhost:8080/gwurlprecedence/mcp"
+        Then the response status code should be 401
+        And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777/gwurlprecedence/.well-known/oauth-protected-resource"
+
+        When I send a GET request to "http://localhost:8080/gwurlprecedence/.well-known/oauth-protected-resource"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "resource" should be "https://mcp-e2e-gatewayurl.example.com:7777/gwurlprecedence/mcp"
+        And the JSON response field "authorization_servers[0]" should be "http://mock-jwks:8080/token"
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-gatewayurl-precedence-test"
+        Then the response should be successful
+
+    Scenario: gatewayurl wins over vhost and gatewayhost in mcp-authz's 403 insufficient_scope response too
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: mcp-authz-gatewayurl-precedence-test
+            spec:
+              displayName: MCP Authz GatewayUrl Precedence Test
+              version: v1.0
+              context: /authzgwurlprecedence
+              vhost: mcp-e2e-vhost.example.com
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001/mcp
+              policies:
+                - name: mcp-auth
+                  version: v1
+                  params:
+                    issuers:
+                      - mock-jwks
+                - name: mcp-authz
+                  version: v1
+                  params:
+                    tools:
+                      - name: "add"
+                        scopes:
+                          anyOf:
+                            - "add-scope"
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        Given I set request host to "mcp-e2e-vhost.example.com"
+        When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+        And I use the MCP Client to send an initialize request to "http://localhost:8080/authzgwurlprecedence/mcp" with the JWT token
+        Then the response should be successful
+
+        And I use the MCP Client to send a tools/call request to "http://localhost:8080/authzgwurlprecedence/mcp" with the JWT token
+        Then the response status code should be 403
+        And the response header "WWW-Authenticate" should contain "https://mcp-e2e-gatewayurl.example.com:7777/authzgwurlprecedence/.well-known/oauth-protected-resource"
+        And the response header "WWW-Authenticate" should contain "add-scope"
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-authz-gatewayurl-precedence-test"
         Then the response should be successful
 
     Scenario: Deploy an MCP Proxy with mcp-acl-list policy and verify modes with exceptions

@@ -45,9 +45,14 @@ import {
  * Monaco is the single heaviest thing this app can load, and nothing needs it
  * until someone actually opens the Source view; so it is split out into its
  * own chunk and fetched then, rather than riding along with the wizard.
+ *
+ * The wrapper lives in `components/` because the test console's cURL body
+ * editor loads the same module, and one lazy chunk shared between them beats
+ * two copies of Monaco's wiring. Keep this a `lazy()`/`import()`, a static
+ * import would put the whole editor back into the wizard's chunk.
  */
-const SpecCodeEditor = lazy(() =>
-  import('./SpecCodeEditor').then((module) => ({ default: module.SpecCodeEditor })),
+const CodeEditor = lazy(() =>
+  import('@/components/CodeEditor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
 
 const messages = defineMessages({
@@ -70,6 +75,12 @@ const messages = defineMessages({
     id: 'api.create.specSourceEditor.action.edit',
     defaultMessage: 'Edit',
     description: 'Opens the definition’s own text for editing.',
+  },
+  editorLabel: {
+    id: 'api.create.specSourceEditor.editorLabel',
+    defaultMessage: 'API definition source',
+    description:
+      'Accessible name for the editor holding the definition\u2019s own text. A noun naming what the field contains.',
   },
   editorLoading: {
     id: 'api.create.specSourceEditor.editorLoading',
@@ -419,8 +430,9 @@ export const SpecSourceEditor = ({ onBeforeSave, onEditingChange, onSave, rawTex
       })}
     >
       <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
-        <SpecCodeEditor
-          format={format}
+        <CodeEditor
+          ariaLabel={intl.formatMessage(messages.editorLabel)}
+          language={format}
           minimap={expanded}
           onChange={setDraft}
           readOnly={!editing}

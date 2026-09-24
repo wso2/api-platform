@@ -51,6 +51,12 @@ vi.mock('./components/ApiTypeSelector', () => ({
   ),
 }));
 
+const STUB_SPEC_FILE = new File(
+  ['{"openapi":"3.0.3","info":{"title":"Orders API","version":"1.0.0"},"paths":{}}'],
+  'orders-api.json',
+  { type: 'application/json' },
+);
+
 vi.mock('./components/DefineApiPanel', () => ({
   DefineApiPanel: ({ onDraftChange }: { onDraftChange: (draft: unknown) => void }) => {
     useEffect(() => () => onDraftChange(null), [onDraftChange]);
@@ -58,7 +64,13 @@ vi.mock('./components/DefineApiPanel', () => ({
     return (
       <>
         <button
-          onClick={() => onDraftChange({ displayName: 'Orders API', version: '1.0' })}
+          onClick={() =>
+            onDraftChange({
+              displayName: 'Orders API',
+              version: '1.0',
+              contractImport: { specFile: STUB_SPEC_FILE },
+            })
+          }
           type="button"
         >
           Use this contract
@@ -67,6 +79,7 @@ vi.mock('./components/DefineApiPanel', () => ({
         <button
           onClick={() =>
             onDraftChange({
+              contractImport: { specFile: STUB_SPEC_FILE },
               displayName: 'Untitled API',
               upstream: { main: { url: 'https://example.com' } },
               version: '1.0',
@@ -87,6 +100,7 @@ const route = '/organizations/api-platform-demo/projects/retail-apis/apis/create
 beforeEach(() => {
   resetHttpClient();
   server.use(collection('/rest-apis', []));
+  server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
 });
 
 /** Runs the wizard as far as a submitted create request. */
@@ -119,7 +133,7 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
-    server.use(accepts('post', '/rest-apis', { id: 'orders-api' }, { record: createRequests }));
+    server.use(accepts('post', '/rest-apis/import-openapi', { id: 'orders-api' }, { record: createRequests }));
     const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
 
     await user.click(screen.getByRole('button', { name: 'Choose REST' }));
@@ -141,7 +155,7 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 describe('ApiCreationWizard — a rejected create', () => {
   it('returns to the form with the reason on the field, when the user can fix it', async () => {
     server.use(
-      failure('post', '/rest-apis', 409, 'CONFLICT', {
+      failure('post', '/rest-apis/import-openapi', 409, 'CONFLICT', {
         errors: [{ field: 'id', message: 'An API with this identifier already exists.' }],
         message: 'The API could not be created.',
       }),
@@ -159,7 +173,7 @@ describe('ApiCreationWizard — a rejected create', () => {
 
   it('keeps what the user typed, so nothing has to be entered twice', async () => {
     server.use(
-      failure('post', '/rest-apis', 400, 'VALIDATION_FAILED', {
+      failure('post', '/rest-apis/import-openapi', 400, 'VALIDATION_FAILED', {
         errors: [{ field: 'upstream.main.url', message: 'Must be reachable over https.' }],
       }),
     );
@@ -176,7 +190,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     // a rejected create returns a form that calls the user's own URL a
     // placeholder, purely because it happens to match the skeleton's.
     server.use(
-      failure('post', '/rest-apis', 400, 'VALIDATION_FAILED', {
+      failure('post', '/rest-apis/import-openapi', 400, 'VALIDATION_FAILED', {
         errors: [{ field: 'context', message: 'Context is already in use.' }],
       }),
     );
@@ -206,7 +220,7 @@ describe('ApiCreationWizard — a rejected create', () => {
   it('stays on the progress screen for a failure no edit can fix', async () => {
     // A 500 is not the form's problem: sending the user back to retype fields
     // that were never wrong would be a lie about what went wrong.
-    server.use(failure('post', '/rest-apis', 500, 'INTERNAL_ERROR'));
+    server.use(failure('post', '/rest-apis/import-openapi', 500, 'INTERNAL_ERROR'));
 
     await submitCreate();
 

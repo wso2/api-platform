@@ -37,12 +37,12 @@ const (
 	anonymous         = "anonymous"
 	userIDPropertyKey = "x-wso2-user-id"
 
-	// agentAnalyticsProperty is both the event property the collector assembles the
-	// Agent envelope under and the metadata key it is published as — the same name
-	// on both sides on purpose, so the published contract is greppable from the
-	// place that builds it. Spelled here rather than imported from the collector
-	// package because publishers deliberately do not depend on it.
-	agentAnalyticsProperty = "agentAnalytics"
+	// a2aAnalyticsProperty is the event property the collector assembles the A2A
+	// dimensions under. An in-process handle only — what leaves this publisher is
+	// Moesif's own `a2a` event block, so this name appears nowhere on the wire.
+	// Spelled here rather than imported from the collector package because publishers
+	// deliberately do not depend on it.
+	a2aAnalyticsProperty = "a2aAnalytics"
 )
 
 // Moesif represents a Moesif publisher.
@@ -300,20 +300,27 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
-	// Agent Analytics. Gated on the API kind for the same reason the MCP block above
-	// is: an Agent's dimensions are meaningless on any other kind, and forwarding
-	// the key unconditionally would put an empty object on every event.
+	// A2A analytics. Gated on the API kind for the same reason the MCP block above
+	// is: an Agent's dimensions are meaningless on any other kind, and building the
+	// block unconditionally would put an empty object on every event.
 	//
-	// Published as the typed agentAnalytics envelope, with A2A's dimensions under
-	// its `a2a` section. The earlier flat `a2aAnalytics` key is not published at
-	// all, not even alongside: a consumer reading both would see two shapes of the
-	// same event depending on which gateway version produced it.
+	// Published as the event's first-class `a2a` block (moesifapi-go v1.2.0), not as
+	// a metadata key. Moesif now has an A2A schema of its own, and a dimension in the
+	// schema is queryable, validated and chartable where the same dimension in
+	// metadata is none of the three.
+	//
+	// It is a move rather than an addition: neither the `agentAnalytics` envelope nor
+	// the flat `a2aAnalytics` key before it is published alongside. A consumer finding
+	// the same event in two shapes would pick one, and whichever it picked would go
+	// stale silently when the other stopped being written.
+	var a2aBlock *models.A2aModel
 	if event.API.APIType == "Agent" {
-		if agentAnalytics, ok := event.Properties[agentAnalyticsProperty]; ok && agentAnalytics != nil {
-			if typed, ok := agentAnalytics.(*dto.AgentAnalytics); ok {
-				metadataMap[agentAnalyticsProperty] = typed
+		if a2aAnalytics, ok := event.Properties[a2aAnalyticsProperty]; ok && a2aAnalytics != nil {
+			if typed, ok := a2aAnalytics.(*dto.A2AAnalytics); ok {
+				a2aBlock = a2aEventBlock(typed)
+				setA2AAgentIdentity(a2aBlock, event.API)
 			} else {
-				slog.Warn("Agent analytics property cannot be converted to the required format")
+				slog.Warn("A2A analytics property cannot be converted to the required format")
 			}
 		}
 	}
@@ -431,6 +438,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 		Response: rsp,
 		UserId:   &userID,
 		Metadata: metadataMap,
+		A2a:      a2aBlock,
 	}
 	m.events = append(m.events, eventModel)
 	slog.Debug(fmt.Sprintf("Event added to the queue. Queue size: %d", len(m.events)))

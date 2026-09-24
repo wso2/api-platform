@@ -1,0 +1,28 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "url": "/v1/chat/completions",
+    "bodyPatterns": [
+      {
+        "matchesJsonPath": {
+          "expression": "$.messages[0].content",
+          "contains": "FAIL"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "error": {
+        "message": "The mock upstream failed on purpose so the error panels have data.",
+        "type": "server_error",
+        "code": "mock_upstream_failure"
+      }
+    }
+  }
+}

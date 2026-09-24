@@ -18,6 +18,7 @@
     "@wso2-enterprise/apip-cloud-ui-logs": "file:../apip-cloud-ui-logs",
     "@wso2-enterprise/apip-cloud-ui-managed-portals": "file:../apip-cloud-ui-managed-portals",
     "@wso2-enterprise/apip-cloud-ui-pipelines": "file:../apip-cloud-ui-pipelines",
+    "@wso2-enterprise/apip-cloud-ui-trial-status": "file:../apip-cloud-ui-trial-status",
     "@wso2/oxygen-ui": "0.5.0",
     "@wso2/oxygen-ui-icons-react": "0.5.0",
     "react": "19.2.3"

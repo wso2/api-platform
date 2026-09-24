@@ -21,10 +21,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -40,23 +40,7 @@ func NewDocumentRepo(db *database.DB) DocumentRepository {
 }
 
 // CreateDocument inserts a new document row.
-//
-// Singleton types (currently only model.DocumentTypeDefinition) are enforced
-// at the application layer: attempting to create a second document of a
-// singleton type for the same artifact returns apperror.Conflict.
 func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
-	if model.IsSingletonDocumentType(doc.Type) {
-		existing, err := r.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
-		if err != nil {
-			return fmt.Errorf("create document (singleton check): %w", err)
-		}
-		if existing != nil {
-			return apperror.Conflict.New(
-				fmt.Sprintf("a document of type %q already exists for this API", doc.Type),
-			)
-		}
-	}
-
 	if doc.ID == "" {
 		doc.ID = uuid.New().String()
 	}
@@ -128,10 +112,6 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 }
 
 // UpsertDocument inserts or updates a document for the given (artifact_uuid, handle) pair.
-// It uses an update-first strategy to avoid a TOCTOU race:
-//  1. Attempt an UPDATE. If it touches a row, we're done.
-//  2. If no row existed, INSERT.
-//  3. If the INSERT loses a concurrent race (unique-constraint violation), retry the UPDATE.
 func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`
@@ -198,4 +178,77 @@ func (r *DocumentRepo) DocumentHandleExistsForArtifact(artifactUUID, handle stri
 		return false, fmt.Errorf("failed to check document handle for the artifact: %w", err)
 	}
 	return true, nil
+}
+
+// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
+// scoped to one artifact — api_documents' real unique index is
+// (artifact_uuid, handle), so a handle is only guaranteed unique per
+// artifact, not per org. Returns an empty map for empty input.
+func (r *DocumentRepo) GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error) {
+	if len(handles) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(handles))
+	args := make([]interface{}, 0, len(handles)+2)
+	for i, h := range handles {
+		placeholders[i] = "?"
+		args = append(args, h)
+	}
+	args = append(args, artifactUUID, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT handle, uuid
+		FROM api_documents
+		WHERE handle IN (%s) AND artifact_uuid = ? AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var handle, id string
+		if err := rows.Scan(&handle, &id); err != nil {
+			return nil, err
+		}
+		m[handle] = id
+	}
+	return m, rows.Err()
+}
+
+// GetDocumentHandlesByUUIDs is the inverse of GetDocumentUUIDsByHandles, for
+// reconstructing a docIds response from stored api_publication_doc_mappings
+// rows. Scoped to the organization only — a mapping row's doc_uuid already
+// came from that same artifact's own resolved set. Returns an empty map for
+// empty input.
+func (r *DocumentRepo) GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error) {
+	if len(docUUIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(docUUIDs))
+	args := make([]interface{}, 0, len(docUUIDs)+1)
+	for i, id := range docUUIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT uuid, handle
+		FROM api_documents
+		WHERE uuid IN (%s) AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve document uuids: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var id, handle string
+		if err := rows.Scan(&id, &handle); err != nil {
+			return nil, err
+		}
+		m[id] = handle
+	}
+	return m, rows.Err()
 }

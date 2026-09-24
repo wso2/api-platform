@@ -25,6 +25,7 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
@@ -58,6 +59,22 @@ func (u *Steps) signInAsAdministrator(ctx context.Context) error {
 func (u *Steps) landsOnOrganizationHome(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
+		return err
+	}
+	if err := retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
+		if !regexp.MustCompile(`/ai-workspace/organizations/[^/]+`).MatchString(page.URL()) {
+			return false, nil
+		}
+		quickStart, err := page.GetByText("Quick Start").First().IsVisible()
+		if err != nil {
+			return false, retry.Transient(err)
+		}
+		projects, err := page.GetByText("Projects").First().IsVisible()
+		if err != nil {
+			return false, retry.Transient(err)
+		}
+		return quickStart && projects, nil
+	}, func(ready bool) bool { return ready }, "waiting for AI Workspace organization home"); err != nil {
 		return err
 	}
 	if err := u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/ai-workspace/organizations/[^/]+`)); err != nil {

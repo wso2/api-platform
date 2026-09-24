@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,7 +26,11 @@ import (
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	structuralschema "k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
+	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	celconfig "k8s.io/apiserver/pkg/apis/cel"
 	"sigs.k8s.io/yaml"
 )
 
@@ -129,10 +134,10 @@ spec:
 // is the guard that a marker added on one side does not reject an artifact the
 // other side accepts.
 //
-// Note: CEL x-kubernetes-validations rules are enforced by the API server, not
-// by this validator, so they are out of this test's reach. AgentUpstream no
-// longer has one — url is required and there is no ref — so its contract is
-// structural and covered below.
+// CEL x-kubernetes-validations rules are enforced by the API server rather than
+// the structural validator, so the rejection cases in
+// TestAgentCRDRejectsInvalidSpecs also run the CEL validator the API server uses
+// (agentCELValidators). AgentUpstream's exactly-one-of url/ref rule is one.
 func TestAgentCRDAcceptsWorkedExample(t *testing.T) {
 	obj := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(agentWorkedExample), &obj); err != nil {
@@ -289,16 +294,22 @@ func TestAgentCRDRejectsInvalidSpecs(t *testing.T) {
 			wantErr: "enabled",
 		},
 		{
-			// An Agent forwards to exactly one upstream and, in passthrough card
-			// mode, fetches its card from the same origin, so the
-			// gateway-controller requires a url where the other kinds accept a
-			// ref instead. Admission has to say the same thing, or a ref-only
-			// Agent applies cleanly and then fails at deploy time.
-			name: "upstream url missing",
+			// Neither form: an Agent forwards to exactly one upstream, so it has
+			// to name one. The CEL rule on AgentUpstream says so at admission.
+			name: "upstream url and ref both missing",
 			mutate: func(spec map[string]interface{}) {
 				delete(spec["upstream"].(map[string]interface{}), "url")
 			},
-			wantErr: "url",
+			wantErr: "exactly one of url or ref must be set",
+		},
+		{
+			// Both forms: the gateway-controller would prefer the url and leave
+			// the ref unread, so admission rejects the ambiguity instead.
+			name: "upstream url and ref both set",
+			mutate: func(spec map[string]interface{}) {
+				spec["upstream"].(map[string]interface{})["ref"] = "weather-pool"
+			},
+			wantErr: "exactly one of url or ref must be set",
 		},
 		{
 			name: "upstream url empty",
@@ -308,19 +319,18 @@ func TestAgentCRDRejectsInvalidSpecs(t *testing.T) {
 			wantErr: "url",
 		},
 		{
-			// There is no ref form for an Agent, so the schema prunes or rejects
-			// one rather than admitting a shape the controller ignores.
-			name: "upstream ref instead of url",
+			name: "upstream ref empty",
 			mutate: func(spec map[string]interface{}) {
 				upstream := spec["upstream"].(map[string]interface{})
 				delete(upstream, "url")
-				upstream["ref"] = "weather-pool"
+				upstream["ref"] = ""
 			},
-			wantErr: "url",
+			wantErr: "ref",
 		},
 	}
 
 	validators := agentSchemaValidators(t)
+	celValidators := agentCELValidators(t)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			obj := map[string]interface{}{}
@@ -331,6 +341,7 @@ func TestAgentCRDRejectsInvalidSpecs(t *testing.T) {
 
 			for version, validator := range validators {
 				errs := validation.ValidateCustomResource(nil, obj, validator)
+				errs = append(errs, validateAgentCEL(celValidators[version], obj)...)
 				if len(errs) == 0 {
 					t.Fatalf("%s schema accepted an invalid spec", version)
 				}
@@ -364,6 +375,30 @@ func publicCard(spec map[string]interface{}) map[string]interface{} {
 func agentSchemaValidators(t *testing.T) map[string]validation.SchemaValidator {
 	t.Helper()
 
+	crd := agentCRD(t)
+	out := make(map[string]validation.SchemaValidator, len(crd.Spec.Versions))
+	for _, v := range crd.Spec.Versions {
+		if v.Schema == nil || v.Schema.OpenAPIV3Schema == nil {
+			t.Fatalf("version %q of %s has no schema", v.Name, crd.Name)
+		}
+		internal := &apiextensions.JSONSchemaProps{}
+		if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(
+			v.Schema.OpenAPIV3Schema, internal, nil); err != nil {
+			t.Fatalf("convert %q schema: %v", v.Name, err)
+		}
+		validator, _, err := validation.NewSchemaValidator(internal)
+		if err != nil {
+			t.Fatalf("build validator for %q: %v", v.Name, err)
+		}
+		out[v.Name] = validator
+	}
+	return out
+}
+
+// agentCRD loads the generated Agent CRD every served version is validated from.
+func agentCRD(t *testing.T) apiextensionsv1.CustomResourceDefinition {
+	t.Helper()
+
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot determine test file location")
@@ -383,22 +418,64 @@ func agentSchemaValidators(t *testing.T) map[string]validation.SchemaValidator {
 	if len(crd.Spec.Versions) == 0 {
 		t.Fatalf("%s serves no versions", crd.Name)
 	}
+	return crd
+}
 
-	out := make(map[string]validation.SchemaValidator, len(crd.Spec.Versions))
-	for _, v := range crd.Spec.Versions {
-		if v.Schema == nil || v.Schema.OpenAPIV3Schema == nil {
-			t.Fatalf("version %q of %s has no schema", v.Name, crd.Name)
+// TestAgentCRDAcceptsRefOnlyUpstream covers the ref form of spec.upstream, which
+// names an entry in spec.upstreamDefinitions instead of a direct URL — the form
+// RestApi, Mcp and LlmProvider already accept.
+func TestAgentCRDAcceptsRefOnlyUpstream(t *testing.T) {
+	obj := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(agentWorkedExample), &obj); err != nil {
+		t.Fatalf("unmarshal worked example: %v", err)
+	}
+	spec := obj["spec"].(map[string]interface{})
+	spec["upstream"] = map[string]interface{}{"ref": "weather-pool"}
+	spec["upstreamDefinitions"] = []interface{}{
+		map[string]interface{}{
+			"name":      "weather-pool",
+			"basePath":  "/a2a",
+			"upstreams": []interface{}{map[string]interface{}{"url": "https://weather-pool.internal"}},
+		},
+	}
+
+	celValidators := agentCELValidators(t)
+	for version, validator := range agentSchemaValidators(t) {
+		errs := validation.ValidateCustomResource(nil, obj, validator)
+		errs = append(errs, validateAgentCEL(celValidators[version], obj)...)
+		if len(errs) != 0 {
+			t.Errorf("%s schema rejected a ref-only upstream: %v", version, errs.ToAggregate())
 		}
+	}
+}
+
+// agentCELValidators returns, per served version, the CEL validator the API
+// server runs for the Agent CRD's x-kubernetes-validations rules — the part of
+// admission the structural validator in agentSchemaValidators does not cover.
+func agentCELValidators(t *testing.T) map[string]*cel.Validator {
+	t.Helper()
+
+	out := make(map[string]*cel.Validator)
+	for _, v := range agentCRD(t).Spec.Versions {
 		internal := &apiextensions.JSONSchemaProps{}
 		if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(
 			v.Schema.OpenAPIV3Schema, internal, nil); err != nil {
 			t.Fatalf("convert %q schema: %v", v.Name, err)
 		}
-		validator, _, err := validation.NewSchemaValidator(internal)
+		structural, err := structuralschema.NewStructural(internal)
 		if err != nil {
-			t.Fatalf("build validator for %q: %v", v.Name, err)
+			t.Fatalf("build structural schema for %q: %v", v.Name, err)
 		}
-		out[v.Name] = validator
+		out[v.Name] = cel.NewValidator(structural, true, celconfig.PerCallLimit)
 	}
 	return out
+}
+
+// validateAgentCEL evaluates the CEL rules as for a create (no old object).
+func validateAgentCEL(validator *cel.Validator, obj map[string]interface{}) field.ErrorList {
+	if validator == nil {
+		return nil
+	}
+	errs, _ := validator.Validate(context.Background(), nil, nil, obj, nil, celconfig.RuntimeCELCostBudget)
+	return errs
 }

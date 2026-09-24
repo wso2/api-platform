@@ -18,15 +18,15 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ExtensionsProvider,
-  type ApiControlPlaneExtension,
-} from '../extensions';
+import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { AppRoutes } from './AppRoutes';
 import { anOrganization, aProject, collection, resource } from '../test/msw';
 import { authStatePresets } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
+
+/** Extra time for assertions that cross a lazy route boundary. */
+const LAZY_ROUTE_TIMEOUT = { timeout: 5000 };
 
 // Covers the `settings.<level>.tabs` slot: a host-injected extension
 // registered against that slot renders inside the Settings page's own sub-nav
@@ -45,13 +45,12 @@ describe('AppRoutes settingsTab extensions', () => {
       resource('/organizations/:organizationId', org),
       collection('/projects', [project]),
       resource('/projects/:projectId', project),
-      collection('/rest-apis', [])
+      collection('/rest-apis', []),
     );
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  const projectSettingsRoute =
-    '/organizations/api-platform-demo/projects/retail-apis/settings';
+  const projectSettingsRoute = '/organizations/api-platform-demo/projects/retail-apis/settings';
 
   const mockExtension: ApiControlPlaneExtension = {
     id: 'environments',
@@ -63,22 +62,21 @@ describe('AppRoutes settingsTab extensions', () => {
     slot: 'settings.project.tabs',
   };
 
-  const renderWithExtension = (
-    extension: ApiControlPlaneExtension,
-    route: string
-  ) =>
+  const renderWithExtension = (extension: ApiControlPlaneExtension, route: string) =>
     renderWithProviders(
       <ExtensionsProvider extensions={[extension]}>
         <AppRoutes extensions={[extension]} />
       </ExtensionsProvider>,
-      { authState: authStatePresets.authenticated(), route }
+      { authState: authStatePresets.authenticated(), route },
     );
 
   it('lists the extension as a Settings sub-nav tab and adds no top-level sidebar entry', async () => {
     renderWithExtension(mockExtension, projectSettingsRoute);
 
-    expect(await screen.findByText('General')).toBeInTheDocument();
-    expect(await screen.findByText('Environments')).toBeInTheDocument();
+    expect(await screen.findByText('General', undefined, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
+    expect(
+      await screen.findByText('Environments', undefined, LAZY_ROUTE_TIMEOUT),
+    ).toBeInTheDocument();
 
     // One text node only — the settings tab. A second would mean it also
     // registered itself as a top-level sidebar item.
@@ -89,7 +87,7 @@ describe('AppRoutes settingsTab extensions', () => {
     renderWithExtension(mockExtension, `${projectSettingsRoute}/environments`);
 
     expect(
-      await screen.findByText('Mock Environments page')
+      await screen.findByText('Mock Environments page', undefined, LAZY_ROUTE_TIMEOUT),
     ).toBeInTheDocument();
   });
 
@@ -102,7 +100,7 @@ describe('AppRoutes settingsTab extensions', () => {
     renderWithExtension(portAware, `${projectSettingsRoute}/environments`);
 
     expect(
-      await screen.findByText('Port project: retail-apis')
+      await screen.findByText('Port project: retail-apis', undefined, LAZY_ROUTE_TIMEOUT),
     ).toBeInTheDocument();
   });
 
@@ -121,7 +119,7 @@ describe('AppRoutes settingsTab extensions', () => {
 
     renderWithExtension(conflicting, projectSettingsRoute);
 
-    expect(await screen.findByText('General')).toBeInTheDocument();
+    expect(await screen.findByText('General', undefined, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
     expect(screen.queryByText('Conflicting')).not.toBeInTheDocument();
   });
 });

@@ -84,6 +84,7 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState, type ReactNode } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
+import { ProductActivation } from './hooks/ProductActivation';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 import {
@@ -97,6 +98,7 @@ import {
   type AIWorkspacePageOverride,
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
+  AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
 } from './extensions';
 import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
 import { usePort } from './hostPort';
@@ -265,6 +267,7 @@ function ProtectedAppShell() {
 
   return (
     <PostSignInInit>
+      <ProductActivation />
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
           <AppShellProvider userName={userName} userEmail={userEmail}>
@@ -366,6 +369,15 @@ function LLMProxyDeployRoute() {
   return (
     <ArtifactDeployRoute slot={AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT} handle={proxyId}>
       <LLMProxyDeploy />
+    </ArtifactDeployRoute>
+  );
+}
+
+function LLMProviderDeployRoute() {
+  const { providerId } = useParams<{ providerId: string }>();
+  return (
+    <ArtifactDeployRoute slot={AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT} handle={providerId}>
+      <ServiceProviderDeploy />
     </ArtifactDeployRoute>
   );
 }
@@ -567,7 +579,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 path=":providerId/deploy"
                 element={
                   <WithPageBoundary>
-                    <ServiceProviderDeploy />
+                    <LLMProviderDeployRoute />
                   </WithPageBoundary>
                 }
               />
@@ -820,7 +832,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   path=":providerId/deploy"
                   element={
                     <WithPageBoundary>
-                      <ServiceProviderDeploy />
+                      <LLMProviderDeployRoute />
                     </WithPageBoundary>
                   }
                 />

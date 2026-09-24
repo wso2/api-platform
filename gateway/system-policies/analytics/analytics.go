@@ -283,12 +283,17 @@ type A2ARequestAnalyticsProperties struct {
 // folded into them: an agent generates a task id and a context id the caller never
 // sent, so overwriting the request's values would hide the moment correlation actually
 // begins, and a mismatch between what was asked for and what came back would stop
-// being diagnosable. The published model is one flat object, so they carry a `response`
-// prefix — the only two fields here that need one, since no other response fact has a
-// request-side counterpart.
+// being diagnosable. The collector's model is one flat object, so they carry a
+// `response` prefix — the only two fields here that need one, since no other response
+// fact has a request-side counterpart.
 //
-// The field names here are the published names. This struct is serialized at the Envoy
-// metadata boundary and unmarshalled on the other side into the collector's
+// The prefix is this wire's concern, not a sink's. A publisher whose schema nests the
+// two directions drops it, because the nesting already supplies the distinction the
+// prefix exists to make — the Moesif publisher does exactly that, mapping these onto
+// `response.task_id` and `response.context_id`.
+//
+// The field names here are the names the other side unmarshals by. This struct is
+// serialized at the Envoy metadata boundary and read back into the collector's
 // dto.A2AResponseAnalytics, so the two must agree; TestA2AKeySpellingsMatchThePolicyEngine
 // pins them, because a one-sided rename is silent — the dimension just stops appearing.
 type A2AResponseAnalyticsProperties struct {

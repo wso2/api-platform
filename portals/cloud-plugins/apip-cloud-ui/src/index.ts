@@ -11,12 +11,14 @@ export { defineCloudPlugin, getCloudExtensions } from './plugin';
 export type { CloudPluginFeature } from './plugin';
 
 export {
+  cloudBrandLogo as apiControlPlaneCloudBrandLogo,
   cloudExtensions as apiControlPlaneCloudExtensions,
   cloudPluginFeatures as apiControlPlaneCloudPluginFeatures,
 } from './hosts/api-control-plane';
 export type { ApiControlPlaneExtension } from './hosts/api-control-plane';
 
 export {
+  cloudBrandLogo as aiWorkspaceCloudBrandLogo,
   cloudExtensions as aiWorkspaceCloudExtensions,
   cloudPluginFeatures as aiWorkspaceCloudPluginFeatures,
 } from './hosts/ai-workspace';
