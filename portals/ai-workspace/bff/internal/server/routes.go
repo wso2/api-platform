@@ -67,6 +67,7 @@ func (s *Server) routes() http.Handler {
 	// the compensation with no error anywhere. The version stays in the handler alone.
 	mux.HandleFunc("POST "+s.path("/api/llm-providers"), s.handleCreateLLMProvider)
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
+	mux.HandleFunc("POST "+s.path("/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish"), s.handlePublishMCPProxy)
 
 	// Same-origin reverse proxy to the Platform API. Optional cloud hop is more
 	// specific (/proxy/cloud/) and must be registered before the catch-all /proxy/.

@@ -16,14 +16,19 @@
 
 package server
 
-// BFF-owned creates that orchestrate two Platform API calls atomically
-// from the browser's perspective. The browser sends one request; the BFF
-// forwards it to the Platform API and, on failure, compensates by deleting
-// any secret that was already created before the main resource call.
+// BFF-owned operations that orchestrate two Platform API calls atomically from
+// the browser's perspective, where a pass-through proxy could only forward one.
 //
-// This covers the unrecoverable edge case that client-side compensation cannot
-// handle: createSecret succeeds → createResource fails → deleteSecret also
-// fails (e.g. the tab closed or the network died mid-compensation).
+// Creates: the browser sends one request; the BFF forwards it to the Platform
+// API and, on failure, compensates by deleting any secret that was already
+// created before the main resource call. This covers the unrecoverable edge
+// case that client-side compensation cannot handle: createSecret succeeds →
+// createResource fails → deleteSecret also fails (e.g. the tab closed or the
+// network died mid-compensation).
+//
+// Publishes: publishing to an API Portal is a draft save followed by a publish
+// that takes no body of its own, so the BFF runs the pair rather than trusting
+// a tab to make the second call.
 
 import (
 	"bytes"
@@ -169,7 +174,13 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Relay the Platform API response verbatim.
+	relayResponse(w, resp)
+}
+
+// relayResponse copies a Platform API response — headers, status and body —
+// to the browser verbatim, so a composite endpoint is indistinguishable from
+// the pass-through proxy for everything it doesn't deliberately change.
+func relayResponse(w http.ResponseWriter, resp *http.Response) {
 	respBody, _ := io.ReadAll(resp.Body)
 	for k, vs := range resp.Header {
 		for _, v := range vs {
@@ -192,4 +203,85 @@ func (s *Server) handleCreateLLMProvider(w http.ResponseWriter, r *http.Request)
 // pre-created secret.
 func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
 	s.handleCreateWithSecretCompensation(w, r, "/mcp-proxies", paths.PlatformAPI)
+}
+
+// mcpProxyAPIType is the Platform API's apiType path segment for MCP proxies,
+// the value that sits where `rest-api` does on the REST API publication routes
+// (see /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/... in the Platform
+// API's openapi.yaml).
+const mcpProxyAPIType = "mcp-proxy"
+
+// handlePublishMCPProxy (POST <base>/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish)
+// — composite endpoint that saves the publication draft and then publishes it.
+//
+// Publishing on the Platform API is two calls: the draft carries every
+// published value (details, endpoints, plans, documents) and publish itself
+// takes no body. The browser holds both halves of that in one user action, so
+// the BFF owns the pair — a draft PUT that lands and a publish POST that never
+// fires would otherwise leave the proxy silently half-staged, with the SPA the
+// only thing that knew a publish was intended.
+//
+// The request body is the draft details (Platform API schema
+// PublicationDraftDetailsInput) and is forwarded unread: the BFF composes the
+// route, not the payload, so a field added to the draft schema needs no change
+// here. A draft failure is relayed as-is and publish never runs.
+func (s *Server) handlePublishMCPProxy(w http.ResponseWriter, r *http.Request) {
+	jwt, ok := s.tokenFromCookie(r)
+	if !ok {
+		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
+		return
+	}
+
+	apiPortalID := r.PathValue("apiPortalId")
+	mcpProxyID := r.PathValue("mcpProxyId")
+	if apiPortalID == "" || mcpProxyID == "" {
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST", "api portal and mcp proxy identifiers are required")
+		return
+	}
+
+	const maxBodyBytes = 1 << 20 // 1 MiB — ample for any publication draft payload
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "failed to read request body")
+		return
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "publication draft details are required")
+		return
+	}
+
+	base := paths.PlatformAPI + "/api-portals/" + url.PathEscape(apiPortalID) +
+		"/apis/" + mcpProxyAPIType + "/" + url.PathEscape(mcpProxyID)
+
+	draftResp, err := s.platformDo(r.Context(), jwt, http.MethodPut, base+"/draft", r.Header, body)
+	if err != nil {
+		slog.Error("bff: platform API call failed", "path", base+"/draft", "err", err)
+		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))
+		return
+	}
+	defer draftResp.Body.Close()
+	if draftResp.StatusCode >= 400 {
+		// Nothing to undo — the draft is the first write, so a rejected draft
+		// leaves the proxy exactly as it was.
+		relayResponse(w, draftResp)
+		return
+	}
+	// The draft body is not what the caller asked for; drain it so the
+	// connection returns to the pool.
+	_, _ = io.Copy(io.Discard, draftResp.Body)
+
+	publishResp, err := s.platformDo(r.Context(), jwt, http.MethodPost, base+"/publish", nil, nil)
+	if err != nil {
+		slog.Error("bff: platform API call failed", "path", base+"/publish", "err", err)
+		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))
+		return
+	}
+	defer publishResp.Body.Close()
+
+	// The publication is what the browser asked for, so its response — 200 or
+	// 201 with the listing, or the upstream's own error — is what it gets. A
+	// failed publish leaves the saved draft in place, which is exactly the
+	// state a retry needs.
+	relayResponse(w, publishResp)
 }
