@@ -1457,8 +1457,9 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
-					Protocol: core.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+					Protocol:   core.SocketAddress_TCP,
+					Address:    "::",
+					Ipv4Compat: true,
 					PortSpecifier: &core.SocketAddress_PortValue{
 						PortValue: port,
 					},
