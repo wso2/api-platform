@@ -383,6 +383,19 @@ blocks:
       - name: mcp-deploy
         features:
           - features/mcp_deploy.feature
+      - name: mcp-spec-versions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_spec_versions.feature
+      - name: mcp-resolver
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_resolver.feature
+      # No version gate: a session surviving the gateway is behaviour every supported release
+      # has, and the era a proxy declares is what these scenarios vary instead.
+      - name: mcp-legacy-upstream
+        features:
+          - features/mcp_legacy_upstream.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -562,10 +575,38 @@ blocks:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
+      # One runner per MCP policy, each file holding that policy's behaviour in both protocol
+      # eras. They are gated later than 1.2.0 because their 2026-07-28 scenarios need the
+      # operation resolver, which no released 1.2.0 carries - so this block's MCP policy
+      # coverage is source-build only, while mcp_policies.feature still runs on the release leg.
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
           - features/mcp_policies.feature
+      - name: mcp-auth-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_auth.feature
+      - name: mcp-authz-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_authz.feature
+      - name: mcp-ratelimit-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_ratelimit.feature
+      - name: mcp-acl-list-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_acl_list.feature
+      - name: mcp-rewrite-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_rewrite.feature
+      - name: mcp-spec-validation-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_spec_validation.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
@@ -612,6 +653,10 @@ blocks:
       - name: subscription-analytics
         features:
           - features/subscription_analytics.feature
+      - name: mcp-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mcp_analytics.feature
 
   - name: backend-timeout
     parallel: 2
