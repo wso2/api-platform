@@ -47,10 +47,10 @@ func TestGetReleaseName_longNameUsesStableHash(t *testing.T) {
 }
 
 func TestGetReleaseName_boundaryFitsSuffix(t *testing.T) {
-	// 50 chars + "-gw" (3) = 53 (max allowed)
-	name50 := strings.Repeat("a", 50)
-	got := GetReleaseName(name50)
-	want := name50 + helmReleaseNameSuffix
+	// The longest gateway name that still keeps the readable form.
+	atLimit := strings.Repeat("a", maxHelmReleaseNameLen-len(helmReleaseNameSuffix))
+	got := GetReleaseName(atLimit)
+	want := atLimit + helmReleaseNameSuffix
 	if got != want {
 		t.Fatalf("GetReleaseName() = %q, want %q", got, want)
 	}
@@ -60,12 +60,32 @@ func TestGetReleaseName_boundaryFitsSuffix(t *testing.T) {
 }
 
 func TestGetReleaseName_boundaryExceedsSuffix(t *testing.T) {
-	name51 := strings.Repeat("b", 51)
-	got := GetReleaseName(name51)
+	overLimit := strings.Repeat("b", maxHelmReleaseNameLen-len(helmReleaseNameSuffix)+1)
+	got := GetReleaseName(overLimit)
 	if len(got) > maxHelmReleaseNameLen {
 		t.Fatalf("release name length %d exceeds max %d", len(got), maxHelmReleaseNameLen)
 	}
 	if strings.HasSuffix(got, helmReleaseNameSuffix) {
 		t.Fatalf("expected hashed release name, got suffix form %q", got)
+	}
+}
+
+// TestGetReleaseName_derivedServiceNamesFit is the invariant the bound exists for:
+// the chart names its Services by appending to the release name, so whatever
+// GetReleaseName returns must leave room for the longest of those suffixes. A
+// release name that overflows is not rejected by Helm — the Service is rejected
+// by the API server later, and the gateway runs without one.
+func TestGetReleaseName_derivedServiceNamesFit(t *testing.T) {
+	const (
+		longestServiceSuffix = "-gateway-runtime"
+		maxDNS1123Label      = 63
+	)
+	for n := 1; n <= 120; n++ {
+		release := GetReleaseName(strings.Repeat("a", n))
+		service := release + longestServiceSuffix
+		if len(service) > maxDNS1123Label {
+			t.Fatalf("gateway name of %d chars yields Service %q (%d chars), over the %d limit",
+				n, service, len(service), maxDNS1123Label)
+		}
 	}
 }

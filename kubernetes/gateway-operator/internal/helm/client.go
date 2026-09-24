@@ -393,14 +393,16 @@ func (c *Client) newActionConfig(namespace string) (*action.Configuration, error
 }
 
 const (
-	helmReleaseNameSuffix   = "-gw"
-	maxHelmReleaseNameLen   = 53
+	helmReleaseNameSuffix = "-gw"
+	// The chart appends up to len("-gateway-runtime") to the release name to name
+	// its Services, which are DNS-1123 labels capped at 63. That leaves 47.
+	maxHelmReleaseNameLen   = 63 - len("-gateway-runtime")
 	helmReleaseHashPrefix   = "gw-"
 	helmReleaseHashHexChars = 8
 )
 
-// GetReleaseName generates a stable Helm release name from a gateway name.
-// Helm release names must be DNS-1123 labels and at most 53 characters.
+// GetReleaseName generates a stable Helm release name from a gateway name,
+// short enough that the names the chart derives from it stay within 63.
 func GetReleaseName(gatewayName string) string {
 	candidate := gatewayName + helmReleaseNameSuffix
 	if len(candidate) <= maxHelmReleaseNameLen {
