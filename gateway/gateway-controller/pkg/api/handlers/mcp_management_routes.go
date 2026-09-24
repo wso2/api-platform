@@ -331,11 +331,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		if tool == "wso2_apip_gw_apply_config" {
 			class = classConfig
 		}
-		env, err := readManifestEnvelope([]byte(in.Yaml))
-		if err != nil {
-			return nil, false
-		}
-		ops, err := h.resolveKind(env.Kind, class)
+		ops, err := h.resolveKind(in.Kind, class)
 		if err != nil {
 			return nil, false
 		}
