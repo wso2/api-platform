@@ -45,7 +45,7 @@ spec:
         - path: /v1/messages
           methods: [POST]
           params:
-            key: X-API-Key
+            key: x-api-key
             in: header
   accessControl:
     mode: deny_all

@@ -40,7 +40,7 @@ spec:
     id: azure-openai-provider
     auth:
       type: api-key
-      header: X-API-Key
+      header: api-key
       value: REPLACE_WITH_AZURE_OPENAI_PROVIDER_LOOPBACK_KEY
   policies:
     - name: openai-to-azure-openai

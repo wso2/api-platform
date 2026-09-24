@@ -587,8 +587,9 @@ func (u *Steps) noLongerSees(ctx context.Context, text string) error {
 // Scenario-scoped keys for the credential and invocation result the journey carries
 // between steps ("that key", "the completion").
 const (
-	keyLatestAPIKey = "uiLatestAPIKey"
-	keyInvocation   = "uiInvocation"
+	keyLatestAPIKey       = "uiLatestAPIKey"
+	keyLatestAPIKeyHeader = "uiLatestAPIKeyHeader"
+	keyInvocation         = "uiInvocation"
 )
 
 // invocation is what the invoke step observed, for the assertion step.
@@ -696,11 +697,24 @@ func (u *Steps) generatesAPIKey(ctx context.Context, keyName string) error {
 	if key == "" {
 		return fmt.Errorf("no key in the dialog text")
 	}
+	// The dialog names the header the key goes in, in a read-only field. It is not a
+	// fixed X-API-Key: a provider takes its template's vendor header (e.g. "api-key" for
+	// Azure AI Foundry) and a proxy inherits its provider's.
+	header, err := dialog.Locator("input[readonly]").First().InputValue()
+	if err != nil {
+		return fmt.Errorf("reading the API key header from the dialog: %w", err)
+	}
+	if header = strings.TrimSpace(header); header == "" {
+		return fmt.Errorf("the key dialog named no API key header")
+	}
 	if err := dialog.GetByRole("button", playwright.LocatorGetByRoleOptions{
 		Name: "Done"}).Click(); err != nil {
 		return fmt.Errorf("closing the key dialog: %w", err)
 	}
 	if err := tcontext.Set(ctx, keyLatestAPIKey, key); err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyLatestAPIKeyHeader, header); err != nil {
 		return err
 	}
 	// The composite id encodes what the deleter needs to reach the right nested endpoint:
@@ -724,15 +738,33 @@ func (u *Steps) latestAPIKey(ctx context.Context) (string, error) {
 	return key, nil
 }
 
+// latestAPIKeyHeader is the header the most recent generate step's dialog named for
+// the key.
+func (u *Steps) latestAPIKeyHeader(ctx context.Context) (string, error) {
+	v, ok := tcontext.Get(ctx, keyLatestAPIKeyHeader)
+	if !ok {
+		return "", fmt.Errorf("no API key header in scope — no generate step ran")
+	}
+	header, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("API key header in scope has unexpected type %T", v)
+	}
+	return header, nil
+}
+
 // invokesChatCompletions calls the endpoint exactly as the overview presents it: the
-// rendered invoke URL plus the X-API-Key header the key dialog named. The request is
-// fired from the browser's own network position via its API request context.
+// rendered invoke URL plus the header the key dialog named. The request is fired from
+// the browser's own network position via its API request context.
 func (u *Steps) invokesChatCompletions(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
 	}
 	key, err := u.latestAPIKey(ctx)
+	if err != nil {
+		return err
+	}
+	header, err := u.latestAPIKeyHeader(ctx)
 	if err != nil {
 		return err
 	}
@@ -747,7 +779,7 @@ func (u *Steps) invokesChatCompletions(ctx context.Context) error {
 					"model":    "gpt-4o",
 					"messages": []map[string]string{{"role": "user", "content": "Hello"}},
 				},
-				Headers: map[string]string{"X-API-Key": key},
+				Headers: map[string]string{header: key},
 			})
 		if err != nil {
 			return invocation{}, err
