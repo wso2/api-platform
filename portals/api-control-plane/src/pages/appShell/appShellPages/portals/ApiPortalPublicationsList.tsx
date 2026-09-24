@@ -38,7 +38,7 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle',
-    defaultMessage: 'Choose the Portal to publish this API to.',
+    defaultMessage: 'Choose the portal to publish this API to.',
   },
   searchPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder',
