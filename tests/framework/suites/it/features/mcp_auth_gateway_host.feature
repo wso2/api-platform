@@ -31,13 +31,13 @@ Feature: mcp-auth and mcp-authz honor the deprecated gatewayHost when gatewayUrl
     And I generate a unique API version from "mcp-auth-noport" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-noport" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}        |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
       | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
     Then the response should be successful
 
@@ -61,13 +61,13 @@ Feature: mcp-auth and mcp-authz honor the deprecated gatewayHost when gatewayUrl
     And I generate a unique API version from "mcp-auth-port" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-port" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}        |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
       | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
     Then the response should be successful
 
@@ -91,13 +91,13 @@ Feature: mcp-auth and mcp-authz honor the deprecated gatewayHost when gatewayUrl
     And I generate a unique API version from "mcp-auth-gwhost" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-auth-gwhost" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}        |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
       | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}}] |
     Then the response should be successful
 
@@ -127,14 +127,14 @@ Feature: mcp-auth and mcp-authz honor the deprecated gatewayHost when gatewayUrl
     And I generate a unique API version from "mcp-authz-gwhost" and store it as "mcpVersion"
     And I generate a unique API context from "/mcp-authz-gwhost" and store it as "mcpContext"
     When I create MCP proxy from "resources/templates/mcp.yaml" with values:
-      | apiVersion        | gateway.api-platform.wso2.com/v1 |
+      | apiVersion        | ${CTX:gatewaySpecVersion}        |
       | name              | ${CTX:mcpName}                    |
       | displayName       | ${CTX:mcpDisplayName}             |
       | version           | ${CTX:mcpVersion}                 |
       | context           | ${CTX:mcpContext}                 |
       | specVersion       | 2025-06-18                         |
-      | spec.upstream.url | http://testbench:3009/mcp          |
-      | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mcp-authz","version":"v1","params":{"tools":[{"name":"add","scopes":{"anyOf":["add-scope"]}}]}}] |
+      | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath} |
+      | spec.policies     | [{"name":"mcp-auth","version":"v1","params":{"issuers":["mock-jwks"]}},{"name":"mcp-authz","version":"v1","params":{"tools":[{"name":"add","requiredScopes":["add-scope"]}]}}] |
     Then the response should be successful
 
     And I set header "Content-Type" to "application/json"
