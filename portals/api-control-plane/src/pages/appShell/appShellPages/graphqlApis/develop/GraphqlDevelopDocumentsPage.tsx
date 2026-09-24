@@ -16,12 +16,12 @@
  * under the License.
  */
 
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
-import { ComingSoon } from '@/components/ComingSoon';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { DocumentsPanel } from '../../develop/documents/DocumentsPanel';
 
 const messages = defineMessages({
   loading: {
@@ -33,23 +33,16 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
-  feature: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature',
-    defaultMessage: 'Documents for this API',
-  },
-  detail: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail',
-    defaultMessage:
-      'You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal.',
-  },
 });
 
 /**
  * Fork of `develop/documents/DocumentsPage.tsx` for a GraphQL API. `Documents`
- * has no backend concept for either API kind today — REST's own tab is the
- * same `ComingSoon` placeholder this mirrors verbatim. No `ScopeGate`: this
- * route lives outside `ConsoleScopeProvider`'s REST-only api-scope matching
- * (see `graphqlApiPath`), so it guards on its own route param instead.
+ * has no backend concept for either API kind today, so this renders the same
+ * `DocumentsPanel` REST's own page does — it takes no props and has no
+ * REST-specific logic, so it is reused directly rather than duplicated. No
+ * `ScopeGate`: this route lives outside `ConsoleScopeProvider`'s REST-only
+ * api-scope matching (see `graphqlApiPath`), so it guards on its own route
+ * param instead.
  */
 export function GraphqlDevelopDocumentsPage() {
   const intl = useIntl();
@@ -62,10 +55,5 @@ export function GraphqlDevelopDocumentsPage() {
   if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
   if (!apiQuery.data) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
 
-  return (
-    <ComingSoon
-      detail={<FormattedMessage {...messages.detail} />}
-      feature={<FormattedMessage {...messages.feature} />}
-    />
-  );
+  return <DocumentsPanel />;
 }

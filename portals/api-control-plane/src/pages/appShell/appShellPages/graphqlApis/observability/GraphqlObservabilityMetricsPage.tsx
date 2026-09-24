@@ -16,36 +16,29 @@
  * under the License.
  */
 
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useParams } from 'react-router-dom';
+import { FormattedMessage } from 'react-intl';
 
 import { ComingSoon } from '@/components/ComingSoon';
-import { ErrorState } from '@/components/StateViews';
-
-const messages = defineMessages({
-  apiNotFound: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.apiNotFound',
-    defaultMessage: 'GraphQL API not found',
-  },
-  feature: {
-    id: 'appShell.metricsPage.feature',
-    defaultMessage: 'Observability metrics for this API',
-  },
-});
+import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
 /**
- * Fork of `observability/MetricsPage.tsx` for a GraphQL API. No `ScopeGate`:
- * this route lives outside `ConsoleScopeProvider`'s REST-only api-scope
- * matching (see `graphqlApiPath`), so it guards on its own route param
- * instead, matching every other GraphQL page.
+ * Fork of `observability/MetricsPage.tsx` for a GraphQL API — same body
+ * (a bare `ComingSoon` placeholder reusing REST's own message id), only the
+ * scope guard differs (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlObservabilityMetricsPage() {
-  const intl = useIntl();
-  const { graphqlApiHandler } = useParams();
-
-  if (!graphqlApiHandler) {
-    return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
-  }
-
-  return <ComingSoon feature={<FormattedMessage {...messages.feature} />} />;
+  return (
+    <GraphqlApiPageGuard>
+      {() => (
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.metricsPage.feature"
+              defaultMessage="Observability metrics for this API"
+            />
+          }
+        />
+      )}
+    </GraphqlApiPageGuard>
+  );
 }
