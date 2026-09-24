@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -47,6 +48,10 @@ const (
 	apiKeyHeader                = "API-Key"
 	subscriptionKeyHeader       = "Subscription-Key"
 	platformDeploymentSeparator = "\x00"
+
+	// keyFetchedSpecVersions holds what a discovery probe reported, for the step that asserts
+	// on it. Scenario-scoped, because runners in a block run in parallel.
+	keyFetchedSpecVersions = "fetchedMcpSpecVersions"
 )
 
 var (
@@ -78,6 +83,11 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createLLMProxy)
 	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane with context "([^"]*)" referencing secret "([^"]*)"$`,
 		s.createMCPProxy)
+	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane with context "([^"]*)" and spec versions "([^"]*)"$`,
+		s.createMCPProxySpecVersions)
+	sc.Step(`^I fetch MCP server info via the control plane for "([^"]*)"$`, s.fetchMCPServerInfo)
+	sc.Step(`^the fetched MCP server info should report spec version "([^"]*)"$`,
+		s.fetchedServerInfoReportsVersion)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and an upstream auth secret "([^"]*)"$`,
 		s.createRestAPIUpstreamSecret)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and a policy header secret "([^"]*)"$`,
@@ -416,6 +426,84 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, resourceContext, secretH
 		return err
 	}
 	return s.registerPlatformResource(ctx, platformMCPKind, resolvedID, "/mcp-proxies")
+}
+
+// createMCPProxySpecVersions creates an MCP proxy declaring several MCP revisions, which is the
+// form a dual-era server needs: mcpSpecVersion holds one and cannot describe such a server.
+// versions is a comma-separated list, so a feature table reads as a list rather than as JSON.
+func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceContext, versions string) error {
+	resolvedID, err := stepscommon.Expand(ctx, id)
+	if err != nil {
+		return err
+	}
+	resolvedContext, err := stepscommon.Expand(ctx, resourceContext)
+	if err != nil {
+		return err
+	}
+	resolvedVersions, err := stepscommon.Expand(ctx, versions)
+	if err != nil {
+		return err
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+
+	// The deprecated scalar is deliberately absent: platform-api rejects a request that sets
+	// both forms, since the two could disagree about what the proxy serves.
+	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
+		"id":              resolvedID,
+		"displayName":     resolvedID,
+		"version":         "v1.0",
+		"context":         resolvedContext,
+		"mcpSpecVersions": strings.Split(resolvedVersions, ","),
+		"upstream": map[string]any{
+			"main": map[string]any{"url": "http://testbench:3009/mcp"},
+		},
+	}, nil); err != nil {
+		return err
+	}
+	return s.registerPlatformResource(ctx, platformMCPKind, resolvedID, "/mcp-proxies")
+}
+
+// fetchMCPServerInfo runs the discovery probe the portal runs behind "Verify connection", and
+// keeps the versions it reported for the assertion step below.
+func (s *Steps) fetchMCPServerInfo(ctx context.Context, url string) error {
+	resolvedURL, err := stepscommon.Expand(ctx, url)
+	if err != nil {
+		return err
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	var fetched struct {
+		SupportedVersions []string `json:"supportedVersions"`
+	}
+	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies/fetch-server-info",
+		map[string]any{"url": resolvedURL}, &fetched); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyFetchedSpecVersions, strings.Join(fetched.SupportedVersions, ","))
+}
+
+// fetchedServerInfoReportsVersion asserts the probe learnt a revision from the server itself.
+// Which revisions a server names is its own property, so the assertion is membership rather
+// than the whole list.
+func (s *Steps) fetchedServerInfoReportsVersion(ctx context.Context, version string) error {
+	stored, found := tcontext.Get(ctx, keyFetchedSpecVersions)
+	if !found {
+		return fmt.Errorf("no MCP server info has been fetched in this scenario")
+	}
+	reported, ok := stored.(string)
+	if !ok {
+		return fmt.Errorf("fetched MCP spec versions are %T, want a string", stored)
+	}
+	if !slices.Contains(strings.Split(reported, ","), version) {
+		return fmt.Errorf("fetched MCP server info reports versions %q, want one of them to be %q",
+			reported, version)
+	}
+	return nil
 }
 
 // createRestAPIUpstreamSecret creates a REST API whose upstream auth value embeds a secret

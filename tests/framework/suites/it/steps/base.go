@@ -218,6 +218,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I store the JSON response field "([^"]*)" as "([^"]*)"$`,
 		b.storeJSONField)
+	sc.Step(`^I store the response header "([^"]*)" as "([^"]*)"$`, b.storeResponseHeader)
 	sc.Step(`^I set header "([^"]*)" to "([^"]*)"$`, b.setHeader)
 	sc.Step(`^I clear all headers$`, b.clearHeaders)
 	sc.Step(`^I reset the request$`, b.resetRequest)
@@ -1354,6 +1355,30 @@ func (b *Base) jsonFieldIsNumber(ctx context.Context, field string, want int) er
 	if num != float64(want) {
 		return fmt.Errorf("JSON field %q: expected %d, got %v: %s", field, want, num, resp.Describe())
 	}
+	return nil
+}
+
+// storeResponseHeader keeps a response header for a later step to send back. A handshake-era MCP
+// server answers initialize with the session it has just opened, and every request after that has
+// to carry it - so a scenario needs to take a value off one response and put it on the next
+// request, which storing a JSON field cannot express.
+func (b *Base) storeResponseHeader(ctx context.Context, header, key string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("cannot store a response header with an empty key")
+	}
+	value := resp.Headers.Get(header)
+	if value == "" {
+		return fmt.Errorf("response carries no %q header to store (%s)", header, resp.Describe())
+	}
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store response header %q without runner context", header)
+	}
+	local.Set(key, value)
 	return nil
 }
 
