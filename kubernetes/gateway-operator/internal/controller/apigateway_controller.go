@@ -833,6 +833,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		Config:         r.Config,
 		GatewayName:    owner.Name,
 		Namespace:      namespace,
+		Client:         r.Client,
+		FromGatewayAPI: false,
 		ValuesYAML:     valuesYAML,
 		ValuesFilePath: valuesFilePath,
 		DockerUsername: dockerUserName,
@@ -886,7 +888,14 @@ func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *a
 	}
 	registry.GetGatewayRegistry().Unregister(namespace, owner.Name)
 
-	return helmgateway.Uninstall(ctx, r.Logger, r.Config, owner.Name, namespace)
+	return helmgateway.Uninstall(ctx, helmgateway.UninstallInput{
+		Logger:         r.Logger,
+		Config:         r.Config,
+		Client:         r.Client,
+		GatewayName:    owner.Name,
+		Namespace:      namespace,
+		FromGatewayAPI: false,
+	})
 }
 
 // enqueueGatewaysForConfigMap watches for ConfigMap changes and enqueues affected Gateways
