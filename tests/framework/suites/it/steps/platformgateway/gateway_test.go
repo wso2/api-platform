@@ -95,6 +95,7 @@ func TestAdminBasePathForVersion(t *testing.T) {
 		{version: "1.0.0", want: adminBasePathV11},
 		{version: "1.1.0", want: adminBasePathV11},
 		{version: "v1.1.0", want: adminBasePathV11},
+		{version: "1.1.0_patch", want: adminBasePathV11},
 		{version: "1.2.0", want: adminBasePath},
 		{version: "1.2.0-SNAPSHOT", want: adminBasePath},
 		{version: "", want: adminBasePath},
@@ -113,6 +114,7 @@ func TestManagementBasePathForVersion(t *testing.T) {
 		{version: "1.0.0", want: managementBasePathV11},
 		{version: "1.1.0", want: managementBasePathV11},
 		{version: "v1.1.0", want: managementBasePathV11},
+		{version: "1.1.0_patch", want: managementBasePathV11},
 		{version: "1.2.0", want: ManagementBasePath},
 		{version: "1.2.0-SNAPSHOT", want: ManagementBasePath},
 		{version: "", want: ManagementBasePath},
@@ -294,6 +296,7 @@ func TestGatewaySpecVersionForVersion(t *testing.T) {
 	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("1.0.0"))
 	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("1.1.0"))
 	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("v1.1.0"))
+	require.Equal(t, gatewaySpecVersionV11, gatewaySpecVersionForVersion("1.1.0_patch"))
 	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion("1.2.0"))
 	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion("1.2.0-SNAPSHOT"))
 	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion(""))
@@ -459,6 +462,7 @@ func TestGatewayMCPUpstreamPathForVersion(t *testing.T) {
 	require.Empty(t, gatewayMCPUpstreamPathForVersion("1.0.0"))
 	require.Empty(t, gatewayMCPUpstreamPathForVersion("1.1.0"))
 	require.Empty(t, gatewayMCPUpstreamPathForVersion("v1.1.0"))
+	require.Empty(t, gatewayMCPUpstreamPathForVersion("1.1.0_patch"))
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.1.1"))
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.2.0"))
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.2.0-SNAPSHOT"))

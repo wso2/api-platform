@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
 
@@ -1296,6 +1297,31 @@ func TestGatewayVersionSelectionUsesMatchingConfigProfile(t *testing.T) {
 	require.ErrorContains(t, err, `no profile for version "1.2.0"`)
 }
 
+func TestGatewayVersionSelectionPatchTagUsesDockerHubRegistry(t *testing.T) {
+	original := &components.Definition{
+		Name: "platform-gateway",
+		Compose: &components.ComposeSpec{Env: map[string]string{
+			"PG_CONTROLLER_IMAGE": shared.GatewayReleaseRegistry + "/gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    shared.GatewayReleaseRegistry + "/gateway-runtime:current",
+		}},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name:       "gateway-core",
+		Components: []ResolvedComponent{{Def: original, Version: "current"}},
+	}}}
+
+	got, err := (Selection{GatewayVersion: "1.1.0_patch"}).Apply(suite)
+	require.NoError(t, err)
+	component := got.Blocks[0].Components[0]
+	require.Equal(t, "1.1.0_patch", component.Version)
+	require.Equal(t, shared.GatewayPatchRegistryRoot()+"/gateway-controller:1.1.0_patch",
+		component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, shared.GatewayPatchRegistryRoot()+"/gateway-runtime:1.1.0_patch",
+		component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, shared.GatewayReleaseRegistry+"/gateway-controller:current",
+		original.Compose.Env["PG_CONTROLLER_IMAGE"])
+}
+
 func TestGatewayVersionRunnerTags(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -1369,6 +1395,7 @@ func TestGatewayVersionSelectionFiltersRunnersAndReportsSkips(t *testing.T) {
 	}{
 		{name: "legacy release", version: "1.2.0", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
 		{name: "newer release", version: "1.3.0", wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0"},
+		{name: "patched release gates like its release", version: "1.1.0_patch", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.1.0 does not satisfy gateway-version>1.2.0"},
 		{name: "source build", source: true, wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version current source build does not satisfy gateway-version<=1.2.0"},
 	}
 	for _, tc := range cases {

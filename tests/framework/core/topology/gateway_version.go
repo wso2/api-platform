@@ -231,19 +231,23 @@ func parseGatewayVersionConstraint(raw string) (gatewayVersionConstraint, error)
 }
 
 func parseGatewayReleaseVersion(raw string) (gatewayReleaseVersion, error) {
+	original := raw
 	raw = strings.TrimPrefix(raw, "v")
+	if idx := strings.IndexByte(raw, '_'); idx >= 0 {
+		raw = raw[:idx]
+	}
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
-		return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+		return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", original)
 	}
 	values := [3]uint64{}
 	for i, part := range parts {
 		if part == "" || (len(part) > 1 && part[0] == '0') {
-			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", original)
 		}
 		value, err := strconv.ParseUint(part, 10, 64)
 		if err != nil {
-			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", original)
 		}
 		values[i] = value
 	}

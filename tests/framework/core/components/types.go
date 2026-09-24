@@ -388,7 +388,7 @@ func (d *Definition) WithConfigVersion(version string) (*Definition, error) {
 	if d == nil || d.Config == nil || strings.TrimSpace(version) == "" {
 		return d, nil
 	}
-	config, err := d.Config.ForVersion(version)
+	config, err := d.Config.ForVersion(ReleaseVersion(version))
 	if err != nil {
 		return nil, fmt.Errorf("component %q: %w", d.Name, err)
 	}
@@ -408,13 +408,20 @@ func (d *Definition) WithReleaseVersion(version string) (*Definition, error) {
 	if err != nil || updated == nil || strings.TrimSpace(version) == "" {
 		return updated, err
 	}
-	health, ok := updated.VersionedHealth[strings.TrimSpace(version)]
+	health, ok := updated.VersionedHealth[ReleaseVersion(strings.TrimSpace(version))]
 	if !ok {
 		return updated, nil
 	}
 	out := *updated
 	out.Health = &health
 	return &out, nil
+}
+
+func ReleaseVersion(version string) string {
+	if idx := strings.IndexByte(version, '_'); idx >= 0 {
+		return version[:idx]
+	}
+	return version
 }
 
 // WithStagedFiles returns a copy with block-scoped sources for declared staged files.

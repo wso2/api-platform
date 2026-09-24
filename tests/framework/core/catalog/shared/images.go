@@ -32,7 +32,26 @@ const (
 	EnvImageGatewayRuntime = "IT_IMAGE_GATEWAY_RUNTIME"
 	// EnvImageMockPlatformAPI overrides the mock Platform API image.
 	EnvImageMockPlatformAPI = "IT_IMAGE_MOCK_PLATFORM_API"
+	// EnvGatewayPatchRegistry overrides the default registry for gateway patch images.
+	EnvGatewayPatchRegistry = "IT_GATEWAY_PATCH_REGISTRY"
 )
+
+const (
+	patchVersionSuffix     = "_patch"
+	GatewayReleaseRegistry = "ghcr.io/wso2/api-platform"
+	gatewayPatchRegistry   = "docker.io/isurangaws"
+)
+
+func IsPatchVersion(version string) bool {
+	return strings.HasSuffix(strings.TrimSpace(version), patchVersionSuffix)
+}
+
+func GatewayPatchRegistryRoot() string {
+	if override := strings.TrimSpace(os.Getenv(EnvGatewayPatchRegistry)); override != "" {
+		return override
+	}
+	return gatewayPatchRegistry
+}
 
 // EnvCoverageMode marks a run that collects runtime coverage data.
 const EnvCoverageMode = "IT_COVERAGE"

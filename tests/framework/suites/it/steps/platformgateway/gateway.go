@@ -37,6 +37,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -80,6 +81,7 @@ func gatewaySpecVersionForVersion(version string) string {
 // Gateway 1.1 and older append the requested MCP path themselves; later releases forward to the configured path.
 func gatewayMCPUpstreamPathForVersion(version string) string {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	version = components.ReleaseVersion(version)
 	version, _, _ = strings.Cut(version, "-")
 	parts := strings.Split(version, ".")
 	if len(parts) != 3 {
