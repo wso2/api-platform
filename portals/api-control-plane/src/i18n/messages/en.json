@@ -2065,7 +2065,7 @@
     "defaultMessage": "Search portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
-    "defaultMessage": "Choose the Portal to publish this API to."
+    "defaultMessage": "Choose the portal to publish this API to."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
     "defaultMessage": "Publish {apiName}",

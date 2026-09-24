@@ -64,6 +64,8 @@ const PORTAL_APP_BASE_PATH = 'api-portal';
 // into on the portal (that's driven by portal-side label matching), so this is
 // a best-effort assumption, not a genuine parameter.
 const DEFAULT_PORTAL_VIEW_HANDLE = 'default';
+const PORTAL_VIEWS_SEGMENT = 'views';
+const PORTAL_API_SEGMENT = 'api';
 
 /**
  * api-portal serves an API's own page at
@@ -76,5 +78,16 @@ const DEFAULT_PORTAL_VIEW_HANDLE = 'default';
  * enough to open the right page in the common case; a renamed view/org handle
  * would need surfacing a real field to fix properly.
  */
-export const buildViewInPortalUrl = (portalUrl: string, orgHandle: string, apiHandle: string): string =>
-  `${portalUrl.replace(/\/+$/, '')}/${PORTAL_APP_BASE_PATH}/${orgHandle}/views/${DEFAULT_PORTAL_VIEW_HANDLE}/api/${apiHandle}`;
+export const buildViewInPortalUrl = (portalUrl: string, orgHandle: string, apiHandle: string): string => {
+  const url = new URL(portalUrl);
+  url.pathname = [
+    url.pathname.replace(/\/+$/, ''),
+    PORTAL_APP_BASE_PATH,
+    encodeURIComponent(orgHandle),
+    PORTAL_VIEWS_SEGMENT,
+    DEFAULT_PORTAL_VIEW_HANDLE,
+    PORTAL_API_SEGMENT,
+    encodeURIComponent(apiHandle),
+  ].join('/');
+  return url.toString();
+};
