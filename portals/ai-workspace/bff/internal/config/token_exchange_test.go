@@ -307,21 +307,6 @@ grant_type = "token-exchange"
 			wantSub: "supported values are",
 		},
 		{
-			// Basic mode has no subject token: the JWT the BFF holds is one the
-			// Platform API signed for itself.
-			name: "enabled in basic mode",
-			body: `
-[ai_workspace.auth]
-mode = "basic"
-
-[ai_workspace.auth.oidc]
-[ai_workspace.auth.oidc.token_exchange]
-enabled = true
-audience = "platform-api"
-`,
-			wantSub: `requires [auth] mode = "oidc"`,
-		},
-		{
 			name: "audience and resource together",
 			body: oidcBase + `
 [ai_workspace.auth.oidc.token_exchange]
@@ -588,6 +573,33 @@ audience = "platform-api"
 	}
 	if cfg.Auth.TokenExchangeEnabled() {
 		t.Error("the sibling [auth.token_exchange] table must not enable the feature")
+	}
+}
+
+// TestTokenExchangeInertInBasicMode: basic mode has no subject token to exchange —
+// the JWT the BFF holds is one the Platform API signed for itself — so enabled = true
+// there is inert, not invalid.
+//
+// It must not fail startup. `enabled` is env-bindable in the shipped config, so
+// refusing to start would let a variable left over from an OIDC deployment take down
+// a basic-mode one that never used the feature; the quickstart runs in basic mode.
+// TokenExchangeEnabled() already ANDs the two flags, so the feature is off either way
+// — the only question was whether the process lives to report it.
+func TestTokenExchangeInertInBasicMode(t *testing.T) {
+	cfg, err := loadWithAuth(t, `
+[ai_workspace.auth]
+mode = "basic"
+
+[ai_workspace.auth.oidc]
+[ai_workspace.auth.oidc.token_exchange]
+enabled = true
+audience = "platform-api"
+`)
+	if err != nil {
+		t.Fatalf("Load must succeed in basic mode with token exchange enabled: %v", err)
+	}
+	if cfg.Auth.TokenExchangeEnabled() {
+		t.Error("token exchange must be off in basic mode regardless of the enabled flag")
 	}
 }
 

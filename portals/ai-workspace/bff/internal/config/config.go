@@ -761,9 +761,19 @@ func (c *Config) validateTokenExchange() error {
 		return nil
 	}
 
+	// Outside OIDC mode the feature is inert rather than invalid: the cookie JWT in
+	// basic mode is one the Platform API signed for itself, so there is no subject
+	// token to exchange and TokenExchangeEnabled() already reports false. Refusing to
+	// start here would turn a stale environment variable into a dead quickstart —
+	// enabled is env-bindable in the shipped config, so a variable left over from an
+	// OIDC deployment would take down a basic-mode one that never used the feature.
+	// Warn and skip the rest: every check below describes a request this deployment
+	// will never send.
 	if !c.Auth.OIDCEnabled() {
-		return fmt.Errorf("[auth.oidc.token_exchange] enabled = true requires [auth] mode = %q, got %q",
-			AuthModeOIDC, c.Auth.Mode)
+		slog.Warn("[auth.oidc.token_exchange] enabled = true is ignored outside OIDC mode — "+
+			"there is no login token to exchange in this mode, so the feature stays off",
+			"auth_mode", c.Auth.Mode, "required_mode", AuthModeOIDC)
+		return nil
 	}
 	if te.ClientID == "" {
 		return fmt.Errorf("[auth.oidc.token_exchange] client_id is required " +
