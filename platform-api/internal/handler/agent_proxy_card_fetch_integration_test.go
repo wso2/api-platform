@@ -76,6 +76,9 @@ type agentProxyTestEnv struct {
 	// deployLogs captures the deployment service's log output, so a test can
 	// assert what a deploy reported.
 	deployLogs *lockedBuffer
+	// hub is the real SQL-backed EventHub gateway events are published to,
+	// wrapped so a test can make publishing fail.
+	hub *faultyEventHub
 }
 
 // newAgentProxyTestEnv builds the full Agent proxy stack over a fresh SQLite DB,
@@ -90,7 +93,9 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	initSharedHTTPClientForTests(t)
 
 	dbPath := filepath.Join(t.TempDir(), "agent-proxy-it.db")
-	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
+	// The EventHub polls this DB from its own goroutines, so writers wait on a
+	// lock rather than failing with SQLITE_BUSY.
+	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_busy_timeout=5000")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -128,12 +133,15 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	}
 	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity)
 
+	hub := newFaultyEventHub(t, sqlDB)
+	gatewayEvents := service.NewGatewayEventsService(hub, identity, slog.Default())
+
 	svc := service.NewAgentProxyService(
 		repository.NewAgentProxyRepo(db),
 		repository.NewProjectRepo(db),
 		repository.NewDeploymentRepo(db, registry),
 		repository.NewGatewayRepo(db),
-		nil, // gatewayEventsService — deletion broadcast is Section 10
+		gatewayEvents,
 		slog.Default(),
 		noopAudit{},
 		cfg,
@@ -149,7 +157,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		repository.NewGatewayRepo(db),
 		repository.NewArtifactRepo(db, registry),
 		repository.NewAPIKeyRepo(db, registry),
-		nil, // gatewayEventsService — deployment notifications are Section 10
+		gatewayEvents,
 		service.NewArtifactDefinitions(service.NewAgentProxyDefinition(agentRepo, &utils.AgentProxyUtils{})),
 		cfg,
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
@@ -163,6 +171,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		db:         db,
 		vault:      v,
 		deployLogs: deployLogs,
+		hub:        hub,
 	}
 }
 

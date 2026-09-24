@@ -208,8 +208,21 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 		"gatewayID", gateway.ID, "gatewayVersion", gateway.Version,
 		"sourceDataVersion", source.DataVersion, "targetDataVersion", targetDataVersion)
 
-	// Push the Agent proxy's existing active API keys to the gateway.
-	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gateway.ID, createdBy)
+	// Send deployment event to gateway
+	if s.gatewayEventsService != nil {
+		deploymentEvent := &model.AgentDeploymentEvent{
+			ProxyId:      proxyUUID,
+			DeploymentID: deploymentID,
+			PerformedAt:  performedAt,
+		}
+
+		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(gateway.ID, deploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast Agent proxy deployment event", "error", err)
+		}
+
+		// Push the Agent proxy's existing active API keys to the gateway.
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gateway.ID, createdBy)
+	}
 
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
@@ -297,6 +310,19 @@ func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayH
 		return nil, fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
+	// Send undeployment event to gateway
+	if s.gatewayEventsService != nil {
+		undeploymentEvent := &model.AgentUndeploymentEvent{
+			ProxyId:      proxyUUID,
+			DeploymentID: deployment.DeploymentID,
+			PerformedAt:  performedAt,
+		}
+
+		if err := s.gatewayEventsService.BroadcastAgentUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast Agent proxy undeployment event", "error", err)
+		}
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -362,7 +388,21 @@ func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHa
 		return nil, fmt.Errorf("failed to set current deployment: %w", err)
 	}
 
-	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, target.GatewayID, "")
+	// A restore is a deployment as far as the gateway is concerned: it fetches
+	// the (restored) current deployment's snapshot.
+	if s.gatewayEventsService != nil {
+		deploymentEvent := &model.AgentDeploymentEvent{
+			ProxyId:      proxyUUID,
+			DeploymentID: deploymentID,
+			PerformedAt:  performedAt,
+		}
+
+		if err := s.gatewayEventsService.BroadcastAgentDeploymentEvent(target.GatewayID, deploymentEvent); err != nil {
+			s.slogger.Warn("Failed to broadcast Agent proxy deployment event", "error", err)
+		}
+
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, target.GatewayID, "")
+	}
 
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,

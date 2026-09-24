@@ -325,13 +325,15 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	return s.Get(orgUUID, handle)
 }
 
-// Delete removes an Agent proxy from the control plane.
+// Delete removes an Agent proxy from the control plane and notifies gateways.
 //
-// The identifiers gateway cleanup needs are read before the row is removed,
-// because they are unrecoverable afterwards. Broadcasting the deletion to those
-// gateways is Section 10's event implementation; until it lands, a gateway keeps
-// serving routes for an Agent proxy this call has already deleted, so deletion
-// is not yet a finished operation.
+// The gateways to notify are read before the row is removed. Every gateway in
+// the organization is notified, not only those with a current deployment:
+// deployment_status rows can already be gone (deleting a deployment record
+// removes its status), which would otherwise leave a stale artifact on a
+// gateway that never hears the deletion. As for the other kinds, notification
+// is best-effort once the row is deleted; a gateway that misses the event
+// drops the artifact at its next reconnect sync.
 func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	m, err := s.load(orgUUID, handle)
 	if err != nil {
@@ -344,6 +346,16 @@ func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
 		return err
 	}
 
+	var gateways []*model.Gateway
+	if s.gatewayRepo != nil {
+		gws, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to get gateways for Agent proxy deletion", "error", err, "proxyUUID", m.UUID)
+		} else {
+			gateways = gws
+		}
+	}
+
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.AgentProxyNotFound.Wrap(err)
@@ -354,6 +366,22 @@ func (s *AgentProxyService) Delete(orgUUID, handle, deletedBy string) error {
 	s.cardCache.invalidate(orgUUID, m.UUID)
 
 	_ = s.auditRepo.Record("DELETE", m.UUID, agentProxyAuditResource, orgUUID, deletedBy)
+
+	// Send deletion events to all gateways in the organization
+	if s.gatewayEventsService != nil {
+		for _, gateway := range gateways {
+			deletionEvent := &model.AgentDeletionEvent{
+				ProxyId: m.UUID,
+			}
+
+			if err := s.gatewayEventsService.BroadcastAgentDeletionEvent(gateway.ID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast Agent proxy deletion event", "error", err, "gatewayID", gateway.ID, "proxyUUID", m.UUID)
+			} else {
+				s.slogger.Info("Agent proxy deletion event sent", "gatewayID", gateway.ID, "proxyUUID", m.UUID)
+			}
+		}
+	}
+
 	return nil
 }
 
