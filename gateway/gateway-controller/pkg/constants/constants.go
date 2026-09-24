@@ -179,7 +179,7 @@ const (
 		"    - name: '%s'\n" +
 		"      value: '%s'\n"
 	// set-headers request.phase: "body" applies request headers after the request
-	// body phase has run (set-headers v1.1.1+).
+	// body phase has run (set-headers v1.2.0+).
 	SET_HEADERS_REQUEST_PHASE_PARAM = "phase"
 	SET_HEADERS_REQUEST_PHASE_BODY  = "body"
 
