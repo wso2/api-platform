@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
@@ -96,6 +97,7 @@ func services() ([]testbench.Service, error) {
 		oauth2.New(),
 		webhook.New(),
 		agentcard.New(),
+		graphqlbackend.New(),
 	}, nil
 }
 
