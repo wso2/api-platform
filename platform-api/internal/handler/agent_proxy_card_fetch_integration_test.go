@@ -163,9 +163,23 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
 	)
 
+	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
+	apiKeySvc := service.NewAPIKeyService(
+		repository.NewAPIRepo(db),
+		repository.NewArtifactRepo(db, registry),
+		apiKeyRepo,
+		gatewayEvents,
+		noopAudit{},
+		nil, // defaults to [sha256]
+		slog.Default(),
+	)
+	keyListSvc := service.NewAgentProxyAPIKeyService(agentRepo, apiKeyRepo, identity)
+
 	mux := http.NewServeMux()
 	NewAgentProxyHandler(svc, identity, slog.Default()).RegisterRoutes(mux)
 	NewAgentProxyDeploymentHandler(deploySvc, identity, slog.Default()).RegisterRoutes(mux)
+	NewAgentProxyAPIKeyHandler(apiKeySvc, keyListSvc, identity, "scope", slog.Default()).RegisterRoutes(mux)
+	NewAPIKeyUserHandler(service.NewAPIKeyUserService(apiKeyRepo, identity, slog.Default()), identity, "scope", slog.Default()).RegisterRoutes(mux)
 	return &agentProxyTestEnv{
 		handler:    middleware.NewTestContextMiddleware(mux),
 		db:         db,

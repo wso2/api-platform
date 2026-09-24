@@ -1248,6 +1248,7 @@ func (e UpstreamAuthType) Valid() bool {
 
 // Defines values for UserAPIKeyItemArtifactType.
 const (
+	UserAPIKeyItemArtifactTypeAgentProxy  UserAPIKeyItemArtifactType = "AgentProxy"
 	UserAPIKeyItemArtifactTypeLlmProvider UserAPIKeyItemArtifactType = "LlmProvider"
 	UserAPIKeyItemArtifactTypeLlmProxy    UserAPIKeyItemArtifactType = "LlmProxy"
 	UserAPIKeyItemArtifactTypeRestApi     UserAPIKeyItemArtifactType = "RestApi"
@@ -1256,6 +1257,8 @@ const (
 // Valid indicates whether the value is a known member of the UserAPIKeyItemArtifactType enum.
 func (e UserAPIKeyItemArtifactType) Valid() bool {
 	switch e {
+	case UserAPIKeyItemArtifactTypeAgentProxy:
+		return true
 	case UserAPIKeyItemArtifactTypeLlmProvider:
 		return true
 	case UserAPIKeyItemArtifactTypeLlmProxy:
@@ -1716,6 +1719,7 @@ func (e GetMCPProxyDeploymentsParamsStatus) Valid() bool {
 
 // Defines values for ListUserAPIKeysParamsType.
 const (
+	ListUserAPIKeysParamsTypeAgentProxy  ListUserAPIKeysParamsType = "AgentProxy"
 	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
 	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
 	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
@@ -1724,6 +1728,8 @@ const (
 // Valid indicates whether the value is a known member of the ListUserAPIKeysParamsType enum.
 func (e ListUserAPIKeysParamsType) Valid() bool {
 	switch e {
+	case ListUserAPIKeysParamsTypeAgentProxy:
+		return true
 	case ListUserAPIKeysParamsTypeLlmProvider:
 		return true
 	case ListUserAPIKeysParamsTypeLlmProxy:

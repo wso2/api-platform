@@ -325,7 +325,9 @@ type controlPlaneAPIKey struct {
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
-// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi, KindWebBrokerApi.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi, KindWebBrokerApi,
+// KindAgent. KindAgent selects the gateway-internal /agents/api-keys route, which the control
+// plane serves for its AgentProxy kind — the gateway's Agent vocabulary crosses the boundary here.
 // When issuer is non-empty it is appended as a query parameter so the server returns
 // only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
@@ -343,6 +345,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/websub-apis/api-keys"
 	case models.KindWebBrokerApi:
 		path = "/webbroker-apis/api-keys"
+	case models.KindAgent:
+		path = "/agents/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}

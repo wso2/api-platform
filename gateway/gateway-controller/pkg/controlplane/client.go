@@ -29,6 +29,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1051,14 +1052,36 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// apiKeyBulkSyncKinds lists, in fetch order, the artifact kinds whose API keys are bulk-synced
+// from the control plane on connect. It is the single list both halves of
+// syncAPIKeysForExistingArtifacts read — the local-config filter and the per-kind fetch loop —
+// so the two cannot drift: a kind fetched but not filtered would have its keys reconciled
+// against an empty artifact set, and a kind filtered but not fetched would never be synced.
+// Each entry must have a path arm in utils.APIUtilsService.FetchAPIKeysByKind.
+var apiKeyBulkSyncKinds = []string{
+	models.KindRestApi,
+	models.KindWebSubApi,
+	models.KindWebBrokerApi,
+	models.KindLlmProvider,
+	models.KindLlmProxy,
+	models.KindAgent,
+}
+
+// isAPIKeyBulkSyncKind reports whether kind is in apiKeyBulkSyncKinds.
+func isAPIKeyBulkSyncKind(kind string) bool {
+	return slices.Contains(apiKeyBulkSyncKinds, kind)
+}
+
 // onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
-// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+// exposes an API-key backfill endpoint. LLM, WebSub, WebBroker, and Agent kinds are cloud-only:
+// carbon-apimgt has no /agents/api-keys route, so an on-prem gateway receives Agent keys through
+// the apikey.* event path only.
 var onPremSupportedAPIKeyKinds = map[string]bool{
 	models.KindRestApi: true,
 }
 
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
-// currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
+// currently known artifacts of the kinds in apiKeyBulkSyncKinds after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
 // For on-prem control planes only KindRestApi is synced; other kinds are skipped because
@@ -1090,8 +1113,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		if cfg == nil {
 			continue
 		}
-		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy &&
-			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi && cfg.Kind != models.KindWebBrokerApi {
+		if !isAPIKeyBulkSyncKind(cfg.Kind) {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
@@ -1110,7 +1132,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
-	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+	for _, kind := range apiKeyBulkSyncKinds {
 		// On-prem APIM only exposes backfill endpoints for RestApi keys.
 		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
 			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",

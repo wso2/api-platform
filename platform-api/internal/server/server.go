@@ -297,6 +297,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	)
 	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	agentProxyAPIKeyService := service.NewAgentProxyAPIKeyService(agentProxyRepo, apiKeyRepo, identityService)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
@@ -398,6 +399,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	agentProxyHandler := handler.NewAgentProxyHandler(agentProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
+	agentProxyAPIKeyHandler := handler.NewAgentProxyAPIKeyHandler(apiKeyService, agentProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
@@ -463,6 +465,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyDeploymentHandler.RegisterRoutes(core)
 	agentProxyHandler.RegisterRoutes(core)
 	agentProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyAPIKeyHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.

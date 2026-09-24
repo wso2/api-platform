@@ -117,12 +117,18 @@ func TestAgentProxyOperationsAcceptScopeAlternatives(t *testing.T) {
 			[]string{"ap:agent_proxy:read"}},
 		{"POST", base + "/fetch-agent-card", []string{"ap:agent_proxy:read", "ap:agent_proxy:manage"},
 			[]string{"ap:agent_proxy:create"}},
+		{"GET", base + "/{agentProxyId}/api-keys",
+			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
+			[]string{"ap:agent_proxy:read", "ap:api_key:read"}},
 		{"POST", base + "/{agentProxyId}/api-keys",
 			[]string{"ap:agent_proxy:api_key:create", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:api_key:read"}},
+			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:create", "ap:agent_proxy:api_key:update"}},
+		{"PUT", base + "/{agentProxyId}/api-keys/{apiKeyId}",
+			[]string{"ap:agent_proxy:api_key:update", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
+			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:update", "ap:agent_proxy:api_key:create"}},
 		{"DELETE", base + "/{agentProxyId}/api-keys/{apiKeyId}",
 			[]string{"ap:agent_proxy:api_key:delete", "ap:agent_proxy:api_key:manage", "ap:agent_proxy:manage", "ap:api_key:all:manage"},
-			[]string{"ap:agent_proxy:api_key:read"}},
+			[]string{"ap:agent_proxy:api_key:read", "ap:agent_proxy:read", "ap:agent_proxy:delete", "ap:agent_proxy:api_key:update"}},
 	} {
 		scopes, ok := registry.Lookup(tc.method, tc.path)
 		if !ok {

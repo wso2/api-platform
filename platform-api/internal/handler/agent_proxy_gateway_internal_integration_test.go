@@ -339,8 +339,8 @@ func TestGatewayInternalAgent_RoutesRequireAGatewayAPIKey(t *testing.T) {
 	}
 }
 
-// insertAgentAPIKey stores an API key against artifactUUID directly, the way
-// the public API-key operations (Section 13) will.
+// insertAPIKey stores an API key against artifactUUID directly, bypassing the
+// public API-key operations so a test can pin an exact issuer or status.
 func (e *agentInternalEnv) insertAPIKey(t *testing.T, artifactUUID, handle string, issuer any) {
 	t.Helper()
 	if _, err := e.db.Exec(`INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key,
