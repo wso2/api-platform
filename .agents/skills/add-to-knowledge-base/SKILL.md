@@ -12,7 +12,7 @@ Create or update one feature document under `kb/<component>/<feature>.md`. The f
 
 Prerequisite: the `okf-open-knowledge-format` skill is not committed. If it is missing, run `make install-skills` from the repo root first.
 
-1. **Create the initial document with the OKF skill.** Invoke `okf-open-knowledge-format` to produce the concept file, the directory `index.md`, and a `log.md` entry, and to validate the bundle. Bundle root is `kb/`, which already declares `okf_version: "0.2"`. Use `type: Feature`. Set `generated.by` to the requesting user as `human:<github-handle>` and `status: draft` unless told otherwise. Never add `verified` unless a human has actually compared the document against the code.
+1. **Create the initial document with the OKF skill.** Invoke `okf-open-knowledge-format` to produce the concept file, the directory `index.md`, and a `log.md` entry, and to validate the bundle. Bundle root is `kb/`, which already declares `okf_version: "0.2"`. Use `type: Feature`. Set `status: draft` unless told otherwise. Never add `verified` unless a human has actually compared the document against the code.
 
 2. **Apply the rules below and rewrite whatever violates them.** Do this before shaping the body, because the OKF skill's default output does not know these rules.
 
@@ -31,11 +31,11 @@ These override anything the OKF skill or the template example suggests.
 5. **Limitations are rows with tracking.** Each row links an issue or says "Not yet filed". Delete the row when fixed. Never leave a stale row.
 6. **Every Entry points path is in `sources`, and the reverse.** The `sources` list is what `scripts/check-feature-docs.sh` uses to fail a PR that changes documented code without updating the document. Planned files that do not exist yet are allowed and are reported as warnings.
 7. **Minimal.** One sentence per idea. No history, no dates in the body, no planning narrative, no session notes, no branch names. No marketing words.
-8. **Preserve what exists.** When updating a document, change only what the code or decision change invalidates. Do not restructure or re-flow unrelated sections. Bump `stale_after` only together with a real doc-versus-code comparison.
+8. **Preserve what exists.** When updating a document, change only what the code or decision change invalidates. Do not restructure or re-flow unrelated sections.
 
 ## Checklist before finishing
 
-- Frontmatter has `type`, `title`, `description`, `resource`, `status`, `generated`, `stale_after`, `sources`.
+- Frontmatter has `type`, `title`, `description`, `resource`, `status`, `sources`.
 - `grep -nE "specs/|\.specify|artifacts/|spec\.md|plan\.md|research\.md|tasks\.md|data-model\.md|quickstart\.md"` on the file returns nothing.
 - No function, method, struct or test name appears anywhere in the file.
 - Section list is exactly: Use cases, Decisions, Scope, Current limitations, Open questions, Entry points, Examples.

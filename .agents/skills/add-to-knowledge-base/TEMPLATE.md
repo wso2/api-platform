@@ -5,8 +5,6 @@ description: <One sentence: what a user can now do that they could not before.>
 resource: /<component>
 tags: [<component>, <area>, <area>]
 status: draft | stable | deprecated
-generated: { by: human:<github-handle>, at: <YYYY-MM-DDT00:00:00Z> }
-stale_after: <YYYY-MM-DDT00:00:00Z, about six months out>
 sources:
   - id: <short-id>
     resource: /<component>/<path-to-file>
