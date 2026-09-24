@@ -16,12 +16,11 @@
  * under the License.
  */
 
-import { Card, CardContent, CodeBlock, PageTitle } from '@wso2/oxygen-ui';
 import { useParams } from 'react-router-dom';
 
 import { routes } from '../../../../routes/paths';
 import { ScopeGate } from '../../../../scope/ScopeGate';
-import { FormattedMessage } from 'react-intl';
+import { RuntimeLogsContent } from './RuntimeLogsContent';
 
 export function RuntimeLogsPage() {
   return (
@@ -38,33 +37,5 @@ export function RuntimeLogsPage() {
 
 function RuntimeLogs() {
   const { apiHandler } = useParams();
-
-  return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage
-            id="appShell.runtimeLogsPage.header"
-            defaultMessage="Observability"
-          />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage
-            id="appShell.runtimeLogsPage.subHeader"
-            defaultMessage="Runtime logs for {apiHandler}."
-            values={{ apiHandler }}
-          />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <Card variant="outlined">
-        <CardContent>
-          <CodeBlock
-            language="bash"
-            code={`[info] Runtime log streaming integration point
-            [info] Advanced filters and live tail are deferred from the MVP`}
-          />
-        </CardContent>
-      </Card>
-    </>
-  );
+  return <RuntimeLogsContent apiHandler={apiHandler} />;
 }

@@ -2042,6 +2042,9 @@
     "defaultMessage": "Version",
     "description": "Column header over the gateway version."
   },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.components.GraphqlApiPageGuard.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
@@ -2061,22 +2064,6 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.notFound": {
     "defaultMessage": "GraphQL API not found",
     "description": "Shown when the API to edit could not be loaded."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlCompliancePage.apiNotFound": {
-    "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.apiNotFound": {
-    "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.apiNotFound": {
-    "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityLogsPage.subHeader": {
-    "defaultMessage": "Runtime logs for {graphqlApiHandler}.",
-    "description": "{graphqlApiHandler} is the API handle, user-supplied; do not translate it."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.observability.GraphqlObservabilityMetricsPage.apiNotFound": {
-    "defaultMessage": "GraphQL API not found"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"

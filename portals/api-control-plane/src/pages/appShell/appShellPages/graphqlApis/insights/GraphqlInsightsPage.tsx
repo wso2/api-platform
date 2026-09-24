@@ -16,89 +16,14 @@
  * under the License.
  */
 
-import { PageTitle } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useParams } from 'react-router-dom';
-
-import { ComingSoon } from '@/components/ComingSoon';
-import { ExternalToolPanel } from '@/components/common/ExternalToolPanel';
-import { ErrorState } from '@/components/StateViews';
-import { runtimeConfig } from '@/config/runtime';
-
-const messages = defineMessages({
-  action: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action',
-    defaultMessage: 'Open Moesif Insights',
-    description: 'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
-  },
-  apiNotFound: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.insights.GraphqlInsightsPage.apiNotFound',
-    defaultMessage: 'GraphQL API not found',
-  },
-  cloudFeature: {
-    id: 'appShell.insightsPage.feature',
-    defaultMessage: 'API insights',
-    description: 'Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud.',
-  },
-  panelDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription',
-    defaultMessage:
-      'Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace.',
-  },
-  panelTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelTitle',
-    defaultMessage: 'Your API insights live in Moesif',
-  },
-  subHeader: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.subHeader',
-    defaultMessage: 'Usage analytics and traffic insights.',
-  },
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title',
-    defaultMessage: 'Insights',
-  },
-});
+import { InsightsPageContent } from '../../insights/InsightsPageContent';
+import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
 /**
- * Fork of `insights/InsightsPage.tsx` for a GraphQL API. The gateway's
- * analytics pipeline already tags GraphQL requests distinctly (see
- * `policy-engine/internal/analytics/analytics.go`'s `graphqlAnalytics`
- * enrichment), so the same Moesif workspace already carries this API's data —
- * this page only needed its own route into that same content. No `ScopeGate`:
- * this route lives outside `ConsoleScopeProvider`'s REST-only api-scope
- * matching (see `graphqlApiPath`), so it guards on its own route param
- * instead, matching every other GraphQL page.
+ * GraphQL API entry point for `insights/InsightsPageContent.tsx` — the body is
+ * identical to REST's own Insights page, so only the scope guard differs
+ * (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlInsightsPage() {
-  const intl = useIntl();
-  const { graphqlApiHandler } = useParams();
-
-  if (!graphqlApiHandler) {
-    return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
-  }
-
-  // Cloud ships org/project Moesif embeds via the insights plugin; API-scoped
-  // analytics is not ready yet there either — mirrors InsightsPage's own gate.
-  if (runtimeConfig.cloudProxyEnabled) {
-    return <ComingSoon feature={<FormattedMessage {...messages.cloudFeature} />} />;
-  }
-
-  return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subHeader} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <ExternalToolPanel
-        actionLabel={<FormattedMessage {...messages.action} />}
-        description={<FormattedMessage {...messages.panelDescription} />}
-        href={runtimeConfig.moesifWebUrl}
-        title={<FormattedMessage {...messages.panelTitle} />}
-      />
-    </>
-  );
+  return <GraphqlApiPageGuard>{() => <InsightsPageContent />}</GraphqlApiPageGuard>;
 }
