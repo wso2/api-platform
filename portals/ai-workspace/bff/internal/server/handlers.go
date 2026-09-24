@@ -701,7 +701,12 @@ func (s *Server) exchangeSingleFlight(ctx context.Context, subjectToken, fingerp
 		return mu.result, mu.err
 	}
 
-	mu.result, mu.err = s.doExchange(ctx, subjectToken, fingerprint, orgHandle)
+	// The owner's request context must not cancel an exchange other requests have
+	// coalesced onto: this group exists precisely so the SPA's page-load burst hits
+	// the IDP once, and without this the first of those requests navigating away
+	// fails every one that joined behind it. Cancellation is dropped while values are
+	// kept, and Exchange imposes its own exchangeTimeout, so the work stays bounded.
+	mu.result, mu.err = s.doExchange(context.WithoutCancel(ctx), subjectToken, fingerprint, orgHandle)
 	mu.done = true
 
 	// The owner drops the entry on every exit path; waiters hold the pointer and read

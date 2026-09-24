@@ -1,9 +1,41 @@
 package config
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+// requireOIDCTables fails with a diagnosis instead of a validation error when the base
+// config is missing the tables this test exists to cover.
+//
+// Without it the three OIDC subtests below fail with "OIDC mode requires [auth.oidc]
+// authority, client_id, client_secret and redirect_url" — which reads as a broken test
+// environment, and sends the reader looking at the subtests' t.Setenv calls (which are
+// fine) rather than at the file. The tables are all {{ env }} tokens carrying no
+// credential, so the usual reason they are absent is that the file has not been
+// committed yet: the test then passes for whoever has the edits locally and fails for
+// everyone else and in CI, which is the confusing shape this message short-circuits.
+func requireOIDCTables(t *testing.T, base string) {
+	t.Helper()
+	raw, err := os.ReadFile(base)
+	if err != nil {
+		t.Fatalf("read %s: %v", base, err)
+	}
+	for _, table := range []string{
+		"[ai_workspace.auth.oidc]",
+		"[ai_workspace.auth.oidc.token_exchange]",
+	} {
+		if !bytes.Contains(raw, []byte(table)) {
+			t.Fatalf("%s has no %s table.\n"+
+				"This test pins the SHIPPED config files, so the table has to exist there — "+
+				"it is not a fixture this test can supply for itself. If it is present in your "+
+				"working tree, it is not committed: commit it (every value in it is an {{ env }} "+
+				"token, so no credential is committed with it).", base, table)
+		}
+	}
+}
 
 // TestDebugOverlay covers configs/config-debug.toml, the tracked overlay
 // `make bff-run` and .vscode/launch.json layer on top of configs/config.toml, and
@@ -20,6 +52,7 @@ import (
 func TestDebugOverlay(t *testing.T) {
 	base := filepath.Join("..", "..", "..", "configs", "config.toml")
 	dbg := filepath.Join("..", "..", "..", "configs", "config-debug.toml")
+	requireOIDCTables(t, base)
 
 	t.Run("inert with an empty environment", func(t *testing.T) {
 		cfg, err := Load(base, dbg)

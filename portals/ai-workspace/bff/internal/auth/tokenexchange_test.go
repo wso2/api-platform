@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1211,4 +1212,58 @@ func testJWT(t *testing.T, claims map[string]any) string {
 		return base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return b64(map[string]string{"alg": "none", "typ": "JWT"}) + "." + b64(claims) + ".sig"
+}
+
+// TestCallerCancellationDoesNotGateTheExchanger: a caller that disconnects mid-exchange
+// says nothing about the token endpoint's health, but at the transport layer its
+// failure is indistinguishable from a wedged endpoint — both come back as an error
+// from client.Do. If that reached the shared gate, one browser navigating away would
+// fast-fail every other session's exchange for unavailableCooldown, turning a single
+// disconnect into a brief outage for everyone.
+func TestCallerCancellationDoesNotGateTheExchanger(t *testing.T) {
+	var once sync.Once
+	started := make(chan struct{})
+	// release is what lets the server shut down: httptest's Close waits for in-flight
+	// handlers, and a handler parked only on the request context can outlive the
+	// client's cancellation long enough to deadlock the test.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(started) })
+		select {
+		case <-r.Context().Done(): // the caller gave up — the case under test
+		case <-release:
+		}
+	}))
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+
+	e := NewExchanger(srv.Client(), baseCfg(), srv.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := e.Exchange(ctx, "subject-token", "")
+		errCh <- err
+	}()
+
+	<-started
+	cancel()
+
+	err := <-errCh
+	if err == nil {
+		t.Fatal("expected an error from a cancelled exchange")
+	}
+	// Still classified unavailable, so the caller keeps its session — it is only the
+	// shared health state that must not learn anything from this.
+	if !errors.Is(err, ErrExchangeUnavailable) {
+		t.Errorf("err = %v, want it to wrap ErrExchangeUnavailable", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want it to carry the caller's context.Canceled", err)
+	}
+	if gated := e.upstreamDown(); gated != nil {
+		t.Errorf("a caller's cancellation gated the exchanger for every other session: %v", gated)
+	}
 }

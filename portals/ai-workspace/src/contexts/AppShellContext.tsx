@@ -284,6 +284,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         setError(orgSwitchErrorMessage(switched.reason, organization.name));
         return;
       }
+      // Nothing else clears this, so a message left by an earlier failed switch would
+      // outlive the condition that caused it: the user retries after an outage clears,
+      // the switch succeeds, and they are still reading "sign-in is temporarily
+      // unavailable" over the org they are now actually in.
+      setError(null);
       setCurrentOrganizationState(organization);
       await fetchProjectsForOrg();
     },

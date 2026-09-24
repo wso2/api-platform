@@ -246,6 +246,11 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string
 		return nil, err
 	}
 
+	// Held separately from the timeout-wrapped ctx below so the two reasons a context
+	// can be done stay distinguishable: our own deadline means the token endpoint
+	// really is slow, which is a health signal; the caller going away means nothing
+	// about the endpoint at all.
+	caller := ctx
 	ctx, cancel := context.WithTimeout(ctx, exchangeTimeout)
 	defer cancel()
 
@@ -260,6 +265,16 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken, orgHandle string
 					"attempts", attempt)
 			}
 			return res, nil
+		}
+		// A disconnected caller must never reach the shared health gate. The failure
+		// it produces is indistinguishable from a wedged endpoint at the transport
+		// layer — both surface as an error from client.Do — so without this one
+		// browser navigating away mid-exchange would fast-fail every other session's
+		// exchange for unavailableCooldown. Checked on every attempt, so a
+		// cancellation arriving during a retry is treated the same, and ahead of the
+		// gate below rather than after it.
+		if cause := caller.Err(); cause != nil {
+			return nil, fmt.Errorf("%w: %w", ErrExchangeUnavailable, cause)
 		}
 		if errors.Is(err, ErrExchangeUnavailable) {
 			e.noteUpstreamUnavailable()
