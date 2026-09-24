@@ -21,8 +21,9 @@
 // resolves to the deployment, bodyless 204 deletion of an undeployed record, and
 // the immutable snapshot the gateway will be served.
 //
-// Gateway acknowledgements are simulated by writing deployment_status directly;
-// the ack path itself belongs to Section 12.
+// Gateway acknowledgements are simulated here by writing deployment_status
+// directly; the ack path itself is exercised in
+// agent_proxy_deployment_ack_integration_test.go.
 
 package handler
 

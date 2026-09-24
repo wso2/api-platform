@@ -4955,6 +4955,22 @@ paths:
         `DEPLOYING` status; poll the `Location` URI for the eventual status and `statusReason`.
         This is not a completed gateway deployment. Access is validated against the
         organization in the JWT token.
+
+        The gateway reports the outcome asynchronously:
+
+        - `DEPLOYED` means the gateway accepted, validated and stored the Agent. It does not
+          confirm that the gateway is serving the Agent's routes: route application happens
+          after the acknowledgement, and a policy engine that cannot resolve A2A routes is not
+          detected.
+        - `FAILED` carries a `statusReason` code: `AGENT_VALIDATION_FAILED` (the gateway
+          rejected the definition), `AGENT_CONFIG_RENDER_FAILED` (a template or secret reference
+          could not be resolved), `AGENT_CONFLICT` (the gateway already holds another Agent
+          with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
+          (the gateway could not retrieve the deployment artifact), or
+          `GATEWAY_PROCESSING_ERROR`.
+        - The control plane does not check the target gateway's version. A gateway that
+          predates Agent support never acknowledges the deployment, which ends `FAILED` with
+          `DEPLOYMENT_TIMEOUT`.
       operationId: createAgentProxyDeployment
       security:
         - OAuth2Security:
@@ -5165,7 +5181,9 @@ paths:
         Accepts a restoration request for a previous deployment (`ARCHIVED` or `UNDEPLOYED`)
         and returns the transitional deployment state (`DEPLOYING`). Poll the `Location` URI
         for the terminal status and `statusReason`. The target deployment must not already be
-        in `DEPLOYED` status.
+        in `DEPLOYED` status. The gateway acknowledges a restore as a deployment, so the
+        terminal statuses and reason codes are those described for
+        `createAgentProxyDeployment`.
 
         The `gatewayId` query parameter is validated against the deployment's bound gateway to
         prevent unintended operations. Access is validated against the organization in the JWT
@@ -9448,7 +9466,14 @@ components:
         statusReason:
           type: string
           nullable: true
-          description: Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
+          description: >-
+            Error code explaining the failure reason. Null unless status is FAILED (e.g.
+            DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text.
+            Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
+            AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
+            DEPLOYMENT_ID_MISMATCH.
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          maxLength: 50
         updatedAt:
           type: string
           format: date-time

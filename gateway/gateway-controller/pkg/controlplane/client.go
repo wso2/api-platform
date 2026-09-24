@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/workerpool"
@@ -2998,6 +2999,46 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 // the kind name is the gateway vocabulary that crosses the boundary.
 const ackResourceTypeAgent = models.KindAgent
 
+// Failure codes the Agent handlers acknowledge with. The control plane stores
+// the code as the deployment's statusReason (VARCHAR(50)) and records anything
+// not shaped like a code as GATEWAY_PROCESSING_ERROR. Codes are sent, never
+// error text: an error message can carry configuration values, and the reason
+// is shown to every reader of the deployment.
+const (
+	ackCodeGatewayProcessingError   = "GATEWAY_PROCESSING_ERROR"
+	ackCodeDeploymentIDMismatch     = "DEPLOYMENT_ID_MISMATCH"
+	ackCodeAgentArtifactFetchFailed = "AGENT_ARTIFACT_FETCH_FAILED"
+	ackCodeAgentValidationFailed    = "AGENT_VALIDATION_FAILED"
+	ackCodeAgentRenderFailed        = "AGENT_CONFIG_RENDER_FAILED"
+	ackCodeAgentConflict            = "AGENT_CONFLICT"
+)
+
+// agentAckFailureCode classifies an Agent apply failure into the code the
+// deployment ack reports, so a definition the gateway rejects is distinguishable
+// from a gateway fault. Unclassified errors are GATEWAY_PROCESSING_ERROR.
+func agentAckFailureCode(err error) string {
+	var (
+		validationErr *agent.ValidationError
+		parseErr      *agent.ParseError
+		kindErr       *agent.KindMismatchError
+		handleErr     *agent.HandleMismatchError
+		renderErr     *templateengine.RenderError
+	)
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &validationErr), errors.As(err, &parseErr),
+		errors.As(err, &kindErr), errors.As(err, &handleErr):
+		return ackCodeAgentValidationFailed
+	case errors.As(err, &renderErr):
+		return ackCodeAgentRenderFailed
+	case errors.Is(err, storage.ErrConflict):
+		return ackCodeAgentConflict
+	default:
+		return ackCodeGatewayProcessingError
+	}
+}
+
 // errAgentKindMismatch reports that an agent.* event names an artifact UUID the
 // gateway holds under another kind.
 var errAgentKindMismatch = errors.New("artifact is stored under another kind")
@@ -3064,7 +3105,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
@@ -3078,7 +3119,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
@@ -3094,7 +3135,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeAgentArtifactFetchFailed)
 		return
 	}
 
@@ -3106,7 +3147,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeAgentArtifactFetchFailed)
 		return
 	}
 
@@ -3129,7 +3170,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, agentAckFailureCode(err))
 		return
 	}
 
@@ -3189,7 +3230,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
@@ -3200,7 +3241,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
@@ -3230,7 +3271,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 				slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
 			)
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+				undeployedEvent.Payload.PerformedAt, ackCodeDeploymentIDMismatch)
 			return
 		}
 		if errors.Is(err, agent.ErrUndeployStale) {
@@ -3246,7 +3287,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 

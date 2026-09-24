@@ -22,6 +22,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,6 +30,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -47,6 +49,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -499,7 +502,8 @@ func TestHandleAgentDeployedEvent_FailedFetchWritesNothing(t *testing.T) {
 
 			ack := h.nextAck(t)
 			assert.Equal(t, "failed", ack.Status)
-			assert.Equal(t, "GATEWAY_PROCESSING_ERROR", ack.ErrorCode)
+			assert.Equal(t, ackCodeAgentArtifactFetchFailed, ack.ErrorCode,
+				"a fetch failure is reported as such, not as a gateway fault")
 			assert.Equal(t, models.KindAgent, ack.ResourceType)
 			assert.Equal(t, "deploy", ack.Action)
 			assert.Equal(t, agentEvtID, ack.ArtifactID)
@@ -532,12 +536,90 @@ func TestHandleAgentDeployedEvent_InvalidArtifactWritesNothing(t *testing.T) {
 
 			ack := h.nextAck(t)
 			assert.Equal(t, "failed", ack.Status)
-			assert.Equal(t, "GATEWAY_PROCESSING_ERROR", ack.ErrorCode)
+			assert.Equal(t, ackCodeAgentValidationFailed, ack.ErrorCode,
+				"a definition the gateway rejects must be distinguishable from a gateway fault")
 
 			_, err := h.db.GetConfig(agentEvtID)
 			assert.True(t, storage.IsNotFoundError(err), "no configuration may be written, got %v", err)
 			assert.Empty(t, h.hub.publishedEvents)
 		})
+	}
+}
+
+// A template the gateway cannot render is reported as a render failure, and
+// nothing is written.
+func TestHandleAgentDeployedEvent_UnrenderableTemplateIsReportedAsRenderFailure(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	body := strings.Replace(agentEvtYAML("Weather Agent"),
+		"url: http://weather-agent:9000", `url: '{{ nosuchfunc "x" }}'`, 1)
+	require.NotEqual(t, agentEvtYAML("Weather Agent"), body, "precondition: the fixture was actually spoiled")
+	h.serve(t, agentEvtID, body)
+
+	h.client.handleAgentDeployedEvent(deployedEvt(t, agentEvtID, "dep-1", time.Now().UTC()))
+
+	ack := h.nextAck(t)
+	assert.Equal(t, "failed", ack.Status)
+	assert.Equal(t, ackCodeAgentRenderFailed, ack.ErrorCode)
+	_, err := h.db.GetConfig(agentEvtID)
+	assert.True(t, storage.IsNotFoundError(err), "no configuration may be written, got %v", err)
+	assert.Empty(t, h.hub.publishedEvents)
+}
+
+// A second Agent claiming a handle the gateway already holds under another UUID
+// is reported as a conflict, and the existing Agent is left alone.
+func TestHandleAgentDeployedEvent_HandleHeldByAnotherAgentIsReportedAsConflict(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	h.deploy(t, agentEvtID, "dep-1", time.Now().UTC().Truncate(time.Millisecond))
+
+	h.serve(t, agentEvtOtherID, agentEvtYAML("Another Weather Agent"))
+	h.client.handleAgentDeployedEvent(deployedEvt(t, agentEvtOtherID, "dep-2", time.Now().UTC()))
+
+	ack := h.nextAck(t)
+	assert.Equal(t, "failed", ack.Status)
+	assert.Equal(t, ackCodeAgentConflict, ack.ErrorCode)
+	assert.Equal(t, agentEvtOtherID, ack.ArtifactID)
+
+	_, err := h.db.GetConfig(agentEvtOtherID)
+	assert.True(t, storage.IsNotFoundError(err), "the conflicting Agent must not be written, got %v", err)
+	stored, err := h.db.GetConfig(agentEvtID)
+	require.NoError(t, err)
+	assert.Equal(t, "Weather Agent", stored.DisplayName)
+}
+
+func TestAgentAckFailureCode(t *testing.T) {
+	wrap := func(err error) error { return fmt.Errorf("failed to deploy agent configuration from YAML: %w", err) }
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"nil", nil, ""},
+		{"validation", wrap(&agent.ValidationError{}), ackCodeAgentValidationFailed},
+		{"parse", wrap(&agent.ParseError{Cause: errors.New("bad yaml")}), ackCodeAgentValidationFailed},
+		{"kind mismatch", wrap(&agent.KindMismatchError{Kind: "Mcp"}), ackCodeAgentValidationFailed},
+		{"handle mismatch", wrap(&agent.HandleMismatchError{PathHandle: "a", YAMLHandle: "b"}), ackCodeAgentValidationFailed},
+		{"render", wrap(&templateengine.RenderError{Cause: errors.New("secret not found")}), ackCodeAgentRenderFailed},
+		{"conflict", wrap(fmt.Errorf("%w: handle taken", storage.ErrConflict)), ackCodeAgentConflict},
+		{"anything else", wrap(errors.New("disk full")), ackCodeGatewayProcessingError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, agentAckFailureCode(tc.err))
+		})
+	}
+}
+
+// Every code an Agent ack can carry fits the control plane's status_reason
+// column and has the code shape it keeps; anything else would be replaced by
+// GATEWAY_PROCESSING_ERROR there.
+func TestAgentAckCodesFitTheControlPlaneReasonColumn(t *testing.T) {
+	shape := regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	for _, code := range []string{
+		ackCodeGatewayProcessingError, ackCodeDeploymentIDMismatch, ackCodeAgentArtifactFetchFailed,
+		ackCodeAgentValidationFailed, ackCodeAgentRenderFailed, ackCodeAgentConflict,
+	} {
+		assert.LessOrEqual(t, len(code), 50, code)
+		assert.Regexp(t, shape, code)
 	}
 }
 
