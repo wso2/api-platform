@@ -114,6 +114,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved',
     defaultMessage: 'Draft saved.',
   },
+  draftSavedDetailsOnly: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly',
+    defaultMessage: 'Details saved. The specification has an error and was not saved.',
+  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -202,9 +206,12 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
  * Only "API Details" and "Specification" are editable; the other tabs render
- * disabled. Save Draft writes `.../draft` and `.../draft/definition`; Publish
- * writes both and then calls `.../publish`, because the server's publish takes
- * no body and only publishes what the draft already holds.
+ * disabled. Save Draft and Publish each enforce their own rule: Save Draft
+ * always writes `.../draft`, and writes `.../draft/definition` too only when
+ * the specification text parses, reporting honestly when it couldn't; Publish
+ * requires both saves to succeed before it calls `.../publish`, since the
+ * server's publish takes no body and only publishes what the draft already
+ * holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -391,22 +398,30 @@ export function PortalPublishPage() {
     }
   };
 
-  /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
-  const saveDraft = async (): Promise<boolean> => {
+  /** Saves the API Details fields alone. False, untouched, when the form itself is invalid. */
+  const saveDetails = async (): Promise<boolean> => {
     if (formInvalid) {
       touchAllFields();
       setTab('details');
       return false;
     }
-    const definitionDocument = parseDefinition();
-    if (!definitionDocument) return false;
-
     await saveDraftMutation.mutateAsync({
       apiPortalId,
       apiType: REST_API_TYPE,
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
+    return true;
+  };
+
+  /**
+   * Saves the Specification definition alone. False, untouched, when the
+   * buffer doesn't parse — a content PUT would 404 anyway if the draft
+   * doesn't exist yet, which `reportingMissingDraft` turns into a clear message.
+   */
+  const saveDefinition = async (): Promise<boolean> => {
+    const definitionDocument = parseDefinition();
+    if (!definitionDocument) return false;
     await reportingMissingDraft(
       saveDefinitionMutation.mutateAsync({
         apiPortalId,
@@ -432,9 +447,12 @@ export function PortalPublishPage() {
 
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (await saveDraft()) {
-        notify(intl.formatMessage(messages.draftSaved), 'success');
-      }
+      if (!(await saveDetails())) return;
+      const definitionSaved = await saveDefinition();
+      notify(
+        intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
+        definitionSaved ? 'success' : 'warning',
+      );
     });
 
   // Each terminal action leaves this one portal's page behind for the listing,
@@ -444,7 +462,11 @@ export function PortalPublishPage() {
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (!(await saveDraft())) return;
+      if (!(await saveDetails())) return;
+      // Publish requires a saved, parseable definition — never proceed on a
+      // partial save, which would publish whatever definition was already
+      // there rather than what the user is looking at.
+      if (!(await saveDefinition())) return;
       try {
         await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       } catch (error) {

@@ -342,12 +342,13 @@ describe('PortalPublishPage', () => {
     });
   });
 
-  it('sends the user back to the Specification tab, naming the format, when the definition cannot be read', async () => {
+  it('still saves the details when the definition cannot be read, and reports the partial save', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
     server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const draftRequests = recorder();
     const definitionRequests = recorder();
     server.use(
-      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
       accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
     );
 
@@ -362,7 +363,14 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
+    // Details and definition are separate endpoints, so an unparseable
+    // definition doesn't cost the user their unrelated Details edits.
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(definitionRequests.count()).toBe(0);
+    expect(
+      await screen.findByText('Details saved. The specification has an error and was not saved.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Draft saved.')).not.toBeInTheDocument();
   });
 
   it('Save Draft succeeds with an empty definition — only Publish checks validity', async () => {
@@ -476,6 +484,37 @@ describe('PortalPublishPage', () => {
     expect(await screen.findByText('Published to acme-portal.')).toBeInTheDocument();
     // Nothing left to do here once the action succeeds — back to the listing.
     expect(await screen.findByText('portals listing')).toBeInTheDocument();
+  });
+
+  it('Publish saves the details but does not call publish when the definition cannot be read', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const draftRequests = recorder();
+    const definitionRequests = recorder();
+    const publishRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+      accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.type(
+      await screen.findByRole('textbox', { name: 'API definition (YAML)' }),
+      '\n  bad: [[',
+    );
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
+    // Details still saves — it's a separate, unaffected endpoint — but
+    // publishing a stale definition under a broken edit is never allowed.
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(definitionRequests.count()).toBe(0);
+    expect(publishRequests.count()).toBe(0);
+    expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
 
   it('Unpublish is disabled until the API is actually live, then asks for confirmation', async () => {
