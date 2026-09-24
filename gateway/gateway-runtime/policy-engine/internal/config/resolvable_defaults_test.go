@@ -54,6 +54,11 @@ func TestNewDefaultsReachBareConfig(t *testing.T) {
 	if got != DefaultLLMCostPricingFile {
 		t.Errorf("RawConfig pricing_file = %q, want %q", got, DefaultLLMCostPricingFile)
 	}
+
+	azure, _ := raw["azure_llm_cost_v1"].(map[string]interface{})
+	if got, _ := azure["pricing_file"].(string); got != DefaultAzureLLMCostPricingFile {
+		t.Errorf("RawConfig azure pricing_file = %q, want %q", got, DefaultAzureLLMCostPricingFile)
+	}
 }
 
 // An operator-set value must still win over the seeded default.
@@ -73,6 +78,11 @@ func TestOperatorOverridesPricingFile(t *testing.T) {
 	inner, _ := raw["llm_cost_v1"].(map[string]interface{})
 	if got, _ := inner["pricing_file"].(string); got != "/custom/prices.json" {
 		t.Errorf("override lost: got %q", got)
+	}
+	// Overriding one policy's pricing_file must not drop another's seeded default.
+	azure, _ := raw["azure_llm_cost_v1"].(map[string]interface{})
+	if got, _ := azure["pricing_file"].(string); got != DefaultAzureLLMCostPricingFile {
+		t.Errorf("azure default lost when llm_cost_v1 overridden: got %q", got)
 	}
 	if got := cfg.TrafficLogging.MaskedHeaders; len(got) != 1 || got[0] != "cookie" {
 		t.Errorf("masked_headers override lost: got %v", got)

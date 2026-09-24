@@ -390,8 +390,13 @@ export default function ServiceProviderNew() {
         enabled: true,
         apiKey: {
           enabled: true,
-          key: 'X-API-Key',
+          key: isNoCredentialsAuthType
+            ? 'X-API-Key'
+            : formState.upstreamAuthHeader || 'X-API-Key',
           in: 'header' as const,
+          valuePrefix: isNoCredentialsAuthType
+            ? ''
+            : formState.valuePrefix || '',
         },
       };
 
