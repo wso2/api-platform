@@ -310,6 +310,10 @@ func (c *Config) normalize() {
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
 	c.PolicyHub.BaseURL = strings.TrimRight(strings.TrimSpace(c.PolicyHub.BaseURL), "/")
+	// An empty environment template must not erase the built-in catalog URL.
+	if c.PolicyHub.BaseURL == "" {
+		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
+	}
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")

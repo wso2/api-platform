@@ -26,12 +26,8 @@ func TestLoadPolicyHubRuntimeConfig(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, present := cfg.RuntimeConfig["POLICY_HUB_BASE_URL"]
-			if baseURL == "" {
-				if present {
-					t.Fatal("unconfigured Policy Hub should not emit a runtime override")
-				}
-			} else if got != "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0" {
+			got := cfg.RuntimeConfig["POLICY_HUB_BASE_URL"]
+			if got != defaultPolicyHubBaseURL {
 				t.Fatalf("Policy Hub runtime URL = %q, want normalized configured URL", got)
 			}
 		})
