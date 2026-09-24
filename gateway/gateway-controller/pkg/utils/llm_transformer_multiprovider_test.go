@@ -143,9 +143,15 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	require.NotNil(t, chatOp.Policies)
 
 	var authPolicies []api.Policy
+	var markerPolicies []api.Policy
 	for _, pol := range *chatOp.Policies {
-		// The unconditional internal loopback marker is also a set-headers policy; exclude it.
-		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME && !hasInternalLoopbackMarkerPolicy([]api.Policy{pol}) {
+		if pol.Name != constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+			continue
+		}
+		// The unconditional internal loopback marker is also a set-headers policy; keep it apart.
+		if hasInternalLoopbackMarkerPolicy([]api.Policy{pol}) {
+			markerPolicies = append(markerPolicies, pol)
+		} else {
 			authPolicies = append(authPolicies, pol)
 		}
 	}
@@ -156,6 +162,13 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	assert.Contains(t, *authPolicies[1].ExecutionCondition, "anthropic-provider")
 	assert.Equal(t, "Bearer primary", firstRequestHeaderValue(t, authPolicies[0].Params))
 	assert.Equal(t, "anthropic-loopback", firstRequestHeaderValue(t, authPolicies[1].Params))
+
+	// A router may select while processing the request body, so on a proxy that can
+	// route, every provider credential is applied in the request-body phase.
+	assert.Equal(t, constants.SET_HEADERS_REQUEST_PHASE_BODY, requestPhase(t, authPolicies[0].Params))
+	assert.Equal(t, constants.SET_HEADERS_REQUEST_PHASE_BODY, requestPhase(t, authPolicies[1].Params))
+	require.Len(t, markerPolicies, 1)
+	assert.Empty(t, requestPhase(t, markerPolicies[0].Params), "the loopback marker stays in the header phase")
 }
 
 func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsConditional(t *testing.T) {
@@ -477,6 +490,66 @@ func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) strin
 	value, ok := header["value"].(string)
 	require.True(t, ok)
 	return value
+}
+
+// requestPhase returns a set-headers policy's request.phase, or "" when unset
+// (the header-phase default).
+func requestPhase(t *testing.T, params *map[string]interface{}) string {
+	t.Helper()
+	require.NotNil(t, params)
+	request, ok := (*params)["request"].(map[string]interface{})
+	require.True(t, ok)
+	phase, _ := request[constants.SET_HEADERS_REQUEST_PHASE_PARAM].(string)
+	return phase
+}
+
+func TestWithRequestBodyPhase(t *testing.T) {
+	setHeaders := func(request map[string]interface{}) api.Policy {
+		params := map[string]interface{}{"request": request}
+		return api.Policy{Name: constants.SET_HEADERS_POLICY_NAME, Version: "v1", Params: &params}
+	}
+
+	t.Run("moves a set-headers credential to the body phase without mutating its params", func(t *testing.T) {
+		request := map[string]interface{}{
+			"headers": []interface{}{map[string]interface{}{"name": "X-API-Key", "value": "k"}},
+		}
+		in := setHeaders(request)
+
+		out := withRequestBodyPhase(in)
+
+		assert.Equal(t, constants.SET_HEADERS_REQUEST_PHASE_BODY, requestPhase(t, out.Params))
+		assert.Equal(t, "k", firstRequestHeaderValue(t, out.Params))
+		assert.NotContains(t, request, constants.SET_HEADERS_REQUEST_PHASE_PARAM,
+			"user-supplied policyParams are shared by reference and must not be mutated")
+		assert.Empty(t, requestPhase(t, in.Params))
+	})
+
+	t.Run("keeps a phase the user set explicitly", func(t *testing.T) {
+		out := withRequestBodyPhase(setHeaders(map[string]interface{}{
+			"phase":   "header",
+			"headers": []interface{}{map[string]interface{}{"name": "X-API-Key", "value": "k"}},
+		}))
+		assert.Equal(t, "header", requestPhase(t, out.Params))
+	})
+
+	t.Run("leaves other policies unchanged", func(t *testing.T) {
+		params := map[string]interface{}{"clientId": "c", "tokenEndpoint": "https://idp/token"}
+		in := api.Policy{Name: constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, Version: "v0", Params: &params}
+
+		out := withRequestBodyPhase(in)
+
+		assert.Equal(t, in, out)
+		assert.NotContains(t, params, "request")
+	})
+
+	t.Run("leaves set-headers without request params unchanged", func(t *testing.T) {
+		responseOnly := map[string]interface{}{"response": map[string]interface{}{}}
+		in := api.Policy{Name: constants.SET_HEADERS_POLICY_NAME, Params: &responseOnly}
+		assert.Equal(t, in, withRequestBodyPhase(in))
+
+		noParams := api.Policy{Name: constants.SET_HEADERS_POLICY_NAME}
+		assert.Equal(t, noParams, withRequestBodyPhase(noParams))
+	})
 }
 
 // TestLLMProviderTransformer_ShapeEquivalence is the property the canonical

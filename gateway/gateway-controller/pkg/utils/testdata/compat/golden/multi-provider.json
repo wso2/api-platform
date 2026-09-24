@@ -29,7 +29,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -44,7 +45,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -79,7 +81,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -94,7 +97,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -129,7 +133,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -144,7 +149,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -179,7 +185,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -194,7 +201,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -229,7 +237,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -244,7 +253,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -279,7 +289,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -294,7 +305,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -329,7 +341,8 @@
                     "name": "Authorization",
                     "value": "Bearer primary"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -344,7 +357,8 @@
                     "name": "X-Provider-Key",
                     "value": "anthropic-loopback"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"

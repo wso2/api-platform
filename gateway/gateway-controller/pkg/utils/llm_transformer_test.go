@@ -2563,6 +2563,9 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		for _, p := range *op.Policies {
 			if p.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
 				found = true
+				// A single-provider proxy never routes, so its credential stays in
+				// the header phase and the request body is not buffered for it.
+				assert.Empty(t, requestPhase(t, p.Params))
 				break
 			}
 		}
