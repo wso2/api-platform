@@ -339,15 +339,28 @@ func (o *OIDC) postToken(ctx context.Context, form url.Values) (*tokenResponse, 
 
 // SessionFromToken builds a session from a refreshed token set, preserving the
 // previous refresh/id token when the IDP omits them on refresh.
+//
+// The carry-forward completes the token set BEFORE the session is built, and that
+// order is load-bearing rather than stylistic: sessionFromToken derives the display
+// User from the id_token's claims, so restoring the id_token onto the finished record
+// instead would leave User built from the access token alone. RFC 6749 §6 does not
+// require an id_token on refresh and most IDPs omit one, making that the ordinary
+// path — the user's name would fall back to the raw "sub" UUID and their email would
+// blank out, roughly an hour into every session, with nothing else changing to
+// explain it. A fresh id_token still wins wherever the IDP sends one.
 func (o *OIDC) SessionFromToken(tok *tokenResponse, prev *session.Session) *session.Session {
-	s := o.sessionFromToken(tok)
-	if s.RefreshToken == "" && prev != nil {
-		s.RefreshToken = prev.RefreshToken
+	// Copied rather than mutated in place: tok belongs to the caller, and a flat
+	// struct of scalars makes the copy exact.
+	effective := *tok
+	if prev != nil {
+		if effective.RefreshToken == "" {
+			effective.RefreshToken = prev.RefreshToken
+		}
+		if effective.IDToken == "" {
+			effective.IDToken = prev.IDToken
+		}
 	}
-	if s.IDToken == "" && prev != nil {
-		s.IDToken = prev.IDToken
-	}
-	return s
+	return o.sessionFromToken(&effective)
 }
 
 // UserFromAccessToken decodes the access token's claims (without verifying) and

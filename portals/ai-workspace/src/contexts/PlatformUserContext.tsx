@@ -33,6 +33,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { logger } from '../utils/logger';
+import { useAppAuth } from './AppAuthContext';
 import type { Organization, ValidateUserResponse } from '../utils/types';
 import { PLATFORM_API_BASE_URL, BASE_PATH } from '../paths';
 import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
@@ -51,8 +52,11 @@ export interface PlatformUserContextType {
   shouldValidateUser: boolean;
   /** Always '' — no IDP in standalone mode */
   fidp: string;
-  /** No-op — token exchange not needed for Platform API */
-  exchangeOrgToken: (orgHandle: string) => Promise<boolean>;
+  /**
+   * Re-exchange the login token for the given org. Resolves with why it failed, not
+   * just that it did — see OrgSwitchFailure.
+   */
+  exchangeOrgToken: (orgHandle: string) => Promise<OrgSwitchResult>;
   /** No-op — returns empty orgs; use getOrganizations instead */
   validateUser: () => Promise<ValidateUserResponse>;
   /** Calls GET /organizations on the Platform API */
@@ -62,6 +66,21 @@ export interface PlatformUserContextType {
 }
 
 const PlatformUserContext = createContext<PlatformUserContextType | null>(null);
+
+/**
+ * Why an org switch failed, when it did.
+ *
+ * The BFF already tells these apart — 403 `ORG_SWITCH_REJECTED` versus 502
+ * `UPSTREAM_UNAVAILABLE` (see `handleSwitchOrg` in internal/server/handlers.go) — and
+ * they need different words. `rejected` is a verdict about this user that will not
+ * clear on its own; `unavailable` is a platform outage that usually will. Collapsing
+ * them tells someone to contact their administrator about a blip that would have
+ * fixed itself, and tells someone genuinely lacking access to keep retrying.
+ */
+export type OrgSwitchFailure = 'rejected' | 'unavailable' | 'unknown';
+
+/** Outcome of an org switch. A failure always carries why. */
+export type OrgSwitchResult = { ok: true } | { ok: false; reason: OrgSwitchFailure };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -139,6 +158,9 @@ export const PlatformUserProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const [isTokenExchanged, setIsTokenExchanged] = useState(false);
   const [isOrgAdmin, setIsOrgAdmin] = useState(true);
+  // PlatformUserProvider is mounted inside BFFAuthProvider (AIWorkspace.tsx →
+  // AppGate → App), so the auth context is available here.
+  const { refreshSession } = useAppAuth();
 
   /**
    * Ask the BFF to re-exchange the login token for the given org, so an IDP that
@@ -148,8 +170,16 @@ export const PlatformUserProvider: React.FC<{ children: ReactNode }> = ({
    * deployment — that's success from the caller's point of view, since there is
    * nothing to switch. Any other non-2xx (e.g. not a member of that org) is a
    * real failure: the caller should not proceed with the switch.
+   *
+   * On success the session is re-read before returning. A successful switch mints a
+   * new token for the new org, which changes BOTH what the caller may do and which
+   * org the platform considers them to be in — so leaving the auth context on its
+   * pre-switch values shows the user one org's name and permissions while every API
+   * call is scoped to another. The switch response reports the new scopes but not the
+   * new org, so re-reading the session is what actually brings the UI back in step;
+   * it is a cache hit on the token this switch just minted, not a second exchange.
    */
-  const exchangeOrgToken = useCallback(async (orgHandle: string): Promise<boolean> => {
+  const exchangeOrgToken = useCallback(async (orgHandle: string): Promise<OrgSwitchResult> => {
     try {
       const res = await fetch(BFF_SWITCH_ORG_URL, {
         method: 'POST',
@@ -162,23 +192,46 @@ export const PlatformUserProvider: React.FC<{ children: ReactNode }> = ({
         body: JSON.stringify({ org: orgHandle }),
       });
       if (res.ok) {
+        // Awaited, so callers that gate on this promise (AppShellContext sets its own
+        // org state and loads that org's projects the moment it resolves) never run
+        // against a context still describing the org just switched away from.
+        await refreshSession();
         setIsTokenExchanged(true);
-        return true;
+        return { ok: true };
       }
-      if (res.status === 400) {
+
+      // Read the BFF's error code (the same {status, code, message} shape the Platform
+      // API uses) rather than inferring everything from the status: 400 carries two
+      // different meanings here and only one of them is a success.
+      const body = (await res.json().catch(() => ({}))) as { code?: string };
+
+      if (res.status === 400 && body.code === 'ORG_SCOPING_DISABLED') {
         logger.info('[PlatformUserContext] org-scoped token exchange is not configured — skipping');
-        return true;
+        return { ok: true };
       }
+
       // A 401 here always means the BFF session itself is gone (unlike a proxied
-      // Platform API 401, which can carry other causes) — no code to filter on.
+      // Platform API 401, which can carry other causes) — no code to filter on. It is
+      // a no-op for every other status, which is why it can sit ahead of them.
       handleUnauthorizedResponse(res);
-      logger.error('[PlatformUserContext] org token exchange failed for org', orgHandle, 'status', res.status);
-      return false;
+
+      // Mapped from the status rather than the code so an unrecognised code still
+      // lands in the right class; the codes are named above for traceability.
+      const reason: OrgSwitchFailure = res.status === 403
+        ? 'rejected'
+        : res.status === 502
+          ? 'unavailable'
+          : 'unknown';
+      logger.error('[PlatformUserContext] org token exchange failed for org', orgHandle,
+        'status', res.status, 'code', body.code ?? '(none)', 'reason', reason);
+      return { ok: false, reason };
     } catch (err) {
+      // The BFF itself could not be reached — transient in the same way a 502 is, and
+      // told to the user the same way.
       logger.error('[PlatformUserContext] org token exchange error:', err);
-      return false;
+      return { ok: false, reason: 'unavailable' };
     }
-  }, [setIsTokenExchanged]);
+  }, [setIsTokenExchanged, refreshSession]);
 
   // Not used in platform mode
   const validateUser = useCallback(async (): Promise<ValidateUserResponse> => {

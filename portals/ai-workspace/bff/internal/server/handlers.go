@@ -36,6 +36,23 @@ import (
 
 const txCookieName = "_bff_oidc_tx"
 
+// Login failure reasons handed to the SPA's login page as ?error=. Deliberately a
+// coarse, user-facing classification and never the IDP's own reason: which check
+// failed is a probing oracle (see auth.ErrStateMismatch), and the specific cause is
+// already logged internally.
+//
+// The login page must be able to render every one of these WITHOUT restarting the
+// login it has just returned from. AutoLoginPage redirects to the IDP whenever it
+// finds itself unauthenticated, so a reason it does not recognise becomes a redirect
+// loop against the IDP rather than a message — adding a reason here means adding it
+// there too.
+const (
+	loginErrAuthFailed          = "auth_failed"
+	loginErrSessionFailed       = "session_failed"
+	loginErrExchangeRejected    = "token_exchange_rejected"
+	loginErrUpstreamUnavailable = "upstream_unavailable"
+)
+
 // ---------------------------------------------------------------------------
 // File-based login / logout / session
 // ---------------------------------------------------------------------------
@@ -115,22 +132,31 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
 		return
 	}
-	// Not fatal: the session is genuinely authenticated, and the next proxied request
-	// surfaces the failure with the right status.
+	// Fatal to the response, deliberately. In exchange mode the exchanged token is
+	// what the Platform API authorizes, so a failed exchange means this handler cannot
+	// say what the caller may do. Answering 200 with the LOGIN token's scopes would be
+	// the exact substitution exchange mode exists to prevent — arriving at the identity
+	// layer instead of on the wire — and the UI would then offer actions every proxied
+	// call refuses.
+	//
+	// Classified by writeExchangeError rather than by a second rule here, so hydration
+	// and proxying always agree about which failures end a session: a rejection is a
+	// verdict on this subject token (401, session destroyed), everything else is the
+	// deployment's problem, not the user's (502, session kept).
 	//
 	// The result is carried into userFromToken rather than read back from the stored
 	// session, which is not merely a saved lookup: doExchange's write to the store is
 	// best-effort and only logs on failure, so re-reading can miss the token that was
-	// just minted and report the LOGIN token's scopes instead — the exact substitution
-	// exchange mode exists to prevent.
+	// just minted and report the login token's scopes instead.
 	var exchanged *auth.Result
 	if s.exchanger != nil {
 		res, err := s.exchangedToken(r.Context(), jwt)
 		if err != nil {
 			slog.Warn("token exchange failed while hydrating session", "err", err)
-		} else {
-			exchanged = res
+			s.writeExchangeError(w, r, err)
+			return
 		}
+		exchanged = res
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -189,23 +215,33 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 			"path", r.URL.Path,
 			"tx_cookie_present", txID != "",
 			"tx_cookie_path", s.txCookiePath())
-		http.Redirect(w, r, s.path("/login")+"?error=auth_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error="+loginErrAuthFailed, http.StatusFound)
 		return
 	}
 	// OIDC: the cookie carries the access JWT, while the refresh/id tokens are
 	// kept server-side keyed by that JWT so the proxy can renew it later.
 	if err := s.putRefreshState(r.Context(), sess); err != nil {
-		http.Redirect(w, r, s.path("/login")+"?error=session_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error="+loginErrSessionFailed, http.StatusFound)
 		return
 	}
-	// Eager, so a misconfiguration surfaces as a failed login rather than as a 502 on
-	// the SPA's first API call, and the first /api/session already has scopes.
+	// Eager, so a failure surfaces at login rather than as a 502 on the SPA's first
+	// API call, and the first /api/session already has scopes.
+	//
+	// Both classes fail the login — a session that cannot produce an upstream token is
+	// not a usable one — but they are reported apart, because "retrying will not help
+	// you" and "retrying in a moment probably will" are different things to tell
+	// someone, and the login page renders them differently. Reported apart is also all
+	// they get: the session is destroyed either way, so the login stays atomic.
 	if s.exchanger != nil {
 		if _, err := s.exchangedToken(r.Context(), sess.AccessToken); err != nil {
-			slog.Error("token exchange failed at login", "err", err)
+			reason := loginErrUpstreamUnavailable
+			if errors.Is(err, auth.ErrExchangeRejected) {
+				reason = loginErrExchangeRejected
+			}
+			slog.Error("token exchange failed at login", "err", err, "login_error", reason)
 			_ = s.store.Delete(r.Context(), sess.AccessToken)
 			s.clearSessionCookie(w)
-			http.Redirect(w, r, s.path("/login")+"?error=token_exchange_failed", http.StatusFound)
+			http.Redirect(w, r, s.path("/login")+"?error="+reason, http.StatusFound)
 			return
 		}
 	}
@@ -460,6 +496,14 @@ func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, e
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
 	updated.AbsoluteExpiry = cur.AbsoluteExpiry
+	// OrgHandle is the user's own selection, not a property of the token that just
+	// rotated, so it survives the rotation — the opposite of Exchanged above, and for
+	// the opposite reason. Dropped, the session silently reverts to default_org: the
+	// next exchange mints a token for a DIFFERENT org, every proxied call is scoped to
+	// that one, and nothing says so — the UI goes on showing the org the user picked.
+	// The refresh fires once per token lifetime for any active session, so this is the
+	// ordinary path, not an edge case.
+	updated.OrgHandle = cur.OrgHandle
 
 	var putErr error
 	s.withSessionLock(jwt, func() {

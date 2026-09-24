@@ -81,26 +81,61 @@ function bffHeaders(): Record<string, string> {
 export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // A 502 from the BFF means it could not mint the upstream token — the session
+  // itself is intact. Kept apart from `user === null` so route guards can hold the
+  // route instead of redirecting to /login, which over a transient IDP blip would
+  // log the user out of a perfectly good session and into a login that fails the
+  // same way (the OIDC callback runs the same exchange).
+  const [unavailable, setUnavailable] = useState(false);
+
+  // One place that reads the session and decides what each status means, shared by
+  // the initial hydrate, the retry timer, and the manual Retry button — so those
+  // three can never drift into disagreeing about what a 502 is.
+  const loadSession = useCallback(async (): Promise<void> => {
+    try {
+      const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
+      if (res.status === 502) {
+        // Leave `user` untouched: an already-hydrated session keeps working from
+        // what it has, and a first load simply has nothing yet.
+        setUnavailable(true);
+        return;
+      }
+      setUnavailable(false);
+      if (!res.ok) {
+        setUser(null);
+        return;
+      }
+      const body = (await res.json()) as SessionResponse;
+      setUser(body.authenticated ? toAppUser(body.user) : null);
+    } catch {
+      setUser(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
-        if (!cancelled && res.ok) {
-          const body = (await res.json()) as SessionResponse;
-          setUser(body.authenticated ? toAppUser(body.user) : null);
-        } else if (!cancelled) {
-          setUser(null);
-        }
-      } catch {
-        if (!cancelled) setUser(null);
+        await loadSession();
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [loadSession]);
+
+  // Recover on our own once the IDP comes back, so a blip costs a few seconds of
+  // notice rather than a dead tab the user has to reload. Polling only while
+  // unavailable keeps it off the healthy path entirely, and the BFF's own cooldown
+  // gate answers these immediately instead of spending a full exchange timeout on
+  // each — so this cannot pile load onto the component that is already failing.
+  useEffect(() => {
+    if (!unavailable) return undefined;
+    const timer = setInterval(() => { void loadSession(); }, 5000);
+    return () => clearInterval(timer);
+  }, [unavailable, loadSession]);
+
+  const refreshSession = useCallback(() => loadSession(), [loadSession]);
 
   // Fetch the current JWT fresh from the session endpoint rather than returning
   // a value captured at hydrate time: the BFF proxy rotates the cookie token
@@ -109,6 +144,14 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
   const getAccessToken = useCallback(async (): Promise<string | null> => {
     try {
       const res = await fetch(SESSION_URL, { credentials: 'include', headers: bffHeaders() });
+      // Same classification as loadSession: a 502 is the BFF failing to mint the
+      // upstream token, not a dead session, so the caller gets no token but the
+      // hydrated user stands.
+      if (res.status === 502) {
+        setUnavailable(true);
+        return null;
+      }
+      setUnavailable(false);
       if (!res.ok) return null;
       const body = (await res.json()) as SessionResponse;
       if (!body.authenticated) {
@@ -159,13 +202,15 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       isAuthenticated: user !== null,
       isLoading: loading,
+      sessionUnavailable: unavailable,
+      refreshSession,
       user,
       getAccessToken, // fresh JWT from the BFF session (also injected by the proxy)
       hasPermission,
       login,
       logout,
     }),
-    [user, loading, getAccessToken, hasPermission, login, logout],
+    [user, loading, unavailable, refreshSession, getAccessToken, hasPermission, login, logout],
   );
 
   return <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>;

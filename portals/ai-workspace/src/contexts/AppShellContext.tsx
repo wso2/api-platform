@@ -28,7 +28,7 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects, createDefaultProject } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { usePlatformUser } from './PlatformUserContext';
+import { usePlatformUser, type OrgSwitchFailure } from './PlatformUserContext';
 import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
@@ -80,6 +80,27 @@ interface AppShellProviderProps {
   children: ReactNode;
   userName?: string;
   userEmail?: string;
+}
+
+/**
+ * Turns an org-switch failure into user-facing words. One place, so the two causes
+ * cannot drift back into a single message: `rejected` is a verdict about this user
+ * that retrying will not change, while `unavailable` is a platform outage that
+ * usually clears on its own. Telling someone to contact their administrator about a
+ * blip — or telling someone genuinely without access to try again — is the failure
+ * this function exists to prevent.
+ */
+function orgSwitchErrorMessage(reason: OrgSwitchFailure, orgName: string): string {
+  switch (reason) {
+    case 'rejected':
+      return `You do not have access to ${orgName}. If you believe this is a mistake, `
+        + 'contact your administrator.';
+    case 'unavailable':
+      return `${orgName} could not be opened because sign-in is temporarily unavailable. `
+        + 'Please try again in a moment.';
+    default:
+      return `Could not open ${orgName}. Please try again.`;
+  }
 }
 
 export const AppShellProvider: React.FC<AppShellProviderProps> = ({
@@ -213,8 +234,9 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           setIsOrganizationsLoading(false);
         }
 
-        if (!(await exchangeOrgToken(resolvedOrg.handle))) {
-          setError('Failed to authorize for this organization. Please contact your administrator.');
+        const resolvedExchange = await exchangeOrgToken(resolvedOrg.handle);
+        if (!resolvedExchange.ok) {
+          setError(orgSwitchErrorMessage(resolvedExchange.reason, resolvedOrg.name));
           return;
         }
         setIsTokenExchanged(true);
@@ -236,8 +258,9 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       }
       setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
-      if (!(await exchangeOrgToken(orgs[0].handle))) {
-        setError('Failed to authorize for this organization. Please contact your administrator.');
+      const firstOrgExchange = await exchangeOrgToken(orgs[0].handle);
+      if (!firstOrgExchange.ok) {
+        setError(orgSwitchErrorMessage(firstOrgExchange.reason, orgs[0].name));
         return;
       }
       setIsTokenExchanged(true);
@@ -256,8 +279,9 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       if (organization.handle === currentOrganization?.handle) {
         return;
       }
-      if (!(await exchangeOrgToken(organization.handle))) {
-        setError('Failed to switch organization');
+      const switched = await exchangeOrgToken(organization.handle);
+      if (!switched.ok) {
+        setError(orgSwitchErrorMessage(switched.reason, organization.name));
         return;
       }
       setCurrentOrganizationState(organization);

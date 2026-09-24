@@ -144,6 +144,12 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     () => ({
       isAuthenticated: auth.isAuthenticated,
       isLoading: auth.isLoading,
+      // Constant in this mode. sessionUnavailable reports a BFF that cannot mint the
+      // upstream token, and there is no BFF here: the browser holds the IDP token
+      // directly and react-oidc-context renews it, so the state cannot arise and
+      // there is correspondingly nothing for a retry to re-read.
+      sessionUnavailable: false,
+      refreshSession: async () => {},
       user,
       getAccessToken,
       hasPermission,

@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"ai-workspace-bff/internal/session"
 )
 
 // TestCallbackReasonsAreDistinct pins that the four ways a callback fails to match a
@@ -73,4 +75,67 @@ func assertReason(t *testing.T, err error, want string) {
 	if !strings.HasPrefix(mismatch.Error(), "oidc state mismatch") {
 		t.Errorf("Error() = %q, want it to stay prefixed with the generic message", mismatch.Error())
 	}
+}
+
+// TestRefreshKeepsIDTokenOnlyProfileClaims pins the ordering inside SessionFromToken.
+// The display User is derived from the id_token's claims, and RFC 6749 §6 does not
+// require an id_token on a refresh — most IDPs omit one. If the previous id_token is
+// restored onto the finished record rather than folded in before it is built, User
+// gets rebuilt from the access token alone: the name falls back to the raw "sub" UUID
+// and the email blanks out, about an hour into every session.
+func TestRefreshKeepsIDTokenOnlyProfileClaims(t *testing.T) {
+	o := &OIDC{mapping: session.DefaultClaimMapping(), absTTL: 8 * time.Hour}
+
+	// The profile lives only in the id_token; the access token carries an opaque sub.
+	// That split is the common shape, and the whole reason the id_token is consulted.
+	prev := &session.Session{
+		RefreshToken: "refresh-from-login",
+		IDToken: jwtWithClaims(t, map[string]any{
+			"username": "Alice Example",
+			"email":    "alice@example.com",
+		}),
+	}
+	accessOnly := jwtWithClaims(t, map[string]any{"sub": "8f14e45f-ea3b-4d8a-9f2c-1b7d6e0a5c31"})
+
+	t.Run("id_token omitted on refresh", func(t *testing.T) {
+		s := o.SessionFromToken(&tokenResponse{AccessToken: accessOnly, ExpiresIn: 3600}, prev)
+
+		if s.User.Name != "Alice Example" {
+			t.Errorf("User.Name = %q, want %q — the login id_token's profile claims did "+
+				"not reach UserFromClaims, so the name fell back to the sub claim", s.User.Name, "Alice Example")
+		}
+		if s.User.Email != "alice@example.com" {
+			t.Errorf("User.Email = %q, want %q", s.User.Email, "alice@example.com")
+		}
+		// The pre-existing carry-forward must still hold: the id_token is also the
+		// id_token_hint for RP-initiated logout, and the refresh token is the session.
+		if s.IDToken != prev.IDToken {
+			t.Error("previous id_token was not carried forward")
+		}
+		if s.RefreshToken != prev.RefreshToken {
+			t.Errorf("RefreshToken = %q, want the previous one carried forward", s.RefreshToken)
+		}
+	})
+
+	t.Run("fresh id_token wins over the previous one", func(t *testing.T) {
+		fresh := jwtWithClaims(t, map[string]any{"username": "Alice Renamed", "email": "renamed@example.com"})
+		s := o.SessionFromToken(&tokenResponse{AccessToken: accessOnly, IDToken: fresh, ExpiresIn: 3600}, prev)
+
+		if s.User.Name != "Alice Renamed" {
+			t.Errorf("User.Name = %q, want %q — an id_token the IDP DID send on refresh "+
+				"must not be shadowed by the stale one", s.User.Name, "Alice Renamed")
+		}
+		if s.IDToken != fresh {
+			t.Error("a fresh id_token was replaced by the previous one")
+		}
+	})
+
+	t.Run("no previous session", func(t *testing.T) {
+		// prev is nil on any path that has no earlier record; it must not panic.
+		s := o.SessionFromToken(&tokenResponse{AccessToken: accessOnly, ExpiresIn: 3600}, nil)
+		if s.User.Name != "8f14e45f-ea3b-4d8a-9f2c-1b7d6e0a5c31" {
+			t.Errorf("User.Name = %q, want the sub claim — with no id_token anywhere, "+
+				"falling back to sub is correct", s.User.Name)
+		}
+	})
 }

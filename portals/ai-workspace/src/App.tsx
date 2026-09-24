@@ -122,12 +122,41 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Shown when the BFF is up and the session is valid, but it cannot currently mint
+ * the token it forwards upstream. Deliberately not the login page: the session is
+ * not the problem, and signing in again runs the very same exchange in the OIDC
+ * callback, so it would fail identically and look like a broken login instead of a
+ * temporary outage. The provider retries on its own; this button is the impatient path.
+ */
+function SessionUnavailableScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', p: 3 }}>
+      <Stack spacing={2} alignItems="center" sx={{ maxWidth: 420, textAlign: 'center' }}>
+        <Typography variant="h6">Signing you in is temporarily unavailable</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Your session is still valid. We could not reach the identity provider just
+          now, so this will resolve on its own — retrying shortly.
+        </Typography>
+        <Button variant="outlined" size="small" onClick={onRetry}>Retry now</Button>
+      </Stack>
+    </Box>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAppAuth();
+  const { isAuthenticated, isLoading, sessionUnavailable, refreshSession } = useAppAuth();
   const location = useLocation();
 
   if (isLoading) {
     return null;
+  }
+
+  // Checked before the redirect below, and that order is the whole point: a 502
+  // leaves `isAuthenticated` false because nothing could be hydrated, so falling
+  // through would bounce a live session to /login over a transient IDP blip.
+  if (sessionUnavailable && !isAuthenticated) {
+    return <SessionUnavailableScreen onRetry={() => { void refreshSession(); }} />;
   }
 
   if (!isAuthenticated) {

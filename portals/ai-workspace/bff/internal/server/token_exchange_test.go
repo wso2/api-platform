@@ -18,6 +18,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -44,16 +45,36 @@ type exchangeTestHarness struct {
 	idpStatus   func() (int, any)
 	upstreamGot *atomic.Value // last upstream Authorization header
 	idpLastForm *atomic.Value // last exchange request's PostForm, as url.Values
+	// idTokenNonce is the nonce the stub mints its id_token with, set by
+	// callbackRequest so a real login transaction can pass the callback's nonce check.
+	idTokenNonce *atomic.Value
+}
+
+// unsignedJWT builds a decodable (never verified) JWT. The BFF only ever decodes
+// claims — the Platform API is what validates tokens — so a signature is not needed
+// to exercise any of this.
+func unsignedJWT(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	enc := func(v any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal claims: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	return enc(map[string]any{"alg": "none", "typ": "JWT"}) + "." + enc(claims) + ".sig"
 }
 
 func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) *exchangeTestHarness {
 	t.Helper()
 
 	h := &exchangeTestHarness{
-		idpCalls:    &atomic.Int32{},
-		upstreamGot: &atomic.Value{},
-		idpLastForm: &atomic.Value{},
+		idpCalls:     &atomic.Int32{},
+		upstreamGot:  &atomic.Value{},
+		idpLastForm:  &atomic.Value{},
+		idTokenNonce: &atomic.Value{},
 	}
+	h.idTokenNonce.Store("")
 	h.upstreamGot.Store("")
 	h.idpStatus = func() (int, any) {
 		return http.StatusOK, map[string]any{
@@ -79,8 +100,23 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 		})
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		// One endpoint, both grants. Only the exchange goes through h.idpStatus.
+		// One endpoint, every grant. Only the exchange goes through h.idpStatus, and
+		// only it is counted — idpCalls exists to count exchanges.
 		_ = r.ParseForm()
+		if r.PostForm.Get("grant_type") == "authorization_code" {
+			nonce, _ := h.idTokenNonce.Load().(string)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token":  "subject-token",
+				"refresh_token": "refresh-token",
+				// The callback rejects an id_token whose nonce does not match the
+				// transaction it opened, so the stub has to echo this login's nonce.
+				"id_token":   unsignedJWT(t, map[string]any{"nonce": nonce, "username": "alice"}),
+				"token_type": "Bearer",
+				"expires_in": 3600,
+			})
+			return
+		}
 		if r.PostForm.Get("grant_type") == "refresh_token" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -438,6 +474,170 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 	}
 }
 
+// callbackRequest drives a real OIDC login: it opens a transaction through the live
+// auth.OIDC client, teaches the stub IDP which nonce to mint the id_token with, and
+// returns the callback request the browser would send back.
+func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
+	t.Helper()
+	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base + "/")
+	if err != nil {
+		t.Fatalf("AuthCodeURL: %v", err)
+	}
+	u, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse authorize url: %v", err)
+	}
+	h.idTokenNonce.Store(u.Query().Get("nonce"))
+
+	req := httptest.NewRequest(http.MethodGet,
+		paths.Base+"/api/auth/callback?code=auth-code&state="+url.QueryEscape(u.Query().Get("state")), nil)
+	req.AddCookie(&http.Cookie{Name: txCookieName, Value: txID})
+	return req
+}
+
+// sessionCookieValue returns the value the response set the session cookie to, or ""
+// when it set none or cleared it. Clearing writes the cookie with an empty value, so
+// "no usable session cookie" and "no cookie at all" are the same assertion.
+func sessionCookieValue(h *exchangeTestHarness, rec *httptest.ResponseRecorder) string {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == h.server.cfg.Cookie.Name && c.Value != "" && c.MaxAge >= 0 {
+			return c.Value
+		}
+	}
+	return ""
+}
+
+// TestLoginClassifiesExchangeFailure: the login path must tell its two failure classes
+// apart, because "retrying will not help you" and "retrying in a moment probably will"
+// are different things to say. Both still fail the login — a session that cannot
+// produce an upstream token is not a usable one — so the difference is the reason
+// carried to the login page, which renders them differently and, crucially, stops
+// auto-restarting the login on either (AutoLoginPage would otherwise redirect straight
+// back to the IDP and loop).
+func TestLoginClassifiesExchangeFailure(t *testing.T) {
+	login := func(t *testing.T, idp func() (int, any)) (*exchangeTestHarness, *httptest.ResponseRecorder) {
+		t.Helper()
+		h := newExchangeHarness(t, nil)
+		if idp != nil {
+			h.idpStatus = idp
+		}
+		rec := httptest.NewRecorder()
+		h.server.handleOIDCCallback(rec, h.callbackRequest(t))
+		return h, rec
+	}
+	assertFailedLogin := func(t *testing.T, h *exchangeTestHarness, rec *httptest.ResponseRecorder, wantReason string) {
+		t.Helper()
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d, want 302; body: %s", rec.Code, rec.Body.String())
+		}
+		want := paths.Base + "/login?error=" + wantReason
+		if got := rec.Header().Get("Location"); got != want {
+			t.Errorf("Location = %q, want %q", got, want)
+		}
+		if got := sessionCookieValue(h, rec); got != "" {
+			t.Errorf("a failed login set a session cookie (%q)", got)
+		}
+		// The login is atomic: a session that never exchanged must not be left behind
+		// for a later request to pick up.
+		if _, ok, _ := h.server.store.Get(context.Background(), "subject-token"); ok {
+			t.Error("a failed login left the session in the store")
+		}
+	}
+
+	t.Run("rejected", func(t *testing.T) {
+		h, rec := login(t, func() (int, any) {
+			return http.StatusBadRequest, map[string]any{"error": "invalid_grant"}
+		})
+		assertFailedLogin(t, h, rec, "token_exchange_rejected")
+	})
+
+	t.Run("unavailable", func(t *testing.T) {
+		h, rec := login(t, func() (int, any) {
+			return http.StatusServiceUnavailable, map[string]any{"error": "server_error"}
+		})
+		assertFailedLogin(t, h, rec, "upstream_unavailable")
+	})
+
+	// The success path is asserted alongside so the two failures above are known to be
+	// the exchange failing, not the login harness failing to log in at all.
+	t.Run("success", func(t *testing.T) {
+		h, rec := login(t, nil)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d, want 302; body: %s", rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Location"); got != paths.Base+"/" {
+			t.Errorf("Location = %q, want the return URL %q", got, paths.Base+"/")
+		}
+		if got := sessionCookieValue(h, rec); got != "subject-token" {
+			t.Errorf("session cookie = %q, want the login token", got)
+		}
+	})
+}
+
+// TestSessionFailsClosedWhenExchangeFails: hydration must never fall back to the login
+// token's authority. Reporting it would offer the UI actions every proxied call then
+// refuses — the substitution exchange mode exists to prevent, arriving at the identity
+// layer instead of on the wire. The two classes are asserted together because the split
+// is the whole behaviour: only a rejection may end the session.
+func TestSessionFailsClosedWhenExchangeFails(t *testing.T) {
+	sessionRequest := func(h *exchangeTestHarness, subject string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, paths.Base+"/api/session", nil)
+		req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+		rec := httptest.NewRecorder()
+		h.server.handleSession(rec, req)
+		return rec
+	}
+	// No assertion on the body beyond "it is not a hydrated session": the point is that
+	// no scope set reaches the SPA at all, whichever class the failure fell into.
+	assertNoScopesLeaked := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		if strings.Contains(rec.Body.String(), "login-scope") {
+			t.Errorf("response carried the login token's scopes: %s", rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), `"authenticated":true`) {
+			t.Errorf("a failed exchange still reported the session as hydrated: %s", rec.Body.String())
+		}
+	}
+
+	t.Run("rejection destroys the session", func(t *testing.T) {
+		h := newExchangeHarness(t, nil)
+		subject := h.subjectSession(t)
+		h.idpStatus = func() (int, any) {
+			return http.StatusBadRequest, map[string]any{"error": "invalid_grant"}
+		}
+
+		rec := sessionRequest(h, subject)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401; body: %s", rec.Code, rec.Body.String())
+		}
+		assertNoScopesLeaked(t, rec)
+		// A rejected subject token can never produce an upstream token, so the session
+		// must go — exactly as it does on the proxy path.
+		if _, ok, _ := h.server.store.Get(context.Background(), subject); ok {
+			t.Error("a rejected exchange left the session in the store")
+		}
+	})
+
+	t.Run("unavailable keeps the session", func(t *testing.T) {
+		h := newExchangeHarness(t, nil)
+		subject := h.subjectSession(t)
+		h.idpStatus = func() (int, any) {
+			return http.StatusServiceUnavailable, map[string]any{"error": "server_error"}
+		}
+
+		rec := sessionRequest(h, subject)
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("status = %d, want 502; body: %s", rec.Code, rec.Body.String())
+		}
+		assertNoScopesLeaked(t, rec)
+		// The IDP may recover; logging the user out over a blip would be self-inflicted,
+		// and the login they would then attempt fails the same way.
+		if _, ok, _ := h.server.store.Get(context.Background(), subject); !ok {
+			t.Error("a transient IDP failure destroyed the session")
+		}
+	})
+}
+
 // TestUpstreamTokenPassthroughWithoutExchanger: with no exchange configured the login
 // token is forwarded unchanged, so an existing deployment sees no behavior change.
 func TestUpstreamTokenPassthroughWithoutExchanger(t *testing.T) {
@@ -499,6 +699,62 @@ func TestRefreshDropsExchangedToken(t *testing.T) {
 	}
 	if stored.Exchanged.Token != "" {
 		t.Errorf("stored rotated session carried the previous exchanged token %q", stored.Exchanged.Token)
+	}
+}
+
+// TestRefreshPreservesSelectedOrg is the counterpart to the test above, and the
+// distinction between them is the whole point: Exchanged is DERIVED from the token
+// that just rotated, so it must be dropped; OrgHandle is the user's own SELECTION,
+// so it must survive. Lost, the session silently falls back to default_org and every
+// later call is scoped to a different org than the one the UI still shows — and the
+// refresh that causes it fires once per token lifetime for any active session.
+func TestRefreshPreservesSelectedOrg(t *testing.T) {
+	h := newExchangeHarness(t, func(c *config.TokenExchangeConfig) { c.OrgParam = "orgHandle" })
+	subject := h.subjectSession(t)
+
+	if rec := h.switchOrgRequest(subject, "org-b"); rec.Code != http.StatusOK {
+		t.Fatalf("switch to org-b: status %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Drive the real rotation rather than hand-building the rotated record, so this
+	// asserts what doRefresh actually carries forward.
+	sess, ok, _ := h.server.store.Get(context.Background(), subject)
+	if !ok {
+		t.Fatal("session missing after the switch")
+	}
+	sess.AccessExpiry = time.Now().Add(10 * time.Second) // inside the renewal window
+	if err := h.server.store.Put(context.Background(), sess); err != nil {
+		t.Fatalf("store session: %v", err)
+	}
+
+	rotated, err := h.server.refreshByToken(context.Background(), subject)
+	if err != nil {
+		t.Fatalf("refreshByToken: %v", err)
+	}
+	if rotated.OrgHandle != "org-b" {
+		t.Errorf("rotated session OrgHandle = %q, want %q", rotated.OrgHandle, "org-b")
+	}
+	stored, ok, _ := h.server.store.Get(context.Background(), rotated.AccessToken)
+	if !ok {
+		t.Fatal("rotated session was not re-keyed to the new access token")
+	}
+	if stored.OrgHandle != "org-b" {
+		t.Errorf("stored rotated session OrgHandle = %q, want %q", stored.OrgHandle, "org-b")
+	}
+
+	// The consequence, not just the field. Rotation drops Exchanged, so this request
+	// genuinely re-exchanges — and the org it names is what the Platform API will
+	// scope the caller to.
+	if rec := h.proxyRequest(rotated.AccessToken); rec.Code != http.StatusOK {
+		t.Fatalf("proxy after refresh: status %d; body: %s", rec.Code, rec.Body.String())
+	}
+	form := h.idpLastForm.Load()
+	if form == nil {
+		t.Fatal("IDP was never called")
+	}
+	if got := form.(interface{ Get(string) string }).Get("orgHandle"); got != "org-b" {
+		t.Errorf("the exchange after a refresh sent orgHandle = %q, want %q — "+
+			"the user's org selection did not survive the token rotation", got, "org-b")
 	}
 }
 
