@@ -18,11 +18,17 @@
 
 import type { ElementType } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
+  Avatar,
   Box,
   Card,
+  CircularProgress,
+  Divider,
   IconButton,
   InputAdornment,
+  List,
+  ListItemButton,
   PageContent,
   Stack,
   Table,
@@ -43,17 +49,28 @@ import {
   DialogTitle,
   Button,
 } from '@wso2/oxygen-ui';
-import { Search, ShieldCheck, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import {
+  ChevronRight,
+  Search,
+  ShieldCheck,
+  Trash2,
+} from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import {
   deleteGatewayCustomPolicy,
   getGatewayCustomPolicies,
+  getGatewayCustomPolicy,
 } from '../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
+import { getLLMProviders } from '../../../../apis/llmProviderApis';
+import type { LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
-import { getErrorMessage } from '../../../../utils/apiError';
+import { getErrorCode, getErrorMessage } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppShell } from '../../../../contexts/AppShellContext';
+import { buildOrgPath } from '../../../../utils/projectRouting';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { SCOPES } from '../../../../auth/permissions';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
@@ -132,6 +149,202 @@ function formatVersion(version: string): string {
   return `v${version.replace(/^v/i, '')}`;
 }
 
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 0) return '';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0]}${words[1][0]}`.toUpperCase();
+}
+
+interface PolicyInUseDialogProps {
+  open: boolean;
+  gatewayCustomPolicyId: string;
+  version: string;
+  fallbackName?: string;
+  onClose: () => void;
+}
+
+function PolicyInUseDialog({
+  open,
+  gatewayCustomPolicyId,
+  version,
+  fallbackName,
+  onClose,
+}: PolicyInUseDialogProps) {
+  const navigate = useNavigate();
+  const { currentOrganization } = useAppShell();
+  const organizationId = currentOrganization?.uuid;
+
+  const [policy, setPolicy] = useState<GatewayCustomPolicy | null>(null);
+  const [usedByProviders, setUsedByProviders] = useState<LLMProvider[]>([]);
+  const [totalProviderCount, setTotalProviderCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !gatewayCustomPolicyId || !version || !organizationId) return;
+
+    let isMounted = true;
+    setIsLoading(true);
+    setError(null);
+    setPolicy(null);
+    setUsedByProviders([]);
+    setTotalProviderCount(0);
+
+    Promise.allSettled([
+      getGatewayCustomPolicy(gatewayCustomPolicyId, version),
+      getLLMProviders(organizationId, PLATFORM_API_BASE_URL, gatewayCustomPolicyId),
+    ])
+      .then(([policyResult, providersResult]) => {
+        if (!isMounted) return;
+        if (policyResult.status === 'fulfilled') {
+          setPolicy(policyResult.value);
+        }
+        if (providersResult.status === 'fulfilled') {
+          const list = providersResult.value.list ?? [];
+          setUsedByProviders(list);
+          setTotalProviderCount(providersResult.value.pagination?.total ?? list.length);
+        } else {
+          setError(getErrorMessage(providersResult.reason, 'Failed to load policy usage.'));
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, gatewayCustomPolicyId, version, organizationId]);
+
+  const handleProviderClick = (providerId: string) => {
+    navigate(buildOrgPath(currentOrganization, `/service-provider/${providerId}`));
+    onClose();
+  };
+
+  const displayName = policy?.displayName || policy?.name || fallbackName;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>
+        <FormattedMessage
+          id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.title"
+          defaultMessage="Custom Policy In Use"
+        />
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={0.5} sx={{ mb: 2 }}>
+          <Typography variant="body1" sx={{ fontWeight: 600 }} title={displayName}>
+            {displayName}
+          </Typography>
+          {policy?.version ? (
+            <Typography variant="body2" color="text.secondary">
+              {formatVersion(policy.version)}
+            </Typography>
+          ) : null}
+          {policy?.description ? (
+            <Typography variant="body2" color="text.secondary">
+              {policy.description}
+            </Typography>
+          ) : null}
+        </Stack>
+
+        <Divider sx={{ mb: 2 }} />
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : error ? (
+          <Typography variant="body2" color="error" sx={{ py: 1 }}>
+            {error}
+          </Typography>
+        ) : usedByProviders.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.usage.unavailable"
+              defaultMessage="This policy is currently in use, but its usage details could not be determined."
+            />
+          </Typography>
+        ) : (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.usage.description"
+                defaultMessage="{count, plural, one {# LLM Provider is} other {# LLM Providers are}} using this policy. Remove it from the provider(s) below before deleting it."
+                values={{ count: totalProviderCount }}
+              />
+            </Typography>
+            {totalProviderCount > usedByProviders.length ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.usage.partial"
+                  defaultMessage="Showing {shown} of {total}. There may be more providers blocking this deletion than listed here."
+                  values={{ shown: usedByProviders.length, total: totalProviderCount }}
+                />
+              </Typography>
+            ) : null}
+            <List disablePadding>
+              {usedByProviders.map((provider) => {
+                const providerId = provider.id ?? provider.displayName;
+                return (
+                  <ListItemButton
+                    key={providerId}
+                    onClick={() => handleProviderClick(providerId)}
+                    sx={{
+                      borderRadius: 1,
+                      mb: 0.5,
+                      border: 1,
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Stack
+                      direction="row"
+                      spacing={1.5}
+                      alignItems="center"
+                      sx={{ flexGrow: 1, minWidth: 0 }}
+                    >
+                      <Avatar
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          bgcolor: 'primary.light',
+                          color: 'primary.contrastText',
+                        }}
+                      >
+                        {getInitials(provider.displayName)}
+                      </Avatar>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 600 }}
+                        noWrap
+                        title={provider.displayName}
+                      >
+                        {provider.displayName}
+                      </Typography>
+                    </Stack>
+                    <ChevronRight size={16} />
+                  </ListItemButton>
+                );
+              })}
+            </List>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} variant="outlined" color="secondary">
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.close"
+            defaultMessage="Close"
+          />
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 interface CustomPoliciesListProps {
   // When true, renders bare (no PageContent padding) for embedding inside a
   // page that already provides its own PageContent — e.g. GatewaysList.
@@ -162,6 +375,11 @@ export default function CustomPoliciesList({
     name: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [usageDialogTarget, setUsageDialogTarget] = useState<{
+    uuid: string;
+    version: string;
+    name: string;
+  } | null>(null);
 
   const fetchPolicies = useCallback(async () => {
     setIsLoading(true);
@@ -240,6 +458,10 @@ export default function CustomPoliciesList({
         getErrorMessage(cause, 'Failed to delete the custom policy.'),
         'error'
       );
+      if (getErrorCode(cause) === 'POLICY_IN_USE') {
+        setUsageDialogTarget(deleteTarget);
+        setDeleteTarget(null);
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -544,6 +766,16 @@ export default function CustomPoliciesList({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {usageDialogTarget && (
+        <PolicyInUseDialog
+          open
+          gatewayCustomPolicyId={usageDialogTarget.uuid}
+          version={usageDialogTarget.version}
+          fallbackName={usageDialogTarget.name}
+          onClose={() => setUsageDialogTarget(null)}
+        />
+      )}
     </Wrapper>
   );
 }
