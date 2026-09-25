@@ -704,7 +704,7 @@ export default function ExternalServersOverview(): JSX.Element {
             });
             newlyCreatedSecretHandle = secretResponse.id;
             authPayload = {
-              type: 'header',
+              type: 'api-key',
               header: trimmedHeaderName,
               value: buildSecretPlaceholder(secretResponse.id),
             };
@@ -722,7 +722,7 @@ export default function ExternalServersOverview(): JSX.Element {
         // reconstructing it) relies on the backend's preserveMCPUpstreamAuthValue to
         // keep the stored value — the same fallback the Policies-only save path
         // already depends on. Only the header name (URL-only/header-only edits) changes.
-        authPayload = { ...server.upstream?.main?.auth, type: 'header', header: trimmedHeaderName };
+        authPayload = { ...server.upstream?.main?.auth, type: 'api-key', header: trimmedHeaderName };
       } else {
         // Header name cleared — no credential to attach, so drop auth entirely.
         authPayload = undefined;
@@ -813,7 +813,7 @@ export default function ExternalServersOverview(): JSX.Element {
         request = {
           url: trimmedUrl,
           auth: {
-            type: 'header',
+            type: 'api-key',
             header: trimmedHeaderName,
             value: authHeaderValue.trim(),
           },

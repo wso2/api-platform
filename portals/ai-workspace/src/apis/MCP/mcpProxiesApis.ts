@@ -34,6 +34,24 @@ import type {
 // MCP Server API Functions
 // ============================================================================
 
+function normalizeLegacyAuthType<T extends CreateMCPServerRequest | UpdateMCPServerRequest>(
+  payload: T
+): T {
+  const auth = payload.upstream?.main?.auth;
+  if (auth?.type !== 'header') return payload;
+
+  return {
+    ...payload,
+    upstream: {
+      ...payload.upstream,
+      main: {
+        ...payload.upstream!.main,
+        auth: { ...auth, type: 'api-key' },
+      },
+    },
+  } as T;
+}
+
 /**
  * Create a new MCP Server
  *
@@ -52,7 +70,7 @@ export async function createMCPServer(
     // deleting the pre-created secret if the MCP server creation fails.
     const response = await post<MCPServer>(
       '/mcp-proxies',
-      mcpServer,
+      normalizeLegacyAuthType(mcpServer),
       BFF_API_BASE_URL
     );
     return response;
@@ -136,7 +154,7 @@ export async function updateMCPServer(
   try {
     const response = await put<MCPServer>(
       `/mcp-proxies/${encodeURIComponent(mcpServerId)}`,
-      updates,
+      normalizeLegacyAuthType(updates),
       baseUrl
     );
     return response;

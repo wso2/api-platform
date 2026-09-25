@@ -25,13 +25,13 @@
  * returns it — the Policies tab's locally cached server object never has it
  * either. When the user saves policies, PUT /mcp-proxies/{id} re-sends that
  * object, so the request body legitimately omits auth.value while keeping
- * auth.header/auth.type intact. The backend's preserveMCPUpstreamAuthValue
+ * auth.header and normalizing the legacy auth.type. The backend's preserveMCPUpstreamAuthValue
  * (platform-api/internal/service/mcp.go) restores the existing stored value
  * from the DB whenever the incoming value is empty, so the persisted
  * credential is not lost. These tests verify that:
  *
  *   TC-96  Saving policies with existing auth → PUT /mcp-proxies keeps the
- *          auth block's header/type (but omits value, by design) and
+ *          auth block's header, normalizes its type (but omits value, by design), and
  *          POST /secrets is NOT called
  *   TC-97  Saving policies on a server created WITHOUT auth → PUT /mcp-proxies
  *          has no auth block and POST /secrets is NOT called
@@ -169,7 +169,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
 
   // -------------------------------------------------------------------------
   // TC-96: Saving policies when server has an existing auth →
-  //        PUT keeps the auth block's header/type (value is correctly
+  //        PUT keeps the auth header and normalizes its type (value is correctly
   //        omitted — writeOnly and never present in the locally cached
   //        server object), no POST /secrets called.
   // -------------------------------------------------------------------------
@@ -191,9 +191,9 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     cy.wait('@updateServer', { timeout: 20000 }).then((pi) => {
       expect(pi.response.statusCode, 'PUT /mcp-proxies status').to.be.oneOf([200, 201]);
       const auth = pi.request.body?.upstream?.main?.auth;
-      // The auth block structure must survive the save — header/type intact.
+      // The auth block structure must survive the save and its legacy type is normalized.
       expect(auth?.header, 'PUT body keeps the auth header').to.equal('Authorization');
-      expect(auth?.type, 'PUT body keeps the auth type').to.equal('header');
+      expect(auth?.type, 'PUT body normalizes the auth type').to.equal('api-key');
       // value is writeOnly (never returned by GET), so the PUT correctly omits
       // it; the backend's preserveMCPUpstreamAuthValue restores the stored
       // value from the DB when it sees an empty value on update.
