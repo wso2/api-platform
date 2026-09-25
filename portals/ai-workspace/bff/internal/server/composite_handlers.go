@@ -69,7 +69,9 @@ func extractSecretHandles(body []byte) []string {
 // platformDo performs a single authenticated request against the Platform API,
 // returning the raw response. The caller is responsible for closing the body.
 func (s *Server) platformDo(ctx context.Context, jwt, method, path string, header http.Header, body []byte) (*http.Response, error) {
-	url := strings.TrimRight(s.cfg.ControlPlane.URL, "/") + path
+	// Same mapping the reverse proxy applies, so a server-side call and the proxied
+	// one next to it always address the same upstream.
+	url := strings.TrimRight(s.cfg.ControlPlane.URL, "/") + s.cfg.ControlPlane.UpstreamPath(path)
 	var reqBody io.Reader
 	if len(body) > 0 {
 		reqBody = bytes.NewReader(body)

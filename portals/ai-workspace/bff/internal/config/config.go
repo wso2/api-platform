@@ -33,6 +33,10 @@ import (
 	"strings"
 	"time"
 
+	// Aliased: Load's own parameter is named `paths`, and the API prefixes this
+	// package normalizes against live in that package.
+	apipaths "ai-workspace-bff/internal/paths"
+
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/v2"
 )
@@ -140,6 +144,8 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
+	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
 	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
 	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
 	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
@@ -510,6 +516,12 @@ func (c *Config) normalize() {
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
+	// Written as "v0.9", "/v0.9" or "/v0.9/" all mean the same thing; which one an
+	// operator types is not worth a failed boot. An empty value (an {{ env }} token
+	// with nothing behind it) means "unset", not "serve from the upstream root", so
+	// it falls back to the API's own prefix rather than silently flattening the path.
+	c.ControlPlane.PlatformAPIBasePath = normalizeBasePath(c.ControlPlane.PlatformAPIBasePath, apipaths.PlatformAPI)
+	c.ControlPlane.PortalAPIBasePath = normalizeBasePath(c.ControlPlane.PortalAPIBasePath, apipaths.PortalAPI)
 	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
