@@ -33,6 +33,8 @@ export type AuthUser = {
    * a token in the browser, which never holds one.
    */
   org?: AuthOrg | null;
+  scopes?: string[],
+  role?: string,
 };
 
 export type AuthStatus =

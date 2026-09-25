@@ -18,8 +18,25 @@
 
 import type { ReactNode } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
+import { Lock } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { AppLoader } from './AppLoader';
+
+const messages = defineMessages({
+  forbiddenTitle: {
+    id: 'apiControlPlane.components.StateViews.forbiddenTitle',
+    defaultMessage: "You don't have permission to view this",
+    description: 'Heading shown in place of a page the signed-in user lacks the scope to read.',
+  },
+  forbiddenDescription: {
+    id: 'apiControlPlane.components.StateViews.forbiddenDescription',
+    defaultMessage:
+      'Your account does not include access to this page. An administrator in your organization can grant it.',
+    description:
+      'Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for.',
+  },
+});
 
 export function LoadingState({
   label = 'Loading',
@@ -126,5 +143,51 @@ export function ErrorState({
       <Typography fontWeight={600}>{title}</Typography>
       {message && <Typography>{message}</Typography>}
     </Alert>
+  );
+}
+
+type ForbiddenStateProps = {
+  /** Overrides the default heading, e.g. to name the thing being withheld. */
+  title?: string;
+  description?: string;
+  /** Artwork, matching `EmptyState`'s option. The lock mark is used without it. */
+  illustration?: ReactNode;
+};
+
+/**
+ * Shown in place of content the signed-in user's scopes do not allow them to
+ * read — pass it as `fallback` to `Can`.
+ *
+ * Deliberately *not* an `EmptyState`. "This organization has no gateways" and
+ * "you may not see this organization's gateways" are different facts, and a
+ * console that renders them identically teaches users to distrust every empty
+ * table it shows them. It is also not an `ErrorState`: nothing failed, so the
+ * red alert styling would be a lie.
+ */
+export function ForbiddenState({ title, description, illustration }: ForbiddenStateProps) {
+  const intl = useIntl();
+
+  return (
+    <Box
+      sx={{
+        alignItems: 'center',
+        display: 'flex',
+        justifyContent: 'center',
+        flexGrow: 1,
+        minHeight: '40vh',
+        px: 3,
+        py: 6,
+      }}
+    >
+      <Stack alignItems="center" spacing={1} sx={{ maxWidth: 440 }}>
+        {illustration ?? <Lock aria-hidden size={40} strokeWidth={1.5} color="currentColor" />}
+        <Typography sx={{ fontWeight: 700, pt: 2 }} variant="h5">
+          {title ?? intl.formatMessage(messages.forbiddenTitle)}
+        </Typography>
+        <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
+          {description ?? intl.formatMessage(messages.forbiddenDescription)}
+        </Typography>
+      </Stack>
+    </Box>
   );
 }
