@@ -129,6 +129,12 @@ Before adding a helper, step, or dependency:
   template and renderer tests pass.
 - `resources/apis/` is not a second template catalogue. Do not add runtime
   fixtures there when the canonical template can express the resource.
+- A control-plane resource authored through the Platform API, such as
+  `agent-proxy.yaml`, has a canonical template too. Its envelope is the
+  publisher-API payload rather than the gateway `apiVersion`/`kind`/`spec`
+  envelope; the step renders it and sends it as JSON. The same rules apply:
+  one template per resource kind, variation through the values table, and
+  omission preserved for every field the table does not supply.
 
 ## Version-Aware Product Contracts
 

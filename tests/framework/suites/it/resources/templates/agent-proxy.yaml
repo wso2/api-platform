@@ -1,0 +1,11 @@
+displayName: ${VALUE:displayName}
+version: v1.0
+projectId: ${VALUE:projectId}
+context: ${VALUE:context}
+upstream:
+  main:
+    url: ${VALUE:upstreamUrl}
+protocol: a2a
+a2a:
+  protocolVersion: "1.0"
+  transports: ${VALUE:transports}

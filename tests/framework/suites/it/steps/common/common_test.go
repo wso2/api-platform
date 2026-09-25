@@ -273,26 +273,42 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	require.True(t, ok)
 
 	root := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates")
-	want := map[string]string{
+	// Platform Gateway templates own the gateway resource envelope.
+	gatewayKinds := map[string]string{
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",
 		"mcp.yaml":                   "Mcp",
 		"rest-api.yaml":              "RestApi",
 	}
+	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
+	controlPlaneProtocols := map[string]string{
+		"agent-proxy.yaml": "a2a",
+	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(want))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
 	for _, path := range paths {
 		name := filepath.Base(path)
-		expectedKind, expected := want[name]
-		require.Truef(t, expected, "unexpected canonical template %q", name)
-
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
+
+		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
+			require.Equal(t, protocol, document["protocol"], "template %q", name)
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			block, ok := document[protocol].(map[string]any)
+			require.True(t, ok, "template %q must define its %q protocol block", name, protocol)
+			require.NotEmpty(t, block, "template %q", name)
+			continue
+		}
+
+		expectedKind, expected := gatewayKinds[name]
+		require.Truef(t, expected, "unexpected canonical template %q", name)
 		require.Equal(t, expectedKind, document["kind"], "template %q", name)
 		require.NotEmpty(t, document["apiVersion"], "template %q", name)
 		require.NotEmpty(t, document["metadata"], "template %q", name)
@@ -358,3 +374,78 @@ spec:
   provider:
     id: ${VALUE:provider.id}
 `
+
+func TestResourceTemplatePath(t *testing.T) {
+	root := t.TempDir()
+	path, err := ResourceTemplatePath(root, "resources/templates/agent-proxy.yaml")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, "resources/templates/agent-proxy.yaml"), path)
+
+	for _, name := range []string{"", "   ", "/tmp/agent.yaml", "..", "../agent.yaml", "resources/../../agent.yaml"} {
+		_, err := ResourceTemplatePath(root, name)
+		require.Error(t, err, "name %q", name)
+	}
+	_, err = ResourceTemplatePath("", "resources/templates/agent-proxy.yaml")
+	require.ErrorContains(t, err, "root is not configured")
+
+	outside := filepath.Join(t.TempDir(), "outside.yaml")
+	require.NoError(t, os.WriteFile(outside, []byte("protocol: a2a\n"), 0o600))
+	link := filepath.Join(root, "resources", "templates", "link.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(link), 0o755))
+	require.NoError(t, os.Symlink(outside, link))
+	_, err = ResourceTemplatePath(root, "resources/templates/link.yaml")
+	require.ErrorContains(t, err, "escapes")
+}
+
+func TestCanonicalAgentProxyTemplateRendersTheContractPayload(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	path := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates", "agent-proxy.yaml")
+	template, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	render := func(t *testing.T, values ...string) map[string]any {
+		t.Helper()
+		definition, err := RenderResourceTemplate(context.Background(), "resources/templates/agent-proxy.yaml",
+			template, templateTable(values...))
+		require.NoError(t, err)
+		var document map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(definition), &document))
+		return document
+	}
+	required := []string{
+		"displayName", "Agent",
+		"projectId", "project",
+		"context", "/agent",
+		"upstreamUrl", "http://a2a-trip-planner:9099",
+		"transports", `[{"protocolBinding":"JSONRPC","pathPrefix":"/"}]`,
+	}
+
+	minimal := render(t, required...)
+	require.Equal(t, "a2a", minimal["protocol"])
+	require.Equal(t, "v1.0", minimal["version"])
+	a2a := minimal["a2a"].(map[string]any)
+	require.Equal(t, "1.0", a2a["protocolVersion"], "the protocol version must stay a string, not the number 1")
+	require.Len(t, a2a["transports"], 1)
+	require.Equal(t, "http://a2a-trip-planner:9099", minimal["upstream"].(map[string]any)["main"].(map[string]any)["url"])
+	for _, optional := range []string{"id", "description", "vhost", "resilience", "associatedGateways"} {
+		require.NotContains(t, minimal, optional, "an unsupplied optional field must stay absent")
+	}
+	require.NotContains(t, a2a, "agentCard")
+	require.NotContains(t, a2a, "operationConfigs")
+
+	full := render(t, append(required,
+		"id", "agent-handle",
+		"upstream.main.auth", `{"type":"api-key","header":"X-Key","value":"{{ secret \"handle\" }}"}`,
+		"a2a.agentCard", `{"public":{"mode":"passthrough","rewriteUrls":false}}`,
+	)...)
+	require.Equal(t, "agent-handle", full["id"])
+	auth := full["upstream"].(map[string]any)["main"].(map[string]any)["auth"].(map[string]any)
+	require.Equal(t, `{{ secret "handle" }}`, auth["value"])
+	card := full["a2a"].(map[string]any)["agentCard"].(map[string]any)["public"].(map[string]any)
+	require.Equal(t, false, card["rewriteUrls"], "an explicit false must survive rendering")
+
+	_, err = RenderResourceTemplate(context.Background(), "resources/templates/agent-proxy.yaml", template,
+		templateTable("displayName", "Agent"))
+	require.ErrorContains(t, err, "no value supplied")
+}

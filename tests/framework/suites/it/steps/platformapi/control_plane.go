@@ -55,15 +55,18 @@ var artifactPaths = map[string]string{
 
 // Steps holds what the control-plane steps need.
 type Steps struct {
-	topo   *runtime.Topology
-	client *httpx.Client
+	topo        *runtime.Topology
+	funnel      *httpx.Funnel
+	client      *httpx.Client
+	featureRoot string
 }
 
-// Register binds the control-plane assertion steps used by DP -> CP sync features. Requests
-// go through the same httpx.Client every other suite request funnels through - client is the
-// underlying client of the suite's shared funnel, not a step-owned http.Client.
-func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.Client) {
-	s := &Steps{topo: topo, client: client}
+// Register binds the control-plane steps. Requests go through the suite's shared funnel: steps
+// whose response an assertion reads publish through it, and intermediate lookups use its
+// underlying client rather than a step-owned http.Client. featureRoot resolves canonical
+// resource templates.
+func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.Funnel, featureRoot string) {
+	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client(), featureRoot: featureRoot}
 	sc.Step(`^the control plane should receive the "([^"]*)" artifact "([^"]*)"$`, s.shouldReceive)
 	sc.Step(`^the control plane should not receive the "([^"]*)" artifact "([^"]*)"$`, s.shouldNotReceive)
 	sc.Step(`^the control plane copy of the "([^"]*)" artifact "([^"]*)" configuration should contain "([^"]*)"$`,
@@ -81,6 +84,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 	sc.Step(`^I create a project "([^"]*)" on the control plane$`, s.createProject)
 	sc.Step(`^platform-api reports the subscription for API "([^"]*)" using plan "([^"]*)"$`, s.subscriptionPlanMatches)
 	RegisterDeploy(sc, s)
+	RegisterAgentProxy(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.

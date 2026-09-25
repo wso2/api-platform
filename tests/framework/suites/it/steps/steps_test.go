@@ -217,26 +217,42 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	require.True(t, ok)
 
 	root := filepath.Join(filepath.Dir(source), "..", "resources", "templates")
-	want := map[string]string{
+	// Platform Gateway templates own the gateway resource envelope.
+	gatewayKinds := map[string]string{
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",
 		"mcp.yaml":                   "Mcp",
 		"rest-api.yaml":              "RestApi",
 	}
+	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
+	controlPlaneProtocols := map[string]string{
+		"agent-proxy.yaml": "a2a",
+	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(want))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
 	for _, path := range paths {
 		name := filepath.Base(path)
-		expectedKind, expected := want[name]
-		require.Truef(t, expected, "unexpected canonical template %q", name)
-
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
+
+		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
+			require.Equal(t, protocol, document["protocol"], "template %q", name)
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			block, ok := document[protocol].(map[string]any)
+			require.True(t, ok, "template %q must define its %q protocol block", name, protocol)
+			require.NotEmpty(t, block, "template %q", name)
+			continue
+		}
+
+		expectedKind, expected := gatewayKinds[name]
+		require.Truef(t, expected, "unexpected canonical template %q", name)
 		require.Equal(t, expectedKind, document["kind"], "template %q", name)
 		require.NotEmpty(t, document["apiVersion"], "template %q", name)
 		require.NotEmpty(t, document["metadata"], "template %q", name)
@@ -244,4 +260,56 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		require.True(t, ok, "template %q must define a spec mapping", name)
 		require.NotNil(t, spec, "template %q", name)
 	}
+}
+
+func TestJSONArrayItemSteps(t *testing.T) {
+	base := &Base{}
+	publish := func(t *testing.T, body string) context.Context {
+		t.Helper()
+		ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+		require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(body)}))
+		return ctx
+	}
+	const listBody = `{"list":[{"id":"a","status":"active","nested":{"kind":"x"}},{"id":"b","status":"revoked"},"not-an-object",{"id":7}]}`
+
+	t.Run("presence", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		require.NoError(t, base.jsonArrayItemPresence(ctx, "list", "contain", "id", "a"))
+		require.NoError(t, base.jsonArrayItemPresence(ctx, "list", "contain", "id", "7"), "numbers match their rendered value")
+		require.NoError(t, base.jsonArrayItemPresence(ctx, "list", "not contain", "id", "c"))
+		require.Error(t, base.jsonArrayItemPresence(ctx, "list", "contain", "id", "c"))
+		require.Error(t, base.jsonArrayItemPresence(ctx, "list", "not contain", "id", "b"))
+		require.Error(t, base.jsonArrayItemPresence(ctx, "list", "sometimes contain", "id", "a"))
+	})
+	t.Run("root array", func(t *testing.T) {
+		ctx := publish(t, `[{"name":"k1","artifactUuid":"u1"},{"name":"k2"}]`)
+		require.NoError(t, base.jsonArrayItemPresence(ctx, "", "contain", "name", "k2"))
+		require.NoError(t, base.jsonArrayItemFieldIs(ctx, "", "name", "k1", "artifactUuid", "u1"))
+	})
+	t.Run("selected item field", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		require.NoError(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "a", "status", "active"))
+		require.NoError(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "a", "nested.kind", "x"))
+		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "a", "status", "revoked"), `expected "revoked"`)
+		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "b", "nested", "x"), "has no field")
+		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "z", "status", "active"), "has 0 items")
+		require.NoError(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "b", "nested"))
+		require.ErrorContains(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "a", "nested"), "should not have field")
+	})
+	t.Run("ambiguous selection", func(t *testing.T) {
+		ctx := publish(t, `{"list":[{"id":"dup","v":1},{"id":"dup","v":2}]}`)
+		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "dup", "v", "1"), "want exactly one")
+	})
+	t.Run("expands context values", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		local, ok := tcontext.LocalOf(ctx)
+		require.True(t, ok)
+		local.Set("keyId", "a")
+		require.NoError(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "${CTX:keyId}", "status", "active"))
+	})
+	t.Run("malformed input", func(t *testing.T) {
+		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{`), "list", "contain", "id", "a"), "not JSON")
+		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{"list":{}}`), "list", "contain", "id", "a"), "not an array")
+		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{}`), "list", "contain", "id", "a"), "absent")
+	})
 }

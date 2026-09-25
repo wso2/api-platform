@@ -20,11 +20,13 @@ package controlplane
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -263,6 +266,183 @@ func TestSyncAPIKeysForExistingArtifacts_BackfillsAgentKeys(t *testing.T) {
 	require.NotNil(t, key, "the backfilled Agent key must be stored")
 	assert.Equal(t, agentEvtID, key.ArtifactUUID)
 	assert.Equal(t, models.APIKeyStatusActive, key.Status)
+}
+
+// backfillKind is one bulk-synced kind in the populated backfill test: the path
+// its keys are served from, the artifact they belong to, and — when that kind's
+// artifact is deployed locally — the stale key its reconcile step must remove.
+type backfillKind struct {
+	kind       string
+	path       string
+	artifactID string
+	local      bool
+	keyUUID    string
+	keyName    string
+	keyHash    string
+	staleKey   string
+}
+
+// Adding Agent to the backfill must not change what the five pre-existing kinds
+// do with a populated response. Every kind serves one key: each is stored,
+// active, against its own artifact and announced; and every kind whose artifact
+// is deployed locally reconciles away the key its control plane stopped
+// reporting. WebSubApi and WebBrokerApi artifacts cannot exist in this core
+// gateway store, so their keys are stored ahead of a local artifact — as the
+// schema allows — and there is nothing of theirs to reconcile.
+func TestSyncAPIKeysForExistingArtifacts_BackfillsAndReconcilesEveryKind(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	h.deploy(t, agentEvtID, "dep-1", time.Now())
+
+	const (
+		restID     = "0199a1b2-0000-7000-8000-00000000a001"
+		providerID = "0199a1b2-0000-7000-8000-00000000a002"
+		proxyID    = "0199a1b2-0000-7000-8000-00000000a003"
+		webSubID   = "0199a1b2-0000-7000-8000-00000000a004"
+		brokerID   = "0199a1b2-0000-7000-8000-00000000a005"
+	)
+	require.NoError(t, h.db.SaveConfig(agentEvtRestConfig(restID, "backfill-rest")))
+	require.NoError(t, h.db.SaveConfig(backfillLLMProviderConfig(providerID, "backfill-provider")))
+	require.NoError(t, h.db.SaveConfig(backfillLLMProxyConfig(proxyID, "backfill-proxy", "backfill-provider")))
+
+	kinds := []backfillKind{
+		{kind: models.KindRestApi, path: "/apis/api-keys", artifactID: restID, local: true},
+		{kind: models.KindWebSubApi, path: "/websub-apis/api-keys", artifactID: webSubID},
+		{kind: models.KindWebBrokerApi, path: "/webbroker-apis/api-keys", artifactID: brokerID},
+		{kind: models.KindLlmProvider, path: "/llm-providers/api-keys", artifactID: providerID, local: true},
+		{kind: models.KindLlmProxy, path: "/llm-proxies/api-keys", artifactID: proxyID, local: true},
+		{kind: models.KindAgent, path: "/agents/api-keys", artifactID: agentEvtID, local: true},
+	}
+	bodies := make(map[string]string, len(kinds))
+	for i := range kinds {
+		k := &kinds[i]
+		k.keyUUID = fmt.Sprintf("0199a1b2-0000-7000-8000-0000000b%04d", i+1)
+		k.keyName = strings.ToLower(k.kind) + "-backfilled-key"
+		k.keyHash = fmt.Sprintf("%064x", i+1)
+		bodies[k.path] = `[{
+			"uuid": "` + k.keyUUID + `",
+			"name": "` + k.keyName + `",
+			"maskedApiKey": "***` + k.keyHash[59:] + `",
+			"apiKeyHashes": {"sha256": "` + k.keyHash + `"},
+			"artifactUuid": "` + k.artifactID + `",
+			"status": "active",
+			"createdAt": "2026-09-20T10:00:00Z",
+			"updatedAt": "2026-09-20T10:00:00Z",
+			"source": "external"
+		}]`
+		if !k.local {
+			continue
+		}
+		k.staleKey = strings.ToLower(k.kind) + "-removed-upstream"
+		now := time.Now().UTC()
+		require.NoError(t, h.db.UpsertAPIKey(&models.APIKey{
+			UUID:         fmt.Sprintf("0199a1b2-0000-7000-8000-0000000c%04d", i+1),
+			Name:         k.staleKey,
+			APIKey:       fmt.Sprintf("stale-%064x", i+1),
+			MaskedAPIKey: "***stale",
+			ArtifactUUID: k.artifactID,
+			Status:       models.APIKeyStatusActive,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			Source:       "external",
+		}), "precondition: seeding the %s stale key", k.kind)
+	}
+
+	srv := newKeyBackfillServer(t, bodies)
+	h.withKeyServices(srv)
+
+	h.client.syncAPIKeysForExistingArtifacts(agentEvtGatewayID)
+
+	wantPaths := make([]string, len(kinds))
+	for i, k := range kinds {
+		wantPaths[i] = k.path
+	}
+	assert.Equal(t, wantPaths, srv.requested(), "every kind is fetched once, in its original order")
+
+	locals := 0
+	for _, k := range kinds {
+		key, err := h.db.GetAPIKeysByAPIAndName(k.artifactID, k.keyName)
+		require.NoError(t, err, "%s: reading the backfilled key", k.kind)
+		require.NotNil(t, key, "%s: the backfilled key must be stored", k.kind)
+		assert.Equal(t, k.keyUUID, key.UUID, "%s: key identity", k.kind)
+		assert.Equal(t, k.artifactID, key.ArtifactUUID, "%s: the key belongs to its own artifact", k.kind)
+		assert.Equal(t, models.APIKeyStatusActive, key.Status, "%s: status", k.kind)
+		assert.Contains(t, key.APIKey, k.keyHash, "%s: the stored key is the served digest", k.kind)
+
+		if !k.local {
+			continue
+		}
+		locals++
+		stale, err := h.db.GetAPIKeysByAPIAndName(k.artifactID, k.staleKey)
+		if err != nil {
+			require.True(t, storage.IsNotFoundError(err), "%s: unexpected error: %v", k.kind, err)
+			continue
+		}
+		assert.Nil(t, stale, "%s: a key the control plane no longer reports must be reconciled away", k.kind)
+	}
+
+	assert.Len(t, h.apiKeyEvents("CREATE"), len(kinds), "every backfilled key is announced to replicas")
+	assert.Len(t, h.apiKeyEvents("DELETE"), locals, "every reconciled key is announced to replicas")
+}
+
+func backfillLLMProviderConfig(uuid, handle string) *models.StoredConfig {
+	upstream := "https://llm.example.com"
+	context := "/backfill-llm"
+	provider := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: handle},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "Backfill Provider",
+			Version:       "v1.0",
+			Context:       &context,
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstream},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	now := time.Now()
+	return &models.StoredConfig{
+		UUID:                uuid,
+		Kind:                models.KindLlmProvider,
+		Handle:              handle,
+		DisplayName:         "Backfill Provider",
+		Version:             "v1.0",
+		Configuration:       provider,
+		SourceConfiguration: provider,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+}
+
+func backfillLLMProxyConfig(uuid, handle, providerHandle string) *models.StoredConfig {
+	context := "/backfill-llm-proxy"
+	proxy := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: handle},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "Backfill Proxy",
+			Version:     "v1.0",
+			Context:     &context,
+			Provider:    &api.LLMProxyProvider{Id: providerHandle},
+		},
+	}
+	now := time.Now()
+	return &models.StoredConfig{
+		UUID:                uuid,
+		Kind:                models.KindLlmProxy,
+		Handle:              handle,
+		DisplayName:         "Backfill Proxy",
+		Version:             "v1.0",
+		Configuration:       proxy,
+		SourceConfiguration: proxy,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
 }
 
 // A key revoked in the control plane while the gateway was disconnected is no

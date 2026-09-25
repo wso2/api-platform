@@ -691,6 +691,55 @@ func TestFetchAgentCard_UpstreamFailuresAre503(t *testing.T) {
 	}
 }
 
+// TestFetchAgentCard_StoredSecretResolutionFailureIs500 covers the one internal
+// failure on the stored-handle path: the Agent proxy's credential is a
+// {{ secret "handle" }} reference that the secret store cannot resolve. That is a
+// control-plane fault rather than an upstream one, so it is a 500 with a tracking
+// id — never the 503 a client reads as "the agent is down" — and neither the
+// handle nor any part of the credential reaches the caller. Nothing is sent to
+// the upstream, and nothing is cached: the failure is not the upstream's to own.
+func TestFetchAgentCard_StoredSecretResolutionFailureIs500(t *testing.T) {
+	env := newAgentProxyTestEnv(t, cardCacheConfig(time.Minute, 10*time.Second))
+	seedUpstreamSecret(t, env, agentProxyOrg)
+	agent := newCardServingAgent(t)
+	createAgentProxyPointingAt(t, env, agentProxyOrg, "weather-agent", agent.url(), true)
+
+	// The reference stays recorded, so the secret cannot be deleted through the
+	// API; an undecryptable ciphertext is how the store fails to resolve it.
+	if _, err := env.db.Exec(`UPDATE secrets SET ciphertext = ? WHERE organization_uuid = ? AND handle = ?`,
+		"not-a-ciphertext", agentProxyOrg, upstreamSecretName); err != nil {
+		t.Fatalf("corrupt the stored secret: %v", err)
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		rec := callFetchAgentCard(t, env, `{"agentProxyId":"weather-agent"}`)
+		assertAgentProxyError(t, rec, http.StatusInternalServerError, "INTERNAL_ERROR")
+
+		var body struct {
+			TrackingID string `json:"trackingId"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode error body: %v; body: %s", err, rec.Body.String())
+		}
+		if body.TrackingID == "" {
+			t.Errorf("attempt %d: trackingId is absent from a 500: %s", attempt, rec.Body.String())
+		}
+		for _, leak := range []string{upstreamSecretName, upstreamSecretVal, "{{ secret", agent.url()} {
+			if strings.Contains(rec.Body.String(), leak) {
+				t.Errorf("attempt %d: the 500 body leaks %q: %s", attempt, leak, rec.Body.String())
+			}
+		}
+		// An internal failure is not an upstream outage, so it is never served from
+		// the cache as one: no Age, and the second attempt fails the same way.
+		if age := rec.Header().Get("Age"); age != "" {
+			t.Errorf("attempt %d: an internal failure reported Age %q, as if it were a cached upstream failure", attempt, age)
+		}
+	}
+	if got := agent.count(); got != 0 {
+		t.Errorf("the upstream was contacted %d times although its credential could not be resolved", got)
+	}
+}
+
 // The control plane does not police what is inside a card. Its shape is the A2A
 // specification's to define and the gateway's to enforce at deploy time, and a
 // preview that refused to render a sparse or unfamiliar document would hide the

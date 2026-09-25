@@ -23,6 +23,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/agentcard"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
@@ -84,6 +85,10 @@ func Testbench() *components.Definition {
 			{Name: "capture", Port: capture.Port, Scheme: "http", AwaitListening: true},
 			{Name: "oauth2", Port: oauth2.Port, Scheme: "http", AwaitListening: true},
 			{Name: "webhook", Port: webhook.Port, Scheme: "http", AwaitListening: true},
+			// agentcard is STATEFUL and block-partitioned: it counts the Agent Card fetches each
+			// scenario scope receives, addressed as http://testbench:3013/<block>/<scope>/<mode>.
+			// See testbench/services/agentcard.
+			{Name: "agentcard", Port: agentcard.Port, Scheme: "http", AwaitListening: true},
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.
