@@ -187,7 +187,7 @@ const CONTRACT_FILE_EXTENSIONS: Record<string, string[]> = {
 
 /** Contract the "Try with Sample URL" link fills the URL field with. */
 const SAMPLE_CONTRACT_URLS: Record<string, string> = {
-  rest: 'https://petstore3.swagger.io/api/v3/openapi.json',
+  rest: 'https://raw.githubusercontent.com/wso2/bijira-samples/refs/heads/main/reading-list-api/openapi.yaml',
   websocket:
     'https://raw.githubusercontent.com/asyncapi/spec/master/examples/streetlights-kafka-asyncapi.yml',
   graphql:

@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { JSX } from 'react';
 import React, {
   useCallback,
   useEffect,
@@ -288,6 +289,8 @@ export default function ExternalServersOverview(): JSX.Element {
 
   // Backend Connection tab
   const [endpointUrl, setEndpointUrl] = useState('');
+  const [authType, setAuthType] = useState<'none' | 'header'>('none');
+  const authModeRevision = useRef(0);
   const [authHeaderName, setAuthHeaderName] = useState('');
   const [authHeaderValue, setAuthHeaderValue] = useState('');
   const [showAuthHeaderValue, setShowAuthHeaderValue] = useState(false);
@@ -591,6 +594,7 @@ export default function ExternalServersOverview(): JSX.Element {
   useEffect(() => {
     if (!server) return;
     setEndpointUrl(server.upstream?.main?.url ?? '');
+    setAuthType(server.upstream?.main?.auth?.type === 'header' ? 'header' : 'none');
     setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
     // auth.value is write-only and never returned by GET — auth.header is the only
     // signal the API gives us that a credential is already configured for this proxy.
@@ -616,6 +620,9 @@ export default function ExternalServersOverview(): JSX.Element {
     const savedUrl = server.upstream?.main?.url ?? '';
     const savedHeaderName = server.upstream?.main?.auth?.header ?? '';
     if (endpointUrl.trim() !== savedUrl.trim()) return true;
+    const savedAuthType = server.upstream?.main?.auth?.type === 'header' ? 'header' : 'none';
+    if (authType !== savedAuthType) return true;
+    if (authType === 'none') return false;
     if (authHeaderName.trim() !== savedHeaderName.trim()) return true;
     // The saved credential value is write-only and never returned by the API, so the
     // only way to know it changed is that the user unmasked the field and typed in it.
@@ -624,6 +631,7 @@ export default function ExternalServersOverview(): JSX.Element {
   }, [
     server,
     endpointUrl,
+    authType,
     authHeaderName,
     isCredentialMasked,
     hasCredentialChanged,
@@ -645,9 +653,11 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
+    authModeRevision.current += 1;
     updateSelectedPolicies(initialPolicies);
     if (server) {
       setEndpointUrl(server.upstream?.main?.url ?? '');
+      setAuthType(server.upstream?.main?.auth?.type === 'header' ? 'header' : 'none');
       setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
       const hasExistingAuth = Boolean(server.upstream?.main?.auth?.header);
       setAuthHeaderValue(hasExistingAuth ? MASKED_CREDENTIAL_VALUE : '');
@@ -658,7 +668,8 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleSaveChanges = async () => {
-    if (!server || !organizationId || isReadOnlyServer) return;
+    if (!server || !organizationId || isReadOnlyServer || isSavingChanges) return;
+    if (!validateHeaderAuthentication()) return;
     const orderedPolicies = selectedPoliciesRef.current;
 
     // Convert selectedPolicies -> flat policy payload (preserve current UI order)
@@ -679,18 +690,23 @@ export default function ExternalServersOverview(): JSX.Element {
     // Rotating the credential (only when it was actually unmasked and edited): create a
     // new secret up front so the update payload never carries plaintext, then best-effort
     // delete the old secret once the update succeeds. Mirrors MCPServerProvider.updateMCPServer.
-    const isRotatingCredential = !isCredentialMasked && hasCredentialChanged;
+    const isRotatingCredential = authType === 'header' && !isCredentialMasked && hasCredentialChanged;
     let upstreamPayload = server.upstream;
     // Tracks the handle created below (rotation flow only), so a subsequent failed
     // updateMCPServer call can clean it up instead of leaking an orphaned secret.
     let newlyCreatedSecretHandle: string | null = null;
 
+    // Lock authentication mode throughout secret creation and the proxy update.
+    setIsSavingChanges(true);
+
     if (hasBackendConnectionChanges) {
       const trimmedUrl = endpointUrl.trim();
-      const trimmedHeaderName = authHeaderName.trim();
+      const trimmedHeaderName = authType === 'header' ? authHeaderName.trim() : '';
       let authPayload = server.upstream?.main?.auth;
 
-      if (isRotatingCredential) {
+      if (authType === 'none') {
+        authPayload = undefined;
+      } else if (isRotatingCredential) {
         const trimmedValue = authHeaderValue.trim();
         if (trimmedHeaderName && trimmedValue) {
           try {
@@ -709,6 +725,7 @@ export default function ExternalServersOverview(): JSX.Element {
               value: buildSecretPlaceholder(secretResponse.id),
             };
           } catch {
+            setIsSavingChanges(false);
             showSnackbar('Failed to encrypt upstream auth credential', 'error');
             return;
           }
@@ -745,7 +762,6 @@ export default function ExternalServersOverview(): JSX.Element {
       : updatePayload.capabilities;
 
     try {
-      setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
         {
@@ -785,15 +801,42 @@ export default function ExternalServersOverview(): JSX.Element {
     }
   };
 
+  const handleAuthTypeChange = (nextAuthType: 'none' | 'header') => {
+    if (isReadOnlyServer || isSavingChanges || nextAuthType === authType) return;
+    authModeRevision.current += 1;
+    setAuthType(nextAuthType);
+    setRefetchedCapabilities(null);
+  };
+
+  const validateHeaderAuthentication = (): boolean => {
+    if (authType !== 'header') return true;
+    if (!authHeaderName.trim()) {
+      showSnackbar('Enter an authentication header name.', 'error');
+      return false;
+    }
+    const hasStoredCredential =
+      server?.upstream?.main?.auth?.type === 'header' &&
+      Boolean(server.upstream.main.auth.header);
+    // Focusing the masked field alone does not replace the stored credential.
+    const keepsStoredCredential = hasStoredCredential && !hasCredentialChanged;
+    if (!keepsStoredCredential && (isCredentialMasked || !authHeaderValue.trim())) {
+      showSnackbar('Enter an authentication header value.', 'error');
+      return false;
+    }
+    return true;
+  };
+
   const handleRefetch = async () => {
     if (!server) return;
+    if (!validateHeaderAuthentication()) return;
+    const requestAuthModeRevision = authModeRevision.current;
     const trimmedUrl = endpointUrl.trim();
     if (!trimmedUrl) {
       showSnackbar('Enter an endpoint URL before refetching.', 'error');
       return;
     }
 
-    const trimmedHeaderName = authHeaderName.trim();
+    const trimmedHeaderName = authType === 'header' ? authHeaderName.trim() : '';
     const storedHeaderName = (server.upstream?.main?.auth?.header ?? '').trim();
     const endpointUnchanged =
       trimmedUrl === (server.upstream?.main?.url ?? '').trim();
@@ -846,6 +889,7 @@ export default function ExternalServersOverview(): JSX.Element {
         request,
         apimBaseUrl
       );
+      if (requestAuthModeRevision !== authModeRevision.current) return;
       // Stage the discovered tools/resources/prompts so the user can Save them —
       // the fetch-server-info response already uses the same MCPServerTool/
       // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
@@ -1613,66 +1657,80 @@ export default function ExternalServersOverview(): JSX.Element {
                     }}
                   />
                 </FormControl>
-                <Grid container spacing={1.5}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <FormControl fullWidth>
-                      <FormLabel>Authentication Header</FormLabel>
-                      <TextField
-                        fullWidth
-                        value={authHeaderName}
-                        onChange={(event) =>
-                          setAuthHeaderName(event.target.value)
-                        }
-                        disabled={isReadOnlyServer}
-                        slotProps={{
-                          htmlInput: {
-                            'data-testid': 'backend-connection-auth-header',
-                          },
-                        }}
-                      />
-                    </FormControl>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <FormControl fullWidth>
-                      <FormLabel>Value</FormLabel>
-                      <TextField
-                        fullWidth
-                        type={showAuthHeaderValue ? 'text' : 'password'}
-                        value={authHeaderValue}
-                        disabled={isReadOnlyServer}
-                        onFocus={() => {
-                          if (isCredentialMasked) {
-                            setAuthHeaderValue('');
-                            setIsCredentialMasked(false);
-                            setHasCredentialChanged(false);
+                <FormControl fullWidth>
+                  <FormLabel id="backend-connection-authentication-label">Authentication</FormLabel>
+                  <Select
+                    labelId="backend-connection-authentication-label"
+                    value={authType}
+                    onChange={(event) => handleAuthTypeChange(event.target.value as 'none' | 'header')}
+                    disabled={isReadOnlyServer || isSavingChanges}
+                    data-testid="backend-connection-authentication"
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="header">Header</MenuItem>
+                  </Select>
+                </FormControl>
+                {authType === 'header' && (
+                  <Grid container spacing={1.5}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth>
+                        <FormLabel>Authentication Header</FormLabel>
+                        <TextField
+                          fullWidth
+                          value={authHeaderName}
+                          onChange={(event) =>
+                            setAuthHeaderName(event.target.value)
                           }
-                        }}
-                        onChange={(event) => {
-                          setAuthHeaderValue(event.target.value);
-                          setHasCredentialChanged(true);
-                        }}
-                        slotProps={{
-                          htmlInput: {
-                            'data-testid': 'backend-connection-auth-value',
-                          },
-                          input: {
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                <IconButton
-                                  size="small"
-                                  onClick={() =>
-                                    setShowAuthHeaderValue((prev) => !prev)
-                                  }
-                                  aria-label={
-                                    showAuthHeaderValue
-                                      ? 'Hide header value'
-                                      : 'Show header value'
-                                  }
-                                >
-                                  {showAuthHeaderValue ? (
-                                    <EyeOff size={18} />
-                                  ) : (
-                                    <Eye size={18} />
+                          disabled={isReadOnlyServer}
+                          slotProps={{
+                            htmlInput: {
+                              'data-testid': 'backend-connection-auth-header',
+                            },
+                          }}
+                        />
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <FormControl fullWidth>
+                        <FormLabel>Value</FormLabel>
+                        <TextField
+                          fullWidth
+                          type={showAuthHeaderValue ? 'text' : 'password'}
+                          value={authHeaderValue}
+                          disabled={isReadOnlyServer}
+                          onFocus={() => {
+                            if (isCredentialMasked) {
+                              setAuthHeaderValue('');
+                              setIsCredentialMasked(false);
+                              setHasCredentialChanged(false);
+                            }
+                          }}
+                          onChange={(event) => {
+                            setAuthHeaderValue(event.target.value);
+                            setHasCredentialChanged(true);
+                          }}
+                          slotProps={{
+                            htmlInput: {
+                              'data-testid': 'backend-connection-auth-value',
+                            },
+                            input: {
+                              endAdornment: (
+                                <InputAdornment position="end">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      setShowAuthHeaderValue((prev) => !prev)
+                                    }
+                                    aria-label={
+                                      showAuthHeaderValue
+                                        ? 'Hide header value'
+                                        : 'Show header value'
+                                    }
+                                  >
+                                    {showAuthHeaderValue ? (
+                                      <EyeOff size={18} />
+                                    ) : (
+                                      <Eye size={18} />
                                   )}
                                 </IconButton>
                               </InputAdornment>
@@ -1683,6 +1741,7 @@ export default function ExternalServersOverview(): JSX.Element {
                     </FormControl>
                   </Grid>
                 </Grid>
+                )}
                 <Box>
                   <Button
                     variant="outlined"

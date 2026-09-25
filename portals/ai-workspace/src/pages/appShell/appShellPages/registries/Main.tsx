@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { JSX } from 'react';
 import React from 'react';
 import { Box, PageContent, Stack, Typography } from '@wso2/oxygen-ui';
 import ComingSoon from '../../../../assets/images/ComingSoon.svg';
