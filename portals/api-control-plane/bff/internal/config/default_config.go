@@ -82,6 +82,11 @@ func defaultConfig() *Config {
 				OrgName:   "org_name",
 				OrgHandle: "org_handle",
 			},
+			// Scope mode matches the Platform API's own default, so a deployment that
+			// never mentions [auth.authorization] keeps reading the scope claim.
+			Authorization: AuthorizationConfig{
+				Mode: AuthzModeScope,
+			},
 		},
 	}
 }

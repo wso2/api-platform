@@ -162,10 +162,32 @@ type CookieConfig struct {
 // AuthConfig is [api_control_plane.auth]: the login mode and the claim/OIDC
 // settings.
 type AuthConfig struct {
-	Mode          string             `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
-	OIDC          OIDCConfig         `koanf:"oidc"`
-	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
+	Mode          string              `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
+	OIDC          OIDCConfig          `koanf:"oidc"`
+	ClaimMappings ClaimMappingConfig  `koanf:"claim_mappings"`
+	Authorization AuthorizationConfig `koanf:"authorization"`
 }
+
+// AuthorizationConfig controls how the BFF derives effective scopes for the SPA's
+// /api/session response. It mirrors [platform_api.auth.authorization] and must use
+// the same mode: the Platform API enforces authorization, while this configuration
+// determines which actions the UI presents. A mismatch can hide permitted actions
+// or expose actions that the API rejects with HTTP 403.
+type AuthorizationConfig struct {
+	// Mode is "scope" (default; read the scope claim) or "role" (expand roles via
+	// RoleToScopeMapping). Use "role" for identity providers that cannot issue the
+	// platform's ap:* scopes, such as Microsoft Entra ID and role-based WSO2 Thunder.
+	Mode string `koanf:"mode"`
+	// RoleToScopeMapping is the path to the role-to-scope-mapping.yaml file used by
+	// the Platform API. Required in role mode; both services must use the same file.
+	RoleToScopeMapping string `koanf:"role_to_scope_mapping"`
+}
+
+// AuthzModeScope and AuthzModeRole are the supported [auth.authorization] modes.
+const (
+	AuthzModeScope = "scope"
+	AuthzModeRole  = "role"
+)
 
 // OIDCConfig is [api_control_plane.auth.oidc]: the confidential (or public+PKCE)
 // client settings. The client secret, when set, lives only here on the BFF and is
@@ -309,6 +331,7 @@ func (c *Config) normalize() {
 	c.Logging.Level = strings.ToLower(c.Logging.Level)
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
+	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 	c.PolicyHub.BaseURL = strings.TrimRight(strings.TrimSpace(c.PolicyHub.BaseURL), "/")
 	// An empty environment template must not erase the built-in catalog URL.
 	if c.PolicyHub.BaseURL == "" {
@@ -341,6 +364,16 @@ func (c *Config) normalize() {
 func (c *Config) validate() error {
 	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
 		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
+	}
+	// Reject unknown modes to prevent silent fallback to scope-claim evaluation.
+	if c.Auth.Authorization.Mode != AuthzModeScope && c.Auth.Authorization.Mode != AuthzModeRole {
+		return fmt.Errorf("invalid [auth.authorization] mode %q: must be %q or %q",
+			c.Auth.Authorization.Mode, AuthzModeScope, AuthzModeRole)
+	}
+	// Role mode without a grant table can only ever expand to zero scopes, so refuse
+	// to start rather than serve a UI in which nothing is permitted.
+	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
+		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")

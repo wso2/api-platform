@@ -28,6 +28,8 @@ import { NotificationProvider } from '../components/Notifications';
 import { AuthStateContext } from '../contexts/auth/AuthStateContext';
 import type { AuthState } from '../contexts/auth/authTypes';
 import { ConsoleScopeContext, type ConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { PermissionProvider } from '../permissions/PermissionProvider';
+import type { PermissionMode } from '../permissions/evaluate';
 import { DISPLAY_TIME_ZONE, INTL_FORMATS } from '../i18n/formats';
 import { makeAuthState } from './mockAuthState';
 
@@ -64,11 +66,19 @@ export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   scope?: ConsoleScope;
   /** Reuse a specific QueryClient (default: fresh per render). */
   queryClient?: QueryClient;
+  /**
+   * Permission mode for the mounted `PermissionProvider` (default `permissive`).
+   * The default user carries no scope claim, so under `permissive` every gated
+   * control renders, which keeps a test that isn't about permissions from
+   * depending on them. Pass `enforce` with `authState.user.scopes` to assert a
+   * denial.
+   */
+  permissionMode?: PermissionMode;
 };
 
 /**
- * Renders `ui` with the app's provider stack, using injected auth/route context
- * and synchronous i18n. Returns the RTL result, `queryClient`, and `userEvent`.
+ * Renders `ui` with the app's provider stack, using injected auth/route/permission
+ * context and synchronous i18n. Returns the RTL result, `queryClient`, and `userEvent`.
  */
 export function renderWithProviders(
   ui: ReactElement,
@@ -78,6 +88,7 @@ export function renderWithProviders(
     authState = makeAuthState(),
     scope,
     queryClient = makeTestQueryClient(),
+    permissionMode = 'permissive',
     ...renderOptions
   }: RenderWithProvidersOptions = {},
 ) {
@@ -94,9 +105,11 @@ export function renderWithProviders(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={routerEntries ?? [route]}>
             <AuthStateContext.Provider value={authState}>
-              <ScopeWrapper scope={scope}>
-                <NotificationProvider>{children}</NotificationProvider>
-              </ScopeWrapper>
+              <PermissionProvider mode={permissionMode}>
+                <ScopeWrapper scope={scope}>
+                  <NotificationProvider>{children}</NotificationProvider>
+                </ScopeWrapper>
+              </PermissionProvider>
             </AuthStateContext.Provider>
           </MemoryRouter>
         </QueryClientProvider>

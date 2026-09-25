@@ -44,6 +44,8 @@ import { ApiKindChip, VersionChip } from '../listing/components/RestApiChips';
 import { apiInitials } from '../utils/restApiDisplay';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
+import { Can } from '@/permissions/Can';
+import { useCan } from '@/permissions/useCan';
 
 const messages = defineMessages({
   context: {
@@ -152,6 +154,7 @@ function DescriptionField({ description }: { description: string }) {
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
   const { params } = useConsoleScope();
+  const canEdit = useCan('UpdateRESTAPI');
   const apiQuery = useRestApi(params.apiHandler);
   const apiGatewaysQuery = useRestApiGateways(apiQuery.data?.id);
   const deploymentsQuery = useDeployments(apiQuery.data?.id);
@@ -333,7 +336,7 @@ export function ApiDetailPage() {
             spacing={1.5}
             sx={{ alignSelf: { sm: 'flex-start', xs: 'stretch' }, flexShrink: 0 }}
           >
-            {!api.readOnly && (
+            {!api.readOnly && canEdit && (
               <Tooltip title={intl.formatMessage(messages.editApi)}>
                 <IconButton
                   aria-label={intl.formatMessage(messages.editApi)}
@@ -350,15 +353,17 @@ export function ApiDetailPage() {
                 </IconButton>
               </Tooltip>
             )}
-            <Button
-              component={RouterLink}
-              startIcon={<Rocket size={18} />}
-              sx={{ flexShrink: 0 }}
-              to={deployPath}
-              variant="contained"
-            >
-              <FormattedMessage {...messages.deployToGateway} />
-            </Button>
+            <Can do="DeployAPI" denied="disable">
+              <Button
+                component={RouterLink}
+                startIcon={<Rocket size={18} />}
+                sx={{ flexShrink: 0 }}
+                to={deployPath}
+                variant="contained"
+              >
+                <FormattedMessage {...messages.deployToGateway} />
+              </Button>
+            </Can>
           </Stack>
         </Box>
         <ProgressBanner api={api} deployed={deployedGateways.length > 0} />

@@ -30,6 +30,7 @@ import { Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 
 import type { Operation } from '@/api/resources/restApis';
+import { useCan } from '@/permissions/useCan';
 
 type ChipColor = 'default' | 'error' | 'info' | 'primary' | 'secondary' | 'success' | 'warning';
 
@@ -69,6 +70,8 @@ export function SwaggerOperationsView({
   onDelete,
   showDelete = false,
 }: SwaggerOperationsViewProps) {
+  const canUpdateRESTAPISpec = useCan('UpdateRESTAPISpec');
+
   if (operations.length === 0) {
     return (
       <Typography color="text.secondary" variant="body2">
@@ -122,7 +125,7 @@ export function SwaggerOperationsView({
             >
               {operation.description ?? operation.name ?? ''}
             </Typography>
-            {showDelete && onDelete && (
+            {showDelete && canUpdateRESTAPISpec && onDelete && (
               <Tooltip title="Delete resource">
                 <Box component="span" sx={{ display: 'inline-flex', flexShrink: 0 }}>
                   <IconButton

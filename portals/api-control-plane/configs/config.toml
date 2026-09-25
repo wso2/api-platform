@@ -98,3 +98,19 @@ scope      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_SCOPE" "scope" }}'
 organization = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORGANIZATION" "organization" }}'
 org_name   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_NAME" "org_name" }}'
 org_handle = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'
+
+# Authorization — determines the effective scopes reported to the SPA through
+# /api/session. Must match [platform_api.auth.authorization]. The Platform API
+# enforces authorization; a mismatch may block permitted actions or expose
+# actions that fail with 403.
+[api_control_plane.auth.authorization]
+
+# "scope" (default) reads the token's scope claim. "role" expands the roles claim
+# (claim_mappings.roles above) through the grant table below — required for any IdP
+# that cannot mint the platform's ap:* scopes (Microsoft Entra ID, a role-based
+# WSO2 Thunder setup).
+mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "scope" }}'
+# Path to role-to-scope-mapping.yaml. Required when mode = "role" (startup fails
+# otherwise). Mount the SAME file the Platform API reads, so the console and the API
+# cannot disagree about what a role grants. Ignored in scope mode.
+role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "" }}'

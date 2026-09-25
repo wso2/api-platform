@@ -64,6 +64,7 @@ Adding a spec operation? Run `npm run codegen` first. It regenerates `generated/
 - **Pick a `staleTime` tier deliberately** — `realtime` / `standard` / `stable` / `static`.
 - **Mutations invalidate the resource root** and seed detail from their response,  *except* one-shot secrets (API keys, gateway tokens, secrets), which never enter the cache.
 - **Lists read `pagination.total`**, never `list.length`.
+- **`operationName` is also the permission key.** Every endpoint tags its call with the spec `operationId`; `src/permissions` looks the accepted `ap:*` scopes up by that same string. Getting it wrong costs a gated control, not just a vague error message — see [`src/permissions/README.md`](../permissions/README.md).
 
 ## Testing
 
