@@ -17,7 +17,7 @@
  */
 
 import type { JSX } from 'react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 // import { useAuthContext } from '@asgardeo/auth-react'; // [standalone]
 import {
@@ -48,7 +48,12 @@ import {
 import { logger } from '../../utils/logger';
 import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
-import { AI_WORKSPACE_SIDEBAR_SLOT, type AIWorkspaceExtension } from '../../extensions';
+import {
+  AI_WORKSPACE_APP_GATE_SLOT,
+  AI_WORKSPACE_SIDEBAR_SLOT,
+  type AIWorkspaceAppGate,
+  type AIWorkspaceExtension,
+} from '../../extensions';
 import { useSlot } from '../../slots';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
@@ -115,6 +120,24 @@ export default function AppLayout(): JSX.Element {
     }),
     [currentOrganization, currentProject, navigate, notify]
   );
+
+  // The first-run wizard owns the whole viewport: a user with nothing set up yet
+  // has nothing to navigate to, so the shell's navbar/sidebar/footer would only
+  // be chrome around a dead end. Matching on the route (rather than a flag the
+  // page sets) keeps the decision in one place and out of the wizard itself.
+  const isFullScreenRoute = useMemo(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    return (
+      segments[0] === 'organizations' &&
+      Boolean(segments[1]) &&
+      segments[2] === 'quickstart'
+    );
+  }, [location.pathname]);
+
+  // Headless policy hooks, mounted on every in-shell route — see
+  // AI_WORKSPACE_APP_GATE_SLOT. Deliberately not mounted on the full-screen
+  // route above, so a gate that redirects there cannot bounce in a loop.
+  const appGates = useSlot<AIWorkspaceAppGate>(AI_WORKSPACE_APP_GATE_SLOT);
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,
@@ -420,6 +443,16 @@ export default function AppLayout(): JSX.Element {
     );
   }
 
+  if (isFullScreenRoute) {
+    // Still inside PortProvider: the route's own element resolves the Port the
+    // same way every other extension-aware route does.
+    return (
+      <PortProvider value={port}>
+        <Outlet />
+      </PortProvider>
+    );
+  }
+
   return (
     <AppShell>
       <AppShell.Navbar>
@@ -473,6 +506,9 @@ export default function AppLayout(): JSX.Element {
 
       <AppShell.Main>
         <PortProvider value={port}>
+          {appGates.map((gate) => (
+            <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+          ))}
           <Outlet />
         </PortProvider>
       </AppShell.Main>

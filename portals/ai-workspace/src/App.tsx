@@ -72,6 +72,7 @@ import CustomPoliciesList from './pages/appShell/appShellPages/gateways/CustomPo
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
+import QuickStartWizard from './pages/appShell/appShellPages/quickStartWizard/Main';
 import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
@@ -80,7 +81,11 @@ import ExternalServersOverview from './pages/appShell/appShellPages/externalServ
 import ExternalServersDeploy from './pages/appShell/appShellPages/externalServers/ExternalServersDeploy';
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
-import { LLMProvidersProvider } from './contexts/llmProvider';
+import {
+  LLMProvidersProvider,
+  ProviderTemplatesProvider,
+} from './contexts/llmProvider';
+import { GuardrailsProvider } from './contexts/GuardrailsContext';
 import React, { useRef, useState, type ReactNode } from 'react';
 import { PlatformUserProvider } from './contexts/PlatformUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
@@ -99,6 +104,7 @@ import {
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
+  AI_WORKSPACE_QUICKSTART_SLOT,
 } from './extensions';
 import { Hideable, HiddenRegionsProvider, useSlot } from './slots';
 import { usePort } from './hostPort';
@@ -358,6 +364,22 @@ function InsightsRoute() {
   return (
     <Hideable name={AI_WORKSPACE_INSIGHTS_SLOT}>
       <Insights />
+    </Hideable>
+  );
+}
+
+// The first-run onboarding wizard, mounted full-screen (outside the app shell —
+// see appShellMain.tsx) at organizations/:orgSlug/quickstart. Same Slot/Hideable
+// split as the page overrides above; the built-in wizard is what a plain build
+// gets, and a deployment that wants its own onboarding registers against
+// AI_WORKSPACE_QUICKSTART_SLOT.
+function QuickStartWizardRoute() {
+  const port = usePort();
+  const [override] = useSlot<AIWorkspacePageOverride>(AI_WORKSPACE_QUICKSTART_SLOT);
+  if (override) return <>{override.render(port)}</>;
+  return (
+    <Hideable name={AI_WORKSPACE_QUICKSTART_SLOT}>
+      <QuickStartWizard />
     </Hideable>
   );
 }
@@ -677,6 +699,22 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 <WithPageBoundary>
                   <LLMProvidersProvider>
                     <QuickStart />
+                  </LLMProvidersProvider>
+                </WithPageBoundary>
+              }
+            />
+            {/* Full-screen first-run onboarding. Organization-scoped only: the
+                wizard picks the project itself when it creates an MCP server. */}
+            <Route
+              path="quickstart"
+              element={
+                <WithPageBoundary>
+                  <LLMProvidersProvider>
+                    <ProviderTemplatesProvider>
+                      <GuardrailsProvider>
+                        <QuickStartWizardRoute />
+                      </GuardrailsProvider>
+                    </ProviderTemplatesProvider>
                   </LLMProvidersProvider>
                 </WithPageBoundary>
               }
