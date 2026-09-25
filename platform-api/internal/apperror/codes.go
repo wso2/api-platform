@@ -223,6 +223,7 @@ const (
 	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
 	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
 	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationTypeUnsupported   = "PUBLICATION_TYPE_UNSUPPORTED"
 	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
 	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
 	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not

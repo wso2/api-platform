@@ -38,20 +38,20 @@ const restAPITypeValue = constants.PublicationAPITypeRestAPI
 type definitionValidator func(contentType string, data []byte) error
 
 // definitionValidators maps apiType to its definition validator. An apiType
-// with no entry here is not validated — add a new type's validator to this
-// map to extend coverage without changing any caller of
+// with no entry here cannot be published — add a new type's validator to this
+// map to enable publishing it without changing any caller of
 // validateDefinitionContent.
 var definitionValidators = map[string]definitionValidator{
 	restAPITypeValue: validateRestAPIDefinition,
 }
 
 // validateDefinitionContent validates a definition before publish. An
-// apiType with no registered validator is skipped (nil definition allowed);
-// one with a registered validator requires a non-nil definition.
+// apiType with no registered validator is rejected; one with a registered
+// validator requires a non-nil definition.
 func validateDefinitionContent(apiType string, definition *model.PublicationContent) error {
 	v, ok := definitionValidators[apiType]
 	if !ok {
-		return nil
+		return apperror.APIPublicationTypeUnsupported.New()
 	}
 	if definition == nil {
 		return apperror.APIPublicationValidationFailed.New("A definition is required to publish this API")

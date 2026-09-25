@@ -233,6 +233,10 @@ var (
 	// unresolvable plan/document handle, or content over the configured size
 	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
 	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+	// APIPublicationTypeUnsupported: the API type has no projection onto the
+	// API Portal's own API types, so no listing can be created for it.
+	APIPublicationTypeUnsupported = def(CodeAPIPublicationTypeUnsupported, http.StatusBadRequest,
+		"APIs of this type cannot be published to an API Portal.")
 	// APIPublicationPortalConflict is a rejection the portal will keep making
 	// (a conflicting handle/display name, active subscriptions/API keys, or
 	// any other portal-side rejection) — never retried, distinct from the

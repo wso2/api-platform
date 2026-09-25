@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -67,18 +68,26 @@ func TestValidateDefinitionContent_RestAPIRequiresDefinition(t *testing.T) {
 	}
 }
 
-// TestValidateDefinitionContent_UnregisteredApiTypeSkipsValidation checks
-// that an apiType with no registered validator is left unvalidated — empty,
-// missing, or not — matching today's behavior for definitions this package
-// has no rules for yet.
-func TestValidateDefinitionContent_UnregisteredApiTypeSkipsValidation(t *testing.T) {
-	if err := validateDefinitionContent("graphql-api", nil); err != nil {
-		t.Fatalf("nil definition: want nil (no validator registered), got %v", err)
+// TestValidateDefinitionContent_UnregisteredApiTypeIsRejected checks that an
+// apiType with no registered validator cannot be published — whatever the
+// definition looks like, including none at all.
+func TestValidateDefinitionContent_UnregisteredApiTypeIsRejected(t *testing.T) {
+	tests := []struct {
+		name       string
+		definition *model.PublicationContent
+	}{
+		{"nil definition", nil},
+		{"empty body", contentOf("application/graphql", "")},
+		{"non-empty body", contentOf("application/graphql", "type Query { hello: String }")},
+		{"content valid for a registered type", contentOf("application/json", validRESTDefinitionSpec)},
 	}
-	for _, data := range []string{"", "not a valid schema at all"} {
-		if err := validateDefinitionContent("graphql-api", contentOf("application/graphql", data)); err != nil {
-			t.Fatalf("data %q: want nil (no validator registered), got %v", data, err)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent("graphql-api", tt.definition)
+			if !apperror.APIPublicationTypeUnsupported.Is(err) {
+				t.Fatalf("got %v, want an APIPublicationTypeUnsupported rejection", err)
+			}
+		})
 	}
 }
 
