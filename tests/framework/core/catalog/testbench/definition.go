@@ -71,6 +71,9 @@ func Testbench() *components.Definition {
 			{Name: "bedrock", Port: bedrock.Port, Scheme: "http", AwaitListening: true},
 			{Name: "openai", Port: openai.Port, Scheme: "http", AwaitListening: true},
 			{Name: "mcp", Port: mcp.Port, Scheme: "http", AwaitListening: true},
+			// A handshake-era MCP server, for the behaviour the one above cannot show:
+			// it is STATEFUL, since a session is the thing being exercised.
+			{Name: "mcp-legacy", Port: mcp.LegacyPort, Scheme: "http", AwaitListening: true},
 			{Name: "embeddings", Port: embeddings.Port, Scheme: "http", AwaitListening: true},
 			{Name: "content-safety", Port: contentsafety.Port, Scheme: "http", AwaitListening: true},
 			// The analytics collector is STATEFUL and shared anyway, which every other entry

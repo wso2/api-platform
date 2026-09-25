@@ -482,6 +482,88 @@ func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
 	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
 }
 
+// Overriding a mirrored header is how the negative MCP scenarios make a header disagree with its
+// body, so the scenario's value has to win outright. Without canonicalising, two spellings of one
+// header survive the merge as two map entries and collapse later inside Header.Set, leaving map
+// iteration order to choose - which reads as flakiness rather than as a wrong answer.
+func TestScenarioHeadersWinWhateverTheirSpelling(t *testing.T) {
+	stepLayer := map[string]string{
+		"MCP-Protocol-Version": "2026-07-28",
+		"Mcp-Name":             "add",
+	}
+	// The spellings a feature would plausibly write: Go's canonical form of the first, and a
+	// lowercase second.
+	scenarioLayer := map[string]string{
+		"Mcp-Protocol-Version": "2025-06-18",
+		"mcp-name":             "echo",
+	}
+
+	merged := mergeCanonicalHeaders(stepLayer, scenarioLayer)
+
+	require.Len(t, merged, 2, "one entry per header, whatever spelling reached it")
+	require.Equal(t, "2025-06-18", merged["Mcp-Protocol-Version"])
+	require.Equal(t, "echo", merged["Mcp-Name"])
+}
+
+// A 2026-07-28 server answers -32602 when any of the three _meta members is missing, so the
+// envelope is asserted here rather than discovered as a puzzling failure inside a scenario.
+func TestMcpModernBodyCarriesTheRequiredMetaMembers(t *testing.T) {
+	var named map[string]any
+	require.NoError(t, json.Unmarshal([]byte(mcpModernBody("tools/call", "echo", "2026-07-28")), &named))
+
+	params := named["params"].(map[string]any)
+	require.Equal(t, "echo", params["name"])
+	require.Equal(t, "Hello, World!", params["arguments"].(map[string]any)["message"])
+
+	meta := params["_meta"].(map[string]any)
+	require.Equal(t, "2026-07-28", meta["io.modelcontextprotocol/protocolVersion"])
+	require.Contains(t, meta, "io.modelcontextprotocol/clientInfo")
+	require.Contains(t, meta, "io.modelcontextprotocol/clientCapabilities")
+
+	// A resource is identified by uri, never by name, and that member is what a conformant
+	// server compares the mirrored Mcp-Name against.
+	var resource map[string]any
+	require.NoError(t, json.Unmarshal(
+		[]byte(mcpModernBody("resources/read", "file:///a.txt", "2026-07-28")), &resource))
+	resourceParams := resource["params"].(map[string]any)
+	require.Equal(t, "file:///a.txt", resourceParams["uri"])
+	require.NotContains(t, resourceParams, "name")
+
+	// A method that names no capability carries the same _meta and no name, which is what keeps
+	// Mcp-Name off the request as well.
+	var unnamed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(mcpModernBody("tools/list", "", "2026-07-28")), &unnamed))
+	unnamedParams := unnamed["params"].(map[string]any)
+	require.NotContains(t, unnamedParams, "name")
+	require.Contains(t, unnamedParams["_meta"], "io.modelcontextprotocol/protocolVersion")
+}
+
+// MCP analytics nests its fields under mcpAnalytics, so the metadata step resolves a dotted path.
+// A name with no dot must keep working, since every other event's fields are flat.
+func TestAnalyticsMetadataResolvesNestedPaths(t *testing.T) {
+	metadata := map[string]any{
+		"apiName": "mcp-proxy",
+		"mcpAnalytics": map[string]any{
+			"jsonRpcMethod":  "tools/call",
+			"capabilityName": "add",
+			"capability":     "TOOL",
+		},
+	}
+
+	value, ok := traverseJSON(metadata, "mcpAnalytics.jsonRpcMethod")
+	require.True(t, ok)
+	require.Equal(t, "tools/call", value)
+
+	value, ok = traverseJSON(metadata, "apiName")
+	require.True(t, ok)
+	require.Equal(t, "mcp-proxy", value)
+
+	_, ok = traverseJSON(metadata, "mcpAnalytics.missing")
+	require.False(t, ok)
+	_, ok = traverseJSON(metadata, "apiName.jsonRpcMethod")
+	require.False(t, ok)
+}
+
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}

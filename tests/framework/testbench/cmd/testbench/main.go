@@ -88,6 +88,7 @@ func services() ([]testbench.Service, error) {
 		openai.New(),
 		interceptor.New(),
 		mcp.New(),
+		mcp.NewLegacy(),
 		embeddings.New(),
 		contentsafety.New(),
 		analytics.New(),

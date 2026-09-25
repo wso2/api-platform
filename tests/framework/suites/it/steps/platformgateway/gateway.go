@@ -54,6 +54,15 @@ const (
 	gatewaySpecVersionV11 = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
+// The headers MCP 2026-07-28 requires a client to mirror its request into. A server that declares
+// that revision rejects a request whose headers and body disagree, so a test that alters one of
+// these is describing a request the upstream itself will refuse.
+const (
+	mcpProtocolVersionHeader = "MCP-Protocol-Version"
+	mcpMethodHeader          = "Mcp-Method"
+	mcpNameHeader            = "Mcp-Name"
+)
+
 // ManagementBasePathForVersion returns the management API base path for a Gateway release.
 func ManagementBasePathForVersion(version string) string {
 	if usesLegacyGatewayContract(version) {
@@ -122,6 +131,10 @@ const (
 	// keyGatewayMCPUpstreamPath is the path configured on the MCP testbench upstream.
 	// Gateway 1.1 and older append /mcp to that URL; later releases do not.
 	keyGatewayMCPUpstreamPath = "gatewayMCPUpstreamPath"
+	// keyTestbenchPartition is this block's partition segment. A stateful testbench service is
+	// addressed as /<block>/… so that concurrent blocks cannot see each other's state, and an
+	// upstream URL written in a feature table has no other way to name it.
+	keyTestbenchPartition = "testbenchPartition"
 
 	// Request-shaping state set by one step and read by the next. It lives in the SCENARIO
 	// scope rather than on the Gateway struct because one Gateway serves a whole block, and
@@ -727,11 +740,8 @@ func mcpInitializeBody() string {
 // mcpToolCall calls the named testbench MCP tool with arguments matching that tool's own
 // input schema - the testbench "add" tool takes numeric operands, "echo" takes a message.
 func (g *Gateway) mcpToolCall(ctx context.Context, tool, path string) error {
-	args := `{"a":40,"b":60}`
-	if tool == "echo" {
-		args = `{"message":"Hello, World!"}`
-	}
-	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, tool, args)
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":%s}}`,
+		tool, mcpToolArguments(tool))
 	return g.sendMCPRequest(ctx, path, body)
 }
 
@@ -745,6 +755,88 @@ func (g *Gateway) mcpToolsList(ctx context.Context, path string) error {
 func (g *Gateway) mcpNotificationInitialized(ctx context.Context, path string) error {
 	body := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
 	return g.sendMCPRequest(ctx, path, body)
+}
+
+// mcpRawRequest sends a body the scenario wrote out in full. The MCP client steps above cover
+// the well-formed cases; this one exists for the bodies a client should never send - a duplicated
+// member, truncated JSON - which still have to travel the MCP transport and come back unwrapped
+// from their event-stream framing.
+func (g *Gateway) mcpRawRequest(ctx context.Context, path string, body *godog.DocString) error {
+	resolved, err := stepscommon.Expand(ctx, body.Content)
+	if err != nil {
+		return err
+	}
+	return g.sendMCPRequest(ctx, path, resolved)
+}
+
+// mcpOversizedRequest sends a syntactically valid tools/call whose arguments are padded to the
+// requested size. The padding is inside a string value, so the body stays parseable and the only
+// thing under test is its length.
+func (g *Gateway) mcpOversizedRequest(ctx context.Context, method string, kib int, path string) error {
+	body := fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":5,"method":%q,"params":{"name":"echo","arguments":{"message":%q}}}`,
+		method, strings.Repeat("x", kib*1024))
+	return g.sendMCPRequest(ctx, path, body)
+}
+
+// mcpModernRequest sends a request in the 2026-07-28 shape: the protocol version, client identity
+// and client capabilities in params._meta, and the method mirrored into a header.
+func (g *Gateway) mcpModernRequest(ctx context.Context, method, path, version string) error {
+	return g.sendModernMCPRequest(ctx, method, "", path, version)
+}
+
+// mcpModernNamedRequest is mcpModernRequest for a method that targets a named capability, which
+// 2026-07-28 requires be mirrored into Mcp-Name as well.
+func (g *Gateway) mcpModernNamedRequest(ctx context.Context, method, name, path, version string) error {
+	return g.sendModernMCPRequest(ctx, method, name, path, version)
+}
+
+func (g *Gateway) sendModernMCPRequest(ctx context.Context, method, name, path, version string) error {
+	headers := map[string]string{
+		mcpProtocolVersionHeader: version,
+		mcpMethodHeader:          method,
+	}
+	if name != "" {
+		headers[mcpNameHeader] = name
+	}
+	resp, err := g.mcpRequestWithHeaders(ctx, path, mcpModernBody(method, name, version), headers)
+	if err != nil {
+		return err
+	}
+	return g.funnel.Publish(ctx, resp)
+}
+
+// mcpModernBody builds the 2026-07-28 request envelope. All three _meta members are required -
+// a conformant server answers -32602 when any of them is missing - and the protocol version in
+// _meta must equal the one in the header, which is the agreement the era is built on.
+func mcpModernBody(method, name, version string) string {
+	meta := fmt.Sprintf(
+		`"_meta":{"io.modelcontextprotocol/protocolVersion":%q,`+
+			`"io.modelcontextprotocol/clientInfo":{"name":"framework-client","version":"1.0.0"},`+
+			`"io.modelcontextprotocol/clientCapabilities":{}}`, version)
+	switch {
+	case name == "":
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":%q,"params":{%s}}`, method, meta)
+	case method == "resources/read":
+		// MCP identifies a resource by uri and defines no name for it, so that is the member
+		// the mirrored Mcp-Name is compared against.
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":%q,"params":{"uri":%q,%s}}`,
+			method, name, meta)
+	case method == "prompts/get":
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":%q,"params":{"name":%q,%s}}`,
+			method, name, meta)
+	default:
+		return fmt.Sprintf(`{"jsonrpc":"2.0","id":6,"method":%q,"params":{"name":%q,"arguments":%s,%s}}`,
+			method, name, mcpToolArguments(name), meta)
+	}
+}
+
+// mcpToolArguments returns arguments matching the named testbench tool's own input schema.
+func mcpToolArguments(tool string) string {
+	if tool == "echo" {
+		return `{"message":"Hello, World!"}`
+	}
+	return `{"a":40,"b":60}`
 }
 
 // mcpToolCallInvalidParams omits the required "name" field, which every JSON-RPC tools/call
@@ -827,6 +919,34 @@ func (g *Gateway) sendMCPRequest(ctx context.Context, path, body string) error {
 // mcpRequest issues one MCP call and returns its response without publishing it, so a caller
 // polling for readiness can inspect each attempt.
 func (g *Gateway) mcpRequest(ctx context.Context, path, body string) (*httpx.Response, error) {
+	return g.mcpRequestWithHeaders(ctx, path, body, nil)
+}
+
+// mcpRequestWithHeaders layers per-call headers under the scenario's own, so a scenario that has
+// already run "I set header" wins. That ordering is what lets a test make a mirrored header
+// disagree with the body it was built from.
+//
+// Both sides are canonicalised first, or "wins" would be decided by map iteration order: "I set
+// header" keeps whatever spelling the feature wrote, and the client applies every map entry through
+// Header.Set, which folds the key. Two spellings of one header would survive this merge as two
+// entries and then collapse into one header of undefined value. MCP-Protocol-Version makes that
+// easy to hit, because Go's canonical form of it is Mcp-Protocol-Version - so the spelling a
+// feature would naturally write differs from the one used here.
+// mergeCanonicalHeaders folds every name to its canonical form as it merges, so a later layer
+// always overwrites an earlier one whatever spelling either used.
+func mergeCanonicalHeaders(layers ...map[string]string) map[string]string {
+	merged := map[string]string{}
+	for _, layer := range layers {
+		for name, value := range layer {
+			merged[http.CanonicalHeaderKey(name)] = value
+		}
+	}
+	return merged
+}
+
+func (g *Gateway) mcpRequestWithHeaders(
+	ctx context.Context, path, body string, extra map[string]string,
+) (*httpx.Response, error) {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return nil, err
@@ -838,12 +958,10 @@ func (g *Gateway) mcpRequest(ctx context.Context, path, body string) (*httpx.Res
 	resp, err := g.funnel.Send(ctx, httpx.Request{
 		Method: http.MethodPost,
 		URL:    url,
-		Headers: func() map[string]string {
-			headers := g.scenarioHeaders(ctx)
-			headers["Content-Type"] = "application/json"
-			headers["Accept"] = "application/json, text/event-stream"
-			return headers
-		}(),
+		Headers: mergeCanonicalHeaders(extra, g.scenarioHeaders(ctx), map[string]string{
+			"Content-Type": "application/json",
+			"Accept":       "application/json, text/event-stream",
+		}),
 		Body: []byte(body),
 		Host: g.requestHost(ctx),
 	})
@@ -955,6 +1073,11 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		if err := tcontext.Set(ctx, keyGatewayMCPUpstreamPath, gatewayMCPUpstreamPathForVersion(gatewayVersion(g.topo))); err != nil {
 			return ctx, err
 		}
+		if g.topo.Block != nil {
+			if err := tcontext.Set(ctx, keyTestbenchPartition, g.topo.Block.PartitionKey()); err != nil {
+				return ctx, err
+			}
+		}
 		if err := g.resetRequest(ctx); err != nil {
 			return ctx, err
 		}
@@ -1038,6 +1161,13 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I use the MCP Client to send a tools/list request to "([^"]*)"$`, g.mcpToolsList)
 	sc.Step(`^I use the MCP Client to send a notifications/initialized notification to "([^"]*)"$`,
 		g.mcpNotificationInitialized)
+	sc.Step(`^I use the MCP Client to send this request to "([^"]*)":$`, g.mcpRawRequest)
+	sc.Step(`^I use the MCP Client to send a "([^"]*)" request of (\d+) KiB to "([^"]*)"$`,
+		g.mcpOversizedRequest)
+	sc.Step(`^I use the MCP Client to send a "([^"]*)" request to "([^"]*)" declaring MCP version "([^"]*)"$`,
+		g.mcpModernRequest)
+	sc.Step(`^I use the MCP Client to send a "([^"]*)" request for "([^"]*)" to "([^"]*)" declaring MCP version "([^"]*)"$`,
+		g.mcpModernNamedRequest)
 	sc.Step(`^I use the MCP Client to send a tools/call request with invalid params to "([^"]*)"$`,
 		g.mcpToolCallInvalidParams)
 	sc.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and store it as "([^"]*)"$`,
@@ -2080,7 +2210,9 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	if err != nil {
 		return err
 	}
-	value, ok := event.Metadata[field]
+	// MCP analytics nests its fields under mcpAnalytics, so the field is a dotted path rather
+	// than a key. traverseJSON resolves both: a name with no dot is a plain lookup.
+	value, ok := traverseJSON(event.Metadata, field)
 	if !ok {
 		return fmt.Errorf("latest analytics event metadata has no field %q", field)
 	}
