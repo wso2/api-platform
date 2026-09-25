@@ -1,0 +1,3 @@
+google-genai
+mcp>=2.2.0
+websockets
