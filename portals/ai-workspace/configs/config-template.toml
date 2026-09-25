@@ -178,6 +178,11 @@ tls_skip_verify = "false"
 ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 
+# --- Where the APIs live on this upstream ---
+platform_api_base_path = "/api/v0.9"
+portal_api_base_path   = "/api/portal/v0.9"
+
+
 # ---------------------------------------------------------------------------
 # Outbound *http.Transport used for every call this BFF makes to the Platform API
 # above (see internal/proxy/transport.go's NewTransport, and its one call site in

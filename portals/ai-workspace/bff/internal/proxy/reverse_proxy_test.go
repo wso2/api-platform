@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +144,64 @@ func TestReverseProxy_CloudPrefixJoinsTargetPath(t *testing.T) {
 	}
 	if gotPath != "/cloud/analytics/id-token" {
 		t.Errorf("upstream path = %q, want /cloud/analytics/id-token", gotPath)
+	}
+}
+
+// The gateway shape this exists for: an upstream that republishes the Platform API
+// under a context of its own (/api/am/platform-api) and exposes its resources at
+// /v0.9/*, not at the API's own /api/v0.9/*. The browser still calls
+// <base>/proxy/api/v0.9/..., so the mapper is what makes the two meet.
+func TestReverseProxy_PathMapperRewritesAPIBasePath(t *testing.T) {
+	var gotPath, gotQuery string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	target, _ := url.Parse(backend.URL + "/api/am/platform-api")
+	rp := ReverseProxy(target, "/ai-workspace/proxy", backend.Client().Transport,
+		WithPathMapper(func(p string) string {
+			if rest, ok := strings.CutPrefix(p, "/api/v0.9"); ok {
+				return "/v0.9" + rest
+			}
+			return p
+		}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/api/v0.9/organizations?offset=0", nil)
+	rec := httptest.NewRecorder()
+	rp.ServeHTTP(rec, WithToken(req, "tok"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if want := "/api/am/platform-api/v0.9/organizations"; gotPath != want {
+		t.Errorf("upstream path = %q, want %q", gotPath, want)
+	}
+	// The query string is not the mapper's business and must survive untouched.
+	if gotQuery != "offset=0" {
+		t.Errorf("upstream query = %q, want offset=0", gotQuery)
+	}
+}
+
+// No mapper: the cloud and billing hops must behave exactly as they did before the
+// option existed.
+func TestReverseProxy_NoPathMapperLeavesPathAlone(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	target, _ := url.Parse(backend.URL)
+	rp := ReverseProxy(target, "/ai-workspace/proxy", backend.Client().Transport)
+
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/api/v0.9/organizations", nil)
+	rec := httptest.NewRecorder()
+	rp.ServeHTTP(rec, WithToken(req, "tok"))
+
+	if gotPath != "/api/v0.9/organizations" {
+		t.Errorf("upstream path = %q, want /api/v0.9/organizations", gotPath)
 	}
 }

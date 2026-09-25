@@ -111,13 +111,20 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:       cfg,
-		claims:    claims,
-		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL, paths.PortalAPI, cfg.Session.AbsoluteTTL, claims),
+		cfg:    cfg,
+		claims: claims,
+		// UpstreamPath, not paths.PortalAPI directly: login must reach the same
+		// upstream everything else does, including when a gateway republishes the
+		// portal API under a base path of its own.
+		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL,
+			cfg.ControlPlane.UpstreamPath(paths.PortalAPI), cfg.Session.AbsoluteTTL, claims),
 		// The browser calls the proxy under the app's base path, so the prefix stripped
 		// on the way upstream is the base path plus the proxy prefix — the Platform API
 		// knows nothing about either.
-		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
+		proxy: proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport,
+			// The SPA addresses the API by its own prefixes; only this hop knows
+			// where the configured upstream actually publishes them.
+			proxy.WithPathMapper(cfg.ControlPlane.UpstreamPath)),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
 		sessionLocks:  make(map[string]*sessionLock),
