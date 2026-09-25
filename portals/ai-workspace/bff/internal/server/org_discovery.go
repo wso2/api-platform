@@ -25,8 +25,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"ai-workspace-bff/internal/paths"
+	"ai-workspace-bff/internal/session"
 )
 
 // orgListResponse covers both shapes this can be answered in — the Platform API's
@@ -70,52 +72,116 @@ const orgDiscoveryLimit = "1"
 // because it is a read of the caller's own memberships, which the login token is
 // already the right credential for.
 func (s *Server) discoverOrgHandle(ctx context.Context, loginToken string) (string, error) {
-	resp, source, err := s.orgLookupResponse(ctx, loginToken)
+	target, external := s.orgLookupTarget()
+
+	// The whole request, before it is sent: which URL, chosen how, and — because the
+	// failure this most often hits is the upstream refusing the LOGIN token — who
+	// issued that token and who it was minted for. The token itself is never logged;
+	// its issuer and audience are what a 401 here is actually about.
+	claims := session.DecodeJWTClaims(loginToken)
+	slog.Debug("org lookup: sending request",
+		"url", target,
+		"source", lookupSource(external),
+		"subject_token_iss", claims["iss"],
+		"subject_token_aud", claims["aud"],
+		"subject_token_present", loginToken != "")
+
+	resp, err := s.orgLookupResponse(ctx, target, external, loginToken)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Read once, bounded, so the same bytes can be both logged and decoded — and so a
+	// large or streaming body cannot be pulled into memory whole.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, orgLookupBodyLimit))
+	slog.Debug("org lookup: response",
+		"url", target,
+		"status", resp.StatusCode,
+		"content_type", resp.Header.Get("Content-Type"),
+		"body", string(truncate(raw, orgLookupLogLimit)))
+	if readErr != nil {
+		return "", fmt.Errorf("reading the response from %s: %w", target, readErr)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		// Bounded: a large or streaming error body must not be read into memory
-		// whole just to be quoted in a log line.
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("%s answered %d: %s", source, resp.StatusCode, snippet)
+		return "", fmt.Errorf("%s (%s) answered %d: %s",
+			lookupSource(external), target, resp.StatusCode, truncate(raw, orgLookupLogLimit))
 	}
 
 	var body orgListResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return "", fmt.Errorf("decoding the organization list from %s: %w", source, err)
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return "", fmt.Errorf("decoding the organization list from %s: %w", target, err)
 	}
-	return body.first(), nil
+
+	handle := body.first()
+	slog.Debug("org lookup: parsed",
+		"url", target,
+		"organizations", len(body.List)+len(body.Organizations),
+		"first_handle", handle)
+	return handle, nil
 }
 
-// orgLookupResponse performs the lookup against whichever source is configured, and
-// names it for the error messages: which one answered is the first thing a failure
-// here raises, and the two fail for entirely different reasons.
-func (s *Server) orgLookupResponse(ctx context.Context, loginToken string) (*http.Response, string, error) {
+// orgLookupBodyLimit caps what is read from the lookup; orgLookupLogLimit caps what
+// of it reaches a log line or an error message. A membership list is a few KB, and
+// neither an oversized body nor a verbose error page should cost more than that.
+const (
+	orgLookupBodyLimit = 1 << 20
+	orgLookupLogLimit  = 512
+)
+
+func truncate(b []byte, n int) []byte {
+	if len(b) <= n {
+		return b
+	}
+	return append(b[:n:n], "…(truncated)"...)
+}
+
+func lookupSource(external bool) string {
+	if external {
+		return "the configured org lookup"
+	}
+	return "the Platform API"
+}
+
+// orgLookupTarget returns the URL the lookup will call and whether it came from
+// org_lookup_url. The Platform API's own URL is composed here rather than inside
+// platformDo so the debug line can name it before the call goes out — "which URL did
+// it actually try" being the first question a failing lookup raises.
+func (s *Server) orgLookupTarget() (string, bool) {
 	if raw := s.cfg.Auth.OIDC.TokenExchange.OrgLookupURL; raw != "" {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+		return raw, true
+	}
+	path := paths.PlatformAPI + "/organizations?limit=" + orgDiscoveryLimit + "&offset=0"
+	return strings.TrimRight(s.cfg.ControlPlane.URL, "/") + s.cfg.ControlPlane.UpstreamPath(path), false
+}
+
+// orgLookupResponse performs the lookup against whichever source orgLookupTarget
+// picked. The external one is sent as configured — query string and all — because
+// that URL names one endpoint of one service, not a route this composes.
+func (s *Server) orgLookupResponse(
+	ctx context.Context, target string, external bool, loginToken string,
+) (*http.Response, error) {
+	if !external {
+		path := paths.PlatformAPI + "/organizations?limit=" + orgDiscoveryLimit + "&offset=0"
+		resp, err := s.platformDo(ctx, loginToken, http.MethodGet, path, nil, nil)
 		if err != nil {
-			return nil, "the configured org lookup", fmt.Errorf("building the request: %w", err)
+			return nil, fmt.Errorf("calling %s: %w", target, err)
 		}
-		// Sent as configured — query string and all — because the URL names one
-		// endpoint of one service, not a route this composes.
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Authorization", "Bearer "+loginToken)
-		resp, err := s.platformClient().Do(req)
-		if err != nil {
-			return nil, "the configured org lookup", fmt.Errorf("calling %s: %w", raw, err)
-		}
-		return resp, "the configured org lookup", nil
+		return resp, nil
 	}
 
-	path := paths.PlatformAPI + "/organizations?limit=" + orgDiscoveryLimit + "&offset=0"
-	resp, err := s.platformDo(ctx, loginToken, http.MethodGet, path, nil, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, "the Platform API", fmt.Errorf("calling the Platform API: %w", err)
+		return nil, fmt.Errorf("building the request for %s: %w", target, err)
 	}
-	return resp, "the Platform API", nil
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginToken)
+	resp, err := s.platformClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("calling %s: %w", target, err)
+	}
+	return resp, nil
 }
 
 // resolveOrgHandle decides which org this session's exchange is scoped to, in
@@ -140,16 +206,22 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 		return sessionOrg
 	}
 	// Nothing to discover FOR: without org_param the resolved handle has no field to
-	// travel in, so the lookup would find the right answer and then drop it.
+	// travel in, so the lookup would find the right answer and then drop it. Said
+	// out loud because "the lookup never ran" and "the lookup failed" are otherwise
+	// the same silence, and this one is a config fix.
 	if te.OrgParam == "" {
+		slog.Debug("org lookup skipped: [auth.oidc.token_exchange] org_param is empty, so the " +
+			"exchange can carry no org and the STS will resolve its own default")
 		return te.DefaultOrg
 	}
 
 	handle, err := s.discoverOrgHandle(ctx, subjectToken)
 	if err != nil {
-		slog.Warn("could not read the user's organizations from the Platform API — "+
-			"falling back to [auth.oidc.token_exchange] default_org",
-			"err", err, "default_org", te.DefaultOrg)
+		// The error already names the URL that answered — the source is not assumed
+		// here, because which of the two ran is half the diagnosis.
+		slog.Warn("could not read the user's organizations — falling back to "+
+			"[auth.oidc.token_exchange] default_org",
+			"err", err, "default_org", te.DefaultOrg, "org_lookup_url", te.OrgLookupURL)
 		return te.DefaultOrg
 	}
 	if handle == "" {

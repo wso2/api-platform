@@ -874,6 +874,18 @@ func (c *Config) validateTokenExchange() error {
 	}
 
 	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	// An org-scoping STS needs to be told which org; with no parameter to put it in,
+	// the exchange sends none and the STS picks for itself — which is a 500 on the
+	// Choreo STS and a wrong-org token elsewhere. Not fatal, because an STS that
+	// does not scope per org is a legitimate deployment, but loud, because the two
+	// are indistinguishable until the first login fails.
+	if te.Enabled && te.OrgParam == "" {
+		slog.Warn("[auth.oidc.token_exchange] org_param is empty — the exchange will carry no " +
+			"organization, and the identity provider will resolve one of its own choosing. " +
+			"Set org_param (and org_lookup_url, when the login token cannot read the user's " +
+			"organizations from the Platform API) if the issued token must be org-scoped.")
+	}
+
 	// Absolute and http(s): a relative or malformed URL here would fail on every
 	// login, and the fallback would quietly hide it behind default_org.
 	if te.OrgLookupURL != "" {
