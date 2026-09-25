@@ -525,19 +525,19 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
               color={OPERATION_COLOR.query}
               fields={summary?.queryFields.filter((field) => matches(field.name)) ?? []}
               hint={<FormattedMessage {...messages.queryHint} />}
-              title="Query"
+              title="QUERY"
             />
             <OperationSection
               color={OPERATION_COLOR.mutation}
               fields={summary?.mutationFields.filter((field) => matches(field.name)) ?? []}
               hint={<FormattedMessage {...messages.mutationHint} />}
-              title="Mutation"
+              title="MUTATION"
             />
             <OperationSection
               color={OPERATION_COLOR.subscription}
               fields={summary?.subscriptionFields.filter((field) => matches(field.name)) ?? []}
               hint={<FormattedMessage {...messages.subscriptionHint} />}
-              title="Subscription"
+              title="SUBSCRIPTION"
             />
 
             {filteredTypes.length > 0 ? (
