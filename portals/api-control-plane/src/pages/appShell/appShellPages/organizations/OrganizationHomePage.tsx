@@ -413,7 +413,7 @@ export function OrganizationHomePage() {
               metric={intl.formatNumber(0)}
               onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
-              operationId="publishRestApiToApiPortal"
+              operationId="CreateApiPortal"
             />
           </Grid>
         </Grid>

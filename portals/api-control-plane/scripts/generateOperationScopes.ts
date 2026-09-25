@@ -72,6 +72,7 @@ type SpecOperation = {
 };
 
 type Spec = {
+  security?: SecurityRequirement[];
   paths?: Record<string, Record<string, unknown>>;
   components?: {
     securitySchemes?: Record<
@@ -115,6 +116,29 @@ if (!scheme) {
   if (catalog.size === 0) record(`security scheme "${SCHEME}" declares no scopes`);
 }
 
+/**
+ * The root requirement every operation without its own `security` inherits.
+ * The walk below emits such an operation as "no scope required", which is only
+ * true while the root is exactly `[{ OAuth2Security: [] }]`: authenticated, no
+ * particular scope. A root that demands scopes, names another scheme, offers
+ * alternatives, or is absent would make that reading wrong, and every
+ * inheriting operation would be offered to every user. Refuse instead.
+ */
+const rootSecurity = spec.security;
+const rootRequirement = rootSecurity?.length === 1 ? rootSecurity[0] : undefined;
+const rootSchemes = rootRequirement ? Object.keys(rootRequirement) : [];
+const rootIsAuthenticatedOnly =
+  rootSchemes.length === 1 &&
+  rootSchemes[0] === SCHEME &&
+  Array.isArray(rootRequirement?.[SCHEME]) &&
+  rootRequirement[SCHEME].length === 0;
+if (!rootIsAuthenticatedOnly) {
+  record(
+    `root security must be exactly [{ ${SCHEME}: [] }], got ${JSON.stringify(rootSecurity ?? null)} — ` +
+      'operations without their own security inherit it',
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Walk operations                                                             */
 /* -------------------------------------------------------------------------- */
@@ -146,13 +170,19 @@ for (const [pathName, pathItem] of Object.entries(spec.paths ?? {})) {
       continue;
     }
 
-    // `security` absent means "inherit the root requirement", which on this
-    // spec is `OAuth2Security: []` — authenticated, no particular scope. An
-    // explicit `[]` means the same thing. Both are emitted as an empty list,
-    // which the evaluator reads as "no scope required"; they are reported
-    // because an operation becoming unrestricted by accident is exactly the
-    // kind of change worth seeing in a diff.
+    // `security` absent means "inherit the root requirement", validated above
+    // to be `OAuth2Security: []` — authenticated, no particular scope. An
+    // explicit `[]` means no scope is required either. Both are emitted as an
+    // empty list, which the evaluator reads as "no scope required"; they are
+    // reported because an operation becoming unrestricted by accident is
+    // exactly the kind of change worth seeing in a diff.
     const security = operation.security;
+    if (security === undefined && !rootIsAuthenticatedOnly) {
+      record(
+        `${where} (${operationId}): inherits a root security requirement that failed validation`,
+      );
+      continue;
+    }
     if (security === undefined || security.length === 0) {
       unrestricted.push(operationId);
       operationScopes.set(operationId, []);

@@ -354,19 +354,21 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                     </Typography>
                   </Stack>
                 </Box>
-                <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
-                  <span>
-                    <IconButton
-                      disabled={revokeMutation.isPending || !key.id}
-                      onClick={() =>
-                        key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
-                      }
-                      size="small"
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
+                <Can do="RevokeAPIKey" denied="hide">
+                  <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
+                    <span>
+                      <IconButton
+                        disabled={revokeMutation.isPending || !key.id}
+                        onClick={() =>
+                          key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
+                        }
+                        size="small"
+                      >
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Can>
               </Stack>
             ))}
           </Stack>
