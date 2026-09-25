@@ -652,15 +652,19 @@ func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth
 	fingerprint := s.exchanger.ConfigFingerprint()
 
 	sess, ok, _ := s.store.Get(ctx, subjectToken)
-	// Resolved once and used for BOTH the cache check and the exchange below, so a
-	// cached token is never judged against a different org than the one it was
-	// minted for. The user's selection wins over the configured default; the default
-	// only fills the gap before they have made one.
-	orgHandle := s.cfg.Auth.OIDC.TokenExchange.DefaultOrg
+	sessionOrg := ""
 	if ok {
-		if sess.OrgHandle != "" {
-			orgHandle = sess.OrgHandle
-		}
+		sessionOrg = sess.OrgHandle
+	}
+	// The one place the org is decided — the user's own switch, then discovery from
+	// the Platform API, then the configured default (see resolveOrgHandle) — and
+	// resolved once here for BOTH the cache check and the exchange below, so a cached
+	// token is never judged against a different org than the one it was minted for.
+	//
+	// A discovered handle is persisted on the session, so this costs one Platform API
+	// call per session rather than one per exchange.
+	orgHandle := s.resolveOrgHandle(ctx, subjectToken, sessionOrg)
+	if ok {
 		if s.exchanger.CacheEnabled() && sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint, orgHandle) {
 			// Org travels with the cached token: a cache hit must describe the
 			// caller exactly as the exchange that produced it did. Omitted, the

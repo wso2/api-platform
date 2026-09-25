@@ -143,7 +143,7 @@ type ControlPlaneConfig struct {
 	CAFile string `koanf:"ca_file"`
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
 	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
@@ -274,12 +274,16 @@ type TokenExchangeConfig struct {
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
 
-	// DefaultOrg is the org handle used before the user has selected one — the
-	// window between login and the first org switch, which for a single-org
-	// deployment is the whole session. Unset, the exchange sends no org and the STS
-	// resolves whichever org it considers the caller's default; pinning it here
-	// makes that choice explicit and stable, so the workspace does not silently
-	// follow a default changed elsewhere. A user's own switch always wins over it.
+	// DefaultOrg is the FALLBACK org handle, used when the user's own organizations
+	// could not be read from the Platform API — which is where the handle normally
+	// comes from before the user has switched (see the server's resolveOrgHandle).
+	//
+	// A fallback rather than the primary source: it is one guess shared by every
+	// user of the deployment, and only the user's own memberships can be right for
+	// all of them. Unset, such a session exchanges with no org at all and the STS
+	// resolves whichever org it considers the caller's default — which is what
+	// pinning this avoids, so the workspace does not silently follow a default
+	// chosen elsewhere. A user's own switch always wins over it.
 	DefaultOrg string `koanf:"default_org"`
 
 	// ClaimMappings names the claims in the ISSUED token, which routinely differ
