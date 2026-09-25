@@ -38,6 +38,14 @@ func TestValidateDraftFieldLengths(t *testing.T) {
 		{"version over limit", func(p *model.Publication) { p.Version = strings.Repeat("1", 31) }, "version must not exceed 30 characters"},
 		{"productionUrl over limit", func(p *model.Publication) { p.ProductionURL = "https://" + strings.Repeat("a", 250) }, "productionUrl must not exceed 255 characters"},
 		{"sandboxUrl over limit", func(p *model.Publication) { p.SandboxURL = "https://" + strings.Repeat("a", 250) }, "sandboxUrl must not exceed 255 characters"},
+		{"businessOwner over limit", func(p *model.Publication) { p.BusinessOwner = strings.Repeat("a", 256) }, "businessOwner must not exceed 255 characters"},
+		{"businessOwnerEmail over limit", func(p *model.Publication) { p.BusinessOwnerEmail = strings.Repeat("a", 250) + "@b.com" }, "businessOwnerEmail must not exceed 255 characters"},
+		{"technicalOwner over limit", func(p *model.Publication) { p.TechnicalOwner = strings.Repeat("a", 256) }, "technicalOwner must not exceed 255 characters"},
+		{"technicalOwnerEmail over limit", func(p *model.Publication) { p.TechnicalOwnerEmail = strings.Repeat("a", 250) + "@b.com" }, "technicalOwnerEmail must not exceed 255 characters"},
+		{"owner fields at limit", func(p *model.Publication) {
+			p.BusinessOwner = strings.Repeat("a", 255)
+			p.TechnicalOwner = strings.Repeat("é", 255)
+		}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -43,6 +43,7 @@ const (
 	publicationVersionMaxLength     = 30
 	publicationDescriptionMaxLength = 1023
 	publicationURLMaxLength         = 255
+	publicationOwnerMaxLength       = 255
 )
 
 // definitionFileNamesByContentType maps an accepted definition Content-Type to
@@ -299,6 +300,10 @@ func validateDraftFieldLengths(draft *model.Publication) error {
 		{"description", draft.Description, publicationDescriptionMaxLength},
 		{"productionUrl", draft.ProductionURL, publicationURLMaxLength},
 		{"sandboxUrl", draft.SandboxURL, publicationURLMaxLength},
+		{"businessOwner", draft.BusinessOwner, publicationOwnerMaxLength},
+		{"businessOwnerEmail", draft.BusinessOwnerEmail, publicationOwnerMaxLength},
+		{"technicalOwner", draft.TechnicalOwner, publicationOwnerMaxLength},
+		{"technicalOwnerEmail", draft.TechnicalOwnerEmail, publicationOwnerMaxLength},
 	}
 	for _, l := range limits {
 		if utf8.RuneCountInString(l.value) > l.max {
