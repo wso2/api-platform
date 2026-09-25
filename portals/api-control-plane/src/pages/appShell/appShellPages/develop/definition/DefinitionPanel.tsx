@@ -455,6 +455,7 @@ export function DefinitionPanel() {
 
   const closeDialog = () => {
     importTokenRef.current++;
+    setIsFetchingSpec(false);
     setDialogOpen(false);
     setSpecUrl('');
     setFetchError(null);
@@ -484,7 +485,9 @@ export function DefinitionPanel() {
       if (token !== importTokenRef.current) return false;
       const rawContent = validation.content ?? '';
       if (!rawContent) {
-        setFetchError(intl.formatMessage(messages.dialogFetchError));
+        setFetchError(
+          intl.formatMessage('url' in input ? messages.dialogFetchError : messages.fileReadError),
+        );
         return false;
       }
       const parsedSpecContent = parseSpec(rawContent);
@@ -497,10 +500,11 @@ export function DefinitionPanel() {
       );
       return true;
     } catch (err) {
+      if (token !== importTokenRef.current) return false;
       setFetchError(intl.formatMessage(classifyImportFailure(err, input)));
       return false;
     } finally {
-      setIsFetchingSpec(false);
+      if (token === importTokenRef.current) setIsFetchingSpec(false);
     }
   };
 
