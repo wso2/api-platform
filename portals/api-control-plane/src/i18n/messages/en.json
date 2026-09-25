@@ -74,16 +74,15 @@
   "api.create.ApiCreationWizard.configure.title": {
     "defaultMessage": "Configure and create"
   },
+  "api.create.ApiCreationWizard.error.specTooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+  },
   "api.create.ApiCreationWizard.source.subtitle": {
     "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
   },
   "api.create.ApiCreationWizard.source.title": {
     "defaultMessage": "How do you want to define your {apiType}?",
     "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
-  },
-  "api.create.ApiCreationWizard.specInvalidOnCreate": {
-    "defaultMessage": "Fix the following spec issues before creating:",
-    "description": "Heading above spec validation errors shown when the Create button is clicked."
   },
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
@@ -272,17 +271,17 @@
     "defaultMessage": "URL"
   },
   "api.create.fromContract.spec.invalidByBackend": {
-    "defaultMessage": "The specification is not a valid OpenAPI document:",
-    "description": "Heading above the list of backend validation errors."
+    "defaultMessage": "Validation failed:",
+    "description": "Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid"
   },
-  "api.create.fromContract.spec.unreachable": {
-    "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
-  },
-  "api.create.fromContract.spec.unreadable": {
-    "defaultMessage": "That contract could not be read as YAML or JSON."
+  "api.create.fromContract.spec.tooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
   },
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
+  },
+  "api.create.fromContract.spec.validationFailed": {
+    "defaultMessage": "Failed to validate the OpenAPI specification. Please try again."
   },
   "api.create.fromContract.status.fetching": {
     "defaultMessage": "Reading the contract…",
@@ -3118,6 +3117,9 @@
   "develop.definition.DefinitionPanel.dialogParseError": {
     "defaultMessage": "The fetched content is not a valid OpenAPI/Swagger spec."
   },
+  "develop.definition.DefinitionPanel.dialogSpecTooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+  },
   "develop.definition.DefinitionPanel.dialogTitle": {
     "defaultMessage": "Update OpenAPI Definition"
   },
@@ -3183,12 +3185,8 @@
     "defaultMessage": "Save"
   },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
-    "defaultMessage": "Failed to save the specification. Fix the following issues:",
-    "description": "Heading above spec validation errors shown when Save is clicked."
-  },
-  "develop.definition.DefinitionPanel.saveValidationUnavailable": {
-    "defaultMessage": "Spec validation is currently unavailable. Please try again.",
-    "description": "Error shown when the validation service itself fails (network/auth error)."
+    "defaultMessage": "The specification is not a valid OpenAPI document:",
+    "description": "Heading above spec validation errors shown either after an import or when Save is clicked."
   },
   "develop.definition.DefinitionPanel.title": {
     "defaultMessage": "Definition"

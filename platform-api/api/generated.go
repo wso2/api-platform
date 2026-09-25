@@ -1455,7 +1455,9 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
-// ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
+// ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+// `file` or `url` must be provided; the backend rejects requests that
+// supply both or neither.
 type ImportOpenAPIRequest struct {
 	Context     string  `binding:"required" json:"context" yaml:"context"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
@@ -1463,8 +1465,8 @@ type ImportOpenAPIRequest struct {
 	// DisplayName Human-readable name for the API
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
 
 	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
@@ -1474,7 +1476,14 @@ type ImportOpenAPIRequest struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+	// from. The fetch is SSRF-hardened server-side: only http/https,
+	// dial-time IP allowlist, response-size cap, bounded timeout, and
+	// bounded redirects — see the shared http client's SSRF policy.
+	// Mutually exclusive with `file`.
+	Url     *string `json:"url,omitempty" yaml:"url,omitempty"`
+	Version string  `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -2124,10 +2133,17 @@ type OpenAPIContent struct {
 	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
 }
 
-// OpenAPISpecFileRequest defines model for OpenAPISpecFileRequest.
+// OpenAPISpecFileRequest Multipart form for `POST /rest-apis/validate-openapi` and
+// `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+// must be provided; the backend rejects requests that supply both or
+// neither.
 type OpenAPISpecFileRequest struct {
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
+
+	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+	// from. Mutually exclusive with `file`.
+	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
 // OpenAPISpecInfo defines model for OpenAPISpecInfo.
@@ -3130,6 +3146,10 @@ type UserAPIKeyListResponse struct {
 
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
+	// Content The exact bytes the validator ran against, echoed back on any
+	// successful validation.
+	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
+
 	// Errors Validation errors; empty when isValid is true
 	Errors []OpenAPIValidationError `binding:"required" json:"errors" yaml:"errors"`
 	Info   *OpenAPISpecInfo         `json:"info,omitempty" yaml:"info,omitempty"`
