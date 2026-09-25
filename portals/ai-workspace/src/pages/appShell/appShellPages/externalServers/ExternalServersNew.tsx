@@ -651,6 +651,7 @@ export default function ExternalServersNew(): JSX.Element {
             <Grid size={{ xs: 12, md: 7 }}>
               <ExternalServersValidationDetails
                 validationResult={validationResult}
+                variant="upstreamInfo"
               />
             </Grid>
           ) : null}

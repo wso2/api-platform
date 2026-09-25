@@ -96,6 +96,7 @@ import type {
   MCPServer,
   MCPServerCapabilities,
   MCPServerInfoFetchRequest,
+  MCPServerInfoFetchResponse,
   PublicationDraftDetails,
   PublicationDraftDetailsInput,
 } from '../../../../utils/types';
@@ -303,6 +304,11 @@ export default function ExternalServersOverview(): JSX.Element {
   // Info, staged pending Save (mirrors refetchedCapabilities).
   const [refetchedSupportedVersions, setRefetchedSupportedVersions] =
     useState<string[] | undefined>(undefined);
+  // Name and version the upstream reported for itself on that same refetch. Display
+  // only — nothing persists it, so it is the proxy's own fields that would otherwise
+  // stand in for it, and those describe the proxy rather than the server.
+  const [refetchedServerInfo, setRefetchedServerInfo] =
+    useState<MCPServerInfoFetchResponse['serverInfo'] | null>(null);
   const [isCapabilitiesDrawerOpen, setIsCapabilitiesDrawerOpen] =
     useState(false);
 
@@ -604,6 +610,7 @@ export default function ExternalServersOverview(): JSX.Element {
     setHasCredentialChanged(false);
     setRefetchedCapabilities(null);
     setRefetchedSupportedVersions(undefined);
+    setRefetchedServerInfo(null);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -649,9 +656,12 @@ export default function ExternalServersOverview(): JSX.Element {
   // version set the proxy has not recorded while the tools, resources and prompts are
   // unchanged, and that is still something to save.
   const hasUpstreamVersionsChanges = useMemo(() => {
-    // An empty result means the probe determined nothing, which the API cannot tell apart
-    // from "the server named none" — so it is never a reason to rewrite what is recorded.
-    if (!refetchedSupportedVersions?.length) return false;
+    // An empty result counts as a change, not as "nothing learnt". Every path in the API
+    // that cannot determine the versions returns an error, so a successful response
+    // carrying none means the server named none — a fact about whatever this endpoint now
+    // points at. Treating it as no-change left the previous server's versions recorded
+    // against a backend that does not report them.
+    if (!refetchedSupportedVersions) return false;
     return (
       JSON.stringify(refetchedSupportedVersions) !==
       JSON.stringify(server?.upstreamMcpSpecVersions ?? [])
@@ -677,6 +687,7 @@ export default function ExternalServersOverview(): JSX.Element {
     }
     setRefetchedCapabilities(null);
     setRefetchedSupportedVersions(undefined);
+    setRefetchedServerInfo(null);
   };
 
   const handleSaveChanges = async () => {
@@ -887,10 +898,12 @@ export default function ExternalServersOverview(): JSX.Element {
       };
       setRefetchedCapabilities(discoveredCapabilities);
       // Coerced so the display can tell "the probe found none" from "no probe ran" — the
-      // API omits the field in both cases, and only this side knows one happened. An
-      // empty result still never rewrites the record; hasUpstreamVersionsChanges enforces
-      // that.
-      setRefetchedSupportedVersions(response.supportedVersions ?? []);
+      // API omits the field in both cases, and only this side knows one happened.
+      const discoveredVersions = response.supportedVersions ?? [];
+      setRefetchedSupportedVersions(discoveredVersions);
+      // A server may omit its own identity, so this is optional in practice whatever the
+      // response type says.
+      setRefetchedServerInfo(response.serverInfo ?? null);
       // Only prompt to Save when the refetch actually found something different — the
       // hasCapabilitiesChanges/hasUpstreamVersionsChanges memos won't reflect the state
       // just set above until the next render, so this mirrors both comparisons directly
@@ -899,11 +912,21 @@ export default function ExternalServersOverview(): JSX.Element {
         JSON.stringify(discoveredCapabilities) !==
         JSON.stringify(normalizeCapabilities(server.capabilities));
       const versionsChanged =
-        Boolean(response.supportedVersions?.length) &&
-        JSON.stringify(response.supportedVersions) !==
-          JSON.stringify(server.upstreamMcpSpecVersions ?? []);
+        JSON.stringify(discoveredVersions) !==
+        JSON.stringify(server.upstreamMcpSpecVersions ?? []);
+      // Counted alongside the capabilities: a version set changing is the one discovery
+      // the other counts cannot show, so without it the message offers Save while every
+      // number in it appears unchanged. The card below lists which versions they are.
+      //
+      // Dropped entirely at zero, unlike the capability counts. A legacy server naming no
+      // version is ordinary, so "0 MCP versions found" would read as a failure; an empty
+      // tool list is worth stating.
+      const versionsTerm =
+        discoveredVersions.length > 0
+          ? `, ${discoveredVersions.length} MCP versions`
+          : '';
       showSnackbar(
-        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts found.` +
+        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts${versionsTerm} found.` +
           (capabilitiesChanged || versionsChanged
             ? ' Click Save to update what the proxy has recorded about this server.'
             : ''),
@@ -940,9 +963,11 @@ export default function ExternalServersOverview(): JSX.Element {
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
       setRefetchedCapabilities(parseMCPServerCapabilities(parsed));
-      // A manual JSON edit carries no fresh version discovery, so drop what an earlier
-      // refetch reported rather than pair it with capabilities it no longer describes.
-      setRefetchedSupportedVersions(undefined);
+      // Anything an earlier refetch learned about the server itself is left staged: a
+      // hand-edited capability list replaces the capabilities and says nothing about what
+      // the server reported it is or which protocol versions it speaks. Dropping the
+      // versions here also lost them silently — where a refetch had found only new
+      // versions, clearing them left nothing unsaved and greyed out Save.
       setIsCapabilitiesDrawerOpen(false);
     } catch (err) {
       showSnackbar(
@@ -1181,16 +1206,24 @@ export default function ExternalServersOverview(): JSX.Element {
     if (!refetchedCapabilities) return null;
     return {
       endpointUrl: endpointUrl.trim(),
+      // What the upstream said about itself, not what this proxy is called. Falling back
+      // to the proxy's own displayName and artifact version would put two unrelated
+      // values under a heading that claims they came from the server.
       serverInfo: {
-        name: server?.displayName ?? '',
-        version: server?.version ?? '',
+        name: refetchedServerInfo?.name ?? '',
+        version: refetchedServerInfo?.version ?? '',
       },
       supportedVersions: refetchedSupportedVersions,
       tools: refetchedCapabilities.tools as unknown as EndpointValidationResponse['tools'],
       resources: refetchedCapabilities.resources as unknown as EndpointValidationResponse['resources'],
       prompts: refetchedCapabilities.prompts as unknown as EndpointValidationResponse['prompts'],
     };
-  }, [refetchedCapabilities, refetchedSupportedVersions, endpointUrl, server]);
+  }, [
+    refetchedCapabilities,
+    refetchedSupportedVersions,
+    refetchedServerInfo,
+    endpointUrl,
+  ]);
 
   if (isLoading) {
     return (
@@ -1738,16 +1771,12 @@ export default function ExternalServersOverview(): JSX.Element {
                   </Button>
                 </Box>
                 {refetchedValidationResult ? (
-                  <Box>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-                      Discovered Capabilities{' '}
-                    </Typography>
-                    <ExternalServersValidationDetails
-                      validationResult={refetchedValidationResult}
-                      showHeader={false}
-                      showInputSchema
-                    />
-                  </Box>
+                  <ExternalServersValidationDetails
+                    validationResult={refetchedValidationResult}
+                    variant="upstreamInfo"
+                    showHeader={false}
+                    showInputSchema
+                  />
                 ) : null}
               </Stack>
             </TabPanel>
