@@ -45,10 +45,14 @@ type MCPProxyConfiguration struct {
 	Version      string                `json:"version" db:"-"`
 	Context      *string               `json:"context" db:"-"`
 	Vhost        *string               `json:"vhost" db:"-"`
-	SpecVersion  string                `json:"specVersion" db:"-"`
+	SpecVersion  string                `json:"specVersion,omitempty" db:"-"`
+	SpecVersions []string              `json:"specVersions,omitempty" db:"-"`
 	Upstream     UpstreamConfig        `json:"upstream" db:"-"`
 	Policies     []Policy              `json:"policies,omitempty" db:"-"`
 	Capabilities *MCPProxyCapabilities `json:"capabilities,omitempty" db:"-"`
+	// UpstreamSpecVersions is what the server reported at discovery. It declares nothing and
+	// reaches no gateway: MCPProxyDeploymentSpec is an allow-list struct that omits it.
+	UpstreamSpecVersions []string `json:"upstreamSpecVersions,omitempty" db:"-"`
 }
 
 type MCPProxyCapabilities struct {

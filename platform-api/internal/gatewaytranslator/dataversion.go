@@ -86,7 +86,7 @@ var platformDataMinorVersions = map[string]int{
 	constants.RestApi:      0,
 	constants.WebSubApi:    0,
 	constants.WebBrokerApi: 0,
-	constants.MCPProxy:     0,
+	constants.MCPProxy:     1,
 	constants.LLMProxy:     1,
 	constants.LLMProvider:  1,
 }

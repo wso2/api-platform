@@ -151,12 +151,6 @@ const (
 	LLMProxyListItemStatusPending  LLMProxyListItemStatus = "pending"
 )
 
-// Defines values for MCPProxyMcpSpecVersion.
-const (
-	N20250618 MCPProxyMcpSpecVersion = "2025-06-18"
-	N20251125 MCPProxyMcpSpecVersion = "2025-11-25"
-)
-
 // Defines values for MCPProxyListItemStatus.
 const (
 	Deployed MCPProxyListItemStatus = "deployed"
@@ -1969,8 +1963,12 @@ type MCPProxy struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// McpSpecVersion MCP specification version supported by this proxy
-	McpSpecVersion *MCPProxyMcpSpecVersion `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	// McpSpecVersion DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	McpSpecVersion *string `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+
+	// McpSpecVersions MCP specification versions this proxy declares. Any MCP revision date is accepted.
+	McpSpecVersions *[]string `json:"mcpSpecVersions,omitempty" yaml:"mcpSpecVersions,omitempty"`
 
 	// Policies List of policies to be applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -1990,15 +1988,15 @@ type MCPProxy struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
+	// UpstreamMcpSpecVersions MCP specification versions the upstream server reported when it was discovered by /mcp-proxies/fetch-server-info. A snapshot of what the server said, recorded for reference: it restricts nothing and is not sent to a gateway.
+	UpstreamMcpSpecVersions *[]string `json:"upstreamMcpSpecVersions,omitempty" yaml:"upstreamMcpSpecVersions,omitempty"`
+
 	// Version Semantic version of the MCP proxy
 	Version string `binding:"required" json:"version" yaml:"version"`
 
 	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
-
-// MCPProxyMcpSpecVersion MCP specification version supported by this proxy
-type MCPProxyMcpSpecVersion string
 
 // MCPProxyCapabilities defines model for MCPProxyCapabilities.
 type MCPProxyCapabilities struct {
@@ -2023,9 +2021,13 @@ type MCPProxyListItem struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the MCP proxy
-	DisplayName    string  `binding:"required" json:"displayName" yaml:"displayName"`
-	Id             *string `json:"id,omitempty" yaml:"id,omitempty"`
-	McpSpecVersion *string `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
+	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// McpSpecVersion DEPRECATED - use mcpSpecVersions.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	McpSpecVersion  *string   `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
+	McpSpecVersions *[]string `json:"mcpSpecVersions,omitempty" yaml:"mcpSpecVersions,omitempty"`
 
 	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
@@ -2077,7 +2079,12 @@ type MCPServerInfoFetchResponse struct {
 	Prompts    *[]map[string]interface{} `json:"prompts,omitempty" yaml:"prompts,omitempty"`
 	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
 	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
-	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+
+	// SupportedVersions MCP protocol versions the server reported. A modern server answers server/discover
+	// with the full set; a legacy one yields the single version its initialize handshake
+	// negotiated. Absent when neither could be determined.
+	SupportedVersions *[]string                 `json:"supportedVersions,omitempty" yaml:"supportedVersions,omitempty"`
+	Tools             *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
 }
 
 // ManifestSyncResponse defines model for ManifestSyncResponse.
