@@ -24,6 +24,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // restAPITypeValue is the type-agnostic path value for RestApi publications,
@@ -67,12 +68,12 @@ func validateRestAPIDefinition(contentType string, data []byte) error {
 		return apperror.APIPublicationValidationFailed.New(
 			"A REST API definition must be application/json or application/yaml")
 	}
-	sd, err := LoadSpecDocument([]byte(strings.TrimSpace(string(data)))) // same function the Develop tab's validator uses
+	sd, err := utils.LoadSpecDocument([]byte(strings.TrimSpace(string(data)))) // same function the Develop tab's validator uses
 	if err != nil {
 		return apperror.APIPublicationValidationFailed.New(
 			"The definition could not be parsed as an OpenAPI 3.x document.").WithLogMessage(err.Error())
 	}
-	result := ValidateSpec(sd) // same function the Develop tab's validator uses
+	result := utils.ValidateSpec(sd) // same function the Develop tab's validator uses
 	if result.IsValid {
 		return nil
 	}
