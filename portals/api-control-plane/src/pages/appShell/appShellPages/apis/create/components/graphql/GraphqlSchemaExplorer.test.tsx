@@ -153,8 +153,8 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
   it('gives Query and Mutation their own chip color, with no chip at all on a type’s kind label', () => {
     renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
-    expect(screen.getByText('Query').closest('.MuiChip-root')).toHaveClass('MuiChip-colorInfo');
-    expect(screen.getByText('Mutation').closest('.MuiChip-root')).toHaveClass('MuiChip-colorSuccess');
+    expect(screen.getByText('QUERY').closest('.MuiChip-root')).toHaveClass('MuiChip-colorInfo');
+    expect(screen.getByText('MUTATION').closest('.MuiChip-root')).toHaveClass('MuiChip-colorSuccess');
     // A type's own kind (OBJECT/ENUM/…) is plain text now, not a colored
     // chip — only the three root operations keep the chip treatment.
     expect(screen.getAllByText('OBJECT')[0].closest('.MuiChip-root')).toBeNull();
