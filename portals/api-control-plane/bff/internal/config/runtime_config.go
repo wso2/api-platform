@@ -25,13 +25,18 @@ package config
 // rather than introducing a second convention the frontend would need to
 // learn.
 //
-// Every backend call the SPA makes must go through this BFF's same-origin
+// Authenticated backend calls go through this BFF's same-origin
 // proxy — the browser never holds a token — so platformApiBaseUrl is always
 // forced to the configured proxy prefix, never the upstream's real URL.
 func buildRuntimeConfig(cfg *Config) map[string]string {
 	out := map[string]string{
 		"authMode":           cfg.Auth.Mode,
 		"platformApiBaseUrl": cfg.ControlPlane.ProxyPrefix,
+	}
+
+	// The public Policy Hub needs no credentials and is called directly by the SPA.
+	if cfg.PolicyHub.BaseURL != "" {
+		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
 	}
 
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
