@@ -993,3 +993,47 @@ func TestNoOrgParamWithoutDefaultOrSwitch(t *testing.T) {
 		t.Errorf("orgHandle must be absent with no default and no switch, got %q", form.Get("orgHandle"))
 	}
 }
+
+// Revisiting the callback URL — a refresh, the back button, a restored tab — never
+// carries a transaction: the cookie is cleared on every callback and the transaction
+// is consumed on first use. A browser that already holds a live session is therefore
+// logged in, not failing to log in, and must land in the app rather than on an error
+// page whose only button restarts the whole handshake.
+func TestCallbackWithLiveSessionIsTreatedAsARevisit(t *testing.T) {
+	h := newExchangeHarness(t, nil)
+	subject := h.subjectSession(t) // a live session for this browser
+
+	req := httptest.NewRequest(http.MethodGet,
+		paths.Base+"/api/auth/callback?code=stale&state=stale", nil)
+	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	rec := httptest.NewRecorder()
+	h.server.handleOIDCCallback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "error=") {
+		t.Errorf("Location = %q, want the app, not a login error", loc)
+	}
+	// The live session must survive untouched — this path decides nothing about it.
+	if _, ok, _ := h.server.store.Get(context.Background(), subject); !ok {
+		t.Error("the live session was destroyed by a revisited callback")
+	}
+}
+
+// Without a session it is a genuine failure and must still be reported as one.
+func TestCallbackWithoutSessionStillFailsTheLogin(t *testing.T) {
+	h := newExchangeHarness(t, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		paths.Base+"/api/auth/callback?code=stale&state=stale", nil)
+	rec := httptest.NewRecorder()
+	h.server.handleOIDCCallback(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "error="+loginErrAuthFailed) {
+		t.Errorf("Location = %q, want ?error=%s", loc, loginErrAuthFailed)
+	}
+}

@@ -88,6 +88,30 @@ type OIDC struct {
 // (longer) request timeout.
 const discoveryTimeout = 15 * time.Second
 
+// TxTTL is how long a login transaction stays valid — the wall-clock budget for
+// everything the user does at the IDP: typing credentials, MFA, an account or org
+// picker, a password reset mid-flow, or simply leaving the tab for a while. Exceed
+// it and the callback cannot be matched, which the user sees as a failed login with
+// no explanation.
+//
+// Half an hour rather than a few minutes because the cost of being generous is one
+// small map entry per in-flight login, while the cost of being tight is a real
+// person's login failing for taking too long over MFA. It is not what protects the
+// flow: state+nonce binding, PKCE, and one-shot consumption do, and a transaction
+// buys nothing without the code the IDP hands back.
+//
+// Exported because the tx cookie's MaxAge must be the same number — a cookie that
+// outlives the transaction turns an aged-out login into "no transaction for this
+// id", and one that dies first turns it into "no cookie at all".
+const TxTTL = 30 * time.Minute
+
+// expiredRetention keeps an expired transaction in the map for a while after it
+// stops being usable, purely so the callback can say "expired" instead of "no such
+// transaction". Swept immediately, every slow login is indistinguishable from a
+// restart or a replay, which is the difference between a one-line diagnosis and an
+// afternoon. They are never accepted — Callback checks Expiry before State.
+const expiredRetention = 2 * time.Hour
+
 // NewOIDC fetches the discovery document and returns a ready authenticator.
 func NewOIDC(
 	ctx context.Context,
@@ -117,6 +141,16 @@ func NewOIDC(
 	}
 	go o.sweepTxns()
 	return o, nil
+}
+
+// PendingTransactions reports how many login transactions are held, expired ones
+// included. Zero on a callback failure says the process has served no login it still
+// remembers — a restart — which is what separates that case from a slow or replayed
+// one in the logs.
+func (o *OIDC) PendingTransactions() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.txs)
 }
 
 // Close stops the background transaction sweeper. Safe to call multiple times.
@@ -179,7 +213,7 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
-		Expiry:       time.Now().Add(10 * time.Minute),
+		Expiry:       time.Now().Add(TxTTL),
 	}
 	o.mu.Unlock()
 
@@ -416,9 +450,12 @@ func (o *OIDC) sweepTxns() {
 		case <-o.done:
 			return
 		case now := <-t.C:
+			// Dropped only once it is too old to explain itself — see
+			// expiredRetention. Unusable long before that, and never accepted.
+			cutoff := now.Add(-expiredRetention)
 			o.mu.Lock()
 			for id, tx := range o.txs {
-				if tx.Expiry.Before(now) {
+				if tx.Expiry.Before(cutoff) {
 					delete(o.txs, id)
 				}
 			}

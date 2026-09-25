@@ -84,6 +84,11 @@ type exchangeLock struct {
 	err    error
 }
 
+// processStart is when this process came up, reported alongside a failed OIDC
+// callback: login transactions live in memory, so "did we restart mid-login" is the
+// first question such a failure raises and the one the error itself cannot answer.
+var processStart = time.Now()
+
 // New builds a Server from config. It creates the upstream HTTP client, the
 // session store, the file-based authenticator, and (when enabled) the OIDC
 // authenticator — discovering the IDP endpoints up front.

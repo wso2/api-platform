@@ -19,6 +19,8 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -138,4 +140,71 @@ func TestRefreshKeepsIDTokenOnlyProfileClaims(t *testing.T) {
 				"falling back to sub is correct", s.User.Name)
 		}
 	})
+}
+
+// A login that takes longer than the transaction lives must say so. Swept on
+// expiry, it would report "no such transaction" instead — indistinguishable from a
+// restart or a replay, which is the difference between a one-line diagnosis and an
+// afternoon of guessing.
+func TestCallbackReportsExpiredRatherThanMissing(t *testing.T) {
+	o := &OIDC{txs: map[string]*txn{}, done: make(chan struct{})}
+	defer o.Close()
+
+	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(-time.Minute)}
+
+	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	var mismatch ErrStateMismatch
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("err = %v, want ErrStateMismatch", err)
+	}
+	if mismatch.Reason != ReasonExpired {
+		t.Errorf("reason = %q, want %q", mismatch.Reason, ReasonExpired)
+	}
+}
+
+// The tx cookie and the transaction must expire together: a cookie that outlives
+// the transaction reports a slow login as "no transaction for this id", and one that
+// dies first reports the same event as "no cookie at all".
+func TestTxTTLIsGenerousEnoughForAnInteractiveLogin(t *testing.T) {
+	// MFA, an account picker and a mistyped password fit inside this; ten minutes
+	// does not, which is what this guards against being quietly reduced to.
+	if TxTTL < 20*time.Minute {
+		t.Errorf("TxTTL = %s, too short for an interactive IDP login", TxTTL)
+	}
+	if expiredRetention <= TxTTL {
+		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or expired transactions "+
+			"are swept before they can be reported as expired", expiredRetention, TxTTL)
+	}
+}
+
+// A consumed transaction is gone: replaying the callback URL must not log anyone in
+// a second time.
+func TestCallbackConsumesTheTransaction(t *testing.T) {
+	// The code exchange is expected to fail — this is about the transaction, not the
+	// IDP — but it must reach a real endpoint rather than a nil client.
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer idp.Close()
+
+	o := &OIDC{
+		client: idp.Client(),
+		disco:  discoveryDoc{TokenEndpoint: idp.URL},
+		txs:    map[string]*txn{},
+		done:   make(chan struct{}),
+	}
+	defer o.Close()
+	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(time.Hour)}
+
+	// First use fails at the code exchange, but must still consume the transaction.
+	_, _, _ = o.Callback(context.Background(), "tx-1", "st", "code")
+	if n := o.PendingTransactions(); n != 0 {
+		t.Fatalf("pending transactions = %d after use, want 0", n)
+	}
+
+	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	var mismatch ErrStateMismatch
+	if !errors.As(err, &mismatch) || mismatch.Reason != ReasonNoTransaction {
+		t.Errorf("replay err = %v, want %s", err, ReasonNoTransaction)
+	}
 }
