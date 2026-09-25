@@ -29,13 +29,30 @@ import (
 	"ai-workspace-bff/internal/paths"
 )
 
-// orgListResponse is the Platform API's GET /organizations payload, narrowed to the
-// one field this needs. Deliberately not the generated model: an extra field added
-// upstream must not turn org resolution into a decode error.
+// orgListResponse covers both shapes this can be answered in — the Platform API's
+// {"list":[…]} and a user service's {"organizations":[…]} — narrowed to the one
+// field either way. Reading both means org_lookup_url needs no companion key saying
+// which format lives behind it, and a payload can only match one of them.
+//
+// Deliberately not the generated model: a field added upstream must not turn org
+// resolution into a decode error.
 type orgListResponse struct {
-	List []struct {
-		Handle string `json:"handle"`
-	} `json:"list"`
+	List          []orgEntry `json:"list"`
+	Organizations []orgEntry `json:"organizations"`
+}
+
+type orgEntry struct {
+	Handle string `json:"handle"`
+}
+
+// first returns the first handle from whichever shape the payload used.
+func (r orgListResponse) first() string {
+	for _, list := range [][]orgEntry{r.List, r.Organizations} {
+		if len(list) > 0 && list[0].Handle != "" {
+			return list[0].Handle
+		}
+	}
+	return ""
 }
 
 // orgDiscoveryLimit asks for one organization because only the first is used. The
@@ -53,10 +70,9 @@ const orgDiscoveryLimit = "1"
 // because it is a read of the caller's own memberships, which the login token is
 // already the right credential for.
 func (s *Server) discoverOrgHandle(ctx context.Context, loginToken string) (string, error) {
-	path := paths.PlatformAPI + "/organizations?limit=" + orgDiscoveryLimit + "&offset=0"
-	resp, err := s.platformDo(ctx, loginToken, http.MethodGet, path, nil, nil)
+	resp, source, err := s.orgLookupResponse(ctx, loginToken)
 	if err != nil {
-		return "", fmt.Errorf("calling the Platform API: %w", err)
+		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -64,17 +80,42 @@ func (s *Server) discoverOrgHandle(ctx context.Context, loginToken string) (stri
 		// Bounded: a large or streaming error body must not be read into memory
 		// whole just to be quoted in a log line.
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("Platform API answered %d: %s", resp.StatusCode, snippet)
+		return "", fmt.Errorf("%s answered %d: %s", source, resp.StatusCode, snippet)
 	}
 
 	var body orgListResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return "", fmt.Errorf("decoding the organization list: %w", err)
+		return "", fmt.Errorf("decoding the organization list from %s: %w", source, err)
 	}
-	if len(body.List) == 0 || body.List[0].Handle == "" {
-		return "", nil
+	return body.first(), nil
+}
+
+// orgLookupResponse performs the lookup against whichever source is configured, and
+// names it for the error messages: which one answered is the first thing a failure
+// here raises, and the two fail for entirely different reasons.
+func (s *Server) orgLookupResponse(ctx context.Context, loginToken string) (*http.Response, string, error) {
+	if raw := s.cfg.Auth.OIDC.TokenExchange.OrgLookupURL; raw != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+		if err != nil {
+			return nil, "the configured org lookup", fmt.Errorf("building the request: %w", err)
+		}
+		// Sent as configured — query string and all — because the URL names one
+		// endpoint of one service, not a route this composes.
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+loginToken)
+		resp, err := s.platformClient().Do(req)
+		if err != nil {
+			return nil, "the configured org lookup", fmt.Errorf("calling %s: %w", raw, err)
+		}
+		return resp, "the configured org lookup", nil
 	}
-	return body.List[0].Handle, nil
+
+	path := paths.PlatformAPI + "/organizations?limit=" + orgDiscoveryLimit + "&offset=0"
+	resp, err := s.platformDo(ctx, loginToken, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, "the Platform API", fmt.Errorf("calling the Platform API: %w", err)
+	}
+	return resp, "the Platform API", nil
 }
 
 // resolveOrgHandle decides which org this session's exchange is scoped to, in
@@ -113,9 +154,11 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 	}
 	if handle == "" {
 		// Not an error: a user who belongs to no org yet is exactly who the
-		// registration flow exists for.
-		slog.Info("the Platform API reports no organizations for this user — " +
-			"exchanging without one")
+		// registration flow exists for. It is also what an org lookup pointed at
+		// the wrong endpoint looks like — one that answers 200 in a shape carrying
+		// no organizations — so the source is named.
+		slog.Info("no organizations for this user — exchanging without one",
+			"org_lookup_url", te.OrgLookupURL)
 		return te.DefaultOrg
 	}
 
@@ -129,6 +172,7 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 			}
 		}
 	})
-	slog.Debug("resolved the user's organization from the Platform API", "org_handle", handle)
+	slog.Debug("resolved the user's organization", "org_handle", handle,
+		"org_lookup_url", te.OrgLookupURL)
 	return handle
 }

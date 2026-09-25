@@ -480,6 +480,24 @@ subject_token_type = "urn:ietf:params:oauth:token-type:jwt"
 # The token type asked for back.
 requested_token_type = "urn:ietf:params:oauth:token-type:jwt"
 
+# --- Organization scoping ---
+#
+# The form field the org handle is sent in, added to the exchange request (e.g.
+# "orgHandle"). Empty sends no org, skips the lookup, and leaves the STS to resolve
+# its own default — which is the 500 described above on an org-scoping STS.
+org_param = ""
+
+# Sent as given, query string included, with the login token as a bearer. Both
+# response shapes are read — {"list":[{"handle":...}]} and
+# {"organizations":[{"handle":...}]} — so no second key describes the format.
+org_lookup_url = ""
+
+# FALLBACK org handle, used when the lookup above cannot answer (unreachable, or it
+# refuses the login token) or the user belongs to no organization yet. It is one
+# guess shared by every user of the deployment, which is why it is the fallback and
+# not the source. Empty means such a session exchanges with no org at all.
+default_org = ""
+
 # Reuse the issued token across requests until it nears expiry, instead of exchanging
 # on every proxied call — an exchange is a blocking round trip, and repeating it per
 # request would put the IDP's token endpoint in the path of every API call the UI
@@ -494,6 +512,40 @@ cache_enabled = true
 # positive when cache_enabled = true.
 min_validity = "60s"
 
+
+
+# ====================================================================
+# Claim names in the ISSUED token
+#
+# An STS commonly re-shapes what it received — nesting the org as an object, parking
+# the originating IDP's profile claims under their own key — so these are separate
+# from [ai_workspace.auth.claim_mappings] above, which names the LOGIN token's
+# claims. One mapping cannot be right for both: the login token's user would resolve
+# empty, or the exchanged token's org would.
+#
+# Every key falls back to its parent value when unset, so an STS that preserves the
+# login shape needs nothing here. A value may be a dot-separated path into a nested
+# claim.
+#
+# Example, for an issued token carrying
+#   "organization": { "handle": "...", "uuid": "..." }
+#   "idp_claims":   { "name": "...", "email": "..." }
+# set organization = "organization.uuid", org_handle = "organization.handle",
+# username = "idp_claims.name", email = "idp_claims.email".
+#
+# There is deliberately no `organizations` key: the org LIST is read from the login
+# token only. Which orgs a user belongs to is a property of the user, not of a token
+# minted for one of them.
+# ====================================================================
+[ai_workspace.auth.oidc.token_exchange.claim_mappings]
+
+organization = ""
+org_name     = ""
+org_handle   = ""
+username     = ""
+email        = ""
+scope        = ""
+roles        = ""
 
 # ====================================================================
 # Settings with no config key

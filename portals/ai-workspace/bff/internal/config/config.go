@@ -274,6 +274,12 @@ type TokenExchangeConfig struct {
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
 
+	// OrgLookupURL overrides WHERE the user's organizations are read from — the
+	// absolute URL of a service that accepts the LOGIN token and answers with that
+	// user's orgs. Empty reads them from the Platform API's own /organizations.
+	//
+	OrgLookupURL string `koanf:"org_lookup_url"`
+
 	// DefaultOrg is the FALLBACK org handle, used when the user's own organizations
 	// could not be read from the Platform API — which is where the handle normally
 	// comes from before the user has switched (see the server's resolveOrgHandle).
@@ -868,6 +874,16 @@ func (c *Config) validateTokenExchange() error {
 	}
 
 	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	// Absolute and http(s): a relative or malformed URL here would fail on every
+	// login, and the fallback would quietly hide it behind default_org.
+	if te.OrgLookupURL != "" {
+		u, err := url.Parse(te.OrgLookupURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] org_lookup_url must be an absolute "+
+				"http:// or https:// URL, got %q", te.OrgLookupURL)
+		}
+	}
+
 	if te.CacheEnabled && te.MinValidity <= 0 {
 		return fmt.Errorf("[auth.oidc.token_exchange] min_validity must be positive when cache_enabled = true, got %s",
 			te.MinValidity)

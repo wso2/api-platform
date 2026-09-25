@@ -954,6 +954,9 @@ func TestConfigFingerprintCoversEveryRequestAffectingField(t *testing.T) {
 			"Its Scope member does change the cached Scopes and is in the fingerprint (asserted in " +
 			"TestConfigFingerprintChangesWithScopeClaimName); the rest only shape a log line",
 		"ClientAuth": "selects HOW the BFF authenticates (secret in the body, or none for a public client) — like the secret itself, it does not alter what is issued",
+		"OrgLookupURL": "server-side: names WHERE the server reads the user's organizations, never part of " +
+			"the exchange request. Whatever it resolves to arrives here as the orgHandle argument, which " +
+			"ExchangedToken.Usable compares separately via OrgHandle",
 		"DefaultOrg": "resolved by the server into the org actually requested, which ExchangedToken.Usable " +
 			"compares separately via OrgHandle — so changing it already invalidates cached tokens minted " +
 			"for the previous org, without the fingerprint (asserted in TestDefaultOrgChangeInvalidatesCache)",

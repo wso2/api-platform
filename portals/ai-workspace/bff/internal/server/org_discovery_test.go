@@ -179,3 +179,78 @@ func TestResolveOrgHandlePrecedenceAndFallbacks(t *testing.T) {
 		}
 	})
 }
+
+// The deployment this exists for: the gateway in front of the Platform API trusts
+// only the STS, so it 401s the Asgardeo LOGIN token — "Issuer present in the JWT
+// does not match with any of configured token issuers". The org list therefore has
+// to come from a service that does trust the login IDP, in that service's own shape.
+func TestOrgLookupURLOverridesThePlatformAPI(t *testing.T) {
+	const userMgtPayload = `{
+      "displayName": "John Doe",
+      "userEmail": "john@apip.com",
+      "idpId": "cfcb8d9d-3710-45ee-ae55-e73f3065d153",
+      "organizations": [
+        {"id":"24410","uuid":"5b4444fb-4bcc-4e63-85d3-ddd593841012","handle":"john","name":"John","status":"ACTIVE"},
+        {"id":"7668","uuid":"f444f730-8c9e-44b8-abc7-1164c5f4a3e5","handle":"alice","name":"Alice","status":"ACTIVE"}
+      ],
+      "userId": "16050"
+    }`
+
+	var gotAuth, gotQuery, gotPath atomic.Value
+	gotAuth.Store("")
+	gotQuery.Store("")
+	gotPath.Store("")
+	userMgt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth.Store(r.Header.Get("Authorization"))
+		gotPath.Store(r.URL.Path)
+		gotQuery.Store(r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(userMgtPayload))
+	}))
+	defer userMgt.Close()
+
+	// The Platform API must not be called at all once the override is set.
+	platform := &orgAPIStub{status: http.StatusUnauthorized, body: `{"description":"Unauthenticated request"}`}
+	s := discoveryServer(t, newOrgServer(t, platform).URL, "fallback")
+	s.cfg.Auth.OIDC.TokenExchange.OrgLookupURL = userMgt.URL + "/user-mgt/1.0.0/validate/user?origin_cloud=cloud"
+
+	if got := s.resolveOrgHandle(context.Background(), "login-token", ""); got != "john" {
+		t.Errorf("org handle = %q, want john (the first organization)", got)
+	}
+	if got := gotAuth.Load().(string); got != "Bearer login-token" {
+		t.Errorf("Authorization = %q, want the login token", got)
+	}
+	// The URL is sent as configured — the query string is part of the endpoint.
+	if got := gotPath.Load().(string); got != "/user-mgt/1.0.0/validate/user" {
+		t.Errorf("path = %q", got)
+	}
+	if got := gotQuery.Load().(string); got != "origin_cloud=cloud" {
+		t.Errorf("query = %q, want origin_cloud=cloud", got)
+	}
+	if n := platform.calls.Load(); n != 0 {
+		t.Errorf("Platform API called %d times despite the override", n)
+	}
+}
+
+// Both shapes are read, so the URL needs no companion key describing its format.
+func TestOrgLookupReadsEitherResponseShape(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{"platform api", `{"count":1,"list":[{"handle":"acme"}]}`, "acme"},
+		{"user service", `{"organizations":[{"handle":"john"}]}`, "john"},
+		{"neither", `{"somethingElse":[]}`, ""},
+		{"empty handle", `{"organizations":[{"handle":""}]}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			s := discoveryServer(t, srv.URL, "")
+			s.cfg.Auth.OIDC.TokenExchange.OrgLookupURL = srv.URL
+			if got := s.resolveOrgHandle(context.Background(), "login-token", ""); got != tc.want {
+				t.Errorf("org handle = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
