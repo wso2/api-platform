@@ -17,10 +17,27 @@
  */
 
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Box, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import Logo from '../../Components/Logo';
 import { useAppAuth } from '../../contexts/AppAuthContext';
+
+// Messages for the ?error= reasons the BFF's OIDC callback redirects here with (see
+// the loginErr* constants in internal/server/handlers.go).
+//
+// Looked up, never echoed. One of those reasons is a code the IDP itself chose, so
+// rendering the parameter directly would reflect upstream input into the page; an
+// unrecognised reason gets the generic message instead.
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
+  auth_failed: 'We could not complete your sign-in. Please try again.',
+  session_failed: 'We could not start your session. Please try again.',
+  token_exchange_rejected:
+    'Your account could not be granted access to this workspace. If you believe this is a '
+    + 'mistake, contact your administrator.',
+  upstream_unavailable:
+    'Sign-in is temporarily unavailable. This is usually brief — please try again in a moment.',
+};
+const GENERIC_LOGIN_ERROR = 'We could not complete your sign-in. Please try again.';
 
 // In BFF mode the OAuth handshake is owned by the server (/api/auth/login →
 // /api/auth/callback). This page just kicks off that redirect for OIDC, or sends
@@ -28,6 +45,8 @@ import { useAppAuth } from '../../contexts/AppAuthContext';
 export default function AutoLoginPage() {
   const { isAuthenticated, isLoading, login } = useAppAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const errorReason = searchParams.get('error');
 
   useEffect(() => {
     if (isLoading) return;
@@ -35,8 +54,36 @@ export default function AutoLoginPage() {
       navigate('/', { replace: true });
       return;
     }
+    // An ?error= means we have just come BACK from a callback that failed. Starting
+    // the redirect again here is what turns one failure into a loop: the IDP still
+    // has a live session, so it redirects straight back, the callback fails the same
+    // way, and we land here again — hammering both the IDP and the BFF until
+    // something gives. Wait for the user instead.
+    if (errorReason) return;
     void login();
-  }, [isLoading, isAuthenticated, login, navigate]);
+  }, [isLoading, isAuthenticated, errorReason, login, navigate]);
+
+  if (errorReason) {
+    return (
+      <Box
+        sx={{
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          height: '100vh', width: '100vw', gap: 4,
+        }}
+      >
+        <Logo height={48} />
+        <Stack spacing={2} alignItems="center" sx={{ maxWidth: 420, textAlign: 'center' }}>
+          <Typography variant="body1">
+            {LOGIN_ERROR_MESSAGES[errorReason] ?? GENERIC_LOGIN_ERROR}
+          </Typography>
+          <Button variant="contained" onClick={() => { void login(); }}>
+            Try again
+          </Button>
+        </Stack>
+      </Box>
+    );
+  }
 
   return (
     <Box

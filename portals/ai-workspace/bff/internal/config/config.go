@@ -27,7 +27,9 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -207,6 +209,147 @@ const (
 	AuthzModeRole  = "role"
 )
 
+// TokenExchangeConfig is [ai_workspace.auth.oidc.token_exchange]: the settings for
+// the second token call. It is a child of the login table rather than a table of its
+// own because the exchange targets the same issuer and defaults its client
+// credentials and scope to the login values above (see normalize) — the common
+// single-application deployment sets only enabled and audience. It is a table rather
+// than a set of token_exchange_* keys because the exchange is genuinely a separate
+// OAuth client: an STS deployment routinely registers a distinct client_id for it.
+type TokenExchangeConfig struct {
+	// Enabled is off by default: the AI Workspace forwards the login token upstream
+	// exactly as it did before this feature existed.
+	Enabled bool `koanf:"enabled"`
+
+	// GrantType selects the wire protocol — GrantTokenExchange (RFC 8693) or
+	// GrantJWTBearer (RFC 7523 on-behalf-of, which is what Entra ID speaks).
+	GrantType string `koanf:"grant_type"`
+
+	// TokenEndpoint defaults to the endpoint discovered from OIDCConfig.Issuer; set
+	// it only when the exchange happens at a different STS than login.
+	TokenEndpoint string `koanf:"token_endpoint"`
+
+	// ClientID and ClientSecret default to the login client's, but only as a PAIR
+	// (see normalize): naming a different client_id without its secret must not
+	// send that client the login application's secret.
+	ClientID     string `koanf:"client_id"`
+	ClientSecret string `koanf:"client_secret"`
+
+	// ClientAuth is how the BFF authenticates AT the exchange endpoint:
+	// ClientAuthSecretPost (the default) sends client_secret in the form body;
+	// ClientAuthNone sends client_id alone, for an STS that registers the exchange
+	// as a public client. It is an explicit key rather than an inference from an
+	// empty secret because the two cases are indistinguishable from a typo, and a
+	// misread one either leaks the login secret to the STS or silently drops
+	// client authentication.
+	ClientAuth string `koanf:"client_auth"`
+
+	// Audience becomes the issued token's aud and must match
+	// [platform_api.auth.idp] audience. One pre-registered value only: WSO2 answers
+	// invalid_target otherwise, and supports it only after IS 7.3.0.
+	Audience string `koanf:"audience"`
+
+	// Resource is the alternative target naming, mutually exclusive with Audience.
+	Resource string `koanf:"resource"`
+
+	// Scopes is requested on the issued token, except under GrantJWTBearer where it
+	// names the target API ("api://<app-id>/.default") and is required.
+	Scopes string `koanf:"scope"`
+
+	// SubjectTokenType defaults to the JWT type, which WSO2 requires; Okta and
+	// Keycloak expect the access_token type. Both types are unused by GrantJWTBearer.
+	SubjectTokenType   string `koanf:"subject_token_type"`
+	RequestedTokenType string `koanf:"requested_token_type"`
+
+	CacheEnabled bool          `koanf:"cache_enabled"`
+	MinValidity  time.Duration `koanf:"min_validity"`
+
+	// OrgParam names an extra form field sent with the exchange request, carrying
+	// the handle of the org currently selected
+	OrgParam string `koanf:"org_param"`
+
+	// DefaultOrg is the org handle used before the user has selected one — the
+	// window between login and the first org switch, which for a single-org
+	// deployment is the whole session. Unset, the exchange sends no org and the STS
+	// resolves whichever org it considers the caller's default; pinning it here
+	// makes that choice explicit and stable, so the workspace does not silently
+	// follow a default changed elsewhere. A user's own switch always wins over it.
+	DefaultOrg string `koanf:"default_org"`
+
+	// ClaimMappings names the claims in the ISSUED token, which routinely differ
+	// from the login token's: the STS re-shapes what it received, commonly nesting
+	// the org as an object and parking the originating IDP's profile claims under
+	// their own key. One mapping for both tokens therefore cannot be right for both
+	// — the login token's user would resolve empty, or the exchanged token's org
+	// would. Each field falls back to the parent [auth.claim_mappings] value when
+	// unset (see normalize), so a deployment whose STS preserves the login shape
+	// configures nothing here.
+	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
+
+	// There is deliberately no refresh-token option: RFC 8693 §2.2.1 advises against
+	// one when trading temporary credentials, and it would outlive the login session
+	// it derives from. The BFF re-exchanges from the subject token.
+}
+
+// GrantTokenExchange and GrantJWTBearer are the canonical internal grant_type values.
+// They are short names rather than the wire URIs because this key selects which
+// protocol the Exchanger speaks, not what it puts on the wire: Exchanger.buildForm
+// emits the registered URI itself, along with the parameter set that goes with it
+// (subject_token vs assertion, audience vs scope). That is also why the set is closed
+// — a value with no branch behind it has no implementation, and silently falling
+// through to RFC 8693 would send a request the operator did not ask for.
+const (
+	GrantTokenExchange = "token_exchange"
+	GrantJWTBearer     = "jwt_bearer"
+)
+
+// GrantURI* are the IANA-registered grant-type URIs for the two protocols (RFC 8693
+// §2.1 and RFC 7523 §2.1). They are what an IDP's own documentation shows, so an
+// operator copying from it reaches for these rather than the short names above.
+const (
+	GrantURITokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	GrantURIJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+)
+
+// grantTypeAliases maps the registered URI spellings onto the canonical short names,
+// applied in normalize. Both spellings name the same protocol, so rejecting the
+// standard one would be pedantry: it is the more likely thing to be written, being
+// the value that appears in every vendor's docs and in the request itself.
+var grantTypeAliases = map[string]string{
+	GrantURITokenExchange: GrantTokenExchange,
+	GrantURIJWTBearer:     GrantJWTBearer,
+}
+
+// SupportedTokenExchangeGrants is the closed set [auth.oidc.token_exchange] grant_type
+// is validated against, after normalize has resolved aliases. Adding a protocol means
+// adding it here and to Exchanger.buildForm.
+var SupportedTokenExchangeGrants = []string{GrantTokenExchange, GrantJWTBearer}
+
+// ClientAuthSecretPost and ClientAuthNone are the supported
+// [auth.oidc.token_exchange] client_auth values — the client-authentication half of
+// the exchange request, independent of which grant it carries.
+//
+// "none" is the OAuth term for a public client (RFC 6749 §2.1): the STS identifies
+// the application by client_id and holds no secret for it. RFC 8693 permits it, and
+// an STS fronting a separate exchange application commonly registers it that way.
+// The BFF is still a confidential server-side component — "public" describes the
+// registration at the STS, not where this code runs.
+const (
+	ClientAuthSecretPost = "client_secret_post"
+	ClientAuthNone       = "none"
+)
+
+// SupportedClientAuthMethods is the closed set client_auth is validated against.
+var SupportedClientAuthMethods = []string{ClientAuthSecretPost, ClientAuthNone}
+
+// supportedGrantSpellings is what the startup error lists. It names every accepted
+// spelling, not just the canonical ones: an operator who wrote the registered URI
+// needs to see that it is accepted, not be told it is unsupported.
+var supportedGrantSpellings = []string{
+	GrantTokenExchange, GrantURITokenExchange,
+	GrantJWTBearer, GrantURIJWTBearer,
+}
+
 // OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
 // secret lives only here on the BFF and is never emitted to the browser. Whether the
 // client is used at all is not a key here — see AuthConfig.OIDCEnabled, which derives it
@@ -218,6 +361,18 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+
+	// TokenExchange is [ai_workspace.auth.oidc.token_exchange]: trade the login token
+	// for one minted for the Platform API, so the credential sent upstream is
+	// audience- and scope-scoped to that API.
+	//
+	// The motivating deployment is an IDP that authenticates users but cannot mint
+	// this platform's ap:* scopes (Microsoft Entra ID — see AuthorizationConfig.Mode),
+	// which otherwise forces mode = "role" and a grant table mirrored across two
+	// services. Exchanging at an STS that can mint them replaces that mirror with a
+	// token whose own scope claim is authoritative on both sides. Operator
+	// documentation lives in configs/config-template.toml.
+	TokenExchange TokenExchangeConfig `koanf:"token_exchange"`
 }
 
 // ClaimMappingConfig is [ai_workspace.auth.claim_mappings]: which claim names the BFF
@@ -359,7 +514,69 @@ func (c *Config) normalize() {
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
+	// Lowercased first so the alias lookup is case-insensitive too, then resolved:
+	// the registered URI and the short name are the same protocol, and every check
+	// downstream compares against the short name.
+	c.Auth.OIDC.TokenExchange.GrantType = strings.ToLower(c.Auth.OIDC.TokenExchange.GrantType)
+	if canonical, ok := grantTypeAliases[c.Auth.OIDC.TokenExchange.GrantType]; ok {
+		c.Auth.OIDC.TokenExchange.GrantType = canonical
+	}
+
+	c.Auth.OIDC.TokenExchange.ClientAuth = strings.ToLower(c.Auth.OIDC.TokenExchange.ClientAuth)
+
+	// Inherited as a PAIR, and only when neither half is set: the single-application
+	// deployment omits both and reuses the login client wholesale. An operator who
+	// names a different client_id has left the login client behind, so inheriting its
+	// secret would send one application's credential under another's identity — the
+	// STS answers invalid_client, and the login secret has been disclosed to it. A
+	// client_id with no secret is instead either a public client (client_auth =
+	// ClientAuthNone) or a mistake, and validateTokenExchange decides which.
+	if c.Auth.OIDC.TokenExchange.ClientID == "" && c.Auth.OIDC.TokenExchange.ClientSecret == "" {
+		c.Auth.OIDC.TokenExchange.ClientID = c.Auth.OIDC.ClientID
+		c.Auth.OIDC.TokenExchange.ClientSecret = c.Auth.OIDC.ClientSecret
+	}
+	// Per FIELD, not per table: an STS that nests only the org still uses the login
+	// token's names for everything else, so inheriting the whole table only when it
+	// is entirely empty would force an operator to restate every unchanged name.
+	te := &c.Auth.OIDC.TokenExchange.ClaimMappings
+	parent := c.Auth.ClaimMappings
+	for _, f := range []struct {
+		dst *string
+		src string
+	}{
+		{&te.Username, parent.Username},
+		{&te.Email, parent.Email},
+		{&te.Roles, parent.Roles},
+		{&te.Scope, parent.Scope},
+		{&te.OrgID, parent.OrgID},
+		{&te.OrgName, parent.OrgName},
+		{&te.OrgHandle, parent.OrgHandle},
+		{&te.Organizations, parent.Organizations},
+	} {
+		if *f.dst == "" {
+			*f.dst = f.src
+		}
+	}
+
+	// Not inherited for jwt_bearer, where scope names the target API rather than
+	// requesting permissions; validate requires an explicit value there.
+	if c.Auth.OIDC.TokenExchange.Scopes == "" && c.Auth.OIDC.TokenExchange.GrantType != GrantJWTBearer {
+		c.Auth.OIDC.TokenExchange.Scopes = c.Auth.OIDC.Scopes
+	}
+
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
+}
+
+// TokenExchangeEnabled derives the switch from both flags, so the feature can never
+// be half-on: there is no subject token to exchange outside OIDC mode.
+func (a AuthConfig) TokenExchangeEnabled() bool {
+	return a.OIDCEnabled() && a.OIDC.TokenExchange.Enabled
+}
+
+// ExchangeTokenEndpoint returns the configured override, or "" to tell the caller to
+// use the endpoint discovered by the OIDC client.
+func (a AuthConfig) ExchangeTokenEndpoint() string {
+	return a.OIDC.TokenExchange.TokenEndpoint
 }
 
 // validate fails startup on any value that would otherwise surface as a confusing
@@ -487,6 +704,10 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if err := c.validateTokenExchange(); err != nil {
+		return err
+	}
+
 	// Basic (file-based) auth is supported for quickstart deployments but is not
 	// recommended for production; point operators at OIDC.
 	if !c.Auth.OIDCEnabled() {
@@ -495,4 +716,161 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+// isLoopbackHost reports whether host (possibly with a port) is the local machine.
+func isLoopbackHost(host string) bool {
+	h := host
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		h = parsed
+	}
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(h, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "[invalid URL]"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// validateTokenExchange fails startup on a configuration that would break every
+// request after login. Aggressive precisely because the feature is fail-closed: a
+// misconfiguration takes the UI down, so an operator should see it at boot.
+func (c *Config) validateTokenExchange() error {
+	te := c.Auth.OIDC.TokenExchange
+
+	// Checked even when disabled, so a typo surfaces when written rather than on the
+	// deploy that enables the feature.
+	if !slices.Contains(SupportedTokenExchangeGrants, te.GrantType) {
+		return fmt.Errorf("invalid [auth.oidc.token_exchange] grant_type %q: supported values are %s",
+			te.GrantType, strings.Join(supportedGrantSpellings, ", "))
+	}
+
+	if !slices.Contains(SupportedClientAuthMethods, te.ClientAuth) {
+		return fmt.Errorf("invalid [auth.oidc.token_exchange] client_auth %q: supported values are %s",
+			te.ClientAuth, strings.Join(SupportedClientAuthMethods, ", "))
+	}
+
+	if !te.Enabled {
+		return nil
+	}
+
+	// Outside OIDC mode the feature is inert rather than invalid: the cookie JWT in
+	// basic mode is one the Platform API signed for itself, so there is no subject
+	// token to exchange and TokenExchangeEnabled() already reports false. Refusing to
+	// start here would turn a stale environment variable into a dead quickstart —
+	// enabled is env-bindable in the shipped config, so a variable left over from an
+	// OIDC deployment would take down a basic-mode one that never used the feature.
+	// Warn and skip the rest: every check below describes a request this deployment
+	// will never send.
+	if !c.Auth.OIDCEnabled() {
+		slog.Warn("[auth.oidc.token_exchange] enabled = true is ignored outside OIDC mode — "+
+			"there is no login token to exchange in this mode, so the feature stays off",
+			"auth_mode", c.Auth.Mode, "required_mode", AuthModeOIDC)
+		return nil
+	}
+	if te.ClientID == "" {
+		return fmt.Errorf("[auth.oidc.token_exchange] client_id is required " +
+			"(it defaults to client_id on the parent [auth.oidc] table, but only when client_secret " +
+			"is also unset — the two are inherited as a pair)")
+	}
+	switch te.ClientAuth {
+	case ClientAuthSecretPost:
+		if te.ClientSecret == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] client_secret is required with client_auth = %q; "+
+				"set client_auth = %q if the STS registers the exchange as a public client",
+				ClientAuthSecretPost, ClientAuthNone)
+		}
+	case ClientAuthNone:
+		// Contradictory rather than harmless: one of the two is wrong, and guessing
+		// which would either drop authentication the operator configured or send a
+		// credential they asked to withhold.
+		if te.ClientSecret != "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] client_auth = %q sends no client_secret, "+
+				"but one is configured — remove the secret or set client_auth = %q",
+				ClientAuthNone, ClientAuthSecretPost)
+		}
+	}
+
+	if te.TokenEndpoint != "" {
+		u, err := url.Parse(te.TokenEndpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be an absolute http:// or https:// URL, got %q",
+				redactURL(te.TokenEndpoint))
+		}
+
+		if u.User != nil {
+			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must not contain userinfo, got %q",
+				redactURL(te.TokenEndpoint))
+		}
+		// The POST body carries the client secret and subject token. Loopback is
+		// exempt: the request never reaches a network there.
+		if u.Scheme == "http" && !isLoopbackHost(u.Host) {
+			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
+				"(the client secret and subject token are sent in the request body), got %q",
+				redactURL(te.TokenEndpoint))
+		}
+	}
+
+	switch te.GrantType {
+	case GrantTokenExchange:
+		if te.Audience != "" && te.Resource != "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] set at most one of audience / resource, not both")
+		}
+		// Not required by the RFC — some IDPs derive the target from the exchanging
+		// application — but a mismatched aud is the most common way this fails.
+		if te.Audience == "" && te.Resource == "" {
+			slog.Warn("[auth.oidc.token_exchange] neither audience nor resource is set — the issued " +
+				"token's aud claim will be whatever the IDP defaults to. It must match " +
+				"[platform_api.auth.idp] audience, or the Platform API will reject every request.")
+		}
+		if te.SubjectTokenType == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] subject_token_type is required for grant_type = %q",
+				GrantTokenExchange)
+		}
+		if te.RequestedTokenType == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] requested_token_type is required for grant_type = %q",
+				GrantTokenExchange)
+		}
+
+	case GrantJWTBearer:
+		if te.Audience != "" || te.Resource != "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] audience / resource are not used by "+
+				"grant_type = %q (the target API is named through "+
+				"scope, e.g. \"api://<app-id>/.default\") — remove them", GrantJWTBearer)
+		}
+		if te.Scopes == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] scope is required for grant_type = %q: "+
+				"it is how the target API is named", GrantJWTBearer)
+		}
+	}
+
+	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	if te.CacheEnabled && te.MinValidity <= 0 {
+		return fmt.Errorf("[auth.oidc.token_exchange] min_validity must be positive when cache_enabled = true, got %s",
+			te.MinValidity)
+	}
+
+	if te.OrgParam != "" && reservedExchangeFormParams[te.OrgParam] {
+		return fmt.Errorf("[auth.oidc.token_exchange] org_param %q collides with a parameter the exchange "+
+			"request already sets — choose a different field name", te.OrgParam)
+	}
+
+	return nil
+}
+
+// reservedExchangeFormParams are the form fields Exchanger.buildForm already sets
+// (see tokenexchange.go); org_param must name something else, or an operator typo
+// would silently overwrite a required parameter instead of adding a new one.
+var reservedExchangeFormParams = map[string]bool{
+	"client_id": true, "client_secret": true, "grant_type": true,
+	"subject_token": true, "subject_token_type": true, "requested_token_type": true,
+	"audience": true, "resource": true, "scope": true,
+	"assertion": true, "requested_token_use": true,
 }

@@ -52,6 +52,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/login"), s.handleLogin)
 	mux.HandleFunc("POST "+s.path("/api/logout"), s.handleLogout)
 	mux.HandleFunc("GET "+s.path("/api/session"), s.handleSession)
+	mux.HandleFunc("POST "+s.path("/api/session/org"), s.handleSwitchOrg)
 	mux.HandleFunc("GET "+s.path("/api/auth/login"), s.handleOIDCLogin)
 	mux.HandleFunc("GET "+s.path("/api/auth/callback"), s.handleOIDCCallback)
 

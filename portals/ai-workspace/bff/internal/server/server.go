@@ -20,6 +20,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -56,8 +57,31 @@ type Server struct {
 	billingProxy *httputil.ReverseProxy
 	handler      http.Handler
 
+	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
+	exchanger *auth.Exchanger
+
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
+
+	exchangeMu    sync.Mutex
+	exchangeLocks map[string]*exchangeLock
+
+	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
+	// against the rekey/delete in doRefresh for the same token. Without this, the
+	// two can interleave — doExchange reads the session, doRefresh re-keys it and
+	// deletes the old entry, then doExchange writes it back under the now-deleted
+	// old key, resurrecting a stale session after its token has rotated out.
+	sessionMu    sync.Mutex
+	sessionLocks map[string]*sessionLock
+}
+
+// exchangeLock single-flights one session's exchange, so the burst of parallel calls
+// the SPA makes on page load hits the IDP once rather than once per request.
+type exchangeLock struct {
+	sync.Mutex
+	done   bool
+	result *auth.Result
+	err    error
 }
 
 // New builds a Server from config. It creates the upstream HTTP client, the
@@ -93,8 +117,10 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// The browser calls the proxy under the app's base path, so the prefix stripped
 		// on the way upstream is the base path plus the proxy prefix — the Platform API
 		// knows nothing about either.
-		proxy:        proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
-		refreshLocks: make(map[string]*refreshLock),
+		proxy:         proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
+		refreshLocks:  make(map[string]*refreshLock),
+		exchangeLocks: make(map[string]*exchangeLock),
+		sessionLocks:  make(map[string]*sessionLock),
 	}
 
 	if cfg.ControlPlane.CloudURL != "" {
@@ -144,9 +170,54 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		s.oidc = o
+
+		// Built after the OIDC client to reuse its endpoint discovery.
+		if cfg.Auth.TokenExchangeEnabled() {
+			endpoint := cfg.Auth.ExchangeTokenEndpoint()
+			if endpoint == "" {
+				endpoint = o.TokenEndpoint()
+			}
+			te := cfg.Auth.OIDC.TokenExchange
+			// The issued token's own claim names, which default per-field to the
+			// login mapping — so this is `claims` unless the STS re-shapes them.
+			exchangeClaims, err := buildClaimMapping(te.ClaimMappings, cfg.Auth.Authorization)
+			if err != nil {
+				return nil, err
+			}
+			s.exchanger = auth.NewExchanger(upstream, te, endpoint,
+				auth.WithClaimMapping(exchangeClaims))
+			slog.Info("token exchange enabled: upstream requests will carry an exchanged token",
+				"grant_type", te.GrantType,
+				"token_endpoint", endpoint,
+				"client_id", te.ClientID,
+				"client_auth", te.ClientAuth,
+				"audience", te.Audience,
+				"resource", te.Resource,
+				"subject_token_type", te.SubjectTokenType,
+				"requested_token_type", te.RequestedTokenType,
+				"cache_enabled", te.CacheEnabled,
+			)
+		}
 	}
 
 	s.handler = s.routes()
+
+	// One startup line carrying every value that decides whether a login can
+	// complete. Each of these has cost a debugging session on its own: a
+	// redirect_uri the IDP does not have registered, a callback path the server does
+	// not serve, and a tx cookie whose Path the callback route falls outside of.
+	// They are only meaningful together, so they are logged together, at Info — a
+	// failing login should not require turning debug on first.
+	if cfg.Auth.OIDCEnabled() {
+		slog.Info("oidc login wiring",
+			"issuer", cfg.Auth.OIDC.Issuer,
+			"client_id", cfg.Auth.OIDC.ClientID,
+			"redirect_uri", cfg.Auth.OIDC.RedirectURL,
+			"callback_served_at", s.path("/api/auth/callback"),
+			"tx_cookie_path", s.txCookiePath(),
+			"post_logout_redirect_uri", cfg.Auth.OIDC.PostLogoutRedirectURL,
+		)
+	}
 	return s, nil
 }
 

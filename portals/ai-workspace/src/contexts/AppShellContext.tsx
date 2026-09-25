@@ -28,7 +28,7 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects, createDefaultProject } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { useChoreoUser } from './ChoreoUserContext';
+import { usePlatformUser, type OrgSwitchFailure } from './PlatformUserContext';
 import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
@@ -82,12 +82,33 @@ interface AppShellProviderProps {
   userEmail?: string;
 }
 
+/**
+ * Turns an org-switch failure into user-facing words. One place, so the two causes
+ * cannot drift back into a single message: `rejected` is a verdict about this user
+ * that retrying will not change, while `unavailable` is a platform outage that
+ * usually clears on its own. Telling someone to contact their administrator about a
+ * blip — or telling someone genuinely without access to try again — is the failure
+ * this function exists to prevent.
+ */
+function orgSwitchErrorMessage(reason: OrgSwitchFailure, orgName: string): string {
+  switch (reason) {
+    case 'rejected':
+      return `You do not have access to ${orgName}. If you believe this is a mistake, `
+        + 'contact your administrator.';
+    case 'unavailable':
+      return `${orgName} could not be opened because sign-in is temporarily unavailable. `
+        + 'Please try again in a moment.';
+    default:
+      return `Could not open ${orgName}. Please try again.`;
+  }
+}
+
 export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   children,
   userName: initialUserName,
   userEmail: initialUserEmail,
 }) => {
-  const { setIsTokenExchanged, getOrganizations } = useChoreoUser();
+  const { setIsTokenExchanged, getOrganizations, exchangeOrgToken } = usePlatformUser();
   const { user } = useAppAuth();
 
   const isInitializedRef = useRef(false);
@@ -213,6 +234,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           setIsOrganizationsLoading(false);
         }
 
+        const resolvedExchange = await exchangeOrgToken(resolvedOrg.handle);
+        if (!resolvedExchange.ok) {
+          setError(orgSwitchErrorMessage(resolvedExchange.reason, resolvedOrg.name));
+          return;
+        }
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
@@ -232,6 +258,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       }
       setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
+      const firstOrgExchange = await exchangeOrgToken(orgs[0].handle);
+      if (!firstOrgExchange.ok) {
+        setError(orgSwitchErrorMessage(firstOrgExchange.reason, orgs[0].name));
+        return;
+      }
       setIsTokenExchanged(true);
       await fetchProjectsForOrg();
     } catch (err: any) {
@@ -241,17 +272,27 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged, exchangeOrgToken]);
 
   const switchOrganization = useCallback(
     async (organization: Organization) => {
       if (organization.handle === currentOrganization?.handle) {
         return;
       }
+      const switched = await exchangeOrgToken(organization.handle);
+      if (!switched.ok) {
+        setError(orgSwitchErrorMessage(switched.reason, organization.name));
+        return;
+      }
+      // Nothing else clears this, so a message left by an earlier failed switch would
+      // outlive the condition that caused it: the user retries after an outage clears,
+      // the switch succeeds, and they are still reading "sign-in is temporarily
+      // unavailable" over the org they are now actually in.
+      setError(null);
       setCurrentOrganizationState(organization);
       await fetchProjectsForOrg();
     },
-    [currentOrganization?.handle, fetchProjectsForOrg]
+    [currentOrganization?.handle, fetchProjectsForOrg, exchangeOrgToken]
   );
 
   useEffect(() => {
