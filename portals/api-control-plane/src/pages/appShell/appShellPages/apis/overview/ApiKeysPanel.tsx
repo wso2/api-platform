@@ -39,6 +39,7 @@ import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
 
 import { CreateApiKeyDialog } from './CreateApiKeyDialog';
+import { Can } from '@/permissions/Can';
 
 const messages = defineMessages({
   add: {
@@ -216,14 +217,16 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
               <FormattedMessage {...messages.description} />
             </Typography>
           </Box>
-          <Button
-            onClick={() => setDialogOpen(true)}
-            size="small"
-            startIcon={<Plus size={16} />}
-            variant="outlined"
-          >
-            <FormattedMessage {...messages.add} />
-          </Button>
+          <Can do="CreateAPIKey" denied="disable">
+            <Button
+              onClick={() => setDialogOpen(true)}
+              size="small"
+              startIcon={<Plus size={16} />}
+              variant="outlined"
+            >
+              <FormattedMessage {...messages.add} />
+            </Button>
+          </Can>
         </Stack>
 
         {keysQuery.isLoading ? (
@@ -267,19 +270,21 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                     </Tooltip>
                   </Stack>
                 </Box>
-                <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
-                  <span>
-                    <IconButton
-                      disabled={revokeMutation.isPending || !key.id}
-                      onClick={() =>
-                        key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
-                      }
-                      size="small"
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
+                <Can do="RevokeAPIKey" denied="hide">
+                  <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
+                    <span>
+                      <IconButton
+                        disabled={revokeMutation.isPending || !key.id}
+                        onClick={() =>
+                          key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
+                        }
+                        size="small"
+                      >
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Can>
               </Stack>
             ))}
             {keys.length > 5 && (
@@ -349,19 +354,21 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                     </Typography>
                   </Stack>
                 </Box>
-                <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
-                  <span>
-                    <IconButton
-                      disabled={revokeMutation.isPending || !key.id}
-                      onClick={() =>
-                        key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
-                      }
-                      size="small"
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </span>
-                </Tooltip>
+                <Can do="RevokeAPIKey" denied="hide">
+                  <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
+                    <span>
+                      <IconButton
+                        disabled={revokeMutation.isPending || !key.id}
+                        onClick={() =>
+                          key.id && setRevokeTarget({ id: key.id, displayName: key.displayName })
+                        }
+                        size="small"
+                      >
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Can>
               </Stack>
             ))}
           </Stack>

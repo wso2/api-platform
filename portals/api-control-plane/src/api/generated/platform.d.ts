@@ -3876,7 +3876,11 @@ export interface components {
              * @example prod-gateway-01
              */
             gatewayId: string;
-            /** @description Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`. */
+            /**
+             * @description Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes `endpointUrl` too, which replaces the backend it routes to, and `upstreamAuthValue` — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
+             *
+             *     `upstreamAuthHeader` names the header that credential is sent in. It is read only alongside `upstreamAuthValue`, and only where the upstream authenticates with an api-key — basic and bearer send `Authorization` by definition.
+             */
             metadata?: {
                 [key: string]: unknown;
             };
@@ -3970,15 +3974,14 @@ export interface components {
              */
             baseDeploymentId?: string | null;
             /**
-             * @description Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-             *     has one: `base: build` runs the build it names, and `base: current` stores what
-             *     it renders as a build and runs that.
+             * @description Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+             *     LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+             *     it names, and `base: current` stores what it renders as a build and runs that.
              *
-             *     Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-             *     deployments — including one promoted from another deployment, which reuses that
-             *     deployment's rendered artifact. Also null once the build it ran has been pruned.
-             *     Null means only that no build can be named; the deployment keeps its own
-             *     rendered artifact either way.
+             *     Null for artifact kinds that have no builds, and for a deployment promoted from
+             *     another, which reuses that deployment's rendered artifact. Also null once the
+             *     build it ran has been pruned. Null means only that no build can be named; the
+             *     deployment keeps its own rendered artifact either way.
              * @example 2026-01-31-2
              */
             buildId?: string | null;
@@ -5855,7 +5858,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may already hold the earlier copy while the local listing is unchanged; review the draft and publish again to bring them in line), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed by any of these; only a draft-changed conflict can leave the API Portal ahead of it until the next publish. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;

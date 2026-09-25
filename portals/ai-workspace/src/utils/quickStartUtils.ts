@@ -73,3 +73,38 @@ export function sortByLatest<T>(
     .map(({ item }) => item);
 }
 
+
+/**
+ * localStorage key recording that an organization dismissed the first-run
+ * onboarding wizard (its "Skip and go to Console" / close actions).
+ *
+ * Keyed by organization HANDLE, not uuid, on purpose: a cloud onboarding gate
+ * registered against `AI_WORKSPACE_APP_GATE_SLOT` decides whether to send a
+ * user here, and the Port it is handed carries the handle (`orgHandle`) and not
+ * the uuid. Both sides must agree on the key or a dismissal would be invisible
+ * to the gate and the user would be sent back into the wizard on every load.
+ */
+export function quickStartDismissedKey(organizationHandle: string): string {
+  return `qs_wizard_dismissed_${organizationHandle}`;
+}
+
+/** True when this organization has already dismissed the onboarding wizard. */
+export function isQuickStartDismissed(organizationHandle: string): boolean {
+  if (!organizationHandle) return false;
+  try {
+    return localStorage.getItem(quickStartDismissedKey(organizationHandle)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/** Records that this organization dismissed the onboarding wizard. */
+export function dismissQuickStart(organizationHandle: string): void {
+  if (!organizationHandle) return;
+  try {
+    localStorage.setItem(quickStartDismissedKey(organizationHandle), 'true');
+  } catch {
+    // Ignore localStorage write failures — a dismissal that cannot be stored
+    // only means the wizard is offered again, never a broken page.
+  }
+}

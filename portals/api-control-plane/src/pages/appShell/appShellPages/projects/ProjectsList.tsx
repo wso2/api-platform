@@ -24,6 +24,7 @@ import type { Project } from '@/api/resources/projects';
 import { openableProps } from '@/components/openable';
 import { focusRingSx } from '@/theme';
 import { useFormatters } from '@/i18n/useFormatters';
+import { useCan } from '@/permissions/useCan';
 
 const AVATAR_SIZE = 40;
 const AVATAR_ICON_SIZE = 22;
@@ -88,6 +89,7 @@ type ProjectRowProps = {
 /** One project as a row: identity on the left, when it last changed on the right. */
 function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
   const intl = useIntl();
+  const canDelete = useCan('DeleteProject');
   const { relativeTime } = useFormatters();
 
   return (
@@ -151,7 +153,7 @@ function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
             )}
           </Typography>
         </Stack>
-        {onDelete && (
+        {onDelete && canDelete && (
           <Tooltip title={intl.formatMessage(messages.deleteTooltip)}>
             <IconButton
               aria-label={intl.formatMessage(messages.deleteLabel, { name: project.displayName })}

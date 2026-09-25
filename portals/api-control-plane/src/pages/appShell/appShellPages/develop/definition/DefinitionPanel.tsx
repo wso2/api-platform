@@ -58,6 +58,8 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useFormatters } from '@/i18n/useFormatters';
 import { OperationsList } from './OperationsList';
+import { Can } from '@/permissions/Can';
+import { useCan } from '@/permissions/useCan';
 
 const messages = defineMessages({
   title: {
@@ -274,11 +276,13 @@ function extractOperations(spec: OpenApiSpec): Operation[] {
       if (!op) return [];
       const name = asText(op.description) ?? asText(op.summary);
       const description = asText(op.description);
-      return [{
-        name,
-        ...(description !== undefined ? { description } : {}),
-        request: { method: method.toUpperCase() as Operation['request']['method'], path }
-      }];
+      return [
+        {
+          name,
+          ...(description !== undefined ? { description } : {}),
+          request: { method: method.toUpperCase() as Operation['request']['method'], path },
+        },
+      ];
     });
   });
 }
@@ -311,6 +315,7 @@ function filenameFromUrl(urlStr: string): string {
 
 export function DefinitionPanel() {
   const intl = useIntl();
+  const canUpdateRESTApiSpec = useCan('UpdateRESTAPISpec');
   const { relativeTime } = useFormatters();
   const { params } = useConsoleScope();
   const restApiId = params.apiHandler;
@@ -697,7 +702,12 @@ export function DefinitionPanel() {
       </Dialog>
 
       {/* Save confirmation dialog */}
-      <Dialog fullWidth maxWidth="xs" onClose={() => setConfirmSaveOpen(false)} open={confirmSaveOpen}>
+      <Dialog
+        fullWidth
+        maxWidth="xs"
+        onClose={() => setConfirmSaveOpen(false)}
+        open={confirmSaveOpen}
+      >
         <DialogTitle>{intl.formatMessage(messages.confirmSaveTitle)}</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
@@ -833,16 +843,18 @@ export function DefinitionPanel() {
                 {showSource ? 'View Resources' : 'View Definition'}
               </Button>
               <ButtonGroup aria-label="Definition file actions" variant="outlined">
-                <Tooltip title={intl.formatMessage(messages.updateOpenApi)}>
-                  <Button
-                    aria-label={intl.formatMessage(messages.updateOpenApi)}
-                    disabled={isSaving}
-                    onClick={() => setDialogOpen(true)}
-                    sx={{ minWidth: 40, px: 1 }}
-                  >
-                    <Upload size={18} />
-                  </Button>
-                </Tooltip>
+                <Can do="UpdateRESTAPISpec" denied="disable">
+                  <Tooltip title={intl.formatMessage(messages.updateOpenApi)}>
+                    <Button
+                      aria-label={intl.formatMessage(messages.updateOpenApi)}
+                      disabled={isSaving || !canUpdateRESTApiSpec}
+                      onClick={() => setDialogOpen(true)}
+                      sx={{ minWidth: 40, px: 1 }}
+                    >
+                      <Upload size={18} />
+                    </Button>
+                  </Tooltip>
+                </Can>
                 {hasSpec ? (
                   <Tooltip title={intl.formatMessage(messages.downloadLabel)}>
                     <Button
@@ -902,7 +914,7 @@ export function DefinitionPanel() {
                     <ToggleButton value="yaml">YAML</ToggleButton>
                     <ToggleButton value="json">JSON</ToggleButton>
                   </ToggleButtonGroup>
-                  {hasSpec && !isEditing && (
+                  {hasSpec && !isEditing && canUpdateRESTApiSpec && (
                     <Button
                       onClick={() => setIsEditing(true)}
                       size="small"
@@ -914,14 +926,16 @@ export function DefinitionPanel() {
                   )}
                 </Stack>
               ) : (
-                <Button
-                  onClick={() => setShowAddModal(true)}
-                  size="small"
-                  startIcon={<Plus size={16} />}
-                  variant="outlined"
-                >
-                  {intl.formatMessage(messages.addResource)}
-                </Button>
+                <Can do="UpdateRESTAPISpec" denied="hide">
+                  <Button
+                    onClick={() => setShowAddModal(true)}
+                    size="small"
+                    startIcon={<Plus size={16} />}
+                    variant="outlined"
+                  >
+                    {intl.formatMessage(messages.addResource)}
+                  </Button>
+                </Can>
               )}
             </Box>
 

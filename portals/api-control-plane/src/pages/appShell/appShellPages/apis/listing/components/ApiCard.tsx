@@ -30,6 +30,7 @@ import {
   UpdatedLabel,
   VersionChip,
 } from './RestApiChips';
+import { useCan } from '@/permissions/useCan';
 
 type ApiCardProps = {
   api: RestApi;
@@ -44,6 +45,7 @@ const AVATAR_SIZE = 42;
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const intl = useIntl();
+  const canDelete = useCan('DeleteRESTAPI');
   const updated = api.updatedAt || api.createdAt;
 
   return (
@@ -84,7 +86,7 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
 
       <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, px: 2, py: 1.25 }}>
         <UpdatedLabel timestamp={updated} />
-        {onDelete && (
+        {onDelete && canDelete && (
           <Box sx={{ ml: 'auto', mr: -1 }}>
             <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
           </Box>

@@ -706,6 +706,10 @@
     "defaultMessage": "Settings",
     "description": "Browser tab title for any Settings tab."
   },
+  "apiControlPlane.components.StateViews.forbiddenTitle": {
+    "defaultMessage": "You don't have permission to view this",
+    "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
+  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
@@ -2871,6 +2875,14 @@
   },
   "apiControlPlane.projects.ProjectStatistics.statusSummary": {
     "defaultMessage": "{published} published · {created} created"
+  },
+  "apiControlPlane.permissions.useCan.denied": {
+    "defaultMessage": "You don't have permission to perform this action.",
+    "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
+  },
+  "apiListPage.count": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
+    "description": "Heading above the listing, counting every match, not the page."
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",

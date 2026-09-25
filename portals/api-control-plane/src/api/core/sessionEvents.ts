@@ -17,7 +17,9 @@
  */
 
 /**
- * The API layer's outbound event: "the server says this session is gone".
+ * The API layer's outbound events — the two things the server can say that the
+ * rest of the app has to react to: "this session is gone" (401) and "this
+ * session may not do that" (403).
  *
  * This lives in its own module, apart from the transport, because the two have
  * opposite audiences. The transport is internal — nothing outside `src/api`
@@ -28,7 +30,8 @@
  * Publishing rather than calling into `AuthProvider` directly keeps the
  * dependency one-way. The transport importing the auth provider would be a
  * cycle, and would make the HTTP client impossible to test without mounting
- * React.
+ * React. The 403 channel exists for the same reason: the transport cannot ask
+ * `PermissionProvider` what it had predicted without importing React.
  */
 
 type SessionExpiredListener = () => void;
@@ -74,4 +77,60 @@ export const notifySessionExpired = (): void => {
  */
 export const resetSessionExpiryNotice = (): void => {
   lastNotifiedAt = 0;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Forbidden (403)                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A 403 the server returned, tagged with the operation that drew it.
+ *
+ * The operation is what makes this worth publishing rather than handling in
+ * place: it is the key `PermissionProvider` needs to ask whether the console had
+ * predicted the call would be *allowed*; a mismatch between the generated scope
+ * map and the deployed backend, which is otherwise invisible.
+ */
+export type ForbiddenEvent = {
+  /** The spec `operationId`, when the caller supplied one. */
+  operation?: string;
+};
+
+type ForbiddenListener = (event: ForbiddenEvent) => void;
+
+const forbiddenListeners = new Set<ForbiddenListener>();
+
+/**
+ * Subscribes to authorization failures. Returns an unsubscribe function
+ * suitable for returning straight from a `useEffect`.
+ */
+export const onForbidden = (listener: ForbiddenListener): (() => void) => {
+  forbiddenListeners.add(listener);
+  return () => {
+    forbiddenListeners.delete(listener);
+  };
+};
+
+/**
+ * Debounce repeated failures per operation, rather than globally. Different
+ * operations represent distinct authorization events; only repeated failures
+ * for the same operation are suppressed.
+ */
+const FORBIDDEN_DEBOUNCE_MS = 3_000;
+
+const lastForbiddenAt = new Map<string, number>();
+
+/** Announces that the server refused an operation for this session. */
+export const notifyForbidden = (operation?: string): void => {
+  const key = operation ?? '';
+  const now = Date.now();
+  const previous = lastForbiddenAt.get(key) ?? 0;
+  if (now - previous < FORBIDDEN_DEBOUNCE_MS) return;
+  lastForbiddenAt.set(key, now);
+  for (const listener of forbiddenListeners) listener({ operation });
+};
+
+/** Clears the per-operation debounce windows. Test seam, as above. */
+export const resetForbiddenNotice = (): void => {
+  lastForbiddenAt.clear();
 };
