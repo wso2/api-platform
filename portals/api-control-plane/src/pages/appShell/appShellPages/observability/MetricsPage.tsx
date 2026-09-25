@@ -24,7 +24,12 @@ import { ScopeGate } from '../../../../scope/ScopeGate';
 
 export function MetricsPage() {
   return (
-    <ScopeGate prompt="Metrics are reported per API." requires="api" to={routes.apiObservabilityMetrics}>
+    <ScopeGate
+      graphqlTo={routes.graphqlApiObservabilityMetrics}
+      prompt="Metrics are reported per API."
+      requires="api"
+      to={routes.apiObservabilityMetrics}
+    >
       <ComingSoon
         feature={
           <FormattedMessage

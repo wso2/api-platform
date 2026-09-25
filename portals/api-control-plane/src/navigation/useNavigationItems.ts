@@ -51,7 +51,18 @@ const isScopeSatisfied = (
   definition: NavigationDefinition,
   scope: ConsoleScope
 ) => {
-  if (definition.requires === 'api') return scope.isApiScope;
+  // A GraphQL API satisfies `requires: 'api'` too, but only for a submenu
+  // that actually has a GraphQL-side page to reveal (`revealsForGraphqlApi`,
+  // set by `submenu()` when at least one child was built with `graphqlTo`) —
+  // otherwise a submenu with no GraphQL pages at all (Insights, Observability)
+  // would reveal children that resolve to a REST scope-picker alias while
+  // browsing a GraphQL API, instead of staying hidden as before GraphQL scope
+  // existed. `isApiScope` only reflects the REST `apis` segment (see
+  // `graphqlApiHandler`'s doc comment on `ConsoleRouteParams`), so Develop and
+  // Test — the two submenus with a real GraphQL sibling — need this.
+  if (definition.requires === 'api') {
+    return scope.isApiScope || (scope.isGraphQLApiScope && Boolean(definition.revealsForGraphqlApi));
+  }
   if (definition.requires === 'project') return scope.isProjectScope;
   return true;
 };

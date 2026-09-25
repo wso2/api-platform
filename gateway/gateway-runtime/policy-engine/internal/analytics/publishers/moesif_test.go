@@ -570,6 +570,105 @@ func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
 	}
 }
 
+func TestPublish_GraphQLAPIType(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "GraphQLApi"
+	event.Properties["graphqlAnalytics"] = map[string]interface{}{
+		"operationName": "CreatePost",
+		"operationType": "mutation",
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.NotNil(t, metadata["graphqlAnalytics"])
+	graphqlAnalytics := metadata["graphqlAnalytics"].(map[string]interface{})
+	assert.Equal(t, "CreatePost", graphqlAnalytics["operationName"])
+	assert.Equal(t, "mutation", graphqlAnalytics["operationType"])
+}
+
+// TestPublish_APIResourceTemplateMetadata pins metadata.apiResourceTemplate —
+// the field legacy WSO2 APIM's Moesif publisher (SynapseAnalyticsDataProvider)
+// writes and existing Moesif charts (e.g. "Top Queries/Mutations") group on via
+// metadata.apiResourceTemplate.raw — so those charts keep working unmodified
+// for API-Platform-origin traffic too.
+func TestPublish_APIResourceTemplateMetadata(t *testing.T) {
+	t.Run("REST mirrors Operation.APIResourceTemplate", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.Operation.APIResourceTemplate = "/pets/{petId}"
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "/pets/{petId}", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL uses operationName when present", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql" // fixed single route, not operation identity
+		event.Properties["graphqlAnalytics"] = map[string]interface{}{
+			"operationName": "CreatePost",
+			"operationType": "mutation",
+		}
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "CreatePost", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL falls back to operationType when unnamed", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql"
+		event.Properties["graphqlAnalytics"] = map[string]interface{}{
+			"operationType": "query",
+		}
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "query", metadata["apiResourceTemplate"])
+	})
+
+	t.Run("GraphQL without graphqlAnalytics falls back to the fixed route", func(t *testing.T) {
+		moesif := createTestMoesifWithoutAPI()
+
+		event := createBaseEvent()
+		event.API.APIType = "GraphQLApi"
+		event.Operation.APIResourceTemplate = "/graphql"
+
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, "/graphql", metadata["apiResourceTemplate"])
+	})
+}
+
+func TestPublish_NonGraphQLAPIDoesNotIncludeGraphQLAnalytics(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties["graphqlAnalytics"] = map[string]interface{}{"operationName": "should-not-appear"}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Nil(t, metadata["graphqlAnalytics"])
+}
+
 func TestPublish_WithPayloads(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 

@@ -31,7 +31,7 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useRestoreDeployment, type Deployment } from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
 import { DeploymentStatusChip } from './GatewayDeploymentRow';
@@ -74,31 +74,52 @@ const messages = defineMessages({
   },
 });
 
+/**
+ * What a per-deployment action mutation (restore/undeploy/delete) needs to
+ * expose — REST's and GraphQL's own hooks each expect a differently keyed
+ * variables object (`restApiId`/`graphqlApiId`), so a caller adapts its own
+ * hook to this uniform `apiId` shape rather than the shared component
+ * (this drawer, `GatewayDeployEnvCard`, `GatewayDeploymentHistory`) knowing
+ * about either kind. See `DeployPage`/`GraphqlDeployPage` for the adapters.
+ */
+export type UseDeploymentMutationHook = () => {
+  isPending: boolean;
+  mutate: (
+    variables: { apiId: string; deploymentId: string },
+    options?: { onSuccess?: () => void },
+  ) => void;
+};
+
 type GatewayDeploymentSelectorProps = {
   /** Handle of the API these deployments belong to. */
-  restApiId: string;
+  apiId: string;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
   open: boolean;
   onClose: () => void;
+  /** The caller's own restore mutation, adapted to this drawer's uniform shape. */
+  useRestore: UseDeploymentMutationHook;
 };
 
 /**
  * Right-hand drawer to pick a previous deployment and restore it on the
- * gateway (ai-workspace "Select Deployment to Restore").
+ * gateway (ai-workspace "Select Deployment to Restore"). Shared between REST
+ * and GraphQL APIs — see `UseDeploymentMutationHook` for how each kind plugs
+ * in its own restore mutation.
  */
 export function GatewayDeploymentSelector({
-  restApiId,
+  apiId,
   deployments,
   open,
   onClose,
+  useRestore,
 }: GatewayDeploymentSelectorProps) {
   const intl = useIntl();
   // `useFormatters`, not the module-scope `Intl.*` in `utils/relativeTime`:
   // that one freezes its locale at import, so it never follows a locale switch.
   const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
-  const restoreMutation = useRestoreDeployment();
+  const restoreMutation = useRestore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const currentDeployedId =
@@ -108,7 +129,7 @@ export function GatewayDeploymentSelector({
     const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
     restoreMutation.mutate(
-      { restApiId, deploymentId: deployment.deploymentId },
+      { apiId, deploymentId: deployment.deploymentId },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: () => {

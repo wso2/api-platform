@@ -24,7 +24,12 @@ import { ScopeGate } from '../../../../scope/ScopeGate';
 
 export function CompliancePage() {
   return (
-    <ScopeGate prompt="Compliance is assessed per API." requires="api" to={routes.apiInsightsCompliance}>
+    <ScopeGate
+      graphqlTo={routes.graphqlApiInsightsCompliance}
+      prompt="Compliance is assessed per API."
+      requires="api"
+      to={routes.apiInsightsCompliance}
+    >
       <ComingSoon
         feature={
           <FormattedMessage

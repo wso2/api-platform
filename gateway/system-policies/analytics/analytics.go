@@ -95,6 +95,17 @@ const (
 	// complete SSE event. Held so a stream that opens with a long run of heartbeats is
 	// not rescanned from the start on every chunk. Dropped once an event is found.
 	a2aStreamScanKey = "__a2a_stream_scan"
+
+	// graphqlTransportHTTP is the only transport this gateway delivers GraphQL over today
+	// (GraphQL-over-HTTP POST). Reserved as a named constant, not just an inline literal,
+	// so a future WebSocket/SSE subscription-delivery transport has one place to add a
+	// second value rather than a string sprinkled across the request path.
+	graphqlTransportHTTP = "HTTP"
+
+	// graphqlRequestTypeIntrospection/Operation classify a GraphQL request by whether its
+	// query targets the introspection meta-fields (__schema/__type) or a real operation.
+	graphqlRequestTypeIntrospection = "introspection"
+	graphqlRequestTypeOperation     = "operation"
 )
 
 // A2A resolution attribute names, as the a2a resolver in the policy engine spells
@@ -327,6 +338,60 @@ type A2AResponseAnalyticsProperties struct {
 	ResponseTaskID    string `json:"responseTaskId,omitempty"`
 	ResponseContextID string `json:"responseContextId,omitempty"`
 	TaskState         string `json:"taskState,omitempty"`
+}
+
+// GraphQLRequestAnalyticsProperties captures the operation-level identity a
+// GraphQL API's single POST route otherwise carries no signal of (unlike
+// REST, where the method+path already is the operation identity):
+// OperationName is the client-supplied name when
+// present (most named-operation clients — Apollo, Relay — always send one);
+// OperationType is always derivable from the query document itself, even for
+// anonymous/shorthand queries. Deliberately NOT attempted: resolving an
+// anonymous query's top-level field name, which needs a real GraphQL parser —
+// out of scope for this lightweight, dependency-free extraction.
+//
+// RequestType/VariableCount/Transport are only meaningful for a single (non-batched)
+// operation, so they are left unset (omitted) when IsBatched is true — a batched
+// document has no single query/variables map to summarize, and reporting one
+// operation's values as if they represented the whole batch would misattribute data.
+// IsBatched itself and Transport are batch-independent and always set.
+type GraphQLRequestAnalyticsProperties struct {
+	OperationName string `json:"operationName,omitempty"`
+	OperationType string `json:"operationType,omitempty"`
+	// RequestType distinguishes schema-introspection traffic (IDE autocomplete, codegen
+	// tooling querying __schema/__type) from real operation invocations, so introspection
+	// doesn't inflate invocation-volume metrics. Heuristic, same class as OperationType:
+	// a regex over the query text, not a real parser.
+	RequestType string `json:"requestType,omitempty"`
+	// Transport is fixed to graphqlTransportHTTP today; see that constant's comment.
+	Transport string `json:"transport,omitempty"`
+	// VariableCount is a content-free request-complexity proxy (the GraphQL analogue of
+	// counting message parts) — never the variable values themselves.
+	VariableCount *int `json:"variableCount,omitempty"`
+	// VariableNames carries only the variable identifiers (e.g. "title"), never their
+	// values — structural metadata in the same spirit as OperationName, not a payload
+	// capture. Omitted (not an empty array) when there are no variables.
+	VariableNames []string `json:"variableNames,omitempty"`
+	// IsBatched flags a request body that is a JSON array of operations (the common
+	// GraphQL batching convention) rather than a single object. Always set (never omitted)
+	// so "not batched" is an explicit false, not an absent field.
+	IsBatched bool `json:"isBatched"`
+}
+
+// GraphQLResponseAnalyticsProperties captures whether a GraphQL response carried a
+// GraphQL-level error. Per the GraphQL-over-HTTP convention, an error is delivered
+// inside an HTTP 200 response body's top-level "errors" array (a resolver can partially
+// fail alongside partial "data") — the proxy response status code alone never reflects
+// this, so it must be derived by inspecting the body, same as MCP's isError/errorCode.
+type GraphQLResponseAnalyticsProperties struct {
+	IsError    *bool  `json:"isError,omitempty"`
+	ErrorCount *int   `json:"errorCount,omitempty"`
+	ErrorCode  string `json:"errorCode,omitempty"`
+	// IsPartialSuccess distinguishes a response that returned usable "data" alongside
+	// resolver "errors" from one that failed outright with no data — a case JSON-RPC's
+	// all-or-nothing errors don't have, but GraphQL resolvers do. Only set when IsError
+	// is true; a fully successful response has no notion of "partial".
+	IsPartialSuccess *bool `json:"isPartialSuccess,omitempty"`
 }
 
 // LLMProviderAnalyticsInfo holds extracted token-related information from LLM provider responses
@@ -628,6 +693,59 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API scenario
+	case policy.APIKindGraphQL:
+		// Collect analytics data for GraphQL API scenario. A GraphQL API has a
+		// single POST route, so request.path/request.method carry no operation
+		// identity — extract it from the POST body instead, unconditionally,
+		// same gating as MCP above.
+		if ctx != nil && ctx.Body != nil && len(ctx.Body.Content) > 0 {
+			trimmed := bytes.TrimSpace(ctx.Body.Content)
+			isBatched := len(trimmed) > 0 && trimmed[0] == '['
+
+			props := GraphQLRequestAnalyticsProperties{
+				Transport: graphqlTransportHTTP,
+				IsBatched: isBatched,
+			}
+
+			if !isBatched {
+				// Decoded into a generic map (not a strict struct) so a malformed
+				// "variables" value (e.g. sent as a non-object) doesn't fail the
+				// whole unmarshal and lose operationName/operationType too - the
+				// same defensive-parsing style already used for MCP payloads below.
+				var graphqlPayload map[string]interface{}
+				if err := json.Unmarshal(trimmed, &graphqlPayload); err != nil {
+					slog.Error("Failed to unmarshal GraphQL request body for analytics", "error", err)
+					break
+				}
+
+				query, _ := graphqlPayload["query"].(string)
+				if operationName, ok := graphqlPayload["operationName"].(string); ok {
+					props.OperationName = operationName
+				}
+				props.OperationType = deriveGraphQLOperationType(query)
+				props.RequestType = deriveGraphQLRequestType(query)
+
+				variableCount := 0
+				if variables, ok := graphqlPayload["variables"].(map[string]interface{}); ok {
+					variableCount = len(variables)
+					if variableCount > 0 {
+						names := make([]string, 0, variableCount)
+						for name := range variables {
+							names = append(names, name)
+						}
+						sort.Strings(names) // deterministic order — map iteration order is not
+						props.VariableNames = names
+					}
+				}
+				props.VariableCount = &variableCount
+			}
+
+			if data, err := json.Marshal(props); err != nil {
+				slog.Error("Failed to marshal GraphQL request analytics properties", "error", err)
+			} else {
+				analyticsMetadata["graphql_request_properties"] = string(data)
+			}
+		}
 	case policy.APIKindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
 	case policy.APIKindLlmProxy:
@@ -743,6 +861,27 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// Collect analytics data for REST API specific scenario
+	case policy.APIKindGraphQL:
+		// GraphQL responses are always a single buffered JSON object (never SSE/streaming
+		// in this gateway), so only the buffered OnResponseBody path needs this check.
+		if ctx != nil && ctx.ResponseBody != nil && len(ctx.ResponseBody.Content) > 0 {
+			trimmed := bytes.TrimSpace(ctx.ResponseBody.Content)
+			if len(trimmed) > 0 && trimmed[0] == '{' {
+				var graphqlResponsePayload map[string]interface{}
+				if err := json.Unmarshal(trimmed, &graphqlResponsePayload); err != nil {
+					slog.Warn("Failed to unmarshal GraphQL response body for analytics", "error", err)
+				} else {
+					props := extractGraphQLResponseAnalyticsProps(graphqlResponsePayload)
+					if props != nil {
+						if data, err := json.Marshal(props); err != nil {
+							slog.Error("Failed to marshal GraphQL response analytics properties", "error", err)
+						} else {
+							analyticsMetadata["graphql_response_properties"] = string(data)
+						}
+					}
+				}
+			}
+		}
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
@@ -877,6 +1016,8 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	switch apiKind {
 	case policy.APIKindRestApi:
 		// No body analytics for REST API
+	case policy.APIKindGraphQL:
+		// No streaming-body analytics for GraphQL API (GraphQL responses aren't SSE).
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		if ok && templateHandle != "" {
@@ -2068,6 +2209,51 @@ func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpRespon
 	return nil
 }
 
+// extractGraphQLResponseAnalyticsProps derives GraphQL-level error info from a parsed
+// GraphQL response body. Returns nil when the body has no top-level "errors" field at
+// all — a response that never mentions errors carries no error signal to report, distinct
+// from a present-but-empty "errors": [] array, which is reported as IsError=false so
+// consumers can tell "no errors field" apart from "errors field explicitly empty".
+func extractGraphQLResponseAnalyticsProps(payload map[string]interface{}) *GraphQLResponseAnalyticsProperties {
+	errorsVal, hasErrors := payload["errors"]
+	if !hasErrors || errorsVal == nil {
+		return nil
+	}
+	errorsArr, ok := errorsVal.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	isError := len(errorsArr) > 0
+	errorCount := len(errorsArr)
+	props := GraphQLResponseAnalyticsProperties{
+		IsError:    &isError,
+		ErrorCount: &errorCount,
+	}
+
+	// extensions.code is a widely-adopted (Apollo Server and others) but non-spec-mandated
+	// convention for a categorical GraphQL error identifier — best-effort only, from the
+	// first error entry.
+	if isError {
+		if firstErr, ok := errorsArr[0].(map[string]interface{}); ok {
+			if extensions, ok := firstErr["extensions"].(map[string]interface{}); ok {
+				if code, ok := extensions["code"].(string); ok {
+					props.ErrorCode = code
+				}
+			}
+		}
+
+		// isPartialSuccess only has meaning once we already know there are errors — a
+		// clean response has no partial/full distinction to make. A present, non-null
+		// "data" value alongside errors means the client still got usable data back.
+		dataVal, hasData := payload["data"]
+		isPartialSuccess := hasData && dataVal != nil
+		props.IsPartialSuccess = &isPartialSuccess
+	}
+
+	return &props
+}
+
 // isSSEContent returns true when content is Server-Sent Events format, detected via
 // Content-Type header or content structure.
 func isSSEContent(headers *policy.Headers, content []byte) bool {
@@ -2315,4 +2501,40 @@ func deriveMCPCapability(method string) string {
 	default:
 		return ""
 	}
+}
+
+// graphqlOperationTypeRegex matches an explicit leading "mutation"/"subscription"
+// keyword in a GraphQL query document. Anonymous shorthand queries (`{ ... }`) and
+// documents explicitly starting with "query" both fall through to the "query" default.
+var graphqlOperationTypeRegex = regexp.MustCompile(`(?i)^\s*(mutation|subscription)\b`)
+
+// deriveGraphQLOperationType derives a GraphQL operation's type (query/mutation/
+// subscription) from its query document text. This is a lightweight prefix check,
+// not a real GraphQL parser — sufficient to classify the operation for analytics
+// without pulling in a full parsing dependency.
+func deriveGraphQLOperationType(query string) string {
+	if m := graphqlOperationTypeRegex.FindStringSubmatch(query); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return "query"
+}
+
+// graphqlIntrospectionFieldRegex matches the GraphQL introspection meta-fields __schema
+// and __type as whole identifiers — the trailing \b excludes "__typename" (a distinct,
+// commonly-used-in-production meta-field for polymorphic types, not introspection),
+// since after "__type" the next rune in "__typename" is a word character ('n'), so no
+// word boundary exists there.
+var graphqlIntrospectionFieldRegex = regexp.MustCompile(`\b__schema\b|\b__type\b`)
+
+// deriveGraphQLRequestType classifies a GraphQL request as schema introspection (IDE
+// autocomplete, codegen tooling querying __schema/__type) versus a real operation
+// invocation, so introspection traffic doesn't inflate invocation-volume metrics. Same
+// lightweight, regex-based heuristic as deriveGraphQLOperationType — not a real parser,
+// so an introspection field referenced only deep inside an unrelated identifier or a
+// query comment can false-positive; acceptable for this analytics use case.
+func deriveGraphQLRequestType(query string) string {
+	if graphqlIntrospectionFieldRegex.MatchString(query) {
+		return graphqlRequestTypeIntrospection
+	}
+	return graphqlRequestTypeOperation
 }

@@ -77,8 +77,9 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
-  // Cards count the APIs in their project; every card issues one of these.
+  // Cards count the APIs in their project; every card issues one of each.
   server.use(collection('/rest-apis', []));
+  server.use(collection('/graphql-apis', []));
 });
 
 describe('ProjectListPage', () => {

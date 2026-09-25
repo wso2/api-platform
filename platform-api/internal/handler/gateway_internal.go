@@ -577,6 +577,63 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.R
 	_, _ = w.Write(zipData)
 }
 
+// GetGraphQLAPI handles GET /api/internal/v1/graphql-apis/:apiId
+func (h *GatewayInternalAPIHandler) GetGraphQLAPI(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+
+	apiID := r.PathValue("apiId")
+	if apiID == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, dto.NewInternalErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	api, err := h.gatewayInternalService.GetActiveGraphQLAPIDeploymentByGateway(apiID, orgID, gatewayID)
+	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
+		if apperror.DeploymentNotActive.Is(err) {
+			h.slogger.Error("No active deployment found for GraphQL API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"No active deployment found for this GraphQL API on this gateway"))
+			return
+		}
+		if apperror.GraphQLAPINotFound.Is(err) {
+			h.slogger.Error("GraphQL API not found", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"GraphQL API not found"))
+			return
+		}
+		h.slogger.Error("Failed to get GraphQL API", "clientIP", clientIP, "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to get GraphQL API"))
+		return
+	}
+
+	// Create ZIP file from GraphQL API YAML file
+	zipData, err := utils.CreateGraphQLAPIYamlZip(api)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to create GraphQL API package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"graphql-api-%s.zip\"", apiID))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(zipData)
+}
+
 // GetWebSubAPI handles GET /api/internal/v1/websub-apis/:apiId
 func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
@@ -809,6 +866,22 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPIAPIKeys(w http.ResponseWriter
 	httputil.WriteJSON(w, http.StatusOK, keys)
 }
 
+// GetGraphQLAPIAPIKeys handles GET /api/internal/v1/graphql-apis/api-keys
+func (h *GatewayInternalAPIHandler) GetGraphQLAPIAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+	issuer := r.URL.Query().Get("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.GraphQLApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for GraphQL APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, keys)
+}
+
 // CheckArtifactsExist handles POST /api/internal/v1/artifacts/exists
 // Returns the subset of provided artifact UUIDs that still exist on the platform.
 // Used by the gateway during sync to avoid deleting artifacts that still exist
@@ -1018,6 +1091,8 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/deployments", h.GetGatewayDeployments)
 	mux.HandleFunc("POST /api/internal/v1/deployments/fetch-batch", h.BatchFetchDeployments)
 	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", h.GetMCPProxy)
+	mux.HandleFunc("GET /api/internal/v1/graphql-apis/api-keys", h.GetGraphQLAPIAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/graphql-apis/{apiId}", h.GetGraphQLAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", h.GetWebSubAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", h.GetWebSubAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}/secrets", h.GetWebSubAPIHmacSecrets)

@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 // ArtifactTableEntry describes a kind-specific child table that backs artifact rows.
@@ -66,6 +68,11 @@ func NewArtifactTableRegistry() *ArtifactTableRegistry {
 		Table:     "mcp_proxies",
 		KindAlias: "Mcp",
 		KindKeys:  []string{"mcp-proxy", "MCPProxy", "Mcp"},
+	})
+	r.Register(ArtifactTableEntry{
+		Table:     "graphql_apis",
+		KindAlias: constants.GraphQLApi,
+		KindKeys:  []string{"graphql-api", constants.GraphQLApi},
 	})
 	return r
 }

@@ -28,8 +28,8 @@ import {
   Gauge,
   Home,
   Layers,
-  Megaphone,
   Network,
+  PanelTop,
   Rocket,
   ScrollText,
   Settings,
@@ -105,13 +105,20 @@ const orgLevelTo =
  * scoped URL. Returning `undefined` — the old behaviour, paired with a filter
  * that hid the item — meant an org-level page offered no route into any
  * API-level feature at all.
+ *
+ * `graphqlBuild`, when given, is resolved instead while a GraphQL API is in
+ * scope — mirrors `subItem`'s own `graphqlTo` branch. Omit it for a REST-only
+ * item with no GraphQL sibling page.
  */
 const apiLevelTo =
-  (build: ApiPathBuilder): NavigationDefinition['to'] =>
-  ({ params }) =>
-    params.orgHandle
-      ? build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null)
-      : undefined;
+  (build: ApiPathBuilder, graphqlBuild?: ApiPathBuilder): NavigationDefinition['to'] =>
+  ({ params }) => {
+    if (!params.orgHandle) return undefined;
+    if (graphqlBuild && params.graphqlApiHandler) {
+      return graphqlBuild(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+    }
+    return build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null);
+  };
 
 /** One entry in a submenu: its own id, label, icon and page. */
 type SubItem = {
@@ -119,23 +126,44 @@ type SubItem = {
   id: string;
   label: string;
   to: ApiPathBuilder;
+  /**
+   * This child's GraphQL sibling route, resolved instead of `to` whenever a
+   * GraphQL API is in scope (`params.graphqlApiHandler` set). Omit for a
+   * REST-only concept with no GraphQL equivalent (e.g. per-operation
+   * Resources) — pair that with `hideInGraphqlScope` so the item disappears
+   * rather than linking to a REST page while browsing a GraphQL API.
+   */
+  graphqlTo?: ApiPathBuilder;
+  /** Hide this child entirely while a GraphQL API is in scope. */
+  hideInGraphqlScope?: boolean;
 };
 
 /**
  * A child of a submenu parent: an ordinary API-level item, one nesting level down.
  *
- * `match` is the fully-scoped path only. The parent owns the scope-less aliases
- * (see `submenu` below), so exactly one of the two is ever active.
+ * `match` is the fully-scoped path only (both the REST and, when given, the
+ * GraphQL one). The parent owns the scope-less aliases (see `submenu` below),
+ * so exactly one of the two is ever active.
  */
-const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
+const subItem = ({ icon, id, label, to, graphqlTo, hideInGraphqlScope }: SubItem): NavigationDefinition => ({
   icon,
   id,
   label,
   // Children render in the order their parent lists them; `order` only sorts
   // top-level items, so it plays no part here.
   order: 0,
-  to: apiLevelTo(to),
-  match: matchRoutes(to(':orgHandle', ':projectHandler', ':apiHandler')),
+  isVisible: hideInGraphqlScope ? ({ isGraphQLApiScope }) => !isGraphQLApiScope : undefined,
+  to: ({ params }) => {
+    if (!params.orgHandle) return undefined;
+    if (graphqlTo && params.graphqlApiHandler) {
+      return graphqlTo(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+    }
+    return to(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null);
+  },
+  match: matchRoutes(
+    to(':orgHandle', ':projectHandler', ':apiHandler'),
+    ...(graphqlTo ? [graphqlTo(':orgHandle', ':projectHandler', ':graphqlApiHandler')] : []),
+  ),
 });
 
 /**
@@ -155,15 +183,55 @@ const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
  */
 const submenu = (
   items: SubItem[],
-): Pick<NavigationDefinition, 'children' | 'match' | 'requires' | 'to'> => ({
+): Pick<
+  NavigationDefinition,
+  'children' | 'match' | 'requires' | 'revealsForGraphqlApi' | 'to'
+> => ({
   children: items.map(subItem),
+  // Scope-less REST aliases only — never a fully-scoped path, GraphQL's
+  // included: once scope resolves (REST or GraphQL) the matching child claims
+  // the highlight instead (see `subItem`'s own `match`), same as the REST
+  // parent/child split this mirrors. GraphQL has no scope-less alias at all
+  // (see `graphqlApiPath`), so there is nothing further to add here for it.
   match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
   requires: 'api',
-  to: apiLevelTo(items[0].to),
+  revealsForGraphqlApi: items.some((item) => item.graphqlTo),
+  // In GraphQL scope with no page of its own (mirroring the REST branch
+  // below), the parent points at its first GraphQL-capable child — not
+  // necessarily items[0], which may be a REST-only entry with no
+  // `graphqlTo` (e.g. Develop's "Resources"). Out of any API scope this is
+  // moot: `apiLevelTo` degrades to items[0]'s scope-less alias regardless.
+  to: (scope) => {
+    const { params } = scope;
+    if (params.graphqlApiHandler && params.orgHandle) {
+      const firstGraphqlCapable = items.find((item) => item.graphqlTo);
+      if (firstGraphqlCapable?.graphqlTo) {
+        return firstGraphqlCapable.graphqlTo(
+          params.orgHandle,
+          params.projectHandler ?? null,
+          params.graphqlApiHandler,
+        );
+      }
+    }
+    return apiLevelTo(items[0].to)(scope);
+  },
 });
 
 /** One page an adaptive item points at, plus the scope that page needs. */
-type ScopeTier = { level: NavigationLevel; to: ScopedPathBuilder };
+type ScopeTier = {
+  level: NavigationLevel;
+  to: ScopedPathBuilder;
+  /**
+   * This tier's GraphQL sibling route, used instead of `to` whenever a
+   * GraphQL API is in scope (`params.graphqlApiHandler` set, no
+   * `params.apiHandler` — see `graphqlApiHandler`'s doc comment on
+   * `ConsoleRouteParams`) — only meaningful on the `'api'` tier. Omit when
+   * the item has no GraphQL-side page at that tier (e.g. Portals): a GraphQL
+   * API then falls through to the next-shallowest tier, exactly as it
+   * already does for a page with no `'api'` tier at all.
+   */
+  graphqlTo?: ApiPathBuilder;
+};
 
 const LEVEL_DEPTH: Record<NavigationLevel, number> = {
   organization: 0,
@@ -171,17 +239,28 @@ const LEVEL_DEPTH: Record<NavigationLevel, number> = {
   api: 2,
 };
 
-const isLevelInScope = (level: NavigationLevel, params: ConsoleRouteParams) => {
-  if (level === 'api') return Boolean(params.projectHandler && params.apiHandler);
-  if (level === 'project') return Boolean(params.projectHandler);
+const isLevelInScope = (tier: ScopeTier, params: ConsoleRouteParams) => {
+  if (tier.level === 'api') {
+    return Boolean(
+      params.projectHandler &&
+        (params.apiHandler || (tier.graphqlTo && params.graphqlApiHandler)),
+    );
+  }
+  if (tier.level === 'project') return Boolean(params.projectHandler);
   return Boolean(params.orgHandle);
 };
 
-/** The tier's route pattern, calling its builder with the handles its level takes. */
-const tierPattern = ({ level, to }: ScopeTier): string => {
-  if (level === 'api') return to(':orgHandle', ':projectHandler', ':apiHandler');
-  if (level === 'project') return to(':orgHandle', ':projectHandler');
-  return to(':orgHandle');
+/** The tier's route pattern(s) — both REST and, when given, GraphQL. */
+const tierPatterns = (tier: ScopeTier): string[] => {
+  if (tier.level === 'api') {
+    const patterns = [tier.to(':orgHandle', ':projectHandler', ':apiHandler')];
+    if (tier.graphqlTo) {
+      patterns.push(tier.graphqlTo(':orgHandle', ':projectHandler', ':graphqlApiHandler'));
+    }
+    return patterns;
+  }
+  if (tier.level === 'project') return [tier.to(':orgHandle', ':projectHandler')];
+  return [tier.to(':orgHandle')];
 };
 
 /**
@@ -213,11 +292,15 @@ const adaptive = (tiers: ScopeTier[]): Pick<NavigationDefinition, 'match' | 'to'
   );
 
   return {
-    match: matchRoutes(...tiers.map(tierPattern)),
+    match: matchRoutes(...tiers.flatMap(tierPatterns)),
     to: ({ params }) => {
       if (!params.orgHandle) return undefined;
-      const tier = deepestFirst.find((candidate) => isLevelInScope(candidate.level, params));
-      return tier?.to(params.orgHandle, params.projectHandler, params.apiHandler);
+      const tier = deepestFirst.find((candidate) => isLevelInScope(candidate, params));
+      if (!tier) return undefined;
+      if (tier.graphqlTo && params.graphqlApiHandler && !params.apiHandler) {
+        return tier.graphqlTo(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+      }
+      return tier.to(params.orgHandle, params.projectHandler, params.apiHandler);
     },
   };
 };
@@ -249,8 +332,10 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Home />,
     // The summary of wherever you are. Opening a project or an API navigates
     // into a deeper tier of this same item rather than to a different one.
+    // `graphqlTo` lets the 'api' tier resolve for a GraphQL API too — see
+    // `ScopeTier`'s doc comment.
     ...adaptive([
-      { level: 'api', to: routes.api },
+      { level: 'api', to: routes.api, graphqlTo: routes.graphqlApi },
       { level: 'project', to: routes.projectHome },
       { level: 'organization', to: routes.organizationHome },
     ]),
@@ -289,18 +374,23 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'develop-policies',
         label: 'Policies',
         to: routes.apiDevelopPolicies,
+        graphqlTo: routes.graphqlApiDevelopPolicies,
       },
       {
+        // No GraphQL analog: a GraphQL API's schema is already shown on its
+        // Overview page, not as an OpenAPI/AsyncAPI-style definition doc.
         icon: <Braces />,
         id: 'develop-definition',
         label: 'Definition',
         to: routes.apiDevelopDefinition,
+        hideInGraphqlScope: true,
       },
       {
         icon: <FileText />,
         id: 'develop-documents',
         label: 'Documents',
         to: routes.apiDevelopDocuments,
+        graphqlTo: routes.graphqlApiDevelopDocuments,
       },
     ]),
   },
@@ -313,8 +403,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     isVisible: apiCapability(({ canTest }) => canTest),
     // A leaf, not a parent: the console, the cURL builder and the response all
     // live on one page, so there is nothing to disclose beneath it.
-    to: apiLevelTo(routes.apiTest),
-    match: matchRoutes(...apiScopedPaths(routes.apiTest)),
+    // `graphqlTo` sends a GraphQL API to its own test console page instead.
+    to: apiLevelTo(routes.apiTest, routes.graphqlApiTestConsole),
+    match: matchRoutes(
+      ...apiScopedPaths(routes.apiTest),
+      routes.graphqlApiTestConsole(':orgHandle', ':projectHandler', ':graphqlApiHandler'),
+    ),
   },
   {
     id: 'deploy',
@@ -323,8 +417,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     order: 50,
     icon: <Rocket />,
     isVisible: apiCapability(({ canDeploy }) => canDeploy),
-    to: apiLevelTo(routes.apiDeploy),
-    match: matchRoutes(...apiScopedPaths(routes.apiDeploy)),
+    to: apiLevelTo(routes.apiDeploy, routes.graphqlApiDeploy),
+    match: matchRoutes(
+      ...apiScopedPaths(routes.apiDeploy),
+      routes.graphqlApiDeploy(':orgHandle', ':projectHandler', ':graphqlApiHandler'),
+    ),
   },
   {
     // No capability gate, unlike its neighbours: `hasUsageInsights` is false for
@@ -341,12 +438,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'insights-api',
         label: 'API Insights',
         to: routes.apiInsightsApi,
+        graphqlTo: routes.graphqlApiInsightsApi,
       },
       {
         icon: <FileCheck />,
         id: 'insights-compliance',
         label: 'Compliance',
         to: routes.apiInsightsCompliance,
+        graphqlTo: routes.graphqlApiInsightsCompliance,
       },
     ]),
   },
@@ -362,12 +461,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'observability-metrics',
         label: 'Metrics',
         to: routes.apiObservabilityMetrics,
+        graphqlTo: routes.graphqlApiObservabilityMetrics,
       },
       {
         icon: <ScrollText />,
         id: 'observability-logs',
         label: 'Logs',
         to: routes.apiObservabilityLogs,
+        graphqlTo: routes.graphqlApiObservabilityLogs,
       },
     ]),
   },
@@ -379,13 +480,18 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'publish',
     label: 'Publish',
     group: CLUSTER.api,
-    order: 55,
-    icon: <Megaphone />,
-    to: apiLevelTo(routes.apiPortals),
-    match: matchRoutes(
-      ...apiScopedPaths(routes.apiPortals),
-      routes.apiPortalPublish(),
-    ),
+    order: 80,
+    icon: <PanelTop />,
+    // The GraphQL API-level page is `GraphqlPublishPage`, not a new "Portals"
+    // page of its own: `PortalsPage` (REST's `apiPortals` target) is a bare,
+    // contextless "coming soon" with no per-API content, and
+    // `GraphqlPublishPage` is that same placeholder for a GraphQL API (see
+    // its own doc comment) — reusing it is the more faithful match.
+    ...adaptive([
+      { level: 'api', to: routes.apiPortals, graphqlTo: routes.graphqlApiPublish },
+      { level: 'project', to: routes.projectPortals },
+      { level: 'organization', to: routes.organizationPortals },
+    ]),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.

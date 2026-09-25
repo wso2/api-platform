@@ -16,79 +16,27 @@
  * under the License.
  */
 
-import { PageTitle } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage } from 'react-intl';
-
-import { ComingSoon } from '@/components/ComingSoon';
-import { ExternalToolPanel } from '@/components/common/ExternalToolPanel';
 import { runtimeConfig } from '@/config/runtime';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
-
-const messages = defineMessages({
-  action: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action',
-    defaultMessage: 'Open Moesif Insights',
-    description:
-      'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
-  },
-  cloudFeature: {
-    id: 'appShell.insightsPage.feature',
-    defaultMessage: 'API insights',
-    description:
-      'Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud.',
-  },
-  panelDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelDescription',
-    defaultMessage:
-      'Track usage trends, request activity, latency, and customer behavior from your Moesif analytics workspace.',
-  },
-  panelTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.panelTitle',
-    defaultMessage: 'Your API insights live in Moesif',
-  },
-  subHeader: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.subHeader',
-    defaultMessage: 'Usage analytics and traffic insights.',
-  },
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title',
-    defaultMessage: 'Insights',
-  },
-});
+import { InsightsPageContent } from './InsightsPageContent';
 
 export function InsightsPage() {
-  // Cloud ships org/project Moesif embeds via the insights plugin; API-scoped
-  // analytics is not ready yet, so show Coming Soon when the cloud proxy is on
-  // (same signal that gates those sidebar extensions).
+  // Cloud-proxy insights is not API-scoped yet (see InsightsPageContent), so
+  // only that branch needs the scope prompt; the on-prem panel below is a
+  // static external link that needs no API context to render.
   if (runtimeConfig.cloudProxyEnabled) {
     return (
       <ScopeGate
+        graphqlTo={routes.graphqlApiInsightsApi}
         prompt="Insights are reported per API."
         requires="api"
         to={routes.apiInsightsApi}
       >
-        <ComingSoon feature={<FormattedMessage {...messages.cloudFeature} />} />
+        <InsightsPageContent />
       </ScopeGate>
     );
   }
 
-  return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subHeader} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <ExternalToolPanel
-        actionLabel={<FormattedMessage {...messages.action} />}
-        description={<FormattedMessage {...messages.panelDescription} />}
-        href={runtimeConfig.moesifWebUrl}
-        title={<FormattedMessage {...messages.panelTitle} />}
-      />
-    </>
-  );
+  return <InsightsPageContent />;
 }

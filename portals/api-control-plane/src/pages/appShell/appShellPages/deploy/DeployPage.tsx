@@ -22,13 +22,58 @@ import { useNavigate } from 'react-router-dom';
 
 import { useGateways } from '@/api/resources/gateways';
 import { useRestApi } from '@/api/resources/restApis';
-import { useDeployments } from '@/api/resources/restApis/deployments';
+import {
+  useDeleteDeployment,
+  useDeployApi,
+  useDeployments,
+  useRestoreDeployment,
+  useUndeployDeployment,
+} from '@/api/resources/restApis/deployments';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { GatewayDeployCard } from './components/GatewayDeployCard';
+import { GatewayDeployCard, type UseDeployMutationHook } from './components/GatewayDeployCard';
+import type { UseDeploymentMutationHook } from './components/GatewayDeploymentSelector';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+
+/** Adapts REST's `{ restApiId, ... }` mutations to the shared deploy-card
+ * subtree's uniform `{ apiId, ... }` shape — see `GatewayDeployCard` for why
+ * this lives at the caller rather than in the shared component. */
+const useDeployForCard: UseDeployMutationHook = () => {
+  const mutation = useDeployApi();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, body }, options) => mutation.mutate({ restApiId: apiId, body }, options),
+  };
+};
+
+const useUndeployForCard: UseDeploymentMutationHook = () => {
+  const mutation = useUndeployDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useRestoreForCard: UseDeploymentMutationHook = () => {
+  const mutation = useRestoreDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
+
+const useDeleteForCard: UseDeploymentMutationHook = () => {
+  const mutation = useDeleteDeployment();
+  return {
+    isPending: mutation.isPending,
+    mutate: ({ apiId, deploymentId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+  };
+};
 
 const messages = defineMessages({
   title: {
@@ -81,7 +126,12 @@ const messages = defineMessages({
  */
 export function DeployPage() {
   return (
-    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
+    <ScopeGate
+      graphqlTo={routes.graphqlApiDeploy}
+      prompt="Deployments are made for a single API."
+      requires="api"
+      to={routes.apiDeploy}
+    >
       <Deploy />
     </ScopeGate>
   );
@@ -191,6 +241,7 @@ function Deploy() {
             ) : (
               filteredGateways.map((gateway) => (
                 <GatewayDeployCard
+                  apiId={restApiId}
                   deployments={deployments}
                   gateway={gateway}
                   isExpanded={expandedIds.has(gateway.id ?? '')}
@@ -198,7 +249,10 @@ function Deploy() {
                   onRefresh={() => deploymentsQuery.refetch()}
                   onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
                   refreshing={deploymentsQuery.isFetching}
-                  restApiId={restApiId}
+                  useDelete={useDeleteForCard}
+                  useDeploy={useDeployForCard}
+                  useRestore={useRestoreForCard}
+                  useUndeploy={useUndeployForCard}
                 />
               ))
             )}

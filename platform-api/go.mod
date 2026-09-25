@@ -19,6 +19,7 @@ require (
 	github.com/pb33f/libopenapi v0.38.7
 	github.com/pb33f/libopenapi-validator v0.14.0
 	github.com/stretchr/testify v1.12.1
+	github.com/vektah/gqlparser/v2 v2.5.36
 	github.com/wso2/api-platform/common v0.0.0-00010101000000-000000000000
 	github.com/wso2/api-platform/httpkit v0.0.0-local
 	golang.org/x/crypto v0.57.0
@@ -29,6 +30,7 @@ require (
 require (
 	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/MicahParks/keyfunc/v3 v3.7.0 // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad // indirect

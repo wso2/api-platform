@@ -22,7 +22,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Form,
   FormControl,
@@ -40,38 +39,14 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
-  alpha,
-  type Theme,
 } from '@wso2/oxygen-ui';
-import {
-  Eraser as Broom,
-  FileText,
-  GitHub,
-  Pencil,
-  RefreshCw,
-  Trash2,
-  Upload,
-  Zap,
-} from '@wso2/oxygen-ui-icons-react';
+import { Eraser as Broom, GitHub, Pencil, RefreshCw, Zap } from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type FormEvent,
-  type ReactNode,
-} from 'react';
-import {
-  defineMessages,
-  FormattedMessage,
-  useIntl,
-  type IntlShape,
-  type MessageDescriptor,
-} from 'react-intl';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { hairline } from '@/theme/receipes';
+import { pillToggleGroupSx } from '@/theme/receipes';
+import { FileDropzone, type FileDropzoneRejection, type FileFieldError } from './FileDropzone';
 import { GitHubDirectoryDialog, type GitHubDirectorySelection } from './GitHubDirectoryDialog';
 import {
   isGitHubRepositoryUrl,
@@ -389,38 +364,6 @@ const messages = defineMessages({
     description:
       'Neutral helper line under the drop zone. {maxSize} is a formatted size such as "10 MB".',
   },
-  uploadAction: {
-    id: 'api.create.fromContract.upload.action',
-    defaultMessage: 'Upload',
-  },
-  uploadHint: {
-    id: 'api.create.fromContract.upload.hint',
-    defaultMessage:
-      'Drag & drop your file or click to select \u00b7 Accepted file types: {extensions}',
-    description: 'Sits under the drop-zone heading; {extensions} is a list such as ".json, .yaml".',
-  },
-  uploadRemove: {
-    id: 'api.create.fromContract.upload.remove',
-    defaultMessage: 'Remove {fileName}',
-    description: 'Accessible name for the button that discards the chosen file.',
-  },
-  uploadedFile: {
-    id: 'api.create.fromContract.upload.uploadedFile',
-    defaultMessage: 'Uploaded file',
-    description: 'Heading above the selected API contract file.',
-  },
-  uploadRequired: {
-    id: 'api.create.fromContract.upload.required',
-    defaultMessage: 'Select an API contract file to continue',
-  },
-  uploadTitle: {
-    id: 'api.create.fromContract.upload.title',
-    defaultMessage: 'Upload API Contract',
-  },
-  uploadUnsupported: {
-    id: 'api.create.fromContract.upload.unsupported',
-    defaultMessage: 'That file type is not supported. Accepted types: {extensions}',
-  },
   urlInvalid: {
     id: 'api.create.fromContract.url.invalid',
     defaultMessage: 'Enter a valid HTTP or HTTPS URL.',
@@ -589,227 +532,6 @@ const SampleLink = ({ onClick }: { onClick: () => void }) => (
     <FormattedMessage {...messages.sampleUrl} />
   </Button>
 );
-
-/** Why the upload field is rejected; `null` while it is acceptable. */
-type FileFieldError = 'required' | 'unsupported' | null;
-
-/** Why a file was rejected: removed or unsupported. */
-export type ContractFileRejection = 'removed' | 'unsupported';
-
-type ContractFileControlProps = {
-  /** Extensions this API type's contract may use, e.g. `['.json', '.yaml']`. */
-  extensions: string[];
-  error: FileFieldError;
-  file: File | null;
-  onReject: (reason: ContractFileRejection) => void;
-  onSelect: (file: File) => void;
-};
-
-/** Bytes rendered as a locale-aware "13 kB" / "1.4 MB". */
-const formatFileSize = (intl: IntlShape, bytes: number): string => {
-  const asUnit = (value: number, unit: 'kilobyte' | 'megabyte', fractionDigits: number) =>
-    intl.formatNumber(value, {
-      maximumFractionDigits: fractionDigits,
-      style: 'unit',
-      unit,
-      unitDisplay: 'short',
-    });
-  if (bytes >= 1024 * 1024) {
-    return asUnit(bytes / (1024 * 1024), 'megabyte', 1);
-  }
-  // Anything under a kilobyte still reads as "1 kB" rather than a bare "0".
-  return asUnit(Math.max(1, Math.round(bytes / 1024)), 'kilobyte', 0);
-};
-
-/** The extension badge on a chosen file, e.g. `YML`. Empty when there is none. */
-const fileExtensionLabel = (fileName: string): string => {
-  const dot = fileName.lastIndexOf('.');
-  return dot === -1 ? '' : fileName.slice(dot + 1).toUpperCase();
-};
-
-/** The soft tinted square a drop-zone icon sits in. */
-const iconTileSx = (size: number) => (theme: Theme) => ({
-  alignItems: 'center',
-  bgcolor: alpha(theme.palette.primary.main, 0.12),
-  borderRadius: 2,
-  color: 'primary.main',
-  display: 'flex',
-  flexShrink: 0,
-  height: theme.spacing(size),
-  justifyContent: 'center',
-  width: theme.spacing(size),
-});
-
-/**
- * Drop area and file picker for a single contract file.
- *
- * The chosen file is summarised inside the drop area, so the area itself
- * cannot be a `<label>`: the remove and replace controls sitting within it
- * would reopen the picker on the very click meant to clear or swap the
- * selection. The hidden input is opened through a ref instead, and the
- * buttons around it stay real buttons for keyboard and screen-reader users.
- */
-const ContractFileControl = ({
-  extensions,
-  error,
-  file,
-  onReject,
-  onSelect,
-}: ContractFileControlProps) => {
-  const intl = useIntl();
-  const [draggedOver, setDraggedOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const helperId = 'contractFile-helper';
-  const extensionList = extensions.join(', ');
-
-  const accepts = (candidate: File): boolean =>
-    extensions.some((extension) => candidate.name.toLowerCase().endsWith(extension));
-
-  const take = (candidate: File | undefined) => {
-    if (candidate === undefined) {
-      return;
-    }
-    if (accepts(candidate)) {
-      onSelect(candidate);
-      return;
-    }
-    onReject('unsupported');
-  };
-
-  const openPicker = () => inputRef.current?.click();
-
-  const handleDrop = (event: DragEvent<HTMLElement>) => {
-    event.preventDefault();
-    setDraggedOver(false);
-    take(event.dataTransfer.files[0]);
-  };
-
-  const handleDragOver = (event: DragEvent<HTMLElement>) => {
-    // Without this the browser navigates to the dropped file instead of
-    // handing it to `onDrop`.
-    event.preventDefault();
-    setDraggedOver(true);
-  };
-
-  const helperText = (() => {
-    if (error === 'required') {
-      return <FormattedMessage {...messages.uploadRequired} />;
-    }
-    if (error === 'unsupported') {
-      return (
-        <FormattedMessage {...messages.uploadUnsupported} values={{ extensions: extensionList }} />
-      );
-    }
-    return undefined;
-  })();
-
-  return (
-    <FormControl error={error !== null} fullWidth required>
-      <Box
-        accept={extensions.join(',')}
-        aria-describedby={helperId}
-        component="input"
-        onChange={(event) => {
-          const input = event.target as HTMLInputElement;
-          take(input.files?.[0]);
-          // Lets the same file be picked again after it was removed.
-          input.value = '';
-        }}
-        ref={inputRef}
-        sx={{ display: 'none' }}
-        type="file"
-      />
-
-      <Card
-        onClick={file === null ? openPicker : undefined}
-        onDragLeave={() => setDraggedOver(false)}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        sx={(theme) => ({
-          bgcolor: draggedOver ? 'action.hover' : 'background.default',
-          border: hairline(theme),
-          borderColor: draggedOver ? 'primary.main' : 'divider',
-          borderRadius: 2,
-          borderStyle: 'dashed',
-          cursor: file === null ? 'pointer' : 'default',
-          minHeight: 300,
-        })}
-        variant="outlined"
-      >
-        <CardContent
-          sx={{
-            alignItems: 'center',
-            display: 'flex',
-            justifyContent: 'center',
-            minHeight: 300,
-            p: 3,
-            '&:last-child': { pb: 3 },
-          }}
-        >
-          {file === null ? (
-            <Stack spacing={1} sx={{ alignItems: 'center', textAlign: 'center' }}>
-              <Box sx={iconTileSx(7)}>
-                <Upload size={24} />
-              </Box>
-              <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
-                <FormattedMessage {...messages.uploadTitle} />
-              </Typography>
-              <Typography color="text.secondary" variant="body2">
-                <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />
-              </Typography>
-              <Button onClick={openPicker} sx={{ mt: 2 }} type="button" variant="contained">
-                <FormattedMessage {...messages.uploadAction} />
-              </Button>
-            </Stack>
-          ) : (
-            <Stack spacing={2} sx={{ alignItems: 'center', width: '100%' }}>
-              <Typography sx={{ fontWeight: 700 }} variant="h6">
-                <FormattedMessage {...messages.uploadedFile} />
-              </Typography>
-              <Card sx={{ maxWidth: 480, width: '100%' }}>
-                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-                    <Box sx={iconTileSx(5)}>
-                      <FileText size={20} />
-                    </Box>
-                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                        <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">
-                          {file.name}
-                        </Typography>
-                        {fileExtensionLabel(file.name) === '' ? null : (
-                          <Chip label={fileExtensionLabel(file.name)} size="small" />
-                        )}
-                      </Stack>
-                      <Typography color="text.secondary" variant="caption">
-                        {formatFileSize(intl, file.size)}
-                      </Typography>
-                    </Box>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.uploadRemove, {
-                        fileName: file.name,
-                      })}
-                      color="error"
-                      onClick={() => onReject('removed')}
-                      size="small"
-                      type="button"
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
-
-      {helperText === undefined ? null : (
-        <FormHelperText id={helperId}>{helperText}</FormHelperText>
-      )}
-    </FormControl>
-  );
-};
 
 /** A parsed contract, as loose as it arrives — nothing here inspects it. */
 type SpecDocument = Record<string, unknown>;
@@ -1327,7 +1049,7 @@ export const ContractSourceForm = ({
   };
 
   /** Rejects the current file using the provided reason. */
-  const handleFileReject = (reason: ContractFileRejection) => {
+  const handleFileReject = (reason: FileDropzoneRejection) => {
     setFile(null);
     setFileError(reason === 'unsupported' ? 'unsupported' : null);
   };
@@ -1600,32 +1322,7 @@ export const ContractSourceForm = ({
               handleSourceChange(next);
             }
           }}
-          sx={(theme) => ({
-            alignSelf: 'flex-start',
-            bgcolor: 'action.hover',
-            border: hairline(theme),
-            borderColor: 'divider',
-            borderRadius: 2,
-            gap: 0.5,
-            p: 0.5,
-            // The grouped class carries MUI's own radius and collapsing
-            // margins, which would square off the inner buttons.
-            '& .MuiToggleButtonGroup-grouped': {
-              border: 0,
-              borderRadius: 1.5,
-              color: 'text.secondary',
-              fontWeight: 600,
-              m: 0,
-              px: 2,
-              py: 0.75,
-              textTransform: 'none',
-              '&.Mui-selected': {
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                '&:hover': { bgcolor: 'primary.dark' },
-              },
-            },
-          })}
+          sx={pillToggleGroupSx}
           value={sourceKey}
         >
           {availableSources.map((candidate) => (
@@ -1698,7 +1395,7 @@ export const ContractSourceForm = ({
       ) : null}
 
       {sourceKey === 'file' ? (
-        <ContractFileControl
+        <FileDropzone
           error={fileError}
           extensions={extensions}
           file={file}

@@ -119,6 +119,61 @@ const DefinitionPage = lazy(() =>
     default: m.DefinitionPage,
   })),
 );
+const GraphqlApiDetailPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/overview/GraphqlApiDetailPage').then((m) => ({
+    default: m.GraphqlApiDetailPage,
+  })),
+);
+const GraphqlApiEditPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/edit/GraphqlApiEditPage').then((m) => ({
+    default: m.GraphqlApiEditPage,
+  })),
+);
+const GraphqlDeployPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/deploy/GraphqlDeployPage').then((m) => ({
+    default: m.GraphqlDeployPage,
+  })),
+);
+const GraphqlTestConsolePage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/testConsole/GraphqlTestConsolePage').then(
+    (m) => ({ default: m.GraphqlTestConsolePage }),
+  ),
+);
+const GraphqlDevelopPoliciesPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/develop/GraphqlDevelopPoliciesPage').then(
+    (m) => ({ default: m.GraphqlDevelopPoliciesPage }),
+  ),
+);
+const GraphqlDevelopDocumentsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/develop/GraphqlDevelopDocumentsPage').then(
+    (m) => ({ default: m.GraphqlDevelopDocumentsPage }),
+  ),
+);
+const GraphqlPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/publish/GraphqlPublishPage').then((m) => ({
+    default: m.GraphqlPublishPage,
+  })),
+);
+const GraphqlInsightsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/insights/GraphqlInsightsPage').then((m) => ({
+    default: m.GraphqlInsightsPage,
+  })),
+);
+const GraphqlCompliancePage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/insights/GraphqlCompliancePage').then(
+    (m) => ({ default: m.GraphqlCompliancePage }),
+  ),
+);
+const GraphqlObservabilityMetricsPage = lazy(() =>
+  import(
+    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage'
+  ).then((m) => ({ default: m.GraphqlObservabilityMetricsPage })),
+);
+const GraphqlObservabilityLogsPage = lazy(() =>
+  import(
+    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage'
+  ).then((m) => ({ default: m.GraphqlObservabilityLogsPage })),
+);
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
     default: m.AlertsPage,
@@ -332,6 +387,41 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             alone.
           */}
           <Route path={routes.apiEdit()} element={<ApiEditPage />} />
+          {/*
+            GraphQL API pages live under a distinct `graphql-apis` segment (see
+            `graphqlApiPath`), so `ConsoleScopeProvider`'s REST-only api-scope
+            matching never fires for them. GraphQL has no scope-less alias at
+            all (a sidebar item reaches one of these via its own `graphqlTo`
+            once a GraphQL API is already in scope — see
+            `navigationRegistry.tsx`), so — like the create/edit pages above —
+            each takes only its fully-scoped path.
+          */}
+          <Route path={routes.graphqlApi()} element={<GraphqlApiDetailPage />} />
+          <Route path={routes.graphqlApiEdit()} element={<GraphqlApiEditPage />} />
+          <Route path={routes.graphqlApiDeploy()} element={<GraphqlDeployPage />} />
+          <Route path={routes.graphqlApiTestConsole()} element={<GraphqlTestConsolePage />} />
+          <Route
+            path={routes.graphqlApiDevelopPolicies()}
+            element={<GraphqlDevelopPoliciesPage />}
+          />
+          <Route
+            path={routes.graphqlApiDevelopDocuments()}
+            element={<GraphqlDevelopDocumentsPage />}
+          />
+          <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
+          <Route path={routes.graphqlApiInsightsApi()} element={<GraphqlInsightsPage />} />
+          <Route
+            path={routes.graphqlApiInsightsCompliance()}
+            element={<GraphqlCompliancePage />}
+          />
+          <Route
+            path={routes.graphqlApiObservabilityMetrics()}
+            element={<GraphqlObservabilityMetricsPage />}
+          />
+          <Route
+            path={routes.graphqlApiObservabilityLogs()}
+            element={<GraphqlObservabilityLogsPage />}
+          />
           {/*
             Test, Observability and Manage are sidebar parents with no page of
             their own — only their children are routed. Out of API scope a parent

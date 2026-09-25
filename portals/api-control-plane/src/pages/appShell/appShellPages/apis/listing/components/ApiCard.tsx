@@ -19,7 +19,7 @@
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { useIntl } from 'react-intl';
 
-import type { RestApi } from '@/api/resources/restApis';
+import type { ListableApi } from '../apiListItem';
 import { openableProps } from '@/components/openable';
 import { focusRingSx, interactiveCardSx } from '@/theme';
 import {
@@ -32,15 +32,16 @@ import {
 } from './RestApiChips';
 
 type ApiCardProps = {
-  api: RestApi;
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  api: ListableApi;
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 const AVATAR_SIZE = 42;
 
 /**
- * API card for the grid view, rendering the spec's `RESTAPI` shape.
+ * API card for the grid view. Renders either a REST or a GraphQL API — see
+ * `ListableApi` for why the two need no per-type branching here.
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const intl = useIntl();
