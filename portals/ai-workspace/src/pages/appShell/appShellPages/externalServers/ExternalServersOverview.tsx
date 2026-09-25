@@ -668,7 +668,7 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleSaveChanges = async () => {
-    if (!server || !organizationId || isReadOnlyServer) return;
+    if (!server || !organizationId || isReadOnlyServer || isSavingChanges) return;
     if (!validateHeaderAuthentication()) return;
     const orderedPolicies = selectedPoliciesRef.current;
 
@@ -696,6 +696,9 @@ export default function ExternalServersOverview(): JSX.Element {
     // updateMCPServer call can clean it up instead of leaking an orphaned secret.
     let newlyCreatedSecretHandle: string | null = null;
 
+    // Lock authentication mode throughout secret creation and the proxy update.
+    setIsSavingChanges(true);
+
     if (hasBackendConnectionChanges) {
       const trimmedUrl = endpointUrl.trim();
       const trimmedHeaderName = authType === 'header' ? authHeaderName.trim() : '';
@@ -722,6 +725,7 @@ export default function ExternalServersOverview(): JSX.Element {
               value: buildSecretPlaceholder(secretResponse.id),
             };
           } catch {
+            setIsSavingChanges(false);
             showSnackbar('Failed to encrypt upstream auth credential', 'error');
             return;
           }
@@ -758,7 +762,6 @@ export default function ExternalServersOverview(): JSX.Element {
       : updatePayload.capabilities;
 
     try {
-      setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
         {
@@ -799,7 +802,7 @@ export default function ExternalServersOverview(): JSX.Element {
   };
 
   const handleAuthTypeChange = (nextAuthType: 'none' | 'header') => {
-    if (nextAuthType === authType) return;
+    if (isReadOnlyServer || isSavingChanges || nextAuthType === authType) return;
     authModeRevision.current += 1;
     setAuthType(nextAuthType);
     setRefetchedCapabilities(null);
@@ -1660,7 +1663,7 @@ export default function ExternalServersOverview(): JSX.Element {
                     labelId="backend-connection-authentication-label"
                     value={authType}
                     onChange={(event) => handleAuthTypeChange(event.target.value as 'none' | 'header')}
-                    disabled={isReadOnlyServer}
+                    disabled={isReadOnlyServer || isSavingChanges}
                     data-testid="backend-connection-authentication"
                   >
                     <MenuItem value="none">None</MenuItem>
