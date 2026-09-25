@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { JSX } from 'react';
 import React, { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContent, Stack, Typography } from '@wso2/oxygen-ui';
