@@ -22,6 +22,7 @@ import { Lock } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { AppLoader } from './AppLoader';
+import { Can } from '@/permissions';
 
 const messages = defineMessages({
   forbiddenTitle: {
@@ -58,6 +59,8 @@ type EmptyStateProps = {
   /** Artwork for first-run case; triggers centred full-height layout. */
   illustration?: ReactNode;
   onAction?: () => void;
+  /** Optional `operationId` to gate the action button behind. */
+  operationId?: string;
 };
 
 /**
@@ -71,12 +74,15 @@ export function EmptyState({
   actionIcon,
   illustration,
   onAction,
+  operationId = '',
 }: EmptyStateProps) {
   const action =
     actionLabel && onAction ? (
-      <Button onClick={onAction} startIcon={actionIcon} variant="contained">
-        {actionLabel}
-      </Button>
+      <Can do={operationId} denied="disable">
+        <Button onClick={onAction} startIcon={actionIcon} variant="contained">
+          {actionLabel}
+        </Button>
+      </Can>
     ) : null;
 
   if (illustration) {

@@ -29,6 +29,7 @@ import {
   ApiKindChip,
   UpdatedLabel,
 } from './components/RestApiChips';
+import { useCan } from '@/permissions/useCan';
 
 const AVATAR_SIZE = 40;
 
@@ -60,6 +61,7 @@ type ApiRowProps = {
  */
 function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
   const intl = useIntl();
+  const canDelete = useCan('DeleteRESTAPI');
   const updated = api.updatedAt || api.createdAt;
 
   return (
@@ -110,7 +112,7 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         sx={{ display: { md: 'flex', xs: 'none' } }}
       >
         <UpdatedLabel timestamp={updated} />
-        {onDelete && (
+        {onDelete && canDelete && (
           <Box sx={{ mr: -1 }}>
             <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
           </Box>
@@ -123,7 +125,9 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         sx={{ display: { md: 'none', xs: 'flex' } }}
       >
         <UpdatedLabel timestamp={updated} />
-        {onDelete && <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
+        {onDelete && canDelete && (
+          <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+        )}
       </Stack>
     </Box>
   );

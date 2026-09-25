@@ -30,6 +30,7 @@ import {
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
 import { GatewayDeploymentSelector } from './GatewayDeploymentSelector';
+import { Can } from '@/permissions/Can';
 
 /**
  * Explanations for the `statusReason` codes platform-api returns on a failed
@@ -322,30 +323,34 @@ export function GatewayDeployEnvCard({
           </Box>
         )}
         {(isDeployed || isDeploying) && (
-          <Button
-            color="error"
-            disabled={!isGatewayActive || busy || isDeploying}
-            onClick={handleUndeploy}
-            size="small"
-            variant="outlined"
-          >
-            <FormattedMessage
-              {...(undeployMutation.isPending ? messages.stopping : messages.stop)}
-            />
-          </Button>
+          <Can do="DeleteDeployment" denied="disable">
+            <Button
+              color="error"
+              disabled={!isGatewayActive || busy || isDeploying}
+              onClick={handleUndeploy}
+              size="small"
+              variant="outlined"
+            >
+              <FormattedMessage
+                {...(undeployMutation.isPending ? messages.stopping : messages.stop)}
+              />
+            </Button>
+          </Can>
         )}
         {(isFailed || isUndeployed || isUndeploying || status === 'ARCHIVED') && (
-          <Button
-            color="primary"
-            disabled={!isGatewayActive || busy || isUndeploying}
-            onClick={handleRedeploy}
-            size="small"
-            variant="outlined"
-          >
-            <FormattedMessage
-              {...(restoreMutation.isPending ? messages.redeploying : messages.redeploy)}
-            />
-          </Button>
+          <Can do="RestoreDeployment" denied="disable">
+            <Button
+              color="primary"
+              disabled={!isGatewayActive || busy || isUndeploying}
+              onClick={handleRedeploy}
+              size="small"
+              variant="outlined"
+            >
+              <FormattedMessage
+                {...(restoreMutation.isPending ? messages.redeploying : messages.redeploy)}
+              />
+            </Button>
+          </Can>
         )}
       </Box>
 
@@ -416,16 +421,18 @@ export function GatewayDeployEnvCard({
             </Typography>
           )}
         </Box>
-        <IconButton
-          aria-label={intl.formatMessage(messages.changeDeploymentLabel, {
-            gatewayName: gateway.displayName,
-          })}
-          disabled={!isGatewayActive}
-          onClick={() => setSelectorOpen(true)}
-          size="small"
-        >
-          <SquarePen size={16} />
-        </IconButton>
+        <Can do="RestoreDeployment" denied="hide">
+          <IconButton
+            aria-label={intl.formatMessage(messages.changeDeploymentLabel, {
+              gatewayName: gateway.displayName,
+            })}
+            disabled={!isGatewayActive}
+            onClick={() => setSelectorOpen(true)}
+            size="small"
+          >
+            <SquarePen size={16} />
+          </IconButton>
+        </Can>
       </Box>
 
       <GatewayDeploymentSelector

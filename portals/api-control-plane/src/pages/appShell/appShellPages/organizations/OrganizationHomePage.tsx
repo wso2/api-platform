@@ -62,6 +62,7 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
+import { Can } from '@/permissions/Can';
 
 const messages = defineMessages({
   apiAction: {
@@ -214,9 +215,18 @@ type OverviewCardProps = {
   metric: string;
   onAction: () => void;
   title: string;
+  operationId: string;
 };
 
-function OverviewCard({ action, description, icon, metric, onAction, title }: OverviewCardProps) {
+function OverviewCard({
+  action,
+  description,
+  icon,
+  metric,
+  onAction,
+  title,
+  operationId = '',
+}: OverviewCardProps) {
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <CardContent sx={{ flexGrow: 1 }}>
@@ -249,24 +259,26 @@ function OverviewCard({ action, description, icon, metric, onAction, title }: Ov
         </Stack>
       </CardContent>
       <Divider />
-      <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
-        <Box
-          sx={{
-            alignItems: 'center',
-            color: 'primary.main',
-            display: 'flex',
-            justifyContent: 'space-between',
-            px: 2,
-            py: 1.25,
-            width: '100%',
-          }}
-        >
-          <Typography sx={{ fontWeight: 700 }} variant="body2">
-            {action}
-          </Typography>
-          <ArrowRight size={16} />
-        </Box>
-      </ButtonBase>
+      <Can do={operationId} denied="hide">
+        <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
+          <Box
+            sx={{
+              alignItems: 'center',
+              color: 'primary.main',
+              display: 'flex',
+              justifyContent: 'space-between',
+              px: 2,
+              py: 1.25,
+              width: '100%',
+            }}
+          >
+            <Typography sx={{ fontWeight: 700 }} variant="body2">
+              {action}
+            </Typography>
+            <ArrowRight size={16} />
+          </Box>
+        </ButtonBase>
+      </Can>
     </Card>
   );
 }
@@ -375,6 +387,7 @@ export function OrganizationHomePage() {
               }
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
+              operationId="CreateRESTAPI"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -389,6 +402,7 @@ export function OrganizationHomePage() {
               }
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
+              operationId="CreateGateway"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -399,6 +413,7 @@ export function OrganizationHomePage() {
               metric={intl.formatNumber(0)}
               onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
+              operationId="publishRestApiToApiPortal"
             />
           </Grid>
         </Grid>
@@ -439,9 +454,11 @@ export function OrganizationHomePage() {
                 size="small"
                 value={search}
               />
-              <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
-                <FormattedMessage {...messages.projectsAdd} />
-              </Button>
+              <Can do="CreateProject" denied="hide">
+                <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
+                  <FormattedMessage {...messages.projectsAdd} />
+                </Button>
+              </Can>
             </Stack>
           </Box>
           <Divider />
@@ -543,22 +560,24 @@ export function OrganizationHomePage() {
                           )}
                         </Box>
                       </ButtonBase>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                          name: project.displayName,
-                        })}
-                        className="project-delete-action"
-                        color="error"
-                        onClick={() => setProjectToDelete(project)}
-                        size="small"
-                        sx={{
-                          flexShrink: 0,
-                          mr: 1.5,
-                          opacity: { md: 0, xs: 1 },
-                        }}
-                      >
-                        <Trash2 size={18} />
-                      </IconButton>
+                      <Can do="DeleteProject" denied="hide">
+                        <IconButton
+                          aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                            name: project.displayName,
+                          })}
+                          className="project-delete-action"
+                          color="error"
+                          onClick={() => setProjectToDelete(project)}
+                          size="small"
+                          sx={{
+                            flexShrink: 0,
+                            mr: 1.5,
+                            opacity: { md: 0, xs: 1 },
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Can>
                     </Box>
                   ))}
                 </Stack>

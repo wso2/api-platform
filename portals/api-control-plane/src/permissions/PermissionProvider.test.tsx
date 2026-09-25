@@ -17,7 +17,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { within } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 
 import { notifyForbidden, resetForbiddenNotice } from '../api/core/sessionEvents';
 import { resetPermissionWarnings } from './evaluate';
@@ -163,7 +163,8 @@ describe('PermissionProvider', () => {
   });
 
   it('throws when used with no provider above it, rather than failing open', () => {
-    expect(() => renderWithProviders(<Probe />)).toThrow(
+    // Plain `render`, not `renderWithProviders`: the latter mounts a provider.
+    expect(() => render(<Probe />)).toThrow(
       /usePermissions must be used within PermissionProvider/,
     );
   });
