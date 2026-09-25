@@ -396,6 +396,12 @@ blocks:
       - name: mcp-legacy-upstream
         features:
           - features/ai-workspace-gateway/mcp/mcp_legacy_upstream.feature
+      # Gated where its sibling above is not: this feature deploys a 2026-07-28 proxy, and 1.2.0
+      # rejects that specVersion outright, so the era comparison is unreachable on that release.
+      - name: mcp-legacy-upstream-modern-client
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
