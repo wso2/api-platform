@@ -50,9 +50,9 @@ const messages = defineMessages({
   },
   stepPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish',
-    defaultMessage: 'Publish to Devportal',
+    defaultMessage: 'Publish',
     description:
-      'Fourth step of the API progress stepper — the API is listed in the developer portal.',
+      'Fourth step of the API progress stepper — the API is listed in the developer portal. A stage name, not a button command.',
   },
   stepTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test',
