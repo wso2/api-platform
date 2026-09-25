@@ -25,6 +25,9 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -491,4 +494,75 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 		t.Fatalf("parse url %q: %v", raw, err)
 	}
 	return u
+}
+
+// ---------------------------------------------------------------------------
+// Role authorization mode: /api/session reports the roles claim expanded through
+// the grant table, not the token's own scope claim.
+// ---------------------------------------------------------------------------
+
+func TestHandlers_RoleMode_SessionReportsExpandedScopes(t *testing.T) {
+	mapping := filepath.Join(t.TempDir(), "role-to-scope-mapping.yaml")
+	if err := os.WriteFile(mapping, []byte("roles:\n  - name: ap_viewer\n    scopes: [ap:project:read, ap:gateway:read]\n"), 0o600); err != nil {
+		t.Fatalf("write mapping: %v", err)
+	}
+	// The token carries only OIDC-style scopes plus a role, the shape a role-based IdP
+	// (Thunder, Entra ID) issues.
+	tok := makeJWT(map[string]any{"username": "viewer", "scope": "openid profile", "roles": []any{"ap_viewer"}})
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"token": tok, "expires_at": time.Now().Add(time.Hour).Unix()})
+	}))
+	defer platform.Close()
+
+	cfg := newTestConfig(platform.URL)
+	cfg.Auth.Authorization = config.AuthorizationConfig{Mode: config.AuthzModeRole, RoleToScopeMapping: mapping}
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginReq, _ := http.NewRequest(http.MethodPost, bff.URL+"/api/login",
+		strings.NewReader(`{"username":"viewer","password":"secret"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginReq.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err := client.Do(loginReq)
+	if err != nil {
+		t.Fatalf("login request: %v", err)
+	}
+	assertStatus(t, res, http.StatusOK)
+
+	res, _ = client.Get(bff.URL + "/api/session")
+	assertStatus(t, res, http.StatusOK)
+	var body struct {
+		User struct {
+			Role   string   `json:"role"`
+			Scopes []string `json:"scopes"`
+		} `json:"user"`
+	}
+	json.NewDecoder(res.Body).Decode(&body)
+	if !slices.Equal(body.User.Scopes, []string{"ap:project:read", "ap:gateway:read"}) {
+		t.Errorf("scopes = %v, want the ap_viewer grant, not the token's scope claim", body.User.Scopes)
+	}
+	if body.User.Role != "ap_viewer" {
+		t.Errorf("role = %q, want ap_viewer", body.User.Role)
+	}
+}
+
+// A grant table that cannot be loaded must fail startup, not degrade to an empty one
+// that would present a UI in which nothing is permitted.
+func TestNew_RoleModeUnreadableMappingFails(t *testing.T) {
+	cfg := newTestConfig("http://127.0.0.1:1")
+	cfg.Auth.Authorization = config.AuthorizationConfig{
+		Mode:               config.AuthzModeRole,
+		RoleToScopeMapping: filepath.Join(t.TempDir(), "absent.yaml"),
+	}
+	if srv, err := New(context.Background(), cfg); err == nil {
+		srv.Close()
+		t.Fatal("New succeeded, want an error for an unreadable role_to_scope_mapping")
+	}
 }
