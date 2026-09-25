@@ -290,6 +290,7 @@ export default function ExternalServersOverview(): JSX.Element {
   // Backend Connection tab
   const [endpointUrl, setEndpointUrl] = useState('');
   const [authType, setAuthType] = useState<'none' | 'header'>('none');
+  const authModeRevision = useRef(0);
   const [authHeaderName, setAuthHeaderName] = useState('');
   const [authHeaderValue, setAuthHeaderValue] = useState('');
   const [showAuthHeaderValue, setShowAuthHeaderValue] = useState(false);
@@ -652,6 +653,7 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
+    authModeRevision.current += 1;
     updateSelectedPolicies(initialPolicies);
     if (server) {
       setEndpointUrl(server.upstream?.main?.url ?? '');
@@ -667,6 +669,7 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const handleSaveChanges = async () => {
     if (!server || !organizationId || isReadOnlyServer) return;
+    if (!validateHeaderAuthentication()) return;
     const orderedPolicies = selectedPoliciesRef.current;
 
     // Convert selectedPolicies -> flat policy payload (preserve current UI order)
@@ -795,8 +798,35 @@ export default function ExternalServersOverview(): JSX.Element {
     }
   };
 
+  const handleAuthTypeChange = (nextAuthType: 'none' | 'header') => {
+    if (nextAuthType === authType) return;
+    authModeRevision.current += 1;
+    setAuthType(nextAuthType);
+    setRefetchedCapabilities(null);
+  };
+
+  const validateHeaderAuthentication = (): boolean => {
+    if (authType !== 'header') return true;
+    if (!authHeaderName.trim()) {
+      showSnackbar('Enter an authentication header name.', 'error');
+      return false;
+    }
+    const hasStoredCredential =
+      server?.upstream?.main?.auth?.type === 'header' &&
+      Boolean(server.upstream.main.auth.header);
+    // Focusing the masked field alone does not replace the stored credential.
+    const keepsStoredCredential = hasStoredCredential && !hasCredentialChanged;
+    if (!keepsStoredCredential && (isCredentialMasked || !authHeaderValue.trim())) {
+      showSnackbar('Enter an authentication header value.', 'error');
+      return false;
+    }
+    return true;
+  };
+
   const handleRefetch = async () => {
     if (!server) return;
+    if (!validateHeaderAuthentication()) return;
+    const requestAuthModeRevision = authModeRevision.current;
     const trimmedUrl = endpointUrl.trim();
     if (!trimmedUrl) {
       showSnackbar('Enter an endpoint URL before refetching.', 'error');
@@ -856,6 +886,7 @@ export default function ExternalServersOverview(): JSX.Element {
         request,
         apimBaseUrl
       );
+      if (requestAuthModeRevision !== authModeRevision.current) return;
       // Stage the discovered tools/resources/prompts so the user can Save them —
       // the fetch-server-info response already uses the same MCPServerTool/
       // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
@@ -1628,7 +1659,7 @@ export default function ExternalServersOverview(): JSX.Element {
                   <Select
                     labelId="backend-connection-authentication-label"
                     value={authType}
-                    onChange={(event) => setAuthType(event.target.value as 'none' | 'header')}
+                    onChange={(event) => handleAuthTypeChange(event.target.value as 'none' | 'header')}
                     disabled={isReadOnlyServer}
                     data-testid="backend-connection-authentication"
                   >
