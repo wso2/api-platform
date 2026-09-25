@@ -18,18 +18,44 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const policyHubUrl =
+  'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0';
+
 const loadRuntimeConfig = async () => {
   vi.resetModules();
   return (await import('./runtime')).runtimeConfig;
 };
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   delete window.config;
   delete window.__RUNTIME_CONFIG__;
   vi.resetModules();
 });
 
 describe('runtimeConfig', () => {
+  it('uses the default Policy Hub in production when overrides are empty', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('MODE', 'production');
+    vi.stubEnv('VITE_POLICY_HUB_BASE_URL', '');
+    window.__RUNTIME_CONFIG__ = { POLICY_HUB_BASE_URL: '' };
+
+    expect((await loadRuntimeConfig()).policyHubBaseUrl).toBe(policyHubUrl);
+  });
+
+  it('lets build configuration override the default Policy Hub', async () => {
+    vi.stubEnv('VITE_POLICY_HUB_BASE_URL', `${policyHubUrl}/`);
+
+    expect((await loadRuntimeConfig()).policyHubBaseUrl).toBe(`${policyHubUrl}/`);
+  });
+
+  it('prefers runtime Policy Hub configuration over build configuration', async () => {
+    vi.stubEnv('VITE_POLICY_HUB_BASE_URL', `${policyHubUrl}/`);
+    window.__RUNTIME_CONFIG__ = { POLICY_HUB_BASE_URL: policyHubUrl };
+
+    expect((await loadRuntimeConfig()).policyHubBaseUrl).toBe(policyHubUrl);
+  });
+
   it('uses the current Vite base path by default', async () => {
     const runtimeConfig = await loadRuntimeConfig();
 

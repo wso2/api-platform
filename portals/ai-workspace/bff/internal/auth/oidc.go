@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -123,6 +124,11 @@ func (o *OIDC) Close() {
 	o.closeOnce.Do(func() { close(o.done) })
 }
 
+// TokenEndpoint is the endpoint discovered from the issuer. Exposed so a token
+// exchange configured without an explicit endpoint override can post to the same
+// IDP the user logged in to, without repeating discovery.
+func (o *OIDC) TokenEndpoint() string { return o.disco.TokenEndpoint }
+
 func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (discoveryDoc, error) {
 	u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -191,10 +197,40 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }
 
-// ErrStateMismatch indicates a callback whose state didn't match the tx record.
-type ErrStateMismatch struct{}
+// ErrStateMismatch indicates a callback that could not be tied back to the login
+// this server started. Reason names WHICH of the four checks failed — they have very
+// different causes and fixes, and a single "state mismatch" string sends an operator
+// hunting for an attack when the usual explanation is a restarted process or a cookie
+// the browser never sent.
+//
+// The reason is for logs only. The browser is redirected with a generic auth_failed
+// either way: telling a caller which half of the check it failed is a probing oracle.
+type ErrStateMismatch struct{ Reason string }
 
-func (ErrStateMismatch) Error() string { return "oidc state mismatch" }
+func (e ErrStateMismatch) Error() string {
+	if e.Reason == "" {
+		return "oidc state mismatch"
+	}
+	return "oidc state mismatch: " + e.Reason
+}
+
+// Reasons an OIDC callback cannot be matched to a login transaction.
+const (
+	// The BFF keeps login transactions in memory, so every in-flight login is lost
+	// when the process restarts — by far the most common cause in development, where
+	// a container restart lands between the redirect to the IDP and the callback.
+	ReasonNoTransaction = "no login transaction for this id (server restarted, or the " +
+		"transaction already used)"
+	// The tx cookie never arrived: its Path does not cover the callback route, the
+	// browser dropped it (SameSite, Secure over plain http), or the user opened the
+	// callback URL directly.
+	ReasonNoTxCookie = "request carried no login-transaction cookie"
+	// Older than the 10-minute window: the user sat on the IDP's login page.
+	ReasonExpired = "login transaction expired"
+	// Everything was present and the state still differed — the one case that is
+	// genuinely suspicious.
+	ReasonStateDiffers = "state parameter does not match the stored transaction"
+)
 
 // ErrNonceMismatch indicates the id_token's nonce didn't match the tx record.
 type ErrNonceMismatch struct{}
@@ -204,16 +240,35 @@ func (ErrNonceMismatch) Error() string { return "oidc nonce mismatch" }
 // Callback validates the tx/state, exchanges the code for tokens, and returns a
 // populated session plus the sanitized return URL. txID comes from the tx cookie.
 func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session.Session, string, error) {
+	if txID == "" {
+		return nil, "", ErrStateMismatch{Reason: ReasonNoTxCookie}
+	}
+
 	o.mu.Lock()
 	tx, ok := o.txs[txID]
 	if ok {
 		delete(o.txs, txID)
 	}
+	pending := len(o.txs)
 	o.mu.Unlock()
 
-	if !ok || tx.Expiry.Before(time.Now()) || tx.State != state {
-		return nil, "", ErrStateMismatch{}
+	// Each branch is separate so the log names the actual cause. The checks
+	// themselves are unchanged, and all four still fail the login.
+	switch {
+	case !ok:
+		slog.Debug("oidc callback: no matching login transaction",
+			"pending_transactions", pending, "state_present", state != "")
+		return nil, "", ErrStateMismatch{Reason: ReasonNoTransaction}
+	case tx.Expiry.Before(time.Now()):
+		slog.Debug("oidc callback: login transaction expired",
+			"expired_at", tx.Expiry, "age", time.Since(tx.Expiry))
+		return nil, "", ErrStateMismatch{Reason: ReasonExpired}
+	case tx.State != state:
+		slog.Debug("oidc callback: state parameter differs from the stored transaction",
+			"state_present", state != "", "state_len", len(state), "stored_len", len(tx.State))
+		return nil, "", ErrStateMismatch{Reason: ReasonStateDiffers}
 	}
+	slog.Debug("oidc callback: login transaction matched", "pending_transactions", pending)
 
 	tok, err := o.exchange(ctx, code, tx.CodeVerifier)
 	if err != nil {
@@ -284,15 +339,28 @@ func (o *OIDC) postToken(ctx context.Context, form url.Values) (*tokenResponse, 
 
 // SessionFromToken builds a session from a refreshed token set, preserving the
 // previous refresh/id token when the IDP omits them on refresh.
+//
+// The carry-forward completes the token set BEFORE the session is built, and that
+// order is load-bearing rather than stylistic: sessionFromToken derives the display
+// User from the id_token's claims, so restoring the id_token onto the finished record
+// instead would leave User built from the access token alone. RFC 6749 §6 does not
+// require an id_token on refresh and most IDPs omit one, making that the ordinary
+// path — the user's name would fall back to the raw "sub" UUID and their email would
+// blank out, roughly an hour into every session, with nothing else changing to
+// explain it. A fresh id_token still wins wherever the IDP sends one.
 func (o *OIDC) SessionFromToken(tok *tokenResponse, prev *session.Session) *session.Session {
-	s := o.sessionFromToken(tok)
-	if s.RefreshToken == "" && prev != nil {
-		s.RefreshToken = prev.RefreshToken
+	// Copied rather than mutated in place: tok belongs to the caller, and a flat
+	// struct of scalars makes the copy exact.
+	effective := *tok
+	if prev != nil {
+		if effective.RefreshToken == "" {
+			effective.RefreshToken = prev.RefreshToken
+		}
+		if effective.IDToken == "" {
+			effective.IDToken = prev.IDToken
+		}
 	}
-	if s.IDToken == "" && prev != nil {
-		s.IDToken = prev.IDToken
-	}
-	return s
+	return o.sessionFromToken(&effective)
 }
 
 // UserFromAccessToken decodes the access token's claims (without verifying) and

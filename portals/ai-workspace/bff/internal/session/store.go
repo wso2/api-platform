@@ -61,6 +61,50 @@ type Session struct {
 	AccessExpiry   time.Time // from exp claim / expires_in (read, not verified)
 	AbsoluteExpiry time.Time // hard cap
 	User           User
+	Exchanged      ExchangedToken
+	// OrgHandle is the org currently selected in the SPA, set only by the
+	// /api/session/org switch handler. Read on every exchange to decide which org
+	// to request/validate the cached token against; "" until first selected, or
+	// when org-scoped exchange isn't configured.
+	OrgHandle string
+}
+
+// ExchangedToken is a cached token-exchange result; the zero value is a cache miss.
+// Scopes is what /api/session reports in exchange mode, since the exchanged token is
+// what the Platform API authorizes.
+type ExchangedToken struct {
+	// Token, not AccessToken: Session.AccessToken is the login token, and confusing
+	// the two is precisely what this feature exists to prevent.
+	Token             string
+	Expiry            time.Time
+	Scopes            []string
+	ConfigFingerprint string
+	// OrgHandle is the org this token was actually minted for (see
+	// [auth.oidc.token_exchange] org_param); "" when org-scoped exchange isn't
+	// configured. Compared against the session's current OrgHandle in Usable, so a
+	// switch to a different org always forces a fresh exchange.
+	OrgHandle string
+
+	// Org is what the issued token ASSERTS about the caller's org — distinct from
+	// OrgHandle above, which is what was requested. Cached with the token so a cache
+	// hit reports the same org a fresh exchange would, rather than falling back to
+	// the login token's org for the token's whole lifetime.
+	Org *Org
+}
+
+// Usable reports whether the cached token can still be forwarded upstream. An unknown
+// expiry is never usable: freshness cannot be checked, so reusing it would risk
+// forwarding an expired credential. orgHandle is the session's currently selected
+// org — a mismatch against the org this token was minted for is always a miss, even
+// if the token is otherwise still fresh.
+func (e ExchangedToken) Usable(now time.Time, minValidity time.Duration, fingerprint, orgHandle string) bool {
+	if e.Token == "" || e.Expiry.IsZero() {
+		return false
+	}
+	if e.ConfigFingerprint != fingerprint || e.OrgHandle != orgHandle {
+		return false
+	}
+	return now.Add(minValidity).Before(e.Expiry)
 }
 
 // Expired reports whether the session has passed its absolute lifetime.

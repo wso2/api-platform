@@ -37,6 +37,24 @@ export interface AppUser {
 export interface AppAuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
+  // True when the BFF answered GET /api/session with 502: the session cookie is
+  // valid and the session is alive, but the BFF cannot currently mint the token it
+  // forwards upstream (the IDP is unreachable, or the exchange is misconfigured).
+  //
+  // Distinct from `!isAuthenticated`, and the distinction is the point: treating
+  // this as "logged out" sends the user to /login over a transient blip, and the
+  // login they then attempt fails identically, because the OIDC callback runs the
+  // very same exchange. Route guards must hold the route, not redirect.
+  sessionUnavailable: boolean;
+  // Re-reads the session from the BFF and updates `user` from it. Awaitable, because
+  // both callers need to know the context has caught up before they continue:
+  //
+  //  - the sessionUnavailable retry, which the provider also drives on a timer;
+  //  - an org switch, after which the exchanged token — and therefore the caller's
+  //    scopes AND which org they are in — has changed server-side. Re-reading the
+  //    session is what brings those into the UI; the switch response alone reports
+  //    scopes, and would leave the org stale.
+  refreshSession: () => Promise<void>;
   user: AppUser | null;
   // Fetches the current raw JWT on demand. Unlike a cached snapshot, this stays
   // correct after the BFF proxy rotates the cookie token, so call-sites that
@@ -50,6 +68,8 @@ export interface AppAuthContextType {
 export const AppAuthContext = createContext<AppAuthContextType>({
   isAuthenticated: false,
   isLoading: true,
+  sessionUnavailable: false,
+  refreshSession: async () => {},
   user: null,
   getAccessToken: async () => null,
   hasPermission: () => false,

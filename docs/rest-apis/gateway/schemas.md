@@ -4169,7 +4169,7 @@ continued
 
 ```
 
-Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). Optional auth config is used by the proxy when calling a protected LlmProvider over the internal loopback route.
+Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). Optional auth config is used by the proxy when calling a protected LlmProvider over the internal loopback route. When a proxy has more than one provider, api-key auth that uses the default set-headers policy is applied after the request body is processed, so a policy may select the provider from the request body. Other auth policies (for example oauth2) are still applied in the request-header phase.
 
 #### Properties
 

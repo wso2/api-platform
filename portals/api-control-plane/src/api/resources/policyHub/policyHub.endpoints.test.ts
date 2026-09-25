@@ -60,11 +60,11 @@ describe('isPolicyHubConfigured', () => {
     expect(isPolicyHubConfigured()).toBe(true);
   });
 
-  it('is false when no base URL is configured', async () => {
+  it('uses the default hub when no base URL is configured', async () => {
     vi.stubEnv('VITE_POLICY_HUB_BASE_URL', '');
     vi.resetModules();
     const { isPolicyHubConfigured } = await import('./policyHub.endpoints');
-    expect(isPolicyHubConfigured()).toBe(false);
+    expect(isPolicyHubConfigured()).toBe(true);
   });
 });
 

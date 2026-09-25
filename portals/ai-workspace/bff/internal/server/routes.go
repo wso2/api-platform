@@ -52,6 +52,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/login"), s.handleLogin)
 	mux.HandleFunc("POST "+s.path("/api/logout"), s.handleLogout)
 	mux.HandleFunc("GET "+s.path("/api/session"), s.handleSession)
+	mux.HandleFunc("POST "+s.path("/api/session/org"), s.handleSwitchOrg)
 	mux.HandleFunc("GET "+s.path("/api/auth/login"), s.handleOIDCLogin)
 	mux.HandleFunc("GET "+s.path("/api/auth/callback"), s.handleOIDCCallback)
 
@@ -67,6 +68,7 @@ func (s *Server) routes() http.Handler {
 	// the compensation with no error anywhere. The version stays in the handler alone.
 	mux.HandleFunc("POST "+s.path("/api/llm-providers"), s.handleCreateLLMProvider)
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
+	mux.HandleFunc("POST "+s.path("/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish"), s.handlePublishMCPProxy)
 
 	// Same-origin reverse proxy to the Platform API. Optional cloud hop is more
 	// specific (/proxy/cloud/) and must be registered before the catch-all /proxy/.

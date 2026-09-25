@@ -17,7 +17,9 @@
 package server
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,5 +77,37 @@ func TestClearSessionCookieAlsoClearsLegacyRootPath(t *testing.T) {
 			t.Errorf("got %d expiries for Path %q, want exactly 1 (all Set-Cookie: %v)",
 				byPath[want], want, rec.Result().Header["Set-Cookie"])
 		}
+	}
+}
+
+// TestTxCookieReachesTheCallback pins the invariant whose violation fails every
+// login with "oidc state mismatch": a browser sends a cookie only to paths at or
+// below its Path attribute, so the login-transaction cookie's Path MUST cover the
+// callback route. When it does not, the callback receives no transaction id at all —
+// which looks exactly like a forged state, and the error names neither cookies nor
+// paths.
+func TestTxCookieReachesTheCallback(t *testing.T) {
+	s := oidcRoutesTestServer(t, "https://localhost:9643/ai-workspace/api/auth/callback")
+
+	callbackPath := s.path("/api/auth/callback")
+	if !strings.HasPrefix(callbackPath, s.txCookiePath()) {
+		t.Errorf("cookie Path %q does not cover callback path %q — the browser would not send it",
+			s.txCookiePath(), callbackPath)
+	}
+
+	// set and clear must agree, or the deletion silently misses and the next login
+	// reads a stale transaction id.
+	recSet := httptest.NewRecorder()
+	s.setTxCookie(recSet, "tx-123")
+	recClear := httptest.NewRecorder()
+	s.clearTxCookie(recClear)
+	setCookie := recSet.Result().Cookies()[0]
+	clearCookie := recClear.Result().Cookies()[0]
+	if setCookie.Path != clearCookie.Path {
+		t.Errorf("set Path %q != clear Path %q — the cookie would survive the clear",
+			setCookie.Path, clearCookie.Path)
+	}
+	if !setCookie.HttpOnly || setCookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("tx cookie lost its HttpOnly/SameSite=Lax protection: %+v", setCookie)
 	}
 }

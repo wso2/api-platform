@@ -27,6 +27,12 @@ url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" 
 tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 
 
+[api_control_plane.policy_hub]
+
+# Public catalog URL exposed to the browser at runtime, including production builds.
+base_url = '{{ env "APIP_ACP_POLICY_HUB_BASE_URL" "" }}'
+
+
 [api_control_plane.session]
 
 # Local dev runs the BFF over plain HTTP (no cert generation set up for this
