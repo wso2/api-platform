@@ -44,7 +44,7 @@ import { Braces, Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-re
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { ApiError } from '@/api/core/errors';
+import { ApiError, isApiError } from '@/api/core/errors';
 import {
   usePutRestApiOpenApi,
   useRestApi,
@@ -164,6 +164,10 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.dialogParseError',
     defaultMessage: 'The fetched content is not a valid OpenAPI/Swagger spec.',
   },
+  dialogSpecTooLarge: {
+    id: 'develop.definition.DefinitionPanel.dialogSpecTooLarge',
+    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
+  },
   formatLabel: {
     id: 'develop.definition.DefinitionPanel.formatLabel',
     defaultMessage: 'Source format',
@@ -171,13 +175,9 @@ const messages = defineMessages({
   },
   saveSpecInvalid: {
     id: 'develop.definition.DefinitionPanel.saveSpecInvalid',
-    defaultMessage: 'Failed to save the specification. Fix the following issues:',
-    description: 'Heading above spec validation errors shown when Save is clicked.',
-  },
-  saveValidationUnavailable: {
-    id: 'develop.definition.DefinitionPanel.saveValidationUnavailable',
-    defaultMessage: 'Spec validation is currently unavailable. Please try again.',
-    description: 'Error shown when the validation service itself fails (network/auth error).',
+    defaultMessage: 'The specification is not a valid OpenAPI document:',
+    description:
+      'Heading above spec validation errors shown either after an import or when Save is clicked.',
   },
   discard: {
     id: 'develop.definition.DefinitionPanel.discard',
@@ -309,6 +309,36 @@ function filenameFromUrl(urlStr: string): string {
   }
 }
 
+/**
+ * Substring the backend uses in the client-facing message when the OpenAPI
+ * spec it fetched from the caller-supplied URL exceeds the configured limit.
+ */
+const SPEC_TOO_LARGE_MESSAGE_MARKER = 'exceeds the maximum allowed size';
+
+/**
+ * Turns a mutation failure from `POST /rest-apis/validate-openapi` into the
+ * dialog copy the user should see. Any recognised "too large" outcome (413
+ * for an uploaded file, 400 + size marker for a URL fetch) collapses to one
+ * message; everything else falls back to a source-appropriate generic one.
+ */
+function classifyImportFailure(
+  err: unknown,
+  input: { file: File } | { url: string },
+): { id: string; defaultMessage: string } {
+  if (isApiError(err)) {
+    if (err.status === 413 || err.code === 'PAYLOAD_TOO_LARGE') {
+      return messages.dialogSpecTooLarge;
+    }
+    if (
+      typeof err.message === 'string' &&
+      err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)
+    ) {
+      return messages.dialogSpecTooLarge;
+    }
+  }
+  return 'url' in input ? messages.dialogFetchError : messages.fileReadError;
+}
+
 export function DefinitionPanel() {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
@@ -333,7 +363,6 @@ export function DefinitionPanel() {
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
 
   const [saveValidationErrors, setSaveValidationErrors] = useState<string[] | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   // true = Monaco editor (Source), false = operations list.
@@ -366,10 +395,6 @@ export function DefinitionPanel() {
     setPendingFileName(null);
     setFormat(fmt);
   }, [openApiData?.content]);
-
-  useEffect(() => {
-    setSaveValidationErrors(null);
-  }, [editorText]);
 
   const isDirty = useMemo(() => {
     const savedParsed = parseSpec(savedContent);
@@ -407,12 +432,7 @@ export function DefinitionPanel() {
     return savedContent;
   }, [savedContent, format]);
 
-  const isSaving = isValidating || putOpenApi.isPending;
-
-  const isSavingRef = useRef(false);
-  useEffect(() => {
-    isSavingRef.current = isSaving;
-  }, [isSaving]);
+  const isSaving = putOpenApi.isPending;
 
   const handleFormatToggle = useCallback(
     (newFormat: 'yaml' | 'json') => {
@@ -434,6 +454,7 @@ export function DefinitionPanel() {
   );
 
   const closeDialog = () => {
+    importTokenRef.current++;
     setDialogOpen(false);
     setSpecUrl('');
     setFetchError(null);
@@ -446,19 +467,41 @@ export function DefinitionPanel() {
     setNewDescription('');
   };
 
-  const applyFileContent = (file: File) => {
-    void file
-      .text()
-      .then((text) => {
-        const parsedSpec = parseSpec(text);
-        setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
-        setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
-        setFormat('yaml');
-        setIsEditing(true);
-      })
-      .catch(() => {
-        setFetchError(intl.formatMessage(messages.fileReadError));
-      });
+  /**
+   * Runs the backend validator against `input` and hands its outcome to the
+   * editor. The backend echoes `content` on every outcome.
+   */
+  const importTokenRef = useRef(0);
+  const importSpecViaValidator = async (
+    input: { file: File } | { url: string },
+    fileName: string,
+  ): Promise<boolean> => {
+    const token = ++importTokenRef.current;
+    setIsFetchingSpec(true);
+    setFetchError(null);
+    try {
+      const validation = await validateSpec.mutateAsync(input);
+      if (token !== importTokenRef.current) return false;
+      const rawContent = validation.content ?? '';
+      if (!rawContent) {
+        setFetchError(intl.formatMessage(messages.dialogFetchError));
+        return false;
+      }
+      const parsedSpecContent = parseSpec(rawContent);
+      setEditorText(parsedSpecContent ? yaml.dump(parsedSpecContent) : rawContent);
+      setPendingFileName(fileName.replace(/\.json$/i, '.yaml'));
+      setFormat('yaml');
+      setIsEditing(true);
+      setSaveValidationErrors(
+        validation.isValid ? null : validation.errors.map((e) => e.message),
+      );
+      return true;
+    } catch (err) {
+      setFetchError(intl.formatMessage(classifyImportFailure(err, input)));
+      return false;
+    } finally {
+      setIsFetchingSpec(false);
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,54 +509,16 @@ export function DefinitionPanel() {
     if (!file) return;
     event.target.value = '';
     if (isSaving) return;
-    applyFileContent(file);
-    closeDialog();
+    void importSpecViaValidator({ file }, file.name).then((ok) => {
+      if (ok) closeDialog();
+    });
   };
 
   const handleFetchSpec = async () => {
     const url = specUrl.trim();
     if (!url) return;
-    setIsFetchingSpec(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('fetch failed');
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('fetch failed');
-      const chunks: Uint8Array[] = [];
-      let totalBytes = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        totalBytes += value.length;
-        chunks.push(value);
-      }
-      const combined = new Uint8Array(totalBytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, offset);
-        offset += chunk.length;
-      }
-      const text = new TextDecoder().decode(combined);
-      if (isSavingRef.current) {
-        setFetchError(intl.formatMessage(messages.dialogFetchError));
-        return;
-      }
-      const parsedSpecContent = parseSpec(text);
-      if (!parsedSpecContent) {
-        setFetchError(intl.formatMessage(messages.dialogParseError));
-        return;
-      }
-      setEditorText(yaml.dump(parsedSpecContent));
-      setPendingFileName(filenameFromUrl(url).replace(/\.json$/i, '.yaml'));
-      setFormat('yaml');
-      setIsEditing(true);
-      closeDialog();
-    } catch {
-      setFetchError(intl.formatMessage(messages.dialogFetchError));
-    } finally {
-      setIsFetchingSpec(false);
-    }
+    const ok = await importSpecViaValidator({ url }, filenameFromUrl(url));
+    if (ok) closeDialog();
   };
 
   const handleDownload = () => {
@@ -541,29 +546,11 @@ export function DefinitionPanel() {
     URL.revokeObjectURL(url);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!restApiId || isSaving) return;
+    importTokenRef.current++;
 
     const content = editorText;
-    const isEmpty = !content.trim();
-
-    if (!isEmpty) {
-      setIsValidating(true);
-      setSaveValidationErrors(null);
-      try {
-        const validation = await validateSpec.mutateAsync(content);
-        if (!validation.isValid) {
-          setSaveValidationErrors(validation.errors.map((e) => e.message));
-          return;
-        }
-      } catch {
-        setSaveValidationErrors([intl.formatMessage(messages.saveValidationUnavailable)]);
-        return;
-      } finally {
-        setIsValidating(false);
-      }
-    }
-
     const mimeType = format === 'json' ? 'application/json' : 'application/x-yaml';
     const ext = format === 'json' ? '.json' : '.yaml';
     const baseName = (pendingFileName ?? 'openapi.yaml').replace(/\.(json|yaml|yml)$/i, '');
@@ -594,6 +581,7 @@ export function DefinitionPanel() {
     spec.paths = paths;
     const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
     setEditorText(newText);
+    setSaveValidationErrors(null);
     setIsEditing(true);
     closeAddModal();
   };
@@ -612,6 +600,7 @@ export function DefinitionPanel() {
     if (Object.keys(paths[path]).length === 0) delete paths[path];
     const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
     setEditorText(newText);
+    setSaveValidationErrors(null);
     setIsEditing(true);
   };
 
@@ -934,7 +923,10 @@ export function DefinitionPanel() {
                     height="100%"
                     language={format}
                     loading={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}
-                    onChange={(value) => setEditorText(value ?? '')}
+                    onChange={(value) => {
+                      setEditorText(value ?? '');
+                      setSaveValidationErrors(null);
+                    }}
                     options={{
                       automaticLayout: true,
                       fontSize: 12,
@@ -1005,7 +997,11 @@ export function DefinitionPanel() {
                       : intl.formatMessage(messages.discard)}
                   </Button>
                   <Button
-                    disabled={!isDirty || (!editorText.trim() && hasSpec)}
+                    disabled={
+                      !isDirty ||
+                      (!editorText.trim() && hasSpec) ||
+                      (saveValidationErrors !== null && saveValidationErrors.length > 0)
+                    }
                     loading={isSaving}
                     onClick={() => setConfirmSaveOpen(true)}
                     size="small"

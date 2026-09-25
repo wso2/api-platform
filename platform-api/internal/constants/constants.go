@@ -264,6 +264,12 @@ var ValidThrottleLimitUnits = map[string]bool{
 // upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
 
+// DefaultOpenAPISpecFileName is the filename persisted for a spec that was
+// fetched by URL but whose URL has no usable last path segment to name the
+// file after.
+const DefaultOpenAPISpecYAMLFileName = "openapi.yaml"
+const DefaultOpenAPISpecJSONFileName = "openapi.json"
+
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type
 const (

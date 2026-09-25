@@ -122,7 +122,9 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
  * Creates a REST API by importing an OpenAPI specification.
  *
  * The body must be a `FormData` instance containing:
- *   - `file` (File): the spec file
+ *   - Exactly one of `file` (File — the spec bytes) OR `url` (string — a URL
+ *     the backend fetches server-side under the shared SSRF-hardened HTTP
+ *     client). Sending both, or neither, is rejected by the backend.
  *   - `displayName`, `version`, `context`, `projectId`, `upstream` (string): required API metadata
  *   - `id`, `description` (string): optional
  *
@@ -152,20 +154,45 @@ export type ValidateOpenAPIResponse = {
   isValid: boolean;
   errors: OpenAPIValidationError[];
   info?: OpenAPISpecInfo;
+  content?: string;
 };
 
 /**
+ * Discriminated input for `validateOpenApiSpec`:
+ *
+ *   - `{ file }`  — the raw spec bytes the user picked in the upload UI.
+ *   - `{ url }`   — a URL the backend fetches server-side; on success the
+ *                   response's `content` field carries the fetched bytes so
+ *                   the caller doesn't have to re-fetch.
+ *   - `{ text }`  — a spec string already in hand.
+ *
+ * Exactly one shape is accepted per call; the backend rejects the both-or-
+ * neither cases at the multipart boundary.
+ */
+export type ValidateOpenApiSpecInput =
+  | { file: File }
+  | { url: string }
+  | { text: string };
+
+/**
  * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
- * any resource. The spec string is wrapped as a binary file and sent as
- * `file` in multipart form data.
+ * any resource. The request body is a multipart form with exactly one of
+ * `file` or `url`; `text` is a convenience for callers holding a spec string,
+ * wrapped as a Blob and sent as `file`.
  */
 export const validateOpenApiSpec = async (
-  specContent: string,
+  input: ValidateOpenApiSpecInput,
   options?: RequestOptions,
 ): Promise<ValidateOpenAPIResponse> => {
   const formData = new FormData();
-  const blob = new Blob([specContent], { type: 'application/x-yaml' });
-  formData.append('file', blob, 'openapi.yaml');
+  if ('url' in input) {
+    formData.append('url', input.url);
+  } else if ('file' in input) {
+    formData.append('file', input.file, input.file.name);
+  } else {
+    const blob = new Blob([input.text], { type: 'application/x-yaml' });
+    formData.append('file', blob, 'openapi.yaml');
+  }
   return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
     ...options,
     operationName: 'ValidateOpenAPISpec',

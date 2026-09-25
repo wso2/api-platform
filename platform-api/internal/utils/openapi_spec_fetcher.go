@@ -19,6 +19,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -34,6 +35,10 @@ const (
 	// openAPISpecFetchTimeout bounds the whole fetch (DNS + connect + TLS + body read).
 	openAPISpecFetchTimeout = 15 * time.Second
 )
+
+// ErrOpenAPISpecTooLarge is returned by FetchOpenAPISpecFromURL when the
+// downloaded body exceeds the caller's byte cap.
+var ErrOpenAPISpecTooLarge = errors.New("OpenAPI spec fetched from URL exceeds the maximum allowed size")
 
 // FetchOpenAPISpecFromURL fetches an OpenAPI specification from an external URL and
 // returns its body. The URL is operator/tenant-influenced (it originates from an LLM
@@ -102,7 +107,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 		return "", fmt.Errorf("failed to read OpenAPI spec response")
 	}
 	if int64(len(data)) > maxBytes {
-		return "", fmt.Errorf("OpenAPI spec exceeds the maximum allowed size")
+		return "", ErrOpenAPISpecTooLarge
 	}
 
 	return string(data), nil

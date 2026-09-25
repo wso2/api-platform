@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { Alert, Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { DefineApiPanel } from './components/DefineApiPanel';
@@ -26,7 +26,7 @@ import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
-import { useImportOpenApi, useValidateOpenApiSpec } from '@/api/resources/restApis';
+import { useImportOpenApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
 import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
@@ -48,11 +48,6 @@ const messages = defineMessages({
   continue: {
     id: 'api.create.ApiCreationWizard.action.continue',
     defaultMessage: 'Continue',
-  },
-  specInvalidOnCreate: {
-    id: 'api.create.ApiCreationWizard.specInvalidOnCreate',
-    defaultMessage: 'Fix the following spec issues before creating:',
-    description: 'Heading above spec validation errors shown when the Create button is clicked.',
   },
   apiTypeSubtitle: {
     id: 'api.create.ApiCreationWizard.apiType.subtitle',
@@ -91,6 +86,10 @@ const messages = defineMessages({
     id: 'api.create.ApiCreationWizard.stepCount',
     defaultMessage: 'Step {current} of 3',
   },
+  specTooLarge: {
+    id: 'api.create.ApiCreationWizard.error.specTooLarge',
+    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
+  },
 });
 
 export const ApiCreationWizard = () => {
@@ -100,14 +99,6 @@ export const ApiCreationWizard = () => {
     () => API_TYPES.find((candidate) => candidate.enabled) ?? null,
   );
   const [sourceDraft, setSourceDraft] = useState<ApiCreationWizardDraftState | null>(null);
-  const [specValidating, setSpecValidating] = useState(false);
-  const [specValidationErrors, setSpecValidationErrors] = useState<string[] | null>(null);
-  const validateSpec = useValidateOpenApiSpec();
-
-  // Clear spec validation errors when the source draft changes (user re-uploads or picks a new source).
-  useEffect(() => {
-    setSpecValidationErrors(null);
-  }, [sourceDraft]);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
   /**
@@ -205,8 +196,10 @@ export const ApiCreationWizard = () => {
     }
 
     // Both "from contract" and "start from scratch" carry a spec file in the
-    // draft: contract passes the imported spec, scratch passes the skeleton
-    // (or whatever the user edited). Both submit via import-openapi.
+    // draft: contract passes the imported spec (URL-sourced contracts too —
+    // the bytes /validate-openapi returned in `content` are packaged into a
+    // File by DefineApiPanel), scratch passes the skeleton. Both submit via
+    // import-openapi. The backend still accepts `url` for direct REST callers.
     const formData = new FormData();
     formData.append('file', values.contractImport.specFile, values.contractImport.specFile.name);
     formData.append('id', values.id.trim());
@@ -225,7 +218,17 @@ export const ApiCreationWizard = () => {
     }
     importOpenApiMutation.mutate(formData, {
       onError: (error) => {
-        const formErrors = toCreateApiFormErrors(error as ApiError);
+        const apiError = error as ApiError;
+        if (apiError.status === 413 || apiError.code === 'PAYLOAD_TOO_LARGE') {
+          setCreationStarted(false);
+          setServerErrors({
+            fields: {},
+            message: intl.formatMessage(messages.specTooLarge),
+            unmapped: [],
+          });
+          return;
+        }
+        const formErrors = toCreateApiFormErrors(apiError);
         if (formErrors) {
           setCreationStarted(false);
           setServerErrors(formErrors);
@@ -234,29 +237,12 @@ export const ApiCreationWizard = () => {
     });
   };
 
+  // The spec was already validated (server-side) at pick time in ContractSourceForm,
+  // so Create submits straight to import-openapi. If the spec is somehow invalid
+  // by the time it reaches the backend, the create response carries the reason.
   const onGeneralFormSumit = async (finalData: GeneralApiCreationFormState) => {
     if (!activeScope.projectHandler) return;
     if (step !== 'configure') return;
-
-    // Validate the spec before creating when a spec file was uploaded.
-    const specFile = finalData.contractImport?.specFile;
-    if (specFile) {
-      setSpecValidating(true);
-      setSpecValidationErrors(null);
-      try {
-        const text = await specFile.text();
-        const validation = await validateSpec.mutateAsync(text);
-        if (!validation.isValid) {
-          setSpecValidationErrors(validation.errors.map((e) => e.message));
-          setSpecValidating(false);
-          return;
-        }
-      } catch {
-        // Network/auth error — don't block the create; let the backend respond.
-      }
-      setSpecValidating(false);
-    }
-
     setSubmittedValues(finalData);
     setCreationStarted(true);
     createApi(finalData);
@@ -396,23 +382,6 @@ export const ApiCreationWizard = () => {
             borderColor: 'divider',
           }}
         >
-          {step === 'configure' &&
-            specValidationErrors !== null &&
-            specValidationErrors.length > 0 && (
-              <Alert
-                severity="error"
-                sx={{ borderRadius: 0, borderBottom: 1, borderColor: 'divider' }}
-              >
-                {intl.formatMessage(messages.specInvalidOnCreate)}
-                <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-                  {specValidationErrors.map((msg, i) => (
-                    <Typography component="li" key={i} variant="body2">
-                      {msg}
-                    </Typography>
-                  ))}
-                </Box>
-              </Alert>
-            )}
           <Stack
             direction="row"
             sx={{
@@ -427,7 +396,7 @@ export const ApiCreationWizard = () => {
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
-                disabled={step === 'apiType' || specValidating}
+                disabled={step === 'apiType'}
                 onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
                 type="button"
                 variant="text"
@@ -436,10 +405,8 @@ export const ApiCreationWizard = () => {
               </Button>
               {step === 'configure' ? (
                 <Button
-                  disabled={specValidating}
                   form={CONFIGURE_FORM_ID}
                   key="create-api"
-                  loading={specValidating}
                   type="submit"
                   variant="contained"
                 >

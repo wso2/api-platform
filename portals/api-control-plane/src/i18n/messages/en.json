@@ -74,16 +74,15 @@
   "api.create.ApiCreationWizard.configure.title": {
     "defaultMessage": "Configure and create"
   },
+  "api.create.ApiCreationWizard.error.specTooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+  },
   "api.create.ApiCreationWizard.source.subtitle": {
     "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
   },
   "api.create.ApiCreationWizard.source.title": {
     "defaultMessage": "How do you want to define your {apiType}?",
     "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
-  },
-  "api.create.ApiCreationWizard.specInvalidOnCreate": {
-    "defaultMessage": "Fix the following spec issues before creating:",
-    "description": "Heading above spec validation errors shown when the Create button is clicked."
   },
   "api.create.ApiCreationWizard.stepCount": {
     "defaultMessage": "Step {current} of 3"
@@ -272,17 +271,17 @@
     "defaultMessage": "URL"
   },
   "api.create.fromContract.spec.invalidByBackend": {
-    "defaultMessage": "The specification is not a valid OpenAPI document:",
-    "description": "Heading above the list of backend validation errors."
+    "defaultMessage": "Validation failed:",
+    "description": "Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid"
   },
-  "api.create.fromContract.spec.unreachable": {
-    "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
-  },
-  "api.create.fromContract.spec.unreadable": {
-    "defaultMessage": "That contract could not be read as YAML or JSON."
+  "api.create.fromContract.spec.tooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
   },
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
+  },
+  "api.create.fromContract.spec.validationFailed": {
+    "defaultMessage": "Failed to validate the OpenAPI specification. Please try again."
   },
   "api.create.fromContract.status.fetching": {
     "defaultMessage": "Reading the contract…",
@@ -2038,30 +2037,34 @@
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.unresolvedOrganization": {
     "defaultMessage": "Unable to resolve organization context. The organization API returned no usable organizations for this session."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyAction": {
+    "defaultMessage": "Add Portal",
+    "description": "Empty-state action opening the org-level Portals page. Verb phrase."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyDescription": {
-    "defaultMessage": "An organization admin needs to register an API portal before this API can be published."
+    "defaultMessage": "Add a portal for this organization before publishing an API to it."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
-    "defaultMessage": "No API portals available",
-    "description": "Shown when the organization has not registered any API Portal yet."
+    "defaultMessage": "No Portals Available",
+    "description": "Shown when the organization has not registered any portal yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {
-    "defaultMessage": "Unable to load API portals"
+    "defaultMessage": "Unable to load portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.loading": {
-    "defaultMessage": "Loading API portals"
+    "defaultMessage": "Loading portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesDescription": {
     "defaultMessage": "Try a different portal name or clear the search."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle": {
-    "defaultMessage": "No matching API portals"
+    "defaultMessage": "No matching portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder": {
-    "defaultMessage": "Search API portals"
+    "defaultMessage": "Search portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
-    "defaultMessage": "Choose the API portal to publish this API to."
+    "defaultMessage": "Choose the Portal to publish this API to."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
     "defaultMessage": "Publish {apiName}",
@@ -2134,9 +2137,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
     "defaultMessage": "Unpublished from {portalName}."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalsPage.feature": {
-    "defaultMessage": "Portals"
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
     "defaultMessage": "Description"
   },
@@ -2176,6 +2176,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
     "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
+    "defaultMessage": "API definition ({format})",
+    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON or YAML."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
     "defaultMessage": "Loading editor"
@@ -2763,20 +2767,6 @@
     "defaultMessage": "Test key",
     "description": "Accessible label for the field showing the test key."
   },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
-    "defaultMessage": "All methods",
-    "description": "Option that leaves the resource list unfiltered by HTTP method."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
-    "defaultMessage": "Filter by method",
-    "description": "Accessible label for the HTTP method filter above the resource list."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
-    "defaultMessage": "No resources match your search."
-  },
-  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
-    "defaultMessage": "Search resources by path or description"
-  },
   "apiControlPlane.pages.test.console.TestKeySection.expired": {
     "defaultMessage": "The key has expired.",
     "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
@@ -2808,36 +2798,6 @@
   "apiControlPlane.pages.test.console.TestKeySection.title": {
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.busy": {
-    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
-    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
-    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
-    "description": "Shown when the portal refused to send the request the form describes."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
-    "defaultMessage": "Select a deployed gateway before sending a request."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
-    "defaultMessage": "Your session has expired. Sign in again to continue testing."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
-    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
-    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
-    "defaultMessage": "The request could not be sent. Try again."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
-    "defaultMessage": "The portal could not reach this gateway.",
-    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
-  },
-  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
-    "defaultMessage": "The gateway did not respond in time."
   },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
@@ -3095,6 +3055,18 @@
   "develop.definition.DefinitionPanel.addResourceTitle": {
     "defaultMessage": "Add Resource"
   },
+  "develop.definition.DefinitionPanel.confirmSave.action": {
+    "defaultMessage": "Save"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.definitionBody": {
+    "defaultMessage": "Are you sure you want to save the updated API Definition?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.resourcesBody": {
+    "defaultMessage": "Are you sure you want to save the updated resources?"
+  },
+  "develop.definition.DefinitionPanel.confirmSave.title": {
+    "defaultMessage": "Update API"
+  },
   "develop.definition.DefinitionPanel.descriptionLabel": {
     "defaultMessage": "Description"
   },
@@ -3115,6 +3087,9 @@
   },
   "develop.definition.DefinitionPanel.dialogParseError": {
     "defaultMessage": "The fetched content is not a valid OpenAPI/Swagger spec."
+  },
+  "develop.definition.DefinitionPanel.dialogSpecTooLarge": {
+    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
   },
   "develop.definition.DefinitionPanel.dialogTitle": {
     "defaultMessage": "Update OpenAPI Definition"
@@ -3180,25 +3155,9 @@
   "develop.definition.DefinitionPanel.save": {
     "defaultMessage": "Save"
   },
-  "develop.definition.DefinitionPanel.confirmSave.title": {
-    "defaultMessage": "Update API"
-  },
-  "develop.definition.DefinitionPanel.confirmSave.definitionBody": {
-    "defaultMessage": "Are you sure you want to save the updated API Definition?"
-  },
-  "develop.definition.DefinitionPanel.confirmSave.resourcesBody": {
-    "defaultMessage": "Are you sure you want to save the updated resources?"
-  },
-  "develop.definition.DefinitionPanel.confirmSave.action": {
-    "defaultMessage": "Save"
-  },
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
-    "defaultMessage": "Failed to save the specification. Fix the following issues:",
-    "description": "Heading above spec validation errors shown when Save is clicked."
-  },
-  "develop.definition.DefinitionPanel.saveValidationUnavailable": {
-    "defaultMessage": "Spec validation is currently unavailable. Please try again.",
-    "description": "Error shown when the validation service itself fails (network/auth error)."
+    "defaultMessage": "The specification is not a valid OpenAPI document:",
+    "description": "Heading above spec validation errors shown either after an import or when Save is clicked."
   },
   "develop.definition.DefinitionPanel.title": {
     "defaultMessage": "Definition"
