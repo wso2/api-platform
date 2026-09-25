@@ -307,6 +307,9 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
+	if incoming.Spec.Upstream.Auth.Header == nil {
+		incoming.Spec.Upstream.Auth.Header = stored.Spec.Upstream.Auth.Header
+	}
 	inheritSameTypeCredential(
 		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
 		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,

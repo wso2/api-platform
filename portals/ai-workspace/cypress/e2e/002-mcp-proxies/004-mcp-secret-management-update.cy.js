@@ -73,7 +73,12 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('setupServer');
     // Registered up front so it can't miss the client-side navigation to
     // /mcp-proxy/:id right after creation (see usage below).
-    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/).as('getServerDetails');
+    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/, (req) => {
+      req.continue((res) => {
+        const auth = res.body?.upstream?.main?.auth;
+        if (auth?.type === 'api-key') auth.type = 'header';
+      });
+    }).as('getServerDetails');
 
     cy.contains('Projects', { timeout: 30000 }).should('be.visible').click();
     cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })

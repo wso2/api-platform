@@ -417,11 +417,23 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		storedConfig := stored()
 		storedConfig.Spec.Upstream.Auth.Type = "header"
 		incoming := stored()
+		incoming.Spec.Upstream.Auth.Header = nil
 		incoming.Spec.Upstream.Auth.Value = nil
 		inheritMCPProxyCredential(&incoming, storedConfig)
 		require.NotNil(t, incoming.Spec.Upstream.Auth.Value)
+		require.NotNil(t, incoming.Spec.Upstream.Auth.Header)
 		assert.Equal(t, api.MCPProxyConfigDataUpstreamAuthTypeApiKey, incoming.Spec.Upstream.Auth.Type)
+		assert.Equal(t, "Authorization", *incoming.Spec.Upstream.Auth.Header)
 		assert.Equal(t, storedCred, *incoming.Spec.Upstream.Auth.Value)
+	})
+
+	t.Run("explicit incoming header wins", func(t *testing.T) {
+		incoming := stored()
+		incoming.Spec.Upstream.Auth.Header = sp("X-Api-Key")
+		incoming.Spec.Upstream.Auth.Value = nil
+		inheritMCPProxyCredential(&incoming, stored())
+		require.NotNil(t, incoming.Spec.Upstream.Auth.Header)
+		assert.Equal(t, "X-Api-Key", *incoming.Spec.Upstream.Auth.Header)
 	})
 
 	t.Run("api-key stored credential is inherited by legacy header", func(t *testing.T) {
