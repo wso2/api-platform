@@ -49,6 +49,11 @@ type Props = {
   showSchemaInline?: boolean;
 };
 
+// Some upstream servers already prefix their own version with "v"/"V" (e.g. "v1.0.0").
+// Strip any existing prefix before adding ours so the chip never doubles up ("V v1.0.0").
+const formatVersionLabel = (version: string): string =>
+  `v${version.trim().replace(/^v/i, '')}`;
+
 const truncateText = (value: string, maxLength = 35): string =>
   value.length > maxLength
     ? `${value.slice(0, maxLength - 3).trimEnd()}...`
@@ -120,7 +125,7 @@ export default function ExternalServersValidationDetails({
             {validationResult.serverInfo.name}
           </Typography>
           <Chip
-            label={`V ${validationResult.serverInfo.version}`}
+            label={formatVersionLabel(validationResult.serverInfo.version)}
             size="small"
             variant="outlined"
           />
