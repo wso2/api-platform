@@ -608,14 +608,18 @@ type AddGatewayToRESTAPIRequest struct {
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
 
-// ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob).
+// ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob but surfaces the metadata fields that list-view UIs need).
 type ApiPortalListItem struct {
-	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-	Description *string   `json:"description" yaml:"description"`
-	Handle      string    `binding:"required" json:"handle" yaml:"handle"`
-	Id          string    `binding:"required" json:"id" yaml:"id"`
-	Name        string    `binding:"required" json:"name" yaml:"name"`
-	Url         string    `binding:"required" json:"url" yaml:"url"`
+	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string `json:"description" yaml:"description"`
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// LoginEnvironment Data-plane environment backing consumer login, projected from the metadata blob so list-view UIs do not need a per-row fetch.
+	LoginEnvironment *string `json:"loginEnvironment" yaml:"loginEnvironment"`
+	Name string `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
+	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
 // ApiPortalListResponse defines model for ApiPortalListResponse.
