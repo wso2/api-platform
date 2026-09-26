@@ -40,7 +40,7 @@ export type LogsToolbarProps = {
   view: LogViewFilters;
   /** Server-reported retention, which decides how far back the range picker may offer. */
   retentionDays: number;
-  /** Options for the view filters, taken from the lines on screen. */
+  /** Options for the view filter, taken from the lines on screen. */
   facets: LogFacets;
   /** The organization's environments. Falls back to the loaded lines when empty. */
   environments: string[];
@@ -94,17 +94,13 @@ const LogsToolbar: FC<LogsToolbarProps> = ({
     : ranges[ranges.length - 1].minutes;
 
   // An active filter outlives the lines it was derived from: Apply empties the
-  // buffer, and a quiet pod never comes back into the facets at all. Without its
-  // own value the select reads as "All" while still filtering, and disabling an
-  // empty list would strand the user in a filter they cannot clear.
+  // buffer, and a quiet project never comes back into the facets at all. Without
+  // its own value the select reads as "All" while still filtering, and disabling
+  // an empty list would strand the user in a filter they cannot clear.
   const withActive = (options: string[], active: string): string[] =>
     active && !options.includes(active) ? [active, ...options] : options;
 
   const projectOptions = withActive(facets.projects, draftView.project);
-  const podOptions = withActive(
-    draftView.project ? (facets.podsByProject[draftView.project] ?? []) : facets.pods,
-    draftView.pod
-  );
   const environmentOptions = withActive(
     environments.length > 0 ? environments : facets.environments,
     draftQuery.environment
@@ -150,36 +146,11 @@ const LogsToolbar: FC<LogsToolbarProps> = ({
             size="small"
             value={draftView.project}
             onChange={(event) =>
-              // Clearing the pod with the project keeps the pair valid: the pod
-              // list is the chosen project's.
-              setDraftView({ ...draftView, project: String(event.target.value), pod: '' })
+              setDraftView({ ...draftView, project: String(event.target.value) })
             }
           >
             <MenuItem value="">All projects</MenuItem>
             {projectOptions.map((name) => (
-              <MenuItem key={name} value={name}>
-                {name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl sx={{ maxWidth: 240, minWidth: 200 }}>
-          <FormLabel>Pod</FormLabel>
-          <Select
-            disabled={podOptions.length === 0}
-            displayEmpty
-            size="small"
-            value={draftView.pod}
-            renderValue={(selected) => (
-              <Typography noWrap variant="inherit">
-                {(selected as string) || 'All pods'}
-              </Typography>
-            )}
-            onChange={(event) => setDraftView({ ...draftView, pod: String(event.target.value) })}
-          >
-            <MenuItem value="">All pods</MenuItem>
-            {podOptions.map((name) => (
               <MenuItem key={name} value={name}>
                 {name}
               </MenuItem>
@@ -283,8 +254,8 @@ const LogsToolbar: FC<LogsToolbarProps> = ({
       </Stack>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        Project and pod narrow the lines already on screen. Time range, environment, type, level
-        and search are sent to the query.
+        Project narrows the lines already on screen. Time range, environment, type, level and
+        search are sent to the query.
       </Typography>
     </Box>
   );

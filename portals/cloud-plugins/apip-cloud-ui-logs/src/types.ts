@@ -31,8 +31,7 @@ export type LogEntry = {
   log: string;
   level?: string;
   kind: LogKind;
-  /** The only way to tell one gateway from another. Filtered in the browser:
-   * the observability API has no podName filter. */
+  /** Names the source column when the component name is absent. */
   podName?: string;
   containerName?: string;
   componentName?: string;
@@ -79,13 +78,12 @@ export type LogQuery = {
 };
 
 /**
- * Narrowing applied to the lines already fetched. Not query parameters: the
- * endpoint selects neither a project nor a pod, so sending them would claim a
- * precision the query lacks. The toolbar says so.
+ * Narrowing applied to the lines already fetched. Not a query parameter: the
+ * endpoint selects no project, so sending one would claim a precision the query
+ * lacks. The toolbar says so.
  */
 export type LogViewFilters = {
   project: string;
-  pod: string;
 };
 
 /**
@@ -98,9 +96,6 @@ export type LogViewFilters = {
  */
 export type LogFacets = {
   projects: string[];
-  pods: string[];
-  /** Pods seen under each project, so picking a project narrows the next list. */
-  podsByProject: Record<string, string[]>;
   environments: string[];
 };
 

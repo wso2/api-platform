@@ -35,7 +35,7 @@ const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
   ...over,
 });
 
-const noView: LogViewFilters = { project: '', pod: '' };
+const noView: LogViewFilters = { project: '' };
 
 describe('toConsoleLine', () => {
   it('summarizes an access log and keeps the whole line behind raw', () => {
@@ -176,45 +176,18 @@ describe('deriveFacets', () => {
   it('lists only what the loaded lines actually carry, sorted and deduped', () => {
     const facets = deriveFacets(
       buffer(
-        entry({ projectName: 'platform', podName: 'gw-b-1', environment: 'production' }),
-        entry({ projectName: 'platform', podName: 'gw-a-1', environment: 'production' }),
-        entry({ projectName: 'apip', podName: 'gw-a-1', environment: 'development' })
+        entry({ projectName: 'platform', environment: 'production' }),
+        entry({ projectName: 'platform', environment: 'production' }),
+        entry({ projectName: 'apip', environment: 'development' })
       )
     );
     expect(facets.projects).toEqual(['apip', 'platform']);
-    expect(facets.pods).toEqual(['gw-a-1', 'gw-b-1']);
     expect(facets.environments).toEqual(['development', 'production']);
-  });
-
-  // The two pods of one gateway differ only by their replicaset and pod
-  // suffixes, so the filter has to keep the whole name.
-  it('keeps each pod separate, suffixes and all', () => {
-    const facets = deriveFacets(
-      buffer(
-        entry({ podName: 'gw-34e37ec4-gateway-gateway-runtime-7997466b86-958pf' }),
-        entry({ podName: 'gw-34e37ec4-gateway-controller-8d9fbd895-sxgmf' })
-      )
-    );
-    expect(facets.pods).toEqual([
-      'gw-34e37ec4-gateway-controller-8d9fbd895-sxgmf',
-      'gw-34e37ec4-gateway-gateway-runtime-7997466b86-958pf',
-    ]);
-  });
-
-  it('groups pods under their project, so picking one narrows the next list', () => {
-    const facets = deriveFacets(
-      buffer(
-        entry({ projectName: 'platform', podName: 'gw-a-1' }),
-        entry({ projectName: 'apip', podName: 'gw-z-1' })
-      )
-    );
-    expect(facets.podsByProject).toEqual({ platform: ['gw-a-1'], apip: ['gw-z-1'] });
   });
 
   it('offers nothing when the lines carry no attribution', () => {
     const facets = deriveFacets(buffer(entry()));
     expect(facets.projects).toEqual([]);
-    expect(facets.pods).toEqual([]);
     expect(facets.environments).toEqual([]);
   });
 });
@@ -224,10 +197,10 @@ describe('matchesView', () => {
     expect(matchesView(entry(), noView)).toBe(true);
   });
 
-  it('ANDs the two filters', () => {
-    const line = entry({ projectName: 'p', podName: 'gw-1' });
-    expect(matchesView(line, { project: 'p', pod: 'gw-1' })).toBe(true);
-    expect(matchesView(line, { ...noView, pod: 'other' })).toBe(false);
+  it('keeps only the selected project', () => {
+    const line = entry({ projectName: 'p' });
+    expect(matchesView(line, { project: 'p' })).toBe(true);
+    expect(matchesView(line, { project: 'other' })).toBe(false);
   });
 
   // The environment is a query parameter now, so the browser must not narrow on

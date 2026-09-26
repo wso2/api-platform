@@ -61,7 +61,7 @@ const INITIAL_QUERY: LogQuery = {
   environment: '',
 };
 
-const INITIAL_VIEW: LogViewFilters = { project: '', pod: '' };
+const INITIAL_VIEW: LogViewFilters = { project: '' };
 
 /** Until the first response says what retention really is. */
 const ASSUMED_RETENTION_DAYS = 3;
@@ -71,8 +71,8 @@ const ASSUMED_RETENTION_DAYS = 3;
  * platform-api's `/logs`, shown as a terminal-style console.
  *
  * Scope is the whole organization unless an environment is picked — that one is
- * a query parameter. Narrowing further, to a project or a single pod, happens in
- * the browser: the observability API offers no filter for either.
+ * a query parameter. Narrowing further, to a project, happens in the browser:
+ * the observability API offers no filter for it.
  */
 const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   const { apiFetch, notify } = port;
@@ -188,10 +188,10 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   const retentionDays = page?.window.retentionDays ?? ASSUMED_RETENTION_DAYS;
   const notes = [
     ...(page ? completenessNotes(page, query.kind !== 'all') : []),
-    // The view filters run in the browser, so a short console is not a quiet
+    // The view filter runs in the browser, so a short console is not a quiet
     // organization. Say how much was hidden, or it reads as the whole answer.
     ...(visible.length < buffer.length
-      ? [`${visible.length} of ${buffer.length} loaded lines match the project and pod filters.`]
+      ? [`${visible.length} of ${buffer.length} loaded lines match the project filter.`]
       : []),
   ];
 
