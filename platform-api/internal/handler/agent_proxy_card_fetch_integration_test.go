@@ -322,7 +322,9 @@ func createAgentProxyPointingAt(t *testing.T, env *agentProxyTestEnv, org, handl
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+	    "operationConfigs": {
+	      "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+	    }
 	  }
 	}`, handle, agentProxyProject, upstreamURL, auth)
 
@@ -486,7 +488,7 @@ func TestFetchAgentCard_StoredUpstreamByRefIsRejected(t *testing.T) {
 	  "projectId": %q,
 	  "upstream": { "main": { "ref": "weather-upstream-definition" } },
 	  "protocol": "a2a",
-	  "a2a": { "protocolVersion": "1.0", "transports": [ { "protocolBinding": "JSONRPC" } ] }
+	  "a2a": { "protocolVersion": "1.0", "operationConfigs": { "transports": [ { "protocolBinding": "JSONRPC" } ] } }
 	}`, agentProxyProject)
 	if rec := callAgentProxy(t, env.handler, http.MethodPost, agentProxyBase, body); rec.Code != http.StatusCreated {
 		t.Fatalf("create by-ref Agent proxy: status = %d; body: %s", rec.Code, rec.Body.String())
@@ -989,7 +991,7 @@ func TestFetchAgentCard_UpdateAndDeleteInvalidateTheCachedEntry(t *testing.T) {
 	  "context": "/weather",
 	  "upstream": { "main": { "url": %q } },
 	  "protocol": "a2a",
-	  "a2a": { "protocolVersion": "1.0", "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ] }
+	  "a2a": { "protocolVersion": "1.0", "operationConfigs": { "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ] } }
 	}`, agentProxyProject, moved.url())
 	if rec := callAgentProxy(t, env.handler, http.MethodPut, agentProxyBase+"/weather-agent", updateBody); rec.Code != http.StatusOK {
 		t.Fatalf("update Agent proxy: status = %d; body: %s", rec.Code, rec.Body.String())

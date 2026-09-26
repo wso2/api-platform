@@ -92,11 +92,11 @@ func fullAgentProxyValidationRequest() *api.A2AAgentProxy {
 		Resilience: &api.Resilience{IdleTimeout: strPtr("5s")},
 		A2a: api.A2AProtocolConfig{
 			ProtocolVersion: "1.0",
-			Transports: []api.A2ATransport{
-				{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/rpc")},
-				{ProtocolBinding: api.HTTPJSON, PathPrefix: strPtr("/rest")},
-			},
-			OperationConfigs: &api.A2AOperationConfigs{
+			OperationConfigs: api.A2AOperationConfigs{
+				Transports: []api.A2ATransport{
+					{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/rpc")},
+					{ProtocolBinding: api.HTTPJSON, PathPrefix: strPtr("/rest")},
+				},
 				Policies: &[]api.Policy{{Name: "jwt-auth", Version: "v1"}},
 				Operations: &[]api.A2AOperation{
 					{Name: api.SendMessage, Resilience: &api.Resilience{Timeout: strPtr("30s")}},
@@ -132,7 +132,10 @@ func TestValidateAgentProxyRequestAcceptsValidBodies(t *testing.T) {
 			name: "no optional blocks at all",
 			mutate: func(r *api.A2AAgentProxy) {
 				r.Description, r.Context, r.Vhost, r.Resilience = nil, nil, nil, nil
-				r.A2a.OperationConfigs, r.A2a.AgentCard = nil, nil
+				// operationConfigs is required, but only for its transports: its
+				// policies and operations are as optional as the card block.
+				r.A2a.OperationConfigs.Policies, r.A2a.OperationConfigs.Operations = nil, nil
+				r.A2a.AgentCard = nil
 				r.Upstream.Main.Auth = nil
 			},
 		},
@@ -157,7 +160,7 @@ func TestValidateAgentProxyRequestAcceptsValidBodies(t *testing.T) {
 			// must pass the same check a real prefix does.
 			name: "root path prefix",
 			mutate: func(r *api.A2AAgentProxy) {
-				r.A2a.Transports = []api.A2ATransport{{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/")}}
+				r.A2a.OperationConfigs.Transports = []api.A2ATransport{{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/")}}
 			},
 		},
 		{
@@ -346,22 +349,26 @@ func TestValidateAgentProxyRequestRejections(t *testing.T) {
 		{rule: "7", name: "agent-wide resilience with a bad duration", contains: "resilience.idleTimeout must be a duration",
 			mutate: func(r *api.A2AAgentProxy) { r.Resilience = &api.Resilience{IdleTimeout: strPtr("5")} }},
 		// Rule 8 — transports.
-		{rule: "8", name: "no transports", contains: "At least one a2a.transports entry is required",
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports = nil }},
-		{rule: "8", name: "more than two transports", contains: "At most 2 a2a.transports entries",
+		{rule: "8", name: "no transports", contains: "At least one a2a.operationConfigs.transports entry is required",
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports = nil }},
+		{rule: "8", name: "empty transports", contains: "At least one a2a.operationConfigs.transports entry is required",
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports = []api.A2ATransport{} }},
+		{rule: "8", name: "zero-value operationConfigs block", contains: "At least one a2a.operationConfigs.transports entry is required",
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs = api.A2AOperationConfigs{} }},
+		{rule: "8", name: "more than two transports", contains: "At most 2 a2a.operationConfigs.transports entries",
 			mutate: func(r *api.A2AAgentProxy) {
-				r.A2a.Transports = append(r.A2a.Transports, api.A2ATransport{ProtocolBinding: api.JSONRPC})
+				r.A2a.OperationConfigs.Transports = append(r.A2a.OperationConfigs.Transports, api.A2ATransport{ProtocolBinding: api.JSONRPC})
 			}},
 		{rule: "8", name: "unsupported protocol binding", contains: `protocolBinding "GRPC" is not supported`,
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports[0].ProtocolBinding = "GRPC" }},
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports[0].ProtocolBinding = "GRPC" }},
 		{rule: "8", name: "duplicate protocol binding", contains: `"JSONRPC" appears more than once`,
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports[1].ProtocolBinding = api.JSONRPC }},
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports[1].ProtocolBinding = api.JSONRPC }},
 		{rule: "8", name: "relative path prefix", contains: "pathPrefix must be an absolute path",
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports[0].PathPrefix = strPtr("rpc") }},
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports[0].PathPrefix = strPtr("rpc") }},
 		{rule: "8", name: "path prefix with a query string", contains: "pathPrefix must be an absolute path",
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports[0].PathPrefix = strPtr("/rpc?v=1") }},
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports[0].PathPrefix = strPtr("/rpc?v=1") }},
 		{rule: "8", name: "empty path prefix", contains: "pathPrefix must not be empty",
-			mutate: func(r *api.A2AAgentProxy) { r.A2a.Transports[0].PathPrefix = strPtr("") }},
+			mutate: func(r *api.A2AAgentProxy) { r.A2a.OperationConfigs.Transports[0].PathPrefix = strPtr("") }},
 		// Rule 9 — public card path.
 		{rule: "9", name: "card path with a query string", contains: "must not contain a query string or a fragment",
 			mutate: func(r *api.A2AAgentProxy) { r.A2a.AgentCard.Public.Path = strPtr("/card.json?v=1") }},
@@ -526,7 +533,7 @@ func TestValidateAgentProxyRequestDefersToTheGateway(t *testing.T) {
 			// collision, which only the assembled route table can detect.
 			name: "card path colliding with a transport prefix",
 			mutate: func(r *api.A2AAgentProxy) {
-				r.A2a.Transports = []api.A2ATransport{{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/rpc")}}
+				r.A2a.OperationConfigs.Transports = []api.A2ATransport{{ProtocolBinding: api.JSONRPC, PathPrefix: strPtr("/rpc")}}
 				r.A2a.AgentCard.Public.Path = strPtr("/rpc")
 			},
 		},

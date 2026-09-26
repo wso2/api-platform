@@ -8,4 +8,5 @@ upstream:
 protocol: a2a
 a2a:
   protocolVersion: "1.0"
-  transports: ${VALUE:transports}
+  operationConfigs:
+    transports: ${VALUE:transports}

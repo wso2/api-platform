@@ -39,9 +39,10 @@ import (
 //
 // The gateway pushes its own artifact — kind Agent, spec.a2a — and the control
 // plane stores it as kind AgentProxy with protocol a2a. This file is the inverse
-// of utils.BuildAgentProxyDeploymentYAML: transports move back out of
-// spec.a2a.operationConfigs into a2a.transports, and everything else maps field
-// for field. The gateway's spec is never stored as control-plane configuration.
+// of utils.BuildAgentProxyDeploymentYAML: spec.a2a and the control plane's a2a
+// block share a layout (transports under operationConfigs in both), and every
+// field maps onto its namesake. The gateway's spec is never stored as
+// control-plane configuration.
 //
 // Like every other importer, this one is lenient: it stores what maps onto the
 // control-plane model and drops the rest. The deployment record the orchestrator
@@ -281,47 +282,44 @@ func mapGatewayAgentProtocol(spec *gatewayAgentSpec, dropped *[]string) (model.A
 	return model.AgentProxyProtocolA2A, mapGatewayA2A(spec.A2A, dropped), nil
 }
 
-// mapGatewayA2A is the inverse of utils.buildAgentDeploymentA2A: the gateway keeps
-// transports under operationConfigs, the control plane keeps them beside it.
+// mapGatewayA2A is the inverse of utils.buildAgentDeploymentA2A. The gateway's
+// spec.a2a and the control plane's a2a block share a layout — transports live
+// under operationConfigs in both — so each field maps onto its namesake.
 //
-// The control plane's operationConfigs block is optional while the gateway's is
-// required (it has to carry the transports), so presence cannot be carried over
-// as-is. It is recreated only when the gateway block holds something besides the
-// transports — policies or operations, including explicitly empty lists — and is
-// otherwise left omitted, which is what the forward builder produces an identical
-// gateway block from.
+// A list's presence is preserved as sent: an absent policies or operations list
+// stays nil and an explicitly empty one stays empty.
 func mapGatewayA2A(in *gatewayA2AConfig, dropped *[]string) *model.A2AProtocolConfig {
-	out := &model.A2AProtocolConfig{ProtocolVersion: in.ProtocolVersion}
+	out := &model.A2AProtocolConfig{
+		ProtocolVersion: in.ProtocolVersion,
+		AgentCard:       mapGatewayAgentCard(in.AgentCard, dropped),
+	}
 	if in.OperationConfigs == nil {
 		// The gateway requires this block, so its absence is not expected; the
 		// Agent proxy is stored with no transports rather than refused.
-		out.AgentCard = mapGatewayAgentCard(in.AgentCard, dropped)
 		return out
 	}
-	out.Transports = make([]model.A2ATransport, 0, len(in.OperationConfigs.Transports))
+
+	cfgs := model.A2AOperationConfigs{
+		Transports: make([]model.A2ATransport, 0, len(in.OperationConfigs.Transports)),
+		Policies:   mapGatewayPolicies(in.OperationConfigs.Policies),
+	}
 	for _, t := range in.OperationConfigs.Transports {
-		out.Transports = append(out.Transports, model.A2ATransport{
+		cfgs.Transports = append(cfgs.Transports, model.A2ATransport{
 			ProtocolBinding: t.ProtocolBinding,
 			PathPrefix:      clonePointer(t.PathPrefix),
 		})
 	}
-
-	if in.OperationConfigs.Policies != nil || in.OperationConfigs.Operations != nil {
-		cfgs := &model.A2AOperationConfigs{Policies: mapGatewayPolicies(in.OperationConfigs.Policies)}
-		if in.OperationConfigs.Operations != nil {
-			cfgs.Operations = make([]model.A2AOperation, 0, len(*in.OperationConfigs.Operations))
-			for _, op := range *in.OperationConfigs.Operations {
-				cfgs.Operations = append(cfgs.Operations, model.A2AOperation{
-					Name:       op.Name,
-					Policies:   mapGatewayPolicies(op.Policies),
-					Resilience: mapGatewayAgentResilience(op.Resilience),
-				})
-			}
+	if in.OperationConfigs.Operations != nil {
+		cfgs.Operations = make([]model.A2AOperation, 0, len(*in.OperationConfigs.Operations))
+		for _, op := range *in.OperationConfigs.Operations {
+			cfgs.Operations = append(cfgs.Operations, model.A2AOperation{
+				Name:       op.Name,
+				Policies:   mapGatewayPolicies(op.Policies),
+				Resilience: mapGatewayAgentResilience(op.Resilience),
+			})
 		}
-		out.OperationConfigs = cfgs
 	}
-
-	out.AgentCard = mapGatewayAgentCard(in.AgentCard, dropped)
+	out.OperationConfigs = cfgs
 	return out
 }
 

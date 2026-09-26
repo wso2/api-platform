@@ -23,7 +23,8 @@ Feature: Agents created on a gateway are imported into the control plane as read
   So that gateway-authored A2A agents are visible, keyed and governed centrally without being editable there
 
   # The gateway pushes kind Agent; the control plane stores it as kind AgentProxy with protocol a2a
-  # and a2a.transports moved out of spec.a2a.operationConfigs. The mapping edge cases (strict
+  # and the same a2a layout, so spec.a2a.operationConfigs.transports becomes
+  # a2a.operationConfigs.transports. The mapping edge cases (strict
   # refusals, dropped fields, last-in-wins, the builder inverse) are covered by the platform-api
   # package tests in internal/service/artifact_import_agent_proxy_test.go; these scenarios cover the
   # live gateway -> control plane path.
@@ -69,11 +70,10 @@ Feature: Agents created on a gateway are imported into the control plane as read
     And the JSON response field "upstream.main.auth.value" should not exist
     And the response body should not contain "imported-credential-never-echoed"
     And the JSON response field "a2a.protocolVersion" should be "1.0"
-    And the JSON response array field "a2a.transports" should have 2 items
-    And the JSON response field "a2a.transports[0].protocolBinding" should be "JSONRPC"
-    And the JSON response field "a2a.transports[1].protocolBinding" should be "HTTP+JSON"
-    And the JSON response field "a2a.transports[1].pathPrefix" should be "/v1"
-    And the JSON response field "a2a.operationConfigs.transports" should not exist
+    And the JSON response array field "a2a.operationConfigs.transports" should have 2 items
+    And the JSON response field "a2a.operationConfigs.transports[0].protocolBinding" should be "JSONRPC"
+    And the JSON response field "a2a.operationConfigs.transports[1].protocolBinding" should be "HTTP+JSON"
+    And the JSON response field "a2a.operationConfigs.transports[1].pathPrefix" should be "/v1"
     And the JSON response field "a2a.operationConfigs.operations[0].name" should be "SendMessage"
     And the JSON response field "a2a.operationConfigs.operations[0].resilience.timeout" should be "30s"
     And the JSON response field "a2a.agentCard.public.mode" should be "managed"
@@ -161,8 +161,8 @@ Feature: Agents created on a gateway are imported into the control plane as read
     When I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentName}"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "${CTX:updatedDisplayName}"
-    And the JSON response array field "a2a.transports" should have 2 items
-    And the JSON response field "a2a.transports[1].protocolBinding" should be "HTTP+JSON"
+    And the JSON response array field "a2a.operationConfigs.transports" should have 2 items
+    And the JSON response field "a2a.operationConfigs.transports[1].protocolBinding" should be "HTTP+JSON"
     And the JSON response field "readOnly" should be "true"
 
   @cp15-04

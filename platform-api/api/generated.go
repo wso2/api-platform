@@ -1865,7 +1865,8 @@ func (e ListSubscriptionsParamsStatus) Valid() bool {
 }
 
 // A2AAgentProxy The complete Agent proxy variant for `protocol: a2a`. Shared Agent fields stay at the
-// top level; A2A protocol version, transports, operation configuration and Agent Cards
+// top level; the A2A protocol version, operation configuration (including the
+// transports it is served on, under `a2a.operationConfigs.transports`) and Agent Cards
 // live inside `a2a`. Unknown properties are rejected.
 type A2AAgentProxy struct {
 	// A2a Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
@@ -1952,8 +1953,11 @@ type A2AOperation struct {
 // A2AOperationName One of the canonical A2A operations for the selected protocol version.
 type A2AOperationName string
 
-// A2AOperationConfigs Agent-wide and per-operation A2A configuration. Omitting the whole block means no
-// user-supplied policies and no per-operation additions.
+// A2AOperationConfigs Transport exposure plus Agent-wide and per-operation A2A configuration, matching the
+// gateway's `spec.a2a.operationConfigs`. The block is required because it carries the
+// required `transports`; omitting `policies` or `operations` means no user-supplied
+// policies and no per-operation additions. None of this applies to public Agent Card
+// serving.
 type A2AOperationConfigs struct {
 	// Operations Per-operation configuration. This is not an allowlist — unlisted operations still
 	// receive the common `policies`. `name` must be unique across the array, which the
@@ -1962,6 +1966,11 @@ type A2AOperationConfigs struct {
 
 	// Policies Policies applied to every A2A operation. This is the agent-wide policy position for A2A; there is no top-level `policies` array.
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// Transports Transports this Agent proxy is served on. `protocolBinding` must be unique across
+	// the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
+	// in the service rather than by the schema.
+	Transports []A2ATransport `json:"transports" yaml:"transports"`
 }
 
 // A2AProtocolConfig Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
@@ -1974,19 +1983,17 @@ type A2AProtocolConfig struct {
 	// defaults never materialize an explicit stored configuration.
 	AgentCard *AgentCardConfig `json:"agentCard,omitempty" yaml:"agentCard,omitempty"`
 
-	// OperationConfigs Agent-wide and per-operation A2A configuration. Omitting the whole block means no
-	// user-supplied policies and no per-operation additions.
-	OperationConfigs *A2AOperationConfigs `json:"operationConfigs,omitempty" yaml:"operationConfigs,omitempty"`
+	// OperationConfigs Transport exposure plus Agent-wide and per-operation A2A configuration, matching the
+	// gateway's `spec.a2a.operationConfigs`. The block is required because it carries the
+	// required `transports`; omitting `policies` or `operations` means no user-supplied
+	// policies and no per-operation additions. None of this applies to public Agent Card
+	// serving.
+	OperationConfigs A2AOperationConfigs `json:"operationConfigs" yaml:"operationConfigs"`
 
 	// ProtocolVersion A2A wire protocol version. Only registered versions are accepted — an unregistered
 	// value is rejected at authoring time because it could never deploy. This is not a
 	// supported list filter.
 	ProtocolVersion A2AProtocolConfigProtocolVersion `json:"protocolVersion" yaml:"protocolVersion"`
-
-	// Transports Transports this Agent proxy is served on. `protocolBinding` must be unique across
-	// the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
-	// in the service rather than by the schema.
-	Transports []A2ATransport `json:"transports" yaml:"transports"`
 }
 
 // A2AProtocolConfigProtocolVersion A2A wire protocol version. Only registered versions are accepted — an unregistered

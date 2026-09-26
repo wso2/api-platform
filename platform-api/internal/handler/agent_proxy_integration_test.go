@@ -136,7 +136,9 @@ func minimalAgentProxyBody(id, displayName string) string {
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+	    "operationConfigs": {
+	      "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+	    }
 	  }
 	}`, idField, displayName, agentProxyProject)
 }
@@ -164,11 +166,11 @@ func fullAgentProxyBody(id string) string {
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [
-	      { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" },
-	      { "protocolBinding": "HTTP+JSON", "pathPrefix": "/rest" }
-	    ],
 	    "operationConfigs": {
+	      "transports": [
+	        { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" },
+	        { "protocolBinding": "HTTP+JSON", "pathPrefix": "/rest" }
+	      ],
 	      "policies": [ { "name": "jwt-auth", "version": "v1", "params": { "issuer": "https://idp.example.com" } } ],
 	      "operations": [
 	        { "name": "SendMessage", "policies": [ { "name": "advanced-ratelimit", "version": "v1" } ], "resilience": { "timeout": "30s" } }
@@ -247,8 +249,9 @@ func TestAgentProxyHandler_CreateGetPreservesNestedPayload(t *testing.T) {
 
 	for _, body := range []map[string]any{created, fetched} {
 		a2a := body["a2a"].(map[string]any)
-		if got := len(a2a["transports"].([]any)); got != 2 {
-			t.Fatalf("transports = %d, want 2", got)
+		operationConfigs := a2a["operationConfigs"].(map[string]any)
+		if got := len(operationConfigs["transports"].([]any)); got != 2 {
+			t.Fatalf("a2a.operationConfigs.transports = %d, want 2", got)
 		}
 		card := a2a["agentCard"].(map[string]any)
 		public := card["public"].(map[string]any)
@@ -316,8 +319,18 @@ func TestAgentProxyHandler_UpdateReplacesAndIsIdempotent(t *testing.T) {
 	if _, present := a2a["agentCard"]; present {
 		t.Fatalf("omitted agentCard not cleared: %#v", a2a["agentCard"])
 	}
-	if _, present := a2a["operationConfigs"]; present {
-		t.Fatalf("omitted operationConfigs not cleared: %#v", a2a["operationConfigs"])
+	// operationConfigs is required (it carries the transports), so it is replaced
+	// rather than removed: the new transports stand, and the policies and
+	// operations the minimal body omits are cleared.
+	operationConfigs := a2a["operationConfigs"].(map[string]any)
+	if transports := operationConfigs["transports"].([]any); len(transports) != 1 {
+		t.Fatalf("a2a.operationConfigs.transports = %#v, want the replacement's single transport", transports)
+	}
+	if _, present := operationConfigs["policies"]; present {
+		t.Fatalf("omitted operationConfigs.policies not cleared: %#v", operationConfigs["policies"])
+	}
+	if _, present := operationConfigs["operations"]; present {
+		t.Fatalf("omitted operationConfigs.operations not cleared: %#v", operationConfigs["operations"])
 	}
 	if _, present := replaced["associatedGateways"]; present {
 		t.Fatalf("omitted associatedGateways not emptied: %#v", replaced["associatedGateways"])
@@ -611,7 +624,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "unknown project",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
+			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "PROJECT_NOT_FOUND",
 		},
@@ -637,7 +650,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "auth without a credential on create",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x","auth":{"type":"api-key","header":"X-Key"}}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x","auth":{"type":"api-key","header":"X-Key"}}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -645,7 +658,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "unknown field",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]},"protocolConfig":{}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}},"protocolConfig":{}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -686,7 +699,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "explicitly empty id",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"id":"","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"id":"","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -696,7 +709,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "id that is not a handle",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"id":"weather.agent","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"id":"weather.agent","displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -706,7 +719,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "upstream carrying both url and an empty ref",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x","ref":""}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x","ref":""}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -716,7 +729,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "a2a protocol version with surrounding whitespace",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":" 1.0 ","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":" 1.0 ","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -724,7 +737,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "upstream url with surrounding whitespace",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"  http://x  "}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"  http://x  "}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -734,7 +747,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "unregistered a2a protocol version",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"9.9","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"9.9","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -743,7 +756,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "unknown A2A operation name",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"operationConfigs":{"operations":[{"name":"Teleport"}]}}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}],"operations":[{"name":"Teleport"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -753,7 +766,24 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "duplicate transport protocol binding",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC","pathPrefix":"/a"},{"protocolBinding":"JSONRPC","pathPrefix":"/b"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC","pathPrefix":"/a"},{"protocolBinding":"JSONRPC","pathPrefix":"/b"}]}}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			// operationConfigs is required because it carries the transports.
+			name:       "missing a2a.operationConfigs",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0"}}`, agentProxyProject),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+		},
+		{
+			name:       "a2a.operationConfigs without transports",
+			method:     http.MethodPost,
+			path:       agentProxyBase,
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"policies":[{"name":"jwt-auth","version":"v1"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -763,7 +793,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "managed public card with no content",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"agentCard":{"public":{"mode":"managed"}}}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]},"agentCard":{"public":{"mode":"managed"}}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -773,7 +803,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "protected card with no mode",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],"agentCard":{"protected":{"rewriteUrls":true}}}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]},"agentCard":{"protected":{"rewriteUrls":true}}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -783,7 +813,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "explicit null on an optional field",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"vhost":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"vhost":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -793,7 +823,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "upstream url with an unsupported scheme",
 			method:     http.MethodPost,
 			path:       agentProxyBase,
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"file:///etc/passwd"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"upstream":{"main":{"url":"file:///etc/passwd"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -803,7 +833,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "invalid context on replace",
 			method:     http.MethodPut,
 			path:       agentProxyBase + "/weather-agent",
-			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"context":"weather","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, agentProxyProject),
+			body:       fmt.Sprintf(`{"displayName":"X","version":"v1.0","projectId":%q,"context":"weather","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, agentProxyProject),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "VALIDATION_FAILED",
 		},
@@ -811,7 +841,7 @@ func TestAgentProxyHandler_RejectionContract(t *testing.T) {
 			name:       "project changed on replace",
 			method:     http.MethodPut,
 			path:       agentProxyBase + "/weather-agent",
-			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
+			body:       `{"displayName":"X","version":"v1.0","projectId":"no-such-project","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`,
 			wantStatus: http.StatusNotFound,
 			wantCode:   "PROJECT_NOT_FOUND",
 		},
@@ -879,7 +909,9 @@ func TestAgentProxyHandler_UnresolvableSecretNeverEchoesTheHandle(t *testing.T) 
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [ { "protocolBinding": "JSONRPC" } ]
+	    "operationConfigs": {
+	      "transports": [ { "protocolBinding": "JSONRPC" } ]
+	    }
 	  }
 	}`, agentProxyProject, handle)
 
@@ -919,7 +951,9 @@ func TestAgentProxyHandler_ResolvableSecretIsAccepted(t *testing.T) {
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [ { "protocolBinding": "JSONRPC" } ]
+	    "operationConfigs": {
+	      "transports": [ { "protocolBinding": "JSONRPC" } ]
+	    }
 	  }
 	}`, agentProxyProject)
 
@@ -998,7 +1032,7 @@ func TestAgentProxyHandler_ReferencedResourcesAgreeOnNotFound(t *testing.T) {
 		  %s
 		  "upstream": { "main": { "url": "http://weather-agent:9000" } },
 		  "protocol": "a2a",
-		  "a2a": { "protocolVersion": "1.0", "transports": [ { "protocolBinding": "JSONRPC" } ] }
+		  "a2a": { "protocolVersion": "1.0", "operationConfigs": { "transports": [ { "protocolBinding": "JSONRPC" } ] } }
 		}`, projectId, gateways)
 	}
 
@@ -1049,7 +1083,7 @@ func TestAgentProxyHandler_ForeignProjectIsIndistinguishableFromAMissingOne(t *t
 	body := func(projectId string) string {
 		return fmt.Sprintf(`{"displayName":"Weather Agent","version":"v1.0","projectId":%q,`+
 			`"upstream":{"main":{"url":"http://weather-agent:9000"}},"protocol":"a2a",`+
-			`"a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`, projectId)
+			`"a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`, projectId)
 	}
 
 	foreign := callAgentProxy(t, h, http.MethodPost, agentProxyBase, body("foreign-project"))

@@ -338,9 +338,9 @@ func TestRequestGatewayID(t *testing.T) {
 }
 
 func TestYAMLToJSONKeepsTypedScalars(t *testing.T) {
-	got, err := yamlToJSON([]byte("protocol: a2a\na2a:\n  protocolVersion: \"1.0\"\n  transports:\n    - protocolBinding: JSONRPC\nrewriteUrls: false\n"))
+	got, err := yamlToJSON([]byte("protocol: a2a\na2a:\n  protocolVersion: \"1.0\"\n  operationConfigs:\n    transports:\n      - protocolBinding: JSONRPC\nrewriteUrls: false\n"))
 	require.NoError(t, err)
-	require.JSONEq(t, `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]},"rewriteUrls":false}`, string(got))
+	require.JSONEq(t, `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}},"rewriteUrls":false}`, string(got))
 
 	for _, document := range []string{"- a\n- b\n", "just a scalar\n", "a: [\n"} {
 		_, err := yamlToJSON([]byte(document))

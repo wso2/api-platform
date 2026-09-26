@@ -141,11 +141,22 @@ type Resilience struct {
 // A2AProtocolConfig is the typed configuration required when Protocol is
 // AgentProxyProtocolA2A. The pointer on AgentProxyConfiguration preserves block
 // presence, so a missing block is distinguishable from an empty one.
+//
+// Its layout matches the gateway's spec.a2a: OperationConfigs is required and is
+// a value, not a pointer, because it carries the required transports.
 type A2AProtocolConfig struct {
-	ProtocolVersion  string               `json:"protocolVersion"`
-	Transports       []A2ATransport       `json:"transports"`
-	OperationConfigs *A2AOperationConfigs `json:"operationConfigs,omitempty"`
-	AgentCard        *AgentCardConfig     `json:"agentCard,omitempty"`
+	ProtocolVersion  string              `json:"protocolVersion"`
+	OperationConfigs A2AOperationConfigs `json:"operationConfigs"`
+	AgentCard        *AgentCardConfig    `json:"agentCard,omitempty"`
+}
+
+// A2AOperationConfigs holds the transports the Agent proxy is served on, the
+// Agent-wide policy position for A2A and any per-operation additions. Operations
+// is not an allowlist: an operation that is not listed still receives Policies.
+type A2AOperationConfigs struct {
+	Transports []A2ATransport `json:"transports"`
+	Policies   []Policy       `json:"policies,omitempty"`
+	Operations []A2AOperation `json:"operations,omitempty"`
 }
 
 // A2ATransport is one A2A protocol binding and the path prefix it is served on,
@@ -153,14 +164,6 @@ type A2AProtocolConfig struct {
 type A2ATransport struct {
 	ProtocolBinding string  `json:"protocolBinding"`
 	PathPrefix      *string `json:"pathPrefix,omitempty"`
-}
-
-// A2AOperationConfigs holds the Agent-wide policy position for A2A plus any
-// per-operation additions. Operations is not an allowlist: an operation that is
-// not listed still receives Policies.
-type A2AOperationConfigs struct {
-	Policies   []Policy       `json:"policies,omitempty"`
-	Operations []A2AOperation `json:"operations,omitempty"`
 }
 
 // A2AOperation is per-operation configuration for one canonical A2A operation.
@@ -287,8 +290,8 @@ type AgentDeploymentResilience struct {
 	IdleTimeout string `yaml:"idleTimeout,omitempty"`
 }
 
-// AgentDeploymentA2A is the gateway's spec.a2a block. Note the shape change from
-// the control plane's own contract: transports live under operationConfigs here.
+// AgentDeploymentA2A is the gateway's spec.a2a block. It has the same layout as
+// the control plane's a2a block — transports live under operationConfigs in both.
 type AgentDeploymentA2A struct {
 	ProtocolVersion  string                          `yaml:"protocolVersion"`
 	OperationConfigs AgentDeploymentOperationConfigs `yaml:"operationConfigs"`
@@ -296,8 +299,7 @@ type AgentDeploymentA2A struct {
 }
 
 // AgentDeploymentOperationConfigs carries the required transports plus the common
-// and per-operation policy positions. Transports are always emitted, even when the
-// control plane's own operationConfigs block was omitted.
+// and per-operation policy positions.
 type AgentDeploymentOperationConfigs struct {
 	Transports []AgentDeploymentTransport `yaml:"transports"`
 	Policies   []AgentDeploymentPolicy    `yaml:"policies,omitempty"`

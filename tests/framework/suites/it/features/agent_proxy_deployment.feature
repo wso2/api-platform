@@ -43,13 +43,14 @@ Feature: Agent proxies authored in the control plane are deployed to and served 
     Given I generate a unique resource name from "agent-e2e" and store it as "agentHandle"
     And I generate a unique API context from "/agent-e2e" and store it as "agentContext"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | id                   | ${CTX:agentHandle}                                                                                                                                                                                                                                                              |
-      | displayName          | End To End Agent                                                                                                                                                                                                                                                                |
-      | projectId            | ${CTX:projectHandle}                                                                                                                                                                                                                                                            |
-      | context              | ${CTX:agentContext}                                                                                                                                                                                                                                                             |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                                                                                                                                                                                                    |
-      | transports           | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                                                                                                                             |
-      | a2a.operationConfigs | {"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Chain","value":"common"}]}}}],"operations":[{"name":"SendMessage","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Op","value":"send-message"}]}}}]}]} |
+      | id                              | ${CTX:agentHandle}                                                                                                                                           |
+      | displayName                     | End To End Agent                                                                                                                                             |
+      | projectId                       | ${CTX:projectHandle}                                                                                                                                         |
+      | context                         | ${CTX:agentContext}                                                                                                                                          |
+      | upstreamUrl                     | http://a2a-trip-planner:9099                                                                                                                                 |
+      | transports                      | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                          |
+      | a2a.operationConfigs.policies   | [{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Chain","value":"common"}]}}}]                                        |
+      | a2a.operationConfigs.operations | [{"name":"SendMessage","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Op","value":"send-message"}]}}}]}] |
     And the response status code should be 201
 
     When I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "deploymentId"
@@ -299,13 +300,13 @@ Feature: Agent proxies authored in the control plane are deployed to and served 
     And I generate a unique API context from "/agent-snapshot" and store it as "agentContext"
     And I store the registered gateway id as "gatewayId"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | id                   | ${CTX:agentHandle}                                                                                                                     |
-      | displayName          | Snapshot Agent                                                                                                                         |
-      | projectId            | ${CTX:projectHandle}                                                                                                                   |
-      | context              | ${CTX:agentContext}                                                                                                                    |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                                                           |
-      | transports           | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                                   |
-      | a2a.operationConfigs | {"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Snapshot","value":"first"}]}}}]}   |
+      | id                            | ${CTX:agentHandle}                                                                                                      |
+      | displayName                   | Snapshot Agent                                                                                                          |
+      | projectId                     | ${CTX:projectHandle}                                                                                                    |
+      | context                       | ${CTX:agentContext}                                                                                                     |
+      | upstreamUrl                   | http://a2a-trip-planner:9099                                                                                            |
+      | transports                    | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                    |
+      | a2a.operationConfigs.policies | [{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Snapshot","value":"first"}]}}}] |
     And the response status code should be 201
     And I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "firstDeployment"
     And I store the JSON response field "buildId" as "firstBuild"
@@ -315,12 +316,12 @@ Feature: Agent proxies authored in the control plane are deployed to and served 
     And I send a "GET" request to "${CTX:agentContext}/v1/tasks" until header "X-Agent-Snapshot" is "first"
 
     When I update the Agent proxy "${CTX:agentHandle}" via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | displayName          | Snapshot Agent                                                                                                                         |
-      | projectId            | ${CTX:projectHandle}                                                                                                                   |
-      | context              | ${CTX:agentContext}                                                                                                                    |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                                                           |
-      | transports           | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                                   |
-      | a2a.operationConfigs | {"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Snapshot","value":"second"}]}}}]}  |
+      | displayName                   | Snapshot Agent                                                                                                           |
+      | projectId                     | ${CTX:projectHandle}                                                                                                     |
+      | context                       | ${CTX:agentContext}                                                                                                      |
+      | upstreamUrl                   | http://a2a-trip-planner:9099                                                                                             |
+      | transports                    | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                     |
+      | a2a.operationConfigs.policies | [{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Snapshot","value":"second"}]}}}] |
     And I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "secondDeployment"
     And I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/deployments/${CTX:secondDeployment}" until the JSON field "status" is "DEPLOYED"
     Then I send a "GET" request to "${CTX:agentContext}/v1/tasks" until header "X-Agent-Snapshot" is "second"

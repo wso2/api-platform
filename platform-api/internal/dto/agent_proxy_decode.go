@@ -60,7 +60,17 @@ func DecodeAgentProxyRequest(data []byte) (*api.A2AAgentProxy, error) {
 
 	switch protocol {
 	case model.AgentProxyProtocolA2A:
-		return decodeAgentProxyVariant[api.A2AAgentProxy](data)
+		// Unknown fields are reported first, so a body still using the old
+		// a2a.transports layout is told that field is unsupported rather than
+		// only that operationConfigs is missing.
+		out, err := decodeAgentProxyVariant[api.A2AAgentProxy](data)
+		if err != nil {
+			return nil, err
+		}
+		if err := assertA2AOperationConfigsPresent(raw["a2a"]); err != nil {
+			return nil, err
+		}
+		return out, nil
 	default:
 		// Registered in the model but with no request variant wired up here. A
 		// caller cannot tell that apart from an unknown protocol, and neither
@@ -87,6 +97,25 @@ func assertSingleProtocolBlock(raw map[string]json.RawMessage, protocol model.Ag
 		if _, ok := raw[other]; ok {
 			return fmt.Errorf("The request carries a %q configuration block, but protocol is %q. Exactly one protocol configuration block is permitted.", other, string(protocol))
 		}
+	}
+	return nil
+}
+
+// assertA2AOperationConfigsPresent checks that the a2a block carries the
+// required operationConfigs key.
+//
+// The generated type holds operationConfigs as a value, so once decoded an
+// omitted block is indistinguishable from one with an empty transport list, and
+// the caller would be told about transports inside a block they never sent.
+// Checked against the raw body, where key presence is still visible. A block
+// that is not an object has already been reported by the decoder.
+func assertA2AOperationConfigsPresent(block json.RawMessage) error {
+	var a2a map[string]json.RawMessage
+	if err := json.Unmarshal(block, &a2a); err != nil || a2a == nil {
+		return nil
+	}
+	if _, ok := a2a["operationConfigs"]; !ok {
+		return errors.New("The a2a.operationConfigs block is required; it carries the transports the Agent proxy is served on.")
 	}
 	return nil
 }

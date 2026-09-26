@@ -52,11 +52,11 @@ func TestAgentProxyConfigurationFromRequestMapsTypedBlocks(t *testing.T) {
 		Protocol:    api.A2AAgentProxyProtocol(model.AgentProxyProtocolA2A),
 		A2a: api.A2AProtocolConfig{
 			ProtocolVersion: "1.0",
-			Transports: []api.A2ATransport{
-				{ProtocolBinding: "JSONRPC", PathPrefix: ptr("/rpc")},
-				{ProtocolBinding: "HTTP+JSON"},
-			},
-			OperationConfigs: &api.A2AOperationConfigs{
+			OperationConfigs: api.A2AOperationConfigs{
+				Transports: []api.A2ATransport{
+					{ProtocolBinding: "JSONRPC", PathPrefix: ptr("/rpc")},
+					{ProtocolBinding: "HTTP+JSON"},
+				},
 				Policies: &[]api.Policy{{Name: "jwt-auth", Version: "v1"}},
 				Operations: &[]api.A2AOperation{{
 					Name:       "SendMessage",
@@ -92,14 +92,15 @@ func TestAgentProxyConfigurationFromRequestMapsTypedBlocks(t *testing.T) {
 	if cfg.A2A == nil || cfg.A2A.ProtocolVersion != "1.0" {
 		t.Fatal("a2a block was not mapped")
 	}
-	if len(cfg.A2A.Transports) != 2 {
-		t.Fatalf("transports = %d, want 2", len(cfg.A2A.Transports))
+	transports := cfg.A2A.OperationConfigs.Transports
+	if len(transports) != 2 {
+		t.Fatalf("transports = %d, want 2", len(transports))
 	}
 	// An omitted pathPrefix stays omitted rather than becoming an explicit "/".
-	if cfg.A2A.Transports[1].PathPrefix != nil {
-		t.Fatalf("omitted pathPrefix became %q", *cfg.A2A.Transports[1].PathPrefix)
+	if transports[1].PathPrefix != nil {
+		t.Fatalf("omitted pathPrefix became %q", *transports[1].PathPrefix)
 	}
-	if cfg.A2A.OperationConfigs == nil || len(cfg.A2A.OperationConfigs.Operations) != 1 {
+	if len(cfg.A2A.OperationConfigs.Policies) != 1 || len(cfg.A2A.OperationConfigs.Operations) != 1 {
 		t.Fatal("operation configuration was not mapped")
 	}
 	if cfg.A2A.AgentCard.Public.Content["x-vendor"] != "kept" {
@@ -126,6 +127,19 @@ func TestAgentProxyConfigurationFromRequestMapsTypedBlocks(t *testing.T) {
 	if _, ok := document["a2a"]; !ok {
 		t.Fatal("configuration document is missing the a2a block")
 	}
+	// The stored a2a block has the gateway's layout: transports sit under
+	// operationConfigs.
+	var a2aDocument map[string]json.RawMessage
+	if err := json.Unmarshal(document["a2a"], &a2aDocument); err != nil {
+		t.Fatalf("unmarshal a2a block: %v", err)
+	}
+	var operationConfigsDocument map[string]json.RawMessage
+	if err := json.Unmarshal(a2aDocument["operationConfigs"], &operationConfigsDocument); err != nil {
+		t.Fatalf("unmarshal a2a.operationConfigs: %v", err)
+	}
+	if _, ok := operationConfigsDocument["transports"]; !ok {
+		t.Fatal("configuration document is missing a2a.operationConfigs.transports")
+	}
 	for _, forbidden := range []string{"protocol", "displayName", "version", "projectId", "specVersion", "kind", "id"} {
 		if _, ok := document[forbidden]; ok {
 			t.Errorf("configuration document carries %q", forbidden)
@@ -142,7 +156,9 @@ func TestAgentProxyConfigurationFromRequestKeepsOmittedBlocksOmitted(t *testing.
 		Protocol:    api.A2AAgentProxyProtocol(model.AgentProxyProtocolA2A),
 		A2a: api.A2AProtocolConfig{
 			ProtocolVersion: "1.0",
-			Transports:      []api.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+			OperationConfigs: api.A2AOperationConfigs{
+				Transports: []api.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+			},
 		},
 	}
 
@@ -150,8 +166,11 @@ func TestAgentProxyConfigurationFromRequestKeepsOmittedBlocksOmitted(t *testing.
 	if cfg.Context != nil || cfg.Vhost != nil || cfg.Resilience != nil {
 		t.Fatal("omitted top-level fields were materialized")
 	}
-	if cfg.A2A.AgentCard != nil || cfg.A2A.OperationConfigs != nil {
-		t.Fatal("omitted a2a sub-blocks were materialized")
+	if cfg.A2A.AgentCard != nil {
+		t.Fatal("omitted agentCard block was materialized")
+	}
+	if cfg.A2A.OperationConfigs.Policies != nil || cfg.A2A.OperationConfigs.Operations != nil {
+		t.Fatal("omitted operationConfigs policies/operations were materialized")
 	}
 	if cfg.Upstream.Main == nil || cfg.Upstream.Main.Auth != nil {
 		t.Fatal("upstream auth was invented for a request that carried none")
@@ -187,7 +206,9 @@ func TestAgentProxyToResponseRedactsCredentialsAndReadsProtocolFromColumn(t *tes
 			},
 			A2A: &model.A2AProtocolConfig{
 				ProtocolVersion: "1.0",
-				Transports:      []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				OperationConfigs: model.A2AOperationConfigs{
+					Transports: []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				},
 			},
 		},
 	}
@@ -363,7 +384,9 @@ func TestAgentProxyRequestRoundTripsThroughTheModel(t *testing.T) {
 	  "protocol": "a2a",
 	  "a2a": {
 	    "protocolVersion": "1.0",
-	    "transports": [{"protocolBinding": "JSONRPC", "pathPrefix": "/rpc"}]
+	    "operationConfigs": {
+	      "transports": [{"protocolBinding": "JSONRPC", "pathPrefix": "/rpc"}]
+	    }
 	  }
 	}`
 
@@ -391,11 +414,14 @@ func TestAgentProxyRequestRoundTripsThroughTheModel(t *testing.T) {
 	if resp.Context == nil || *resp.Context != "/weather" {
 		t.Fatalf("response context = %v", resp.Context)
 	}
-	if len(resp.A2a.Transports) != 1 {
+	if len(resp.A2a.OperationConfigs.Transports) != 1 {
 		t.Fatalf("response a2a = %+v", resp.A2a)
 	}
-	if resp.A2a.Transports[0].PathPrefix == nil || *resp.A2a.Transports[0].PathPrefix != "/rpc" {
-		t.Fatalf("response pathPrefix = %v", resp.A2a.Transports[0].PathPrefix)
+	if prefix := resp.A2a.OperationConfigs.Transports[0].PathPrefix; prefix == nil || *prefix != "/rpc" {
+		t.Fatalf("response pathPrefix = %v", prefix)
+	}
+	if resp.A2a.OperationConfigs.Policies != nil || resp.A2a.OperationConfigs.Operations != nil {
+		t.Fatal("response materialized operationConfigs policies/operations the request omitted")
 	}
 	if resp.A2a.AgentCard != nil {
 		t.Fatal("response materialized an agentCard block the request omitted")

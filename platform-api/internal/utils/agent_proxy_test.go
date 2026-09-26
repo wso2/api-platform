@@ -47,7 +47,8 @@ var updateAgentProxyGolden = flag.Bool("update-agent-golden", false, "rewrite Ag
 const agentProxyTestProjectUUID = "0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f"
 
 // agentProxyMinimalRequest is the Section 1 minimal request: an existing A2A
-// agent, defaults everywhere, passthrough card, no operationConfigs.
+// agent, defaults everywhere, passthrough card, and an operationConfigs block
+// that carries only the required transports.
 const agentProxyMinimalRequest = `{
   "displayName": "Weather Agent",
   "version": "v1.0",
@@ -61,12 +62,14 @@ const agentProxyMinimalRequest = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [
-      {
-        "protocolBinding": "JSONRPC",
-        "pathPrefix": "/rpc"
-      }
-    ]
+    "operationConfigs": {
+      "transports": [
+        {
+          "protocolBinding": "JSONRPC",
+          "pathPrefix": "/rpc"
+        }
+      ]
+    }
   }
 }`
 
@@ -102,17 +105,17 @@ const agentProxyFullRequest = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [
-      {
-        "protocolBinding": "JSONRPC",
-        "pathPrefix": "/rpc"
-      },
-      {
-        "protocolBinding": "HTTP+JSON",
-        "pathPrefix": "/rest"
-      }
-    ],
     "operationConfigs": {
+      "transports": [
+        {
+          "protocolBinding": "JSONRPC",
+          "pathPrefix": "/rpc"
+        },
+        {
+          "protocolBinding": "HTTP+JSON",
+          "pathPrefix": "/rest"
+        }
+      ],
       "policies": [
         {
           "name": "jwt-auth",
@@ -225,7 +228,7 @@ const agentProxyFullRequest = `{
 }`
 
 // agentProxyCardVariantsRequest covers what the two Section 1 requests do not:
-// omitted operationConfigs alongside an explicit card block, a passthrough public
+// transports-only operationConfigs alongside an explicit card block, a passthrough public
 // card with an explicit rewriteUrls: false and a managed protected card, and a
 // per-transport default pathPrefix.
 const agentProxyCardVariantsRequest = `{
@@ -244,11 +247,13 @@ const agentProxyCardVariantsRequest = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [
-      {
-        "protocolBinding": "HTTP+JSON"
-      }
-    ],
+    "operationConfigs": {
+      "transports": [
+        {
+          "protocolBinding": "HTTP+JSON"
+        }
+      ]
+    },
     "agentCard": {
       "public": {
         "rewriteUrls": false
@@ -446,6 +451,35 @@ func TestBuildAgentProxyDeploymentYAML_A2AMapping(t *testing.T) {
 	assert.Equal(t, map[string]any{"mode": "passthrough", "rewriteUrls": true}, protected)
 }
 
+// TestBuildAgentProxyDeploymentYAML_OperationConfigsLayoutMatchesGateway pins the
+// shared layout: the control-plane a2a.operationConfigs block — transports
+// included — and the gateway's spec.a2a.operationConfigs are the same document.
+// If either side moves a field again, this fails rather than the builder quietly
+// relocating it.
+func TestBuildAgentProxyDeploymentYAML_OperationConfigsLayoutMatchesGateway(t *testing.T) {
+	for name, body := range map[string]string{
+		"minimal":       agentProxyMinimalRequest,
+		"full":          agentProxyFullRequest,
+		"card variants": agentProxyCardVariantsRequest,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var request map[string]any
+			require.NoError(t, json.Unmarshal([]byte(body), &request))
+			want := mapAt(t, request, "a2a", "operationConfigs")
+
+			got := mapAt(t, renderAgentYAMLTree(t, agentProxyFromRequest(t, "weather-agent", body)),
+				"spec", "a2a", "operationConfigs")
+
+			// Compare as JSON so YAML's integers and JSON's float64s agree.
+			wantJSON, err := json.Marshal(want)
+			require.NoError(t, err)
+			gotJSON, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(wantJSON), string(gotJSON))
+		})
+	}
+}
+
 func TestBuildAgentProxyDeploymentYAML_UpstreamCredentialIsCarriedAsStored(t *testing.T) {
 	tree := renderAgentYAMLTree(t, agentProxyFromRequest(t, "weather-agent", agentProxyFullRequest))
 
@@ -468,8 +502,8 @@ func TestBuildAgentProxyDeploymentYAML_MinimalOmitsOptionalBlocks(t *testing.T) 
 	a2a := mapAt(t, spec, "a2a")
 	assert.NotContains(t, a2a, "agentCard", "an omitted card block stays omitted; the gateway defaults it to passthrough")
 
-	// operationConfigs is emitted even though the request omitted it, because the
-	// gateway requires transports there — and it carries nothing else.
+	// The request's operationConfigs carried only the required transports, so the
+	// gateway block carries nothing else — no empty policies or operations lists.
 	assert.Equal(t, map[string]any{
 		"transports": []any{map[string]any{"protocolBinding": "JSONRPC", "pathPrefix": "/rpc"}},
 	}, mapAt(t, a2a, "operationConfigs"))
@@ -520,7 +554,7 @@ func TestBuildAgentProxyDeploymentYAML_RejectsInconsistentModels(t *testing.T) {
 		"empty protocol":       func(p *model.AgentProxy) { p.Protocol = "" },
 		"missing a2a block":    func(p *model.AgentProxy) { p.Configuration.A2A = nil },
 		"missing main":         func(p *model.AgentProxy) { p.Configuration.Upstream.Main = nil },
-		"no transports":        func(p *model.AgentProxy) { p.Configuration.A2A.Transports = nil },
+		"no transports":        func(p *model.AgentProxy) { p.Configuration.A2A.OperationConfigs.Transports = nil },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

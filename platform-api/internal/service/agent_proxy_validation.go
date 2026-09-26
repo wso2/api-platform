@@ -380,40 +380,40 @@ func validateA2AProtocolConfig(cfg *api.A2AProtocolConfig) error {
 				string(version), strings.Join(supportedProtocolVersionStrings(), ", ")))
 	}
 
-	if err := validateA2ATransports(cfg.Transports); err != nil {
-		return err
-	}
-	if err := validateA2AOperationConfigs(cfg.OperationConfigs, version); err != nil {
+	if err := validateA2AOperationConfigs(&cfg.OperationConfigs, version); err != nil {
 		return err
 	}
 	return validateAgentCardConfig(cfg.AgentCard)
 }
 
-// validateA2ATransports checks the transport array.
+// validateA2ATransports checks the transport array under a2a.operationConfigs.
 //
 // Uniqueness is by protocolBinding, which the schema cannot express: its
 // uniqueItems keyword compares whole elements, so two entries for the same
 // binding with different path prefixes would pass it while describing two
 // conflicting routes for one binding.
 func validateA2ATransports(transports []api.A2ATransport) error {
+	// An omitted a2a.operationConfigs block decodes to the same empty transport
+	// list as an explicitly empty one, so this one message covers both: the
+	// block is required precisely because it has to carry the transports.
 	if len(transports) == 0 {
-		return apperror.ValidationFailed.New("At least one a2a.transports entry is required.")
+		return apperror.ValidationFailed.New("At least one a2a.operationConfigs.transports entry is required.")
 	}
 	if len(transports) > agentProxyMaxTransports {
 		return apperror.ValidationFailed.New(
-			fmt.Sprintf("At most %d a2a.transports entries are allowed.", agentProxyMaxTransports))
+			fmt.Sprintf("At most %d a2a.operationConfigs.transports entries are allowed.", agentProxyMaxTransports))
 	}
 
 	seen := make(map[api.A2ATransportProtocolBinding]struct{}, len(transports))
 	for i, transport := range transports {
 		if !transport.ProtocolBinding.Valid() {
 			return apperror.ValidationFailed.New(
-				fmt.Sprintf("The a2a.transports[%d].protocolBinding %q is not supported. Supported bindings: %s, %s.",
+				fmt.Sprintf("The a2a.operationConfigs.transports[%d].protocolBinding %q is not supported. Supported bindings: %s, %s.",
 					i, string(transport.ProtocolBinding), string(api.JSONRPC), string(api.HTTPJSON)))
 		}
 		if _, duplicate := seen[transport.ProtocolBinding]; duplicate {
 			return apperror.ValidationFailed.New(
-				fmt.Sprintf("The a2a.transports entries must each use a different protocolBinding; %q appears more than once.",
+				fmt.Sprintf("The a2a.operationConfigs.transports entries must each use a different protocolBinding; %q appears more than once.",
 					string(transport.ProtocolBinding)))
 		}
 		seen[transport.ProtocolBinding] = struct{}{}
@@ -424,29 +424,32 @@ func validateA2ATransports(transports []api.A2ATransport) error {
 		prefix := *transport.PathPrefix
 		if prefix == "" {
 			return apperror.ValidationFailed.New(
-				fmt.Sprintf("The a2a.transports[%d].pathPrefix must not be empty. Omit it to use the default \"/\".", i))
+				fmt.Sprintf("The a2a.operationConfigs.transports[%d].pathPrefix must not be empty. Omit it to use the default \"/\".", i))
 		}
 		if utf8.RuneCountInString(prefix) > agentProxyPathPrefixMaxLen {
 			return apperror.ValidationFailed.New(
-				fmt.Sprintf("The a2a.transports[%d].pathPrefix must be at most %d characters.", i, agentProxyPathPrefixMaxLen))
+				fmt.Sprintf("The a2a.operationConfigs.transports[%d].pathPrefix must be at most %d characters.", i, agentProxyPathPrefixMaxLen))
 		}
 		if !agentProxyPathPrefixPattern.MatchString(prefix) {
 			return apperror.ValidationFailed.New(
-				fmt.Sprintf("The a2a.transports[%d].pathPrefix must be an absolute path such as /rpc.", i))
+				fmt.Sprintf("The a2a.operationConfigs.transports[%d].pathPrefix must be an absolute path such as /rpc.", i))
 		}
 	}
 	return nil
 }
 
-// validateA2AOperationConfigs checks the Agent-wide policy position and the
-// per-operation additions.
+// validateA2AOperationConfigs checks the required operation configuration block:
+// its transports, the Agent-wide policy position and the per-operation additions.
 //
 // Operation names are checked against the selected protocol version's canonical
 // set, not against a version-independent list: an operation belongs to a version
 // and an unknown name attaches configuration to a chain that will never exist.
 func validateA2AOperationConfigs(configs *api.A2AOperationConfigs, version agentproto.ProtocolVersion) error {
 	if configs == nil {
-		return nil
+		return apperror.ValidationFailed.New("The a2a.operationConfigs block is required.")
+	}
+	if err := validateA2ATransports(configs.Transports); err != nil {
+		return err
 	}
 	if err := validateAgentProxyPolicies(configs.Policies, "a2a.operationConfigs.policies"); err != nil {
 		return err

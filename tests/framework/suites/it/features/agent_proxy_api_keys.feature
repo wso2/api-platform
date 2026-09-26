@@ -42,13 +42,13 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And I generate a unique resource name from "agent-key" and store it as "keyId"
     And I generate a unique value from "agent-key-rotated" and store it as "rotatedKey"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | id                   | ${CTX:agentHandle}                                                                                   |
-      | displayName          | Key Agent                                                                                            |
-      | projectId            | ${CTX:projectHandle}                                                                                 |
-      | context              | ${CTX:agentContext}                                                                                  |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                         |
-      | transports           | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]  |
-      | a2a.operationConfigs | {"policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}       |
+      | id                            | ${CTX:agentHandle}                                                                                  |
+      | displayName                   | Key Agent                                                                                           |
+      | projectId                     | ${CTX:projectHandle}                                                                                |
+      | context                       | ${CTX:agentContext}                                                                                 |
+      | upstreamUrl                   | http://a2a-trip-planner:9099                                                                        |
+      | transports                    | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}] |
+      | a2a.operationConfigs.policies | [{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]                   |
     And the response status code should be 201
     And I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "deploymentId"
     And I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/deployments/${CTX:deploymentId}" until the JSON field "status" is "DEPLOYED"

@@ -86,13 +86,13 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     Given I generate a unique resource name from "agent-restart" and store it as "agentHandle"
     And I generate a unique API context from "/agent-restart" and store it as "agentContext"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | id                   | ${CTX:agentHandle}                                                                                                                   |
-      | displayName          | Restarted Agent                                                                                                                      |
-      | projectId            | ${CTX:projectHandle}                                                                                                                 |
-      | context              | ${CTX:agentContext}                                                                                                                  |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                                                         |
-      | transports           | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                  |
-      | a2a.operationConfigs | {"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Chain","value":"restored"}]}}}]} |
+      | id                            | ${CTX:agentHandle}                                                                                                      |
+      | displayName                   | Restarted Agent                                                                                                         |
+      | projectId                     | ${CTX:projectHandle}                                                                                                    |
+      | context                       | ${CTX:agentContext}                                                                                                     |
+      | upstreamUrl                   | http://a2a-trip-planner:9099                                                                                            |
+      | transports                    | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                     |
+      | a2a.operationConfigs.policies | [{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"X-Agent-Chain","value":"restored"}]}}}] |
     And the response status code should be 201
     And I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "deploymentId"
     And I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/deployments/${CTX:deploymentId}" until the JSON field "status" is "DEPLOYED"
@@ -139,13 +139,13 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     And I generate a unique resource name from "rest-new" and store it as "restNewKeyId"
     And I generate a unique value from "rest-new-value" and store it as "restNewKeyValue"
     And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
-      | id                   | ${CTX:agentHandle}                                                                                  |
-      | displayName          | Resynced Key Agent                                                                                  |
-      | projectId            | ${CTX:projectHandle}                                                                                |
-      | context              | ${CTX:agentContext}                                                                                 |
-      | upstreamUrl          | http://a2a-trip-planner:9099                                                                        |
-      | transports           | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}] |
-      | a2a.operationConfigs | {"policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}      |
+      | id                            | ${CTX:agentHandle}                                                                                  |
+      | displayName                   | Resynced Key Agent                                                                                  |
+      | projectId                     | ${CTX:projectHandle}                                                                                |
+      | context                       | ${CTX:agentContext}                                                                                 |
+      | upstreamUrl                   | http://a2a-trip-planner:9099                                                                        |
+      | transports                    | [{"protocolBinding":"JSONRPC","pathPrefix":"/"},{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}] |
+      | a2a.operationConfigs.policies | [{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]                   |
     And the response status code should be 201
     And I deploy the Agent proxy "${CTX:agentHandle}" to the gateway via the control plane and store the deployment id as "deploymentId"
     And I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/deployments/${CTX:deploymentId}" until the JSON field "status" is "DEPLOYED"

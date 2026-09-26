@@ -1452,7 +1452,8 @@ paths:
         annotation — and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate).
         The project is never defaulted.
         A gateway `Agent` is stored as the control-plane kind `AgentProxy` with `protocol: a2a`;
-        `spec.a2a.operationConfigs.transports` becomes the Agent proxy's `a2a.transports`. As
+        `spec.a2a` maps onto the Agent proxy's `a2a` block with the same layout, so
+        `spec.a2a.operationConfigs.transports` becomes `a2a.operationConfigs.transports`. As
         for every kind, the import stores what maps onto the control-plane model and drops the
         rest: `upstreamDefinitions`, a `manual` hostRewrite, the upstream auth
         `policyName`/`policyParams`/`policyVersion` and enabled card signing are not kept in the

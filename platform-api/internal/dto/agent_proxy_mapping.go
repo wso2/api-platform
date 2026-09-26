@@ -228,10 +228,17 @@ func a2aConfigToModel(in *api.A2AProtocolConfig) *model.A2AProtocolConfig {
 	if in == nil {
 		return nil
 	}
-	out := &model.A2AProtocolConfig{
-		ProtocolVersion: string(in.ProtocolVersion),
-		AgentCard:       agentCardToModel(in.AgentCard),
+	return &model.A2AProtocolConfig{
+		ProtocolVersion:  string(in.ProtocolVersion),
+		OperationConfigs: operationConfigsToModel(&in.OperationConfigs),
+		AgentCard:        agentCardToModel(in.AgentCard),
 	}
+}
+
+// operationConfigsToModel maps the operation configuration block, which carries
+// the transports as well as the common and per-operation policy positions.
+func operationConfigsToModel(in *api.A2AOperationConfigs) model.A2AOperationConfigs {
+	out := model.A2AOperationConfigs{Policies: policiesToModel(in.Policies)}
 	if in.Transports != nil {
 		out.Transports = make([]model.A2ATransport, 0, len(in.Transports))
 		for _, t := range in.Transports {
@@ -241,19 +248,15 @@ func a2aConfigToModel(in *api.A2AProtocolConfig) *model.A2AProtocolConfig {
 			})
 		}
 	}
-	if in.OperationConfigs != nil {
-		cfgs := &model.A2AOperationConfigs{Policies: policiesToModel(in.OperationConfigs.Policies)}
-		if in.OperationConfigs.Operations != nil {
-			cfgs.Operations = make([]model.A2AOperation, 0, len(*in.OperationConfigs.Operations))
-			for _, op := range *in.OperationConfigs.Operations {
-				cfgs.Operations = append(cfgs.Operations, model.A2AOperation{
-					Name:       string(op.Name),
-					Policies:   policiesToModel(op.Policies),
-					Resilience: resilienceToModel(op.Resilience),
-				})
-			}
+	if in.Operations != nil {
+		out.Operations = make([]model.A2AOperation, 0, len(*in.Operations))
+		for _, op := range *in.Operations {
+			out.Operations = append(out.Operations, model.A2AOperation{
+				Name:       string(op.Name),
+				Policies:   policiesToModel(op.Policies),
+				Resilience: resilienceToModel(op.Resilience),
+			})
 		}
-		out.OperationConfigs = cfgs
 	}
 	return out
 }
@@ -366,33 +369,37 @@ func a2aConfigToAPI(in *model.A2AProtocolConfig) *api.A2AProtocolConfig {
 	if in == nil {
 		return nil
 	}
-	out := &api.A2AProtocolConfig{
-		ProtocolVersion: api.A2AProtocolConfigProtocolVersion(in.ProtocolVersion),
-		AgentCard:       agentCardToAPI(in.AgentCard),
+	return &api.A2AProtocolConfig{
+		ProtocolVersion:  api.A2AProtocolConfigProtocolVersion(in.ProtocolVersion),
+		OperationConfigs: operationConfigsToAPI(&in.OperationConfigs),
+		AgentCard:        agentCardToAPI(in.AgentCard),
 	}
-	if in.Transports != nil {
-		out.Transports = make([]api.A2ATransport, 0, len(in.Transports))
-		for _, t := range in.Transports {
-			out.Transports = append(out.Transports, api.A2ATransport{
-				ProtocolBinding: api.A2ATransportProtocolBinding(t.ProtocolBinding),
-				PathPrefix:      clonePtr(t.PathPrefix),
+}
+
+// operationConfigsToAPI renders the stored operation configuration. Transports
+// are always present on the wire — the contract requires them — so a stored
+// document without any renders an empty array rather than a missing key.
+func operationConfigsToAPI(in *model.A2AOperationConfigs) api.A2AOperationConfigs {
+	out := api.A2AOperationConfigs{
+		Transports: make([]api.A2ATransport, 0, len(in.Transports)),
+		Policies:   policiesToAPI(in.Policies),
+	}
+	for _, t := range in.Transports {
+		out.Transports = append(out.Transports, api.A2ATransport{
+			ProtocolBinding: api.A2ATransportProtocolBinding(t.ProtocolBinding),
+			PathPrefix:      clonePtr(t.PathPrefix),
+		})
+	}
+	if in.Operations != nil {
+		ops := make([]api.A2AOperation, 0, len(in.Operations))
+		for _, op := range in.Operations {
+			ops = append(ops, api.A2AOperation{
+				Name:       api.A2AOperationName(op.Name),
+				Policies:   policiesToAPI(op.Policies),
+				Resilience: resilienceToAPI(op.Resilience),
 			})
 		}
-	}
-	if in.OperationConfigs != nil {
-		cfgs := &api.A2AOperationConfigs{Policies: policiesToAPI(in.OperationConfigs.Policies)}
-		if in.OperationConfigs.Operations != nil {
-			ops := make([]api.A2AOperation, 0, len(in.OperationConfigs.Operations))
-			for _, op := range in.OperationConfigs.Operations {
-				ops = append(ops, api.A2AOperation{
-					Name:       api.A2AOperationName(op.Name),
-					Policies:   policiesToAPI(op.Policies),
-					Resilience: resilienceToAPI(op.Resilience),
-				})
-			}
-			cfgs.Operations = &ops
-		}
-		out.OperationConfigs = cfgs
+		out.Operations = &ops
 	}
 	return out
 }

@@ -78,7 +78,9 @@ const minimalAgentProxy = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+    "operationConfigs": {
+      "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+    }
   }
 }`
 
@@ -105,11 +107,11 @@ const fullAgentProxy = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [
-      { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" },
-      { "protocolBinding": "HTTP+JSON", "pathPrefix": "/rest" }
-    ],
     "operationConfigs": {
+      "transports": [
+        { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" },
+        { "protocolBinding": "HTTP+JSON", "pathPrefix": "/rest" }
+      ],
       "policies": [
         { "name": "jwt-auth", "version": "v1",
           "params": { "issuer": "https://idp.example.com", "requiredScopes": ["a2a.invoke"] } }
@@ -179,11 +181,11 @@ func TestAgentProxyCreateFixtures(t *testing.T) {
 		// protocol and its matching named configuration block are both required,
 		// and the protocol must be one this API registers.
 		"no protocol": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
-			"a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
+			"a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`,
 		"protocol without a2a block": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
 			"protocol":"a2a"}`,
 		"unsupported protocol": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
-			"protocol":"mcp","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`,
+			"protocol":"mcp","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`,
 		"unregistered a2a protocol version": withA2AVersion(`"9.9"`),
 
 		// The card lives under a2a.agentCard and nowhere else.
@@ -208,10 +210,19 @@ func TestAgentProxyCreateFixtures(t *testing.T) {
 		"generic protocolConfig wrapper": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
 			"protocol":"a2a","protocolConfig":{"protocolVersion":"1.0"}}`,
 
-		"unknown field inside a2a":  withA2A(`"somethingElse": true`),
-		"unknown operation name":    withA2A(`"operationConfigs": { "operations": [ { "name": "SendTelepathy" } ] }`),
-		"unknown transport binding": withA2ATransport(`{"protocolBinding":"GRPC"}`),
-		"three transports":          withA2ATransport(`{"protocolBinding":"JSONRPC"},{"protocolBinding":"HTTP+JSON"},{"protocolBinding":"JSONRPC","pathPrefix":"/x"}`),
+		"unknown field inside a2a":       withA2A(`"somethingElse": true`),
+		"unknown operation name":         withA2AOperationConfigs(`"operations": [ { "name": "SendTelepathy" } ]`),
+		"unknown operationConfigs field": withA2AOperationConfigs(`"somethingElse": true`),
+		"unknown transport binding":      withA2ATransport(`{"protocolBinding":"GRPC"}`),
+		"three transports":               withA2ATransport(`{"protocolBinding":"JSONRPC"},{"protocolBinding":"HTTP+JSON"},{"protocolBinding":"JSONRPC","pathPrefix":"/x"}`),
+		"no transports":                  withA2ATransport(``),
+
+		// Transports live under a2a.operationConfigs, matching the gateway's
+		// spec.a2a, so operationConfigs is required.
+		"missing operationConfigs": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
+			"protocol":"a2a","a2a":{"protocolVersion":"1.0"}}`,
+		"operationConfigs without transports": `{"displayName":"A","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://a:1"}},
+			"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"policies":[]}}}`,
 	}
 	for name, body := range invalid {
 		t.Run("invalid/"+name, func(t *testing.T) {
@@ -261,23 +272,30 @@ func TestFetchAgentCardFixtures(t *testing.T) {
 // withRoot returns the minimal payload with one extra top-level member.
 func withRoot(member string) string {
 	return `{"displayName":"A","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"http://a:1"}},` +
-		member + `,"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`
+		member + `,"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`
 }
 
 // withA2A returns the minimal payload with one extra member inside the a2a block.
 func withA2A(member string) string {
 	return `{"displayName":"A","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"http://a:1"}},` +
-		`"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}],` + member + `}}`
+		`"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]},` + member + `}}`
+}
+
+// withA2AOperationConfigs returns the minimal payload with one extra member
+// inside a2a.operationConfigs, beside the required transports.
+func withA2AOperationConfigs(member string) string {
+	return `{"displayName":"A","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"http://a:1"}},` +
+		`"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}],` + member + `}}}`
 }
 
 // withA2AVersion returns the minimal payload with a substituted a2a.protocolVersion.
 func withA2AVersion(version string) string {
 	return `{"displayName":"A","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"http://a:1"}},` +
-		`"protocol":"a2a","a2a":{"protocolVersion":` + version + `,"transports":[{"protocolBinding":"JSONRPC"}]}}`
+		`"protocol":"a2a","a2a":{"protocolVersion":` + version + `,"operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`
 }
 
 // withA2ATransport returns the minimal payload with a substituted transport array body.
 func withA2ATransport(transports string) string {
 	return `{"displayName":"A","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"http://a:1"}},` +
-		`"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[` + transports + `]}}`
+		`"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[` + transports + `]}}}`
 }

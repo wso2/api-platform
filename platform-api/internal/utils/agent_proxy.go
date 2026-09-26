@@ -39,10 +39,10 @@ type AgentProxyUtils struct{}
 // would ship a blank credential.
 //
 // The builder is selected by the persisted protocol, never inferred from which
-// configuration block happens to be present. The control-plane shape is mapped
-// field by field rather than forwarded: transports move under operationConfigs,
-// and nothing control-plane-only (protocol, ownership, audit, associated
-// gateways) reaches the gateway spec. Omitted optional blocks stay omitted, and
+// configuration block happens to be present. The control-plane a2a block shares
+// the gateway's spec.a2a layout but is still mapped field by field rather than
+// forwarded, so nothing control-plane-only (protocol, ownership, audit,
+// associated gateways) reaches the gateway spec. Omitted optional blocks stay omitted, and
 // explicit false values (rewriteUrls) are preserved.
 func (u *AgentProxyUtils) BuildAgentProxyDeploymentYAML(proxy *model.AgentProxy) (*model.AgentProxyDeploymentYAML, error) {
 	if proxy == nil {
@@ -120,15 +120,17 @@ func (u *AgentProxyUtils) GenerateAgentProxyDeploymentYAML(proxy *model.AgentPro
 }
 
 // buildAgentDeploymentA2A maps the control-plane a2a block to the gateway's
-// spec.a2a. The gateway requires operationConfigs.transports, so operationConfigs
-// is always emitted — even when the control-plane operationConfigs was omitted.
+// spec.a2a. The two share a layout — transports live under operationConfigs in
+// both — but the mapping stays field by field so a control-plane-only field can
+// never leak into the gateway spec by being forwarded wholesale.
 func buildAgentDeploymentA2A(cfg *model.A2AProtocolConfig) (model.AgentDeploymentA2A, error) {
-	if len(cfg.Transports) == 0 {
-		return model.AgentDeploymentA2A{}, fmt.Errorf("a2a configuration has no transports")
+	in := cfg.OperationConfigs
+	if len(in.Transports) == 0 {
+		return model.AgentDeploymentA2A{}, fmt.Errorf("a2a configuration has no operationConfigs.transports")
 	}
 
-	transports := make([]model.AgentDeploymentTransport, 0, len(cfg.Transports))
-	for _, t := range cfg.Transports {
+	transports := make([]model.AgentDeploymentTransport, 0, len(in.Transports))
+	for _, t := range in.Transports {
 		transport := model.AgentDeploymentTransport{ProtocolBinding: t.ProtocolBinding}
 		if t.PathPrefix != nil {
 			transport.PathPrefix = *t.PathPrefix
@@ -136,20 +138,20 @@ func buildAgentDeploymentA2A(cfg *model.A2AProtocolConfig) (model.AgentDeploymen
 		transports = append(transports, transport)
 	}
 
-	operationConfigs := model.AgentDeploymentOperationConfigs{Transports: transports}
-	if cfg.OperationConfigs != nil {
-		operationConfigs.Policies = toAgentDeploymentPolicies(cfg.OperationConfigs.Policies)
-		if len(cfg.OperationConfigs.Operations) > 0 {
-			operations := make([]model.AgentDeploymentOperation, 0, len(cfg.OperationConfigs.Operations))
-			for _, op := range cfg.OperationConfigs.Operations {
-				operations = append(operations, model.AgentDeploymentOperation{
-					Name:       op.Name,
-					Policies:   toAgentDeploymentPolicies(op.Policies),
-					Resilience: toAgentDeploymentResilience(op.Resilience),
-				})
-			}
-			operationConfigs.Operations = operations
+	operationConfigs := model.AgentDeploymentOperationConfigs{
+		Transports: transports,
+		Policies:   toAgentDeploymentPolicies(in.Policies),
+	}
+	if len(in.Operations) > 0 {
+		operations := make([]model.AgentDeploymentOperation, 0, len(in.Operations))
+		for _, op := range in.Operations {
+			operations = append(operations, model.AgentDeploymentOperation{
+				Name:       op.Name,
+				Policies:   toAgentDeploymentPolicies(op.Policies),
+				Resilience: toAgentDeploymentResilience(op.Resilience),
+			})
 		}
+		operationConfigs.Operations = operations
 	}
 
 	return model.AgentDeploymentA2A{

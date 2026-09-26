@@ -77,11 +77,11 @@ func fullAgentProxy(orgUUID, projectUUID, handle string) *model.AgentProxy {
 			Resilience: &model.Resilience{IdleTimeout: "5s"},
 			A2A: &model.A2AProtocolConfig{
 				ProtocolVersion: "1.0",
-				Transports: []model.A2ATransport{
-					{ProtocolBinding: "JSONRPC", PathPrefix: agentStrPtr("/rpc")},
-					{ProtocolBinding: "HTTP+JSON", PathPrefix: agentStrPtr("/rest")},
-				},
-				OperationConfigs: &model.A2AOperationConfigs{
+				OperationConfigs: model.A2AOperationConfigs{
+					Transports: []model.A2ATransport{
+						{ProtocolBinding: "JSONRPC", PathPrefix: agentStrPtr("/rpc")},
+						{ProtocolBinding: "HTTP+JSON", PathPrefix: agentStrPtr("/rest")},
+					},
 					Policies: []model.Policy{{Name: "jwt-auth", Version: "v1"}},
 					Operations: []model.A2AOperation{{
 						Name:       "SendMessage",
@@ -110,8 +110,9 @@ func fullAgentProxy(orgUUID, projectUUID, handle string) *model.AgentProxy {
 	}
 }
 
-// minimalAgentProxy omits the card and operation-configuration blocks entirely,
-// so their absence can be asserted to survive a round trip.
+// minimalAgentProxy omits the card block and every optional part of the
+// operation configuration (it carries only the required transports), so their
+// absence can be asserted to survive a round trip.
 func minimalAgentProxy(orgUUID, projectUUID, handle string) *model.AgentProxy {
 	return &model.AgentProxy{
 		OrganizationUUID: orgUUID,
@@ -126,7 +127,9 @@ func minimalAgentProxy(orgUUID, projectUUID, handle string) *model.AgentProxy {
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://agent:9000"}},
 			A2A: &model.A2AProtocolConfig{
 				ProtocolVersion: "1.0",
-				Transports:      []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				OperationConfigs: model.A2AOperationConfigs{
+					Transports: []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				},
 			},
 		},
 	}
@@ -162,8 +165,11 @@ func TestAgentProxyRepoRoundTripsProtocolAndTypedConfiguration(t *testing.T) {
 	if got.Configuration.A2A.ProtocolVersion != "1.0" {
 		t.Fatalf("a2a.protocolVersion = %q, want 1.0", got.Configuration.A2A.ProtocolVersion)
 	}
-	if len(got.Configuration.A2A.Transports) != 2 {
-		t.Fatalf("transports = %d, want 2", len(got.Configuration.A2A.Transports))
+	if n := len(got.Configuration.A2A.OperationConfigs.Transports); n != 2 {
+		t.Fatalf("transports = %d, want 2", n)
+	}
+	if len(got.Configuration.A2A.OperationConfigs.Policies) != 1 || len(got.Configuration.A2A.OperationConfigs.Operations) != 1 {
+		t.Fatal("operation policies/operations were not round-tripped")
 	}
 	if got.Configuration.Upstream.Main == nil || got.Configuration.Upstream.Main.Auth == nil {
 		t.Fatal("upstream auth was not round-tripped")
@@ -210,8 +216,11 @@ func TestAgentProxyRepoOmittedBlocksStayOmitted(t *testing.T) {
 	if got.Configuration.A2A.AgentCard != nil {
 		t.Fatal("omitted agentCard block was materialized on read")
 	}
-	if got.Configuration.A2A.OperationConfigs != nil {
-		t.Fatal("omitted operationConfigs block was materialized on read")
+	if len(got.Configuration.A2A.OperationConfigs.Transports) != 1 {
+		t.Fatal("operationConfigs.transports were not round-tripped")
+	}
+	if got.Configuration.A2A.OperationConfigs.Policies != nil || got.Configuration.A2A.OperationConfigs.Operations != nil {
+		t.Fatal("omitted operationConfigs policies/operations were materialized on read")
 	}
 	if got.Configuration.Context != nil || got.Configuration.Vhost != nil {
 		t.Fatal("omitted context/vhost were materialized on read")
@@ -249,6 +258,19 @@ func TestAgentProxyPersistedJSONCarriesNoColumnBackedFields(t *testing.T) {
 	}
 	if _, ok := document["a2a"]; !ok {
 		t.Fatal("stored configuration is missing the a2a block")
+	}
+	// The stored a2a block has the gateway's spec.a2a layout: transports live
+	// under operationConfigs.
+	var a2a map[string]json.RawMessage
+	if err := json.Unmarshal(document["a2a"], &a2a); err != nil {
+		t.Fatalf("stored a2a block is not a JSON object: %v", err)
+	}
+	var operationConfigs map[string]json.RawMessage
+	if err := json.Unmarshal(a2a["operationConfigs"], &operationConfigs); err != nil {
+		t.Fatalf("stored a2a.operationConfigs is not a JSON object: %v", err)
+	}
+	if _, ok := operationConfigs["transports"]; !ok {
+		t.Error("stored configuration is missing a2a.operationConfigs.transports")
 	}
 	for _, forbidden := range []string{
 		"protocol", "specVersion", "spec", "kind", "id", "handle", "name", "displayName",
@@ -297,7 +319,7 @@ func TestAgentProxyReadRejectsProtocolConfigurationMismatch(t *testing.T) {
 		// value is still the key existing, and decoding it to a nil pointer would
 		// wave it through.
 		if _, err := db.Exec(`UPDATE agent_proxies SET configuration = ? WHERE handle = ?`,
-			[]byte(`{"protocol":null,"upstream":{"main":{"url":"http://agent:9000"}},"a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`),
+			[]byte(`{"protocol":null,"upstream":{"main":{"url":"http://agent:9000"}},"a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`),
 			"null-disc-agent"); err != nil {
 			t.Fatalf("force drift: %v", err)
 		}
@@ -317,7 +339,7 @@ func TestAgentProxyReadRejectsProtocolConfigurationMismatch(t *testing.T) {
 			t.Fatalf("create: %v", err)
 		}
 		if _, err := db.Exec(`UPDATE agent_proxies SET configuration = ? WHERE handle = ?`,
-			[]byte(`{"protocol":"a2a","upstream":{"main":{"url":"http://agent:9000"}},"a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"}]}}`),
+			[]byte(`{"protocol":"a2a","upstream":{"main":{"url":"http://agent:9000"}},"a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]}}}`),
 			"dup-agent"); err != nil {
 			t.Fatalf("force drift: %v", err)
 		}

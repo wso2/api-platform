@@ -478,24 +478,31 @@ func TestCanonicalAgentProxyTemplateRendersTheContractPayload(t *testing.T) {
 	require.Equal(t, "v1.0", minimal["version"])
 	a2a := minimal["a2a"].(map[string]any)
 	require.Equal(t, "1.0", a2a["protocolVersion"], "the protocol version must stay a string, not the number 1")
-	require.Len(t, a2a["transports"], 1)
+	operationConfigs := a2a["operationConfigs"].(map[string]any)
+	require.Len(t, operationConfigs["transports"], 1)
 	require.Equal(t, "http://a2a-trip-planner:9099", minimal["upstream"].(map[string]any)["main"].(map[string]any)["url"])
 	for _, optional := range []string{"id", "description", "vhost", "resilience", "associatedGateways"} {
 		require.NotContains(t, minimal, optional, "an unsupplied optional field must stay absent")
 	}
 	require.NotContains(t, a2a, "agentCard")
-	require.NotContains(t, a2a, "operationConfigs")
+	require.NotContains(t, operationConfigs, "policies", "an unsupplied optional field must stay absent")
+	require.NotContains(t, operationConfigs, "operations", "an unsupplied optional field must stay absent")
 
 	full := render(t, append(required,
 		"id", "agent-handle",
 		"upstream.main.auth", `{"type":"api-key","header":"X-Key","value":"{{ secret \"handle\" }}"}`,
 		"a2a.agentCard", `{"public":{"mode":"passthrough","rewriteUrls":false}}`,
+		"a2a.operationConfigs.policies", `[{"name":"api-key-auth","version":"v1"}]`,
 	)...)
 	require.Equal(t, "agent-handle", full["id"])
 	auth := full["upstream"].(map[string]any)["main"].(map[string]any)["auth"].(map[string]any)
 	require.Equal(t, `{{ secret "handle" }}`, auth["value"])
 	card := full["a2a"].(map[string]any)["agentCard"].(map[string]any)["public"].(map[string]any)
 	require.Equal(t, false, card["rewriteUrls"], "an explicit false must survive rendering")
+	fullOperationConfigs := full["a2a"].(map[string]any)["operationConfigs"].(map[string]any)
+	require.Len(t, fullOperationConfigs["transports"], 1,
+		"a nested operationConfigs override sits beside the templated transports rather than replacing them")
+	require.Equal(t, "api-key-auth", fullOperationConfigs["policies"].([]any)[0].(map[string]any)["name"])
 
 	_, err = RenderResourceTemplate(context.Background(), "resources/templates/agent-proxy.yaml", template,
 		templateTable("displayName", "Agent"))

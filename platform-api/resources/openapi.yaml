@@ -4869,9 +4869,11 @@ paths:
       description: |
         Full replacement of the writable Agent proxy configuration; idempotent. Omitted
         optional fields reset to their documented default or absence — omitting
-        `a2a.agentCard` restores default card behaviour, omitting `a2a.operationConfigs`
-        clears user additions, and omitting `associatedGateways` empties the association set
-        (subject to the existing deployment-integrity checks).
+        `a2a.agentCard` restores default card behaviour, omitting
+        `a2a.operationConfigs.policies` or `a2a.operationConfigs.operations` clears those user
+        additions, and omitting `associatedGateways` empties the association set (subject to
+        the existing deployment-integrity checks). `a2a.operationConfigs` itself is required,
+        since it carries the transports.
 
         An omitted body `id` retains the path handle and is never regenerated; a body `id`
         that disagrees with the path is a 400. `protocol` is immutable — changing it is a 400.
@@ -11854,7 +11856,8 @@ components:
       title: A2A Agent Proxy
       description: |
         The complete Agent proxy variant for `protocol: a2a`. Shared Agent fields stay at the
-        top level; A2A protocol version, transports, operation configuration and Agent Cards
+        top level; the A2A protocol version, operation configuration (including the
+        transports it is served on, under `a2a.operationConfigs.transports`) and Agent Cards
         live inside `a2a`. Unknown properties are rejected.
       type: object
       additionalProperties: false
@@ -11990,7 +11993,7 @@ components:
       additionalProperties: false
       required:
         - protocolVersion
-        - transports
+        - operationConfigs
       properties:
         protocolVersion:
           type: string
@@ -12001,16 +12004,6 @@ components:
           enum:
             - '1.0'
           example: '1.0'
-        transports:
-          type: array
-          description: |
-            Transports this Agent proxy is served on. `protocolBinding` must be unique across
-            the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
-            in the service rather than by the schema.
-          minItems: 1
-          maxItems: 2
-          items:
-            $ref: '#/components/schemas/A2ATransport'
         operationConfigs:
           $ref: '#/components/schemas/A2AOperationConfigs'
         agentCard:
@@ -12042,11 +12035,26 @@ components:
     A2AOperationConfigs:
       title: A2A operation configuration
       description: |
-        Agent-wide and per-operation A2A configuration. Omitting the whole block means no
-        user-supplied policies and no per-operation additions.
+        Transport exposure plus Agent-wide and per-operation A2A configuration, matching the
+        gateway's `spec.a2a.operationConfigs`. The block is required because it carries the
+        required `transports`; omitting `policies` or `operations` means no user-supplied
+        policies and no per-operation additions. None of this applies to public Agent Card
+        serving.
       type: object
       additionalProperties: false
+      required:
+        - transports
       properties:
+        transports:
+          type: array
+          description: |
+            Transports this Agent proxy is served on. `protocolBinding` must be unique across
+            the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
+            in the service rather than by the schema.
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/A2ATransport'
         policies:
           type: array
           description: Policies applied to every A2A operation. This is the agent-wide policy position for A2A; there is no top-level `policies` array.

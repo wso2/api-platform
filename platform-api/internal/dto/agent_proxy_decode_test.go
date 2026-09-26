@@ -36,7 +36,9 @@ const minimalAgentProxyJSON = `{
   "protocol": "a2a",
   "a2a": {
     "protocolVersion": "1.0",
-    "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+    "operationConfigs": {
+      "transports": [ { "protocolBinding": "JSONRPC", "pathPrefix": "/rpc" } ]
+    }
   }
 }`
 
@@ -51,8 +53,9 @@ func TestDecodeAgentProxyRequestAcceptsMinimalBody(t *testing.T) {
 	if req.Protocol != api.A2AAgentProxyProtocolA2a {
 		t.Fatalf("protocol = %q, want a2a", req.Protocol)
 	}
-	if len(req.A2a.Transports) != 1 || req.A2a.Transports[0].ProtocolBinding != "JSONRPC" {
-		t.Fatalf("transports not decoded: %+v", req.A2a.Transports)
+	transports := req.A2a.OperationConfigs.Transports
+	if len(transports) != 1 || transports[0].ProtocolBinding != "JSONRPC" {
+		t.Fatalf("transports not decoded: %+v", transports)
 	}
 	// An omitted card block stays omitted — it is never materialized into an
 	// explicit default, because a stored explicit block and an absent one mean
@@ -75,8 +78,8 @@ func TestDecodeAgentProxyRequestPreservesCardExtensions(t *testing.T) {
       "protocol": "a2a",
       "a2a": {
         "protocolVersion": "1.0",
-        "transports": [ { "protocolBinding": "JSONRPC" } ],
         "operationConfigs": {
+          "transports": [ { "protocolBinding": "JSONRPC" } ],
           "policies": [ { "name": "jwt-auth", "version": "v1", "params": { "x-vendor": { "nested": true } } } ]
         },
         "agentCard": {
@@ -123,7 +126,7 @@ func TestDecodeAgentProxyRequestRejections(t *testing.T) {
 		},
 		{
 			name:     "missing protocol",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}}}`,
 			contains: "protocol field is required",
 		},
 		{
@@ -143,12 +146,12 @@ func TestDecodeAgentProxyRequestRejections(t *testing.T) {
 		},
 		{
 			name:     "generic protocolConfig wrapper",
-			body:     `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]},"protocolConfig":{}}`,
+			body:     `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}},"protocolConfig":{}}`,
 			contains: `unsupported fields: "protocolConfig"`,
 		},
 		{
 			name:     "legacy top-level A2A fields",
-			body:     `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]},"transports":[],"agentCard":{}}`,
+			body:     `{"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}},"transports":[],"agentCard":{}}`,
 			contains: `unsupported fields: "agentCard", "transports"`,
 		},
 		{
@@ -156,22 +159,22 @@ func TestDecodeAgentProxyRequestRejections(t *testing.T) {
 			// the decoder's own DisallowUnknownFields cannot see this key —
 			// only the structural walk rejects it.
 			name:     "signing rejected on a card configuration",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[],"agentCard":{"public":{"mode":"passthrough","signing":{}}}}}`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]},"agentCard":{"public":{"mode":"passthrough","signing":{}}}}}`,
 			contains: `unsupported fields: "a2a.agentCard.public.signing"`,
 		},
 		{
 			name:     "unknown key inside an array element",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"},{"protocolBinding":"HTTP+JSON","weight":3}]}}`,
-			contains: `unsupported fields: "a2a.transports[1].weight"`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"},{"protocolBinding":"HTTP+JSON","weight":3}]}}}`,
+			contains: `unsupported fields: "a2a.operationConfigs.transports[1].weight"`,
 		},
 		{
 			name:     "path rejected on a protected card",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[],"agentCard":{"protected":{"mode":"passthrough","path":"/x"}}}}`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]},"agentCard":{"protected":{"mode":"passthrough","path":"/x"}}}}`,
 			contains: `unsupported fields: "a2a.agentCard.protected.path"`,
 		},
 		{
 			name:     "wrong field type",
-			body:     `{"displayName":123,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			body:     `{"displayName":123,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}}}`,
 			contains: `field "displayName" has the wrong type`,
 		},
 		{
@@ -179,23 +182,33 @@ func TestDecodeAgentProxyRequestRejections(t *testing.T) {
 			// same nil pointer an omitted key does — so a caller sending null to
 			// clear a field would silently get the field's default instead.
 			name:     "explicit null on an optional field",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","context":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","context":null,"upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}}}`,
 			contains: `field "context" must not be null`,
 		},
 		{
 			name:     "explicit null on a required field",
-			body:     `{"displayName":null,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[]}}`,
+			body:     `{"displayName":null,"version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]}}}`,
 			contains: `field "displayName" must not be null`,
 		},
 		{
 			name:     "explicit null on a nested block",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[],"agentCard":{"public":null}}}`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[]},"agentCard":{"public":null}}}`,
 			contains: `field "a2a.agentCard.public" must not be null`,
 		},
 		{
 			name:     "explicit null inside an array",
-			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","transports":[{"protocolBinding":"JSONRPC"},null]}}`,
-			contains: `field "a2a.transports[1]" must not be null`,
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"},null]}}}`,
+			contains: `field "a2a.operationConfigs.transports[1]" must not be null`,
+		},
+		{
+			name:     "missing operationConfigs block",
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0"}}`,
+			contains: `a2a.operationConfigs block is required`,
+		},
+		{
+			name:     "explicit null operationConfigs block",
+			body:     `{"displayName":"a","version":"v1.0","projectId":"p","upstream":{"main":{"url":"http://x"}},"protocol":"a2a","a2a":{"protocolVersion":"1.0","operationConfigs":null}}`,
+			contains: `field "a2a.operationConfigs" must not be null`,
 		},
 	}
 
@@ -285,8 +298,8 @@ func TestDecodeAgentProxyRequestKeepsNullsInsideFreeFormContent(t *testing.T) {
       "protocol": "a2a",
       "a2a": {
         "protocolVersion": "1.0",
-        "transports": [ { "protocolBinding": "JSONRPC" } ],
         "operationConfigs": {
+          "transports": [ { "protocolBinding": "JSONRPC" } ],
           "policies": [ { "name": "jwt-auth", "version": "v1", "params": { "audience": null } } ]
         },
         "agentCard": {

@@ -86,7 +86,9 @@ func storedAgentProxy(origin string) *model.AgentProxy {
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://weather-agent:9000"}},
 			A2A: &model.A2AProtocolConfig{
 				ProtocolVersion: "1.0",
-				Transports:      []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				OperationConfigs: model.A2AOperationConfigs{
+					Transports: []model.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+				},
 			},
 		},
 	}
@@ -104,7 +106,9 @@ func validAgentProxyRequest() *api.A2AAgentProxy {
 		Upstream:    api.Upstream{Main: api.UpstreamDefinition{Url: &url}},
 		A2a: api.A2AProtocolConfig{
 			ProtocolVersion: "1.0",
-			Transports:      []api.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+			OperationConfigs: api.A2AOperationConfigs{
+				Transports: []api.A2ATransport{{ProtocolBinding: "JSONRPC"}},
+			},
 		},
 	}
 }

@@ -301,14 +301,15 @@ func TestAgentImport_CreatesReadOnlyAgentProxy(t *testing.T) {
 	if a2a.ProtocolVersion != "1.0" {
 		t.Errorf("a2a.protocolVersion = %q, want 1.0", a2a.ProtocolVersion)
 	}
-	if len(a2a.Transports) != 1 || a2a.Transports[0].ProtocolBinding != "JSONRPC" ||
-		a2a.Transports[0].PathPrefix == nil || *a2a.Transports[0].PathPrefix != "/rpc" {
-		t.Errorf("a2a.transports = %+v, want the one JSONRPC transport at /rpc moved out of operationConfigs", a2a.Transports)
+	transports := a2a.OperationConfigs.Transports
+	if len(transports) != 1 || transports[0].ProtocolBinding != "JSONRPC" ||
+		transports[0].PathPrefix == nil || *transports[0].PathPrefix != "/rpc" {
+		t.Errorf("a2a.operationConfigs.transports = %+v, want the one JSONRPC transport at /rpc, in the same position the gateway holds it", transports)
 	}
 	// The gateway's operationConfigs only carried the transports, so the control
-	// plane's optional block stays omitted — as does the card block.
-	if a2a.OperationConfigs != nil {
-		t.Errorf("a2a.operationConfigs = %+v, want omitted", a2a.OperationConfigs)
+	// plane's copy carries no policies or operations either — and no card block.
+	if a2a.OperationConfigs.Policies != nil || a2a.OperationConfigs.Operations != nil {
+		t.Errorf("a2a.operationConfigs = %+v, want transports only", a2a.OperationConfigs)
 	}
 	if a2a.AgentCard != nil {
 		t.Errorf("a2a.agentCard = %+v, want omitted", a2a.AgentCard)
@@ -377,13 +378,14 @@ func TestAgentImport_PersistsColumnAndDocumentBoundary(t *testing.T) {
 	if _, ok := a2a["protocol"]; ok {
 		t.Error("configuration.a2a duplicates the protocol discriminator")
 	}
-	if _, ok := a2a["transports"]; !ok {
-		t.Error("configuration.a2a.transports is missing")
+	// The control plane stores the gateway's own layout: transports stay under
+	// operationConfigs.
+	opCfgs, ok := a2a["operationConfigs"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("configuration.a2a.operationConfigs is missing: %v", a2a)
 	}
-	if opCfgs, ok := a2a["operationConfigs"].(map[string]interface{}); ok {
-		if _, ok := opCfgs["transports"]; ok {
-			t.Error("transports were left in the gateway's operationConfigs position")
-		}
+	if _, ok := opCfgs["transports"]; !ok {
+		t.Error("configuration.a2a.operationConfigs.transports is missing")
 	}
 
 	// The secret placeholder is recorded as a reference of the imported artifact.
@@ -399,7 +401,8 @@ func TestAgentImport_PersistsColumnAndDocumentBoundary(t *testing.T) {
 
 // The import is the inverse of the Section 7 builder: building a gateway artifact
 // from the imported Agent proxy reproduces the spec the gateway pushed, for both
-// the minimal and the fuller shape — including the moved transports, omitted card
+// the minimal and the fuller shape — including the transports under
+// operationConfigs, omitted card
 // blocks, the explicit rewriteUrls: false and free-form card extensions.
 func TestAgentImport_InverseOfDeploymentBuilder(t *testing.T) {
 	cases := map[string]func() map[string]interface{}{
@@ -483,7 +486,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndMutationsAreRefused(t *testing.T
 	if got.ReadOnly == nil || !*got.ReadOnly {
 		t.Errorf("readOnly = %v, want true", got.ReadOnly)
 	}
-	if got.A2a.ProtocolVersion != "1.0" || len(got.A2a.Transports) != 2 {
+	if got.A2a.ProtocolVersion != "1.0" || len(got.A2a.OperationConfigs.Transports) != 2 {
 		t.Errorf("a2a = %+v, want protocolVersion 1.0 and both transports", got.A2a)
 	}
 	if got.A2a.AgentCard == nil || got.A2a.AgentCard.Public == nil || got.A2a.AgentCard.Public.Content == nil {
@@ -722,7 +725,7 @@ func TestAgentImport_StoresWhatMapsAndDropsTheRest(t *testing.T) {
 			importSpecOpCfgs(r)["operations"] = []interface{}{map[string]interface{}{"name": "Teleport"}}
 		}, check: func(t *testing.T, p *model.AgentProxy) {
 			ops := p.Configuration.A2A.OperationConfigs
-			if ops == nil || len(ops.Operations) != 1 || ops.Operations[0].Name != "Teleport" {
+			if len(ops.Operations) != 1 || ops.Operations[0].Name != "Teleport" {
 				t.Errorf("operationConfigs = %+v, want the operation stored as sent", ops)
 			}
 		}},
@@ -740,8 +743,9 @@ func TestAgentImport_StoresWhatMapsAndDropsTheRest(t *testing.T) {
 		{name: "missing operationConfigs stores no transports", mutate: func(r *dto.ImportGatewayArtifactRequest) {
 			delete(importSpecA2A(r), "operationConfigs")
 		}, check: func(t *testing.T, p *model.AgentProxy) {
-			if len(p.Configuration.A2A.Transports) != 0 || p.Configuration.A2A.OperationConfigs != nil {
-				t.Errorf("a2a = %+v, want no transports and no operationConfigs", p.Configuration.A2A)
+			ops := p.Configuration.A2A.OperationConfigs
+			if len(ops.Transports) != 0 || ops.Policies != nil || ops.Operations != nil {
+				t.Errorf("a2a = %+v, want no transports and an empty operationConfigs", p.Configuration.A2A)
 			}
 		}},
 		{name: "protected card without a mode is stored", mutate: func(r *dto.ImportGatewayArtifactRequest) {
@@ -889,7 +893,7 @@ func TestAgentImport_LastInWinsWorkingCopy(t *testing.T) {
 	if proxy.Name != "Weather Agent Two" || proxy.Version != "v2.0" {
 		t.Errorf("name/version = %q/%q, want the newer push's", proxy.Name, proxy.Version)
 	}
-	if proxy.Configuration.A2A.AgentCard == nil || len(proxy.Configuration.A2A.Transports) != 2 {
+	if proxy.Configuration.A2A.AgentCard == nil || len(proxy.Configuration.A2A.OperationConfigs.Transports) != 2 {
 		t.Errorf("configuration was not replaced by the newer push: %+v", proxy.Configuration.A2A)
 	}
 	if proxy.ProjectUUID != importTestProjectID {
@@ -938,7 +942,9 @@ func TestAgentImport_ControlPlaneOwnedAgentProxyIsNotOverwritten(t *testing.T) {
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://cp-agent:9000"}},
 			A2A: &model.A2AProtocolConfig{
 				ProtocolVersion: "1.0",
-				Transports:      []model.A2ATransport{{ProtocolBinding: "JSONRPC", PathPrefix: &path}},
+				OperationConfigs: model.A2AOperationConfigs{
+					Transports: []model.A2ATransport{{ProtocolBinding: "JSONRPC", PathPrefix: &path}},
+				},
 			},
 		},
 	}
