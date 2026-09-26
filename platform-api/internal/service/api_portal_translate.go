@@ -38,13 +38,11 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 		return nil
 	}
 	id := p.Handle
-	handle := p.Handle
 	createdAt := p.CreatedAt
 	updatedAt := p.UpdatedAt
 
 	resp := &api.ApiPortalResponse{
 		Id:        &id,
-		Handle:    &handle,
 		Name:      p.Name,
 		Url:       p.URL,
 		CreatedAt: &createdAt,
@@ -68,7 +66,6 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	item := api.ApiPortalListItem{
 		Id:        p.Handle,
-		Handle:    p.Handle,
 		Name:      p.Name,
 		Url:       p.URL,
 		CreatedAt: p.CreatedAt,
