@@ -1,0 +1,24 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+    name: compat-aliases
+spec:
+    displayName: Compat Provider Aliases
+    version: v1.0
+    context: /aliased
+    vhost: api.example.com
+    provider:
+        id: openai-provider
+        auth:
+            type: none
+    additionalProviders:
+        - id: anthropic-provider
+          as: claude
+          transformer:
+            type: openai-to-anthropic
+            version: v0
+        - id: mistral-provider
+          as: mistral-eu
+          transformer:
+            type: openai-to-mistral
+            version: v0

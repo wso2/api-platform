@@ -157,7 +157,7 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
         trackLLMProxyCreate(
           organizationId,
           newProxy.id ?? proxy.id,
-          proxy.providers ?? []
+          (proxy.providers ?? []).map((entry) => entry.id)
         );
 
         return newProxy;
@@ -234,7 +234,11 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
         }));
 
         // Track LLM Proxy update
-        trackLLMProxyUpdate(organizationId, proxyId, updates.providers);
+        trackLLMProxyUpdate(
+          organizationId,
+          proxyId,
+          updates.providers?.map((entry) => entry.id)
+        );
 
         return updatedProxy;
       } catch (err) {

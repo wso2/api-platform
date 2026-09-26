@@ -68,6 +68,46 @@ export interface PolicyHubPolicy {
 }
 
 /**
+ * One parameter a policy accepts, as the policy itself declares it.
+ *
+ * The configuration form is rendered from these rather than from a list held in
+ * the front end, so a policy that gains a parameter becomes configurable without
+ * a change here.
+ */
+export interface PolicyParameterDefinition {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | string;
+  displayName?: string;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  enum?: unknown[];
+}
+
+/** Where a policy came from, which the picker shows so the two are told apart. */
+export type PolicySource = 'catalogue' | 'custom';
+
+/**
+ * A policy as the picker needs it: enough to list it, attribute it, and render
+ * its configuration form.
+ */
+export interface SelectablePolicy {
+  name: string;
+  displayName: string;
+  version: string;
+  source: PolicySource;
+  description?: string;
+  categories?: string[];
+  parameters?: PolicyParameterDefinition[];
+  /**
+   * The policy's declarations as published, when they arrive with the policy
+   * itself. Present for a gateway's own policies; catalogue policies publish
+   * theirs separately and are read on demand.
+   */
+  definition?: Record<string, unknown>;
+}
+
+/**
  * Response type for guardrails endpoint
  */
 export interface GuardrailsResponse {
@@ -595,6 +635,40 @@ export interface ProxyProviderConfig {
 }
 
 /**
+ * A translator attached to one provider, applied when that provider is the
+ * selected upstream.
+ */
+export interface ProxyProviderTransformer {
+  type: string;
+  version: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * One provider attached to a proxy.
+ *
+ * Every entry is uniform, and exactly one carries `isPrimary`. The primary
+ * supplies the proxy's provider identity and its default upstream; the rest are
+ * selectable upstreams a routing policy can choose between.
+ *
+ * `alias` is the name a client uses to select this provider, and it is read and
+ * carried back unchanged rather than edited here. Use `effectiveProviderName`
+ * to display it: an entry with no alias is selected by its id, so the two must
+ * not be shown as if they were different things.
+ *
+ * `auth.value` never arrives from the server — it is stripped from every
+ * response — so an entry read back holds the credential's type and header but
+ * not its secret.
+ */
+export interface ProxyProviderEntry {
+  id: string;
+  isPrimary: boolean;
+  alias?: string;
+  auth?: UpstreamAuth;
+  transformer?: ProxyProviderTransformer | null;
+}
+
+/**
  * LLM Proxy
  */
 export interface Proxy {
@@ -605,7 +679,21 @@ export interface Proxy {
   projectId?: string;
   context?: string;
   vhost?: string;
+  /**
+   * @deprecated Superseded by `providers`. Still returned by the server for
+   * clients written against the older contract, and deliberately not read here
+   * — every provider a proxy has appears in `providers`, including the primary.
+   */
   provider?: string | ProxyProviderConfig;
+  /** Every provider attached to this proxy, primary first. */
+  providers?: ProxyProviderEntry[];
+  /**
+   * Handle of the provider template describing the wire format this proxy
+   * accepts from clients. When absent the primary provider's own template is
+   * used, which is what a proxy created before the interface became selectable
+   * does.
+   */
+  inboundTemplate?: string;
   openapi?: string;
   globalPolicies?: GlobalPolicy[];
   operationPolicies?: OperationPolicy[];
@@ -651,7 +739,8 @@ export interface CreateProxyRequest {
   projectId: string;
   context: string;
   vhost?: string;
-  provider: ProxyProviderConfig;
+  providers: ProxyProviderEntry[];
+  inboundTemplate?: string;
   openapi: string;
   globalPolicies?: GlobalPolicy[];
   operationPolicies?: OperationPolicy[];

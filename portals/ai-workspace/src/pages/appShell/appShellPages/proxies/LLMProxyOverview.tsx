@@ -54,6 +54,7 @@ import { useProxies } from '../../../../contexts/proxy';
 import { useLLMProviders } from '../../../../contexts/llmProvider';
 import LLMProxyProviderTab from './LLMProxyProviderTab';
 import LLMProxyDefinitionTab from './LLMProxyDefinitionTab';
+import { ProviderTemplatesProvider } from '../../../../contexts/llmProvider/providerTemplate';
 import LLMProxySecurityTab from './LLMProxySecurityTab';
 import LLMProxyGuardrailsTab from './LLMProxyGuardrailsTab';
 import LLMProxyOverviewTab from './LLMProxyOverviewTab';
@@ -70,6 +71,7 @@ import {
   SCOPES,
 } from '../../../../auth/permissions';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import { withPrimaryFirst } from '../../../../utils/proxyProviders';
 import { FormattedMessage } from 'react-intl';
 import type {
   Proxy as LLMProxy,
@@ -103,7 +105,9 @@ function TabPanel({ value, index, children }: TabPanelProps) {
   );
 }
 
-const tabs = ['Overview', 'Provider', 'Definition', 'Security', 'Guardrails & Policies'];
+// Definition before Providers: the interface a proxy accepts decides what each
+// provider needs translating to, so it is read before the list it governs.
+const tabs = ['Overview', 'Definition', 'Providers', 'Security', 'Guardrails & Policies'];
 const UNSAVED_CHANGES_MESSAGE =
   'You have unsaved changes. Please save or cancel before leaving this page.';
 
@@ -143,6 +147,12 @@ const buildProxyUpdatePayload = (value: LLMProxy): UpdateProxyRequest => {
     ...payload,
     vhost: payload.vhost?.trim() || undefined,
     provider: normalizeProviderForComparison(value.provider),
+    // Ordered here rather than as the list is edited: the contract puts the
+    // primary at the head, and settling that on the way out keeps a row from
+    // moving out from under whoever just marked it.
+    ...(payload.providers
+      ? { providers: withPrimaryFirst(payload.providers) }
+      : {}),
   };
   if (!updatePayload.vhost) {
     delete updatePayload.vhost;
@@ -596,14 +606,24 @@ function ProxyOverviewContent() {
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={1}>
-                  {isReadOnlyProxy && (
-                    <GatewayArtifactReadOnlyBanner message="The provider connection is managed by the gateway that created this proxy and is read-only here." />
-                  )}
-                  <LLMProxyProviderTab />
+                  <LLMProxyDefinitionTab />
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={2}>
-                  <LLMProxyDefinitionTab />
+                  {isReadOnlyProxy && (
+                    <GatewayArtifactReadOnlyBanner message="The provider connection is managed by the gateway that created this proxy and is read-only here." />
+                  )}
+                  <LLMProxyProviderTab
+                    onChangeInDefinition={() => {
+                      // The same guard the tab bar applies: pending edits are
+                      // not abandoned by following a link across.
+                      if (hasUnsavedChanges) {
+                        showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
+                        return;
+                      }
+                      setTabIndex(tabs.indexOf('Definition'));
+                    }}
+                  />
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={3}>
@@ -643,7 +663,9 @@ function ProxyOverviewContent() {
                 variant="body2"
                 color={hasUnsavedChanges ? 'warning.main' : 'text.secondary'}
               >
-                {hasUnsavedChanges ? 'You have unsaved changes.' : ''}
+                {hasUnsavedChanges
+                  ? 'You have unsaved changes.'
+                  : 'All changes saved'}
               </Typography>
               <Stack direction="row" spacing={1}>
                 <Button
@@ -723,7 +745,14 @@ export default function LLMProxyOverview() {
 
   return (
     <ProxyProvider proxyId={proxyId}>
-      <ProxyOverviewContent />
+      {/*
+        The template catalogue backs the inbound interface choice on the
+        Definition tab. Mounted once around the tabs so every tab that needs it
+        shares one fetch rather than each making its own.
+      */}
+      <ProviderTemplatesProvider>
+        <ProxyOverviewContent />
+      </ProviderTemplatesProvider>
     </ProxyProvider>
   );
 }

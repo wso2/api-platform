@@ -38,6 +38,12 @@ import { FormattedMessage } from 'react-intl';
 import Editor from '@monaco-editor/react';
 import YAML from 'yaml';
 import { useProxy } from '../../../../contexts/proxy';
+import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
+import { useLLMProviders } from '../../../../contexts/llmProvider';
+import { getProviderTemplate } from '../../../../apis/providerTemplateApis';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { primaryProviderEntry } from '../../../../utils/proxyProviders';
+import InboundInterfaceSelect from '../../../../Components/InboundInterface/InboundInterfaceSelect';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoData from '../../../../assets/images/NoData.svg';
 import { logger } from '../../../../utils/logger';
@@ -150,10 +156,85 @@ function validateOpenApiText(
 
 export default function LLMProxyDefinitionTab() {
   const { proxy, setLocalProxy } = useProxy();
+  const {
+    templatesResponse,
+    isLoading: isTemplatesLoading,
+    error: templatesError,
+  } = useProviderTemplates();
+  const { providersResponse } = useLLMProviders();
+
+  /**
+   * The format the proxy accepts today, whether or not it says so.
+   *
+   * A proxy created before the setting existed carries none, and routes on its
+   * primary provider's own format — so that is the interface in effect, and
+   * showing the field empty would misreport a proxy that works.
+   */
+  const primaryProviderTemplate =
+    providersResponse.list.find(
+      (provider) => provider.id === primaryProviderEntry(proxy)?.id
+    )?.template ?? '';
+
+  /** Adopts a new inbound format, and the specification that describes it. */
+  const handleInboundTemplateChange = async (templateHandle: string) => {
+    if (!templateHandle) {
+      return;
+    }
+    setLocalProxy((prev) =>
+      prev ? { ...prev, inboundTemplate: templateHandle } : prev
+    );
+
+    // The catalogue's listing carries no specification, so the chosen template
+    // is read in full — and a template may publish its specification inline or
+    // point at where it lives, so both are followed. Everything lands in local
+    // state like every other edit here: nothing reaches the server until the
+    // page is saved.
+    setIsSwappingSpec(true);
+    try {
+      const chosen = await getProviderTemplate(
+        templateHandle,
+        PLATFORM_API_BASE_URL
+      );
+      let specification = chosen.openapi;
+      const specificationUrl = chosen.metadata?.openapiSpecUrl;
+      if (!specification && specificationUrl) {
+        const response = await fetch(specificationUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Unable to fetch specification from ${specificationUrl}`
+          );
+        }
+        specification = await response.text();
+      }
+      if (!specification) {
+        // The interface still changed. A template that publishes no
+        // specification leaves what is there rather than blanking it, since an
+        // empty definition documents nothing at all.
+        showSnackbar(
+          'Interface changed. This interface publishes no API definition, so the one below is unchanged.',
+          'warning'
+        );
+        return;
+      }
+      applySpecificationFromText(specification);
+    } catch (error) {
+      // The interface still changed; only the specification could not be
+      // swapped with it, and what is published stays readable meanwhile.
+      logger.error('Failed to load the interface specification:', error);
+      showSnackbar(
+        'Interface changed, but its API definition could not be loaded.',
+        'warning'
+      );
+    } finally {
+      setIsSwappingSpec(false);
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [specUrl, setSpecUrl] = useState('');
   const [editorText, setEditorText] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
+  /** True while the chosen interface's specification is being read. */
+  const [isSwappingSpec, setIsSwappingSpec] = useState(false);
   const [updateSpecModalOpen, setUpdateSpecModalOpen] = useState(false);
   const showSnackbar = useAIWorkspaceSnackbar();
   // The OpenAPI definition is control-plane-only metadata: it is NOT part of the
@@ -256,6 +337,34 @@ export default function LLMProxyDefinitionTab() {
 
   return (
     <Stack spacing={2}>
+      {/*
+        The format this proxy accepts from clients. Changing it swaps the
+        published specification for the chosen format's own, because the
+        specification is what a client reads to call the proxy — leaving the old
+        one would document a request shape the proxy no longer accepts.
+      */}
+      <Box sx={{ maxWidth: 420 }}>
+        <InboundInterfaceSelect
+          // A proxy with nothing stored accepts its primary provider's own
+          // format, so that is the interface in effect and what the field
+          // shows. Choosing it simply writes down what was already true.
+          value={proxy?.inboundTemplate || primaryProviderTemplate}
+          onChange={(templateHandle) => {
+            void handleInboundTemplateChange(templateHandle);
+          }}
+          templates={templatesResponse.list}
+          isLoading={isTemplatesLoading || isSwappingSpec}
+          error={templatesError}
+          disabled={Boolean(proxy?.readOnly)}
+          helperText={
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.inbound.interface.helper"
+              defaultMessage="Switching the interface replaces the OpenAPI definition below."
+            />
+          }
+        />
+      </Box>
+
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button
           variant="outlined"
