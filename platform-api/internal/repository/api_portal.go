@@ -25,10 +25,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
+
+// ErrAPIPortalNotPending is re-exported from the api package so plugin
+// callers can detect the state-guard rejection via errors.Is without
+// importing this internal package. See api.ErrAPIPortalNotPending for the
+// contract.
+var ErrAPIPortalNotPending = api.ErrAPIPortalNotPending
 
 // APIPortalRepo implements APIPortalRepository.
 type APIPortalRepo struct {
@@ -310,16 +317,23 @@ func (r *APIPortalRepo) Exists(handle, orgUUID string) (bool, error) {
 // UpdateStatus mutates only the status column, scoped to (portalID, orgUUID),
 // and stamps updated_by / updated_at. Kept separate from Update so a poller
 // tick does not accidentally rewrite the whitelisted mutable-metadata fields
-// Update covers. Returns nil on a matched row, an error naming the missing row
-// otherwise.
+// Update covers.
+//
+// The WHERE predicate includes `status = 'pending'` so the write is atomic
+// with the transition guard: no two callers can race each other into a
+// terminal state, and no caller can flip a terminal state back or across
+// (e.g. active -> failed). Zero rows affected means either the portal no
+// longer exists or its status is no longer pending; a follow-up existence
+// probe disambiguates so callers can distinguish "not found" (surfacing as
+// APIPortalNotFound) from "someone got here first" (ErrAPIPortalNotPending).
 func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
 	now := time.Now().UTC()
 	query := `
 		UPDATE api_portals
 		SET status = ?, updated_by = ?, updated_at = ?
-		WHERE uuid = ? AND organization_uuid = ?
+		WHERE uuid = ? AND organization_uuid = ? AND status = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID, constants.APIPortalStatusPending)
 	if err != nil {
 		return err
 	}
@@ -328,9 +342,28 @@ func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string
 		return err
 	}
 	if rows == 0 {
-		return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		exists, err := r.existsByUUID(portalID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		}
+		return ErrAPIPortalNotPending
 	}
 	return nil
+}
+
+// existsByUUID reports whether a row exists for the given (uuid, org) pair.
+// Used by UpdateStatus to disambiguate a zero-rows-affected update between
+// "row missing" and "status was not pending".
+func (r *APIPortalRepo) existsByUUID(portalID, orgUUID string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(1) FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), portalID, orgUUID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // GetStatusByHandle returns the status column for one portal. Cheaper than a

@@ -19,6 +19,7 @@ package repository
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -565,6 +566,41 @@ func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "api portal not found") {
 		t.Errorf("error should name the missing row; got %q", err.Error())
+	}
+}
+
+// UpdateStatus enforces the pending-only source guard so a poller that races
+// a terminal state cannot overwrite it. The write must return
+// ErrAPIPortalNotPending and leave the stored status unchanged.
+func TestAPIPortalRepo_UpdateStatus_RejectsNonPendingSource(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-guard"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-gd", orgUUID, "guard-target")
+	portal.Status = constants.APIPortalStatusPending
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("first UpdateStatus (pending -> active) must succeed: %v", err)
+	}
+	// Second UpdateStatus on the now-active row is the race we're protecting
+	// against: a late poller tick from a lagging replica trying to write
+	// "failed" over a portal that has already reached "active".
+	err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
+	if !errors.Is(err, ErrAPIPortalNotPending) {
+		t.Fatalf("update on non-pending row must return ErrAPIPortalNotPending; got %v", err)
+	}
+	got, err := repo.GetByUUID(portal.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID: %v", err)
+	}
+	if got.Status != constants.APIPortalStatusActive {
+		t.Errorf("stored status must remain %q after rejected update; got %q", constants.APIPortalStatusActive, got.Status)
 	}
 }
 
