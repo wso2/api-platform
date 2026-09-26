@@ -757,6 +757,50 @@ func TestReceiveGatewayManifest_LegacyCustomerNormalized(t *testing.T) {
 	}
 }
 
+// TestReceiveGatewayManifest_KeepsPolicyUI verifies that a custom policy's optional
+// x-wso2-policy-ui block is stored with its definition, so the custom policy sync
+// passes it on to the AI Workspace.
+func TestReceiveGatewayManifest_KeepsPolicyUI(t *testing.T) {
+	const (
+		orgID = "org-uuid-0001"
+		gwID  = "gw-uuid-0001"
+	)
+	gwRepo := &mockGatewayRepoForPolicy{
+		gateway: &model.Gateway{OrganizationID: orgID, Version: "1.1.0"},
+	}
+	svc := newTestGatewayService(gwRepo, &mockCustomPolicyRepo{})
+
+	ui := map[string]interface{}{
+		"formSchema": map[string]interface{}{"type": "object"},
+		"uiSchema":   map[string]interface{}{"ui:order": []interface{}{"*"}},
+	}
+	policies := []GatewayPolicyInput{
+		{Name: "with-ui", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByOrganization,
+			Parameters: map[string]interface{}{"type": "object"}, UI: ui},
+		{Name: "without-ui", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByOrganization,
+			Parameters: map[string]interface{}{"type": "object"}},
+	}
+	if err := svc.ReceiveGatewayManifest(orgID, gwID, "1.1.0", "", policies); err != nil {
+		t.Fatalf("ReceiveGatewayManifest() error = %v", err)
+	}
+
+	var stored []GatewayPolicyDefinition
+	if err := json.Unmarshal(gwRepo.storedManifest, &stored); err != nil {
+		t.Fatalf("failed to unmarshal stored manifest: %v", err)
+	}
+	byName := map[string]GatewayPolicyDefinition{}
+	for _, p := range stored {
+		byName[p.Name] = p
+	}
+	got, _ := byName["with-ui"].PolicyDefinition["x-wso2-policy-ui"].(map[string]interface{})
+	if form, _ := got["formSchema"].(map[string]interface{}); form["type"] != "object" {
+		t.Errorf("with-ui: x-wso2-policy-ui not stored: %v", byName["with-ui"].PolicyDefinition)
+	}
+	if _, ok := byName["without-ui"].PolicyDefinition["x-wso2-policy-ui"]; ok {
+		t.Errorf("without-ui: unexpected x-wso2-policy-ui in %v", byName["without-ui"].PolicyDefinition)
+	}
+}
+
 // TestSyncCustomPolicy_ActorRecordedAsCreator verifies that created_by/updated_by
 // carry the triggering user's internal UUID, not the gateway's ID, and that an
 // existing policy's original creator survives a minor-version update.

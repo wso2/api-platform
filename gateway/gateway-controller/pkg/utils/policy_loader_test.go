@@ -100,6 +100,50 @@ description: Test policy 2
 	}
 }
 
+// The optional x-wso2-policy-ui block is kept, so it can reach the control plane
+// with the rest of the definition.
+func TestPolicyLoader_KeepsPolicyUI(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	loader := NewPolicyLoader(logger)
+	tempDir := t.TempDir()
+
+	yamlPolicy := `name: UIPolicy
+version: v1.0.0
+parameters:
+  type: object
+  properties:
+    scope:
+      type: string
+x-wso2-policy-ui:
+  formSchema:
+    type: object
+    properties:
+      scope:
+        type: string
+        title: Scope
+  uiSchema:
+    scope:
+      ui:widget: textarea
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "ui-policy.yaml"), []byte(yamlPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write test policy file: %v", err)
+	}
+
+	policies, err := loader.LoadPoliciesFromDirectory(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to load policies: %v", err)
+	}
+	policy, ok := policies["UIPolicy|v1.0.0"]
+	if !ok {
+		t.Fatalf("UIPolicy not loaded")
+	}
+	form, _ := policy.UI["formSchema"].(map[string]interface{})
+	ui, _ := policy.UI["uiSchema"].(map[string]interface{})
+	if form == nil || form["type"] != "object" || ui == nil || ui["scope"] == nil {
+		t.Errorf("x-wso2-policy-ui not kept: %+v", policy.UI)
+	}
+}
+
 func TestPolicyLoader_DuplicatePolicy(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
