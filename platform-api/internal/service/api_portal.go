@@ -247,9 +247,22 @@ func validateAPIPortalStatus(status string) error {
 // handle within orgID. Used by the cloud plugin's provisioning poller to
 // transition pending -> active on success or pending -> failed on timeout.
 // Not exposed via REST.
+//
+// Target status is restricted to the terminal values (active, failed) so the
+// docstring's pending -> terminal contract is enforced. Writing pending here
+// would rewrite an already-pending row in place, keep it eligible for further
+// polling, and record a misleading state-transition audit event. Initial
+// pending assignment lives on the Create path (CreateAPIPortalWithStatus).
 func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error {
 	if err := validateAPIPortalStatus(status); err != nil {
 		return err
+	}
+	if status == constants.APIPortalStatusPending {
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("API Portal status transitions cannot target %q; only %q or %q are permitted here.",
+				constants.APIPortalStatusPending,
+				constants.APIPortalStatusActive,
+				constants.APIPortalStatusFailed))
 	}
 	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
 	if err != nil {

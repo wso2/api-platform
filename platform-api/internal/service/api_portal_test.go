@@ -919,6 +919,23 @@ func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.
 	}
 }
 
+// UpdateAPIPortalStatus rejects a pending target so the docstring's
+// pending -> terminal contract is enforced. A no-op rewrite would leave the
+// row polling-eligible and record a misleading audit event; the repo must not
+// be hit at all when the guard trips.
+func TestAPIPortalService_UpdateAPIPortalStatus_RejectsPendingTarget(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusPending)
+	if err == nil {
+		t.Fatal("pending target must be rejected")
+	}
+	if portalRepo.updateStatusCalledWith != (updateStatusCall{}) {
+		t.Error("repo must not be hit when the pending-target guard trips")
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortalStatus_NotFound(t *testing.T) {
 	// GetByHandleAndOrgID returns nil, nil for missing rows (per repo contract);
 	// the service must surface this as APIPortalNotFound rather than a repo error
