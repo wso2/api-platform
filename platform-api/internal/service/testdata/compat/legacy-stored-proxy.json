@@ -1,0 +1,26 @@
+{
+  "name": "Legacy Stored Proxy",
+  "version": "v1.0",
+  "context": "/legacy",
+  "vhost": "api.example.com",
+  "provider": "openai-provider",
+  "upstreamAuth": {
+    "type": "api-key",
+    "header": "Authorization",
+    "value": "{{ secret \"openai-loopback\" }}"
+  },
+  "additionalProviders": [
+    {
+      "id": "anthropic-provider",
+      "as": "claude",
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v0",
+        "params": { "model": "claude-sonnet-4-5" }
+      }
+    }
+  ],
+  "globalPolicies": [
+    { "name": "api-key-auth", "version": "v1", "params": { "key": "x-api-key", "in": "header" } }
+  ]
+}

@@ -386,6 +386,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
+	// A provider cannot be deleted while a proxy still references it in either
+	// role, and a proxy's inbound interface must resolve to a real template.
+	// Both need a repository the constructors don't take.
+	llmProviderService.SetProxyRepository(llmProxyRepo)
+	llmProxyService.SetTemplateRepository(llmTemplateRepo)
 	mcpProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
