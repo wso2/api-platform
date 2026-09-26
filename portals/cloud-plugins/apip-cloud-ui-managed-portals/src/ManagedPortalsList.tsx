@@ -268,7 +268,7 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                                     ) : null}
                                   </Box>
                                   <Tooltip title="URL-friendly identifier. Set on create and cannot be changed later." arrow placement="bottom-start">
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', cursor: 'help' }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
                                       {portal.handle}
                                     </Typography>
                                   </Tooltip>

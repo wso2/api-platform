@@ -193,7 +193,7 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
                 <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow placement="top-start">
-                  <FormLabel sx={{ cursor: 'help', width: 'fit-content' }}>Login environment</FormLabel>
+                  <FormLabel sx={{ width: 'fit-content' }}>Login environment</FormLabel>
                 </Tooltip>
                 {/* Current env kept as a synthetic option when missing from the list, so out-of-band deletions show as a mismatch rather than a silent swap. */}
                 <Select
@@ -220,7 +220,7 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
                 <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow placement="top-start">
-                  <FormLabel sx={{ cursor: 'help', width: 'fit-content' }}>Login environment</FormLabel>
+                  <FormLabel sx={{ width: 'fit-content' }}>Login environment</FormLabel>
                 </Tooltip>
                 <TextField fullWidth value={loginEnvironment} disabled />
                 {envsError && (

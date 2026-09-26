@@ -148,7 +148,7 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
                 <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow placement="top-start">
-                  <FormLabel sx={{ cursor: 'help', width: 'fit-content' }}>Login environment</FormLabel>
+                  <FormLabel sx={{ width: 'fit-content' }}>Login environment</FormLabel>
                 </Tooltip>
                 <Select
                   fullWidth
