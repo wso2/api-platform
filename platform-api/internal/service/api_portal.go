@@ -291,6 +291,16 @@ func (s *APIPortalService) ListAPIPortalStatuses(orgID string) (map[string]strin
 	return s.portalRepo.ListStatusesByOrg(orgID)
 }
 
+// ListAPIPortalLoginEnvironments returns handle -> loginEnvironment for
+// portals in the org whose metadata blob carries the key. Plugin-facing
+// companion to ListAPIPortalStatuses that keeps the cloud-plugin-specific
+// loginEnvironment field off ApiPortalListItem (the REST list projection
+// stays lightweight and OSS-neutral). Portals whose metadata does not carry
+// the key are omitted from the map; empty org returns an empty map.
+func (s *APIPortalService) ListAPIPortalLoginEnvironments(orgID string) (map[string]string, error) {
+	return s.portalRepo.ListLoginEnvironmentsByOrg(orgID)
+}
+
 // ListAPIPortalsByStatus returns the identity (org, handle, url, status) of
 // every portal across every org whose status matches. Cross-org by design:
 // the cloud plugin's provisioning poller has no org list at startup and needs
