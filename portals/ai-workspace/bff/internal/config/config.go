@@ -143,7 +143,7 @@ type ControlPlaneConfig struct {
 	CAFile string `koanf:"ca_file"`
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
 	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
@@ -274,12 +274,22 @@ type TokenExchangeConfig struct {
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
 
-	// DefaultOrg is the org handle used before the user has selected one — the
-	// window between login and the first org switch, which for a single-org
-	// deployment is the whole session. Unset, the exchange sends no org and the STS
-	// resolves whichever org it considers the caller's default; pinning it here
-	// makes that choice explicit and stable, so the workspace does not silently
-	// follow a default changed elsewhere. A user's own switch always wins over it.
+	// OrgLookupURL overrides WHERE the user's organizations are read from — the
+	// absolute URL of a service that accepts the LOGIN token and answers with that
+	// user's orgs. Empty reads them from the Platform API's own /organizations.
+	//
+	OrgLookupURL string `koanf:"org_lookup_url"`
+
+	// DefaultOrg is the FALLBACK org handle, used when the user's own organizations
+	// could not be read from the Platform API — which is where the handle normally
+	// comes from before the user has switched (see the server's resolveOrgHandle).
+	//
+	// A fallback rather than the primary source: it is one guess shared by every
+	// user of the deployment, and only the user's own memberships can be right for
+	// all of them. Unset, such a session exchanges with no org at all and the STS
+	// resolves whichever org it considers the caller's default — which is what
+	// pinning this avoids, so the workspace does not silently follow a default
+	// chosen elsewhere. A user's own switch always wins over it.
 	DefaultOrg string `koanf:"default_org"`
 
 	// ClaimMappings names the claims in the ISSUED token, which routinely differ
@@ -864,6 +874,28 @@ func (c *Config) validateTokenExchange() error {
 	}
 
 	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	// An org-scoping STS needs to be told which org; with no parameter to put it in,
+	// the exchange sends none and the STS picks for itself — which is a 500 on the
+	// Choreo STS and a wrong-org token elsewhere. Not fatal, because an STS that
+	// does not scope per org is a legitimate deployment, but loud, because the two
+	// are indistinguishable until the first login fails.
+	if te.Enabled && te.OrgParam == "" {
+		slog.Warn("[auth.oidc.token_exchange] org_param is empty — the exchange will carry no " +
+			"organization, and the identity provider will resolve one of its own choosing. " +
+			"Set org_param (and org_lookup_url, when the login token cannot read the user's " +
+			"organizations from the Platform API) if the issued token must be org-scoped.")
+	}
+
+	// Absolute and http(s): a relative or malformed URL here would fail on every
+	// login, and the fallback would quietly hide it behind default_org.
+	if te.OrgLookupURL != "" {
+		u, err := url.Parse(te.OrgLookupURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] org_lookup_url must be an absolute "+
+				"http:// or https:// URL, got %q", te.OrgLookupURL)
+		}
+	}
+
 	if te.CacheEnabled && te.MinValidity <= 0 {
 		return fmt.Errorf("[auth.oidc.token_exchange] min_validity must be positive when cache_enabled = true, got %s",
 			te.MinValidity)

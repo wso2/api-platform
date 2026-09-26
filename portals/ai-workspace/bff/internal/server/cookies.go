@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"ai-workspace-bff/internal/auth"
 )
 
 func sameSite(v string) http.SameSite {
@@ -102,7 +104,11 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   600,
+		// Exactly the transaction's own lifetime: a cookie that outlives it turns a
+		// slow login into "no transaction for this id", and one that dies first
+		// turns it into "no cookie at all". Both are the same event, reported as
+		// two different faults.
+		MaxAge: int(auth.TxTTL.Seconds()),
 	})
 }
 

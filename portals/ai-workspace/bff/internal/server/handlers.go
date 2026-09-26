@@ -208,13 +208,39 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	sess, ret, err := s.oidc.Callback(r.Context(), txID, q.Get("state"), q.Get("code"))
 	if err != nil {
+		// Very often this is not a failed login at all: the tx cookie is cleared on
+		// every callback and the transaction consumed on first use, so revisiting
+		// the callback URL — a refresh, the back button, a tab restored by the
+		// browser — always arrives without either. If that browser already holds a
+		// live session, that is exactly what happened, and the user is logged in.
+		// Showing them a sign-in failure they cannot act on (their next click is
+		// "Try again", which starts a whole new handshake) would be wrong; send
+		// them into the app instead.
+		if jwt, ok := s.tokenFromCookie(r); ok {
+			if _, live, _ := s.store.Get(r.Context(), jwt); live {
+				slog.Info("oidc callback could not be matched, but the browser holds a live "+
+					"session — treating it as a revisited callback URL rather than a failed login",
+					"err", err, "tx_cookie_present", txID != "")
+				http.Redirect(w, r, s.sanitizeReturn(""), http.StatusFound)
+				return
+			}
+		}
 		// tx_cookie_present is the field that separates "the browser never sent the
 		// cookie" (a Path/SameSite problem) from "the server forgot the transaction"
 		// (a restart) — the two look identical in the error alone.
+		// uptime and pending_transactions are what separate the three ways a
+		// transaction goes missing, which the error alone cannot: a small uptime
+		// means the process restarted mid-login and lost it; a healthy uptime with
+		// other logins in flight means this one specifically aged out or was
+		// replayed; zero pending on a long-lived process means nothing is being
+		// remembered at all.
 		slog.Warn("oidc callback failed", "err", err,
 			"path", r.URL.Path,
 			"tx_cookie_present", txID != "",
-			"tx_cookie_path", s.txCookiePath())
+			"tx_cookie_path", s.txCookiePath(),
+			"uptime", time.Since(processStart).Round(time.Second),
+			"pending_transactions", s.oidc.PendingTransactions(),
+			"tx_ttl", auth.TxTTL)
 		http.Redirect(w, r, s.path("/login")+"?error="+loginErrAuthFailed, http.StatusFound)
 		return
 	}
@@ -652,15 +678,19 @@ func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth
 	fingerprint := s.exchanger.ConfigFingerprint()
 
 	sess, ok, _ := s.store.Get(ctx, subjectToken)
-	// Resolved once and used for BOTH the cache check and the exchange below, so a
-	// cached token is never judged against a different org than the one it was
-	// minted for. The user's selection wins over the configured default; the default
-	// only fills the gap before they have made one.
-	orgHandle := s.cfg.Auth.OIDC.TokenExchange.DefaultOrg
+	sessionOrg := ""
 	if ok {
-		if sess.OrgHandle != "" {
-			orgHandle = sess.OrgHandle
-		}
+		sessionOrg = sess.OrgHandle
+	}
+	// The one place the org is decided — the user's own switch, then discovery from
+	// the Platform API, then the configured default (see resolveOrgHandle) — and
+	// resolved once here for BOTH the cache check and the exchange below, so a cached
+	// token is never judged against a different org than the one it was minted for.
+	//
+	// A discovered handle is persisted on the session, so this costs one Platform API
+	// call per session rather than one per exchange.
+	orgHandle := s.resolveOrgHandle(ctx, subjectToken, sessionOrg)
+	if ok {
 		if s.exchanger.CacheEnabled() && sess.Exchanged.Usable(time.Now(), s.exchanger.MinValidity(), fingerprint, orgHandle) {
 			// Org travels with the cached token: a cache hit must describe the
 			// caller exactly as the exchange that produced it did. Omitted, the
