@@ -32,10 +32,16 @@ export type ConsoleRouteParams = {
 };
 
 /**
- * Token-ready scope identifiers the data hooks default to when called with no
- * args. `orgHandle` is only populated once the org-token exchange for the
- * active org has completed (it mirrors the provider's `queryOrgHandle`), so
- * context-aware queries never fire before their bearer token is ready.
+ * Scope identifiers the data hooks default to when called with no args.
+ *
+ * For a session with a known organization claim, `orgHandle` is only
+ * populated once the route's `:orgHandle` has been confirmed to match it (see
+ * `orgAccessDenied` below), so context-aware queries never fire against an
+ * organization the session isn't actually scoped to. The one exception: a
+ * session with *no* organization claim at all (basic/file-based auth, which
+ * has no notion of multiple organizations) has nothing to confirm against, so
+ * `orgHandle` here is the route param passed through unconfirmed — treat it
+ * as session-scoped only when a session organization is actually known.
  */
 export type ActiveScope = {
   orgHandle?: string;
@@ -51,6 +57,14 @@ export type ConsoleScope = {
   isLoading: boolean;
   isOrganizationScope: boolean;
   isProjectScope: boolean;
+  /**
+   * True when the route names an organization (`params.orgHandle`) other
+   * than the one the signed-in session's bearer token is actually scoped to.
+   * `ConsoleScopeProvider` renders an access-denied page instead of the app
+   * shell whenever this is true — see its module comment for why the check
+   * lives there rather than in a per-page gate.
+   */
+  orgAccessDenied: boolean;
   organization?: Organization;
   organizations: Organization[];
   params: ConsoleRouteParams;
