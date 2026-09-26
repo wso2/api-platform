@@ -8,7 +8,6 @@
  */
 
 // PortalPort backed by apip-platform-api via the console BFF's same-origin proxy.
-// LIST strips metadata by design so loginEnvironment is empty on list rows and only populated by GET.
 
 import type {
   CreateManagedPortalInput,
