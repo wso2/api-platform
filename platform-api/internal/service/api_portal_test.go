@@ -281,7 +281,7 @@ func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAPIPortal: %v", err)
 	}
-	if got == nil || derefStr(got.Handle) != "acme" || got.Name != "Acme Portal" {
+	if got == nil || derefStr(got.Id) != "acme" || got.Name != "Acme Portal" {
 		t.Errorf("returned portal wrong shape: %+v", got)
 	}
 	if portalRepo.createCapturedInput == nil {
@@ -514,7 +514,7 @@ func TestAPIPortalService_CreateAPIPortal_ResponseDoesNotEchoSharedKey(t *testin
 	// We also assert Handle / Url / metadata to catch a scenario where the
 	// entire response somehow gets replaced with a struct that DOES have a
 	// SharedKey field but leaks it via marshalling.
-	if derefStr(got.Handle) != "acme" || got.Url != "https://acme.example.com" {
+	if derefStr(got.Id) != "acme" || got.Url != "https://acme.example.com" {
 		t.Errorf("response shape wrong: %+v", got)
 	}
 }
@@ -532,7 +532,7 @@ func TestAPIPortalService_GetAPIPortal_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAPIPortal: %v", err)
 	}
-	if got == nil || derefStr(got.Handle) != portal.Handle {
+	if got == nil || derefStr(got.Id) != portal.Handle {
 		t.Errorf("returned portal wrong shape: %+v", got)
 	}
 }
@@ -617,8 +617,8 @@ func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 	if got.Name != "Renamed" || derefStr(got.Description) != "new description" {
 		t.Errorf("mutable fields not applied: %+v", got)
 	}
-	if derefStr(got.Handle) != "acme" || derefStr(got.Id) != "acme" {
-		t.Errorf("immutable fields changed: %+v", got)
+	if derefStr(got.Id) != "acme" {
+		t.Errorf("immutable id changed: %+v", got)
 	}
 	if portalRepo.updateCapturedInput == nil {
 		t.Fatal("repository Update not called")

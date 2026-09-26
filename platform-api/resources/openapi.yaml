@@ -10832,14 +10832,13 @@ components:
       required:
         - id
         - name
-        - handle
         - url
         - createdAt
         - updatedAt
       properties:
         id:
           type: string
-          description: Handle (URL-friendly slug) of the API Portal, primary identifier.
+          description: URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
           pattern: '^[a-z0-9-]+$'
           minLength: 3
           maxLength: 40
@@ -10851,14 +10850,6 @@ components:
           minLength: 1
           maxLength: 255
           example: "Acme Developer Portal"
-        handle:
-          type: string
-          description: URL-friendly slug. Immutable after creation. Equal to `id`.
-          pattern: '^[a-z0-9-]+$'
-          minLength: 3
-          maxLength: 40
-          readOnly: true
-          example: "acme-portal"
         description:
           type: string
           nullable: true
@@ -10888,7 +10879,6 @@ components:
       required:
         - id
         - name
-        - handle
         - url
         - createdAt
       properties:
@@ -10896,13 +10886,10 @@ components:
           type: string
           pattern: '^[a-z0-9-]+$'
           example: "acme-portal"
+          description: URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
         name:
           type: string
           example: "Acme Developer Portal"
-        handle:
-          type: string
-          pattern: '^[a-z0-9-]+$'
-          example: "acme-portal"
         description:
           type: string
           nullable: true

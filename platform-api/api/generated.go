@@ -610,16 +610,17 @@ type AddGatewayToRESTAPIRequest struct {
 
 // ApiPortalListItem Lightweight projection returned in collection responses (excludes the metadata blob but surfaces the metadata fields that list-view UIs need).
 type ApiPortalListItem struct {
-	CreatedAt time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
-	Description *string `json:"description" yaml:"description"`
-	Handle string `binding:"required" json:"handle" yaml:"handle"`
+	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string   `json:"description" yaml:"description"`
+
+	// Id URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
 	Id string `binding:"required" json:"id" yaml:"id"`
 
 	// LoginEnvironment Data-plane environment backing consumer login, projected from the metadata blob so list-view UIs do not need a per-row fetch.
-	LoginEnvironment *string `json:"loginEnvironment" yaml:"loginEnvironment"`
-	Name string `binding:"required" json:"name" yaml:"name"`
-	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
-	Url string `binding:"required" json:"url" yaml:"url"`
+	LoginEnvironment *string    `json:"loginEnvironment" yaml:"loginEnvironment"`
+	Name             string     `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt        *time.Time `json:"updatedAt" yaml:"updatedAt"`
+	Url              string     `binding:"required" json:"url" yaml:"url"`
 }
 
 // ApiPortalListResponse defines model for ApiPortalListResponse.
@@ -638,10 +639,7 @@ type ApiPortalResponse struct {
 	CreatedAt   *time.Time `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	Description *string    `json:"description" yaml:"description"`
 
-	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
-	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
-
-	// Id Handle (URL-friendly slug) of the API Portal, primary identifier.
+	// Id URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
 	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
