@@ -61,7 +61,14 @@ const EnvironmentForm: FC<EnvironmentFormProps> = ({ port, onBack, notify }) => 
     setSaving(true);
     try {
       const created = await port.create({ name: name.trim(), critical });
-      notify?.(`Environment "${created.name}" created.`, "success");
+      // The create returns once the environment exists, which is before the
+      // resources that make it usable have been provisioned. Saying only
+      // "created" invites the user to go and use it immediately, so the message
+      // says the work is still going on rather than implying it is finished.
+      notify?.(
+        `Environment "${created.name}" created. Setting it up can take a few minutes.`,
+        "success",
+      );
       onBack();
     } catch (error) {
       // Without this the rejection is unhandled: the form sits there having said
