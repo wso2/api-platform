@@ -61,7 +61,10 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 	return resp
 }
 
-// modelToAPIPortalListItem projects a model.APIPortal onto the list-response item (metadata and shared key are excluded).
+// modelToAPIPortalListItem projects a model.APIPortal onto the list-response
+// item. The raw metadata blob and the shared key stay excluded; the specific
+// metadata fields list-view UIs care about (loginEnvironment) and the top-level
+// updatedAt are surfaced so callers do not need an N+1 GetAPIPortal fanout.
 func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	item := api.ApiPortalListItem{
 		Id:        p.Handle,
@@ -73,6 +76,14 @@ func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	if p.Description != "" {
 		desc := p.Description
 		item.Description = &desc
+	}
+	if v, ok := p.Metadata["loginEnvironment"].(string); ok && v != "" {
+		env := v
+		item.LoginEnvironment = &env
+	}
+	if !p.UpdatedAt.IsZero() {
+		u := p.UpdatedAt
+		item.UpdatedAt = &u
 	}
 	return item
 }
