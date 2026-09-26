@@ -19,9 +19,6 @@
 /** Whether a line is one proxied request or a workload talking about itself. */
 export type LogKind = 'access' | 'operational';
 
-/** The `kind` filter, which adds "no filter" to the two real kinds. */
-export type LogKindFilter = LogKind | 'all';
-
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export type LogEntry = {
@@ -31,8 +28,7 @@ export type LogEntry = {
   log: string;
   level?: string;
   kind: LogKind;
-  /** The only way to tell one gateway from another. Filtered in the browser:
-   * the observability API has no podName filter. */
+  /** Names the source column when the component name is absent. */
   podName?: string;
   containerName?: string;
   componentName?: string;
@@ -70,7 +66,14 @@ export type LogPage = {
 export type LogQuery = {
   /** Minutes back from now. The window is computed at fetch time, not pinned. */
   rangeMinutes: number;
-  kind: LogKindFilter;
+  /**
+   * Which kinds to show. Empty means every kind.
+   *
+   * A list because the panel offers a checkbox each, but the endpoint takes one
+   * `kind` — so a selection of two or more is the same request as none, and only
+   * a single choice narrows it. `buildLogsQuery` is where that is decided.
+   */
+  kinds: LogKind[];
   levels: LogLevel[];
   searchPhrase: string;
   limit: number;
@@ -80,28 +83,31 @@ export type LogQuery = {
 
 /**
  * Narrowing applied to the lines already fetched. Not query parameters: the
- * endpoint selects neither a project nor a pod, so sending them would claim a
- * precision the query lacks. The toolbar says so.
+ * endpoint selects no project, so sending one would claim a precision the query
+ * lacks. Changing these re-renders; it never refetches.
  */
 export type LogViewFilters = {
-  project: string;
-  pod: string;
+  projects: string[];
 };
 
+/** One option in the filter panel: what it is, and how much of the buffer it is. */
+export type Facet = { value: string; label: string; count: number };
+
 /**
- * What the view filters offer: the values present in the loaded lines. Derived
- * from the buffer, not a catalogue — a project with nothing in this window
- * cannot be picked, and picking it could only yield an empty console.
+ * What the filter panel offers, counted over the lines currently loaded.
  *
- * `environments` is the fallback for the Environment select, which prefers the
+ * Read off the buffer rather than a catalogue, so a value with nothing in this
+ * window is not offered — picking it could only produce an empty console. The
+ * counts are of loaded lines for the same reason, and the panel says so.
+ *
+ * `environments` is the fallback for the Environment group, which prefers the
  * organization's real list.
  */
 export type LogFacets = {
-  projects: string[];
-  pods: string[];
-  /** Pods seen under each project, so picking a project narrows the next list. */
-  podsByProject: Record<string, string[]>;
-  environments: string[];
+  kinds: Facet[];
+  projects: Facet[];
+  environments: Facet[];
+  levels: Facet[];
 };
 
 export type EnvironmentSummary = { id: string; name: string };
