@@ -661,6 +661,84 @@ func TestAPIPortalRepo_ListStatusesByOrg(t *testing.T) {
 	}
 }
 
+// ListLoginEnvironmentsByOrg is the plugin-only companion accessor that lets
+// callers hydrate list-view rows with loginEnvironment without exposing the
+// field on ApiPortalListItem. Rows whose metadata omits the key must be
+// dropped from the result, empty metadata is safe, and unrelated orgs must
+// not leak in.
+func TestAPIPortalRepo_ListLoginEnvironmentsByOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-loginenvs"
+	const otherOrgUUID = "org-portal-loginenvs-other"
+	createTestAPIPortalOrg(t, db, orgUUID)
+	createTestAPIPortalOrg(t, db, otherOrgUUID)
+
+	repo := NewAPIPortalRepo(db)
+
+	// Three portals in the target org: one with loginEnvironment set, one with
+	// a metadata blob that doesn't carry the key, one with no metadata at all.
+	withEnv := newTestAPIPortal("portal-with-env", orgUUID, "with-env")
+	withEnv.Metadata = map[string]interface{}{"loginEnvironment": "production", "unrelated": "value"}
+	if err := repo.Create(withEnv); err != nil {
+		t.Fatalf("Create with-env: %v", err)
+	}
+	otherKey := newTestAPIPortal("portal-other-key", orgUUID, "other-key")
+	otherKey.Metadata = map[string]interface{}{"unrelated": "value"}
+	if err := repo.Create(otherKey); err != nil {
+		t.Fatalf("Create other-key: %v", err)
+	}
+	noMeta := newTestAPIPortal("portal-no-meta", orgUUID, "no-meta")
+	if err := repo.Create(noMeta); err != nil {
+		t.Fatalf("Create no-meta: %v", err)
+	}
+
+	// Portal in a different org with loginEnvironment set — must not leak into the target org's result.
+	other := newTestAPIPortal("portal-other-org", otherOrgUUID, "other-org")
+	other.Metadata = map[string]interface{}{"loginEnvironment": "staging"}
+	if err := repo.Create(other); err != nil {
+		t.Fatalf("Create other-org: %v", err)
+	}
+
+	got, err := repo.ListLoginEnvironmentsByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListLoginEnvironmentsByOrg: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("want 1 entry (only with-env qualifies), got %d: %+v", len(got), got)
+	}
+	if got["with-env"] != "production" {
+		t.Errorf("with-env should map to \"production\", got %q", got["with-env"])
+	}
+	if _, exists := got["other-key"]; exists {
+		t.Error("portal without loginEnvironment key must be omitted from the map")
+	}
+	if _, exists := got["no-meta"]; exists {
+		t.Error("portal with no metadata must be omitted from the map")
+	}
+	if _, exists := got["other-org"]; exists {
+		t.Error("portal from a different org must not appear in the target org's result")
+	}
+}
+
+func TestAPIPortalRepo_ListLoginEnvironmentsByOrg_EmptyOrg(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-loginenvs-empty"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	got, err := repo.ListLoginEnvironmentsByOrg(orgUUID)
+	if err != nil {
+		t.Fatalf("ListLoginEnvironmentsByOrg on empty org must not error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty org should return empty map, got %+v", got)
+	}
+}
+
 func TestAPIPortalRepo_ListStatusesByOrg_EmptyOrg(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

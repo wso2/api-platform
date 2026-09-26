@@ -93,6 +93,10 @@ type mockAPIPortalRepository struct {
 	listStatusesResult     map[string]string
 	listStatusesErr        error
 
+	listLoginEnvsCalledWith string
+	listLoginEnvsResult     map[string]string
+	listLoginEnvsErr        error
+
 	listByStatusCalledWith string
 	listByStatusResult     []*model.APIPortal
 	listByStatusErr        error
@@ -159,6 +163,11 @@ func (m *mockAPIPortalRepository) GetStatusByHandle(handle, orgUUID string) (str
 func (m *mockAPIPortalRepository) ListStatusesByOrg(orgUUID string) (map[string]string, error) {
 	m.listStatusesCalledWith = orgUUID
 	return m.listStatusesResult, m.listStatusesErr
+}
+
+func (m *mockAPIPortalRepository) ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error) {
+	m.listLoginEnvsCalledWith = orgUUID
+	return m.listLoginEnvsResult, m.listLoginEnvsErr
 }
 
 func (m *mockAPIPortalRepository) ListByStatus(status string) ([]*model.APIPortal, error) {
@@ -998,6 +1007,29 @@ func TestAPIPortalService_ListAPIPortalStatuses_PassthroughAndScope(t *testing.T
 		t.Errorf("repo scope wrong: %q", portalRepo.listStatusesCalledWith)
 	}
 	if len(got) != 2 || got["alpha"] != constants.APIPortalStatusActive || got["beta"] != constants.APIPortalStatusPending {
+		t.Errorf("map contents wrong: %+v", got)
+	}
+}
+
+// ListAPIPortalLoginEnvironments is a thin wrapper over the repo; the test
+// pins that repo scope threads correctly and the returned map is unmodified.
+func TestAPIPortalService_ListAPIPortalLoginEnvironments_PassthroughAndScope(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		listLoginEnvsResult: map[string]string{
+			"alpha": "production",
+			"beta":  "staging",
+		},
+	}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	got, err := svc.ListAPIPortalLoginEnvironments("org-1")
+	if err != nil {
+		t.Fatalf("ListAPIPortalLoginEnvironments: %v", err)
+	}
+	if portalRepo.listLoginEnvsCalledWith != "org-1" {
+		t.Errorf("repo scope wrong: %q", portalRepo.listLoginEnvsCalledWith)
+	}
+	if len(got) != 2 || got["alpha"] != "production" || got["beta"] != "staging" {
 		t.Errorf("map contents wrong: %+v", got)
 	}
 }
