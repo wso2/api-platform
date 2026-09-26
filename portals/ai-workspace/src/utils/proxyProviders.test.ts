@@ -23,10 +23,12 @@ import {
   majorPolicyVersion,
   primaryProviderEntry,
   proxyProviderEntries,
+  withPrimaryFirst,
   resolvedTransformerFor,
   transformerFromPolicy,
   withPrimaryProvider,
 } from './proxyProviders';
+import { resolveTransformer } from './transformerResolution';
 import type { Proxy, ProxyProviderEntry, SelectablePolicy } from './types';
 
 const entry = (
@@ -51,11 +53,14 @@ describe('effectiveProviderName', () => {
 });
 
 describe('proxyProviderEntries', () => {
-  it('puts the primary first whatever order it is stored in', () => {
+  it('reads the list in the order it is stored, primary or not', () => {
+    // Display order. Marking a provider primary must not move its row out from
+    // under the pointer that marked it — the list is put in order as the
+    // request is built instead, by withPrimaryFirst.
     const entries = proxyProviderEntries(
       proxyWith([entry('a'), entry('b', { isPrimary: true }), entry('c')])
     );
-    expect(entries.map((e) => e.id)).toEqual(['b', 'a', 'c']);
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('returns nothing for a proxy that has no providers', () => {
@@ -64,11 +69,35 @@ describe('proxyProviderEntries', () => {
   });
 
   it('keeps the stored objects, so a caller can find one by identity', () => {
-    // The Providers tab edits a position in this sorted view and writes back
-    // into the unsorted list, so the two must be the same objects.
+    // The Providers tab edits a position in this view and writes back into the
+    // stored list, so the two must be the same objects.
     const stored = entry('a');
     const entries = proxyProviderEntries(proxyWith([stored, entry('b', { isPrimary: true })]));
     expect(entries).toContain(stored);
+  });
+});
+
+describe('withPrimaryFirst', () => {
+  it('leads with the primary, keeping the rest in order', () => {
+    const ordered = withPrimaryFirst([
+      entry('a'),
+      entry('b', { isPrimary: true }),
+      entry('c'),
+    ]);
+    expect(ordered.map((e) => e.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('leaves a list that cannot be out of order alone', () => {
+    const single = [entry('a', { isPrimary: true })];
+    expect(withPrimaryFirst(single)).toBe(single);
+    expect(withPrimaryFirst([])).toEqual([]);
+  });
+
+  it('keeps every attachment, even one no entry claims to lead', () => {
+    // A list with no primary is not this function's to repair: dropping or
+    // inventing one would send a different proxy than the page is showing.
+    const ordered = withPrimaryFirst([entry('a'), entry('b')]);
+    expect(ordered.map((e) => e.id)).toEqual(['a', 'b']);
   });
 });
 
@@ -156,5 +185,33 @@ describe('resolvedTransformerFor', () => {
     for (const status of ['none', 'unresolved', 'invalid', 'unknown'] as const) {
       expect(resolvedTransformerFor(null, { status })).toBeUndefined();
     }
+  });
+
+  // The two halves of what a page saves, composed the way a page composes them.
+  // A removal only survives the save if it reaches the resolver; drop it on the
+  // way and the match is found again and written back, which is the remove
+  // control doing nothing at all.
+  describe('composed with the resolver, as a save does', () => {
+    const forProvider = (hasNoTransformer: boolean) =>
+      resolvedTransformerFor(
+        null,
+        resolveTransformer({
+          inboundTemplate: 'openai',
+          providerTemplate: 'gemini',
+          hasNoTransformer,
+          policies: [matched],
+        })
+      );
+
+    it('writes the match a provider has not answered for yet', () => {
+      expect(forProvider(false)).toEqual({
+        type: 'openai-to-gemini-transformer',
+        version: 'v0',
+      });
+    });
+
+    it('writes nothing once the translator was taken off', () => {
+      expect(forProvider(true)).toBeUndefined();
+    });
   });
 });

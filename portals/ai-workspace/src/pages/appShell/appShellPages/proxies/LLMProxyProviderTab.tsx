@@ -51,6 +51,7 @@ import { resolveTemplateLogo } from "../../../../utils/providerTemplateDisplay";
 import {
   canRemoveProvider,
   effectiveProviderName,
+  primaryProviderEntry,
   proxyProviderEntries,
   withPrimaryProvider,
 } from "../../../../utils/proxyProviders";
@@ -106,9 +107,9 @@ export default function LLMProxyProviderTab({
 
   const isReadOnlyProxy = Boolean(proxy?.readOnly);
   const providerOptions = providersResponse.list;
-  // Every provider the proxy is attached to, primary first. The single legacy
-  // field is deliberately not read: it names only the primary, so a proxy with
-  // several providers would display as if it had one.
+  // Every provider the proxy is attached to, in the order it holds them. The
+  // single legacy field is deliberately not read: it names only the primary, so
+  // a proxy with several providers would display as if it had one.
   const providerEntries = proxyProviderEntries(proxy);
 
   /**
@@ -125,9 +126,13 @@ export default function LLMProxyProviderTab({
    * display name. The handle is the fallback rather than the label, so an
    * interface the catalogue no longer lists still says which one it is.
    */
+  // The primary by name rather than by position: the displayed list is in the
+  // order the proxy holds it, so the first row is not necessarily the provider
+  // whose own format a proxy without a declared interface falls back to.
+  const primaryEntry = primaryProviderEntry(proxy);
   const inboundHandle =
     proxy?.inboundTemplate ||
-    providerOptions.find((provider) => provider.id === providerEntries[0]?.id)
+    providerOptions.find((provider) => provider.id === primaryEntry?.id)
       ?.template ||
     "";
   const interfaceLabel =

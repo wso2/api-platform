@@ -71,6 +71,7 @@ import {
   SCOPES,
 } from '../../../../auth/permissions';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import { withPrimaryFirst } from '../../../../utils/proxyProviders';
 import { FormattedMessage } from 'react-intl';
 import type {
   Proxy as LLMProxy,
@@ -146,6 +147,12 @@ const buildProxyUpdatePayload = (value: LLMProxy): UpdateProxyRequest => {
     ...payload,
     vhost: payload.vhost?.trim() || undefined,
     provider: normalizeProviderForComparison(value.provider),
+    // Ordered here rather than as the list is edited: the contract puts the
+    // primary at the head, and settling that on the way out keeps a row from
+    // moving out from under whoever just marked it.
+    ...(payload.providers
+      ? { providers: withPrimaryFirst(payload.providers) }
+      : {}),
   };
   if (!updatePayload.vhost) {
     delete updatePayload.vhost;

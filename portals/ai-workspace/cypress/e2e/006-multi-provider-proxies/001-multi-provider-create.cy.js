@@ -152,12 +152,26 @@ describe('AI Workspace - multi-provider proxy creation', () => {
    * here starts from, not of what any of them is checking.
    */
   const describePrimaryProvider = () => {
-    cy.get('[data-cyid="proxy-provider-select"]').click();
-    cy.contains('li', primaryProviderName, { timeout: 30000 })
-      .should('be.visible')
+    // The page picks a provider itself once the list answers, then fetches that
+    // provider to learn whether it takes a key — and re-renders at each step. A
+    // menu opened mid-settle is replaced before its options can be read, so
+    // wait for the credential field, which exists only once that has finished.
+    // Existence, not visibility: the field settles into the page before it is
+    // necessarily scrolled into view, and what is being waited for is the
+    // re-render, not the viewport.
+    cy.get('[data-cyid="proxy-api-key-input"]', { timeout: 30000 }).should(
+      'exist'
+    );
+    cy.get('[data-cyid="proxy-provider-select"] [role="combobox"]')
+      .should('not.have.text', '')
       .click();
-    cy.get('[data-cyid="proxy-api-key-input"] input', { timeout: 30000 })
+    cy.get('[role="listbox"]', { timeout: 30000 })
       .should('be.visible')
+      .contains('li', primaryProviderName)
+      .click();
+    // Settled again, now for the provider actually chosen.
+    cy.get('[data-cyid="proxy-api-key-input"] input', { timeout: 30000 })
+      .should('exist')
       .type('sk-primary-proxy-key');
   };
 
@@ -198,6 +212,57 @@ describe('AI Workspace - multi-provider proxy creation', () => {
       .click();
     cy.get('[data-cyid="staged-provider-form"]').should('not.exist');
     cy.get('[data-cyid="provider-row-1"]').should('be.visible');
+  });
+
+  it('leaves the rows where they are when the primary moves', () => {
+    openProxyCreateForm();
+    describePrimaryProvider();
+    cy.get('[data-cyid="add-provider-button"]').click();
+    // A credential of its own, because this one is about to become the primary
+    // and a proxy cannot be created with a primary that cannot authenticate.
+    cy.get('[data-cyid="staged-provider-api-key"] input', { timeout: 30000 })
+      .should('exist')
+      .type('sk-second-proxy-key');
+    cy.get('[data-cyid="staged-provider-add"]', { timeout: 30000 })
+      .should('not.be.disabled')
+      .click();
+
+    // Which provider each row shows, before anything is marked.
+    cy.get('[data-cyid="provider-row-0-name"] input')
+      .invoke('val')
+      .then((firstRow) => {
+        cy.get('[data-cyid="provider-row-1-name"] input')
+          .invoke('val')
+          .then((secondRow) => {
+            cy.get('[data-cyid="provider-row-1-primary"]').click();
+
+            // The marker moves; the rows do not. Re-sorting the list under the
+            // pointer that just marked it sends the row somewhere else and
+            // drops the one it replaced to the bottom — two rows moving in
+            // answer to one click.
+            cy.get('[data-cyid="provider-row-0-name"] input').should(
+              'have.value',
+              firstRow
+            );
+            cy.get('[data-cyid="provider-row-1-name"] input').should(
+              'have.value',
+              secondRow
+            );
+          });
+      });
+
+    // Ordering is the request's business, not the list's: whatever the rows
+    // show, the primary leads the providers the server is sent.
+    cy.get('[data-cyid="proxy-name-input"] input').type(proxyName);
+    cy.get('[data-cyid="create-proxy-button"]').should('not.be.disabled').click();
+    cy.wait('@createProxy').then(({ request }) => {
+      expect(request.body.providers[0].isPrimary, 'primary leads the list').to.eq(
+        true
+      );
+      expect(
+        request.body.providers.filter((entry) => entry.isPrimary)
+      ).to.have.length(1);
+    });
   });
 
   it('will not create while a provider is still being described', () => {

@@ -131,6 +131,16 @@ type AdditionalProviderDraft = {
    */
   apiKeyHeader: string;
   transformer: ProxyProviderTransformer | null;
+  /**
+   * Whether the translator was taken off deliberately.
+   *
+   * Absence alone cannot say that: a provider with none attached is also the
+   * state a provider starts in, which is when the match between the two formats
+   * should be offered and recorded. Without this, a removed translator is found
+   * again on the next render and written back on save, so the remove control
+   * looks inert.
+   */
+  transformerCleared: boolean;
 };
 
 /** Identifies the primary when the transformer drawer acts on it. */
@@ -146,6 +156,7 @@ const newAdditionalProviderDraft = (): AdditionalProviderDraft => {
     generatedApiKeyValue: '',
     apiKeyHeader: '',
     transformer: null,
+    transformerCleared: false,
   };
 };
 
@@ -260,6 +271,17 @@ function LLMProxyNewContent({
   const [additionalProviders, setAdditionalProviders] = useState<
     AdditionalProviderDraft[]
   >([]);
+  /**
+   * Where the primary appears among the rows.
+   *
+   * Which provider is primary and where its row sits are separate things here.
+   * The contract puts the primary at the head of the list it is sent as, but
+   * applying that to the rows means the one just marked jumps to the top and
+   * the one it replaced drops to the bottom — two rows moving in answer to one
+   * click, under the pointer that made it. The rows stay where they are
+   * instead, and the list is ordered as the request is built.
+   */
+  const [primaryRowIndex, setPrimaryRowIndex] = useState(0);
   // Whether the user has chosen an interface themselves. Once they have, the
   // default below stops moving under them.
   const [hasChosenInterface, setHasChosenInterface] = useState(false);
@@ -288,6 +310,7 @@ function LLMProxyNewContent({
     manualApiKeyValue: string;
     generatedApiKeyValue: string | null;
     transformer: ProxyProviderTransformer | null;
+    transformerCleared: boolean;
   } | null>(null);
   /**
    * Credentials to put back once a cancelled provider change has settled.
@@ -320,6 +343,9 @@ function LLMProxyNewContent({
   /** The primary's own translator, when the interface differs from its format. */
   const [primaryTransformer, setPrimaryTransformer] =
     useState<ProxyProviderTransformer | null>(null);
+  /** The same deliberate-removal record as a draft carries, for the primary. */
+  const [primaryTransformerCleared, setPrimaryTransformerCleared] =
+    useState(false);
   // The format this proxy accepts from clients. Empty means "take it from the
   // primary provider", which is what a single-provider proxy wants.
   const [inboundTemplate, setInboundTemplate] = useState<string>('');
@@ -476,13 +502,17 @@ function LLMProxyNewContent({
    */
   const resolutionForProvider = (
     providerId: string,
-    chosenTransformer?: ProxyProviderTransformer | null
+    chosenTransformer?: ProxyProviderTransformer | null,
+    // Only a removal the user made. A provider that simply has none yet is
+    // still shown — and recorded with — the match its format calls for.
+    wasCleared = false
   ) => {
     const provider = providerOptions.find((option) => option.id === providerId);
     return resolveTransformer({
       inboundTemplate,
       providerTemplate: provider?.template,
       chosenTransformer,
+      hasNoTransformer: wasCleared,
       policies: transformerPolicies,
       policiesLoaded: transformerPoliciesLoaded,
       interfaceLabel: inboundInterfaceLabel,
@@ -494,17 +524,27 @@ function LLMProxyNewContent({
   const applyTransformerToTarget = (
     transformer: ProxyProviderTransformer | null
   ) => {
+    // Choosing one settles the question either way, so the record of a past
+    // removal goes with it: the provider now has what the user asked for.
+    const cleared = transformer === null;
     if (transformerTarget === PRIMARY_TARGET) {
       setPrimaryTransformer(transformer);
+      setPrimaryTransformerCleared(cleared);
       return;
     }
     if (openDraft?.key === transformerTarget) {
-      updateOpenDraft((prev) => ({ ...prev, transformer }));
+      updateOpenDraft((prev) => ({
+        ...prev,
+        transformer,
+        transformerCleared: cleared,
+      }));
       return;
     }
     setAdditionalProviders((prev) =>
       prev.map((entry) =>
-        entry.key === transformerTarget ? { ...entry, transformer } : entry
+        entry.key === transformerTarget
+          ? { ...entry, transformer, transformerCleared: cleared }
+          : entry
       )
     );
   };
@@ -512,9 +552,13 @@ function LLMProxyNewContent({
   /** The translator a provider is saved with, by the rule every write shares. */
   const transformerToPersist = (
     providerId: string,
-    chosen: ProxyProviderTransformer | null
+    chosen: ProxyProviderTransformer | null,
+    wasCleared = false
   ): ProxyProviderTransformer | undefined =>
-    resolvedTransformerFor(chosen, resolutionForProvider(providerId, chosen));
+    resolvedTransformerFor(
+      chosen,
+      resolutionForProvider(providerId, chosen, wasCleared)
+    );
 
   /**
    * Providers not already attached, so the same one cannot be added twice —
@@ -546,6 +590,13 @@ function LLMProxyNewContent({
   const isPrimaryExpanded =
     !hasSeveralProviders || editingKey === PRIMARY_TARGET;
 
+  // The rows either side of the primary's own slot. Clamped rather than
+  // trusted: a removal reduces the list, and a stale index would otherwise
+  // render the primary outside it.
+  const primarySlot = Math.min(primaryRowIndex, additionalProviders.length);
+  const draftsAbovePrimary = additionalProviders.slice(0, primarySlot);
+  const draftsBelowPrimary = additionalProviders.slice(primarySlot);
+
   const availableProviderOptions = (keepProviderId: string) =>
     providerOptions.filter(
       (provider) =>
@@ -564,6 +615,69 @@ function LLMProxyNewContent({
    * untouched: an existing proxy has clients depending on its request format,
    * and swapping which provider is primary must not silently change it.
    */
+  /**
+   * One attached extra provider, as a row — or as the form it is being edited
+   * in. `slotIndex` is its position among all the rows, the primary included,
+   * so a reader and a test can count rows in the order they appear.
+   */
+  const renderAttachedDraftRow = (
+    draft: AdditionalProviderDraft,
+    slotIndex: number
+  ) => {
+    if (editingKey === draft.key && editDraft) {
+      return (
+        <React.Fragment key={draft.key}>
+          {renderProviderForm(editDraft, 'edit')}
+        </React.Fragment>
+      );
+    }
+    const draftProvider = providerOptions.find(
+      (option) => option.id === draft.providerId
+    );
+    return (
+      <ProviderRow
+        key={draft.key}
+        displayName={draftProvider?.displayName ?? draft.providerId}
+        isPrimary={false}
+        showPrimaryToggle
+        resolution={resolutionForProvider(
+          draft.providerId,
+          draft.transformer,
+          draft.transformerCleared
+        )}
+        onMakePrimary={() => promoteProvider(draft.key)}
+        onEdit={() => beginProviderEdit(draft)}
+        onRemove={() => removeAttachedProvider(draft.key)}
+        onConfigureTransformer={() => setTransformerTarget(draft.key)}
+        // One form at a time: acting on another row while one is
+        // open would leave changes nobody committed.
+        disabled={isProviderFormOpen}
+        data-cyid={`provider-row-${slotIndex}`}
+      />
+    );
+  };
+
+  /**
+   * Takes a provider off the proxy, keeping the primary's row where it is.
+   *
+   * Removing a row above the primary shifts everything below it up by one, so
+   * the primary's recorded position has to come with it.
+   */
+  const removeAttachedProvider = (draftKey: string) => {
+    const removedIndex = additionalProviders.findIndex(
+      (entry) => entry.key === draftKey
+    );
+    if (removedIndex < 0) {
+      return;
+    }
+    setAdditionalProviders((prev) =>
+      prev.filter((entry) => entry.key !== draftKey)
+    );
+    if (removedIndex < primaryRowIndex) {
+      setPrimaryRowIndex((prev) => Math.max(0, prev - 1));
+    }
+  };
+
   const promoteProvider = (draftKey: string) => {
     const promoted = additionalProviders.find(
       (entry) => entry.key === draftKey
@@ -581,11 +695,29 @@ function LLMProxyNewContent({
           : '',
       apiKeyHeader: selectedProviderApiKeyName,
       transformer: primaryTransformer,
+      // A removal follows the provider it was made on, in either direction.
+      transformerCleared: primaryTransformerCleared,
     };
-    setAdditionalProviders((prev) => [
-      ...prev.filter((entry) => entry.key !== draftKey),
-      demotedPrimary,
-    ]);
+    // The two providers exchange roles without exchanging places: the primary
+    // slot takes the promoted row's position and the demoted provider takes the
+    // primary's, so both rows stay exactly where the reader last saw them.
+    const slots = additionalProviders.map((entry) => entry.key);
+    slots.splice(primaryRowIndex, 0, PRIMARY_TARGET);
+    const promotedSlot = slots.indexOf(draftKey);
+    const primarySlot = slots.indexOf(PRIMARY_TARGET);
+    slots[promotedSlot] = PRIMARY_TARGET;
+    slots[primarySlot] = demotedPrimary.key;
+
+    const byKey = new Map(
+      additionalProviders.map((entry) => [entry.key, entry])
+    );
+    byKey.set(demotedPrimary.key, demotedPrimary);
+    setAdditionalProviders(
+      slots
+        .filter((key) => key !== PRIMARY_TARGET)
+        .map((key) => byKey.get(key) as AdditionalProviderDraft)
+    );
+    setPrimaryRowIndex(slots.indexOf(PRIMARY_TARGET));
     // Handed to the effect that clears credentials on a provider change rather
     // than set alongside it. That effect runs after this batch, so a value set
     // here would be wiped — and a generated key, shown once, would be gone.
@@ -597,6 +729,7 @@ function LLMProxyNewContent({
     setFormState((prev) => ({ ...prev, providerId: promoted.providerId }));
     onSelectedProviderIdChange(promoted.providerId);
     setPrimaryTransformer(promoted.transformer);
+    setPrimaryTransformerCleared(promoted.transformerCleared);
     setHasChosenInterface(true);
   };
 
@@ -653,6 +786,7 @@ function LLMProxyNewContent({
           ? selectedProviderApiKeyValue
           : null,
       transformer: primaryTransformer,
+      transformerCleared: primaryTransformerCleared,
     });
     setEditingKey(PRIMARY_TARGET);
   };
@@ -665,6 +799,7 @@ function LLMProxyNewContent({
       return;
     }
     setPrimaryTransformer(snapshot.transformer);
+    setPrimaryTransformerCleared(snapshot.transformerCleared);
     if (snapshot.providerId === formState.providerId) {
       setManualApiKeyValue(snapshot.manualApiKeyValue);
       setSelectedProviderApiKeyValue(snapshot.generatedApiKeyValue);
@@ -797,6 +932,12 @@ function LLMProxyNewContent({
     setManualApiKeyValue(restores ? restore.manualApiKeyValue : '');
     setApiKeyDisplayName('');
     setIsApiKeyModalOpen(false);
+    // A removal was about the provider it was made on. A different provider
+    // starts fresh and is offered the match its own format calls for — except
+    // where this is an undo, which puts back the state it is undoing.
+    if (!restores) {
+      setPrimaryTransformerCleared(false);
+    }
   }, [formState.providerId]);
 
   const lockedProviderDisplayName = useMemo(() => {
@@ -896,7 +1037,8 @@ function LLMProxyNewContent({
         }
         const draftTransformer = transformerToPersist(
           draft.providerId,
-          draft.transformer
+          draft.transformer,
+          draft.transformerCleared
         );
         // A typed key wins over a minted one: it is the later of the two the
         // user can have supplied, since minting clears nothing they typed.
@@ -936,7 +1078,8 @@ function LLMProxyNewContent({
 
       const primaryPersistedTransformer = transformerToPersist(
         formState.providerId,
-        primaryTransformer
+        primaryTransformer,
+        primaryTransformerCleared
       );
 
       const payload: CreateProxyRequest = {
@@ -1225,12 +1368,17 @@ function LLMProxyNewContent({
           <TransformerStatusCard
             resolution={resolutionForProvider(
               draft.providerId,
-              draft.transformer
+              draft.transformer,
+              draft.transformerCleared
             )}
             transformer={draft.transformer}
             onConfigure={() => setTransformerTarget(draft.key)}
             onRemove={() =>
-              updateOpenDraft((prev) => ({ ...prev, transformer: null }))
+              updateOpenDraft((prev) => ({
+                ...prev,
+                transformer: null,
+                transformerCleared: true,
+              }))
             }
             // Building a proxy, not reviewing one: a provider that needs no
             // translator has nothing to decide here, so the section is left
@@ -1498,11 +1646,15 @@ function LLMProxyNewContent({
       <TransformerStatusCard
         resolution={resolutionForProvider(
           formState.providerId,
-          primaryTransformer
+          primaryTransformer,
+          primaryTransformerCleared
         )}
         transformer={primaryTransformer}
         onConfigure={() => setTransformerTarget(PRIMARY_TARGET)}
-        onRemove={() => setPrimaryTransformer(null)}
+        onRemove={() => {
+          setPrimaryTransformer(null);
+          setPrimaryTransformerCleared(true);
+        }}
         hideWhenNotNeeded
         data-cyid="primary-transformer-status"
       />
@@ -1803,6 +1955,16 @@ function LLMProxyNewContent({
                 </Typography>
 
                 {/*
+                  Providers already settled, collapsed to rows. The primary
+                  joins them as soon as a second provider is involved, so the
+                  only expanded thing is whatever is being filled in — and it
+                  keeps its place in the list rather than leading it.
+                */}
+                {draftsAbovePrimary.map((draft, index) =>
+                  renderAttachedDraftRow(draft, index)
+                )}
+
+                {/*
                   The primary: its own fields while it is the only provider or
                   while it is being edited, a row otherwise.
                 */}
@@ -1890,62 +2052,26 @@ function LLMProxyNewContent({
                     showPrimaryToggle
                     resolution={resolutionForProvider(
                       formState.providerId,
-                      primaryTransformer
+                      primaryTransformer,
+                      primaryTransformerCleared
                     )}
                     onEdit={beginPrimaryEdit}
                     onConfigureTransformer={() =>
                       setTransformerTarget(PRIMARY_TARGET)
                     }
                     disabled={isProviderFormOpen}
-                    data-cyid="provider-row-0"
+                    data-cyid={`provider-row-${primarySlot}`}
                   />
                 )}
 
                 {/*
-                  Providers already settled, collapsed to rows. The primary
-                  joins them as soon as a second provider is involved, so the
-                  only expanded thing is whatever is being filled in.
+                  The providers below the primary's row. Those above it are
+                  rendered before the block overhead — the list is in display
+                  order, which the primary sits inside rather than on top of.
                 */}
-                {additionalProviders.map((draft, index) => {
-                  if (editingKey === draft.key && editDraft) {
-                    return (
-                      <React.Fragment key={draft.key}>
-                        {renderProviderForm(editDraft, 'edit')}
-                      </React.Fragment>
-                    );
-                  }
-                  const draftProvider = providerOptions.find(
-                    (option) => option.id === draft.providerId
-                  );
-                  return (
-                    <ProviderRow
-                      key={draft.key}
-                      displayName={
-                        draftProvider?.displayName ?? draft.providerId
-                      }
-                      isPrimary={false}
-                      showPrimaryToggle
-                      resolution={resolutionForProvider(
-                        draft.providerId,
-                        draft.transformer
-                      )}
-                      onMakePrimary={() => promoteProvider(draft.key)}
-                      onEdit={() => beginProviderEdit(draft)}
-                      onRemove={() =>
-                        setAdditionalProviders((prev) =>
-                          prev.filter((entry) => entry.key !== draft.key)
-                        )
-                      }
-                      onConfigureTransformer={() =>
-                        setTransformerTarget(draft.key)
-                      }
-                      // One form at a time: acting on another row while one is
-                      // open would leave changes nobody committed.
-                      disabled={isProviderFormOpen}
-                      data-cyid={`provider-row-${index + 1}`}
-                    />
-                  );
-                })}
+                {draftsBelowPrimary.map((draft, index) =>
+                  renderAttachedDraftRow(draft, primarySlot + 1 + index)
+                )}
 
                 {/* The form being filled in, staged until it is added. */}
                 {stagedProvider && renderProviderForm(stagedProvider, 'add')}

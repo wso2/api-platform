@@ -78,7 +78,13 @@ export const effectiveProviderName = (entry: ProxyProviderEntry): string =>
   entry.alias?.trim() || entry.id;
 
 /**
- * Every provider attached to a proxy, primary first.
+ * Every provider attached to a proxy, in the order the proxy holds them.
+ *
+ * Display order, and deliberately not primary-first: a reader is looking at
+ * this list while they change it, and re-sorting it underneath them moves the
+ * row they just acted on somewhere else. Which provider is primary is said by
+ * the row itself. The list is put in order on the way out instead, by
+ * `withPrimaryFirst`, so what reaches the server is unaffected.
  *
  * Returns an empty list rather than throwing when a proxy carries none, because
  * callers are render paths: a screen with nothing to show should show nothing,
@@ -86,10 +92,21 @@ export const effectiveProviderName = (entry: ProxyProviderEntry): string =>
  */
 export const proxyProviderEntries = (
   proxy?: Proxy | null
+): ProxyProviderEntry[] => proxy?.providers ?? [];
+
+/**
+ * The same attachments as a request carries them: primary first.
+ *
+ * The contract puts the primary at the head of the list, and a reader of the
+ * stored proxy — including this application on its next load — takes the order
+ * at face value. Applied where a request is built rather than where the list is
+ * displayed, so the order settles on save instead of under the pointer.
+ */
+export const withPrimaryFirst = (
+  entries: ProxyProviderEntry[]
 ): ProxyProviderEntry[] => {
-  const entries = proxy?.providers ?? [];
-  if (entries.length === 0) {
-    return [];
+  if (entries.length < 2) {
+    return entries;
   }
   const primary = entries.filter((entry) => entry.isPrimary);
   const rest = entries.filter((entry) => !entry.isPrimary);
