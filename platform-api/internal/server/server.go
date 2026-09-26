@@ -348,6 +348,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmTemplateRepo,
 		llmProxyRepo,
 		mcpProxyRepo,
+		agentProxyRepo,
 		artifactRepo,
 		deploymentRepo,
 		gatewayRepo,
@@ -355,6 +356,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 		mcpProxyService,
+		agentProxyService,
 	)
 
 	// Initialize secret vault and service using the single configured encryption key.

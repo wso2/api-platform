@@ -50,6 +50,8 @@ func TestArtifactPath(t *testing.T) {
 		{name: "proxy", kind: "LlmProxy", handle: "proxy-1", want: "/llm-proxies/proxy-1"},
 		{name: "mcp", kind: "Mcp", handle: "mcp-1", want: "/mcp-proxies/mcp-1"},
 		{name: "rest api", kind: "RestApi", handle: "api-1", want: "/rest-apis/api-1"},
+		{name: "gateway agent is an agent proxy", kind: "Agent", handle: "agent-1", want: "/agent-proxies/agent-1"},
+		{name: "control-plane kind is not a gateway kind", kind: "AgentProxy", handle: "x", wantErr: true},
 		{name: "unknown kind", kind: "WebSubApi", handle: "x", wantErr: true},
 		{name: "empty kind", kind: "", handle: "x", wantErr: true},
 	}
@@ -279,6 +281,42 @@ func TestTrackAgentProxyResourceDeregistersWhatTheScenarioDeleted(t *testing.T) 
 	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
 		deleted("https://cp:9243/api/v0.9/agent-proxies/weather?force=true")))
 	require.Equal(t, []string{"other"}, pendingIDs(reg, platformAgentProxyKind))
+}
+
+func TestImportedAgentProxyCleanup(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.registerImportedAgentProxy(ctx, "imported"))
+	require.NoError(t, s.registerImportedAgentProxy(ctx, "other"))
+	require.ElementsMatch(t, []string{"imported", "other"}, pendingIDs(reg, platformImportedAgentProxyKind))
+	require.Empty(t, pendingIDs(reg, platformAgentProxyKind), "an imported copy is not an authored Agent proxy")
+	require.Greater(t, platformImportedAgentProxyKind.Order, cleanup.KindAgent.Order,
+		"the imported copy must delete after the gateway Agent it was imported from")
+
+	// A scenario that deletes the imported copy itself drops only that record.
+	require.NoError(t, s.trackAgentProxyResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp/api/v0.9/agent-proxies/imported"}))
+	require.Equal(t, []string{"other"}, pendingIDs(reg, platformImportedAgentProxyKind))
+}
+
+func TestRegisterImportedCopyIsIdempotentPerKind(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.registerImportedCopy(ctx, "Agent", "imported"))
+	require.NoError(t, s.registerImportedCopy(ctx, "Agent", "imported"), "a second observation of the same copy")
+	require.NoError(t, s.registerImportedCopy(ctx, "Mcp", "imported"))
+	require.NoError(t, s.registerImportedCopy(ctx, "RestApi", "imported"), "kinds with no imported copy are ignored")
+
+	require.Equal(t, []string{"imported"}, pendingIDs(reg, platformImportedAgentProxyKind))
+	require.Equal(t, []string{"imported"}, pendingIDs(reg, platformMCPKind))
+	require.Len(t, reg.Pending(), 2)
+}
+
+func TestImportedAgentProxyCleanupNeedsARegistry(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.ErrorContains(t, (&Steps{}).registerImportedAgentProxy(ctx, "imported"), "no registry")
 }
 
 func TestTrackAgentProxyResourceNeedsARegistry(t *testing.T) {

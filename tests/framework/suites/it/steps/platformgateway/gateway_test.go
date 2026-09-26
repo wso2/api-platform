@@ -31,6 +31,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -690,4 +691,27 @@ func TestServiceUnhealthy(t *testing.T) {
 
 	local.Set(healthResultsKey, map[string]bool{"policy-engine": false})
 	require.ErrorContains(t, steps.serviceUnhealthy(ctx, "policy-engine"), "stored as map[string]bool")
+}
+
+// Every controller collection a step can create into has a cleanup kind, so a created resource
+// is always registered; the Agent collection maps to the gateway's own Agent kind.
+func TestControllerResourceKindsHaveCleanupKinds(t *testing.T) {
+	for stepKind, spec := range resourceKinds {
+		if spec.collection == "" {
+			continue // the API handlers register and deregister their own cleanup
+		}
+		_, ok := cleanupKindForCollection(spec.collection)
+		require.Truef(t, ok, "resource kind %q (collection %q) has no cleanup kind", stepKind, spec.collection)
+	}
+
+	agent, ok := resourceKinds["Agent"]
+	require.True(t, ok, "the Agent step kind is registered")
+	require.Equal(t, "Agent", agent.declared)
+	require.Equal(t, "/agents", agent.collection)
+	kind, ok := cleanupKindForCollection(agent.collection)
+	require.True(t, ok)
+	require.Equal(t, cleanup.KindAgent, kind)
+
+	_, ok = cleanupKindForCollection("/not-a-collection")
+	require.False(t, ok)
 }

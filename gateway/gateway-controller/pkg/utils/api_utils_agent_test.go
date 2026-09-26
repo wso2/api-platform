@@ -30,6 +30,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 const testAgentID = "0f8e7d6c-5b4a-4392-8a1b-0c9d8e7f6a5b"
@@ -267,4 +269,23 @@ func TestExtractYAMLFromZip_BoundsDecompressedEntry(t *testing.T) {
 	got, err := svc.ExtractYAMLFromZip(atLimit)
 	require.NoError(t, err)
 	assert.Len(t, got, 1024)
+}
+
+// Agents are pushed after every kind in the DP->CP push order, mirroring the
+// control plane's import order (platform-api utils.artifactImportOrder), rather
+// than landing on the unknown-kind fallback.
+func TestArtifactPushRank_AgentIsRankedExplicitly(t *testing.T) {
+	unknown := artifactPushRank("NotAKind")
+	agent := artifactPushRank(models.KindAgent)
+	if agent == unknown {
+		t.Fatalf("artifactPushRank(%q) = %d, the unknown-kind fallback; want an explicit rank", models.KindAgent, agent)
+	}
+	for _, kind := range []string{
+		models.KindLlmProviderTemplate, models.KindLlmProvider, models.KindLlmProxy,
+		models.KindMcp, models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi,
+	} {
+		if r := artifactPushRank(kind); r >= agent {
+			t.Errorf("artifactPushRank(%q) = %d, want it ahead of Agent (%d)", kind, r, agent)
+		}
+	}
 }

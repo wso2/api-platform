@@ -1445,19 +1445,29 @@ paths:
       description: |
         Generic bulk DP->CP push endpoint. A gateway pushes a list of artifacts it
         created/updated (REST API, LLM Provider, LLM Provider Template, LLM Proxy, MCP Proxy,
-        ...). The control plane creates or updates each and marks it read-only with origin
+        Agent, ...). The control plane creates or updates each and marks it read-only with origin
         "gateway_api". Each artifact's kind is identified by configuration.kind and routed to
         the matching importer. Project is required for project-scoped kinds (RestApi, LlmProxy,
-        Mcp) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata annotation —
-        and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate). The
-        project is never defaulted.
+        Mcp, Agent) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata
+        annotation — and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate).
+        The project is never defaulted.
+        A gateway `Agent` is stored as the control-plane kind `AgentProxy` with `protocol: a2a`;
+        `spec.a2a.operationConfigs.transports` becomes the Agent proxy's `a2a.transports`. As
+        for every kind, the import stores what maps onto the control-plane model and drops the
+        rest: `upstreamDefinitions`, a `manual` hostRewrite, the upstream auth
+        `policyName`/`policyParams`/`policyVersion` and enabled card signing are not kept in the
+        read-only working copy, and unrecognised fields are ignored. The deployment record keeps
+        the pushed configuration verbatim. An Agent is refused only when nothing can be stored:
+        no `spec.a2a` block, an unregistered A2A protocol version, a handle longer than 40
+        characters, or the handle `fetch-agent-card`, which the control plane reserves for its
+        `/agent-proxies/fetch-agent-card` route and refuses for authored Agent proxies too.
         Processing is continue-on-error: each artifact's outcome is recorded against its dpid
         and a failure on one artifact does not abort the rest. Artifact-level failures — an
         unsupported kind, a project-scoped push with no project, a project that does not exist
-        in the organization, or a handle already used by a different kind — are reported per
-        dpid (with an `error` message) inside a 200 response, not as a non-2xx status. Only a
-        malformed request (invalid multipart form or zip, empty or oversized upload) or an
-        unauthenticated caller returns a non-2xx status.
+        in the organization, a handle already used by a different kind, or an Agent refused as
+        above — are reported per dpid (with an `error` message) inside
+        a 200 response, not as a non-2xx status. Only a malformed request (invalid multipart form
+        or zip, empty or oversized upload) or an unauthenticated caller returns a non-2xx status.
       operationId: importGatewayArtifacts
       tags:
         - Gateway Internal APIs
@@ -1477,8 +1487,8 @@ paths:
                   description: >-
                     A zip archive containing a single `artifacts.json` file: a JSON array of
                     ImportGatewayArtifactRequest objects. The gateway orders the artifacts by
-                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi, ...)
-                    before zipping.
+                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi,
+                    WebSubApi, WebBrokerApi, Agent) before zipping.
                 total:
                   type: integer
                   description: Total number of artifacts in the zip (advisory; used for a sanity check).

@@ -677,6 +677,9 @@ blocks:
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+      - name: agent-proxy-import
+        features:
+          - features/agent_proxy_import.feature
 
   - name: platform-api-postgres
     parallel: 2
@@ -717,6 +720,9 @@ blocks:
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+      - name: agent-proxy-import
+        features:
+          - features/agent_proxy_import.feature
 
   - name: platform-api-sqlserver
     parallel: 2
@@ -757,6 +763,9 @@ blocks:
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+      - name: agent-proxy-import
+        features:
+          - features/agent_proxy_import.feature
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the

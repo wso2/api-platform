@@ -268,6 +268,57 @@ func TestCanonicalRestAPITemplateRemainsValidAfterRendering(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal([]byte(definition), &document))
 }
 
+func TestAgentTemplateRendersNestedOverrides(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	template, err := os.ReadFile(filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates", "agent.yaml"))
+	require.NoError(t, err)
+
+	table := templateTable(
+		"apiVersion", "gateway.api-platform.wso2.com/v1",
+		"name", "imported-agent",
+		"displayName", "Imported Agent",
+		"context", "/imported",
+		"upstreamUrl", "http://a2a-trip-planner:9099",
+		"transports", `[{"protocolBinding":"JSONRPC","pathPrefix":"/"}]`,
+		"metadata.annotations", `{"gateway.api-platform.wso2.com/project-id":"project"}`,
+		"spec.upstream", `{"ref":"trip-planner","hostRewrite":"manual"}`,
+		"spec.a2a.operationConfigs.policies", `[{"name":"api-key-auth","version":"v1"}]`,
+	)
+	definition, err := RenderResourceTemplate(context.Background(), "resources/templates/agent.yaml", template, table)
+	require.NoError(t, err)
+
+	var document struct {
+		Kind     string `yaml:"kind"`
+		Metadata struct {
+			Name        string            `yaml:"name"`
+			Annotations map[string]string `yaml:"annotations"`
+		} `yaml:"metadata"`
+		Spec struct {
+			Version  string         `yaml:"version"`
+			Upstream map[string]any `yaml:"upstream"`
+			A2A      struct {
+				ProtocolVersion  string `yaml:"protocolVersion"`
+				OperationConfigs struct {
+					Transports []map[string]any `yaml:"transports"`
+					Policies   []map[string]any `yaml:"policies"`
+				} `yaml:"operationConfigs"`
+			} `yaml:"a2a"`
+		} `yaml:"spec"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(definition), &document))
+	require.Equal(t, "Agent", document.Kind)
+	require.Equal(t, "imported-agent", document.Metadata.Name)
+	require.Equal(t, "project", document.Metadata.Annotations["gateway.api-platform.wso2.com/project-id"])
+	require.Equal(t, "v1.0", document.Spec.Version)
+	require.Equal(t, "1.0", document.Spec.A2A.ProtocolVersion, "the protocol version stays a string")
+	require.Equal(t, map[string]any{"ref": "trip-planner", "hostRewrite": "manual"}, document.Spec.Upstream,
+		"a complete spec.upstream override replaces the templated url")
+	require.Len(t, document.Spec.A2A.OperationConfigs.Transports, 1)
+	require.Equal(t, "api-key-auth", document.Spec.A2A.OperationConfigs.Policies[0]["name"],
+		"a nested override sits beside the templated transports")
+}
+
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
@@ -275,6 +326,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	root := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates")
 	// Platform Gateway templates own the gateway resource envelope.
 	gatewayKinds := map[string]string{
+		"agent.yaml":                 "Agent",
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",

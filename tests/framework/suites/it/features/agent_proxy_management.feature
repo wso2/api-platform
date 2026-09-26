@@ -22,10 +22,11 @@ Feature: Agent proxies are authored and managed through the control plane
   I want to create, read, replace, list and delete Agent proxies in the control plane
   So that an A2A agent is described once, validated against its contract, and ready to deploy
 
-  # Organization isolation, per-scope OAuth alternatives and read-only provenance need a second
-  # organization, a narrowed token or a gateway-originated row, none of which the suite's
-  # control-plane users can produce. They are covered by the focused platform-api tests named in
-  # the Section 14 coverage record rather than by scenarios here.
+  # Organization isolation and per-scope OAuth alternatives need a second organization or a
+  # narrowed token, neither of which the suite's control-plane users can produce. They are covered
+  # by the focused platform-api tests named in the Section 14 coverage record rather than by
+  # scenarios here. Read-only provenance is covered end to end by agent_proxy_import.feature,
+  # which imports a real gateway-created Agent.
 
   Background:
     Given the gateway services are running

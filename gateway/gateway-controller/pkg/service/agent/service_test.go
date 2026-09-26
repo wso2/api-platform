@@ -778,23 +778,18 @@ func (p *recordingPusher) PushArtifact(_ string, artifact *models.StoredConfig, 
 	return nil
 }
 
-// TestControlPlanePushIsOffByDefault is the state this gateway actually ships
-// in: the push path exists but ControlPlanePushSupported is false, so nothing is
-// pushed and no row claims a sync is pending.
-func TestControlPlanePushIsOffByDefault(t *testing.T) {
-	require.False(t, ControlPlanePushSupported,
-		"flip this test's expectations together with the constant")
-
+// TestControlPlanePushOffWhenSyncDisabled keeps the off state honest: with
+// deployment sync disabled nothing is pushed and no row claims a sync is pending.
+func TestControlPlanePushOffWhenSyncDisabled(t *testing.T) {
 	h := newHarness(t, nil)
 	pusher := &recordingPusher{connected: true}
-	h.service.SetControlPlanePusher(pusher,
-		ControlPlanePushSupported && true /* deployment sync enabled */)
+	h.service.SetControlPlanePusher(pusher, false /* deployment sync disabled */)
 
 	created, err := h.create(t, agentYAML(agentYAMLOpts{}))
 	require.NoError(t, err)
 	assert.Equal(t, models.CPSyncStatus(""), created.StoredConfig.CPSyncStatus,
 		`an artifact that will never be pushed must not be recorded as "pending"`)
-	assert.Empty(t, pusher.submitted, "nothing may be pushed while the control plane cannot model an Agent")
+	assert.Empty(t, pusher.submitted)
 
 	_, err = h.service.Delete(DeleteParams{Handle: "weather-agent-v1-0", Logger: discardLogger()})
 	require.NoError(t, err)
@@ -802,9 +797,9 @@ func TestControlPlanePushIsOffByDefault(t *testing.T) {
 	assert.Empty(t, pusher.pushed)
 }
 
-// TestControlPlanePushWhenEnabled exercises the wiring that
-// ControlPlanePushSupported currently gates, so enabling it is a one-line change
-// against a tested path rather than against never-run code.
+// TestControlPlanePushWhenEnabled exercises the full push wiring: a create
+// schedules a push that waits for the deployment, and a delete pushes the
+// artifact as undeployed.
 func TestControlPlanePushWhenEnabled(t *testing.T) {
 	h := newHarness(t, nil)
 	pusher := &recordingPusher{connected: true}

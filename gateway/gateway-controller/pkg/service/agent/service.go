@@ -19,8 +19,7 @@
 // Package agent implements the business logic behind the Agent (A2A) management
 // API: parse, render, validate, persist, and announce.
 //
-// The control-plane (DP->CP) push is wired the same way as for the other kinds,
-// but switched off — see ControlPlanePushSupported.
+// The control-plane (DP->CP) push is wired the same way as for the other kinds.
 package agent
 
 import (
@@ -70,19 +69,6 @@ type DeleteResult struct {
 	Config *models.StoredConfig
 }
 
-// ControlPlanePushSupported reports whether an Agent can be pushed to the
-// control plane.
-//
-// It is false because the control plane has no Agent in its artifact model yet:
-// a push would be a request it cannot serve, and every Agent would settle on
-// cp_sync_status=failed. The push path below is wired regardless, so enabling it
-// is this one constant plus whatever the control plane needs, rather than a new
-// code path written under time pressure later.
-//
-// While it is false the gateway also leaves cp_sync_status unset for Agents,
-// because "pending" would describe a sync that is never going to be attempted.
-const ControlPlanePushSupported = false
-
 // AgentService encapsulates business logic for Agent CRUD operations.
 type AgentService struct {
 	store          *storage.ConfigStore
@@ -104,10 +90,8 @@ type AgentService struct {
 // SetControlPlanePusher wires the DP->CP push dependency. It is called on the
 // instances that serve gateway-originated writes (the REST handlers' service and
 // the immutable loader's service) and left unset elsewhere, so a
-// control-plane-originated apply is never pushed back.
-//
-// pushEnabled must already account for ControlPlanePushSupported; callers pass
-// the conjunction so the reason a push is off stays visible at the call site.
+// control-plane-originated apply is never pushed back. pushEnabled is the
+// gateway's deployment-sync setting.
 func (s *AgentService) SetControlPlanePusher(pusher utils.ArtifactPusher, pushEnabled bool) {
 	s.controlPlaneClient = pusher
 	s.deploymentPushEnabled = pushEnabled
@@ -696,7 +680,7 @@ func (s *AgentService) publishEvent(action, entityID, correlationID string, logg
 //
 // It keys off deploymentPushEnabled rather than live connectivity, so a
 // temporarily disconnected gateway still records that a push is owed — but a
-// gateway that will never push (see ControlPlanePushSupported) does not leave
+// gateway with deployment sync disabled, which will never push, does not leave
 // rows describing a sync that is not coming.
 func (s *AgentService) initialCPSyncStatus(origin models.Origin) models.CPSyncStatus {
 	if origin == models.OriginGatewayAPI && s.deploymentPushEnabled {

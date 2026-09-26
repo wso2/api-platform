@@ -126,6 +126,10 @@ func UnzipGatewayArtifacts(zipBytes []byte) ([]dto.ImportGatewayArtifactRequest,
 // reference templates, and LLM proxies reference providers, so templates come before
 // providers before proxies. Kinds not listed sort last (stable), which is safe because they
 // have no cross-kind dependencies among the supported set.
+//
+// Keys are the kinds the gateway pushes, so an Agent is ranked as the gateway's Agent, not
+// as the control-plane AgentProxy it is stored as. It references no other kind and is listed
+// explicitly rather than left to the unknown-kind fallback.
 var artifactImportOrder = map[string]int{
 	constants.LLMProviderTemplate: 0,
 	constants.LLMProvider:         1,
@@ -134,6 +138,7 @@ var artifactImportOrder = map[string]int{
 	constants.RestApi:             4,
 	constants.WebSubApi:           5,
 	constants.WebBrokerApi:        6,
+	constants.GatewayKindAgent:    7,
 }
 
 // ArtifactImportRank returns the creation-order rank for a kind; unknown kinds sort last.

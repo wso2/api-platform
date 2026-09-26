@@ -34,6 +34,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
 	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -44,8 +45,10 @@ import (
 // core/catalog/platformapi's provisioner authenticates against.
 const apiBase = "/api/v0.9"
 
-// artifactPaths maps a gateway artifact kind to its control-plane resource collection.
+// artifactPaths maps a gateway artifact kind to its control-plane resource collection. A gateway
+// Agent is stored by the control plane as an AgentProxy, so it is addressed under agent-proxies.
 var artifactPaths = map[string]string{
+	"Agent":               "agent-proxies",
 	"LlmProviderTemplate": "llm-provider-templates",
 	"LlmProvider":         "llm-providers",
 	"LlmProxy":            "llm-proxies",
@@ -77,10 +80,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 		s.providerShouldReferenceTemplate)
 	sc.Step(`^the control plane copy of the "LlmProxy" artifact "([^"]*)" should reference provider "([^"]*)"$`,
 		s.proxyShouldReferenceProvider)
-	sc.Step(`^the control plane should have deployed the "Mcp" artifact "([^"]*)"$`,
-		func(ctx context.Context, name string) error { return s.mcpDeploymentStatus(ctx, name, "DEPLOYED") })
-	sc.Step(`^the control plane should have undeployed the "Mcp" artifact "([^"]*)"$`,
-		func(ctx context.Context, name string) error { return s.mcpDeploymentStatus(ctx, name, "UNDEPLOYED") })
+	sc.Step(`^the control plane should have (deployed|undeployed) the "(Mcp|Agent)" artifact "([^"]*)"$`,
+		s.artifactDeploymentStatus)
 	sc.Step(`^I create a project "([^"]*)" on the control plane$`, s.createProject)
 	sc.Step(`^platform-api reports the subscription for API "([^"]*)" using plan "([^"]*)"$`, s.subscriptionPlanMatches)
 	RegisterDeploy(sc, s)
@@ -245,21 +246,45 @@ func (s *Steps) shouldReceive(ctx context.Context, kind, name string) error {
 		return err
 	}
 
-	// A gateway-originated MCP is stored in both the gateway and control plane. The gateway
-	// cleanup removes the data-plane resource, but the asynchronously imported control-plane
-	// row must also be removed before its owning project can be deleted.
+	return s.registerImportedCopy(ctx, kind, name)
+}
+
+// registerImportedCopy registers the control plane's imported copy of a gateway-originated MCP
+// or Agent for cleanup. The gateway cleanup removes the data-plane resource, but the
+// asynchronously imported control-plane row must also be removed before its owning project can
+// be deleted. Every step that observes the copy calls this, so a scenario need not observe it
+// in a particular way; a copy already registered is left as it is.
+func (s *Steps) registerImportedCopy(ctx context.Context, kind, name string) error {
 	resolvedKind, err := stepscommon.Expand(ctx, kind)
 	if err != nil {
 		return err
-	}
-	if resolvedKind != "Mcp" {
-		return nil
 	}
 	resolvedName, err := stepscommon.Expand(ctx, name)
 	if err != nil {
 		return err
 	}
-	return s.registerPlatformResource(ctx, platformMCPKind, resolvedName, "/mcp-proxies")
+	var cleanupKind cleanup.Kind
+	switch resolvedKind {
+	case "Mcp":
+		cleanupKind = platformMCPKind
+	case "Agent":
+		cleanupKind = platformImportedAgentProxyKind
+	default:
+		return nil
+	}
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	for _, pending := range reg.Pending() {
+		if pending.Kind.Name == cleanupKind.Name && pending.ID == resolvedName {
+			return nil
+		}
+	}
+	if resolvedKind == "Mcp" {
+		return s.registerPlatformResource(ctx, platformMCPKind, resolvedName, "/mcp-proxies")
+	}
+	return s.registerImportedAgentProxy(ctx, resolvedName)
 }
 
 func (s *Steps) shouldNotReceive(ctx context.Context, kind, name string) error {
@@ -372,11 +397,17 @@ func (s *Steps) proxyShouldReferenceProvider(ctx context.Context, name, provider
 		})
 }
 
-// mcpDeploymentStatus polls the control plane's per-gateway deployment record for an MCP
-// proxy. Unlike the artifact resource itself, deploy/undeploy is a lifecycle state platform-api
-// tracks per gateway, not a field on the proxy - see api.DeploymentResponse.
-func (s *Steps) mcpDeploymentStatus(ctx context.Context, name, want string) error {
+// artifactDeploymentStatus polls the control plane's per-gateway deployment record for a
+// gateway-originated artifact. Unlike the artifact resource itself, deploy/undeploy is a
+// lifecycle state platform-api tracks per gateway, not a field on the artifact - see
+// api.DeploymentResponse.
+func (s *Steps) artifactDeploymentStatus(ctx context.Context, state, kind, name string) error {
+	want := strings.ToUpper(state)
 	resolvedName, err := stepscommon.Expand(ctx, name)
+	if err != nil {
+		return err
+	}
+	path, err := artifactPath(kind, resolvedName)
 	if err != nil {
 		return err
 	}
@@ -388,13 +419,18 @@ func (s *Steps) mcpDeploymentStatus(ctx context.Context, name, want string) erro
 	if err != nil {
 		return fmt.Errorf("authenticating to the control plane: %w", err)
 	}
-	what := fmt.Sprintf("waiting for the control plane to record the Mcp artifact %q as %s", resolvedName, want)
+	what := fmt.Sprintf("waiting for the control plane to record the %s artifact %q as %s", kind, resolvedName, want)
 
-	return retry.Await(ctx, retry.Options{},
+	if err := retry.Await(ctx, retry.Options{},
 		func(ctx context.Context) (*httpx.Response, error) {
-			return s.get(ctx, base, bearer, "/mcp-proxies/"+resolvedName+"/deployments")
+			return s.get(ctx, base, bearer, path+"/deployments")
 		},
-		func(r *httpx.Response) bool { return deploymentStatusMatches(r, want) }, what)
+		func(r *httpx.Response) bool { return deploymentStatusMatches(r, want) }, what); err != nil {
+		return err
+	}
+	// A deployment record exists only for an imported copy, so observing one is observing the
+	// copy.
+	return s.registerImportedCopy(ctx, kind, resolvedName)
 }
 
 func deploymentStatusMatches(r *httpx.Response, want string) bool {

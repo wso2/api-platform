@@ -1093,6 +1093,7 @@ var artifactPushOrder = map[string]int{
 	models.KindRestApi:             4,
 	models.KindWebSubApi:           5,
 	models.KindWebBrokerApi:        6,
+	models.KindAgent:               7,
 }
 
 // artifactPushRank returns the push-order rank for a kind; unknown kinds sort last.

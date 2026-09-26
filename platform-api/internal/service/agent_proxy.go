@@ -44,9 +44,11 @@ const agentProxyAuditResource = "agent_proxy"
 
 // reservedAgentProxyHandles are handles the Agent proxy collection cannot hand
 // out, because a static sibling route under /agent-proxies/ already owns the
-// path segment. An Agent proxy called "fetch-agent-card" would be addressed by
-// the discovery route instead of its own resource, so the name is refused at
-// creation rather than left to shadow itself later.
+// path segment. Today the static route is POST-only and there is no POST on
+// /agent-proxies/{agentProxyId}, so the method-aware mux still routes a GET, PUT
+// or DELETE on that path to the item handlers. The name is reserved anyway, so
+// that a later sibling route on the same segment (a GET preview, say) cannot
+// start shadowing an Agent proxy that already holds it.
 //
 // Generated handles are checked against this set too: deriving one from a
 // display name is not a way around the reservation.
@@ -106,6 +108,14 @@ func NewAgentProxyService(repo repository.AgentProxyRepository, projectRepo repo
 func (s *AgentProxyService) WithSecretService(ss *SecretService) *AgentProxyService {
 	s.secretService = ss
 	return s
+}
+
+// InvalidateAgentCard drops the cached display fetch for one Agent proxy. It is
+// the hook for writes that do not go through Update or Delete — a gateway import
+// replacing a gateway-originated Agent proxy's working copy — so a changed
+// upstream or card mode shows immediately instead of a full TTL later.
+func (s *AgentProxyService) InvalidateAgentCard(orgUUID, proxyUUID string) {
+	s.cardCache.invalidate(orgUUID, proxyUUID)
 }
 
 // Create stores a new Agent proxy and returns it as the caller will read it back.

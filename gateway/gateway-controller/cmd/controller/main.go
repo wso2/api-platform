@@ -623,11 +623,7 @@ func main() {
 		config.NewAgentValidator().WithPolicyValidator(config.NewPolicyValidator(policyDefinitions)),
 		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
 	)
-	// The DP->CP push is wired for Agents on the same terms as the LLM and MCP
-	// services above, and stays off until the control plane models the Agent kind
-	// — see agent.ControlPlanePushSupported.
-	agentSvc.SetControlPlanePusher(cpClient,
-		agent.ControlPlanePushSupported && cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 

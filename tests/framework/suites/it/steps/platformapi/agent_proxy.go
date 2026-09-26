@@ -69,6 +69,10 @@ var (
 	platformGatewayTokenKind    = cleanup.Kind{Name: "platform-api-gateway-token", Order: 35}
 	platformAgentDeploymentKind = cleanup.Kind{Name: "platform-api-agent-proxy-deployment", Order: 41}
 	platformAgentProxyKind      = cleanup.Kind{Name: "platform-api-agent-proxy", Order: 53}
+	// The control plane's copy of a gateway-created Agent. It deletes after the gateway's own
+	// Agent (cleanup.KindAgent): platform-api keeps a gateway-originated Agent proxy until that
+	// gateway reports it undeployed, and the gateway only does so once its Agent is gone.
+	platformImportedAgentProxyKind = cleanup.Kind{Name: "platform-api-imported-agent-proxy", Order: 54}
 )
 
 // agentProxyLocationPattern parses the Location values the control plane sets for Agent proxy
@@ -284,6 +288,7 @@ func deregisterDeleted(ctx context.Context, rawURL string) error {
 	switch sub {
 	case "":
 		reg.Deregister(platformAgentProxyKind, handle)
+		reg.Deregister(platformImportedAgentProxyKind, handle)
 	case "deployments":
 		prefix := handle + agentProxyRecordD + id + agentProxyRecordD
 		for _, pending := range reg.Pending() {
@@ -335,6 +340,50 @@ func (s *Steps) registerAgentAPIKeyDeleter(reg *cleanup.Registry) error {
 	return reg.RegisterDeleter(platformAgentAPIKeyKind, func(ctx context.Context, res cleanup.Resource) error {
 		return s.revokeAgentAPIKey(ctx, res.ID)
 	})
+}
+
+// registerImportedAgentProxy registers the control plane's imported copy of a gateway-created
+// Agent for cleanup, so its project can be deleted after the scenario.
+func (s *Steps) registerImportedAgentProxy(ctx context.Context, handle string) error {
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(platformImportedAgentProxyKind, func(ctx context.Context, res cleanup.Resource) error {
+		return s.deleteImportedAgentProxy(ctx, res.ID)
+	}); err != nil {
+		return err
+	}
+	return reg.Register(cleanup.Resource{
+		Kind: platformImportedAgentProxyKind, ID: handle, Actor: "admin",
+		Description: "imported by platform-api from a gateway-created Agent",
+	})
+}
+
+// deleteImportedAgentProxy removes a gateway-originated Agent proxy. platform-api answers 409
+// ARTIFACT_DEPLOYED until the gateway reports the Agent undeployed, which follows the gateway-side
+// delete asynchronously, so that one refusal is polled through; any other failure is reported.
+func (s *Steps) deleteImportedAgentProxy(ctx context.Context, handle string) error {
+	path := "/agent-proxies/" + url.PathEscape(handle)
+	last, err := retry.Until(ctx, retry.Options{},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, err := s.adminCall(ctx, http.MethodDelete, path)
+			if err != nil {
+				return nil, retry.Transient(err)
+			}
+			return resp, nil
+		},
+		func(r *httpx.Response) bool { return r != nil && r.StatusCode != http.StatusConflict })
+	if err != nil {
+		return fmt.Errorf("deleting imported Agent proxy %q: %w", handle, err)
+	}
+	if last == nil {
+		return fmt.Errorf("deleting imported Agent proxy %q: no response", handle)
+	}
+	if last.StatusCode != http.StatusNotFound && !last.Succeeded() {
+		return fmt.Errorf("deleting imported Agent proxy %q: %s", handle, last.Describe())
+	}
+	return nil
 }
 
 // deleteAgentProxy removes an Agent proxy; one that is already gone is not a failure.

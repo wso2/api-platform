@@ -219,6 +219,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	root := filepath.Join(filepath.Dir(source), "..", "resources", "templates")
 	// Platform Gateway templates own the gateway resource envelope.
 	gatewayKinds := map[string]string{
+		"agent.yaml":                 "Agent",
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",
