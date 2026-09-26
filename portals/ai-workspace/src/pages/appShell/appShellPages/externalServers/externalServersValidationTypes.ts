@@ -58,5 +58,7 @@ export type EndpointValidationResponse = {
     name: string;
     version: string;
   };
+  /** MCP protocol versions the upstream server reported (e.g. "2025-06-18"). */
+  supportedVersions?: string[];
   tools: ToolItem[];
 };
