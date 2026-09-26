@@ -16,275 +16,405 @@
  * under the License.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from "react";
+import { FormattedMessage } from "react-intl";
 import {
-  FormControl,
-  FormLabel,
-  Grid,
-  MenuItem,
-  Select,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
   Stack,
-  TextField,
+  Tooltip,
   Typography,
-} from '@wso2/oxygen-ui';
-import { useLLMProviders } from '../../../../contexts/llmProvider';
-import { useProxy } from '../../../../contexts/proxy';
-import * as llmProviderApis from '../../../../apis/llmProviderApis';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { useAppShell } from '../../../../contexts/AppShellContext';
-import { logger } from '../../../../utils/logger';
-import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
-import type { LLMProvider, ProxyApiKeySecurity } from '../../../../utils/types';
-import { FormattedMessage } from 'react-intl';
+} from "@wso2/oxygen-ui";
+import { PenBox } from "lucide-react";
+import { Plus } from "@wso2/oxygen-ui-icons-react";
+import AWSBedrockLogo from "../../../../assets/brands/AWSBedrock.webp";
+import AnthropicLogo from "../../../../assets/brands/Anthropic.jpg";
+import AzureLogo from "../../../../assets/brands/Azure.png";
+import GoogleGeminiLogo from "../../../../assets/brands/googlegemini.png";
+import GoogleVertexLogo from "../../../../assets/brands/GoogleVertex.png";
+import MistralAILogo from "../../../../assets/brands/mistralai.png";
+import OpenAILogo from "../../../../assets/brands/openAI.png";
+import { useLLMProviders } from "../../../../contexts/llmProvider";
+import { useProxy } from "../../../../contexts/proxy";
+import { useProviderTemplates } from "../../../../contexts/llmProvider/providerTemplate";
+import { useAppShell } from "../../../../contexts/AppShellContext";
+import type {
+  LLMProvider,
+  ProxyApiKeySecurity,
+  ProxyProviderEntry,
+} from "../../../../utils/types";
+import { resolveTemplateLogo } from "../../../../utils/providerTemplateDisplay";
+import {
+  canRemoveProvider,
+  effectiveProviderName,
+  proxyProviderEntries,
+  withPrimaryProvider,
+} from "../../../../utils/proxyProviders";
+import { resolveTransformer } from "../../../../utils/transformerResolution";
+import useTransformerPolicies from "../../../../hooks/useTransformerPolicies";
+import ProviderRow from "../../../../Components/Transformer/ProviderRow";
+import ProviderSettingsDrawer from "../../../../Components/Transformer/ProviderSettingsDrawer";
+import { useAppAuth } from "../../../../contexts/AppAuthContext";
+import { SCOPES } from "../../../../auth/permissions";
 
 /**
- * Provider tab – lets the user select / change the LLM Service Provider
- * linked to this proxy.
+ * Providers tab — the list of providers this proxy routes to, and what
+ * distinguishes them from each other.
+ *
+ * The rows carry only that: which provider, what translates for it, and the
+ * name a client uses to select it. Everything else about one provider is behind
+ * its own panel, so the list stays readable as it grows.
  */
-export default function LLMProxyProviderTab() {
+export type LLMProxyProviderTabProps = {
+  /** Takes the user to where the interface is actually editable. */
+  onChangeInDefinition?: () => void;
+};
+
+/** A stable key for a row, so React does not reuse one provider's row for another. */
+const rowKey = (entry: ProxyProviderEntry, index: number) =>
+  `${entry.id}-${index}`;
+
+const TEMPLATE_LOGO_MAP: Record<string, string> = {
+  openai: OpenAILogo,
+  anthropic: AnthropicLogo,
+  "azure-openai": AzureLogo,
+  "azureai-foundry": AzureLogo,
+  "aws-bedrock": AWSBedrockLogo,
+  awsbedrock: AWSBedrockLogo,
+  "google-vertex": GoogleVertexLogo,
+  gemini: GoogleGeminiLogo,
+  mistralai: MistralAILogo,
+  mistral: MistralAILogo,
+};
+
+export default function LLMProxyProviderTab({
+  onChangeInDefinition,
+}: LLMProxyProviderTabProps = {}) {
   const { proxy, setLocalProxy } = useProxy();
   const { providersResponse, isLoading: isProvidersLoading } =
     useLLMProviders();
+  const { templatesResponse } = useProviderTemplates();
   const { currentOrganization } = useAppShell();
-  const organizationId = currentOrganization?.uuid ?? '';
-  const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const organizationId = currentOrganization?.uuid ?? "";
+  const { policies: transformerPolicies, isLoaded: transformerPoliciesLoaded } =
+    useTransformerPolicies();
 
-  const [providerDetail, setProviderDetail] = useState<LLMProvider | null>(
-    null
-  );
-  const [apiKey, setApiKey] = useState('');
   const isReadOnlyProxy = Boolean(proxy?.readOnly);
-
   const providerOptions = providersResponse.list;
-  const selectedProxyProviderId =
-    typeof proxy?.provider === 'string'
-      ? proxy.provider
-      : proxy?.provider?.id ?? '';
+  // Every provider the proxy is attached to, primary first. The single legacy
+  // field is deliberately not read: it names only the primary, so a proxy with
+  // several providers would display as if it had one.
+  const providerEntries = proxyProviderEntries(proxy);
 
-  // Fetch single-provider detail (for vhost) whenever proxy.provider changes
-  const fetchProviderDetail = useCallback(
-    async (providerId: string) => {
-      if (!providerId || !organizationId) {
-        setProviderDetail(null);
-        return;
-      }
-      try {
-        const detail = await llmProviderApis.getLLMProvider(
-          providerId,
-          organizationId,
-          PLATFORM_API_BASE_URL
-        );
-        setProviderDetail(detail);
-      } catch (err) {
-        logger.error('Failed to fetch provider detail:', err);
-        setProviderDetail(null);
-      }
-    },
-    [organizationId]
-  );
+  /**
+   * Which attachment the settings panel is open on: an index into the list, or
+   * `add` while a new one is being described. Held as an index rather than an
+   * id so the panel stays on the same row if its provider is changed.
+   */
+  const [openIndex, setOpenIndex] = useState<number | "add" | null>(null);
 
-  useEffect(() => {
-    if (selectedProxyProviderId) {
-      fetchProviderDetail(selectedProxyProviderId);
-    } else {
-      setProviderDetail(null);
-    }
-  }, [selectedProxyProviderId, fetchProviderDetail]);
+  /**
+   * The interface named the way the catalogue names it.
+   *
+   * A proxy stores the handle, which is what routes; a reader recognises the
+   * display name. The handle is the fallback rather than the label, so an
+   * interface the catalogue no longer lists still says which one it is.
+   */
+  const inboundHandle =
+    proxy?.inboundTemplate ||
+    providerOptions.find((provider) => provider.id === providerEntries[0]?.id)
+      ?.template ||
+    "";
+  const interfaceLabel =
+    templatesResponse.list.find((template) => template.id === inboundHandle)
+      ?.displayName ||
+    inboundHandle ||
+    "—";
+
+  const interfaceLogo =
+    resolveTemplateLogo(inboundHandle, templatesResponse.list) ??
+    TEMPLATE_LOGO_MAP[inboundHandle.toLowerCase()];
+
+  const providerDisplayName = (entry: ProxyProviderEntry): string =>
+    providerOptions.find((provider) => provider.id === entry.id)?.displayName ??
+    entry.id;
+
+  /**
+   * What translates for this provider, decided in one place so this screen says
+   * the same thing as every other screen showing the same provider.
+   */
+  const resolutionFor = (entry: ProxyProviderEntry) => {
+    const provider = providerOptions.find((option) => option.id === entry.id);
+    return resolveTransformer({
+      // The interface in effect, not only the one stored. A proxy created
+      // before the setting existed carries none and runs on its primary
+      // provider's format; passing the empty value would make every provider
+      // on it — the primary included — read as needing a translator that
+      // cannot be matched.
+      inboundTemplate: inboundHandle,
+      providerTemplate: provider?.template,
+      chosenTransformer: entry.transformer,
+      // A saved proxy either names a translator or does not. Offering the one
+      // that would apply as though it already did is how a provider comes to
+      // read as translating when nothing on the proxy translates for it — and
+      // how a translator just removed appears to still be there.
+      hasNoTransformer: !entry.transformer,
+      policies: transformerPolicies,
+      policiesLoaded: transformerPoliciesLoaded,
+      interfaceLabel,
+      providerLabel: provider?.displayName,
+    });
+  };
 
   const mapProviderSecurityToProxySecurity = (provider: LLMProvider) => {
     const providerApiKey = provider.security?.apiKey;
     const apiKey: ProxyApiKeySecurity | undefined = providerApiKey
       ? {
           enabled: Boolean(providerApiKey.enabled),
-          key: providerApiKey.key ?? '',
-          in: providerApiKey.in ?? 'header',
+          key: providerApiKey.key ?? "",
+          in: providerApiKey.in ?? "header",
           valuePrefix: providerApiKey.valuePrefix,
         }
       : undefined;
-    return {
-      enabled: Boolean(provider.security?.enabled),
-      apiKey,
-    };
+    return { enabled: Boolean(provider.security?.enabled), apiKey };
   };
 
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    if (isReadOnlyProxy || !proxy || !providerDetail) return;
-    const providerId =
-      typeof proxy.provider === 'string' ? proxy.provider : proxy.provider?.id;
-    const trimmed = value.trim();
-    if (!providerId || !trimmed) return;
-    const apiKeyHeader = providerDetail.security?.apiKey?.key || 'X-API-Key';
+  const handleMakePrimary = (providerId: string) => {
+    if (isReadOnlyProxy) return;
     setLocalProxy((prev) =>
       prev
         ? {
             ...prev,
-            provider: {
-              id: providerId,
-              auth: {
-                type: 'api-key',
-                header: apiKeyHeader,
-                value: trimmed,
-              },
-            },
+            providers: withPrimaryProvider(prev.providers ?? [], providerId),
           }
-        : prev
+        : prev,
     );
   };
 
-  const handleProviderChange = async (event: { target: { value: string } }) => {
+  const handleRemoveProvider = (providerId: string) => {
     if (isReadOnlyProxy) return;
-    const newProviderId = event.target.value;
-    if (!proxy || newProviderId === selectedProxyProviderId) return;
-
-    // Fetch selected provider details and stage related proxy fields.
-    try {
-      let nextProviderDetail: LLMProvider | null = null;
-      if (newProviderId && organizationId) {
-        const detail = await llmProviderApis.getLLMProvider(
-          newProviderId,
-          organizationId,
-          PLATFORM_API_BASE_URL
-        );
-        nextProviderDetail = detail;
-        setProviderDetail(detail);
-      }
-      // Type, header and value move as one unit: an absent/'none' type carries no
-      // credential, so the header and value are cleared with it rather than being
-      // inherited from the provider and contradicting the type.
-      const nextAuthType = nextProviderDetail?.upstream?.main?.auth?.type || 'none';
-      const carriesCredential = nextAuthType !== 'none';
-      const nextAuth = {
-        type: nextAuthType,
-        header: carriesCredential
-          ? (nextProviderDetail?.upstream?.main?.auth?.header ?? '')
-          : '',
-        value: carriesCredential
-          ? (nextProviderDetail?.upstream?.main?.auth?.value ?? '')
-          : '',
-      };
-      setLocalProxy((prev) =>
-        prev
-          ? {
-              ...prev,
-              provider: newProviderId
-                ? {
-                    id: newProviderId,
-                    auth: nextAuth,
-                  }
-                : undefined,
-              vhost: nextProviderDetail?.vhost?.trim() || undefined,
-              openapi: nextProviderDetail?.openapi ?? '',
-              security: nextProviderDetail
-                ? mapProviderSecurityToProxySecurity(nextProviderDetail)
-                : prev.security,
-            }
-          : prev
+    setLocalProxy((prev) => {
+      if (!prev) return prev;
+      const remaining = (prev.providers ?? []).filter(
+        (entry) => entry.id !== providerId,
       );
-      setApiKey('');
-    } catch (err) {
-      logger.error('Failed to update provider:', err);
-      showSnackbar('Failed to load provider details.', 'error');
-    }
+      // A proxy always has a primary. If the one removed was it, the next
+      // attachment takes over rather than leaving the proxy without one.
+      const hasPrimary = remaining.some((entry) => entry.isPrimary);
+      return {
+        ...prev,
+        providers:
+          hasPrimary || remaining.length === 0
+            ? remaining
+            : withPrimaryProvider(remaining, remaining[0].id),
+      };
+    });
   };
 
+  /**
+   * Writes back what the settings panel produced.
+   *
+   * The proxy's own identity — its published specification, its host, what it
+   * requires of callers — comes from the primary provider, so changing which
+   * provider is primary changes those with it. Changing a provider that is not
+   * primary changes nothing beyond that attachment.
+   */
+  const handleSaveEntry = (
+    next: ProxyProviderEntry,
+    detail: LLMProvider | null,
+  ) => {
+    if (isReadOnlyProxy) return;
+    setLocalProxy((prev) => {
+      if (!prev) return prev;
+      const entries = prev.providers ?? [];
+      const isAdding = openIndex === "add";
+      // The panel was opened on a position in the *displayed* list, which is
+      // sorted primary-first; the stored list is not. Making the primary a
+      // different provider changes one order and not the other, so a position
+      // carried across would write an edit over a different provider —
+      // removing it and duplicating the one being edited. The entry itself is
+      // carried across instead, and found by identity.
+      const target = isAdding ? null : openEntry;
+      const targetIndex = target ? entries.indexOf(target) : -1;
+      const replaced = targetIndex >= 0 ? entries[targetIndex] : undefined;
+      if (!isAdding && targetIndex < 0) {
+        // The provider being edited is no longer in the list. Writing it back
+        // would resurrect something already removed.
+        return prev;
+      }
+      const providers = isAdding
+        ? [...entries, { ...next, isPrimary: entries.length === 0 }]
+        : entries.map((entry, index) => (index === targetIndex ? next : entry));
+      // Re-derived only when the primary is actually a different provider.
+      // Deriving it again from the same provider would rewrite fields nobody
+      // edited, and a panel closed without a change would read as an edit.
+      const primaryProviderChanged = isAdding
+        ? entries.length === 0
+        : Boolean(next.isPrimary) && replaced?.id !== next.id;
+      const inheritsProxyIdentity = Boolean(detail) && primaryProviderChanged;
+      return {
+        ...prev,
+        providers,
+        ...(inheritsProxyIdentity && detail
+          ? {
+              vhost: detail.vhost?.trim() || undefined,
+              openapi: detail.openapi ?? "",
+              security: mapProviderSecurityToProxySecurity(detail),
+            }
+          : {}),
+      };
+    });
+  };
+
+  const openEntry =
+    typeof openIndex === "number" ? (providerEntries[openIndex] ?? null) : null;
+
   return (
-    <Grid container spacing={2}>
-      <Grid size={{ xs: 12, md: 6 }}>
-        <Stack spacing={2}>
-          <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
+    <Stack spacing={2}>
+      {/*
+        The interface constrains this whole list — it decides what each provider
+        needs translating to — so it is stated here. It is not editable here: it
+        belongs to the definition, and a link goes there rather than a second
+        control that could disagree with the first.
+      */}
+      <Box
+        display="flex"
+        alignItems="center"
+        gap={1.5}
+        data-cyid="providers-inbound-interface"
+      >
+        <Typography variant="body2" color="text.secondary">
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.inbound.interface"
+            defaultMessage="Inbound interface"
+          />
+        </Typography>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={interfaceLabel}
+          sx={{ borderRadius: 0.5 }}
+          color="primary"
+          icon={
+            interfaceLogo ? (
+              <Avatar
+                src={interfaceLogo}
+                variant="circular"
+                sx={{
+                  width: 16,
+                  height: 16,
+                  "& img": { objectFit: "contain" },
+                }}
+              />
+            ) : undefined
+          }
+        />
+        <Tooltip
+          title={
             <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.llm.service.provider"
-              defaultMessage={'LLM Provider'}
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.edit.in.definition"
+              defaultMessage="Edit in Definition"
             />
-          </Typography>
+          }
+        >
+          <IconButton
+            size="small"
+            onClick={onChangeInDefinition}
+            aria-label="Edit inbound interface in definition"
+            data-cyid="change-in-definition"
+          >
+            <PenBox size={16} />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
-          <FormControl fullWidth>
-            <FormLabel>Provider</FormLabel>
-            <Select
-              value={selectedProxyProviderId}
-              onChange={handleProviderChange}
-              displayEmpty
-              disabled={isProvidersLoading || isReadOnlyProxy}
-            >
-              {isProvidersLoading ? (
-                <MenuItem value="" disabled>
-                  Loading providers…
-                </MenuItem>
-              ) : providerOptions.length === 0 ? (
-                <MenuItem value="" disabled>
-                  No providers available
-                </MenuItem>
-              ) : (
-                providerOptions.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>
-                    {p.displayName}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </FormControl>
+      <Divider />
 
-          {proxy?.provider && providerDetail?.security?.apiKey && (
-            <Stack spacing={2} sx={{ mt: 3 }}>
-              <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.api.key.configuration"
-                  defaultMessage={'API Key Configuration'}
-                />
-              </Typography>
+      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+        <FormattedMessage
+          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.providers.count"
+          defaultMessage="Providers {divider} {count}"
+          values={{
+            divider: (
+              <Box component="span" sx={{ opacity: 0.5 }}>
+                |
+              </Box>
+            ),
+            count: providerEntries.length,
+          }}
+        />
+      </Typography>
 
-              <Stack spacing={1.5}>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 3 }}>
-                    <Stack spacing={0.5}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.api.key.header"
-                          defaultMessage={'Header Name'}
-                        />
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontFamily:
-                            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                          bgcolor: 'action.hover',
-                          px: 1.5,
-                          py: 0.75,
-                          borderRadius: 1,
-                          fontSize: 13,
-                        }}
-                      >
-                        {providerDetail.security.apiKey.key || 'X-API-Key'}
-                      </Typography>
-                    </Stack>
-                  </Grid>
+      {/*
+        One row per attached provider. The name shown alongside the translator
+        is the one a client puts in a routing header to select it — the alias
+        when the provider has one, its id otherwise. Showing the id for an
+        aliased provider would show something that does not route.
+      */}
+      <Stack spacing={1} data-cyid="proxy-provider-list">
+        {providerEntries.map((entry, index) => (
+          <ProviderRow
+            key={rowKey(entry, index)}
+            variant="plain"
+            displayName={providerDisplayName(entry)}
+            requestHandle={effectiveProviderName(entry)}
+            isPrimary={Boolean(entry.isPrimary)}
+            showPrimaryToggle={providerEntries.length > 1}
+            resolution={resolutionFor(entry)}
+            onMakePrimary={() => handleMakePrimary(entry.id)}
+            onEdit={() => setOpenIndex(index)}
+            // Withheld on the last remaining row rather than offered and then
+            // refused: a proxy always has a provider.
+            onRemove={
+              canRemoveProvider(providerEntries)
+                ? () => handleRemoveProvider(entry.id)
+                : undefined
+            }
+            onConfigureTransformer={() => setOpenIndex(index)}
+            disabled={isReadOnlyProxy}
+            data-cyid={`provider-row-${index}`}
+          />
+        ))}
+      </Stack>
 
-                  <Grid size={{ xs: 12, sm: 9 }}>
-                    <FormControl fullWidth>
-                      <FormLabel>
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.api.key"
-                          defaultMessage={'API Key'}
-                        />
-                      </FormLabel>
-                      <TextField
-                        type="password"
-                        placeholder="Enter API key"
-                        value={apiKey}
-                        disabled={isReadOnlyProxy}
-                        onChange={(e) => handleApiKeyChange(e.target.value)}
-                        fullWidth
-                      />
-                    </FormControl>
-                  </Grid>
-                </Grid>
-              </Stack>
-            </Stack>
-          )}
-        </Stack>
-      </Grid>
-    </Grid>
+      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<Plus size={16} />}
+          disabled={isReadOnlyProxy || isProvidersLoading}
+          onClick={() => setOpenIndex("add")}
+          data-cyid="add-provider-button"
+        >
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.add.provider"
+            defaultMessage="Add Additional LLM Provider"
+          />
+        </Button>
+      </Box>
+
+      <ProviderSettingsDrawer
+        open={openIndex !== null}
+        onClose={() => setOpenIndex(null)}
+        entry={openEntry}
+        inboundTemplate={inboundHandle}
+        interfaceLabel={interfaceLabel}
+        providerOptions={providerOptions}
+        attachedProviderIds={providerEntries
+          .filter((_, index) => index !== openIndex)
+          .map((entry) => entry.id)}
+        policies={transformerPolicies}
+        policiesLoaded={transformerPoliciesLoaded}
+        organizationId={organizationId}
+        canGenerateApiKey={hasPermission(SCOPES.LLM_PROVIDER_API_KEY_CREATE)}
+        disabled={isReadOnlyProxy}
+        onSave={handleSaveEntry}
+      />
+    </Stack>
   );
 }

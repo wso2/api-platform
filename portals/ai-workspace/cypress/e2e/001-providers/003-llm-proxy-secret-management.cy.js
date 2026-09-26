@@ -110,6 +110,58 @@ function createProviderViaUI(providerName) {
   return cy.wait('@createProviderForProxy', { timeout: 20000 }).then((pi) => pi.response.body?.id ?? '');
 }
 
+/**
+ * The credential a proxy request carries, whichever shape describes it.
+ *
+ * A proxy names its providers as a list, with the credential on the entry
+ * marked primary; a client written before the list sent a single `provider`
+ * instead. Reading only one shape reports a proxy with no credential at all,
+ * which reads as the secret machinery having failed rather than as the reader
+ * looking in the wrong place.
+ *
+ * Whichever shape is present decides where to look, and the other is not
+ * consulted: a request that sends the list has said where its credential
+ * lives, and reading a legacy `provider` alongside it would let a list with no
+ * credential on its primary pass on the strength of a field the application no
+ * longer sends.
+ */
+function primaryAuthValue(body) {
+  const entries = body?.providers ?? [];
+  if (entries.length > 0) {
+    return entries.find((entry) => entry?.isPrimary)?.auth?.value ?? '';
+  }
+  return body?.provider?.auth?.value ?? '';
+}
+
+/**
+ * Opens the proxy's own provider for editing.
+ *
+ * A proxy serves a list of providers now, so the tab is a list of rows and the
+ * credential lives in the settings panel a row opens.
+ */
+function openPrimaryProviderSettings() {
+  cy.contains('[role="tab"]', 'Providers', { timeout: 15000 }).click();
+  cy.get('[data-cyid="provider-row-0-edit"]', { timeout: 15000 })
+    .should('be.visible')
+    .click();
+  cy.get('[data-cyid="provider-settings-api-key"] input', { timeout: 15000 }).should(
+    'be.visible'
+  );
+}
+
+/**
+ * Types a credential into the open settings panel and persists it.
+ *
+ * Two saves, because there are two decisions: the panel's applies the change to
+ * the provider it is editing, and the page's sends the whole list. Between them
+ * the proxy on the server is untouched.
+ */
+function replacePrimaryProviderKey(value, options) {
+  cy.get('[data-cyid="provider-settings-api-key"] input').type(value, options);
+  cy.get('[data-cyid="provider-settings-save"]').should('not.be.disabled').click();
+  cy.contains('button', /^Save$/).should('not.be.disabled').click();
+}
+
 function navigateToCreateProxy(projectName) {
   cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 }).should('be.visible').click();
   cy.contains('label', 'Projects', { timeout: 30000 }).parent().find('[role="combobox"]').click();
@@ -205,10 +257,13 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
 
     cy.wait('@createProxy').then((interception) => {
       expect(interception.response.statusCode).to.be.oneOf([200, 201]);
-      const authValue = interception.request.body?.provider?.auth?.value ?? '';
+      // Recorded before anything is asserted: a proxy this test made is the
+      // teardown's to remove whether or not the assertions below hold, and one
+      // left behind blocks the next test from rebuilding its own fixtures.
+      createdProxyId = interception.response.body?.id ?? '';
+      const authValue = primaryAuthValue(interception.request.body);
       expect(authValue, 'proxy payload has placeholder').to.include('{{ secret "');
       expect(authValue, 'proxy payload does NOT have plaintext key').not.to.include('sk-tc1-proxy-plaintext-key');
-      createdProxyId = interception.response.body?.id ?? '';
     });
 
     cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/[^/]+$/);
@@ -346,8 +401,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     });
 
     cy.location('pathname', { timeout: 30000 }).should('match', /\/proxies\/[^/]+$/);
-    cy.contains('[role="tab"]', 'Provider', { timeout: 15000 }).click();
-    cy.contains('label', 'API Key', { timeout: 15000 }).should('be.visible');
+    openPrimaryProviderSettings();
   });
 
   afterEach(() => {
@@ -402,11 +456,9 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     cy.intercept('POST', '**/secrets').as('createSecret');
     cy.intercept('PUT', /\/llm-proxies\/[^/?]+(\?|$)/).as('updateProxy');
 
-    // Typing the new key stages it into local proxy state.
-    cy.get('input[placeholder="Enter API key"]').type(UPDATED_KEY);
-
-    // Persist — page-level Save actually fires the update + secret rotation.
-    cy.contains('button', /^Save$/).should('not.be.disabled').click();
+    // Typing the new key stages it into local proxy state; the page's Save is
+    // what fires the update and the secret rotation.
+    replacePrimaryProviderKey(UPDATED_KEY);
 
     cy.wait('@createSecret', { timeout: 20000 }).then((si) => {
       expect(si.response.statusCode, 'POST /secrets status').to.be.oneOf([200, 201]);
@@ -415,7 +467,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
 
     cy.wait('@updateProxy', { timeout: 20000 }).then((pi) => {
       expect(pi.response.statusCode, 'PUT /llm-proxies status').to.be.oneOf([200, 201]);
-      const authValue = pi.request.body?.provider?.auth?.value ?? '';
+      const authValue = primaryAuthValue(pi.request.body);
       expect(authValue, 'PUT body has placeholder').to.include('{{ secret "');
       expect(authValue, 'PUT body does NOT have plaintext key').not.to.include(UPDATED_KEY);
     });
@@ -469,15 +521,13 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     });
     cy.intercept('PUT', /\/llm-proxies\/[^/?]+(\?|$)/).as('updateProxy');
 
-    cy.get('input[placeholder="Enter API key"]').type(
-      `{{ secret "${explicitHandle}" }}`,
-      { parseSpecialCharSequences: false }
-    );
-    cy.contains('button', /^Save$/).should('not.be.disabled').click();
+    replacePrimaryProviderKey(`{{ secret "${explicitHandle}" }}`, {
+      parseSpecialCharSequences: false,
+    });
 
     cy.wait('@updateProxy', { timeout: 20000 }).then((pi) => {
       expect(pi.response.statusCode, 'PUT /llm-proxies status').to.be.oneOf([200, 201]);
-      const authValue = pi.request.body?.provider?.auth?.value ?? '';
+      const authValue = primaryAuthValue(pi.request.body);
       expect(authValue, 'PUT body carries the typed placeholder').to.include('{{ secret "');
       cy.wrap(null).then(() => {
         expect(secretCallCount, 'POST /secrets not called').to.equal(0);
@@ -500,7 +550,8 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
       req.continue();
     });
 
-    cy.get('input[placeholder="Enter API key"]').type('sk-tc6-will-fail');
+    cy.get('[data-cyid="provider-settings-api-key"] input').type('sk-tc6-will-fail');
+    cy.get('[data-cyid="provider-settings-save"]').should('not.be.disabled').click();
 
     // Record notifications before the action: the snackbar auto-hides after
     // ~3.5s, so polling for the element afterwards is racy under load.
