@@ -10842,7 +10842,7 @@ components:
 
     ApiPortalListItem:
       title: API Portal list projection
-      description: Lightweight projection returned in collection responses (excludes the metadata blob but surfaces the metadata fields that list-view UIs need).
+      description: Lightweight projection returned in collection responses (excludes the metadata blob).
       type: object
       required:
         - id
@@ -10864,10 +10864,6 @@ components:
         url:
           type: string
           format: uri
-        loginEnvironment:
-          type: string
-          nullable: true
-          description: Data-plane environment backing consumer login, projected from the metadata blob so list-view UIs do not need a per-row fetch.
         createdAt:
           type: string
           format: date-time

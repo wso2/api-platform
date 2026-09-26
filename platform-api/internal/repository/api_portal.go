@@ -401,6 +401,37 @@ func (r *APIPortalRepo) ListStatusesByOrg(orgUUID string) (map[string]string, er
 	return out, rows.Err()
 }
 
+// ListLoginEnvironmentsByOrg returns handle -> loginEnvironment for every
+// portal in the org whose metadata blob carries the key. Plugin-facing (not
+// on the REST surface): keeps cloud-plugin-specific metadata fields out of
+// ApiPortalListItem while still letting the plugin hydrate list-view rows in
+// one round trip. Portals whose metadata does not include the key are
+// omitted from the map.
+func (r *APIPortalRepo) ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error) {
+	query := `SELECT handle, metadata FROM api_portals WHERE organization_uuid = ?`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var handle string
+		var metadataBytes []byte
+		if err := rows.Scan(&handle, &metadataBytes); err != nil {
+			return nil, err
+		}
+		metadata, err := unmarshalAPIPortalBlob(metadataBytes, "metadata")
+		if err != nil {
+			return nil, err
+		}
+		if v, ok := metadata["loginEnvironment"].(string); ok && v != "" {
+			out[handle] = v
+		}
+	}
+	return out, rows.Err()
+}
+
 // ListByStatus returns every portal across every org whose status matches.
 // Cross-org by design: the cloud plugin's provisioning poller does not have an
 // org list at startup and needs to re-track every pending portal to survive a

@@ -406,6 +406,11 @@ type APIPortalRepository interface {
 	// so the plugin's List projection can stamp status per row without an
 	// N+1 fanout.
 	ListStatusesByOrg(orgUUID string) (map[string]string, error)
+	// ListLoginEnvironmentsByOrg returns handle -> loginEnvironment for
+	// portals in the org whose metadata blob carries the key. Companion to
+	// ListStatusesByOrg so the plugin can hydrate list-view rows without
+	// exposing this cloud-plugin-specific field on ApiPortalListItem.
+	ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error)
 	// ListByStatus returns every portal across every org whose status matches.
 	// Cross-org by design: the cloud plugin's provisioning poller resumes
 	// tracking on startup without an org list.

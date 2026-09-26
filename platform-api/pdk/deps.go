@@ -97,6 +97,7 @@ type APIPortals interface {
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
 	GetAPIPortalStatus(handle, orgID string) (string, error)
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
+	ListAPIPortalLoginEnvironments(orgID string) (map[string]string, error)
 	ListAPIPortalStatuses(orgID string) (map[string]string, error)
 	ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
