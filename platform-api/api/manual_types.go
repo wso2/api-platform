@@ -22,7 +22,19 @@
 // These types must be kept here to avoid breaking service code that references them.
 package api
 
-import openapi_types "github.com/oapi-codegen/runtime/types"
+import (
+	"errors"
+
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+// ErrAPIPortalNotPending is returned by UpdateAPIPortalStatus when the target
+// portal exists but its current status is not `pending`. The DB-side state
+// guard rejects the write so that a poller goroutine racing another actor
+// (e.g. a rolling-deploy overlap) cannot overwrite a terminal status.
+// Callers observing this via errors.Is should drop the intended update
+// silently: another actor already reached a terminal state.
+var ErrAPIPortalNotPending = errors.New("api portal is not in pending state")
 
 // UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
 type UnpublishFromDevPortalRequest struct {

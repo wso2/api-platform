@@ -258,6 +258,9 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	if portal == nil {
 		return apperror.APIPortalNotFound.New()
 	}
+	// repository.ErrAPIPortalNotPending is a normal outcome for concurrent pollers
+	// racing the state machine (see repository docs); it flows through unchanged
+	// so plugin callers can detect it via errors.Is and drop their write silently.
 	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status); err != nil {
 		return err
 	}
