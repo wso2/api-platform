@@ -237,7 +237,7 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
       const body = pi.request.body;
       expect(body.proxyId, 'proxyId is omitted once fields are edited').to.be.undefined;
       expect(body.url, 'refetch validates the new, unsaved url').to.equal(newUrl);
-      expect(body.auth?.type, 'auth type').to.equal('header');
+      expect(body.auth?.type, 'auth type').to.equal('api-key');
       expect(body.auth?.header, 'auth header name').to.equal(newHeader);
       expect(body.auth?.value, 'auth value is the live plaintext just typed').to.equal(newValue);
     });
@@ -307,7 +307,7 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
   // ---------------------------------------------------------------------------
   // TC-101
   // ---------------------------------------------------------------------------
-  it('TC-101: saving a URL-only edit preserves the existing auth header/type without creating a new secret', () => {
+  it('TC-101: saving a URL-only edit preserves the existing auth header and normalizes its type without creating a new secret', () => {
     const newUrl = 'https://url-only-edit.mcp.example.com/mcp';
 
     let secretCallCount = 0;
@@ -333,7 +333,7 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
       // the never-populated (writeOnly) server.upstream.main.auth.value.
       expect(auth, 'auth block is preserved, not dropped, for a URL-only edit').to.exist;
       expect(auth?.header, 'existing auth header survives the save').to.equal(ORIGINAL_HEADER);
-      expect(auth?.type, 'existing auth type survives the save').to.equal('header');
+      expect(auth?.type, 'legacy auth type is normalized on save').to.equal('api-key');
       // value is writeOnly and never cached client-side, so it's correctly omitted —
       // the backend's preserveMCPUpstreamAuthValue restores the stored value.
       expect(auth?.value, 'value omitted, not stripped (backend preserves it)').to.be.undefined;

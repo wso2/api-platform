@@ -289,6 +289,8 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 		return
 	}
 	stored, ok := reinterpret[api.MCPProxyConfiguration](storedSource)
+	normalizeMCPProxyAuthType(incoming)
+	normalizeMCPProxyAuthType(&stored)
 	if !ok || stored.Spec.Upstream.Auth == nil ||
 		!hasAnyCredential(stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams) {
 		return
@@ -305,8 +307,19 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
+	// Only for the header/value form: a policyParams update must not pick up the
+	// stored header, which the validator rejects alongside policyParams.
+	if incoming.Spec.Upstream.Auth.Header == nil && incoming.Spec.Upstream.Auth.PolicyParams == nil {
+		incoming.Spec.Upstream.Auth.Header = stored.Spec.Upstream.Auth.Header
+	}
 	inheritSameTypeCredential(
 		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
 		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,
 	)
+}
+
+func normalizeMCPProxyAuthType(config *api.MCPProxyConfiguration) {
+	if config != nil && config.Spec.Upstream.Auth != nil && config.Spec.Upstream.Auth.Type == "header" {
+		config.Spec.Upstream.Auth.Type = api.MCPProxyConfigDataUpstreamAuthTypeApiKey
+	}
 }
