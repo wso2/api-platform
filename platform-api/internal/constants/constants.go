@@ -207,7 +207,20 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// API Portal status constants.
+// API Portal provisioning status constants.
+//
+// The OSS-native lifecycle only ever writes APIPortalStatusActive - portals
+// created via the standard REST path skip straight to active because OSS has
+// no intermediate provisioning workflow of its own.
+//
+// The cloud plugin's managed-portals feature owns the pending -> active/failed
+// state machine: Create writes pending, a poller flips to active on RRB.Ready
+// + external HEAD success, and to failed on timeout. Only the cloud plugin
+// consumes the pending and failed states.
+//
+// APIPortalStatusActive is the only value the API Publication feature's
+// ListActiveByOrg rollup considers eligible: pending or failed portals are
+// deliberately excluded from the publish picker.
 const (
 	APIPortalStatusPending = "pending"
 	APIPortalStatusActive  = "active"

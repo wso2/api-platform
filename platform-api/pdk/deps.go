@@ -85,11 +85,23 @@ type Projects interface {
 
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
 // orgID is always the request-context org (GO-AUTH-005), never caller input.
+//
+// The status-lifecycle methods (CreateAPIPortalWithStatus, GetAPIPortalStatus,
+// ListAPIPortalStatuses, UpdateAPIPortalStatus, ListAPIPortalsByStatus) are
+// consumed by cloud-plugin callers that own the pending -> active/failed
+// provisioning workflow; OSS-native REST handlers do not use them and always
+// route through the plain CreateAPIPortal path, which writes status=active.
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
+	CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error)
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
+	GetAPIPortalStatus(handle, orgID string) (string, error)
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
+	ListAPIPortalLoginEnvironments(orgID string) (map[string]string, error)
+	ListAPIPortalStatuses(orgID string) (map[string]string, error)
+	ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
 }
 

@@ -33,11 +33,12 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ExternalLink, PanelTop, Pencil, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
-import { useManagedPortalList } from './hooks';
+import { useManagedPortalList, useOrgEnvironments } from './hooks';
 import type { ManagedPortal } from './types';
 
 export type ManagedPortalsListProps = {
@@ -68,6 +69,13 @@ function shortRelative(iso: string | null | undefined): string {
 
 export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsListProps) {
   const { portals, isLoading, error, remove } = useManagedPortalList();
+  // Env count drives whether the "Login environment" column shows; a single-env
+  // org has no meaningful choice to display and the column becomes noise.
+  // When the env list errors we can't tell how many envs the org has, so we
+  // fall back to SHOWING the column - hiding it would swallow real per-portal
+  // env info the user might need (esp. when debugging why the picker failed).
+  const { environments, error: envsError } = useOrgEnvironments();
+  const showEnvColumn = envsError ? true : environments.length > 1;
 
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -133,9 +141,12 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
           </Grid>
         ) : portals.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 8 }}>
-              <Stack spacing={2} alignItems="center" justifyContent="center" sx={{ textAlign: 'center', maxWidth: 480 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+              <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
                 <PanelTop size={64} color="var(--mui-palette-action-disabled)" />
+                <Typography variant="body1" color="text.secondary">
+                  No available portals
+                </Typography>
                 <Button variant="contained" onClick={onCreate} startIcon={<Plus size={20} />}>
                   Add Portal
                 </Button>
@@ -170,7 +181,13 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                       <TableRow>
                         <TableCell>Name</TableCell>
                         <TableCell>Description</TableCell>
-                        <TableCell>Login environment</TableCell>
+                        {showEnvColumn ? (
+                          <TableCell>
+                            <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow>
+                              <span>Login environment</span>
+                            </Tooltip>
+                          </TableCell>
+                        ) : null}
                         <TableCell>Updated</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
@@ -178,15 +195,18 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                     <TableBody>
                       {filteredPortals.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={showEnvColumn ? 5 : 4}>
                             <Typography variant="body2" color="text.secondary">
-                              No portals match your search.
+                              No portals found.
                             </Typography>
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredPortals.map((portal) => (
-                          <TableRow key={portal.id} hover>
+                        filteredPortals.map((portal) => {
+                          const status = portal.status ?? 'active';
+                          const canVisit = status === 'active' && Boolean(portal.url);
+                          return (
+                          <TableRow key={portal.id}>
                             <TableCell sx={{ minWidth: 220 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Avatar
@@ -201,12 +221,57 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                                   {portal.name.trim().slice(0, 2).toUpperCase()}
                                 </Avatar>
                                 <Stack spacing={0.25}>
-                                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                    {portal.name}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                                    {portal.handle}
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                      {portal.name}
+                                    </Typography>
+                                    {/* State + visit affordance live INSIDE the name cell, matching gateway's */}
+                                    {/* "Default" chip placement. Active shows the external-link icon as the visit */}
+                                    {/* affordance (clickable name pattern) - no separate labeled button. Pending */}
+                                    {/* shows a spinner chip. Failed shows a red chip. Missing status ≡ active so */}
+                                    {/* pre-status backends still expose the link. */}
+                                    {canVisit ? (
+                                      <Tooltip title="Visit portal (opens in a new tab)" arrow>
+                                        <IconButton
+                                          size="small"
+                                          aria-label={`Visit ${portal.name}`}
+                                          component="a"
+                                          href={portal.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          sx={{ p: 0.25 }}
+                                        >
+                                          <ExternalLink size={16} />
+                                        </IconButton>
+                                      </Tooltip>
+                                    ) : status === 'pending' ? (
+                                      <Tooltip title="Portal is being set up. Usually takes under a minute." arrow>
+                                        <Chip
+                                          icon={<CircularProgress size={10} color="inherit" />}
+                                          label="Pending"
+                                          size="small"
+                                          color="warning"
+                                          variant="outlined"
+                                          sx={{ height: 20, fontSize: '0.7rem' }}
+                                        />
+                                      </Tooltip>
+                                    ) : status === 'failed' ? (
+                                      <Tooltip title="Portal did not become reachable within 10 minutes. Delete and try again." arrow>
+                                        <Chip
+                                          label="Failed"
+                                          size="small"
+                                          color="error"
+                                          variant="outlined"
+                                          sx={{ height: 20, fontSize: '0.7rem' }}
+                                        />
+                                      </Tooltip>
+                                    ) : null}
+                                  </Box>
+                                  <Tooltip title="URL-friendly identifier. Set on create and cannot be changed later." arrow placement="bottom-start">
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                      {portal.handle}
+                                    </Typography>
+                                  </Tooltip>
                                 </Stack>
                               </Box>
                             </TableCell>
@@ -219,51 +284,64 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
                                 {portal.description || '-'}
                               </Typography>
                             </TableCell>
-                            <TableCell>
-                              {portal.loginEnvironment ? (
-                                <Chip label={portal.loginEnvironment} size="small" variant="outlined" />
-                              ) : (
-                                <Typography variant="body2" color="text.secondary">
-                                  -
-                                </Typography>
-                              )}
-                            </TableCell>
+                            {showEnvColumn ? (
+                              <TableCell>
+                                {portal.loginEnvironment ? (
+                                  <Chip label={portal.loginEnvironment} size="small" variant="outlined" />
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    -
+                                  </Typography>
+                                )}
+                              </TableCell>
+                            ) : null}
                             <TableCell>
                               <Typography variant="body2" color="text.secondary">
                                 {shortRelative(portal.updatedAt) || '-'}
                               </Typography>
                             </TableCell>
                             <TableCell align="right">
-                              <IconButton
-                                size="small"
-                                aria-label={`Edit ${portal.name}`}
-                                onClick={() => onEdit(portal)}
+                              {/* Edit is only meaningful when the portal is settled and healthy: */}
+                              {/* pending → the metadata isn't reconciled yet; failed → the portal never */}
+                              {/* provisioned so a rename won't recover it, only delete + recreate. Delete */}
+                              {/* stays enabled in every state so a stuck row is always recoverable. */}
+                              {/* Tooltip wraps a span for disabled state because MUI drops tooltips on */}
+                              {/* disabled buttons; the span keeps hover events reachable. */}
+                              <Tooltip
+                                title={
+                                  status === 'pending'
+                                    ? 'Editing is available once provisioning completes.'
+                                    : status === 'failed'
+                                      ? 'Editing is disabled while the portal is in a failed state. Delete and re-create.'
+                                      : 'Edit portal'
+                                }
+                                arrow
                               >
-                                <Pencil size={16} />
-                              </IconButton>
-                              {portal.url && (
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    aria-label={`Edit ${portal.name}`}
+                                    onClick={() => onEdit(portal)}
+                                    disabled={status !== 'active'}
+                                  >
+                                    <Pencil size={16} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title="Delete portal" arrow>
                                 <IconButton
                                   size="small"
-                                  aria-label={`Visit ${portal.name}`}
-                                  component="a"
-                                  href={portal.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                  color="error"
+                                  aria-label={`Delete ${portal.name}`}
+                                  onClick={() => setDeleteTarget(portal)}
                                 >
-                                  <ExternalLink size={16} />
+                                  <Trash2 size={16} />
                                 </IconButton>
-                              )}
-                              <IconButton
-                                size="small"
-                                color="error"
-                                aria-label={`Delete ${portal.name}`}
-                                onClick={() => setDeleteTarget(portal)}
-                              >
-                                <Trash2 size={16} />
-                              </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
-                        ))
+                        );
+                        })
                       )}
                     </TableBody>
                   </Table>
