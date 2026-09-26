@@ -89,6 +89,7 @@ import {
   type SwaggerHubApi,
 } from '../utils/swaggerHub';
 import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
+import { isApiError } from '@/api/core/errors';
 import { isValidUrl } from '../../utils/developEdit';
 import {
   collectSpecWarnings,
@@ -306,14 +307,13 @@ const messages = defineMessages({
     id: 'api.create.fromContract.spec.unsupportedSource',
     defaultMessage: 'Importing from this source is not available yet.',
   },
-  specUnreachable: {
-    id: 'api.create.fromContract.spec.unreachable',
-    defaultMessage:
-      'That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests.',
+  specTooLarge: {
+    id: 'api.create.fromContract.spec.tooLarge',
+    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
   },
-  specUnreadable: {
-    id: 'api.create.fromContract.spec.unreadable',
-    defaultMessage: 'That contract could not be read as YAML or JSON.',
+  specValidationFailed: {
+    id: 'api.create.fromContract.spec.validationFailed',
+    defaultMessage: 'Failed to validate the OpenAPI specification. Please try again.',
   },
   swaggerHubApiLabel: {
     id: 'api.create.fromContract.swaggerHub.apiLabel',
@@ -439,8 +439,9 @@ const messages = defineMessages({
   },
   specInvalidByBackend: {
     id: 'api.create.fromContract.spec.invalidByBackend',
-    defaultMessage: 'The specification is not a valid OpenAPI document:',
-    description: 'Heading above the list of backend validation errors.',
+    defaultMessage: 'Validation failed:',
+    description:
+      'Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid',
   },
 });
 
@@ -845,13 +846,17 @@ export type FetchedContract = {
 
 /** Why a fetch produced nothing to preview. */
 export type ContractFetchFailure =
-  | 'unreachable'
-  | 'unreadable'
   /** The source has no fetching behind it yet, GitHub, SwaggerHub. */
-  | 'unsupportedSource';
+  | 'unsupportedSource'
+  /** The spec exceeded the backend's configured maximum size (413 for a file upload, or the OPENAPI_SPEC_URL_TOO_LARGE code for a URL fetch). */
+  | 'tooLarge'
+  /** Generic "we couldn't validate" fallback — the validator crashed, the network dropped, we got an unrecognized 4xx, or the spec source produced no bytes to preview. */
+  | 'validationFailed';
+
+type PreviewFetchFailure = ContractFetchFailure | 'unreachable' | 'unreadable';
 
 export type ContractFetchResult =
-  { contract: FetchedContract; status: 'fetched' } | { status: ContractFetchFailure };
+  { contract: FetchedContract; status: 'fetched' } | { status: PreviewFetchFailure };
 
 /**
  * The file's text. `Blob.text()` where it exists, `FileReader` otherwise —
@@ -1037,6 +1042,21 @@ const isSameContractSource = (
   }
 };
 
+/**
+ * Substring the backend uses in the client-facing message when the OpenAPI
+ * spec it fetched from the caller-supplied URL exceeds the configured cap.
+ */
+const SPEC_TOO_LARGE_MESSAGE_MARKER = 'exceeds the maximum allowed size';
+
+const classifyValidateFailure = (err: unknown): ContractFetchFailure => {
+  if (!isApiError(err)) return 'validationFailed';
+  if (err.status === 413) return 'tooLarge';
+  if (typeof err.message === 'string' && err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)) {
+    return 'tooLarge';
+  }
+  return 'validationFailed';
+};
+
 /** API types this step offers, in the order the map declares them. */
 const CONTRACT_API_TYPES: ApiType[] = Object.keys(CONTRACT_SOURCES_BY_API_TYPE)
   .map((key) => API_TYPES.find((apiType) => apiType.key === key))
@@ -1110,10 +1130,11 @@ export const ContractSourceForm = ({
    * whole verdict rather than a code, because an invalid definition carries the
    * list of what is wrong with it.
    */
-  const [fetchError, setFetchError] = useState<Exclude<
-    ContractFetchResult,
-    { status: 'fetched' }
-  > | null>(null);
+  // Only the panel-level failure statuses (unsupportedSource, tooLarge) land
+  // here — the wider PreviewFetchFailure alphabet stays internal to
+  // fetchContractForPreview; its unreachable/unreadable outcomes are folded
+  // into specValidationFailed at the call site.
+  const [fetchError, setFetchError] = useState<{ status: ContractFetchFailure } | null>(null);
   const [fetching, setFetching] = useState(false);
   const [backendValidationErrors, setBackendValidationErrors] = useState<
     OpenAPIValidationError[] | null
@@ -1428,10 +1449,6 @@ export const ContractSourceForm = ({
    * Reads whatever was last asked for. An effect rather than an `await` in the
    * handler that asked: a request the form has already moved past is dropped
    * on arrival instead of landing in the preview behind the current one.
-   *
-   * After the frontend parse succeeds the spec is sent to the backend
-   * validator (libopenapi). Backend errors are shown as a separate Alert;
-   * the contract is only handed to the preview if both passes succeed.
    */
   useEffect(() => {
     if (request === null) {
@@ -1443,53 +1460,106 @@ export const ContractSourceForm = ({
     setBackendValidationErrors(null);
     setFetching(true);
 
+    // Fold every non-specific failure into a single generic error.
+    const showValidationFailed = () => {
+      setFetching(false);
+      setFetched(null);
+      setFetchError({ status: 'validationFailed' });
+    };
+
     void (async () => {
-      const result = await fetchContractForPreview(request);
-      if (!current) return;
-
-      if (result.status !== 'fetched') {
-        setFetching(false);
-        setFetchError(result);
-        setFetched(null);
-        return;
-      }
-
-      // Backend validation — send the original text so format, comments and
-      // anchors are preserved in the validated bytes. A network failure is
-      // non-fatal: we proceed so a temporary outage doesn't block the create
-      // flow entirely.
+      const isRest = request.apiTypeKey === 'rest';
       try {
-        // Extend to other api types by selecting a validator for the
-        // detected dialect if required
-        const validation =
-          request.apiTypeKey === 'rest'
-            ? await validateSpec.mutateAsync(result.contract.rawText)
-            : { isValid: true, errors: [], warnings: [] };
-        if (!current) return;
+        let rawText: string;
 
-        if (!validation.isValid) {
-          setFetching(false);
-          setBackendValidationErrors(validation.errors);
-          setFetched(null);
-          return;
+        if (isRest && request.sourceKey === 'url') {
+          if (request.url === undefined || request.url === '') {
+            showValidationFailed();
+            return;
+          }
+          const validation = await validateSpec.mutateAsync({ url: request.url });
+          if (!current) return;
+          if (!validation.isValid) {
+            setFetching(false);
+            setBackendValidationErrors(validation.errors);
+            setFetched(null);
+            return;
+          }
+          rawText = validation.content ?? '';
+          if (rawText === '') {
+            showValidationFailed();
+            return;
+          }
+        } else if (isRest && request.sourceKey === 'file') {
+          if (request.file === undefined) {
+            showValidationFailed();
+            return;
+          }
+          const validation = await validateSpec.mutateAsync({ file: request.file });
+          if (!current) return;
+          if (!validation.isValid) {
+            setFetching(false);
+            setBackendValidationErrors(validation.errors);
+            setFetched(null);
+            return;
+          }
+          rawText = validation.content ?? '';
+          if (rawText === '') {
+            showValidationFailed();
+            return;
+          }
+        } else {
+          // GitHub / SwaggerHub / non-REST — client-side fetch and, for REST
+          // dialects, send the fetched text through the same backend validator.
+          const result = await fetchContractForPreview(request);
+          if (!current) return;
+          if (result.status !== 'fetched') {
+            if (result.status === 'unsupportedSource') {
+              setFetching(false);
+              setFetched(null);
+              setFetchError({ status: 'unsupportedSource' });
+              return;
+            }
+            showValidationFailed();
+            return;
+          }
+          if (isRest) {
+            const validation = await validateSpec.mutateAsync({ text: result.contract.rawText });
+            if (!current) return;
+            if (!validation.isValid) {
+              setFetching(false);
+              setBackendValidationErrors(validation.errors);
+              setFetched(null);
+              return;
+            }
+          }
+          rawText = result.contract.rawText;
         }
 
+        const spec = parseContractText(rawText);
+        if (spec === null) {
+          showValidationFailed();
+          return;
+        }
+        const accepted = acceptSpec(rawText, spec, request);
+        // acceptSpec always returns 'fetched'; the narrow keeps TS happy.
+        if (accepted.status !== 'fetched') {
+          showValidationFailed();
+          return;
+        }
         // FE warning check: missingTitle, missingVersion, noServers.
         // Structural errors (noPaths, noOperations, badPathKeys) and external
         // $refs are handled by BE.
-        const warnings: SpecIssue[] = collectSpecWarnings(result.contract.spec);
-
+        const warnings: SpecIssue[] = collectSpecWarnings(accepted.contract.spec);
         if (!current) return;
         setFetching(false);
-        setFetched({ ...result.contract, warnings });
-        return;
-      } catch {
-        // Network/auth error — don't block the user; validation is best-effort here.
+        setFetched({ ...accepted.contract, warnings });
+      } catch (err) {
+        if (!current) return;
+        setFetching(false);
+        setFetched(null);
+        setFetchError({ status: classifyValidateFailure(err) });
       }
-
-      if (!current) return;
-      setFetching(false);
-      setFetched(result.contract);
     })();
 
     return () => {
@@ -1559,12 +1629,12 @@ export const ContractSourceForm = ({
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
     switch (fetchError?.status) {
-      case 'unreachable':
-        return <FormattedMessage {...messages.specUnreachable} />;
-      case 'unreadable':
-        return <FormattedMessage {...messages.specUnreadable} />;
       case 'unsupportedSource':
         return <FormattedMessage {...messages.specUnsupportedSource} />;
+      case 'tooLarge':
+        return <FormattedMessage {...messages.specTooLarge} />;
+      case 'validationFailed':
+        return <FormattedMessage {...messages.specValidationFailed} />;
       default:
         return null;
     }

@@ -423,8 +423,12 @@ paths:
       summary: Validate an OpenAPI specification
       description: |
         Validates an OpenAPI 3.x or Swagger 2.x specification without creating
-        or modifying any resource. Returns a structured result indicating whether
-        the spec is valid and, if not, the list of validation errors.
+        or modifying any resource. The spec may be supplied either as a
+        multipart file upload (`file`) or as a URL (`url`) that the backend
+        fetches server-side. Exactly one of `file` or `url` is required.
+        Returns a structured result indicating whether the spec is valid and,
+        if not, the list of validation errors. When the `url` variant is used
+        and the spec is valid, the fetched raw content is returned.
       operationId: ValidateOpenAPISpec
       security:
         - OAuth2Security:
@@ -460,9 +464,12 @@ paths:
     post:
       summary: Create a REST API from an OpenAPI specification
       description: |
-        Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
-        as a multipart file upload The backend extracts operations from the spec,
-        creates the API, and persists the raw spec as the API definition document.
+        Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x
+        specification. The spec may be supplied either as a multipart file
+        upload (`file`) or as a URL (`url`) that the backend fetches
+        server-side. Exactly one of `file` or `url` is required. The backend
+        extracts operations from the spec, creates the API, and persists the
+        raw spec as the API definition document.
       operationId: ImportOpenAPI
       security:
         - OAuth2Security:
@@ -7887,8 +7894,11 @@ components:
 
     ImportOpenAPIRequest:
       type: object
+      description: |
+        Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+        `file` or `url` must be provided; the backend rejects requests that
+        supply both or neither.
       required:
-        - file
         - displayName
         - version
         - context
@@ -7898,7 +7908,17 @@ components:
         file:
           type: string
           format: binary
-          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+        url:
+          type: string
+          format: uri
+          description: |
+            HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+            from. The fetch is SSRF-hardened server-side: only http/https,
+            dial-time IP allowlist, response-size cap, bounded timeout, and
+            bounded redirects — see the shared http client's SSRF policy.
+            Mutually exclusive with `file`.
+          example: https://petstore3.swagger.io/api/v3/openapi.json
         id:
           type: string
           description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
@@ -7939,13 +7959,23 @@ components:
 
     OpenAPISpecFileRequest:
       type: object
-      required:
-        - file
+      description: |
+        Multipart form for `POST /rest-apis/validate-openapi` and
+        `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+        must be provided; the backend rejects requests that supply both or
+        neither.
       properties:
         file:
           type: string
           format: binary
-          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+          description: OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+        url:
+          type: string
+          format: uri
+          description: |
+            HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+            from. Mutually exclusive with `file`.
+          example: https://petstore3.swagger.io/api/v3/openapi.json
 
     ValidateOpenAPIResponse:
       type: object
@@ -7963,6 +7993,11 @@ components:
           description: Validation errors; empty when isValid is true
         info:
           $ref: '#/components/schemas/OpenAPISpecInfo'
+        content:
+          type: string
+          description: |
+            The exact bytes the validator ran against, echoed back on any
+            successful validation.
 
     OpenAPIValidationError:
       type: object
