@@ -13,6 +13,7 @@
 
 import yaml from 'js-yaml';
 import { PolicyDefinition, ParameterSchema } from './types';
+import { POLICY_UI_KEY, extractPolicyUi } from './policyUi';
 
 /**
  * Raw policy definition as parsed from YAML
@@ -23,6 +24,7 @@ interface RawPolicyYaml {
   description: string;
   parameters?: ParameterSchema;
   systemParameters?: ParameterSchema;
+  [POLICY_UI_KEY]?: unknown;
 }
 
 /**
@@ -51,6 +53,7 @@ export function parsePolicyYaml(yamlContent: string): PolicyDefinition {
     description: parsed.description || '',
     parameters,
     systemParameters: parsed.systemParameters,
+    ui: extractPolicyUi(parsed[POLICY_UI_KEY]),
   };
 }
 

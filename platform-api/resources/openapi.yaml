@@ -7562,7 +7562,8 @@ components:
           type: object
           description: |
             The full policy schema as declared in the policy's policy-definition.yaml.
-            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Contains `parameters` and `systemParameters` JSON Schema documents, and
+            `x-wso2-policy-ui` when the policy declares an optional form for the AI Workspace.
           additionalProperties: true
         createdAt:
           type: string
@@ -7599,7 +7600,8 @@ components:
           type: object
           description: |
             The full policy schema as declared in the policy's policy-definition.yaml.
-            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Contains `parameters` and `systemParameters` JSON Schema documents, and
+            `x-wso2-policy-ui` when the policy declares an optional form for the AI Workspace.
             Only present for custom policies.
           additionalProperties: true
 

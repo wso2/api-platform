@@ -49,7 +49,10 @@ type GatewayPolicyInput struct {
 	Description      *string                `json:"description,omitempty"`
 	Parameters       map[string]interface{} `json:"parameters,omitempty"`
 	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
-	ManagedBy        string                 `json:"managedBy"`
+	// UI is the policy's optional x-wso2-policy-ui block (a form schema and UI
+	// schema the AI Workspace uses to render a richer params form).
+	UI        map[string]interface{} `json:"x-wso2-policy-ui,omitempty"`
+	ManagedBy string                 `json:"managedBy"`
 }
 
 // GatewayPolicyDefinition is the cleaned policy data stored in memory and returned to APIM.
@@ -264,6 +267,9 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 			}
 			if p.SystemParameters != nil {
 				policyDef["systemParameters"] = p.SystemParameters
+			}
+			if p.UI != nil {
+				policyDef["x-wso2-policy-ui"] = p.UI
 			}
 			entry.PolicyDefinition = policyDef
 		}

@@ -26,5 +26,8 @@ type PolicyDefinition struct {
 	Description      *string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	Parameters       *map[string]interface{} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	SystemParameters *map[string]interface{} `json:"systemParameters,omitempty" yaml:"systemParameters,omitempty"`
-	ManagedBy        string                  `json:"managedBy" yaml:"managedBy,omitempty"`
+	// UI is the optional x-wso2-policy-ui block: a form schema and UI schema the
+	// AI Workspace uses to render a richer params form. The gateway never reads it.
+	UI        map[string]interface{} `json:"x-wso2-policy-ui,omitempty" yaml:"x-wso2-policy-ui,omitempty"`
+	ManagedBy string                 `json:"managedBy" yaml:"managedBy,omitempty"`
 }
