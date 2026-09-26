@@ -63,6 +63,14 @@ export interface OrgEnvironment {
   name: string;
   /** Optional label; the UI falls back to `name` when empty. */
   displayName?: string;
+  /**
+   * True when openchoreo marks this env as a production tier (spec.isProduction).
+   * Drives the Add-form's default selection: the picker preselects the first
+   * production env so the common case (bind portal to prod) is one click. Falls
+   * back to the first env in the list when no env is flagged. Missing on
+   * backends that don't expose it — treated as false.
+   */
+  isProduction?: boolean;
 }
 
 /** Data seam this feature depends on; satisfied by real (BFF) or mock (tests) implementations. */
