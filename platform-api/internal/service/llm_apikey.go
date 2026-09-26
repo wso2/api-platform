@@ -246,6 +246,10 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 			return nil, fmt.Errorf("failed to generate API key name: %w", err)
 		}
 	}
+	if err := utils.ValidateHandle(name); err != nil {
+		s.slogger.Error("Invalid API key id for LLM provider API key creation", "providerId", providerID)
+		return nil, fmt.Errorf("invalid API key id: %w", err)
+	}
 
 	displayName := req.DisplayName
 	if displayName == "" {

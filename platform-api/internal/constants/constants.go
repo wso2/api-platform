@@ -119,6 +119,13 @@ const (
 	AssociationTypeGateway = "gateway"
 )
 
+// Handle length constants — shared bounds for URL-safe handles/ids (projects, APIs,
+// organizations, applications, gateways, API keys, etc.)
+const (
+	HandleMinLength = 3
+	HandleMaxLength = 40
+)
+
 // API Key allowed targets constants
 const APIKeyAllowedTargetsAll = "ALL"
 
