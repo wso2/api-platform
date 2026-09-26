@@ -360,6 +360,9 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
 	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
+	}
 
 	published, replaced, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
@@ -394,6 +397,11 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft2, nil, nil); err != nil {
 		t.Fatalf("[%s] second SaveDraftDetails failed: %v", it.driver, err)
 	}
+	// mergeDraftIntoAnchor replaces the anchor's content wholesale, so the
+	// draft needs its own definition again too.
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] second SaveDraftDefinition failed: %v", it.driver, err)
+	}
 	republished, replaced, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
 		t.Fatalf("[%s] Publish (republish) failed: %v", it.driver, err)
@@ -424,6 +432,9 @@ func TestPublicationPublish_CreateRepublishNoOp(t *testing.T) {
 	// Publish again with no intervening edit — a normal no-op refresh, not an error.
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft2, nil, nil); err != nil {
 		t.Fatalf("[%s] no-op resave failed: %v", it.driver, err)
+	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] no-op definition resave failed: %v", it.driver, err)
 	}
 	noOp, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
@@ -464,6 +475,9 @@ func TestPublicationUnpublish_DemotesWhenNoDraft(t *testing.T) {
 	draft := &model.Publication{DisplayName: "Listing", Version: "1.0", AgentVisibility: "VISIBLE"}
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
 	}
 	published, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
@@ -514,6 +528,9 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 	draft := &model.Publication{DisplayName: "Live Listing", Version: "1.0", AgentVisibility: "VISIBLE"}
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
 	}
 	published, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
@@ -598,6 +615,9 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
 	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
+	}
 	published, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor")
 	if err != nil {
 		t.Fatalf("[%s] Publish failed: %v", it.driver, err)
@@ -661,6 +681,9 @@ func TestPublicationUnpublish_PortalConflictReasonSurfaced(t *testing.T) {
 	draft := &model.Publication{DisplayName: "Listing", Version: "1.0", AgentVisibility: "VISIBLE"}
 	if _, err := svc.SaveDraftDetails(apiType, apiHandle, portalHandle, g.org, "actor", draft, nil, nil); err != nil {
 		t.Fatalf("[%s] SaveDraftDetails failed: %v", it.driver, err)
+	}
+	if err := svc.SaveDraftDefinition(apiType, apiHandle, portalHandle, g.org, "actor", "application/json", []byte(minimalValidDefinition)); err != nil {
+		t.Fatalf("[%s] SaveDraftDefinition failed: %v", it.driver, err)
 	}
 	if _, _, err := svc.Publish(context.Background(), apiType, apiHandle, portalHandle, g.org, "actor"); err != nil {
 		t.Fatalf("[%s] Publish failed: %v", it.driver, err)

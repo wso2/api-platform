@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   REST_API_TYPE,
@@ -35,15 +35,16 @@ import {
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
-import { isApiError } from '@/api/core/errors';
+import { isApiError, isErrorCode } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useNotifications } from '@/components/Notifications';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
+import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { SpecificationTab } from './components/SpecificationTab';
 import {
@@ -61,7 +62,7 @@ const MIN_PAGE_HEIGHT = 420;
 const messages = defineMessages({
   back: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back',
-    defaultMessage: 'Back to Available Portals',
+    defaultMessage: 'Back to API portals',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title',
@@ -79,11 +80,11 @@ const messages = defineMessages({
   },
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage',
-    defaultMessage: 'Unable to load this portal’s draft and publication state',
+    defaultMessage: 'Unable to load the publish details.',
   },
   definitionNotAnObject: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.definitionNotAnObject',
-    defaultMessage: 'The definition must be an object, not a list or a single value.',
+    defaultMessage: 'The definition must be a JSON or YAML object.',
   },
   tabDetails: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails',
@@ -105,9 +106,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
     defaultMessage: 'Landing Page',
   },
+  draftMissing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
+    defaultMessage: 'Unable to save the draft. Your changes are still on this page. Try again.',
+  },
   draftSaved: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved',
     defaultMessage: 'Draft saved.',
+  },
+  draftSavedDetailsOnly: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly',
+    defaultMessage: 'Details saved. The specification has an error and was not saved.',
   },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
@@ -147,7 +156,7 @@ const messages = defineMessages({
   deprecateConfirmMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecateConfirmMessage',
     defaultMessage:
-      'This marks the API "{name}" as deprecated on {portalName}. It stays visible there.',
+      'The API "{name}" will be marked as deprecated on {portalName}. It will remain listed.',
   },
 });
 
@@ -197,9 +206,12 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
  * Only "API Details" and "Specification" are editable; the other tabs render
- * disabled. Save Draft writes `.../draft` and `.../draft/definition`; Publish
- * writes both and then calls `.../publish`, because the server's publish takes
- * no body and only publishes what the draft already holds.
+ * disabled. Save Draft and Publish each enforce their own rule: Save Draft
+ * always writes `.../draft`, and writes `.../draft/definition` too only when
+ * the specification text parses, reporting honestly when it couldn't; Publish
+ * requires both saves to succeed before it calls `.../publish`, since the
+ * server's publish takes no body and only publishes what the draft already
+ * holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -207,6 +219,7 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
 export function PortalPublishPage() {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const intl = useIntl();
   // The page fills the visible area and only its middle scrolls, so switching tabs
   // or opening the editor never moves the header or the action buttons.
@@ -249,7 +262,7 @@ export function PortalPublishPage() {
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
   const saveDraftMutation = useSaveApiPublicationDraft();
-  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition();
+  const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
   const publishMutation = usePublishRestApiToApiPortal();
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
   const deprecateMutation = useDeprecateRestApiOnApiPortal();
@@ -319,7 +332,12 @@ export function PortalPublishPage() {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (unexpectedError || !apiQuery.data) {
-    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+    return (
+      <PublicationLoadError
+        error={unexpectedError}
+        fallbackMessage={intl.formatMessage(messages.errorMessage)}
+      />
+    );
   }
 
   const api = apiQuery.data;
@@ -340,46 +358,78 @@ export function PortalPublishPage() {
   const touchAllFields = () =>
     setTouched({ displayName: true, version: true, productionUrl: true, sandboxUrl: true });
 
-  /** Parses the definition buffer, surfacing a malformed one on its own tab rather than failing silently. */
+  /**
+   * Reads the definition buffer into the object the server expects. A draft
+   * is a work in progress — whether it's a genuinely valid, complete OpenAPI
+   * document is checked only at publish, not here — so this only blocks the
+   * save when the text isn't even parseable JSON/YAML, since that can't be
+   * sent as a definition at all.
+   */
   const parseDefinition = (): DraftDefinitionDocument | undefined => {
-    if (definitionText.trim() === '') {
-      setDefinitionParseError(undefined);
-      return {};
-    }
+    if (definitionText.trim() === '') return {};
     const result = parseSpecText(definitionText, definitionFormat);
-    if (result.status === 'parsed') {
-      setDefinitionParseError(undefined);
-      return result.spec;
+    if (result.status !== 'parsed') {
+      setDefinitionParseError(
+        result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+      );
+      setTab('specification');
+      return undefined;
     }
-    setDefinitionParseError(
-      result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
-    );
-    setTab('specification');
-    return undefined;
+    setDefinitionParseError(undefined);
+    return result.spec;
   };
 
-  /** Details, then definition — a content PUT 404s if the draft doesn't exist yet. */
-  const saveDraft = async (): Promise<boolean> => {
+  /**
+   * The definition save 404s when the draft is gone (published from another
+   * tab or user in the moment since the details were saved). The server's own
+   * text doesn't tell the user what to do, so that case gets a clearer one; the
+   * mutation opts out of the global snackbar, so every other failure is reported
+   * here with the server's message.
+   */
+  const reportingMissingDraft = async <T,>(call: Promise<T>): Promise<T> => {
+    try {
+      return await call;
+    } catch (error) {
+      if (isApiError(error)) {
+        const missing = error.code === 'DRAFT_NOT_FOUND';
+        notify(missing ? intl.formatMessage(messages.draftMissing) : error.message, 'error');
+      }
+      throw error;
+    }
+  };
+
+  /** Saves the API Details fields alone. False, untouched, when the form itself is invalid. */
+  const saveDetails = async (): Promise<boolean> => {
     if (formInvalid) {
       touchAllFields();
       setTab('details');
       return false;
     }
-    const definitionDocument = parseDefinition();
-    if (!definitionDocument) return false;
-
     await saveDraftMutation.mutateAsync({
       apiPortalId,
       apiType: REST_API_TYPE,
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
-    await saveDefinitionMutation.mutateAsync({
-      apiPortalId,
-      apiType: REST_API_TYPE,
-      apiId: apiHandler,
-      body: definitionDocument,
-    });
+    return true;
+  };
+
+  /**
+   * Saves the Specification definition alone. False, untouched, when the
+   * buffer doesn't parse — a content PUT would 404 anyway if the draft
+   * doesn't exist yet, which `reportingMissingDraft` turns into a clear message.
+   */
+  const saveDefinition = async (): Promise<boolean> => {
+    const definitionDocument = parseDefinition();
+    if (!definitionDocument) return false;
+    await reportingMissingDraft(
+      saveDefinitionMutation.mutateAsync({
+        apiPortalId,
+        apiType: REST_API_TYPE,
+        apiId: apiHandler,
+        body: definitionDocument,
+      }),
+    );
     return true;
   };
 
@@ -397,16 +447,36 @@ export function PortalPublishPage() {
 
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (await saveDraft()) {
-        notify(intl.formatMessage(messages.draftSaved), 'success');
-      }
+      if (!(await saveDetails())) return;
+      const definitionSaved = await saveDefinition();
+      notify(
+        intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
+        definitionSaved ? 'success' : 'warning',
+      );
     });
+
+  // Each terminal action leaves this one portal's page behind for the listing,
+  // where the card now reflects the new status — there's nothing left to do
+  // on this page once the action the user came here for has gone through.
+  const backToPortalsList = () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler));
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (!(await saveDraft())) return;
-      await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      if (!(await saveDetails())) return;
+      // Publish requires a saved, parseable definition — never proceed on a
+      // partial save, which would publish whatever definition was already
+      // there rather than what the user is looking at.
+      if (!(await saveDefinition())) return;
+      try {
+        await publishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
+      } catch (error) {
+        // The message itself is already reported by the global snackbar;
+        // this only sends the user to where they'd fix it.
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED')) setTab('specification');
+        throw error;
+      }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
+      backToPortalsList();
     });
 
   const confirmUnpublish = () => {
@@ -414,6 +484,7 @@ export function PortalPublishPage() {
     return runAction('unpublishing', async () => {
       await unpublishMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
+      backToPortalsList();
     });
   };
 
@@ -422,6 +493,7 @@ export function PortalPublishPage() {
     return runAction('deprecating', async () => {
       await deprecateMutation.mutateAsync({ apiPortalId, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
+      backToPortalsList();
     });
   };
 
