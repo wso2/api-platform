@@ -39,7 +39,7 @@ function normalizeLegacyAuthType(
   upstream: MCPServerUpstream | undefined
 ): MCPServerUpstream | undefined {
   const auth = upstream?.main.auth;
-  if (auth?.type !== 'header') return upstream;
+  if (!upstream || auth?.type !== 'header') return upstream;
 
   return {
     ...upstream,

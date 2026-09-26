@@ -307,7 +307,9 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
-	if incoming.Spec.Upstream.Auth.Header == nil {
+	// Only for the header/value form: a policyParams update must not pick up the
+	// stored header, which the validator rejects alongside policyParams.
+	if incoming.Spec.Upstream.Auth.Header == nil && incoming.Spec.Upstream.Auth.PolicyParams == nil {
 		incoming.Spec.Upstream.Auth.Header = stored.Spec.Upstream.Auth.Header
 	}
 	inheritSameTypeCredential(

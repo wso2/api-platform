@@ -436,6 +436,17 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		assert.Equal(t, "X-Api-Key", *incoming.Spec.Upstream.Auth.Header)
 	})
 
+	t.Run("switching to policyParams does not inherit the stored header", func(t *testing.T) {
+		incoming := stored()
+		incoming.Spec.Upstream.Auth.Header = nil
+		incoming.Spec.Upstream.Auth.Value = nil
+		params := map[string]interface{}{"request": map[string]interface{}{"headers": []interface{}{}}}
+		incoming.Spec.Upstream.Auth.PolicyParams = &params
+		inheritMCPProxyCredential(&incoming, stored())
+		assert.Nil(t, incoming.Spec.Upstream.Auth.Header)
+		assert.Nil(t, incoming.Spec.Upstream.Auth.Value)
+	})
+
 	t.Run("api-key stored credential is inherited by legacy header", func(t *testing.T) {
 		incoming := stored()
 		incoming.Spec.Upstream.Auth.Type = "header"
