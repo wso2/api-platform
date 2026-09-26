@@ -270,11 +270,13 @@ type LLMProxyConfig struct {
 
 // LLMProxyAdditionalProvider is an additional LLM provider attached to a proxy
 // as a selectable upstream. Policies route to it by the `As` name (which
-// defaults to `ID` when empty). Provider upstream auth is taken from the
-// referenced LlmProvider's own configuration.
+// defaults to `ID` when empty). Auth is the credential the proxy sends on the
+// loopback hop into this provider, which re-enters the provider's own inbound
+// security — the counterpart of LLMProxyConfig.UpstreamAuth for the primary.
 type LLMProxyAdditionalProvider struct {
 	ID          string               `json:"id" db:"-"`
 	As          string               `json:"as,omitempty" db:"-"`
+	Auth        *UpstreamAuth        `json:"auth,omitempty" db:"-"`
 	Transformer *LLMProxyTransformer `json:"transformer,omitempty" db:"-"`
 }
 

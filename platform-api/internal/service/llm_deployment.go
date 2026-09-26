@@ -2279,6 +2279,11 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 				ID: ap.ID,
 				As: ap.As,
 			}
+			// Loopback credential for this provider's inbound security. Entries without
+			// auth emit none, leaving their artifact unchanged.
+			if ap.Auth != nil {
+				entry.Auth = mapModelAuthToAPI(ap.Auth)
+			}
 			if ap.Transformer != nil {
 				entry.Transformer = &api.LLMProxyTransformer{
 					Type:    ap.Transformer.Type,

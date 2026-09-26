@@ -1000,6 +1000,29 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 		}
 	}
 
+	// Each additional provider has its own loopback credential, for the same reason.
+	for _, ap := range runtime.Spec.AdditionalProviders {
+		entry := llmProxyAdditionalProvider{
+			ID: strings.TrimSpace(ap.ID),
+			As: strings.TrimSpace(ap.As),
+		}
+		if ap.Auth != nil {
+			entry.Auth = &llmUpstreamAuth{
+				Type:   ap.Auth.Type,
+				Header: ap.Auth.Header,
+				Value:  ap.Auth.Value,
+			}
+		}
+		if ap.Transformer != nil {
+			entry.Transformer = &llmProxyTransformer{
+				Type:    strings.TrimSpace(ap.Transformer.Type),
+				Version: strings.TrimSpace(ap.Transformer.Version),
+				Params:  ap.Transformer.Params,
+			}
+		}
+		payload.AdditionalProviders = append(payload.AdditionalProviders, entry)
+	}
+
 	// api-key-auth is expressed as the security block; all other global policies
 	// pass through with their policy-specific params.
 	payload.Security = buildSecurityFromGlobalPolicies(runtime.Spec.GlobalPolicies)
@@ -1082,15 +1105,16 @@ type aiWorkspaceRuntime struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
 	Spec struct {
-		DisplayName   string                `yaml:"displayName"`
-		Version       string                `yaml:"version"`
-		Context       string                `yaml:"context"`
-		Description   string                `yaml:"description"`
-		Template      string                `yaml:"template"`
-		SpecVersion   string                `yaml:"specVersion"`
-		Provider      runtimeProvider       `yaml:"provider"`
-		Upstream      *runtimeUpstream      `yaml:"upstream"`
-		AccessControl *runtimeAccessControl `yaml:"accessControl"`
+		DisplayName         string                      `yaml:"displayName"`
+		Version             string                      `yaml:"version"`
+		Context             string                      `yaml:"context"`
+		Description         string                      `yaml:"description"`
+		Template            string                      `yaml:"template"`
+		SpecVersion         string                      `yaml:"specVersion"`
+		Provider            runtimeProvider             `yaml:"provider"`
+		AdditionalProviders []runtimeAdditionalProvider `yaml:"additionalProviders"`
+		Upstream            *runtimeUpstream            `yaml:"upstream"`
+		AccessControl       *runtimeAccessControl       `yaml:"accessControl"`
 		// Policies is the legacy flat list still used by the LLM provider and MCP
 		// proxy builders. LLM proxies use the split globalPolicies /
 		// operationPolicies below.
@@ -1109,6 +1133,21 @@ type runtimeProviderAuth struct {
 	Type   string `yaml:"type"`
 	Header string `yaml:"header"`
 	Value  string `yaml:"value"`
+}
+
+// runtimeAdditionalProvider is an extra provider an LLM proxy can route to by
+// its `as` name (defaults to id).
+type runtimeAdditionalProvider struct {
+	ID          string               `yaml:"id"`
+	As          string               `yaml:"as"`
+	Auth        *runtimeProviderAuth `yaml:"auth"`
+	Transformer *runtimeTransformer  `yaml:"transformer"`
+}
+
+type runtimeTransformer struct {
+	Type    string                 `yaml:"type"`
+	Version string                 `yaml:"version"`
+	Params  map[string]interface{} `yaml:"params"`
 }
 
 type runtimeUpstream struct {
@@ -1144,18 +1183,19 @@ type runtimePolicyPath struct {
 // --- createLLMProxy request body (subset; see openapi.yaml LLMProxy schema) ---
 
 type llmProxyPayload struct {
-	ID                 string              `json:"id"`
-	DisplayName        string              `json:"displayName"`
-	Version            string              `json:"version"`
-	Context            string              `json:"context,omitempty"`
-	Description        string              `json:"description"`
-	Provider           llmProxyProvider    `json:"provider"`
-	OpenAPI            string              `json:"openapi"`
-	ReadOnly           bool                `json:"readOnly"`
-	Security           *securityConfig     `json:"security,omitempty"`
-	GlobalPolicies     []llmGlobalPolicy   `json:"globalPolicies,omitempty"`
-	OperationPolicies  []llmPolicy         `json:"operationPolicies,omitempty"`
-	AssociatedGateways []associatedGateway `json:"associatedGateways,omitempty"`
+	ID                  string                       `json:"id"`
+	DisplayName         string                       `json:"displayName"`
+	Version             string                       `json:"version"`
+	Context             string                       `json:"context,omitempty"`
+	Description         string                       `json:"description"`
+	Provider            llmProxyProvider             `json:"provider"`
+	AdditionalProviders []llmProxyAdditionalProvider `json:"additionalProviders,omitempty"`
+	OpenAPI             string                       `json:"openapi"`
+	ReadOnly            bool                         `json:"readOnly"`
+	Security            *securityConfig              `json:"security,omitempty"`
+	GlobalPolicies      []llmGlobalPolicy            `json:"globalPolicies,omitempty"`
+	OperationPolicies   []llmPolicy                  `json:"operationPolicies,omitempty"`
+	AssociatedGateways  []associatedGateway          `json:"associatedGateways,omitempty"`
 }
 
 // llmGlobalPolicy is an api-level policy applied across all operations. Unlike
@@ -1176,6 +1216,19 @@ type llmUpstreamAuth struct {
 	Type   string `json:"type,omitempty"`
 	Header string `json:"header,omitempty"`
 	Value  string `json:"value,omitempty"`
+}
+
+type llmProxyAdditionalProvider struct {
+	ID          string               `json:"id"`
+	As          string               `json:"as,omitempty"`
+	Auth        *llmUpstreamAuth     `json:"auth,omitempty"`
+	Transformer *llmProxyTransformer `json:"transformer,omitempty"`
+}
+
+type llmProxyTransformer struct {
+	Type    string                 `json:"type"`
+	Version string                 `json:"version"`
+	Params  map[string]interface{} `json:"params,omitempty"`
 }
 
 type llmPolicy struct {

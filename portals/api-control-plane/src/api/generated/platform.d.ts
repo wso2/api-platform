@@ -5027,7 +5027,7 @@ export interface components {
             id: string;
             auth?: components["schemas"]["UpstreamAuth"];
         };
-        /** @description Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). */
+        /** @description Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). `auth` is the credential the proxy sends when it calls this provider over the internal loopback, so it must be accepted by the provider's own inbound security (for api-key, a key issued for this provider). Its value is write-only and omitted from responses. */
         LLMProxyAdditionalProvider: {
             /**
              * @description Unique id of a deployed llm provider
@@ -5039,6 +5039,7 @@ export interface components {
              * @example anthropic-upstream
              */
             as?: string;
+            auth?: components["schemas"]["UpstreamAuth"];
             transformer?: components["schemas"]["LLMProxyTransformer"];
         };
         /** @description Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream. */
