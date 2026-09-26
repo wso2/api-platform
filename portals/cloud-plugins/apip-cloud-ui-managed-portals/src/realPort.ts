@@ -128,7 +128,7 @@ function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
 }
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
-type WireEnvironment = { name?: string; displayName?: string };
+type WireEnvironment = { name?: string; displayName?: string; isProduction?: boolean };
 type WireEnvironmentList = { count?: number; list?: WireEnvironment[] };
 
 function fromWire(w: WirePortal): ManagedPortal {
@@ -185,7 +185,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       const body = await request<WireEnvironmentList>(base, orgHandle, 'GET', '/environments');
       return (body.list ?? [])
         .filter((e): e is WireEnvironment & { name: string } => typeof e.name === 'string' && e.name.length > 0)
-        .map((e) => ({ name: e.name, displayName: e.displayName }));
+        .map((e) => ({ name: e.name, displayName: e.displayName, isProduction: e.isProduction }));
     },
   };
 }
