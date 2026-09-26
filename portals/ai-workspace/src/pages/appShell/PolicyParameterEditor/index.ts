@@ -12,7 +12,10 @@
  */
 
 export { default as PolicyParameterEditor } from './PolicyParameterEditor';
+export { default as PolicyEditor } from './PolicyEditor';
 export { default as SchemaTree } from './SchemaTree';
 export * from './types';
 export * from './schemaUtils';
 export * from './yamlParser';
+export * from './policyUi';
+export * from './policyDefinitionSource';

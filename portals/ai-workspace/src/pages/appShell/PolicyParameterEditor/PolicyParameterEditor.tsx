@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Alert, Box, Button, Typography } from '@wso2/oxygen-ui';
+import { Box } from '@wso2/oxygen-ui';
 import {
   ParameterSchema,
   ParameterValues,
@@ -30,108 +30,10 @@ import {
   isTemplateExpression,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
+import { PolicyEditorActions, PolicyEditorHeader } from './PolicyEditorChrome';
 import { useStyles } from './styles';
 
-// Max lines to show before truncating description
-const MAX_DESCRIPTION_LINES = 5;
-
-/**
- * Format description text:
- * - Collapse single newlines within paragraphs to spaces
- * - Preserve paragraph breaks (double newlines)
- * - Preserve bullet points (lines starting with - or *)
- */
-function formatDescriptionText(text: string): string {
-  if (!text) return '';
-
-  const trimmed = text.trim();
-
-  // Split by double newlines (paragraph breaks)
-  const paragraphs = trimmed.split(/\n\n+/);
-
-  return paragraphs
-    .map((paragraph) => {
-      // Check if paragraph contains bullet points
-      const lines = paragraph.split('\n');
-      const hasBullets = lines.some((line) => /^\s*[-*•]/.test(line));
-
-      if (hasBullets) {
-        // Keep bullet point formatting, but collapse non-bullet continuation lines
-        const result: string[] = [];
-        let currentLine = '';
-
-        for (const line of lines) {
-          if (/^\s*[-*•]/.test(line)) {
-            // This is a bullet point line
-            if (currentLine) {
-              result.push(currentLine);
-            }
-            currentLine = line;
-          } else if (line.trim() === '') {
-            // Empty line
-            if (currentLine) {
-              result.push(currentLine);
-              currentLine = '';
-            }
-          } else {
-            // Continuation of previous line
-            currentLine = currentLine ? `${currentLine} ${line.trim()}` : line;
-          }
-        }
-        if (currentLine) {
-          result.push(currentLine);
-        }
-        return result.join('\n');
-      } else {
-        // Regular paragraph - collapse all newlines to spaces
-        return paragraph.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-    })
-    .join('\n\n');
-}
-
-/**
- * Component to render header description with show more/less
- */
-const TruncatedHeaderDescription: React.FC<{
-  description: string;
-  classes: ReturnType<typeof useStyles>;
-}> = ({ description, classes }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const formatted = formatDescriptionText(description);
-  const lineCount = formatted.split('\n').length;
-  const needsTruncation = lineCount > MAX_DESCRIPTION_LINES;
-
-  if (!needsTruncation) {
-    return <Typography sx={{ fontSize: '0.8rem' }}>{formatted}</Typography>;
-  }
-
-  return (
-    <>
-      <Typography
-        variant="body1"
-        component="div"
-        sx={
-          isExpanded
-            ? classes.headerDescription
-            : classes.headerDescriptionTruncated
-        }
-      >
-        {formatted}
-      </Typography>
-      <Box
-        component="span"
-        sx={classes.showMoreButton}
-        onClick={() => setIsExpanded(!isExpanded)}
-        style={{ cursor: 'pointer' }}
-      >
-        {isExpanded ? 'Show less' : 'Show more'}
-      </Box>
-    </>
-  );
-};
-
-interface PolicyParameterEditorProps {
+export interface PolicyParameterEditorProps {
   policyDefinition: PolicyDefinition;
   policyDisplayName?: string;
   existingValues?: ParameterValues;
@@ -549,43 +451,6 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
     return validateLevelOneRequiredFields(parameters, values);
   }, [parameters, values]);
 
-  // Compute anyOf alert message
-  const anyOfMessage = useMemo(() => {
-    // Case 1: Parent-level anyOf (e.g. anyOf: [{ required: [request] }, { required: [response] }])
-    if (parameters.anyOf && parameters.anyOf.length > 0) {
-      const requiredItems = parameters.anyOf
-        .flatMap((entry) => entry.required || [])
-        .filter((v, i, a) => a.indexOf(v) === i);
-      if (requiredItems.length > 0) {
-        return `At least one of ${requiredItems.join(
-          ', '
-        )} must be configured.`;
-      }
-    }
-
-    // Case 2: Property-level anyOf (anyOf inside child properties like request/response)
-    // Collect property names that have anyOf constraints
-    if (parameters.properties) {
-      const propsWithAnyOf = Object.keys(parameters.properties).filter(
-        (key) => {
-          const propSchema = parameters.properties![key];
-          return (
-            propSchema.type === 'object' &&
-            propSchema.anyOf &&
-            propSchema.anyOf.length > 0
-          );
-        }
-      );
-      if (propsWithAnyOf.length > 0) {
-        return `At least one of ${propsWithAnyOf.join(
-          ', '
-        )} must be configured.`;
-      }
-    }
-
-    return null;
-  }, [parameters]);
-
   useEffect(() => {
     if (existingValues) {
       setValues(initializeDefaultValues(parameters, existingValues));
@@ -675,23 +540,11 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
 
   return (
     <Box sx={classes.root}>
-      {/* Header */}
-      <Box sx={classes.header}>
-        <Typography variant="h5">{displayName}</Typography>
-        {description && (
-          <TruncatedHeaderDescription
-            description={description}
-            classes={classes}
-          />
-        )}
-      </Box>
-
-      {/* AnyOf Info Alert */}
-      {anyOfMessage && (
-        <Alert severity="info" sx={{ mb: 1 }}>
-          {anyOfMessage}
-        </Alert>
-      )}
+      <PolicyEditorHeader
+        title={displayName}
+        description={description}
+        parameters={parameters}
+      />
 
       {/* Schema Tree */}
       <SchemaTree
@@ -704,29 +557,14 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
         disabled={disabled || readOnly}
       />
 
-      {/* Action Buttons */}
-      <Box sx={classes.buttonContainer}>
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={onCancel}
-          data-testid="policy-param-cancel"
-          disabled={disabled}
-        >
-          {readOnly ? 'Close' : 'Cancel'}
-        </Button>
-        {!readOnly && (
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSubmit}
-            data-testid="policy-param-submit"
-            disabled={disabled || !isLevelOneValid}
-          >
-            {existingValues ? 'Update' : 'Add'}
-          </Button>
-        )}
-      </Box>
+      <PolicyEditorActions
+        onCancel={onCancel}
+        onSubmit={handleSubmit}
+        isEditing={!!existingValues}
+        disabled={disabled}
+        readOnly={readOnly}
+        submitDisabled={!isLevelOneValid}
+      />
     </Box>
   );
 };
