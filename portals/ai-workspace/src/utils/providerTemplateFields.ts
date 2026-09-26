@@ -146,3 +146,23 @@ export function fromTokenConfig(
   });
   return result;
 }
+
+/**
+ * Builds an upstream credential exactly as the gateway must send it: the scheme the
+ * template declares, followed by the key.
+ *
+ * An upstream credential carries its own scheme. The gateway copies `upstream.auth.value`
+ * into the request header verbatim and there is no separate prefix field on upstream auth,
+ * so the scheme has to be part of the stored value or the provider's upstream rejects the
+ * request.
+ *
+ * A key that already carries the scheme is left alone, which means the separator too: a key
+ * whose own characters merely begin with the scheme text ("Bearerabc" under "Bearer ") is a
+ * key, not a prefixed credential, and still needs the scheme put in front of it.
+ */
+export function withUpstreamValuePrefix(valuePrefix: string | undefined, key: string): string {
+  const prefix = (valuePrefix ?? '').trimEnd();
+  const alreadyPrefixed = key.startsWith(prefix) && /^\s/.test(key.slice(prefix.length));
+  if (!prefix || alreadyPrefixed) return key;
+  return `${prefix} ${key}`;
+}

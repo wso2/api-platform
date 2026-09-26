@@ -36,7 +36,7 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import type { ProviderTemplate } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
-import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
+import { isValidHttpUrl, withUpstreamValuePrefix } from '../../../../utils/providerTemplateFields';
 
 const MASKED_CREDENTIAL_VALUE = '******';
 
@@ -251,12 +251,7 @@ export default function ServiceProviderConnectionTab() {
     if (isCredentialMasked) return;
     const nextValue = value.trim();
     if (nextValue === MASKED_CREDENTIAL_VALUE) return;
-    const prefix = valuePrefix.trimEnd();
-    const fullValue = prefix
-      ? nextValue.startsWith(prefix)
-        ? nextValue
-        : `${prefix} ${nextValue}`
-      : nextValue;
+    const fullValue = withUpstreamValuePrefix(valuePrefix, nextValue);
     if (fullValue === (provider.upstream?.main?.auth?.value || '')) return;
     try {
       const {
