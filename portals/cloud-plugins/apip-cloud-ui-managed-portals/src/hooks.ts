@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { usePortalFeature } from './portContext';
 import type {
@@ -90,15 +90,26 @@ export function useManagedPortalList() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Monotonic request token shared by refetch and silentRefetch so an older
+  // in-flight port.list() cannot overwrite a newer one when responses arrive
+  // out of order (e.g. background poll fires just as a Create triggers a
+  // refetch, and the poll's response resolves first). Only the response whose
+  // seq is still the latest gets to commit into state.
+  const requestSeq = useRef(0);
+
   const refetch = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setIsLoading(true);
     setError(null);
     try {
-      setPortals(await port.list());
+      const result = await port.list();
+      if (seq !== requestSeq.current) return;
+      setPortals(result);
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(err instanceof Error ? err : new Error('Failed to load portals'));
     } finally {
-      setIsLoading(false);
+      if (seq === requestSeq.current) setIsLoading(false);
     }
   }, [port]);
 
@@ -107,8 +118,11 @@ export function useManagedPortalList() {
   // swallowed too - a transient BFF hiccup during background polling should
   // not tear down the whole list view; the next tick recovers.
   const silentRefetch = useCallback(async () => {
+    const seq = ++requestSeq.current;
     try {
-      setPortals(await port.list());
+      const result = await port.list();
+      if (seq !== requestSeq.current) return;
+      setPortals(result);
     } catch {
       // ignore
     }
