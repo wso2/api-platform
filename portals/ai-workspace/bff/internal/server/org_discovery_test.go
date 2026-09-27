@@ -157,9 +157,13 @@ func TestResolveOrgHandlePrecedenceAndFallbacks(t *testing.T) {
 		}
 	})
 
-	t.Run("a user in no org yet exchanges without one", func(t *testing.T) {
+	// A configured default deliberately does NOT apply here: the lookup succeeded and
+	// said this user belongs to no organization, so exchanging them into default_org
+	// would name an org they are not a member of. default_org is the fallback for a
+	// lookup that FAILED (above), where nothing is known either way.
+	t.Run("a user in no org yet exchanges without one, even with a default configured", func(t *testing.T) {
 		stub := &orgAPIStub{status: http.StatusOK, body: `{"count":0,"list":[]}`}
-		s := discoveryServer(t, newOrgServer(t, stub).URL, "")
+		s := discoveryServer(t, newOrgServer(t, stub).URL, "configured-default")
 		if got := s.resolveOrgHandle(context.Background(), "login-token", ""); got != "" {
 			t.Errorf("org handle = %q, want empty", got)
 		}

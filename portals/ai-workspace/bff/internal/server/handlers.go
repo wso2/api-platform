@@ -216,13 +216,15 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		// Showing them a sign-in failure they cannot act on (their next click is
 		// "Try again", which starts a whole new handshake) would be wrong; send
 		// them into the app instead.
-		if jwt, ok := s.tokenFromCookie(r); ok {
-			if _, live, _ := s.store.Get(r.Context(), jwt); live {
-				slog.Info("oidc callback could not be matched, but the browser holds a live "+
-					"session — treating it as a revisited callback URL rather than a failed login",
-					"err", err, "tx_cookie_present", txID != "")
-				http.Redirect(w, r, s.sanitizeReturn(""), http.StatusFound)
-				return
+		if isRevisitedCallback(err) {
+			if jwt, ok := s.tokenFromCookie(r); ok {
+				if _, live, _ := s.store.Get(r.Context(), jwt); live {
+					slog.Info("oidc callback could not be matched, but the browser holds a live "+
+						"session — treating it as a revisited callback URL rather than a failed login",
+						"err", err, "tx_cookie_present", txID != "")
+					http.Redirect(w, r, s.sanitizeReturn(""), http.StatusFound)
+					return
+				}
 			}
 		}
 		// tx_cookie_present is the field that separates "the browser never sent the
@@ -886,4 +888,23 @@ func (s *Server) handleSwitchOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"scopes": res.Scopes})
+}
+
+// isRevisitedCallback reports whether a failed Callback looks like the callback URL
+// being opened again rather than a login that actually failed. Only two reasons
+// qualify: the tx cookie is cleared on every callback and the transaction consumed on
+// first use, so a refresh, a back button or a restored tab arrives with one missing
+// and the other unknown.
+//
+// Everything else — a state parameter that differs, a code the IDP refused, an
+// id_token whose nonce does not match — stays on the login-failure path even for a
+// browser that holds a live session. Those are the checks that would catch an
+// injected or replayed callback, and quietly redirecting into the app on one would
+// mean a real failure never being seen.
+func isRevisitedCallback(err error) bool {
+	var mismatch auth.ErrStateMismatch
+	if !errors.As(err, &mismatch) {
+		return false
+	}
+	return mismatch.Reason == auth.ReasonNoTxCookie || mismatch.Reason == auth.ReasonNoTransaction
 }

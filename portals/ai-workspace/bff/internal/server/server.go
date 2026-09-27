@@ -66,6 +66,9 @@ type Server struct {
 	exchangeMu    sync.Mutex
 	exchangeLocks map[string]*exchangeLock
 
+	discoverMu    sync.Mutex
+	discoverLocks map[string]*discoverLock
+
 	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
 	// against the rekey/delete in doRefresh for the same token. Without this, the
 	// two can interleave — doExchange reads the session, doRefresh re-keys it and
@@ -81,6 +84,17 @@ type exchangeLock struct {
 	sync.Mutex
 	done   bool
 	result *auth.Result
+	err    error
+}
+
+// discoverLock single-flights one session's org lookup, for the same reason
+// exchangeLock exists: the SPA's page-load burst arrives before any of it has been
+// recorded on the session, so without this every request in the burst would run its
+// own lookup against the Platform API.
+type discoverLock struct {
+	sync.Mutex
+	done   bool
+	handle string
 	err    error
 }
 
@@ -132,6 +146,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			proxy.WithPathMapper(cfg.ControlPlane.UpstreamPath)),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
+		discoverLocks: make(map[string]*discoverLock),
 		sessionLocks:  make(map[string]*sessionLock),
 	}
 

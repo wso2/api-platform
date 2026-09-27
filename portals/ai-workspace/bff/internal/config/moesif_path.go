@@ -18,7 +18,10 @@
 
 package config
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // MoesifPathMapper builds the path rewriter for the Moesif hop from
 // MoesifPathMappings, or returns nil when nothing is configured (leaving that hop
@@ -44,6 +47,11 @@ func (c ControlPlaneConfig) MoesifPathMapper() func(string) string {
 	if len(mappings) == 0 {
 		return nil
 	}
+	// Longest `from` first, so a mapping for "/analytics/id-token" wins over one
+	// for "/analytics" whatever order the operator listed them in.
+	sort.SliceStable(mappings, func(i, j int) bool {
+		return len(mappings[i].from) > len(mappings[j].from)
+	})
 	return func(p string) string {
 		for _, m := range mappings {
 			if p == m.from {

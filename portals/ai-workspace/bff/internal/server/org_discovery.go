@@ -215,36 +215,111 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 		return te.DefaultOrg
 	}
 
-	handle, err := s.discoverOrgHandle(ctx, subjectToken)
+	// Already asked and answered for this session. The answer may well have been
+	// "no organizations at all", which OrgHandle cannot distinguish from "not yet
+	// looked up" — see Session.OrgDiscovered.
+	if sess, ok, _ := s.store.Get(ctx, subjectToken); ok && sess.OrgDiscovered {
+		return sess.OrgHandle
+	}
+
+	handle, err := s.discoverSingleFlight(ctx, subjectToken)
 	if err != nil {
 		// The error already names the URL that answered — the source is not assumed
 		// here, because which of the two ran is half the diagnosis.
+		//
+		// Deliberately not recorded on the session: a failure is not an answer, and
+		// pinning the session to default_org over one unreachable moment would
+		// outlast the outage by the whole session.
 		slog.Warn("could not read the user's organizations — falling back to "+
 			"[auth.oidc.token_exchange] default_org",
 			"err", err, "default_org", te.DefaultOrg, "org_lookup_url", te.OrgLookupURL)
 		return te.DefaultOrg
 	}
+
+	// Recorded either way, empty handle included: the lookup answered, and that
+	// answer is what this session uses from here on.
+	s.recordDiscoveredOrg(ctx, subjectToken, handle)
+
 	if handle == "" {
 		// Not an error: a user who belongs to no org yet is exactly who the
-		// registration flow exists for. It is also what an org lookup pointed at
-		// the wrong endpoint looks like — one that answers 200 in a shape carrying
-		// no organizations — so the source is named.
+		// registration flow exists for, and they must be exchanged WITHOUT an org
+		// rather than into default_org — an org they demonstrably do not belong to
+		// is what makes the STS answer 500 or mint a token for the wrong tenant.
+		// default_org stays the fallback for a lookup that failed, above, where
+		// nothing is known about the user's memberships either way.
+		//
+		// This is also what an org lookup pointed at the wrong endpoint looks like —
+		// one that answers 200 in a shape carrying no organizations — so the source
+		// is named.
 		slog.Info("no organizations for this user — exchanging without one",
 			"org_lookup_url", te.OrgLookupURL)
-		return te.DefaultOrg
+		return ""
 	}
 
-	// Best-effort, like the exchanged-token cache: losing this only costs another
-	// lookup on the next exchange.
-	s.withSessionLock(subjectToken, func() {
-		if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
-			sess.OrgHandle = handle
-			if err := s.store.Put(ctx, sess); err != nil {
-				slog.Warn("failed to persist the resolved organization on the session", "err", err)
-			}
-		}
-	})
 	slog.Debug("resolved the user's organization", "org_handle", handle,
 		"org_lookup_url", te.OrgLookupURL)
 	return handle
+}
+
+// recordDiscoveredOrg persists the lookup's outcome on the session. Best-effort,
+// like the exchanged-token cache: losing it only costs another lookup.
+//
+// The handle is written only while the session still has none. A user can switch org
+// while the lookup is in flight — the switch handler writes OrgHandle directly — and
+// that choice is the more recent, more authoritative one of the two; overwriting it
+// with a discovery that started earlier would silently move them back. OrgDiscovered
+// is set regardless, because the lookup did run either way.
+func (s *Server) recordDiscoveredOrg(ctx context.Context, subjectToken, handle string) {
+	s.withSessionLock(subjectToken, func() {
+		sess, ok, _ := s.store.Get(ctx, subjectToken)
+		if !ok {
+			return
+		}
+		if sess.OrgHandle == "" {
+			sess.OrgHandle = handle
+		}
+		sess.OrgDiscovered = true
+		if err := s.store.Put(ctx, sess); err != nil {
+			slog.Warn("failed to persist the resolved organization on the session", "err", err)
+		}
+	})
+}
+
+// discoverSingleFlight performs one org lookup per session at a time, mirroring
+// exchangeSingleFlight. Keyed on the subject token alone: unlike an exchange, the
+// lookup asks nothing org-specific — it is the call that decides what the org IS.
+func (s *Server) discoverSingleFlight(ctx context.Context, subjectToken string) (string, error) {
+	s.discoverMu.Lock()
+	// Lazily created: unlike the exchange/refresh maps this one is also reached by
+	// Servers assembled field-by-field rather than through New.
+	if s.discoverLocks == nil {
+		s.discoverLocks = make(map[string]*discoverLock)
+	}
+	mu := s.discoverLocks[subjectToken]
+	if mu == nil {
+		mu = &discoverLock{}
+		s.discoverLocks[subjectToken] = mu
+	}
+	s.discoverMu.Unlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if mu.done {
+		return mu.handle, mu.err
+	}
+
+	// Cancellation dropped for the same reason exchangeSingleFlight drops it: the
+	// owner navigating away must not fail every request coalesced behind it. The
+	// lookup is bounded by platformAPITimeout on the client either way.
+	mu.handle, mu.err = s.discoverOrgHandle(context.WithoutCancel(ctx), subjectToken)
+	mu.done = true
+
+	// The owner drops the entry; waiters hold the pointer and read the result above
+	// even after it is gone.
+	s.discoverMu.Lock()
+	delete(s.discoverLocks, subjectToken)
+	s.discoverMu.Unlock()
+
+	return mu.handle, mu.err
 }

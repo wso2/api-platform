@@ -100,9 +100,8 @@ const discoveryTimeout = 15 * time.Second
 // flow: state+nonce binding, PKCE, and one-shot consumption do, and a transaction
 // buys nothing without the code the IDP hands back.
 //
-// Exported because the tx cookie's MaxAge must be the same number — a cookie that
-// outlives the transaction turns an aged-out login into "no transaction for this
-// id", and one that dies first turns it into "no cookie at all".
+// Exported because the callback reports on it, and because the tx cookie's lifetime
+// is derived from it — see TxCookieTTL.
 const TxTTL = 30 * time.Minute
 
 // expiredRetention keeps an expired transaction in the map for a while after it
@@ -111,6 +110,15 @@ const TxTTL = 30 * time.Minute
 // restart or a replay, which is the difference between a one-line diagnosis and an
 // afternoon. They are never accepted — Callback checks Expiry before State.
 const expiredRetention = 2 * time.Hour
+
+// TxCookieTTL is how long the browser keeps the login-transaction cookie. It
+// deliberately outlives the transaction by exactly expiredRetention: validity is
+// still governed by TxTTL (Callback checks Expiry and rejects anything past it),
+// but a cookie that died with the transaction would turn every aged-out login into
+// "no cookie at all" — a Path/SameSite-shaped fault — instead of the "expired" the
+// server is still able to report while the record is retained. A cookie that
+// outlives retention would be the mirror image, so the two move together.
+const TxCookieTTL = TxTTL + expiredRetention
 
 // NewOIDC fetches the discovery document and returns a ready authenticator.
 func NewOIDC(

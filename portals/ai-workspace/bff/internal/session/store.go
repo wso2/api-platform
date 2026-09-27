@@ -68,6 +68,15 @@ type Session struct {
 	// to request/validate the cached token against; "" until first selected, or
 	// when org-scoped exchange isn't configured.
 	OrgHandle string
+
+	// OrgDiscovered records that org discovery has already run to a definitive
+	// answer for this session — including the answer "this user belongs to no
+	// organization", which OrgHandle alone cannot express, since "" is also its
+	// initial value. Without it a user with no memberships would re-run the lookup
+	// on every single exchange. A lookup that FAILED does not set it: a briefly
+	// unreachable Platform API must not pin the session to default_org for its
+	// whole life.
+	OrgDiscovered bool
 }
 
 // ExchangedToken is a cached token-exchange result; the zero value is a cache miss.

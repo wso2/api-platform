@@ -54,10 +54,17 @@ export function useEnvironments() {
     // can change the org without remounting the pages that read this.
     if (!organizationId) {
       setEnvironments([]);
+      setIsLoading(false);
+      setError(null);
       return;
     }
 
     let cancelled = false;
+    // Drop the previous organization's list up front: environments are
+    // org-scoped, so leaving it in place lets a picker keep offering (and a
+    // form keep holding) an id that no longer belongs to the current org
+    // while the new request is in flight.
+    setEnvironments([]);
     setIsLoading(true);
     setError(null);
 

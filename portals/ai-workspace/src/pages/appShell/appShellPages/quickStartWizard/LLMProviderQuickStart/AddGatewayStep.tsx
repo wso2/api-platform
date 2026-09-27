@@ -79,14 +79,38 @@ export default function AddGatewayStep({
     [gateways]
   );
 
+  // Only a selection that exists in the freshly loaded list counts: an
+  // organization switch or a failed load empties `environments` while
+  // `formState.environment` still holds the previous org's UUID.
+  const isEnvironmentSelectionValid =
+    !isLoadingEnvironments &&
+    !environmentsError &&
+    environments.some((environment) => environment.id === formState.environment);
+
   useEffect(() => {
-    if (environments.length > 0 && !formState.environment) {
-      setFormState((prev) => ({
-        ...prev,
-        environment: environments[0].id,
-      }));
+    if (isLoadingEnvironments) {
+      return;
     }
-  }, [environments, formState.environment, setFormState]);
+
+    if (isEnvironmentSelectionValid) {
+      return;
+    }
+
+    // Fall back to the first available environment, or clear the stale id so
+    // the picker (and the create gate) reflect what is actually selectable.
+    const nextEnvironment = environmentsError ? '' : environments[0]?.id ?? '';
+    setFormState((prev) =>
+      prev.environment === nextEnvironment
+        ? prev
+        : { ...prev, environment: nextEnvironment }
+    );
+  }, [
+    environments,
+    environmentsError,
+    isEnvironmentSelectionValid,
+    isLoadingEnvironments,
+    setFormState,
+  ]);
 
   useEffect(() => {
     if (preferredGatewayId) {
@@ -104,7 +128,7 @@ export default function AddGatewayStep({
     formState.displayName.length <= MAX_GATEWAY_NAME_LENGTH &&
     formState.description.length <= MAX_GATEWAY_DESCRIPTION_LENGTH &&
     normalizeVhost(formState.vhost).length > 0 &&
-    formState.environment.trim().length > 0 &&
+    isEnvironmentSelectionValid &&
     formState.version.trim().length > 0;
 
   useEffect(() => {
