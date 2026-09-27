@@ -21,6 +21,7 @@ import {
   Alert,
   CircularProgress,
   FormControl,
+  FormHelperText,
   FormLabel,
   Grid,
   MenuItem,
@@ -67,7 +68,11 @@ export default function AddGatewayStep({
   createRef,
 }: AddGatewayStepProps) {
   const { gateways, isLoading, createGateway, isCreating } = useGatewayList();
-  const { environments, isLoading: isLoadingEnvironments } = useEnvironments();
+  const {
+    environments,
+    isLoading: isLoadingEnvironments,
+    error: environmentsError,
+  } = useEnvironments();
 
   const aiGateways = useMemo(
     () => gateways.filter((gateway) => gateway.functionalityType === 'ai'),
@@ -236,6 +241,21 @@ export default function AddGatewayStep({
                 </MenuItem>
               ))}
             </Select>
+            {/* A gateway cannot be created without an environment, so an empty
+                picker disables the whole drawer. Say why rather than leaving a
+                dead control the user cannot act on. */}
+            {isLoadingEnvironments ? (
+              <FormHelperText>Loading environments...</FormHelperText>
+            ) : environmentsError ? (
+              <FormHelperText error>
+                Could not load environments for this organization.
+              </FormHelperText>
+            ) : environments.length === 0 ? (
+              <FormHelperText error>
+                No environments are available for this organization, so a gateway
+                cannot be created yet.
+              </FormHelperText>
+            ) : null}
           </FormControl>
         </Grid>
 
