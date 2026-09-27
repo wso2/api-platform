@@ -287,10 +287,20 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	s.serveProxy(s.proxy, w, r)
 }
 
-// handleCloudProxy (<base>/proxy/cloud/*) — same session cookie injection as
-// handleProxy, but against the optional Moesif / cloud analytics upstream.
-func (s *Server) handleCloudProxy(w http.ResponseWriter, r *http.Request) {
-	s.serveProxy(s.cloudProxy, w, r)
+// handleMoesifProxy (<base>/proxy/moesif/*) — same session cookie injection as
+// handleProxy, but against the optional Moesif analytics upstream.
+//
+// Answers 503 rather than 404 when moesif_url is unset: the route exists, the
+// upstream behind it does not, and a deployment that has simply not configured
+// analytics is a different thing from a bad path. Insights degrades on this
+// without breaking the rest of the console.
+func (s *Server) handleMoesifProxy(w http.ResponseWriter, r *http.Request) {
+	if s.moesifProxy == nil {
+		writeErrorJSON(w, http.StatusServiceUnavailable, "MOESIF_NOT_CONFIGURED",
+			"Moesif analytics upstream is not configured (set control_plane.moesif_url)")
+		return
+	}
+	s.serveProxy(s.moesifProxy, w, r)
 }
 
 func (s *Server) handleBillingProxy(w http.ResponseWriter, r *http.Request) {
@@ -329,7 +339,7 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 	}
 
 	// Both hops authorize the forwarded token, so the exchange applies to whichever
-	// one rp targets; the cloud hop must not fall back to the login token.
+	// one rp targets; the Moesif hop must not fall back to the login token.
 	upstream, err := s.upstreamToken(r.Context(), jwt)
 	if err != nil {
 		slog.Warn("token exchange failed for proxied request", "err", err, "path", r.URL.Path)

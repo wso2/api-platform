@@ -146,13 +146,20 @@ type ControlPlaneConfig struct {
 	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
-	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
-	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
-	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
-	CloudURL string `koanf:"cloud_url"`
-	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
-	CloudCAFile        string `koanf:"cloud_ca_file"`
-	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
+	// MoesifURL is an optional second hop for Moesif analytics. When set,
+	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
+	// Include whatever path prefix the upstream publishes under (e.g.
+	// http://host:8081/cloud for wso2cloud's platform-api, or
+	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).
+	MoesifURL string `koanf:"moesif_url"`
+	// MoesifCAFile / MoesifTLSSkipVerify apply only to MoesifURL when that hop uses TLS.
+	MoesifCAFile        string `koanf:"moesif_ca_file"`
+	MoesifTLSSkipVerify bool   `koanf:"moesif_tls_skip_verify"`
+	// MoesifPathMappings rewrites paths on the Moesif hop, as comma-separated
+	// "<from>=<to>" pairs (e.g. "/analytics/id-token=/id_token"). Needed when the
+	// configured MoesifURL publishes a route under a different path than the SPA
+	// asks for — see MoesifPathMapper. Empty leaves that hop forwarding untouched.
+	MoesifPathMappings string `koanf:"moesif_path_mappings"`
 	// BillingURL is an optional hop to the billing service. When set,
 	// <base>/proxy/billing/* is proxied there instead of the primary control plane.
 	// Cloud-only: every standalone deployment leaves it empty, which is what keeps
@@ -532,7 +539,7 @@ func (c *Config) normalize() {
 	// it falls back to the API's own prefix rather than silently flattening the path.
 	c.ControlPlane.PlatformAPIBasePath = normalizeBasePath(c.ControlPlane.PlatformAPIBasePath, apipaths.PlatformAPI)
 	c.ControlPlane.PortalAPIBasePath = normalizeBasePath(c.ControlPlane.PortalAPIBasePath, apipaths.PortalAPI)
-	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
+	c.ControlPlane.MoesifURL = strings.TrimRight(c.ControlPlane.MoesifURL, "/")
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
@@ -679,19 +686,19 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
-	if c.ControlPlane.CloudURL != "" {
-		cu, err := url.Parse(c.ControlPlane.CloudURL)
+	if c.ControlPlane.MoesifURL != "" {
+		cu, err := url.Parse(c.ControlPlane.MoesifURL)
 		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
-			return fmt.Errorf("[control_plane] cloud_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.CloudURL)
+			return fmt.Errorf("[control_plane] moesif_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.MoesifURL)
 		}
 		if cu.Scheme == "http" {
-			if c.ControlPlane.CloudCAFile != "" || c.ControlPlane.CloudTLSSkipVerify {
-				return fmt.Errorf("[control_plane] cloud_ca_file / cloud_tls_skip_verify are set but cloud_url is http:// (no TLS on that hop)")
+			if c.ControlPlane.MoesifCAFile != "" || c.ControlPlane.MoesifTLSSkipVerify {
+				return fmt.Errorf("[control_plane] moesif_ca_file / moesif_tls_skip_verify are set but moesif_url is http:// (no TLS on that hop)")
 			}
 		}
-		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
-			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
-				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		if cu.Scheme == "https" && c.ControlPlane.MoesifTLSSkipVerify {
+			slog.Warn("[control_plane] moesif_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] moesif_ca_file instead.")
 		}
 	}
 

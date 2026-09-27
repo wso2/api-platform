@@ -53,7 +53,7 @@ type Server struct {
 	fileBased    *auth.FileBased
 	oidc         *auth.OIDC
 	proxy        *httputil.ReverseProxy
-	cloudProxy   *httputil.ReverseProxy
+	moesifProxy  *httputil.ReverseProxy
 	billingProxy *httputil.ReverseProxy
 	handler      http.Handler
 
@@ -135,20 +135,27 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		sessionLocks:  make(map[string]*sessionLock),
 	}
 
-	if cfg.ControlPlane.CloudURL != "" {
-		cloudTarget, err := url.Parse(cfg.ControlPlane.CloudURL)
+	if cfg.ControlPlane.MoesifURL != "" {
+		moesifTarget, err := url.Parse(cfg.ControlPlane.MoesifURL)
 		if err != nil {
 			return nil, err
 		}
-		cloudTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
-			CAFile:     cfg.ControlPlane.CloudCAFile,
-			SkipVerify: cfg.ControlPlane.CloudTLSSkipVerify,
+		moesifTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.MoesifCAFile,
+			SkipVerify: cfg.ControlPlane.MoesifTLSSkipVerify,
 		})
 		if err != nil {
 			return nil, err
 		}
-		// Strip <base>/proxy/cloud so /analytics/id-token joins onto CloudURL's /cloud.
-		s.cloudProxy = proxy.ReverseProxy(cloudTarget, paths.Base+paths.Proxy+"/cloud", cloudTransport)
+		// Strip <base>/proxy/moesif so /analytics/id-token joins onto MoesifURL.
+		// A deployment whose Moesif upstream publishes those routes under other
+		// names (Choreo's moesif-key API serves the viewer token at /id_token)
+		// supplies moesif_path_mappings; without it this hop forwards unchanged.
+		moesifOpts := []proxy.Option{}
+		if mapPath := cfg.ControlPlane.MoesifPathMapper(); mapPath != nil {
+			moesifOpts = append(moesifOpts, proxy.WithPathMapper(mapPath))
+		}
+		s.moesifProxy = proxy.ReverseProxy(moesifTarget, paths.Base+paths.Proxy+"/moesif", moesifTransport, moesifOpts...)
 	}
 
 	if cfg.ControlPlane.BillingURL != "" {
@@ -157,7 +164,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		// Its own transport, so a per-upstream TLS trust setting never leaks onto
-		// the control plane or the cloud hop.
+		// the control plane or the Moesif hop.
 		billingTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
 			CAFile:     cfg.ControlPlane.BillingCAFile,
 			SkipVerify: cfg.ControlPlane.BillingTLSSkipVerify,
