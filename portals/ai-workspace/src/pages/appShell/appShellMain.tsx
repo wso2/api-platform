@@ -81,6 +81,7 @@ export default function AppLayout(): JSX.Element {
   const {
     userName,
     userEmail,
+    userPicture,
 
     currentOrganization,
     organizations,
@@ -462,6 +463,7 @@ export default function AppLayout(): JSX.Element {
           navigate={navigate}
           userName={userName ?? undefined}
           userEmail={userEmail ?? undefined}
+          userPicture={userPicture ?? undefined}
           currentOrganization={
             currentOrganization
               ? {

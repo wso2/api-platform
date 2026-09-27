@@ -354,6 +354,7 @@ org_handle    = "org_handle"      # org URL slug
 organizations = "organizations"  # claim listing every org id/handle the user belongs to
 username      = "username"
 email         = "email"
+picture       = "picture"
 scope         = "scope"                # space-separated scope string
 roles         = "roles"
 

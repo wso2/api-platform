@@ -286,6 +286,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	if c.Email != "" {
 		m.Email = c.Email
 	}
+	if c.Picture != "" {
+		m.Picture = c.Picture
+	}
 	if c.Roles != "" {
 		m.Roles = c.Roles
 	}

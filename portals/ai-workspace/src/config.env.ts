@@ -64,6 +64,9 @@ export const ORG_IDS_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_ORGAN
 // Common alternatives: 'name', 'given_name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
 export const USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_USERNAME', 'username');
 export const EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_EMAIL', 'email');
+// Absolute URL to the user's avatar. Standard OIDC name; configurable for an IDP
+// that releases it under another claim. Empty/absent renders initials instead.
+export const PICTURE_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_PICTURE', 'picture');
 
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.

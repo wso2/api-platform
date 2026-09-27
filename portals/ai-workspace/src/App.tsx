@@ -299,13 +299,18 @@ function ProtectedAppShell() {
   const { user } = useAppAuth();
   const userName = user?.name ?? undefined;
   const userEmail = user?.email ?? undefined;
+  const userPicture = user?.picture ?? undefined;
 
   return (
     <PostSignInInit>
       <ProductActivation />
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
-          <AppShellProvider userName={userName} userEmail={userEmail}>
+          <AppShellProvider
+            userName={userName}
+            userEmail={userEmail}
+            userPicture={userPicture}
+          >
             <AppShellMain />
           </AppShellProvider>
         </AIWorkspaceSnackbarProvider>

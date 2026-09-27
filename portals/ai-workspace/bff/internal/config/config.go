@@ -408,6 +408,7 @@ type OIDCConfig struct {
 type ClaimMappingConfig struct {
 	Username      string `koanf:"username"`
 	Email         string `koanf:"email"`
+	Picture       string `koanf:"picture"`
 	Roles         string `koanf:"roles"`
 	Scope         string `koanf:"scope"`
 	OrgID         string `koanf:"organization"`
@@ -575,6 +576,7 @@ func (c *Config) normalize() {
 	}{
 		{&te.Username, parent.Username},
 		{&te.Email, parent.Email},
+		{&te.Picture, parent.Picture},
 		{&te.Roles, parent.Roles},
 		{&te.Scope, parent.Scope},
 		{&te.OrgID, parent.OrgID},

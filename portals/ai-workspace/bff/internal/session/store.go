@@ -35,8 +35,9 @@ const (
 // User holds the pre-decoded claims surfaced by GET /api/session. It mirrors the
 // SPA's AppUser shape so the frontend can hydrate without seeing any token.
 type User struct {
-	Name          string   `json:"name"`
-	Email         string   `json:"email"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Picture       string   `json:"picture,omitempty"`
 	Role          string   `json:"role,omitempty"`
 	Scopes        []string `json:"scopes"`
 	Org           *Org     `json:"org,omitempty"`
