@@ -163,6 +163,10 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.dialogFetchError',
     defaultMessage: 'Failed to fetch specification from the provided URL.',
   },
+  urlImportInvalidSpec: {
+    id: 'develop.definition.DefinitionPanel.urlImportInvalidSpec',
+    defaultMessage: 'Not a valid OpenAPI definition. Please provide a URL to a valid OpenAPI 3.x specification.',
+  },
   dialogParseError: {
     id: 'develop.definition.DefinitionPanel.dialogParseError',
     defaultMessage: 'The fetched content is not a valid OpenAPI/Swagger spec.',
@@ -392,6 +396,7 @@ export function DefinitionPanel() {
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [urlImportInvalidMessage, setUrlImportInvalidMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const content = openApiData?.content ?? '';
@@ -472,6 +477,15 @@ export function DefinitionPanel() {
     setDialogOpen(false);
     setSpecUrl('');
     setFetchError(null);
+    // NB: do not clear urlImportInvalidMessage here — closeDialog is also
+    // called after a URL import that returned an invalid spec (to dismiss the
+    // dialog), and we need the message to survive that close. It's cleared
+    // when the user opens the dialog again (openDialog) or clicks Reset.
+  };
+
+  const openDialog = () => {
+    setUrlImportInvalidMessage(null);
+    setDialogOpen(true);
   };
 
   const closeAddModal = () => {
@@ -493,9 +507,19 @@ export function DefinitionPanel() {
     const token = ++importTokenRef.current;
     setIsFetchingSpec(true);
     setFetchError(null);
+    setUrlImportInvalidMessage(null);
     try {
       const validation = await validateSpec.mutateAsync(input);
       if (token !== importTokenRef.current) return false;
+      if ('url' in input && !validation.isValid) {
+        setUrlImportInvalidMessage(intl.formatMessage(messages.urlImportInvalidSpec));
+        setEditorText('');
+        setPendingFileName(null);
+        setFormat('yaml');
+        setIsEditing(true);
+        setSaveValidationErrors(validation.errors.map(formatValidationError));
+        return true;
+      }
       const rawContent = validation.content ?? '';
       if (!rawContent) {
         setFetchError(
@@ -509,7 +533,7 @@ export function DefinitionPanel() {
       setFormat('yaml');
       setIsEditing(true);
       setSaveValidationErrors(
-        validation.isValid ? null : validation.errors.map((e) => e.message),
+        validation.isValid ? null : validation.errors.map(formatValidationError),
       );
       return true;
     } catch (err) {
@@ -596,6 +620,20 @@ export function DefinitionPanel() {
     const formData = new FormData();
     formData.append('file', file);
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
+  };
+
+  const handleValidateAndSave = async () => {
+    try {
+      const result = await validateSpec.mutateAsync({ text: editorText });
+      if (!result.isValid && result.errors.length > 0) {
+        setSaveValidationErrors(result.errors.map(formatValidationError));
+        return;
+      }
+      setSaveValidationErrors(null);
+      setConfirmSaveOpen(true);
+    } catch {
+      setConfirmSaveOpen(true);
+    }
   };
 
   /** Adds a new operation to the spec (editorText) and enters edit mode. */
@@ -815,7 +853,7 @@ export function DefinitionPanel() {
         </DialogActions>
       </Dialog>
 
-      {hasSpec || editorText ? (
+      {hasSpec || editorText || urlImportInvalidMessage ? (
         <Stack spacing={2}>
           {/* Definition summary and primary actions. */}
           <Stack
@@ -868,7 +906,7 @@ export function DefinitionPanel() {
                     <Button
                       aria-label={intl.formatMessage(messages.updateOpenApi)}
                       disabled={isSaving || !canUpdateRESTApiSpec}
-                      onClick={() => setDialogOpen(true)}
+                      onClick={openDialog}
                       sx={{ minWidth: 40, px: 1 }}
                     >
                       <Upload size={18} />
@@ -961,7 +999,24 @@ export function DefinitionPanel() {
 
             {/* Panel content */}
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
-              {showSource ? (
+              {urlImportInvalidMessage ? (
+                /* URL fetch returned an invalid spec — backend redacted the
+                   bytes, so we show a message here instead of the editor. */
+                <Box
+                  sx={{
+                    alignItems: 'center',
+                    display: 'flex',
+                    flex: 1,
+                    justifyContent: 'center',
+                    minHeight: 0,
+                    p: 3,
+                  }}
+                >
+                  <Typography color="text.secondary" sx={{ maxWidth: 480, textAlign: 'center' }}>
+                    {urlImportInvalidMessage}
+                  </Typography>
+                </Box>
+              ) : showSource ? (
                 /* Raw spec editor */
                 <Box sx={{ flex: 1, minHeight: 0, p: 1 }}>
                   <Editor
@@ -1033,6 +1088,7 @@ export function DefinitionPanel() {
                       }
                       setPendingFileName(null);
                       setSaveValidationErrors(null);
+                      setUrlImportInvalidMessage(null);
                     }}
                     size="small"
                     variant="outlined"
@@ -1047,8 +1103,8 @@ export function DefinitionPanel() {
                       (!editorText.trim() && hasSpec) ||
                       (saveValidationErrors !== null && saveValidationErrors.length > 0)
                     }
-                    loading={isSaving}
-                    onClick={() => setConfirmSaveOpen(true)}
+                    loading={isSaving || validateSpec.isPending}
+                    onClick={() => void handleValidateAndSave()}
                     size="small"
                     variant="contained"
                   >
@@ -1082,7 +1138,7 @@ export function DefinitionPanel() {
             </Typography>
             <Button
               disabled={isSaving}
-              onClick={() => setDialogOpen(true)}
+              onClick={openDialog}
               startIcon={<Upload size={16} />}
               sx={{ mt: 1 }}
               variant="contained"

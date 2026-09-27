@@ -3194,6 +3194,9 @@
   "develop.definition.DefinitionPanel.updateOpenApi": {
     "defaultMessage": "Import Definition"
   },
+  "develop.definition.DefinitionPanel.urlImportInvalidSpec": {
+    "defaultMessage": "Not a valid OpenAPI definition. Please provide a URL to a valid OpenAPI 3.x specification."
+  },
   "develop.definition.OperationsList.allMethods": {
     "defaultMessage": "All methods"
   },

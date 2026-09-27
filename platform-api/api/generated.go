@@ -3146,8 +3146,8 @@ type UserAPIKeyListResponse struct {
 
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
-	// Content The exact bytes the validator ran against, echoed back on any
-	// successful validation.
+	// Content The exact bytes the validator ran against. Always echoed for file
+	// uploads; for URL sources it is echoed only when isValid is true.
 	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
 
 	// Errors Validation errors; empty when isValid is true

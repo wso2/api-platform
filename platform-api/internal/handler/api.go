@@ -310,11 +310,8 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
 
-	// Resolve the spec source (file or url) first — this parses the multipart
-	// form under a MaxBytesReader and enforces exactly-one-of. All subsequent
-	// r.FormValue calls read from the parsed form.
-	spec, err := h.readOpenAPISpecFromMultipart(w, r, h.getOpenAPISpecMaxBytes())
-	if err != nil {
+	maxBytes := h.getOpenAPISpecMaxBytes()
+	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
 		return err
 	}
 
@@ -351,6 +348,11 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 		return apperror.ValidationFailed.New("At least one upstream endpoint (main or sandbox) is required")
 	}
 	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
+		return err
+	}
+
+	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
+	if err != nil {
 		return err
 	}
 
@@ -541,13 +543,11 @@ func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	// Echo the resolved spec back on every outcome — the client (e.g. the
-	// Definition panel's import dialog) still needs to render an invalid spec
-	// in the preview alongside its errors, and for the `url` source it has no
-	// other way to get the bytes the backend fetched.
 	result := h.apiDocumentService.ValidateOpenAPISpec(spec.content)
-	content := string(spec.content)
-	result.Content = &content
+	if !spec.fromURL || result.IsValid {
+		content := string(spec.content)
+		result.Content = &content
+	}
 	httputil.WriteJSON(w, http.StatusOK, result)
 	return nil
 }
@@ -556,11 +556,11 @@ func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) err
 type openAPISpecUpload struct {
 	content  []byte
 	filename string
+	fromURL bool
 }
 
-// readOpenAPISpecFromMultipart extracts an OpenAPI spec from a multipart form
-// that carries either a `file` upload or a `url` for the backend to fetch.
-func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http.Request, maxBytes int64) (openAPISpecUpload, error) {
+// Parses the incoming multipart form under a body cap.
+func (h *APIHandler) parseSpecMultipartForm(w http.ResponseWriter, r *http.Request, maxBytes int64) error {
 	// The body cap has to allow for multipart boundaries, part headers, and
 	// (for import) the sibling form fields (displayName, context, upstream, …)
 	// on top of the spec itself.
@@ -569,9 +569,17 @@ func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http
 	if parseErr := r.ParseMultipartForm(maxBytes); parseErr != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(parseErr, &maxErr) {
-			return openAPISpecUpload{}, apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+			return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
 		}
-		return openAPISpecUpload{}, apperror.ValidationFailed.New("invalid multipart form")
+		return apperror.ValidationFailed.New("invalid multipart form")
+	}
+	return nil
+}
+
+// Extracts an OpenAPI spec from a multipart form that carries either a `file` upload or a `url` for the backend to fetch.
+func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http.Request, maxBytes int64) (openAPISpecUpload, error) {
+	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
+		return openAPISpecUpload{}, err
 	}
 
 	specURL := strings.TrimSpace(r.FormValue("url"))
@@ -601,15 +609,16 @@ func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http
 		return openAPISpecUpload{
 			content:  data,
 			filename: h.apiDocumentService.NormalizeSpecFileName(header.Filename),
+			fromURL:  false,
 		}, nil
 	}
 
 	content, fetchErr := utils.FetchOpenAPISpecFromURL(r.Context(), specURL, maxBytes)
 	if fetchErr != nil {
 		h.slogger.Warn("failed to fetch OpenAPI spec from URL", "error", fetchErr)
-		if errors.Is(fetchErr, utils.ErrOpenAPISpecTooLarge) {
-			return openAPISpecUpload{}, apperror.ValidationFailed.
-			New("The OpenAPI spec fetched from the provided URL exceeds the maximum allowed size.")
+		var appErr *apperror.Error
+		if errors.As(fetchErr, &appErr) {
+			return openAPISpecUpload{}, fetchErr
 		}
 		return openAPISpecUpload{}, apperror.ValidationFailed.New("failed to fetch OpenAPI spec from the provided URL")
 	}
@@ -617,6 +626,7 @@ func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http
 	return openAPISpecUpload{
 		content:  contentBytes,
 		filename: h.apiDocumentService.NormalizeSpecFileName(specFileNameFromURL(specURL, contentBytes)),
+		fromURL:  true,
 	}, nil
 }
 

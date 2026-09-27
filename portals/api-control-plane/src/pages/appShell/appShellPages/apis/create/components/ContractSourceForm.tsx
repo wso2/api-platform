@@ -88,7 +88,11 @@ import {
   swaggerHubSpecUrl,
   type SwaggerHubApi,
 } from '../utils/swaggerHub';
-import { useValidateOpenApiSpec, type OpenAPIValidationError } from '@/api/resources/restApis';
+import {
+  formatValidationError,
+  useValidateOpenApiSpec,
+  type OpenAPIValidationError,
+} from '@/api/resources/restApis';
 import { isApiError } from '@/api/core/errors';
 import { isValidUrl } from '../../utils/developEdit';
 import {
@@ -2096,7 +2100,7 @@ export const ContractSourceForm = ({
           <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
             {backendValidationErrors.map((e, i) => (
               <Typography component="li" key={i} variant="body2">
-                {e.message}
+                {formatValidationError(e)}
               </Typography>
             ))}
           </Box>

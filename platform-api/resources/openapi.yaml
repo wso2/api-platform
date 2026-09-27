@@ -7997,8 +7997,8 @@ components:
         content:
           type: string
           description: |
-            The exact bytes the validator ran against, echoed back on any
-            successful validation.
+            The exact bytes the validator ran against. Always echoed for file
+            uploads; for URL sources it is echoed only when isValid is true.
 
     OpenAPIValidationError:
       type: object
