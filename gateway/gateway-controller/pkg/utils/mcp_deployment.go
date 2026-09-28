@@ -128,6 +128,7 @@ func HydrateStoredMCPConfig(cfg *models.StoredConfig, resolver PolicyVersionReso
 	}
 
 	if source, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration); ok {
+		normalizeMCPProxyAuthType(&source)
 		var restAPI api.RestAPI
 		if _, err := NewMCPTransformer(resolver).Transform(&source, &restAPI); err != nil {
 			return fmt.Errorf("failed to transform stored MCP proxy %s: %w", cfg.UUID, err)
