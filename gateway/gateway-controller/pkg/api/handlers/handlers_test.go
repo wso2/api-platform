@@ -3264,10 +3264,11 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
-	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	// Wire a control-plane client with sync enabled so the DP->CP undeploy push runs.
+	// The push lives in the service layer, so the mock goes on the service instance
+	// attachTestEventHub just built.
 	mockCP := &MockControlPlaneClient{connected: true}
-	server.controlPlaneClient = mockCP
-	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	server.llmDeploymentService.SetControlPlanePusher(mockCP, true)
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-provider-id-0000-000000000000",
@@ -3348,10 +3349,11 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
-	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	// Wire a control-plane client with sync enabled so the DP->CP undeploy push runs.
+	// The push lives in the service layer, so the mock goes on the service instance
+	// attachTestEventHub just built.
 	mockCP := &MockControlPlaneClient{connected: true}
-	server.controlPlaneClient = mockCP
-	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	server.llmDeploymentService.SetControlPlanePusher(mockCP, true)
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-proxy-id-0000-000000000000",
@@ -3413,6 +3415,78 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProxyInternalError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+// TestDeleteRestAPIPushesUndeployExactlyOnce guards the move of the DP->CP undeploy
+// push from the REST handler into RestAPIService.Delete: the push must still happen,
+// and the handler must not add a second one on top of the service.
+func TestDeleteRestAPIPushesUndeployExactlyOnce(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	restAPIService := restapi.NewRestAPIService(
+		server.store, server.db, nil, nil,
+		server.deploymentService, server.apiKeyXDSManager, mockCP,
+		server.routerConfig, server.systemConfig,
+		server.httpClient, server.parser, server.validator, server.logger, mockHub, nil,
+	)
+	server.restAPIService = restAPIService
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
+
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
+	cfg.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(cfg))
+
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	server.DeleteRestAPI(w, r, "test-handle")
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Wait for at least one push, then check no second one arrives. Waiting for
+	// exactly 1 would misreport a double push as "never pushed", since both async
+	// pushes can land before the first poll.
+	require.Eventually(t, func() bool { return mockCP.PushCount() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin REST API to be pushed to the control plane as an undeploy")
+	require.Never(t, func() bool { return mockCP.PushCount() > 1 }, 200*time.Millisecond, 10*time.Millisecond,
+		"the undeploy must be pushed once, by the service, not again by the handler")
+	require.Equal(t, 1, mockCP.PushCount())
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
+}
+
+// TestMcpDeleteMCPProxyPushesUndeployExactlyOnce checks that deleting through the
+// MCP tool layer still notifies the control plane now that the push lives in the
+// service layer rather than in an MCP-side hook.
+func TestMcpDeleteMCPProxyPushesUndeployExactlyOnce(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	attachTestEventHub(server, &mockEventHub{}, "test-gateway")
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.mcpDeploymentService.SetControlPlanePusher(mockCP, true)
+
+	cfg := createTestMCPStoredConfig(t, "0000-mcp-delete-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
+	require.NoError(t, mockDB.SaveConfig(cfg))
+	require.NoError(t, server.store.Add(cfg))
+
+	h := &McpHandler{mcpDeploymentService: server.mcpDeploymentService, logger: server.logger}
+	require.NoError(t, h.mcpProxyOps().Delete("test-mcp", "corr-id-mcp-tool-delete", server.logger))
+
+	// Wait for at least one push, then check no second one arrives (see
+	// TestDeleteRestAPIPushesUndeployExactlyOnce for why not "exactly 1" here).
+	require.Eventually(t, func() bool { return mockCP.PushCount() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the MCP-deleted DP-origin proxy to be pushed to the control plane as an undeploy")
+	require.Never(t, func() bool { return mockCP.PushCount() > 1 }, 200*time.Millisecond, 10*time.Millisecond,
+		"the undeploy must be pushed exactly once")
+	require.Equal(t, 1, mockCP.PushCount())
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
 }
 
 func TestCreateSubscriptionWithDBAndEventHub(t *testing.T) {

@@ -388,16 +388,12 @@ func (h *McpHandler) restAPIOps() *kindOps {
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
-			result, err := h.restAPIService.Delete(restapi.DeleteParams{
+			_, err := h.restAPIService.Delete(restapi.DeleteParams{
 				Handle:        handle,
 				CorrelationID: correlationID,
 				Logger:        log,
 			})
-			if err != nil {
-				return err
-			}
-			h.notifyUndeploy(result.Config, log)
-			return nil
+			return err
 		},
 
 		Get: func(handle string) (any, error) {
@@ -459,12 +455,8 @@ func (h *McpHandler) mcpProxyOps() *kindOps {
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
-			cfg, err := h.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
-			if err != nil {
-				return err
-			}
-			h.notifyUndeploy(cfg, log)
-			return nil
+			_, err := h.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
+			return err
 		},
 
 		Get: func(handle string) (any, error) {
@@ -529,12 +521,8 @@ func (h *McpHandler) llmProxyOps() *kindOps {
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
-			cfg, err := h.llmDeploymentService.DeleteLLMProxy(handle, correlationID, log)
-			if err != nil {
-				return err
-			}
-			h.notifyUndeploy(cfg, log)
-			return nil
+			_, err := h.llmDeploymentService.DeleteLLMProxy(handle, correlationID, log)
+			return err
 		},
 
 		Get: func(handle string) (any, error) {
@@ -596,12 +584,8 @@ func (h *McpHandler) llmProviderOps() *kindOps {
 		},
 
 		Delete: func(handle, correlationID string, log *slog.Logger) error {
-			cfg, err := h.llmDeploymentService.DeleteLLMProvider(handle, correlationID, log)
-			if err != nil {
-				return err
-			}
-			h.notifyUndeploy(cfg, log)
-			return nil
+			_, err := h.llmDeploymentService.DeleteLLMProvider(handle, correlationID, log)
+			return err
 		},
 
 		Get: func(handle string) (any, error) {
@@ -693,9 +677,7 @@ func (h *McpHandler) llmProviderTemplateOps() *kindOps {
 	}
 }
 
-// agentOps defines the MCP operations for Agent (A2A) configurations.
-// Agent is routable: it is deployed/undeployed via wso2_apip_gw_deploy_api /
-// wso2_apip_gw_undeploy_api. It supports API keys like RestApi and LlmProvider do.
+// agentOps adapts Agent (A2A) configurations.
 func (h *McpHandler) agentOps() *kindOps {
 	return &kindOps{
 		Kind:       models.KindAgent,
@@ -886,8 +868,8 @@ func (h *McpHandler) llmProviderBody(log *slog.Logger, cfg *models.StoredConfig)
 	return buildResourceResponseFromStored(prov, cfg), nil
 }
 
-// agentBody is the Agent counterpart of mcpProxyBody. It mirrors the REST
-// handler's buildAgentResponse: the upstream credential is redacted
+// agentBody renders an Agent the way the REST handler's buildAgentResponse does:
+// credentials redacted (by rematerializeAgentConfig) and the context resolved.
 func (h *McpHandler) agentBody(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
 	agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
@@ -897,15 +879,6 @@ func (h *McpHandler) agentBody(log *slog.Logger, cfg *models.StoredConfig) (any,
 		agentConfig.Spec.Context = &resolved
 	}
 	return buildResourceResponseFromStored(agentConfig, cfg), nil
-}
-
-// notifyUndeploy forwards a delete to the control plane exactly as the
-// REST handlers do, so an artifact removed through MCP is marked undeployed
-// upstream rather than left stale. No-op when no control plane is configured.
-func (h *McpHandler) notifyUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
-	if h.pushArtifactUndeploy != nil && cfg != nil {
-		h.pushArtifactUndeploy(cfg, log)
-	}
 }
 
 // storedConfigRow builds a list row from a StoredConfig plus its rendered body.

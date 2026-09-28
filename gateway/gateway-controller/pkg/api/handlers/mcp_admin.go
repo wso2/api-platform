@@ -40,7 +40,7 @@ const (
 	toolAdminConfigDump    = "wso2_apip_gw_get_config_dump"
 )
 
-// Returns every route key the admin MCP could ever reach
+// AdminMCPRouteKeys returns every route key an admin MCP tool can reach.
 func AdminMCPRouteKeys() []string {
 	return []string{adminRouteKeyConfigDump, adminRouteKeyXDSSyncStatus}
 }
@@ -188,10 +188,8 @@ func (h *AdminMcpHandler) MCPBaselineRoles() []string {
 	return out
 }
 
-// gatewayStatusInput takes no arguments
 type gatewayStatusInput struct{}
 
-// configDumpInput takes no arguments
 type configDumpInput struct{}
 
 func (h *AdminMcpHandler) registerTools(server *mcp.Server) {
