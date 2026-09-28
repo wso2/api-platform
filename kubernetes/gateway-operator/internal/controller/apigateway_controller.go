@@ -431,20 +431,20 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	if err != nil {
 		log.Error("failed to evaluate selected APIs", slog.Any("error", err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry,
-			fmt.Errorf("failed to evaluate selected APIs: %w", err), selectedCount)
+			fmt.Errorf("failed to evaluate selected APIs: %w", err), selectedCount, configHash)
 	}
 
 	// Apply the gateway manifest
 	if err := r.applyGatewayManifest(ctx, gatewayConfig, dockerUsername, dockerPassword); err != nil {
 		log.Error("failed to apply gateway manifest", slog.Any("error", err))
-		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry, err, selectedCount)
+		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry, err, selectedCount, configHash)
 	}
 
 	// Register the gateway in the registry
 	if err := r.registerAPIGateway(ctx, gatewayConfig); err != nil {
 		log.Error("failed to register gateway in registry", slog.Any("error", err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry,
-			fmt.Errorf("failed to register gateway: %w", err), selectedCount)
+			fmt.Errorf("failed to register gateway: %w", err), selectedCount, configHash)
 	}
 
 	// Evaluate readiness
@@ -456,7 +456,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	if err != nil {
 		log.Error("failed to evaluate gateway readiness", slog.Any("error", err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry,
-			fmt.Errorf("failed to evaluate readiness: %w", err), selectedCount)
+			fmt.Errorf("failed to evaluate readiness: %w", err), selectedCount, configHash)
 	}
 
 	if !ready {
@@ -549,7 +549,10 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 	return ctrl.Result{}, nil
 }
 
-// handleGatewayDeploymentError handles deployment errors
+// handleGatewayDeploymentError handles deployment errors. configHash is the hash of the
+// configuration this attempt was made against; it is recorded on terminal failure so the
+// config-change detection in reconcileGatewayDeployment compares against what was actually
+// attempted, not only against the last hash that deployed successfully.
 func (r *GatewayReconciler) handleGatewayDeploymentError(
 	ctx context.Context,
 	gatewayConfig *apiv1.APIGateway,
@@ -557,6 +560,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 	entry *GatewayTrackingEntry,
 	err error,
 	selectedCount int,
+	configHash string,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(slog.String("controller", "APIGateway"), slog.String("name", gatewayConfig.Name))
 
@@ -580,7 +584,11 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 		entry.Status = GatewayTrackingStatusDeployed
 		r.gatewayTracker.Set(trackingKey, entry)
 
-		// Update status with final failure
+		// Update status with final failure, recording the attempted config hash. Without
+		// this the hash stays at the last successfully deployed value (or empty), so the
+		// config-changed branch of Case 1 would fire on every subsequent reconcile, reset
+		// RetryCount to 0 and restart the retry budget indefinitely - making
+		// MaxRetryAttempts non-terminating for a config that can never deploy.
 		if updateErr := r.updateGatewayProgrammedCondition(ctx, gatewayConfig, metav1.Condition{
 			Type:               apiv1.GatewayConditionProgrammed,
 			Status:             metav1.ConditionFalse,
@@ -588,7 +596,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 			Reason:             apiv1.GatewayProgrammedReasonDeploymentFailed,
 			Message:            fmt.Sprintf("Max retries (%d) exceeded. Last error: %s", maxRetries, err.Error()),
 			LastTransitionTime: metav1.Now(),
-		}, &selectedCount, ""); updateErr != nil {
+		}, &selectedCount, configHash); updateErr != nil {
 			return ctrl.Result{}, updateErr
 		}
 
@@ -608,6 +616,9 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 		slog.Duration("nextRetryIn", backoff),
 		slog.String("error", err.Error()))
 
+	// Deliberately does NOT record configHash: the attempt is still in flight, and
+	// ObservedGeneration 0 keeps Case 2 driving the remaining retries. Only the terminal
+	// failure above settles the hash.
 	if updateErr := r.updateGatewayProgrammedCondition(ctx, gatewayConfig, metav1.Condition{
 		Type:               apiv1.GatewayConditionProgrammed,
 		Status:             metav1.ConditionFalse,

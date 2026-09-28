@@ -19,6 +19,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -181,4 +182,86 @@ func TestGatewayNoConfigChangeStaysPermanentlyFailed(t *testing.T) {
 	cond := meta.FindStatusCondition(updated.Status.Conditions, apiv1.GatewayConditionProgrammed)
 	require.NotNil(t, cond)
 	require.Equal(t, apiv1.GatewayProgrammedReasonDeploymentFailed, cond.Reason)
+}
+
+// TestTerminalFailureRecordsAttemptedConfigHash locks in the counterpart to the fix above.
+// Status.ConfigHash is otherwise only written on a successful deploy, so a config that can
+// never deploy would leave the hash empty (or stale), keeping configChanged permanently true.
+// Case 1 would then reset RetryCount to 0 on every reconcile and restart the retry budget
+// forever, making MaxRetryAttempts non-terminating. Recording the attempted hash on terminal
+// failure closes that loop - asserted here end to end.
+func TestTerminalFailureRecordsAttemptedConfigHash(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, apiv1.AddToScheme(scheme))
+
+	const (
+		name       = "gw1"
+		namespace  = "default"
+		maxRetries = 3
+	)
+
+	values := "replicaCount: 1\n" // a config that never deploys successfully
+	hash := auth.CalculateConfigHash(values)
+
+	// Never successfully deployed: ConfigHash is empty, mid-retry rather than terminal.
+	gw := buildPermanentlyFailedGateway(name, namespace, "")
+	meta.SetStatusCondition(&gw.Status.Conditions, metav1.Condition{
+		Type:               apiv1.GatewayConditionProgrammed,
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: 0,
+		Reason:             apiv1.GatewayProgrammedReasonRetrying,
+		Message:            "Deployment failed, retrying (attempt 2/3): boom",
+		LastTransitionTime: metav1.Now(),
+	})
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: name + "-config", Namespace: namespace},
+		Data:       map[string]string{"values.yaml": values},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&apiv1.APIGateway{}).
+		WithObjects(gw, cm).
+		Build()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cfg := &config.OperatorConfig{}
+	cfg.Reconciliation.MaxRetryAttempts = maxRetries
+	r := NewGatewayReconciler(c, scheme, cfg, logger)
+
+	trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
+	entry := &GatewayTrackingEntry{
+		Generation: 1,
+		Status:     GatewayTrackingStatusRetrying,
+		RetryCount: maxRetries - 1, // the next failure exhausts the budget
+	}
+	r.gatewayTracker.Set(trackingKey, entry)
+
+	// Drive the final failing attempt.
+	_, err := r.handleGatewayDeploymentError(ctx, gw, trackingKey, entry,
+		errors.New("context deadline exceeded"), 0, hash)
+	require.NoError(t, err)
+
+	failed := &apiv1.APIGateway{}
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, failed))
+	require.Equal(t, hash, failed.Status.ConfigHash,
+		"terminal failure must record the attempted config hash, not leave it empty")
+
+	cond := meta.FindStatusCondition(failed.Status.Conditions, apiv1.GatewayConditionProgrammed)
+	require.NotNil(t, cond)
+	require.Equal(t, apiv1.GatewayProgrammedReasonDeploymentFailed, cond.Reason)
+
+	// The status write above re-enqueues a reconcile. With the hash recorded, that reconcile
+	// must be a no-op instead of resetting the retry budget and redeploying.
+	result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}})
+	require.NoError(t, err)
+	require.False(t, result.Requeue, "a terminally failed gateway must not requeue without a real config change")
+	require.Zero(t, result.RequeueAfter)
+
+	after, ok := r.gatewayTracker.Get(trackingKey)
+	require.True(t, ok)
+	require.Equal(t, maxRetries, after.RetryCount,
+		"retry budget must stay exhausted - resetting it here is the infinite-redeploy loop")
 }
