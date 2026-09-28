@@ -265,3 +265,110 @@ func TestTerminalFailureRecordsAttemptedConfigHash(t *testing.T) {
 	require.Equal(t, maxRetries, after.RetryCount,
 		"retry budget must stay exhausted - resetting it here is the infinite-redeploy loop")
 }
+
+// TestConfigRefRemovalDoesNotLoop covers a gateway whose spec.configRef was removed after a
+// config had been recorded. The current hash is then "", so both the terminal-failure and the
+// success path must overwrite the stale stored hash with "". Otherwise configChanged stays true
+// forever and Case 1 resets the retry budget and redeploys on every reconcile.
+func TestConfigRefRemovalDoesNotLoop(t *testing.T) {
+	const (
+		name       = "gw1"
+		namespace  = "default"
+		maxRetries = 3
+	)
+	staleHash := auth.CalculateConfigHash("replicaCount: 1\n")
+
+	setup := func(t *testing.T) (*GatewayReconciler, *apiv1.APIGateway, string, *GatewayTrackingEntry) {
+		scheme := runtime.NewScheme()
+		require.NoError(t, clientgoscheme.AddToScheme(scheme))
+		require.NoError(t, apiv1.AddToScheme(scheme))
+
+		// configRef removed (generation bumped to 2), hash from the old ConfigMap still in status.
+		gw := buildPermanentlyFailedGateway(name, namespace, staleHash)
+		gw.Generation = 2
+		gw.Spec.ConfigRef = nil
+		meta.SetStatusCondition(&gw.Status.Conditions, metav1.Condition{
+			Type:               apiv1.GatewayConditionProgrammed,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: 0,
+			Reason:             apiv1.GatewayProgrammedReasonRetrying,
+			Message:            "Deployment failed, retrying (attempt 2/3): boom",
+			LastTransitionTime: metav1.Now(),
+		})
+
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(&apiv1.APIGateway{}).
+			WithObjects(gw).
+			Build()
+
+		cfg := &config.OperatorConfig{}
+		cfg.Reconciliation.MaxRetryAttempts = maxRetries
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		r := NewGatewayReconciler(c, scheme, cfg, logger)
+
+		trackingKey := types.NamespacedName{Namespace: namespace, Name: name}.String()
+		entry := &GatewayTrackingEntry{
+			Generation: 2,
+			Status:     GatewayTrackingStatusRetrying,
+			RetryCount: maxRetries - 1,
+		}
+		r.gatewayTracker.Set(trackingKey, entry)
+		return r, gw, trackingKey, entry
+	}
+
+	t.Run("terminal failure", func(t *testing.T) {
+		ctx := context.Background()
+		r, gw, trackingKey, entry := setup(t)
+
+		_, err := r.handleGatewayDeploymentError(ctx, gw, trackingKey, entry,
+			errors.New("context deadline exceeded"), 0, "")
+		require.NoError(t, err)
+
+		failed := &apiv1.APIGateway{}
+		require.NoError(t, r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, failed))
+		require.Empty(t, failed.Status.ConfigHash, "stale hash must be cleared when configRef is removed")
+
+		result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}})
+		require.NoError(t, err)
+		require.False(t, result.Requeue, "must not treat the cleared configRef as a config change")
+		require.Zero(t, result.RequeueAfter)
+
+		after, ok := r.gatewayTracker.Get(trackingKey)
+		require.True(t, ok)
+		require.Equal(t, maxRetries, after.RetryCount, "retry budget must stay exhausted")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		ctx := context.Background()
+		r, gw, trackingKey, entry := setup(t)
+
+		_, err := r.handleGatewayDeploymentSuccess(ctx, gw, trackingKey, entry, 0, "ready", "")
+		require.NoError(t, err)
+
+		deployed := &apiv1.APIGateway{}
+		require.NoError(t, r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, deployed))
+		require.Empty(t, deployed.Status.ConfigHash, "stale hash must be cleared when configRef is removed")
+
+		cond := meta.FindStatusCondition(deployed.Status.Conditions, apiv1.GatewayConditionProgrammed)
+		require.NotNil(t, cond)
+		require.Equal(t, metav1.ConditionTrue, cond.Status)
+
+		// The "already deployed" branch re-registers the gateway, which fails here because the
+		// fake cluster has no gateway-controller Service; that error is unrelated to the loop.
+		// The loop would instead take the config-changed branch: requeue, flip Programmed to
+		// ConfigChanged and reset the tracker - assert none of that happened.
+		result, _ := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}})
+		require.False(t, result.Requeue, "a deployed gateway without configRef must not redeploy")
+
+		latest := &apiv1.APIGateway{}
+		require.NoError(t, r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, latest))
+		cond = meta.FindStatusCondition(latest.Status.Conditions, apiv1.GatewayConditionProgrammed)
+		require.NotNil(t, cond)
+		require.Equal(t, metav1.ConditionTrue, cond.Status, "must stay Programmed, not flip to ConfigChanged")
+
+		after, ok := r.gatewayTracker.Get(trackingKey)
+		require.True(t, ok)
+		require.Equal(t, GatewayTrackingStatusDeployed, after.Status)
+	})
+}

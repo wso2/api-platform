@@ -260,7 +260,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				Reason:             "ConfigChanged",
 				Message:            "Configuration changed, redeployment pending",
 				LastTransitionTime: metav1.Now(),
-			}, nil, ""); err != nil {
+			}, nil, nil); err != nil {
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{Requeue: true}, nil
@@ -367,15 +367,6 @@ func (r *GatewayReconciler) decideAndProcess(
 					slog.Int64("crGeneration", crGeneration))
 				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
-
-			// statusObservedGen == crGeneration but condition is not True
-			// Something failed before, retry
-			if statusObservedGen == crGeneration {
-				log.Info("Retrying previously failed deployment",
-					slog.String("name", gatewayConfig.Name),
-					slog.Int64("generation", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
-			}
 		}
 	}
 
@@ -470,7 +461,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 			Reason:             apiv1.GatewayProgrammedReasonPending,
 			Message:            readinessMsg,
 			LastTransitionTime: metav1.Now(),
-		}, &selectedCount, ""); err != nil {
+		}, &selectedCount, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -542,7 +533,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 		Reason:             apiv1.GatewayProgrammedReasonProgrammed,
 		Message:            readinessMsg,
 		LastTransitionTime: metav1.Now(),
-	}, &selectedCount, configHash); err != nil {
+	}, &selectedCount, &configHash); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -551,7 +542,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 
 // handleGatewayDeploymentError handles deployment errors. configHash is the hash of the
 // configuration this attempt was made against; it is recorded on terminal failure so the
-// config-change detection in reconcileGatewayDeployment compares against what was actually
+// config-change detection in decideAndProcess compares against what was actually
 // attempted, not only against the last hash that deployed successfully.
 func (r *GatewayReconciler) handleGatewayDeploymentError(
 	ctx context.Context,
@@ -596,7 +587,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 			Reason:             apiv1.GatewayProgrammedReasonDeploymentFailed,
 			Message:            fmt.Sprintf("Max retries (%d) exceeded. Last error: %s", maxRetries, err.Error()),
 			LastTransitionTime: metav1.Now(),
-		}, &selectedCount, configHash); updateErr != nil {
+		}, &selectedCount, &configHash); updateErr != nil {
 			return ctrl.Result{}, updateErr
 		}
 
@@ -626,7 +617,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 		Reason:             apiv1.GatewayProgrammedReasonRetrying,
 		Message:            fmt.Sprintf("Deployment failed, retrying (attempt %d/%d): %s", entry.RetryCount, maxRetries, err.Error()),
 		LastTransitionTime: metav1.Now(),
-	}, &selectedCount, ""); updateErr != nil {
+	}, &selectedCount, nil); updateErr != nil {
 		return ctrl.Result{}, updateErr
 	}
 
@@ -655,8 +646,11 @@ func (r *GatewayReconciler) calculateBackoff(retryCount int) time.Duration {
 	return backoff
 }
 
-// updateGatewayProgrammedCondition updates the Programmed condition and related status fields
-func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.APIGateway, cond metav1.Condition, selectedCount *int, configHash string) error {
+// updateGatewayProgrammedCondition updates the Programmed condition and related status fields.
+// A nil configHash leaves Status.ConfigHash untouched; a non-nil one is written as-is, including
+// the empty string, so removing spec.configRef clears the stored hash instead of leaving a stale
+// value that makes every later reconcile look like a config change.
+func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.APIGateway, cond metav1.Condition, selectedCount *int, configHash *string) error {
 	// Re-fetch to get latest version
 	latest := &apiv1.APIGateway{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: gatewayConfig.Namespace, Name: gatewayConfig.Name}, latest); err != nil {
@@ -685,6 +679,10 @@ func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context
 		needsUpdate = true
 	}
 
+	if configHash != nil && *configHash != latest.Status.ConfigHash {
+		needsUpdate = true
+	}
+
 	if !needsUpdate && selectedCount != nil && latest.Status.SelectedAPIs == *selectedCount {
 		return nil
 	}
@@ -705,8 +703,8 @@ func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context
 		latest.Status.SelectedAPIs = *selectedCount
 	}
 
-	if configHash != "" {
-		latest.Status.ConfigHash = configHash
+	if configHash != nil {
+		latest.Status.ConfigHash = *configHash
 	}
 
 	now := metav1.Now()
