@@ -19,12 +19,30 @@ package utils
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/pb33f/libopenapi"
 	openapivalidator "github.com/pb33f/libopenapi-validator"
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/wso2/api-platform/platform-api/api"
 )
+
+// TruncateAtRuneBoundary returns s truncated so it never exceeds maxBytes AND
+// never splits a multi-byte UTF-8 rune
+func TruncateAtRuneBoundary(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if maxBytes >= len(s) {
+		return s
+	}
+	// s[:i] is valid UTF-8 iff i == len(s) or s[i] is the first byte of a
+	// rune (utf8.RuneStart is false only for continuation bytes 10xxxxxx).
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
 
 // SpecDocument holds a libopenapi-parsed OpenAPI 3.x document with format metadata
 // and a pre-built typed model.

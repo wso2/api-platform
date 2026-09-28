@@ -2095,9 +2095,9 @@ export const ContractSourceForm = ({
 
       {/* Backend validation errors — shown when kin-openapi rejects the spec. */}
       {backendValidationErrors !== null && backendValidationErrors.length > 0 ? (
-        <Alert severity="error">
+        <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
           <FormattedMessage {...messages.specInvalidByBackend} />
-          <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+          <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
             {backendValidationErrors.map((e, i) => (
               <Typography component="li" key={i} variant="body2">
                 {formatValidationError(e)}

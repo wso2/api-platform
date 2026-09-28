@@ -1465,7 +1465,7 @@ type ImportOpenAPIRequest struct {
 	// DisplayName Human-readable name for the API
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	// File OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
 	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
 
 	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
@@ -1478,10 +1478,7 @@ type ImportOpenAPIRequest struct {
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
 	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
-	// from. The fetch is SSRF-hardened server-side: only http/https,
-	// dial-time IP allowlist, response-size cap, bounded timeout, and
-	// bounded redirects — see the shared http client's SSRF policy.
-	// Mutually exclusive with `file`.
+	// from.
 	Url     *string `json:"url,omitempty" yaml:"url,omitempty"`
 	Version string  `binding:"required" json:"version" yaml:"version"`
 }
@@ -2138,7 +2135,7 @@ type OpenAPIContent struct {
 // must be provided; the backend rejects requests that supply both or
 // neither.
 type OpenAPISpecFileRequest struct {
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	// File OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
 	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
 
 	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec

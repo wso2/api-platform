@@ -303,7 +303,7 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 
 // ImportOpenAPI handles POST /api/v0.9/rest-apis/import-openapi.
 // Accepts multipart/form-data with either a spec `file` upload OR a `url`
-// only supports OpenApi 3.x andSwagger 2.x specs are rejected.
+// only supports OpenApi 3.x and Swagger 2.x specs are rejected.
 func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
@@ -631,30 +631,26 @@ func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http
 }
 
 func specFileNameFromURL(rawURL string, content []byte) string {
+	ext := ".yaml"
+	if utils.IsJSONBytes(content) {
+		ext = ".json"
+	}
 	if parsed, err := url.Parse(rawURL); err == nil {
 		base := path.Base(parsed.Path)
 		if base != "" && base != "." && base != "/" {
-			return base
+			lower := strings.ToLower(base)
+			if strings.HasSuffix(lower, ".json") ||
+				strings.HasSuffix(lower, ".yaml") ||
+				strings.HasSuffix(lower, ".yml") {
+				return base
+			}
+			return base + ext
 		}
 	}
-	if isJSONSpec(content) {
+	if ext == ".json" {
 		return constants.DefaultOpenAPISpecJSONFileName
 	}
 	return constants.DefaultOpenAPISpecYAMLFileName
-}
-
-func isJSONSpec(content []byte) bool {
-	for _, b := range content {
-		switch b {
-		case ' ', '\t', '\r', '\n':
-			continue
-		case '{':
-			return true
-		default:
-			return false
-		}
-	}
-	return false
 }
 
 // RegisterRoutes registers all API routes

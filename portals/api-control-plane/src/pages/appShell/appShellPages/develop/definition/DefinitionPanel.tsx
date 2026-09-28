@@ -1055,15 +1055,15 @@ export function DefinitionPanel() {
             {showSaveBar && (
               <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
                 {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
-                  <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
+                  <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
                     <FormattedMessage {...messages.saveSpecInvalid} />
-                    <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-                      {saveValidationErrors.map((msg, i) => (
-                        <Typography component="li" key={i} variant="body2">
-                          {msg}
-                        </Typography>
-                      ))}
-                    </Box>
+                      <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
+                        {saveValidationErrors.map((msg, i) => (
+                          <Typography component="li" key={i} variant="body2">
+                            {msg}
+                          </Typography>
+                        ))}
+                      </Box>
                   </Alert>
                 )}
                 <Box
