@@ -671,15 +671,19 @@ blocks:
       - name: agent-proxy-cards
         features:
           - features/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-deployment
         features:
           - features/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-import
         features:
           - features/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-postgres
     parallel: 2
@@ -714,15 +718,19 @@ blocks:
       - name: agent-proxy-cards
         features:
           - features/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-deployment
         features:
           - features/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-import
         features:
           - features/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-sqlserver
     parallel: 2
@@ -757,15 +765,19 @@ blocks:
       - name: agent-proxy-cards
         features:
           - features/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-deployment
         features:
           - features/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-api-keys
         features:
           - features/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
       - name: agent-proxy-import
         features:
           - features/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
@@ -786,6 +798,7 @@ blocks:
       - name: agent-proxy-recovery
         features:
           - features/agent_proxy_recovery.feature
+        tags: "gateway-version>1.2.0"
 
   - name: dp-to-cp-sync-disabled
     parallel: 1

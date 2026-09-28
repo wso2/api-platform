@@ -144,6 +144,9 @@ jobs:
       - name: Build testbench image
         run: make -C tests/framework testbench
 
+      - name: Build A2A trip-planner image
+        run: make -C tests/framework a2a-trip-planner
+
       - name: Run the integration suite
         working-directory: tests/framework
         env:
