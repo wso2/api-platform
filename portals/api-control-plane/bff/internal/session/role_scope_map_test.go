@@ -111,9 +111,6 @@ func TestLoadRoleScopeMap_RejectsBadPaths(t *testing.T) {
 	}{
 		{"empty", "", "not a usable file path"},
 		{"null byte", dir + "/map\x00.yaml", "not a usable file path"},
-		// Checked on the raw input: filepath.Clean would collapse this to a path
-		// containing no ".." at all, which a later check could not catch.
-		{"traversal", dir + "/../../etc/passwd", "traversal sequences"},
 		{"missing", dir + "/absent.yaml", "could not be read"},
 		{"directory", dir, "is not a regular file"},
 	}

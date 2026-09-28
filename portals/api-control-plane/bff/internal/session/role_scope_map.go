@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -67,15 +66,12 @@ type roleScopeConfig struct {
 //
 // The path is operator-supplied configuration, not request input, so it is not confined
 // to the {{ file }} allowlist — an operator may mount the grant table wherever they
-// like. Traversal sequences are still rejected on the raw input, before normalization,
-// since filepath.Clean would collapse them into a path that passes a later check.
+// like, including a relative path that climbs out of the working directory (the
+// shipped default reaches the Platform API's copy via "../../platform-api/..."). A
+// relative path resolves against the process working directory, not the config file.
 func LoadRoleScopeMap(path string) (map[string][]string, error) {
 	if path == "" || strings.ContainsRune(path, '\x00') {
 		return nil, fmt.Errorf("role_to_scope_mapping is not a usable file path")
-	}
-	segments := strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' })
-	if slices.Contains(segments, "..") {
-		return nil, fmt.Errorf("role_to_scope_mapping %q must not contain traversal sequences", path)
 	}
 	cleaned := filepath.Clean(path)
 

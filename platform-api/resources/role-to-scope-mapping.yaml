@@ -109,6 +109,55 @@ roles:
       - dp:webhook_subscriber:manage
       - dp:event:read
 
+  - name: OrganizationAdmin
+    scopes:
+      # Platform API
+      - ap:organization:manage
+      - ap:project:manage
+      - ap:gateway:manage
+      - ap:gateway_custom_policy:manage
+      - ap:rest_api:manage
+      - ap:application:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:manage
+      - ap:llm_template:manage
+      - ap:llm_provider:manage
+      - ap:llm_proxy:manage
+      - ap:mcp_proxy:manage
+      - ap:secret:manage
+      - ap:api_key:read
+      # Administrative access to every user's API keys, not just the caller's.
+      - ap:api_key:all:manage
+      - ap:api_portal:draft:manage
+      - ap:api_portal:manage
+      - ap:api_portal:publication:read
+      - ap:api_portal:rest_api:manage
+      - ap:api_publication:read
+      # - ap:websub_api:manage   # event-gateway build only
+      # - ap:webbroker_api:manage   # event-gateway build only
+      # API Portal & MCP Hub
+      - dp:organization:manage
+      - dp:organization_content:manage
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:manage
+      - dp:subscription:manage
+      - dp:subscription_plan:manage
+      - dp:key_manager:manage
+      - dp:key_manager:read
+      - dp:view:manage
+      - dp:label:manage
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+
   # Platform operator / CI-CD service account — runs gateways, deployments,
   # subscription plans, key managers and webhooks; reads everything else.
   - name: ap_operator

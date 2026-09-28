@@ -105,12 +105,14 @@ org_handle = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'
 # actions that fail with 403.
 [api_control_plane.auth.authorization]
 
-# "scope" (default) reads the token's scope claim. "role" expands the roles claim
-# (claim_mappings.roles above) through the grant table below — required for any IdP
-# that cannot mint the platform's ap:* scopes (Microsoft Entra ID, a role-based
-# WSO2 Thunder setup).
-mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "scope" }}'
+# "role" (default) expands the roles claim (claim_mappings.roles above) through the
+# grant table below — required for any IdP that cannot mint the platform's ap:*
+# scopes (Microsoft Entra ID, a role-based WSO2 Thunder setup). "scope" reads the
+# token's scope claim instead.
+mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "role" }}'
 # Path to role-to-scope-mapping.yaml. Required when mode = "role" (startup fails
 # otherwise). Mount the SAME file the Platform API reads, so the console and the API
-# cannot disagree about what a role grants. Ignored in scope mode.
-role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "" }}'
+# cannot disagree about what a role grants. Ignored in scope mode. A relative path
+# resolves against the BFF's working directory, not this file's location; set the
+# env var in containers, where the default does not resolve.
+role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "../../../platform-api/resources/role-to-scope-mapping.yaml" }}'
