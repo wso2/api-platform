@@ -32,11 +32,35 @@ export type LimitedComponent =
   | 'mcpProxies'
   | 'gateways';
 
-/** One component's entitlement. `max` of -1 means unlimited. */
+/**
+ * One component's entitlement, as a supplier reports it.
+ *
+ * `max` of -1 means unlimited; `used` of -1 means the count could not be read. The
+ * verdict is derived from the pair rather than supplied, so there is one rule in one
+ * place — see `isAtLimit`.
+ */
 export interface ResourceLimit {
   max: number;
   used: number;
-  canCreate: boolean;
+}
+
+/** No ceiling. */
+const UNLIMITED = -1;
+/** The supplier could not read the count. */
+const COUNT_UNKNOWN = -1;
+
+/**
+ * Whether this component has reached its ceiling.
+ *
+ * An unlimited ceiling and an unreadable count both answer "no": a wrong "no" costs a
+ * failed submit, while a wrong "yes" would lock a user out of their own product. The
+ * control plane applies the same rule when it refuses a create, so this is not the only
+ * thing standing between a user and an over-limit component.
+ */
+function isAtLimit(limit: ResourceLimit | undefined): boolean {
+  if (!limit) return false;
+  if (limit.max === UNLIMITED || limit.used === COUNT_UNKNOWN) return false;
+  return limit.used >= limit.max;
 }
 
 /** What a supplier hands in. A component it omits is simply not capped. */
@@ -108,10 +132,10 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
     const limitOf = (component: LimitedComponent) => limits?.[component];
 
     return {
-      canCreate: (component) => limitOf(component)?.canCreate ?? true,
+      canCreate: (component) => !isAtLimit(limitOf(component)),
       limitMessage: (component) => {
         const limit = limitOf(component);
-        if (!limit || limit.canCreate) return '';
+        if (!isAtLimit(limit) || !limit) return '';
         return (
           `You cannot create more ${COMPONENT_LABELS[component]} because your ` +
           `organization has reached the maximum of ${limit.max}.`
