@@ -258,3 +258,43 @@ func TestOrgLookupReadsEitherResponseShape(t *testing.T) {
 		})
 	}
 }
+
+// A user can switch org while the lookup is still in flight. The switch is the more
+// recent choice, so it must survive the discovery landing on top of it — AND be what
+// resolveOrgHandle hands back, or the exchange would mint a token for the org the
+// switch replaced while the session reported the one the user picked.
+func TestResolveOrgHandleYieldsToAnOrgSwitchMadeDuringDiscovery(t *testing.T) {
+	stub := &orgAPIStub{status: http.StatusOK, body: `{"count":1,"list":[{"handle":"discovered-org"}]}`}
+	srv := newOrgServer(t, stub)
+	s := discoveryServer(t, srv.URL, "default")
+
+	// Stand in for handleSwitchOrg running while the lookup is out: the stub writes
+	// the user's choice to the session before it answers.
+	switchSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		sess, ok, _ := s.store.Get(context.Background(), "login-token")
+		if !ok {
+			t.Error("session missing while the lookup was in flight")
+		} else {
+			sess.OrgHandle = "chosen-mid-flight"
+			if err := s.store.Put(context.Background(), sess); err != nil {
+				t.Errorf("switch org: %v", err)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"count":1,"list":[{"handle":"discovered-org"}]}`))
+	}))
+	defer switchSrv.Close()
+	s.cfg.Auth.OIDC.TokenExchange.OrgLookupURL = switchSrv.URL
+
+	if got := s.resolveOrgHandle(context.Background(), "login-token", ""); got != "chosen-mid-flight" {
+		t.Errorf("resolved org = %q, want chosen-mid-flight (the switch, not the discovery)", got)
+	}
+	sess, ok, _ := s.store.Get(context.Background(), "login-token")
+	if !ok || sess.OrgHandle != "chosen-mid-flight" {
+		t.Errorf("session org = %q (found=%v), want chosen-mid-flight", sess.OrgHandle, ok)
+	}
+	// The lookup still counts as answered, so it is not repeated.
+	if !sess.OrgDiscovered {
+		t.Error("OrgDiscovered = false, want true — the lookup did run")
+	}
+}

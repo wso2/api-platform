@@ -237,8 +237,12 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 	}
 
 	// Recorded either way, empty handle included: the lookup answered, and that
-	// answer is what this session uses from here on.
-	s.recordDiscoveredOrg(ctx, subjectToken, handle)
+	// answer is what this session uses from here on. What comes back is the org the
+	// session ACTUALLY holds now, which differs from the discovered one when the
+	// user switched org while the lookup was in flight — the exchange has to follow
+	// the session, or it would mint a token for a different org than the session
+	// reports and than the cached-token check is judged against.
+	handle = s.recordDiscoveredOrg(ctx, subjectToken, handle)
 
 	if handle == "" {
 		// Not an error: a user who belongs to no org yet is exactly who the
@@ -261,18 +265,28 @@ func (s *Server) resolveOrgHandle(ctx context.Context, subjectToken, sessionOrg 
 	return handle
 }
 
-// recordDiscoveredOrg persists the lookup's outcome on the session. Best-effort,
-// like the exchanged-token cache: losing it only costs another lookup.
+// recordDiscoveredOrg persists the lookup's outcome on the session and returns the
+// org the session holds afterwards — normally the discovered handle, but the session's
+// own when that wins. Best-effort, like the exchanged-token cache: losing the write
+// only costs another lookup.
 //
 // The handle is written only while the session still has none. A user can switch org
 // while the lookup is in flight — the switch handler writes OrgHandle directly — and
 // that choice is the more recent, more authoritative one of the two; overwriting it
 // with a discovery that started earlier would silently move them back. OrgDiscovered
 // is set regardless, because the lookup did run either way.
-func (s *Server) recordDiscoveredOrg(ctx context.Context, subjectToken, handle string) {
+//
+// Returning the effective value rather than the discovered one is what keeps the
+// caller consistent with the session: the whole point of preserving a mid-flight
+// switch is lost if the exchange then goes ahead with the org the switch replaced.
+// Read inside the same lock as the write, so nothing can move in between.
+func (s *Server) recordDiscoveredOrg(ctx context.Context, subjectToken, handle string) string {
+	effective := handle
 	s.withSessionLock(subjectToken, func() {
 		sess, ok, _ := s.store.Get(ctx, subjectToken)
 		if !ok {
+			// No session to reconcile against (the BFF restarted mid-request, or the
+			// token just rotated out) — the discovered handle is all there is.
 			return
 		}
 		if sess.OrgHandle == "" {
@@ -282,7 +296,9 @@ func (s *Server) recordDiscoveredOrg(ctx context.Context, subjectToken, handle s
 		if err := s.store.Put(ctx, sess); err != nil {
 			slog.Warn("failed to persist the resolved organization on the session", "err", err)
 		}
+		effective = sess.OrgHandle
 	})
+	return effective
 }
 
 // discoverSingleFlight performs one org lookup per session at a time, mirroring
