@@ -149,10 +149,14 @@ type ControlPlaneConfig struct {
 	// MoesifURL is an optional second hop for Moesif analytics. When set,
 	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
 	// Include whatever path prefix the upstream publishes under (e.g.
-	// http://host:8081/cloud for wso2cloud's platform-api, or
+	// https://host:8443/cloud for wso2cloud's platform-api, or
 	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).
+	//
+	// Must be https://, which the control plane's own URL need not be: this hop
+	// forwards the user's exchanged token to a third-party service, so validate()
+	// refuses to start on a plaintext one.
 	MoesifURL string `koanf:"moesif_url"`
-	// MoesifCAFile / MoesifTLSSkipVerify apply only to MoesifURL when that hop uses TLS.
+	// MoesifCAFile / MoesifTLSSkipVerify apply to the MoesifURL hop, which is always TLS.
 	MoesifCAFile        string `koanf:"moesif_ca_file"`
 	MoesifTLSSkipVerify bool   `koanf:"moesif_tls_skip_verify"`
 	// MoesifPathMappings rewrites paths on the Moesif hop, as comma-separated
@@ -688,17 +692,16 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
+	// https only, unlike the other upstream hops: this one is reached by proxying the
+	// user's EXCHANGED token to a third-party analytics service, so a plaintext hop
+	// would put a live credential on the wire. Rejected at startup rather than at the
+	// first proxied request, where it would already be too late.
 	if c.ControlPlane.MoesifURL != "" {
 		cu, err := url.Parse(c.ControlPlane.MoesifURL)
-		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
-			return fmt.Errorf("[control_plane] moesif_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.MoesifURL)
+		if err != nil || cu.Scheme != "https" || cu.Host == "" {
+			return fmt.Errorf("[control_plane] moesif_url must be an absolute https:// URL, got %q", c.ControlPlane.MoesifURL)
 		}
-		if cu.Scheme == "http" {
-			if c.ControlPlane.MoesifCAFile != "" || c.ControlPlane.MoesifTLSSkipVerify {
-				return fmt.Errorf("[control_plane] moesif_ca_file / moesif_tls_skip_verify are set but moesif_url is http:// (no TLS on that hop)")
-			}
-		}
-		if cu.Scheme == "https" && c.ControlPlane.MoesifTLSSkipVerify {
+		if c.ControlPlane.MoesifTLSSkipVerify {
 			slog.Warn("[control_plane] moesif_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
 				"Trust the upstream certificate with [control_plane] moesif_ca_file instead.")
 		}

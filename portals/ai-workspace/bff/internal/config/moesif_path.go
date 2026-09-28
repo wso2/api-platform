@@ -33,7 +33,7 @@ import (
 // so that upstream needs no mapping. wso2cloud's platform-api, which serves the
 // viewer token at `/analytics/id-token`, does:
 //
-//	moesif_url           = "http://host:8081/cloud"
+//	moesif_url           = "https://host:8443/cloud"
 //	moesif_path_mappings = "/id_token=/analytics/id-token"
 //
 // Keeping this on the BFF rather than in the SPA is deliberate: the call has to
