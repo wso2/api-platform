@@ -70,6 +70,15 @@ func (h *AgentProxyDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/agent-proxies/{agentProxyId}/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteDeployment))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/agent-proxies/{agentProxyId}/deployments/{deploymentId}/undeploy", middleware.MapErrors(h.slogger, h.UndeployDeployment))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/agent-proxies/{agentProxyId}/deployments/{deploymentId}/restore", middleware.MapErrors(h.slogger, h.RestoreDeployment))
+
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "agent-proxies",
+		PathParam: "agentProxyId",
+		Subject:   "Agent proxy",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }
 
 // CreateDeployment handles POST /api/v0.9/agent-proxies/{agentProxyId}/deployments

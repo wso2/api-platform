@@ -5229,6 +5229,194 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /agent-proxies/{agentProxyId}/builds:
+    post:
+      summary: Prepare a build of an Agent proxy
+      description: |
+        Renders the Agent proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the Agent proxy since, and the same build can be deployed to
+        any number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        An Agent proxy keeps at most `deployments.max_builds_per_api` builds. Preparing
+        another first removes the oldest builds no current deployment is using; if every one
+        is in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: createAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:create
+        - OAuth2Security:
+            - ap:agent_proxy:build:manage
+        - OAuth2Security:
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for an Agent proxy
+      description: |
+        Lists the Agent proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: listAgentProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:read
+        - OAuth2Security:
+            - ap:agent_proxy:build:manage
+        - OAuth2Security:
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/builds/{buildId}:
+    get:
+      summary: Get Agent proxy build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: getAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:read
+        - OAuth2Security:
+            - ap:agent_proxy:build:manage
+        - OAuth2Security:
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an Agent proxy build
+      description: |
+        Deletes one of the Agent proxy's builds, freeing a slot when the Agent proxy is at its
+        build limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: deleteAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:delete
+        - OAuth2Security:
+            - ap:agent_proxy:build:manage
+        - OAuth2Security:
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /agent-proxies/{agentProxyId}/api-keys:
     get:
       summary: List API keys for an Agent proxy
@@ -7191,6 +7379,10 @@ components:
             ap:agent_proxy:api_key:manage: Full access to an Agent proxy's API keys
             ap:agent_proxy:api_key:read: Read an Agent proxy's API key metadata
             ap:agent_proxy:api_key:update: Update an API key of an Agent proxy
+            ap:agent_proxy:build:create: Prepare a build of an Agent proxy
+            ap:agent_proxy:build:delete: Delete a build of an Agent proxy
+            ap:agent_proxy:build:manage: Full access to an Agent proxy's builds
+            ap:agent_proxy:build:read: Read builds of an Agent proxy
             ap:agent_proxy:create: Create an Agent proxy
             ap:agent_proxy:delete: Delete an Agent proxy
             ap:agent_proxy:deployment:create: Deploy an Agent proxy

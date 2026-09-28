@@ -5119,6 +5119,12 @@ type ListAgentProxyAPIKeysParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// ListAgentProxyBuildsParams defines parameters for ListAgentProxyBuilds.
+type ListAgentProxyBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // ListAgentProxyDeploymentsParams defines parameters for ListAgentProxyDeployments.
 type ListAgentProxyDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -5725,6 +5731,9 @@ type CreateAgentProxyAPIKeyJSONRequestBody = CreateAPIKeyRequest
 
 // UpdateAgentProxyAPIKeyJSONRequestBody defines body for UpdateAgentProxyAPIKey for application/json ContentType.
 type UpdateAgentProxyAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateAgentProxyBuildJSONRequestBody defines body for CreateAgentProxyBuild for application/json ContentType.
+type CreateAgentProxyBuildJSONRequestBody = BuildRequest
 
 // CreateAgentProxyDeploymentJSONRequestBody defines body for CreateAgentProxyDeployment for application/json ContentType.
 type CreateAgentProxyDeploymentJSONRequestBody = DeployRequest
