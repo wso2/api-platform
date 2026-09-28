@@ -27,6 +27,7 @@ import {
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
+import { ResourceLimitsProvider } from './hooks/useResourceLimits';
 import { RoleProvider } from './contexts/RoleContext';
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
@@ -311,7 +312,9 @@ function ProtectedAppShell() {
             userEmail={userEmail}
             userPicture={userPicture}
           >
-            <AppShellMain />
+            <ResourceLimitsProvider>
+              <AppShellMain />
+            </ResourceLimitsProvider>
           </AppShellProvider>
         </AIWorkspaceSnackbarProvider>
       </RoleProvider>

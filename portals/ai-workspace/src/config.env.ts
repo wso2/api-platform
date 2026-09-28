@@ -47,6 +47,7 @@ export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION',
 // calling a route that does not exist. The billing URL itself never reaches the browser.
 export const BILLING_PROXY_ENABLED = getEnvOrDefault('APIP_AIW_BILLING_PROXY_ENABLED', false);
 
+
 // Auth mode: 'basic' (default) posts credentials to /api/portal/v0.9/auth/login; 'oidc' uses react-oidc-context.
 export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';
 

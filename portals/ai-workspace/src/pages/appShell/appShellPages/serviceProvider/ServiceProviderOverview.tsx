@@ -141,6 +141,7 @@ import LLLMStepBanner, {
   type LLLMStepBannerStepId,
 } from '../quickStart/lllmStepBanner';
 import ServiceProviderResourcesTab from './ServiceProviderResourcesTab';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 const PROVIDER_LOGO_MAP: Record<string, string> = {
   openai: OpenAILogo,
@@ -507,9 +508,9 @@ function ServiceProviderOverviewContent() {
     void refreshOrgProxyCount();
   }, [refreshOrgProxyCount]);
 
-  const isProxyQuotaReached = false;
-  const proxyQuotaTooltip =
-    'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+  const { canCreate: canCreateComponent, limitMessage } = useResourceLimits();
+  const isProxyQuotaReached = !canCreateComponent('llmProxies');
+  const proxyQuotaTooltip = limitMessage('llmProxies');
   const isReadOnlyProvider = Boolean(provider?.readOnly);
 
   useEffect(() => {

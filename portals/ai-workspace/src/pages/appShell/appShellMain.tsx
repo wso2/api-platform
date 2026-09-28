@@ -56,6 +56,7 @@ import {
 } from '../../extensions';
 import { useSlot } from '../../slots';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
 type SelectableOrg = {
@@ -111,15 +112,25 @@ export default function AppLayout(): JSX.Element {
     },
     [showSnackbar]
   );
+  // Read rather than owned here: ResourceLimitsProvider sits above this component
+  // (App.tsx) so the value can ride the Port. A cloud plugin mounted on app.gate
+  // supplies the numbers through `resourceLimits.set`; this portal only carries them.
+  const { canCreate, limitMessage, setResourceLimits } = useResourceLimits();
+  const resourceLimits = useMemo(
+    () => ({ canCreate, limitMessage, set: setResourceLimits }),
+    [canCreate, limitMessage, setResourceLimits]
+  );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
       orgHandle: getOrgSlug(currentOrganization),
+      orgUuid: currentOrganization?.uuid,
       projectHandle: currentProject ? getProjectSlug(currentProject) : undefined,
       navigate,
       notify,
       apiFetch: extensionApiFetch,
+      resourceLimits,
     }),
-    [currentOrganization, currentProject, navigate, notify]
+    [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
 
   // The first-run wizard owns the whole viewport: a user with nothing set up yet

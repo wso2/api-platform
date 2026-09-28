@@ -35,6 +35,10 @@ var browserSafeKeys = []string{
 	// always emits it from the parsed cfg.Auth.Mode instead.
 	"default_org_region",
 	"api_portal_enabled",
+	"resource_limits_enabled",
+	"resource_limit_tiers",
+	"subscriptions_cloud_type",
+	"subscriptions_origin",
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",
 	"logging.browser_debug",
