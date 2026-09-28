@@ -51,7 +51,7 @@ describe('GraphqlProgressBanner — before anything is deployed', () => {
     // Test/Publish have no honest "done" signal for a GraphQL API, so they
     // stay disabled next-next steps rather than clickable pills before deploy.
     expect(screen.getByRole('button', { name: 'Test' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Publish to Devportal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
     expect(screen.getByText('1 of 4 completed')).toBeInTheDocument();
     // "Next: " and the step name land in separate nodes (the step name is
     // wrapped in its own bolded span) — matched via a substring text function
@@ -77,7 +77,7 @@ describe('GraphqlProgressBanner — once deployed', () => {
     expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled();
     // Publish leads to a `ComingSoon` stub with nothing behind it yet, so —
     // unlike Test — it never becomes a real next action, deployed or not.
-    expect(screen.getByRole('button', { name: 'Publish to Devportal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
     // Caps at "2 of 4" and stays there: Test/Publish never mark complete, so
     // there is no further real signal to advance the counter with.
     expect(screen.getByText('2 of 4 completed')).toBeInTheDocument();
