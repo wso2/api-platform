@@ -164,7 +164,7 @@ export const validateOpenApiSpec = async (
   options?: RequestOptions,
 ): Promise<ValidateOpenAPIResponse> => {
   const formData = new FormData();
-  const blob = new Blob([specContent], { type: 'application/x-yaml' });
+  const blob = new Blob([specContent], { type: 'application/yaml' });
   formData.append('file', blob, 'openapi.yaml');
   return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
     ...options,

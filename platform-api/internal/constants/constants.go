@@ -72,6 +72,12 @@ var ValidGatewayFunctionalityType = map[string]bool{
 // DefaultGatewayFunctionalityType Default gateway functionality type for new gateways
 const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
+// PublicationAPITypeRestAPI is the type-agnostic path value for RestApi
+// in API Publication routes (/api-portals/{apiPortalId}/apis/{apiType}/...).
+// Distinct from the RestApi artifact-kind constant below: that one names the
+// artifact's kind column, this one is the lowercase-hyphenated URL segment.
+const PublicationAPITypeRestAPI = "rest-api"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"

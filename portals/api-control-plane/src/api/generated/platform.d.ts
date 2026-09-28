@@ -5842,19 +5842,12 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description This API type has no projection onto the API Portal's own API types, so no listing can be created for it. */
-        PublicationTypeUnsupported: {
+        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything. */
+        PublicationPublishBadRequest: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                /**
-                 * @example {
-                 *       "status": "error",
-                 *       "code": "PUBLICATION_TYPE_UNSUPPORTED",
-                 *       "message": "APIs of this type cannot be published to an API Portal."
-                 *     }
-                 */
                 "application/json": components["schemas"]["Error"];
             };
         };
@@ -5891,14 +5884,14 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The definition's raw content. Content-Type matches the serialization it was stored in: application/json or application/x-yaml for an OpenAPI or AsyncAPI contract, application/graphql for GraphQL SDL, application/xml for WSDL. */
+        /** @description The definition's raw content. Content-Type matches the serialization it was stored in: application/json or application/yaml for an OpenAPI or AsyncAPI contract, application/graphql for GraphQL SDL, application/xml for WSDL. */
         PublicationDefinitionResponse: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
                 "application/json": string;
-                "application/x-yaml": string;
+                "application/yaml": string;
                 "application/graphql": string;
                 "application/xml": string;
             };
@@ -7248,11 +7241,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description The definition as raw bytes. The request's Content-Type selects the stored serialization and must match the contract the API's type uses; no other media type is accepted. */
+        /** @description The definition as raw bytes. The request's Content-Type selects the stored serialization; no other media type is accepted. Saving a draft never validates the content itself — including whether the Content-Type matches what the API's type actually uses — only publish does. */
         requestBody: {
             content: {
                 "application/json": string;
-                "application/x-yaml": string;
+                "application/yaml": string;
                 "application/graphql": string;
                 "application/xml": string;
             };
@@ -7427,7 +7420,7 @@ export interface operations {
                     "application/json": components["schemas"]["Publication"];
                 };
             };
-            400: components["responses"]["PublicationTypeUnsupported"];
+            400: components["responses"]["PublicationPublishBadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

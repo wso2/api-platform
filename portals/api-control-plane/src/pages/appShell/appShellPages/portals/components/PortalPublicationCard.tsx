@@ -17,12 +17,12 @@
  */
 
 import { Avatar, Box, Button, Card, CardContent, Chip, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { ChevronRight, Globe, Link2 } from '@wso2/oxygen-ui-icons-react';
+import { ChevronRight, ExternalLink, Globe } from '@wso2/oxygen-ui-icons-react';
 import { useId } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
-import { publicationChipMeta } from '../utils/publicationDisplay';
+import { buildViewInPortalUrl, publicationChipMeta } from '../utils/publicationDisplay';
 
 const messages = defineMessages({
   goToPublish: {
@@ -30,11 +30,18 @@ const messages = defineMessages({
     defaultMessage: 'Go To Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
+  viewInPortal: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal',
+    defaultMessage: 'View in Portal',
+    description: 'Link opening this API\'s own page on the portal, in a new tab.',
+  },
 });
 
 type PortalPublicationCardProps = {
-  publication: PublicationSummaryItem;
+  apiHandle: string;
   onOpen: (publication: PublicationSummaryItem) => void;
+  orgHandle: string;
+  publication: PublicationSummaryItem;
 };
 
 const AVATAR_SIZE = 48;
@@ -57,19 +64,19 @@ function PortalAvatar() {
   );
 }
 
-/** Drops the scheme and a trailing slash so the card shows a clean host, not a full URL. */
-const displayUrl = (url: string): string => url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-
 /**
  * One API Portal, annotated with this API's own publication status. Only the
  * "Go To Publish" button opens it; the card itself is not clickable.
  */
-export function PortalPublicationCard({ publication, onOpen }: PortalPublicationCardProps) {
+export function PortalPublicationCard({ apiHandle, onOpen, orgHandle, publication }: PortalPublicationCardProps) {
   const intl = useIntl();
   const nameId = useId();
   const name = publication.apiPortalName || publication.apiPortalId || '';
   const chipMeta = publicationChipMeta(publication);
   const open = () => onOpen(publication);
+  // There's a live (or once-live) listing to open only in these two states —
+  // NOT_PUBLISHED has never had a page on the portal to link to.
+  const canViewInPortal = publication.status === 'PUBLISHED' || publication.status === 'DEPRECATED';
 
   return (
     <Card
@@ -114,27 +121,23 @@ export function PortalPublicationCard({ publication, onOpen }: PortalPublication
             </Typography>
           )}
 
-          {publication.apiPortalUrl && (
-            <Stack
-              alignItems="center"
-              direction="row"
-              spacing={0.75}
-              sx={{ color: 'text.secondary', minWidth: 0 }}
-            >
-              <Link2 size={14} />
-              <Typography
+          {/* Fixed height regardless of whether the link renders, so cards in
+              the same row do not change size as publication status varies. */}
+          <Box sx={{ minHeight: 32 }}>
+            {publication.apiPortalUrl && canViewInPortal && (
+              <Button
                 component="a"
-                href={publication.apiPortalUrl}
-                noWrap
+                endIcon={<ExternalLink size={14} />}
+                href={buildViewInPortalUrl(publication.apiPortalUrl, orgHandle, apiHandle)}
                 rel="noopener noreferrer"
-                sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                size="small"
+                sx={{ minWidth: 0, px: 0 }}
                 target="_blank"
-                variant="caption"
               >
-                {displayUrl(publication.apiPortalUrl)}
-              </Typography>
-            </Stack>
-          )}
+                <FormattedMessage {...messages.viewInPortal} />
+              </Button>
+            )}
+          </Box>
         </Stack>
       </CardContent>
 
