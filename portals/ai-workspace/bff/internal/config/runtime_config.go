@@ -35,6 +35,9 @@ var browserSafeKeys = []string{
 	// always emits it from the parsed cfg.Auth.Mode instead.
 	"default_org_region",
 	"api_portal_enabled",
+	// Identity providers a login page may offer directly, as JSON. Empty means the
+	// IDP owns the provider choice, which is the default.
+	"login_identity_providers",
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",
 	"logging.browser_debug",
