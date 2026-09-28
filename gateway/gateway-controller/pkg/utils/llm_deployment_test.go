@@ -1197,6 +1197,138 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 	require.NoError(t, err)
 }
 
+// recordingArtifactPusher is an ArtifactPusher that records submitted tasks instead
+// of running them, so a test can assert on whether a push was scheduled and then run
+// it synchronously.
+type recordingArtifactPusher struct {
+	connected bool
+	onPrem    bool
+	submitted []func()
+	pushed    []*models.StoredConfig
+}
+
+func (p *recordingArtifactPusher) IsConnected() bool { return p.connected }
+func (p *recordingArtifactPusher) IsOnPrem() bool    { return p.onPrem }
+
+func (p *recordingArtifactPusher) SubmitArtifactPush(task func()) {
+	p.submitted = append(p.submitted, task)
+}
+
+func (p *recordingArtifactPusher) PushArtifact(_ string, artifact *models.StoredConfig, _ string) error {
+	p.pushed = append(p.pushed, artifact)
+	return nil
+}
+
+func (p *recordingArtifactPusher) runSubmitted() {
+	for _, task := range p.submitted {
+		task()
+	}
+}
+
+func newUndeployPushTestProvider(origin models.Origin) *models.StoredConfig {
+	return &models.StoredConfig{
+		UUID:        "llm-provider-undeploy-push-id",
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:      "llm-provider-undeploy-push",
+		DisplayName: "LLM Provider Undeploy Push",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata: api.Metadata{
+				Name: "llm-provider-undeploy-push",
+			},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "LLM Provider Undeploy Push",
+				Version:     "v1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: stringPtr("https://example.com"),
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+		Origin:       origin,
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
+
+// TestLLMDeploymentService_DeleteLLMProvider_UndeployPush covers the DP->CP undeploy
+// push that DeleteLLMProvider (and DeleteLLMProxy, which shares pushArtifactUndeploy)
+// performs: only a gateway-originated artifact is pushed, only when a pusher is wired,
+// connected, not on-prem and enabled, and the returned config is never mutated.
+func TestLLMDeploymentService_DeleteLLMProvider_UndeployPush(t *testing.T) {
+	cases := []struct {
+		name       string
+		origin     models.Origin
+		pusher     *recordingArtifactPusher // nil = not wired, like the control plane client's own instance
+		enabled    bool
+		wantPushes int
+	}{
+		{"gateway origin, connected, enabled", models.OriginGatewayAPI, &recordingArtifactPusher{connected: true}, true, 1},
+		{"control-plane origin", models.OriginControlPlane, &recordingArtifactPusher{connected: true}, true, 0},
+		{"pusher not wired", models.OriginGatewayAPI, nil, true, 0},
+		{"push disabled", models.OriginGatewayAPI, &recordingArtifactPusher{connected: true}, false, 0},
+		{"disconnected", models.OriginGatewayAPI, &recordingArtifactPusher{}, true, 0},
+		{"on-prem", models.OriginGatewayAPI, &recordingArtifactPusher{connected: true, onPrem: true}, true, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			store := storage.NewConfigStore()
+			db := newTestSQLiteStorage(t, logger)
+			routerConfig := &config.RouterConfig{ListenerPort: 8080}
+			apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, &mockLLMEventHub{}, "test-gateway")
+			service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+			// Never pass a typed-nil pointer: the interface would be non-nil and the
+			// gate would call methods on it.
+			if tc.pusher != nil {
+				service.SetControlPlanePusher(tc.pusher, tc.enabled)
+			}
+
+			cfg := newUndeployPushTestProvider(tc.origin)
+			require.NoError(t, db.SaveConfig(cfg))
+			require.NoError(t, store.Add(cfg))
+
+			deleted, err := service.DeleteLLMProvider(cfg.Handle, "corr-undeploy-push", logger)
+			require.NoError(t, err)
+			require.NotNil(t, deleted)
+			assert.Equal(t, models.StateDeployed, deleted.DesiredState,
+				"the returned config must not be mutated by the undeploy push")
+
+			if tc.pusher == nil {
+				return
+			}
+			require.Len(t, tc.pusher.submitted, tc.wantPushes)
+			tc.pusher.runSubmitted()
+			require.Len(t, tc.pusher.pushed, tc.wantPushes)
+			if tc.wantPushes == 1 {
+				assert.Equal(t, cfg.UUID, tc.pusher.pushed[0].UUID)
+				assert.Equal(t, models.StateUndeployed, tc.pusher.pushed[0].DesiredState)
+			}
+		})
+	}
+}
+
+// TestLLMDeploymentService_DeleteLLMProvider_FailedDeleteDoesNotPush checks that
+// the undeploy push only runs on the success path.
+func TestLLMDeploymentService_DeleteLLMProvider_FailedDeleteDoesNotPush(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
+	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	pusher := &recordingArtifactPusher{connected: true}
+	service.SetControlPlanePusher(pusher, true)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, err := service.DeleteLLMProvider("0000-non-existent-0000-000000000000", "corr-id", logger)
+	require.Error(t, err)
+	assert.Empty(t, pusher.submitted)
+	assert.Empty(t, pusher.pushed)
+}
+
 func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
