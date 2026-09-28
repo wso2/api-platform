@@ -761,6 +761,10 @@ func desiredStateOf(cfg *api.AgentConfiguration) models.DesiredState {
 // a client that reads an Agent, edits it, and PUTs it back has no credential to
 // send. Treating that as "remove the credential" would break the upstream on an
 // unrelated edit. Setting `type: none` is how a credential is actually removed.
+//
+// The credential is inherited only while the upstream target (url and ref) is
+// unchanged: it was issued for the stored upstream, and an edit that points the
+// Agent somewhere else must supply its own rather than send the old one there.
 func inheritUpstreamCredential(incoming *api.AgentConfiguration, storedSource any) {
 	if incoming == nil || incoming.Spec.Upstream.Auth == nil {
 		return
@@ -779,9 +783,22 @@ func inheritUpstreamCredential(incoming *api.AgentConfiguration, storedSource an
 	if stored.Spec.Upstream.Auth == nil || stored.Spec.Upstream.Auth.Value == nil {
 		return
 	}
+	if derefOrEmpty(incoming.Spec.Upstream.Url) != derefOrEmpty(stored.Spec.Upstream.Url) ||
+		derefOrEmpty(incoming.Spec.Upstream.Ref) != derefOrEmpty(stored.Spec.Upstream.Ref) {
+		return
+	}
 	inherited := *stored.Spec.Upstream.Auth.Value
 	if inherited == "" {
 		return
 	}
 	incoming.Spec.Upstream.Auth.Value = &inherited
+}
+
+// derefOrEmpty treats an absent optional string as empty, so an omitted url or
+// ref compares equal to an omitted one rather than to a pointer's address.
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

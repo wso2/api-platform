@@ -450,6 +450,61 @@ func TestPreserveAgentProxyUpstreamAuthRefusesInheritanceAcrossAChangedHeader(t 
 	}
 }
 
+func TestPreserveAgentProxyUpstreamAuthRefusesInheritanceAcrossAChangedTarget(t *testing.T) {
+	existing := func() *model.UpstreamConfig {
+		return &model.UpstreamConfig{
+			Main: &model.UpstreamEndpoint{
+				URL:  "http://agent:9000",
+				Auth: &model.UpstreamAuth{Type: "api-key", Header: "X-API-Key", Value: "stored-secret"},
+			},
+			Sandbox: &model.UpstreamEndpoint{
+				Ref:  "sandbox-agent",
+				Auth: &model.UpstreamAuth{Type: "api-key", Header: "X-API-Key", Value: "stored-sandbox-secret"},
+			},
+		}
+	}
+
+	// Same auth configuration, no value, but a different upstream: the stored
+	// credential was issued for the old target and must not be sent to the new one.
+	auth := func() *model.UpstreamAuth { return &model.UpstreamAuth{Type: "api-key", Header: "X-API-Key"} }
+	tests := []struct {
+		name                 string
+		main, sandbox        *model.UpstreamEndpoint
+		wantMain, wantSandbx string
+	}{
+		{
+			name:    "changed url",
+			main:    &model.UpstreamEndpoint{URL: "http://attacker:9000", Auth: auth()},
+			sandbox: &model.UpstreamEndpoint{Ref: "sandbox-agent", Auth: auth()},
+			// The unchanged sandbox endpoint still inherits: the guard is per endpoint.
+			wantSandbx: "stored-sandbox-secret",
+		},
+		{
+			name:       "url swapped for a ref",
+			main:       &model.UpstreamEndpoint{Ref: "other-agent", Auth: auth()},
+			sandbox:    &model.UpstreamEndpoint{Ref: "sandbox-agent", Auth: auth()},
+			wantSandbx: "stored-sandbox-secret",
+		},
+		{
+			name:     "changed ref",
+			main:     &model.UpstreamEndpoint{URL: "http://agent:9000", Auth: auth()},
+			sandbox:  &model.UpstreamEndpoint{Ref: "other-agent", Auth: auth()},
+			wantMain: "stored-secret",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PreserveAgentProxyUpstreamAuth(existing(), &model.UpstreamConfig{Main: tt.main, Sandbox: tt.sandbox})
+			if got.Main.Auth.Value != tt.wantMain {
+				t.Fatalf("main value = %q, want %q", got.Main.Auth.Value, tt.wantMain)
+			}
+			if got.Sandbox.Auth.Value != tt.wantSandbx {
+				t.Fatalf("sandbox value = %q, want %q", got.Sandbox.Auth.Value, tt.wantSandbx)
+			}
+		})
+	}
+}
+
 func TestFetchAgentCardRequestDistinguishesOmittedFromExplicitNull(t *testing.T) {
 	tests := []struct {
 		name                           string

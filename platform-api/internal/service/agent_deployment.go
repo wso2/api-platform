@@ -73,6 +73,48 @@ func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploy
 	}
 }
 
+// CreateBuildByHandle freezes the Agent proxy as it stands now into a build that a
+// later deploy can name.
+//
+// Builds are the same thing for every artifact kind, so these four delegate to the
+// shared store; only resolving the handle is the Agent proxy's own, which keeps the
+// not-found this kind already reports.
+func (s *AgentDeploymentService) CreateBuildByHandle(handle, orgUUID, createdBy, description string,
+	metadata map[string]interface{}) (*api.BuildResponse, error) {
+	proxy, err := s.resolveAgentProxy(handle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(proxy.UUID, orgUUID, constants.AgentProxy, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of an Agent proxy's builds.
+func (s *AgentDeploymentService) GetBuildByHandle(handle, buildID, orgUUID string) (*api.BuildResponse, error) {
+	proxy, err := s.resolveAgentProxy(handle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(proxy.UUID, buildID, orgUUID, constants.AgentProxy)
+}
+
+// GetBuildsByHandle lists an Agent proxy's builds, newest first.
+func (s *AgentDeploymentService) GetBuildsByHandle(handle, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	proxy, err := s.resolveAgentProxy(handle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(proxy.UUID, orgUUID, constants.AgentProxy, limit)
+}
+
+// DeleteBuildByHandle removes one of an Agent proxy's builds.
+func (s *AgentDeploymentService) DeleteBuildByHandle(handle, buildID, orgUUID string) error {
+	proxy, err := s.resolveAgentProxy(handle, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(proxy.UUID, buildID, orgUUID, constants.AgentProxy)
+}
+
 // DeployByHandle creates an immutable deployment of an Agent proxy on one
 // gateway. The returned deployment is DEPLOYING: the record exists, the gateway
 // has not yet acknowledged it.

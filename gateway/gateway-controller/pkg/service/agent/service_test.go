@@ -96,10 +96,12 @@ type agentYAMLOpts struct {
 	version      string
 	context      string
 	upstreamAuth string
-	signing      string
-	protected    string
-	deployState  string
-	annotations  string
+	// upstreamURL overrides the default upstream url.
+	upstreamURL string
+	signing     string
+	protected   string
+	deployState string
+	annotations string
 	// extendedCard adds capabilities.extendedAgentCard: true to the managed
 	// public card, which configuring a protected card requires.
 	extendedCard bool
@@ -158,7 +160,7 @@ spec:
           "skills": []
         }
 %s
-`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamAuth), o.deployState,
+`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamURL, o.upstreamAuth), o.deployState,
 		o.signing, o.context, extendedCardCapability(o.extendedCard), o.protected))
 }
 
@@ -172,8 +174,11 @@ func extendedCardCapability(declared bool) string {
 	return `, "extendedAgentCard": true`
 }
 
-func upstreamBlock(auth string) string {
-	block := "  upstream:\n    url: https://weather.internal"
+func upstreamBlock(url, auth string) string {
+	if url == "" {
+		url = "https://weather.internal"
+	}
+	block := "  upstream:\n    url: " + url
 	if auth != "" {
 		block += "\n" + auth
 	}
@@ -687,6 +692,33 @@ func TestUpdate_InheritsStoredCredentialWhenOmitted(t *testing.T) {
 	require.NotNil(t, source.Spec.Upstream.Auth)
 	require.NotNil(t, source.Spec.Upstream.Auth.Value, "stored credential was dropped by an update that omitted it")
 	assert.Equal(t, "stored-secret", *source.Spec.Upstream.Auth.Value)
+}
+
+func TestUpdate_DoesNotInheritCredentialAcrossChangedUpstream(t *testing.T) {
+	h := newHarness(t, nil)
+
+	_, err := h.create(t, agentYAML(agentYAMLOpts{
+		upstreamAuth: "    auth:\n      type: api-key\n      header: x-api-key\n      value: stored-secret",
+	}))
+	require.NoError(t, err)
+
+	// Same auth block without a value, but pointed at a different upstream: the
+	// stored credential was issued for the old target and must not follow the edit.
+	result, err := h.service.Update(UpdateParams{
+		Handle: "weather-agent-v1-0",
+		Body: agentYAML(agentYAMLOpts{
+			upstreamURL:  "https://other.internal",
+			upstreamAuth: "    auth:\n      type: api-key\n      header: x-api-key",
+		}),
+		ContentType: "application/yaml",
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	require.NoError(t, err)
+
+	source, ok := result.Config.SourceConfiguration.(api.AgentConfiguration)
+	require.True(t, ok)
+	require.NotNil(t, source.Spec.Upstream.Auth)
+	assert.Nil(t, source.Spec.Upstream.Auth.Value, "stored credential followed an update to a different upstream")
 }
 
 func TestUpdate_TypeNoneRemovesCredential(t *testing.T) {

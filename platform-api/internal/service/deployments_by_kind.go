@@ -75,12 +75,14 @@ func NewDeploymentsByKind(
 	mcp *MCPDeploymentService,
 	llmProxy *LLMProxyDeploymentService,
 	llmProvider *LLMProviderDeploymentService,
+	agent *AgentDeploymentService,
 ) DeploymentsByKind {
 	return DeploymentsByKind{
 		constants.RestApi:     restDeployments{rest},
 		constants.MCPProxy:    mcpDeployments{mcp},
 		constants.LLMProxy:    llmProxyDeployments{llmProxy},
 		constants.LLMProvider: llmProviderDeployments{llmProvider},
+		constants.AgentProxy:  agentDeployments{agent},
 	}
 }
 
@@ -176,6 +178,30 @@ func (a llmProviderDeployments) GetDeployment(handle, deploymentID, orgID string
 
 func (a llmProviderDeployments) ListDeployments(handle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error) {
 	return a.GetLLMProviderDeployments(handle, orgID, optionalFilter(gatewayID), optionalFilter(status))
+}
+
+// agentDeployments adapts the Agent proxy service, which records no actor on
+// undeploy or restore.
+type agentDeployments struct{ *AgentDeploymentService }
+
+func (a agentDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployByHandle(handle, req, orgID, actor)
+}
+
+func (a agentDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployByHandle(handle, deploymentID, gatewayHandle, orgID)
+}
+
+func (a agentDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreByHandle(handle, deploymentID, gatewayHandle, orgID)
+}
+
+func (a agentDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
+	return a.GetByHandle(handle, deploymentID, orgID)
+}
+
+func (a agentDeployments) ListDeployments(handle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error) {
+	return a.ListByHandle(handle, gatewayID, status, orgID)
 }
 
 // optionalFilter turns an empty filter into "not given", which is how the LLM
