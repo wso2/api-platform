@@ -261,6 +261,9 @@ func (r *GatewayReconciler) decideAndProcess(
 				Message:            "Configuration changed, redeployment pending",
 				LastTransitionTime: metav1.Now(),
 			}, nil, nil); err != nil {
+				log.Error("failed to update status for configuration change; will retry",
+					slog.String("newHash", currentConfigHash),
+					slog.Any("error", err))
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{Requeue: true}, nil
