@@ -435,6 +435,31 @@ func TestGatewayMCPUpstreamPathForVersion(t *testing.T) {
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("1.1.-1"))
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("invalid"))
 	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion(""))
+	require.Equal(t, "/mcp", gatewayMCPUpstreamPathForVersion("2026.09.24"))
+}
+
+func TestUsesResourceStatus(t *testing.T) {
+	require.False(t, usesResourceStatus("0.9.0"))
+	require.False(t, usesResourceStatus("1.0.0"))
+	require.False(t, usesResourceStatus("v1.0.3"))
+	require.False(t, usesResourceStatus("1.0.0-SNAPSHOT"))
+	require.True(t, usesResourceStatus("1.1.0"))
+	require.True(t, usesResourceStatus("v1.1.0"))
+	require.True(t, usesResourceStatus("1.2.0"))
+	require.True(t, usesResourceStatus("1.2.0-SNAPSHOT"))
+	require.True(t, usesResourceStatus("2.0.0"))
+	require.True(t, usesResourceStatus("2026.09.24"))
+	require.True(t, usesResourceStatus("1.0"))
+	require.True(t, usesResourceStatus("1.0.-1"))
+	require.True(t, usesResourceStatus("invalid"))
+	require.True(t, usesResourceStatus(""))
+}
+
+func TestGatewayContractsForCalendarVersion(t *testing.T) {
+	require.False(t, usesLegacyGatewayContract("2026.09.24"))
+	require.Equal(t, ManagementBasePath, ManagementBasePathForVersion("2026.09.24"))
+	require.Equal(t, gatewaySpecVersion, gatewaySpecVersionForVersion("2026.09.24"))
+	require.Equal(t, "spec.operationPolicies", llmPolicyFieldForVersion("2026.09.24"))
 }
 
 func TestGatewaySpecVersionExpandsFromScenarioContext(t *testing.T) {
