@@ -42,6 +42,23 @@ func init() {
 
 const graphQLApiKind = string(api.GraphQLAPIKindGraphQLApi)
 
+// graphQLPolicyValidator validates spec.policies references (name/version resolution
+// and param-schema conformance). It is nil until SetGraphQLPolicyValidator is called from
+// main.go, because it depends on the loaded policy definitions, which are not available
+// yet when this file's init() runs. Policy validation is skipped (not failed) if it is
+// never set, rather than panicking, so a caller that forgets to wire it degrades to the
+// pre-existing behavior instead of crashing the controller.
+var graphQLPolicyValidator *config.PolicyValidator
+
+// SetGraphQLPolicyValidator wires the shared policy validator into GraphQLApi config
+// validation. Call once from main.go after config.NewPolicyValidator is constructed —
+// this is what config.APIValidator.SetPolicyValidator / config.MCPValidator.WithPolicyValidator
+// do for RestApi/Mcp, adapted to GraphQLApi's KindConfigValidator registration model, which
+// has no constructor call site of its own to pass the validator through.
+func SetGraphQLPolicyValidator(pv *config.PolicyValidator) {
+	graphQLPolicyValidator = pv
+}
+
 // parseGraphQLAPIDeployment is the KindDeployParser for GraphQLApi. It mirrors the
 // "RestApi" case in DeployAPIConfiguration's own switch: the whole request body is
 // parsed directly into api.GraphQLAPI (the deployable shape), and identifiers that
@@ -102,6 +119,14 @@ func validateGraphQLAPIConfig(cfg any) (apiName, apiVersion string, validationEr
 	errors = append(errors, validateGraphQLUpstream("main", &spec.Upstream.Main)...)
 	if spec.Upstream.Sandbox != nil {
 		errors = append(errors, validateGraphQLUpstream("sandbox", spec.Upstream.Sandbox)...)
+	}
+
+	// Validate policies if a policy validator is configured — matches
+	// RestApi/Mcp/Agent, which all reject a config referencing an unresolvable
+	// policy (unknown name, or a version not present in the loaded policy
+	// definitions) instead of silently dropping it from the runtime chain.
+	if graphQLPolicyValidator != nil {
+		errors = append(errors, graphQLPolicyValidator.ValidateGraphQLAPIPolicies(&graphqlConfig)...)
 	}
 
 	return spec.DisplayName, spec.Version, errors
