@@ -100,11 +100,8 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	// Existence is checked before the body is bound so an update against an
-	// unknown plan still answers 404 rather than 400 when the body is also
-	// malformed, exactly as this handler did before the service layer existed.
-	// UpdatePlan re-reads the row; that second primary-key lookup is the price
-	// of keeping the status codes identical.
+	// Check existence before binding the body, so an unknown id gets 404 even when
+	// the body is also invalid. Update reads the row again.
 	if _, err := s.getSubscriptionService().GetPlan(planId); err != nil {
 		mapPlanGetError(w, log, err)
 		return

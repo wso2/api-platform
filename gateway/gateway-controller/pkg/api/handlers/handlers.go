@@ -159,10 +159,11 @@ func NewAPIServer(
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	// Wire the DP->CP push into the LLM/MCP deployment services so create flows push to the
-	// control plane from the service layer (mirroring the REST API service), instead of the
-	// handler doing it. This keeps the push behavior identical whether an artifact is created
-	// via these handlers or directly through the service layer (e.g. the immutable loader).
+	// Wire the DP->CP push into the LLM/MCP deployment services so create, update and delete
+	// flows push to the control plane from the service layer (mirroring the REST API service),
+	// instead of the handler doing it. This keeps the push behavior identical whether an
+	// artifact is changed via these handlers, the MCP tools, or directly through the service
+	// layer (e.g. the immutable loader).
 	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
 	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
@@ -172,9 +173,6 @@ func NewAPIServer(
 
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
-	// Wire the shared control-plane (DP->CP) push hooks so REST APIs use the same push
-	// path (APIServer.waitForDeploymentAndPush / pushArtifactUndeploy) as all other kinds.
-	server.RestAPIHandler.pushArtifactUndeploy = server.pushArtifactUndeploy
 
 	server.subscriptionService = subscription.NewSubscriptionService(db, subscriptionResourceService)
 	server.certificateService = certificate.NewCertificateService(db, server.resolveCertXDS, logger)
@@ -398,24 +396,16 @@ func (s *APIServer) GetAPIByNameVersion(w http.ResponseWriter, r *http.Request, 
 	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
-// pushArtifactUndeploy notifies the control plane that a gateway-originated artifact
-// has been deleted from this gateway. The control plane keeps the artifact but marks
-// it undeployed (it is not removed and can be re-deployed later). It is a no-op for
-// control-plane-originated artifacts or when push is disabled / disconnected.
 // deploymentPusher builds the handlerkit.DeploymentPusher for this server's
-// current dependencies. pushArtifactUndeploy/waitForDeploymentAndPush delegate
-// to it so the shared push logic lives in one place (handlerkit), reusable by
-// any binary that imports gateway-controller as a library.
+// current dependencies. waitForDeploymentAndPush delegates to it so the shared
+// push logic lives in one place (handlerkit), reusable by any binary that
+// imports gateway-controller as a library.
 func (s *APIServer) deploymentPusher() *handlerkit.DeploymentPusher {
 	return &handlerkit.DeploymentPusher{
 		Store:              s.store,
 		ControlPlaneClient: s.controlPlaneClient,
 		SystemConfig:       s.systemConfig,
 	}
-}
-
-func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
-	s.deploymentPusher().PushArtifactUndeploy(cfg, log)
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
@@ -727,9 +717,6 @@ func (s *APIServer) EnableMCP(
 		MaxRequestBytes:      s.systemConfig.Controller.Server.MCPServer.MaxRequestBytes,
 		Logger:               s.logger,
 	})
-	// Same DP->CP undeploy push the REST handlers use, so an artifact deleted
-	// through an MCP tool is marked undeployed upstream too.
-	h.pushArtifactUndeploy = s.pushArtifactUndeploy
 	s.mcpHandler = h
 	return h
 }

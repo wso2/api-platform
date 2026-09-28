@@ -211,13 +211,17 @@ type Controller struct {
 	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
+// MCPServerConfig configures an MCP endpoint (management or admin).
 type MCPServerConfig struct {
 	Enabled bool `koanf:"enabled"`
 
 	// MaxRequestBytes bounds the JSON-RPC body the authorization gate buffers
 	MaxRequestBytes int64 `koanf:"max_request_bytes"`
 
-	// AdvertisedScopes is published as `scopes_supported` in the RFC 9728
+	// AdvertisedScopes lists the local role names to advertise as scopes_supported
+	// in the RFC 9728 metadata, after mapping through auth.idp.role_mapping.
+	// Empty advertises every role the endpoint accepts.
+
 	AdvertisedScopes []string `koanf:"advertised_scopes"`
 }
 

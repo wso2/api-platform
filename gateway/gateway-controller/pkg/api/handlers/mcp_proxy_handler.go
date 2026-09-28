@@ -320,9 +320,6 @@ func (s *APIServer) DeleteMCPProxy(w http.ResponseWriter, r *http.Request, id st
 		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
-	// Notify the control plane so the artifact is marked undeployed (not deleted).
-	s.pushArtifactUndeploy(cfg, log)
-
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "MCP proxy configuration deleted successfully",

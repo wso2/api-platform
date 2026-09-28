@@ -260,9 +260,6 @@ func (s *APIServer) DeleteLLMProxy(w http.ResponseWriter, r *http.Request, id st
 		return
 	}
 
-	// Notify the control plane so the artifact is marked undeployed (not deleted).
-	s.pushArtifactUndeploy(cfg, log)
-
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",

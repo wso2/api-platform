@@ -256,10 +256,9 @@ func mapUploadCertError(w http.ResponseWriter, log *slog.Logger, err error) {
 	writeCertError(w, http.StatusInternalServerError, "Failed to save certificate")
 }
 
-// mapDeleteCertError reproduces the responses DELETE /certificates/{id}
-// returned before the service layer existed. Note the deliberate blanket 404:
-// any storage failure on delete is reported as "not found", which is what the
-// integration suite asserts for an unknown ID.
+// mapDeleteCertError writes the REST error response for a failed Delete. Every
+// storage failure is reported as 404 on purpose; the integration tests expect
+// that for an unknown id.
 func mapDeleteCertError(w http.ResponseWriter, log *slog.Logger, id string, err error) {
 	if writeCertStoreUnavailable(w, log, err) {
 		return

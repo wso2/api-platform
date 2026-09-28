@@ -47,9 +47,7 @@ func (s *APIServer) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The service resolves apiId (deployment ID or handle) itself, so there is no
-	// pre-resolution step here; mapCreateSubscriptionError reproduces the
-	// responses that resolution used to write directly.
+	// The service resolves apiId (deployment ID or handle) itself.
 	result, err := s.getSubscriptionService().Create(subscription.CreateParams{
 		Request:       req,
 		CorrelationID: correlationID,
@@ -125,11 +123,8 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	// Existence is checked before the body is bound so an update against an
-	// unknown subscription still answers 404 rather than 400 when the body is
-	// also malformed, exactly as this handler did before the service layer
-	// existed. Update re-reads the row; that second primary-key lookup is the
-	// price of keeping the status codes identical.
+	// Check existence before binding the body, so an unknown id gets 404 even when
+	// the body is also invalid. Update reads the row again.
 	if _, err := s.getSubscriptionService().Get(subscriptionId); err != nil {
 		mapSubscriptionGetError(w, log, err)
 		return
@@ -172,9 +167,7 @@ func (s *APIServer) DeleteSubscription(w http.ResponseWriter, r *http.Request, s
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// mapCreateSubscriptionError reproduces the responses POST /subscriptions
-// returned before the service layer existed, including the two that identifier
-// resolution used to write for itself.
+// mapCreateSubscriptionError writes the REST error response for a failed Create.
 func mapCreateSubscriptionError(w http.ResponseWriter, log *slog.Logger, apiIdentifier string, err error) {
 	var validationErr *subscription.ValidationError
 	if errors.As(err, &validationErr) {
@@ -224,9 +217,7 @@ func mapCreateSubscriptionError(w http.ResponseWriter, log *slog.Logger, apiIden
 	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
 }
 
-// mapSubscriptionGetError reproduces the responses a subscription read returned
-// before the service layer existed. It also serves the existence pre-check in
-// UpdateSubscription, which reported the same pair of failures.
+// mapSubscriptionGetError writes the REST error response for a failed read. UpdateSubscription also uses it for its existence check.
 func mapSubscriptionGetError(w http.ResponseWriter, log *slog.Logger, err error) {
 	if errors.Is(err, subscription.ErrSubscriptionNotFound) {
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})

@@ -1209,6 +1209,7 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
+	s.pushArtifactUndeploy(cfg, logger)
 	return cfg, nil
 }
 
@@ -1338,6 +1339,7 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
+	s.pushArtifactUndeploy(cfg, logger)
 	return cfg, nil
 }
 
@@ -1392,4 +1394,23 @@ func (s *LLMDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 func (s *LLMDeploymentService) canPushToControlPlane() bool {
 	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
 		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
+}
+
+// pushArtifactUndeploy tells the control plane a gateway-originated LLM provider or
+// proxy was deleted from this gateway. The control plane keeps the artifact and marks
+// it undeployed (it can be re-deployed later).
+func (s *LLMDeploymentService) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg == nil || cfg.Origin != models.OriginGatewayAPI || !s.canPushToControlPlane() {
+		return
+	}
+	undeploy := *cfg
+	undeploy.DesiredState = models.StateUndeployed
+	pusher := s.controlPlaneClient
+	pusher.SubmitArtifactPush(func() {
+		uc := undeploy
+		if err := pusher.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
+			log.Error("Failed to push artifact undeploy to control plane",
+				slog.String("artifact_id", uc.UUID), slog.Any("error", err))
+		}
+	})
 }
