@@ -620,6 +620,14 @@ func TestAssertAPICreationSucceeded(t *testing.T) {
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
 		},
 		{
+			// A current source build's resolved version comes from gateway/VERSION,
+			// which is not a "1.x.y" release SemVer (e.g. a date-based version).
+			// It must still be treated as newer than 1.1, not legacy.
+			name:     "current source build with a non-release version",
+			version:  "2026.09.24",
+			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
+		},
+		{
 			name:     "missing resource status field",
 			version:  "1.2.0",
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now"}}`)},
