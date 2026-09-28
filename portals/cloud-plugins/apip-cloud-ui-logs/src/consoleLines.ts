@@ -16,12 +16,20 @@
  * under the License.
  */
 
-import type { ConsoleLine } from './LogConsole';
-import { summarizeLine } from './format';
-import type { LogEntry, LogFacets, LogViewFilters } from './types';
+import type { ConsoleDetail, ConsoleLine } from './LogConsole';
+import { KIND_LABELS, latencyOf, summarizeLine } from './format';
+import type { Facet, LogEntry, LogFacets, LogKind, LogViewFilters } from './types';
 
-/** Level assumed for a record that carries none — an access log never does. */
-const DEFAULT_LEVEL = 'INFO';
+/**
+ * Shown for a record that declares no level — an access log never does.
+ *
+ * Deliberately not `INFO`. The level filter is a **substring search of the raw
+ * line** upstream (`*ERROR*`, case-insensitive), not a match on a field, so a
+ * line rendered as INFO would not be selected by ticking Info. Labelling it as a
+ * level it does not have, and cannot be found by, is the lie the panel's counts
+ * would then repeat.
+ */
+const DEFAULT_LEVEL = 'LOG';
 
 /**
  * Content-derived identity: the API returns no per-record id and a rolling
@@ -35,6 +43,27 @@ const lineId = (
   occurrence: number
 ): string => `${timestamp || 'no-ts'}|${level}|${body}|#${occurrence}`;
 
+/**
+ * What an expanded row shows: the attribution the one-line form drops. Only the
+ * fields the record actually carries — an absent value would read as a value of
+ * "none" rather than as "the plane did not say".
+ */
+export function toDetails(entry: LogEntry): ConsoleDetail[] {
+  const pairs: [string, string | undefined][] = [
+    ['Pod', entry.podName],
+    ['Container', entry.containerName],
+    ['Component', entry.componentName],
+    ['Project', entry.projectName],
+    ['Environment', entry.environment],
+    ['Type', KIND_LABELS[entry.kind]],
+    ['Latency', latencyOf(entry)],
+    ['Timestamp', entry.timestamp],
+  ];
+  return pairs
+    .filter(([, value]) => Boolean(value))
+    .map(([label, value]) => ({ label, value: value as string }));
+}
+
 /** Maps one log entry onto a console row. */
 export function toConsoleLine(entry: LogEntry, occurrence = 0): ConsoleLine {
   const level = String(entry.level || DEFAULT_LEVEL).toUpperCase();
@@ -45,6 +74,7 @@ export function toConsoleLine(entry: LogEntry, occurrence = 0): ConsoleLine {
   const source = entry.componentName || entry.podName || undefined;
 
   return {
+    details: toDetails(entry),
     id: lineId(entry.timestamp, level, raw, occurrence),
     level,
     message,
@@ -83,33 +113,21 @@ const timeValue = (line: ConsoleLine): number => {
 };
 
 /**
- * Whether a record post-dates the caller's watermark. One with no usable
- * timestamp is kept — dropping it hides it permanently, keeping it only risks
- * showing it once more after a clear.
- */
-const isAfter = (line: ConsoleLine, since: number): boolean => {
-  if (since === 0) return true;
-  const parsed = parseTime(line);
-  return Number.isNaN(parsed) || parsed > since;
-};
-
-/**
  * Merges a freshly polled page in, oldest row first. Pages arrive newest-first,
  * so each batch is sorted ascending (server order breaking ties); rows already
  * held are dropped and the buffer is trimmed from the front.
  *
- * `since` (epoch ms) is the caller's watermark — a clear sets it to that moment
- * so the next poll of an unchanged window does not refill what was wiped.
+ * Passing an empty `existing` is how a filter change replaces the console rather
+ * than merging into it.
  */
 export function mergeBufferedLines(
   existing: BufferedLine[],
   incoming: LogEntry[],
-  limit: number,
-  since = 0
+  limit: number
 ): BufferedLine[] {
   const seen = new Set(existing.map((buffered) => buffered.line.id));
   const fresh = toBufferedLines(incoming)
-    .filter((buffered) => !seen.has(buffered.line.id) && isAfter(buffered.line, since))
+    .filter((buffered) => !seen.has(buffered.line.id))
     .map((buffered, index) => ({ buffered, index }))
     .sort((a, b) => timeValue(a.buffered.line) - timeValue(b.buffered.line) || a.index - b.index)
     .map((item) => item.buffered);
@@ -137,45 +155,59 @@ export function mergeBufferedLines(
   return merged.length > limit ? merged.slice(merged.length - limit) : merged;
 }
 
-const sortedUnique = (values: Iterable<string>): string[] =>
-  [...new Set(values)].filter(Boolean).sort((a, b) => a.localeCompare(b));
+/**
+ * Counted options for one field, most common first, ties broken by name so the
+ * list does not reshuffle as a live tail arrives.
+ */
+const countFacets = (
+  values: Iterable<string>,
+  label: (value: string) => string = (value) => value
+): Facet[] => {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, label: label(value), count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+};
 
 /**
- * What the view filters can offer, read off the buffer rather than a catalogue:
- * a project with nothing in this window is not offered, because picking it
- * could only produce an empty console.
+ * What the filter panel can offer, read off the buffer rather than a catalogue:
+ * a value with nothing in this window is not offered, because picking it could
+ * only produce an empty console.
+ *
+ * Every count is of *loaded* lines. Kind, level and environment are query
+ * parameters, so once one is set the others count zero and drop out — the panel
+ * keeps a selected value visible for exactly that reason.
  */
 export function deriveFacets(buffer: BufferedLine[]): LogFacets {
-  const projects: string[] = [];
-  const pods: string[] = [];
-  const environments: string[] = [];
-  const byProject = new Map<string, Set<string>>();
-
-  for (const { entry } of buffer) {
-    if (entry.projectName) projects.push(entry.projectName);
-    if (entry.podName) pods.push(entry.podName);
-    if (entry.environment) environments.push(entry.environment);
-    if (entry.projectName && entry.podName) {
-      const seen = byProject.get(entry.projectName) ?? new Set<string>();
-      seen.add(entry.podName);
-      byProject.set(entry.projectName, seen);
-    }
-  }
-
-  const podsByProject: Record<string, string[]> = {};
-  for (const [project, names] of byProject) podsByProject[project] = sortedUnique(names);
-
+  const entries = buffer.map(({ entry }) => entry);
   return {
-    projects: sortedUnique(projects),
-    pods: sortedUnique(pods),
-    podsByProject,
-    environments: sortedUnique(environments),
+    kinds: countFacets(
+      entries.map((entry) => entry.kind),
+      (value) => KIND_LABELS[value as LogKind] ?? value
+    ),
+    projects: countFacets(entries.map((entry) => entry.projectName ?? '')),
+    environments: countFacets(entries.map((entry) => entry.environment ?? '')),
+    // Only what a record actually declares. Counting a level-less line under some
+    // default would promise rows that ticking that box cannot return.
+    levels: countFacets(entries.map((entry) => (entry.level ?? '').toUpperCase())),
   };
 }
 
 /** Whether an entry survives the view filters. An empty filter matches everything. */
 export function matchesView(entry: LogEntry, view: LogViewFilters): boolean {
-  if (view.project && entry.projectName !== view.project) return false;
-  if (view.pod && entry.podName !== view.pod) return false;
-  return true;
+  if (view.projects.length === 0) return true;
+  return Boolean(entry.projectName) && view.projects.includes(entry.projectName as string);
+}
+
+/**
+ * The rows in the order they are shown. The buffer is always held oldest-first
+ * — `mergeBufferedLines` depends on that to re-sort late arrivals and to trim
+ * the right end — so newest-first is a reversal at the edge, never a different
+ * buffer.
+ */
+export function orderLines<T>(lines: T[], newestFirst: boolean): T[] {
+  return newestFirst ? [...lines].reverse() : lines;
 }
