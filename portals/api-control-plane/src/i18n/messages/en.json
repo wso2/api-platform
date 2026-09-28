@@ -1170,8 +1170,8 @@
     "description": "Second step of the API progress stepper — the API runs on a gateway. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
-    "defaultMessage": "Publish to Devportal",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal."
+    "defaultMessage": "Publish",
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
@@ -2853,9 +2853,6 @@
   },
   "apiControlPlane.projects.ProjectStatistics.selectType": {
     "defaultMessage": "Filter APIs by {type}"
-  },
-  "apiControlPlane.projects.ProjectStatistics.statusSummary": {
-    "defaultMessage": "{published} published · {created} created"
   },
   "apiControlPlane.permissions.useCan.denied": {
     "defaultMessage": "You don't have permission to perform this action.",
