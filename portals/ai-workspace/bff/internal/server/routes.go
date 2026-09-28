@@ -70,11 +70,16 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
 	mux.HandleFunc("POST "+s.path("/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish"), s.handlePublishMCPProxy)
 
-	// Same-origin reverse proxy to the Platform API. Optional cloud hop is more
-	// specific (/proxy/cloud/) and must be registered before the catch-all /proxy/.
-	if s.cloudProxy != nil {
-		mux.HandleFunc(s.path(paths.Proxy)+"/cloud/", s.handleCloudProxy)
-	}
+	// Same-origin reverse proxy to the Platform API. The Moesif hop is more
+	// specific (/proxy/moesif/) and must be registered before the catch-all
+	// /proxy/.
+	//
+	// Registered unconditionally, even when moesif_url is unset: left to the
+	// catch-all, a Moesif call would be forwarded to the CONTROL PLANE as
+	// /moesif/... and come back 404 from there, which reads as "the BFF has no
+	// such route" and sends whoever is debugging it in the wrong direction. The
+	// handler answers for itself instead.
+	mux.HandleFunc(s.path(paths.Proxy)+"/moesif/", s.handleMoesifProxy)
 	if s.billingProxy != nil {
 		mux.HandleFunc(s.path(paths.Proxy)+"/billing/", s.handleBillingProxy)
 	}

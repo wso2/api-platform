@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"ai-workspace-bff/internal/auth"
 )
 
 func sameSite(v string) http.SameSite {
@@ -102,7 +104,12 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   600,
+		// The transaction's lifetime plus the window the server keeps an expired
+		// record around to explain itself. Validity is still TxTTL — Callback
+		// rejects anything past Expiry — but the cookie has to outlast it, or an
+		// aged-out login arrives with no cookie at all and is reported as a
+		// Path/SameSite fault rather than as the expiry it was.
+		MaxAge: int(auth.TxCookieTTL.Seconds()),
 	})
 }
 

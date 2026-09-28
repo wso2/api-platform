@@ -28,6 +28,7 @@ export interface AppOrg {
 export interface AppUser {
   name: string | null;
   email: string | null;
+  picture: string | null;
   role: PlatformRole | null;
   scopes: string[];
   org: AppOrg | null;

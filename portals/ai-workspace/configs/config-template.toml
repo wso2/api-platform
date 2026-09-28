@@ -354,6 +354,7 @@ org_handle    = "org_handle"      # org URL slug
 organizations = "organizations"  # claim listing every org id/handle the user belongs to
 username      = "username"
 email         = "email"
+picture       = "picture"
 scope         = "scope"                # space-separated scope string
 roles         = "roles"
 
@@ -494,6 +495,40 @@ cache_enabled = true
 # positive when cache_enabled = true.
 min_validity = "60s"
 
+
+
+# ====================================================================
+# Claim names in the ISSUED token
+#
+# An STS commonly re-shapes what it received — nesting the org as an object, parking
+# the originating IDP's profile claims under their own key — so these are separate
+# from [ai_workspace.auth.claim_mappings] above, which names the LOGIN token's
+# claims. One mapping cannot be right for both: the login token's user would resolve
+# empty, or the exchanged token's org would.
+#
+# Every key falls back to its parent value when unset, so an STS that preserves the
+# login shape needs nothing here. A value may be a dot-separated path into a nested
+# claim.
+#
+# Example, for an issued token carrying
+#   "organization": { "handle": "...", "uuid": "..." }
+#   "idp_claims":   { "name": "...", "email": "..." }
+# set organization = "organization.uuid", org_handle = "organization.handle",
+# username = "idp_claims.name", email = "idp_claims.email".
+#
+# There is deliberately no `organizations` key: the org LIST is read from the login
+# token only. Which orgs a user belongs to is a property of the user, not of a token
+# minted for one of them.
+# ====================================================================
+[ai_workspace.auth.oidc.token_exchange.claim_mappings]
+
+organization = ""
+org_name     = ""
+org_handle   = ""
+username     = ""
+email        = ""
+scope        = ""
+roles        = ""
 
 # ====================================================================
 # Settings with no config key

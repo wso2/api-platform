@@ -143,16 +143,27 @@ type ControlPlaneConfig struct {
 	CAFile string `koanf:"ca_file"`
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	TLSSkipVerify       bool   `koanf:"tls_skip_verify"`
 	PlatformAPIBasePath string `koanf:"platform_api_base_path"`
 	PortalAPIBasePath   string `koanf:"portal_api_base_path"`
-	// CloudURL is an optional second hop for Moesif analytics (wso2cloud platform-api).
-	// When set, <base>/proxy/cloud/* is proxied there instead of the primary control
-	// plane. Include the /cloud path prefix (e.g. http://host:8081/cloud).
-	CloudURL string `koanf:"cloud_url"`
-	// CloudCAFile / CloudTLSSkipVerify apply only to CloudURL when that hop uses TLS.
-	CloudCAFile        string `koanf:"cloud_ca_file"`
-	CloudTLSSkipVerify bool   `koanf:"cloud_tls_skip_verify"`
+	// MoesifURL is an optional second hop for Moesif analytics. When set,
+	// <base>/proxy/moesif/* is proxied there instead of the primary control plane.
+	// Include whatever path prefix the upstream publishes under (e.g.
+	// https://host:8443/cloud for wso2cloud's platform-api, or
+	// https://apis.<env>.choreo.dev/moesif-key/0.1.0 for Choreo's moesif-key API).
+	//
+	// Must be https://, which the control plane's own URL need not be: this hop
+	// forwards the user's exchanged token to a third-party service, so validate()
+	// refuses to start on a plaintext one.
+	MoesifURL string `koanf:"moesif_url"`
+	// MoesifCAFile / MoesifTLSSkipVerify apply to the MoesifURL hop, which is always TLS.
+	MoesifCAFile        string `koanf:"moesif_ca_file"`
+	MoesifTLSSkipVerify bool   `koanf:"moesif_tls_skip_verify"`
+	// MoesifPathMappings rewrites paths on the Moesif hop, as comma-separated
+	// "<from>=<to>" pairs (e.g. "/analytics/id-token=/id_token"). Needed when the
+	// configured MoesifURL publishes a route under a different path than the SPA
+	// asks for — see MoesifPathMapper. Empty leaves that hop forwarding untouched.
+	MoesifPathMappings string `koanf:"moesif_path_mappings"`
 	// BillingURL is an optional hop to the billing service. When set,
 	// <base>/proxy/billing/* is proxied there instead of the primary control plane.
 	// Cloud-only: every standalone deployment leaves it empty, which is what keeps
@@ -274,12 +285,22 @@ type TokenExchangeConfig struct {
 	// the handle of the org currently selected
 	OrgParam string `koanf:"org_param"`
 
-	// DefaultOrg is the org handle used before the user has selected one — the
-	// window between login and the first org switch, which for a single-org
-	// deployment is the whole session. Unset, the exchange sends no org and the STS
-	// resolves whichever org it considers the caller's default; pinning it here
-	// makes that choice explicit and stable, so the workspace does not silently
-	// follow a default changed elsewhere. A user's own switch always wins over it.
+	// OrgLookupURL overrides WHERE the user's organizations are read from — the
+	// absolute URL of a service that accepts the LOGIN token and answers with that
+	// user's orgs. Empty reads them from the Platform API's own /organizations.
+	//
+	OrgLookupURL string `koanf:"org_lookup_url"`
+
+	// DefaultOrg is the FALLBACK org handle, used when the user's own organizations
+	// could not be read from the Platform API — which is where the handle normally
+	// comes from before the user has switched (see the server's resolveOrgHandle).
+	//
+	// A fallback rather than the primary source: it is one guess shared by every
+	// user of the deployment, and only the user's own memberships can be right for
+	// all of them. Unset, such a session exchanges with no org at all and the STS
+	// resolves whichever org it considers the caller's default — which is what
+	// pinning this avoids, so the workspace does not silently follow a default
+	// chosen elsewhere. A user's own switch always wins over it.
 	DefaultOrg string `koanf:"default_org"`
 
 	// ClaimMappings names the claims in the ISSUED token, which routinely differ
@@ -391,6 +412,7 @@ type OIDCConfig struct {
 type ClaimMappingConfig struct {
 	Username      string `koanf:"username"`
 	Email         string `koanf:"email"`
+	Picture       string `koanf:"picture"`
 	Roles         string `koanf:"roles"`
 	Scope         string `koanf:"scope"`
 	OrgID         string `koanf:"organization"`
@@ -522,7 +544,7 @@ func (c *Config) normalize() {
 	// it falls back to the API's own prefix rather than silently flattening the path.
 	c.ControlPlane.PlatformAPIBasePath = normalizeBasePath(c.ControlPlane.PlatformAPIBasePath, apipaths.PlatformAPI)
 	c.ControlPlane.PortalAPIBasePath = normalizeBasePath(c.ControlPlane.PortalAPIBasePath, apipaths.PortalAPI)
-	c.ControlPlane.CloudURL = strings.TrimRight(c.ControlPlane.CloudURL, "/")
+	c.ControlPlane.MoesifURL = strings.TrimRight(c.ControlPlane.MoesifURL, "/")
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
@@ -558,6 +580,7 @@ func (c *Config) normalize() {
 	}{
 		{&te.Username, parent.Username},
 		{&te.Email, parent.Email},
+		{&te.Picture, parent.Picture},
 		{&te.Roles, parent.Roles},
 		{&te.Scope, parent.Scope},
 		{&te.OrgID, parent.OrgID},
@@ -669,19 +692,18 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
-	if c.ControlPlane.CloudURL != "" {
-		cu, err := url.Parse(c.ControlPlane.CloudURL)
-		if err != nil || (cu.Scheme != "http" && cu.Scheme != "https") || cu.Host == "" {
-			return fmt.Errorf("[control_plane] cloud_url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.CloudURL)
+	// https only, unlike the other upstream hops: this one is reached by proxying the
+	// user's EXCHANGED token to a third-party analytics service, so a plaintext hop
+	// would put a live credential on the wire. Rejected at startup rather than at the
+	// first proxied request, where it would already be too late.
+	if c.ControlPlane.MoesifURL != "" {
+		cu, err := url.Parse(c.ControlPlane.MoesifURL)
+		if err != nil || cu.Scheme != "https" || cu.Host == "" {
+			return fmt.Errorf("[control_plane] moesif_url must be an absolute https:// URL, got %q", c.ControlPlane.MoesifURL)
 		}
-		if cu.Scheme == "http" {
-			if c.ControlPlane.CloudCAFile != "" || c.ControlPlane.CloudTLSSkipVerify {
-				return fmt.Errorf("[control_plane] cloud_ca_file / cloud_tls_skip_verify are set but cloud_url is http:// (no TLS on that hop)")
-			}
-		}
-		if cu.Scheme == "https" && c.ControlPlane.CloudTLSSkipVerify {
-			slog.Warn("[control_plane] cloud_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
-				"Trust the upstream certificate with [control_plane] cloud_ca_file instead.")
+		if c.ControlPlane.MoesifTLSSkipVerify {
+			slog.Warn("[control_plane] moesif_tls_skip_verify = true — cloud upstream certificate verification is DISABLED. " +
+				"Trust the upstream certificate with [control_plane] moesif_ca_file instead.")
 		}
 	}
 
@@ -864,6 +886,28 @@ func (c *Config) validateTokenExchange() error {
 	}
 
 	// A zero window would renew only after expiry, guaranteeing an in-flight expiry.
+	// An org-scoping STS needs to be told which org; with no parameter to put it in,
+	// the exchange sends none and the STS picks for itself — which is a 500 on the
+	// Choreo STS and a wrong-org token elsewhere. Not fatal, because an STS that
+	// does not scope per org is a legitimate deployment, but loud, because the two
+	// are indistinguishable until the first login fails.
+	if te.Enabled && te.OrgParam == "" {
+		slog.Warn("[auth.oidc.token_exchange] org_param is empty — the exchange will carry no " +
+			"organization, and the identity provider will resolve one of its own choosing. " +
+			"Set org_param (and org_lookup_url, when the login token cannot read the user's " +
+			"organizations from the Platform API) if the issued token must be org-scoped.")
+	}
+
+	// Absolute and http(s): a relative or malformed URL here would fail on every
+	// login, and the fallback would quietly hide it behind default_org.
+	if te.OrgLookupURL != "" {
+		u, err := url.Parse(te.OrgLookupURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("[auth.oidc.token_exchange] org_lookup_url must be an absolute "+
+				"http:// or https:// URL, got %q", te.OrgLookupURL)
+		}
+	}
+
 	if te.CacheEnabled && te.MinValidity <= 0 {
 		return fmt.Errorf("[auth.oidc.token_exchange] min_validity must be positive when cache_enabled = true, got %s",
 			te.MinValidity)

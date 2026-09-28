@@ -54,8 +54,8 @@ import { getManageGatewaysOption } from './manageGatewaysOption';
 import { getMCPProxyOption } from './mcpProxyOption';
 import { getProviderProxyOption } from './providerProxyOption';
 import type { QuickStartOption, QuickStartOptionId } from './types';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
-const MAX_GATEWAYS_PER_ORG = 3;
 
 type GatewayCounts = {
   ai: number;
@@ -79,12 +79,13 @@ function getGatewayCounts(gateways: Gateway[] = []): GatewayCounts {
   );
 }
 
-function getGatewayQuotaTooltip({ ai, api }: GatewayCounts): string {
-  return `You cannot continue because your organization already has ${ai} AI gateway${
+function getGatewayQuotaTooltip(
+  { ai, api }: GatewayCounts,
+  limitMessage: string
+): string {
+  return `${limitMessage} You already have ${ai} AI gateway${
     ai === 1 ? '' : 's'
-  } and ${api} API gateway${
-    api === 1 ? '' : 's'
-  }. The maximum limit is 3 gateways in total.`;
+  } and ${api} API gateway${api === 1 ? '' : 's'}.`;
 }
 
 type QuickStartOptionCardProps = {
@@ -238,14 +239,14 @@ export default function QuickStart(): JSX.Element {
     providersResponse.count ??
     providersResponse.pagination?.total ??
     providers.length;
-  const isProviderQuotaReached = false;
-  const isGatewayQuotaReached =
-    gatewayCounts.ai + gatewayCounts.api >= MAX_GATEWAYS_PER_ORG;
+  const { canCreate, limitMessage } = useResourceLimits();
+  const isProviderQuotaReached = !canCreate('llmProviders');
+  const isGatewayQuotaReached = !canCreate('gateways');
   const nextButtonTooltip =
     selectedOptionId === 'provider-proxy' && isProviderQuotaReached
-      ? 'You cannot continue because your organization has reached the maximum limit of 5 LLM providers.'
+      ? limitMessage('llmProviders')
       : selectedOptionId === 'manage-gateways' && isGatewayQuotaReached
-      ? getGatewayQuotaTooltip(gatewayCounts)
+      ? getGatewayQuotaTooltip(gatewayCounts, limitMessage('gateways'))
       : '';
   const isNextDisabled =
     (selectedOptionId === 'provider-proxy' && isProviderQuotaReached) ||
@@ -318,10 +319,11 @@ export default function QuickStart(): JSX.Element {
 
         setGatewayCounts(nextGatewayCounts);
 
-        if (
-          nextGatewayCounts.ai + nextGatewayCounts.api >=
-          MAX_GATEWAYS_PER_ORG
-        ) {
+        // The limits supplier refreshes per organization and per route, so the
+        // context value is the current answer by the time this runs; the gateway
+        // list was refetched above only to keep the tooltip's per-type breakdown
+        // accurate.
+        if (isGatewayQuotaReached) {
           return;
         }
       } catch {
