@@ -89,6 +89,7 @@ var platformDataMinorVersions = map[string]int{
 	constants.MCPProxy:     0,
 	constants.LLMProxy:     1,
 	constants.LLMProvider:  1,
+	constants.AgentProxy:   0,
 }
 
 // majorFromApiVersion parses ".../v<N>..." and returns "N" (the leading

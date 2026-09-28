@@ -1792,6 +1792,313 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-proxies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent proxies
+         * @description Lists the Agent proxies in the caller's organization. Items are the lightweight
+         *     `AgentProxyListItem` projection; read an individual Agent proxy for the full resource,
+         *     including its protocol configuration and any managed Agent Card content. The `protocol`
+         *     filter, when supplied, is applied to both the returned page and `pagination.total`.
+         *     Filtering by A2A protocol version is not supported.
+         */
+        get: operations["listAgentProxies"];
+        put?: never;
+        /**
+         * Create a new Agent proxy
+         * @description Creates an Agent proxy in the organization resolved from the access token. `id` is the
+         *     public handle; when omitted the server derives it from `displayName`. `protocol` is
+         *     required and immutable, and the matching named configuration block (`a2a` for
+         *     `protocol: a2a`) is required alongside it.
+         */
+        post: operations["createAgentProxy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/fetch-agent-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch an Agent Card for preview
+         * @description Provide either `url` with optional `auth`, or `agentProxyId` alone to use the stored
+         *     upstream URL and stored credentials. Combining `agentProxyId` with `url` or `auth` is
+         *     rejected. The fetched card is returned for preview and is never persisted.
+         *
+         *     This operation has no side effects, so it is guarded by the read scope. Saving a
+         *     fetched card as managed content is a separate Agent proxy update that places it under
+         *     `a2a.agentCard.public.content` or `a2a.agentCard.protected.content`.
+         *
+         *     This is also the display path for a passthrough public Agent Card, which is not
+         *     stored, so it runs on ordinary page views and not only during authoring. It issues a
+         *     live outbound request: when the upstream is unreachable, times out, rejects the stored
+         *     credentials, or returns something that is not a parsable Agent Card, the response is
+         *     `503` with `AGENT_PROXY_UPSTREAM_UNREACHABLE` — distinct from `500`, so a client can
+         *     tell an unreachable agent from a control-plane failure and render the right state. A
+         *     managed public card needs no call here; it is already in the Agent proxy resource.
+         */
+        post: operations["fetchAgentCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an Agent proxy by unique identifier
+         * @description Returns the full Agent proxy, including its typed protocol configuration and any managed Agent Card content.
+         */
+        get: operations["getAgentProxy"];
+        /**
+         * Replace an existing Agent proxy
+         * @description Full replacement of the writable Agent proxy configuration; idempotent. Omitted
+         *     optional fields reset to their documented default or absence — omitting
+         *     `a2a.agentCard` restores default card behaviour, omitting
+         *     `a2a.operationConfigs.policies` or `a2a.operationConfigs.operations` clears those user
+         *     additions, and omitting `associatedGateways` empties the association set (subject to
+         *     the existing deployment-integrity checks). `a2a.operationConfigs` itself is required,
+         *     since it carries the transports.
+         *
+         *     An omitted body `id` retains the path handle and is never regenerated; a body `id`
+         *     that disagrees with the path is a 400. `protocol` is immutable — changing it is a 400.
+         *     An omitted write-only credential value retains the stored credential for an unchanged
+         *     auth configuration, and `auth.type: none` removes auth; an auth configuration that
+         *     changes without complete credentials is rejected. There is no implicit PATCH
+         *     behaviour.
+         */
+        put: operations["updateAgentProxy"];
+        post?: never;
+        /**
+         * Delete an Agent proxy
+         * @description Deletes the Agent proxy from the control plane and durably records the deletion event.
+         *     Gateway cleanup converges asynchronously, so a 204 is not a promise that every gateway
+         *     has already removed the routes.
+         */
+        delete: operations["deleteAgentProxy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get deployments for an Agent proxy
+         * @description Retrieves the Agent proxy's deployment records, optionally filtered by gateway handle
+         *     and deployment status. Access is validated against the organization in the JWT token.
+         */
+        get: operations["listAgentProxyDeployments"];
+        put?: never;
+        /**
+         * Create and deploy a new deployment for an Agent proxy
+         * @description Creates the immutable deployment record synchronously and begins gateway processing.
+         *     Each deployment targets a single gateway. The 201 body reports the transitional
+         *     `DEPLOYING` status; poll the `Location` URI for the eventual status and `statusReason`.
+         *     This is not a completed gateway deployment. Access is validated against the
+         *     organization in the JWT token.
+         *
+         *     The gateway reports the outcome asynchronously:
+         *
+         *     - `DEPLOYED` means the gateway accepted, validated and stored the Agent. It does not
+         *       confirm that the gateway is serving the Agent's routes: route application happens
+         *       after the acknowledgement, and a policy engine that cannot resolve A2A routes is not
+         *       detected.
+         *     - `FAILED` carries a `statusReason` code: `AGENT_VALIDATION_FAILED` (the gateway
+         *       rejected the definition), `AGENT_CONFIG_RENDER_FAILED` (a template or secret reference
+         *       could not be resolved), `AGENT_CONFLICT` (the gateway already holds another Agent
+         *       with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
+         *       (the gateway could not retrieve the deployment artifact), or
+         *       `GATEWAY_PROCESSING_ERROR`.
+         *     - The control plane does not check the target gateway's version. A gateway that
+         *       predates Agent support never acknowledges the deployment, which ends `FAILED` with
+         *       `DEPLOYMENT_TIMEOUT`.
+         */
+        post: operations["createAgentProxyDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/deployments/{deploymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent proxy deployment by ID
+         * @description Returns the deployment's current lifecycle state, gateway association, timestamps and,
+         *     on failure, its `statusReason`. Access is validated against the organization in the
+         *     JWT token.
+         */
+        get: operations["getAgentProxyDeployment"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an Agent proxy deployment
+         * @description Deletes the deployment record. Permitted only when the deployment is in `UNDEPLOYED`
+         *     status; any other state is a 409. Access is validated against the organization in the
+         *     JWT token.
+         */
+        delete: operations["deleteAgentProxyDeployment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/deployments/{deploymentId}/undeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin undeployment of an Agent proxy deployment
+         * @description Accepts an undeployment request and returns the transitional deployment state
+         *     (`UNDEPLOYING`). Poll the `Location` URI for the terminal status (`UNDEPLOYED` or
+         *     `FAILED`) and `statusReason`; never retry the POST merely because it returned a
+         *     transitional state. The deployment artifact remains in the system and can be restored
+         *     later.
+         *
+         *     The `gatewayId` query parameter is validated against the deployment's bound gateway to
+         *     prevent unintended operations. Access is validated against the organization in the JWT
+         *     token.
+         */
+        post: operations["undeployAgentProxyDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/deployments/{deploymentId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin restoration of a previous Agent proxy deployment
+         * @description Accepts a restoration request for a previous deployment (`ARCHIVED` or `UNDEPLOYED`)
+         *     and returns the transitional deployment state (`DEPLOYING`). Poll the `Location` URI
+         *     for the terminal status and `statusReason`. The target deployment must not already be
+         *     in `DEPLOYED` status. The gateway acknowledges a restore as a deployment, so the
+         *     terminal statuses and reason codes are those described for
+         *     `createAgentProxyDeployment`.
+         *
+         *     The `gatewayId` query parameter is validated against the deployment's bound gateway to
+         *     prevent unintended operations. Access is validated against the organization in the JWT
+         *     token.
+         */
+        post: operations["restoreAgentProxyDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List API keys for an Agent proxy
+         * @description Returns API-key metadata for the specified Agent proxy. Key material is never returned by
+         *     this operation. Only keys the caller created are listed, unless the caller holds
+         *     `ap:api_key:all:manage`, which lists every key on the Agent proxy.
+         */
+        get: operations["listAgentProxyAPIKeys"];
+        put?: never;
+        /**
+         * Create an API key for an Agent proxy
+         * @description Creates an API key for the specified Agent proxy, with the same behavior as REST API
+         *     keys. Omit `apiKey` to have the server generate one; the generated value is returned
+         *     only in this response and can never be retrieved again. A supplied `apiKey` is
+         *     registered as-is and is not echoed back. The key is hashed before storage and
+         *     broadcast to the gateways the Agent proxy is deployed to; a gateway the Agent proxy is
+         *     deployed to later receives it at deployment time.
+         *
+         *     `id` is optional and derived from `displayName` when omitted. If the identifier is
+         *     already in use on this Agent proxy, a short random suffix is appended. The response's
+         *     `keyId` and the `Location` header carry the identifier actually stored.
+         */
+        post: operations["createAgentProxyAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/api-keys/{apiKeyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update an API key for an Agent proxy
+         * @description Updates an existing API key for the specified Agent proxy, with the same behavior as
+         *     REST API keys: the supplied `apiKey` value replaces the key material, is hashed before
+         *     storage, and is broadcast to the gateways the Agent proxy is deployed to. Only the
+         *     key's creator may update it, unless the caller holds `ap:api_key:all:manage`. The
+         *     Agent proxy must be associated with at least one gateway; otherwise the update is
+         *     refused with 503.
+         */
+        put: operations["updateAgentProxyAPIKey"];
+        post?: never;
+        /**
+         * Revoke an API key for an Agent proxy
+         * @description Revokes the API key in the control plane, with the same behavior as REST API keys.
+         *     Revocation propagates to the gateways through the existing gateway event mechanism, so
+         *     a 204 confirms the control-plane revocation, not that every gateway has already dropped
+         *     the key. Only the key's creator may revoke it, unless the caller holds
+         *     `ap:api_key:all:manage`. The Agent proxy must be associated with at least one gateway;
+         *     otherwise the revocation is refused with 503.
+         */
+        delete: operations["revokeAgentProxyAPIKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gateways": {
         parameters: {
             query?: never;
@@ -2443,7 +2750,7 @@ export interface components {
              * @description Type of the artifact this key belongs to
              * @enum {string}
              */
-            artifactType: "RestApi" | "LlmProvider" | "LlmProxy";
+            artifactType: "RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy";
         };
         UserAPIKeyListResponse: {
             /** @description List of API keys */
@@ -3994,7 +4301,7 @@ export interface components {
              * @description Timestamp when the deployment artifact was created
              */
             createdAt: string;
-            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR) */
+            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
             statusReason?: string | null;
             /**
              * Format: date-time
@@ -5649,6 +5956,445 @@ export interface components {
             list: components["schemas"]["ApiPortalListItem"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /**
+         * Agent Proxy
+         * @description An Agent proxy, as a discriminated union over its protocol. `protocol` selects the
+         *     variant and its matching named configuration block, and is immutable after creation.
+         *     `a2a` is the only protocol registered today; a further protocol adds its own
+         *     complete variant and named configuration block rather than widening this one.
+         */
+        AgentProxy: components["schemas"]["A2AAgentProxy"];
+        /**
+         * A2A Agent Proxy
+         * @description The complete Agent proxy variant for `protocol: a2a`. Shared Agent fields stay at the
+         *     top level; the A2A protocol version, operation configuration (including the
+         *     transports it is served on, under `a2a.operationConfigs.transports`) and Agent Cards
+         *     live inside `a2a`. Unknown properties are rejected.
+         */
+        A2AAgentProxy: {
+            /**
+             * @description Control-plane resource kind. The gateway's own artifact kind stays `Agent` and is mapped at the deployment boundary.
+             * @default AgentProxy
+             * @example AgentProxy
+             * @enum {string}
+             */
+            kind: "AgentProxy";
+            /**
+             * @description Public handle, unique per organization. Optional on create — the server derives it
+             *     from `displayName` when omitted — and always present on responses. On update an
+             *     omitted `id` retains the path handle and is never regenerated; a conflicting one
+             *     is rejected. Supplying it explicitly as an empty string is not the same as
+             *     omitting it, and is rejected.
+             * @example weather-agent
+             */
+            id?: string;
+            /**
+             * @description Human-readable Agent proxy name. Not required to be unique.
+             * @example Weather Agent
+             */
+            displayName: string;
+            /**
+             * @description Free-text description of the Agent proxy.
+             * @example Provides forecasts and severe-weather alerts
+             */
+            description?: string;
+            /**
+             * @description User-facing resource version label. Free text, and unrelated to
+             *     `a2a.protocolVersion` — it is not part of the resource's identity, and uniqueness
+             *     is on the handle alone.
+             * @example v1.0
+             */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this Agent proxy belongs to.
+             * @example default-project
+             */
+            projectId: string;
+            /**
+             * @description Base path under which every route of this Agent proxy is served. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+             * @default /
+             * @example /weather
+             */
+            context: string;
+            /**
+             * @description Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+             * @example agents.gw.com
+             */
+            vhost?: string;
+            upstream: components["schemas"]["Upstream"];
+            /** @description Agent-wide resilience defaults. Per-operation values under `a2a.operationConfigs.operations[].resilience` override these. */
+            resilience?: components["schemas"]["Resilience"];
+            /**
+             * @description Communication protocol of this Agent proxy. Required, and immutable after creation. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            protocol: "a2a";
+            a2a: components["schemas"]["A2AProtocolConfig"];
+            /**
+             * @description Optional list of gateways this Agent proxy can be deployed to, along with per-gateway configuration overrides. On update, an omitted array empties the association set, subject to the existing deployment-integrity checks.
+             * @example [
+             *       {
+             *         "id": "ai-gw-prod"
+             *       }
+             *     ]
+             */
+            associatedGateways?: components["schemas"]["AssociatedGateway"][];
+            /**
+             * @description User identifier of the user who created this resource
+             * @example john.doe
+             */
+            readonly createdBy?: string;
+            /**
+             * @description User identifier of the user who last updated this resource
+             * @example john.doe
+             */
+            readonly updatedBy?: string;
+            /**
+             * @description True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+             * @example false
+             */
+            readonly readOnly?: boolean;
+            /**
+             * Format: date-time
+             * @description Timestamp when the resource was created
+             */
+            readonly createdAt?: string;
+            /**
+             * Format: date-time
+             * @description Timestamp when the resource was last updated
+             */
+            readonly updatedAt?: string;
+        };
+        /**
+         * A2A protocol configuration
+         * @description Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
+         *     rejected; free-form Agent Card content and policy parameters keep their own extension
+         *     behaviour.
+         */
+        A2AProtocolConfig: {
+            /**
+             * @description A2A wire protocol version. Only registered versions are accepted — an unregistered
+             *     value is rejected at authoring time because it could never deploy. This is not a
+             *     supported list filter.
+             * @example 1.0
+             * @enum {string}
+             */
+            protocolVersion: "1.0";
+            operationConfigs: components["schemas"]["A2AOperationConfigs"];
+            agentCard?: components["schemas"]["AgentCardConfig"];
+        };
+        /** A2A transport */
+        A2ATransport: {
+            /**
+             * @description A2A protocol binding served on this transport.
+             * @example JSONRPC
+             * @enum {string}
+             */
+            protocolBinding: "JSONRPC" | "HTTP+JSON";
+            /**
+             * @description Path prefix relative to `context`. The default `/` inserts no extra segment.
+             * @default /
+             * @example /rpc
+             */
+            pathPrefix: string;
+        };
+        /**
+         * A2A operation configuration
+         * @description Transport exposure plus Agent-wide and per-operation A2A configuration, matching the
+         *     gateway's `spec.a2a.operationConfigs`. The block is required because it carries the
+         *     required `transports`; omitting `policies` or `operations` means no user-supplied
+         *     policies and no per-operation additions. None of this applies to public Agent Card
+         *     serving.
+         */
+        A2AOperationConfigs: {
+            /**
+             * @description Transports this Agent proxy is served on. `protocolBinding` must be unique across
+             *     the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
+             *     in the service rather than by the schema.
+             */
+            transports: components["schemas"]["A2ATransport"][];
+            /** @description Policies applied to every A2A operation. This is the agent-wide policy position for A2A; there is no top-level `policies` array. */
+            policies?: components["schemas"]["Policy"][];
+            /**
+             * @description Per-operation configuration. This is not an allowlist — unlisted operations still
+             *     receive the common `policies`. `name` must be unique across the array, which the
+             *     service enforces.
+             */
+            operations?: components["schemas"]["A2AOperation"][];
+        };
+        /** A2A per-operation configuration */
+        A2AOperation: {
+            /**
+             * @description One of the canonical A2A operations for the selected protocol version.
+             * @example SendMessage
+             * @enum {string}
+             */
+            name: "SendMessage" | "SendStreamingMessage" | "GetTask" | "ListTasks" | "CancelTask" | "SubscribeToTask" | "CreateTaskPushNotificationConfig" | "GetTaskPushNotificationConfig" | "ListTaskPushNotificationConfigs" | "DeleteTaskPushNotificationConfig" | "GetExtendedAgentCard";
+            /** @description Policies appended after the common `policies`, by plain concatenation with no de-duplication — a policy attached in both places runs twice. */
+            policies?: components["schemas"]["Policy"][];
+            /** @description Per-operation resilience values, overriding the Agent-wide defaults. */
+            resilience?: components["schemas"]["Resilience"];
+        };
+        /**
+         * Resilience settings
+         * @description Timeout settings applied to a request chain.
+         */
+        Resilience: {
+            /**
+             * @description Overall request timeout, as a duration such as `30s` or `1m`.
+             * @example 30s
+             */
+            timeout?: string;
+            /**
+             * @description Idle (no-data) timeout, as a duration such as `5s`.
+             * @example 5s
+             */
+            idleTimeout?: string;
+        };
+        /**
+         * A2A Agent Card configuration
+         * @description A2A Agent Card serving configuration. Omitting this block, or omitting its `public`
+         *     block, means public passthrough at `/.well-known/agent-card.json` with
+         *     `rewriteUrls: true` and no card policies. Omitted blocks are preserved as omitted;
+         *     defaults never materialize an explicit stored configuration.
+         */
+        AgentCardConfig: {
+            public?: components["schemas"]["PublicAgentCard"];
+            protected?: components["schemas"]["ProtectedAgentCard"];
+        };
+        /**
+         * Public Agent Card configuration
+         * @description Managed and passthrough are disjoint branches. Managed requires `content` and forbids
+         *     `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
+         *     `signing` option is not accepted on either branch.
+         *
+         *     `properties` below describes the shape common to both branches and carries each
+         *     property in its loosest form; `oneOf` does all the discriminating. Keeping both is
+         *     what lets code generators emit a usable object type while the branches still enforce
+         *     the mode-specific rules. A property added to a branch must be added here too, or it
+         *     will validate correctly but be missing from generated clients.
+         */
+        PublicAgentCard: {
+            /** @enum {string} */
+            mode?: "managed" | "passthrough";
+            path?: components["schemas"]["AgentCardPath"];
+            policies?: components["schemas"]["Policy"][];
+            rewriteUrls?: boolean;
+            content?: components["schemas"]["AgentCardDocument"];
+        } & (components["schemas"]["ManagedPublicAgentCard"] | components["schemas"]["PassthroughPublicAgentCard"]);
+        /**
+         * Managed public Agent Card
+         * @description The control plane stores the card and the gateway serves exactly those bytes.
+         */
+        ManagedPublicAgentCard: {
+            /**
+             * @example managed
+             * @enum {string}
+             */
+            mode: "managed";
+            path?: components["schemas"]["AgentCardPath"];
+            /** @description Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth. */
+            policies?: components["schemas"]["Policy"][];
+            content: components["schemas"]["AgentCardDocument"];
+        };
+        /**
+         * Passthrough public Agent Card
+         * @description Nothing is stored; the gateway fetches the card from the upstream agent and optionally rewrites its URLs.
+         */
+        PassthroughPublicAgentCard: {
+            /**
+             * @default passthrough
+             * @example passthrough
+             * @enum {string}
+             */
+            mode: "passthrough";
+            path?: components["schemas"]["AgentCardPath"];
+            /** @description Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth. */
+            policies?: components["schemas"]["Policy"][];
+            /**
+             * @description Rewrite upstream-advertised URLs to the gateway's own. Passthrough only — rejected in managed mode.
+             * @default true
+             * @example true
+             */
+            rewriteUrls: boolean;
+        };
+        /**
+         * Protected Agent Card configuration
+         * @description The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
+         *     discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
+         *     required whenever the block is present.
+         *
+         *     As with `PublicAgentCard`, `properties` describes the common shape in its loosest
+         *     form and `oneOf` does the discriminating.
+         */
+        ProtectedAgentCard: {
+            /** @enum {string} */
+            mode?: "managed" | "passthrough";
+            rewriteUrls?: boolean;
+            content?: components["schemas"]["AgentCardDocument"];
+        } & (components["schemas"]["ManagedProtectedAgentCard"] | components["schemas"]["PassthroughProtectedAgentCard"]);
+        /** Managed protected Agent Card */
+        ManagedProtectedAgentCard: {
+            /**
+             * @example managed
+             * @enum {string}
+             */
+            mode: "managed";
+            content: components["schemas"]["AgentCardDocument"];
+        };
+        /** Passthrough protected Agent Card */
+        PassthroughProtectedAgentCard: {
+            /**
+             * @example passthrough
+             * @enum {string}
+             */
+            mode: "passthrough";
+            /**
+             * @description Rewrite upstream-advertised URLs to the gateway's own. Independent of the public card's `rewriteUrls`.
+             * @default true
+             * @example true
+             */
+            rewriteUrls: boolean;
+        };
+        /**
+         * Agent Card discovery path
+         * @description Path the public Agent Card is served on. A custom path replaces the default route
+         *     rather than aliasing it.
+         * @default /.well-known/agent-card.json
+         * @example /.well-known/agent-card.json
+         */
+        AgentCardPath: string;
+        /**
+         * A2A Agent Card document
+         * @description A complete A2A Agent Card, carried as supplied. Managed content is stored and served
+         *     byte-for-byte and is never re-serialized or normalized, because re-serialization would
+         *     change the bytes a future signing implementation signs. Structure is the author's to
+         *     write: the gateway validates what it can contradict at deployment time, and the
+         *     encoded size limit (1 MiB) is enforced in the service, not by this schema.
+         *
+         *     Note that `securityRequirements` uses the A2A shape
+         *     `[{ "schemes": { "<name>": { "list": ["scope"] } } }]`, not the OpenAPI-style
+         *     `[{ "<name>": ["scope"] }]`.
+         */
+        AgentCardDocument: {
+            [key: string]: unknown;
+        };
+        /**
+         * Agent Proxy list item
+         * @description Lightweight Agent proxy projection used in collection responses. Protocol
+         *     configuration, operation policies and Agent Card content are omitted — read the item
+         *     for those, since a managed card alone may be up to 1 MiB.
+         */
+        AgentProxyListItem: {
+            /**
+             * @description Public handle of the Agent proxy
+             * @example weather-agent
+             */
+            id: string;
+            /** @example Weather Agent */
+            displayName: string;
+            /** @example Provides forecasts and severe-weather alerts */
+            description?: string;
+            /** @example v1.0 */
+            version: string;
+            /**
+             * @description Handle (URL-friendly slug) of the project this Agent proxy belongs to
+             * @example default-project
+             */
+            projectId: string;
+            /**
+             * @example a2a
+             * @enum {string}
+             */
+            protocol: "a2a";
+            /** @example /weather */
+            context?: string;
+            /** @example agents.gw.com */
+            vhost?: string;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /** @example john.doe */
+            readonly updatedBy?: string;
+            /**
+             * @description True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+             * @example false
+             */
+            readonly readOnly?: boolean;
+            /**
+             * Format: date-time
+             * @example 2026-01-31T10:30:00Z
+             */
+            readonly createdAt?: string;
+            /**
+             * Format: date-time
+             * @example 2026-01-31T10:30:00Z
+             */
+            readonly updatedAt?: string;
+        };
+        /** AgentProxyListResponse for paginated Agent proxy results */
+        AgentProxyListResponse: {
+            /**
+             * @description Number of Agent proxies in current response
+             * @example 2
+             */
+            count: number;
+            list: components["schemas"]["AgentProxyListItem"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** AgentProxyAPIKeyListResponse for paginated Agent proxy API-key results */
+        AgentProxyAPIKeyListResponse: {
+            /** @description List of API keys. Key material is never included. */
+            list: components["schemas"]["APIKeyItem"][];
+            /** @description Number of API keys in current response */
+            count: number;
+            pagination: components["schemas"]["Pagination"];
+        };
+        /**
+         * Agent Card fetch request
+         * @description Two mutually exclusive forms: a direct `url` with optional `auth`, or an
+         *     `agentProxyId` alone, which uses that Agent proxy's stored endpoint and stored
+         *     credentials. Supplying `url` or `auth` alongside `agentProxyId` is rejected, including
+         *     when their value is null — `required` is about key presence, so an explicitly null
+         *     `url` is still a supplied `url`.
+         *
+         *     `properties` describes the shape common to both forms; `oneOf` does the
+         *     discriminating. A property added to a branch must be added here too.
+         */
+        FetchAgentCardRequest: {
+            /**
+             * Format: uri
+             * @description Endpoint of the agent to fetch the Agent Card from.
+             */
+            url?: string;
+            auth?: components["schemas"]["UpstreamAuth"];
+            /** @description Public handle of the Agent proxy whose stored endpoint and credentials should be used. */
+            agentProxyId?: string;
+        } & (components["schemas"]["FetchAgentCardByURL"] | components["schemas"]["FetchAgentCardByAgentProxy"]);
+        /**
+         * Agent Card fetch by URL
+         * @description Fetch from a supplied endpoint, optionally with supplied credentials. Used to preview an endpoint that has not been saved yet.
+         */
+        FetchAgentCardByURL: {
+            /**
+             * Format: uri
+             * @description Endpoint of the agent to fetch the Agent Card from.
+             * @example https://agent.example.com
+             */
+            url: string;
+            /** @description Credentials for this fetch only. Permitted solely with the direct-URL form; nothing is stored. */
+            auth?: components["schemas"]["UpstreamAuth"];
+        };
+        /**
+         * Agent Card fetch by Agent proxy handle
+         * @description Fetch using a saved Agent proxy's stored endpoint and stored credentials. The stored credential handle is never echoed back.
+         */
+        FetchAgentCardByAgentProxy: {
+            /**
+             * @description Public handle of the Agent proxy whose stored endpoint and credentials should be used.
+             * @example weather-agent
+             */
+            agentProxyId: string;
+        };
     };
     responses: {
         /** @description Unauthorized. Authentication credentials are missing or invalid. */
@@ -5922,6 +6668,50 @@ export interface components {
                 "image/jpeg": string;
             };
         };
+        /** @description Unsupported Media Type. The request body media type is not supported by this operation. */
+        UnsupportedMediaType: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "UNSUPPORTED_MEDIA_TYPE",
+                 *       "message": "This operation accepts application/json only."
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description Service Unavailable. The control plane could not reach the Agent proxy's upstream to
+         *     retrieve its Agent Card — unreachable, timed out, credentials rejected, or an
+         *     unparsable response. This describes the control plane's own reachability of the
+         *     upstream: it is not a statement about whether a deployed gateway can serve the card,
+         *     and it is not a deployment status.
+         *
+         *     Failures are cached for a shorter interval than successes, so a persistently
+         *     unreachable upstream is not re-contacted on every page view. A positive `Age` means
+         *     this failure was served from that negative cache.
+         */
+        AgentProxyUpstreamUnreachable: {
+            headers: {
+                Age: components["headers"]["Age"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "status": "error",
+                 *       "code": "AGENT_PROXY_UPSTREAM_UNREACHABLE",
+                 *       "message": "The control plane could not reach the upstream to fetch its Agent Card.",
+                 *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project. */
@@ -5968,11 +6758,46 @@ export interface components {
         "apiHandle-Q": string;
         /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
         apiPortalId: string;
+        /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+        agentProxyId: string;
+        /** @description **API Key ID** consisting of the **name** (unique identifier) of the API key. */
+        agentProxyApiKeyId: string;
+        /**
+         * @description Filter Agent proxies by communication protocol. Omit to list every protocol variant.
+         *     An empty or unsupported value is rejected with 400. The filter applies to the returned
+         *     page and to `pagination.total` alike, always within the authenticated organization.
+         */
+        "agentProxyProtocol-Q": "a2a";
+        /**
+         * @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+         *     bound to the deployment. Required, and validated against the deployment's bound gateway.
+         */
+        "deploymentGatewayId-Q": string;
+        /**
+         * @description Send `no-cache` to bypass the control plane's cached Agent Card result and force a live
+         *     upstream fetch — the explicit "refresh" action in an authoring UI. Any other value, or
+         *     omission, allows a cached result. Per RFC 9110 this affects freshness only; it never
+         *     changes what is stored.
+         */
+        "cacheControl-H": "no-cache";
     };
     requestBodies: never;
     headers: {
         /** @description URL of the newly created resource. */
         Location: string;
+        /**
+         * @description Freshness of an Agent Card fetch result, as `max-age=<seconds>`. The control plane
+         *     caches the stored-handle form of the fetch for this long so routine page views do not
+         *     each issue an outbound request. `max-age=0` means caching is disabled.
+         */
+        CacheControl: string;
+        /**
+         * @description Seconds since the control plane actually fetched this result from the upstream. `0` or
+         *     absent means it was fetched during this request; a positive value means it was served
+         *     from the cache. Present on a cached failure too, so a client can say how long the
+         *     upstream has been unreachable.
+         */
+        Age: number;
     };
     pathItems: never;
 }
@@ -9465,6 +10290,546 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    listAgentProxies: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Filter Agent proxies by communication protocol. Omit to list every protocol variant.
+                 *     An empty or unsupported value is rejected with 400. The filter applies to the returned
+                 *     page and to `pagination.total` alike, always within the authenticated organization.
+                 */
+                protocol?: components["parameters"]["agentProxyProtocol-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of Agent proxies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProxyListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgentProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Agent proxy to create */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProxy"];
+            };
+        };
+        responses: {
+            /** @description Agent proxy created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProxy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    fetchAgentCard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Send `no-cache` to bypass the control plane's cached Agent Card result and force a live
+                 *     upstream fetch — the explicit "refresh" action in an authoring UI. Any other value, or
+                 *     omission, allows a cached result. Per RFC 9110 this affects freshness only; it never
+                 *     changes what is stored.
+                 */
+                "Cache-Control"?: components["parameters"]["cacheControl-H"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Either a direct `url` (with optional `auth`), or an `agentProxyId` to fetch using a stored Agent proxy's endpoint and credentials. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchAgentCardRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Parsed, transient Agent Card preview. Possibly served from the control plane's
+             *     short-lived cache — see `Age`. Freshness metadata is carried in headers, never
+             *     injected into the body: the card document is free-form and is returned exactly as
+             *     the upstream supplied it.
+             */
+            200: {
+                headers: {
+                    "Cache-Control": components["headers"]["CacheControl"];
+                    Age: components["headers"]["Age"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCardDocument"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["AgentProxyUpstreamUnreachable"];
+        };
+    };
+    getAgentProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent proxy details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProxy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateAgentProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        /** @description Replacement Agent proxy configuration */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentProxy"];
+            };
+        };
+        responses: {
+            /** @description Agent proxy replaced successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProxy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteAgentProxy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent proxy deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listAgentProxyDeployments: {
+        parameters: {
+            query?: {
+                /** @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by. */
+                gatewayId?: components["parameters"]["gatewayId-Q"];
+                /** @description Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED) */
+                status?: components["parameters"]["deploymentStatus-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployments retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgentProxyDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        /** @description Deployment request with gateway ID, base reference, and metadata */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployRequest"];
+            };
+        };
+        responses: {
+            /** @description Immutable deployment record created; gateway processing is pending. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgentProxyDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteAgentProxyDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["DeploymentActiveConflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    undeployAgentProxyDeployment: {
+        parameters: {
+            query: {
+                /**
+                 * @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+                 *     bound to the deployment. Required, and validated against the deployment's bound gateway.
+                 */
+                gatewayId: components["parameters"]["deploymentGatewayId-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Undeployment accepted. Returns the deployment with the transitional status UNDEPLOYING; poll the Location for the final status. */
+            202: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    restoreAgentProxyDeployment: {
+        parameters: {
+            query: {
+                /**
+                 * @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+                 *     bound to the deployment. Required, and validated against the deployment's bound gateway.
+                 */
+                gatewayId: components["parameters"]["deploymentGatewayId-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restoration accepted. Returns the deployment with the transitional status DEPLOYING; poll the Location for the final status. */
+            202: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listAgentProxyAPIKeys: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API-key metadata list retrieved successfully. Key material is never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProxyAPIKeyListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgentProxyAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        /** @description API key creation request */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAPIKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description API key created successfully. Generated key material is returned only in this response. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAPIKeyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateAgentProxyAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description **API Key ID** consisting of the **name** (unique identifier) of the API key. */
+                apiKeyId: components["parameters"]["agentProxyApiKeyId"];
+            };
+            cookie?: never;
+        };
+        /** @description API key update request */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAPIKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description API key updated successfully. Key material is not returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateAPIKeyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["GatewayConnectionUnavailable"];
+        };
+    };
+    revokeAgentProxyAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description **API Key ID** consisting of the **name** (unique identifier) of the API key. */
+                apiKeyId: components["parameters"]["agentProxyApiKeyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API key revoked successfully (no content) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["GatewayConnectionUnavailable"];
+        };
+    };
     ListGateways: {
         parameters: {
             query?: {
@@ -10722,7 +12087,7 @@ export interface operations {
                  *     If omitted, all types are returned.
                  * @example LlmProxy,LlmProvider
                  */
-                type?: ("RestApi" | "LlmProvider" | "LlmProxy")[];
+                type?: ("RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy")[];
                 /** @description Maximum number of items to return per page. */
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */

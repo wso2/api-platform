@@ -412,6 +412,21 @@ type MCPProxyRepository interface {
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
+// AgentProxyRepository defines the interface for Agent proxy persistence
+type AgentProxyRepository interface {
+	Create(p *model.AgentProxy) error
+	GetByHandle(handle, orgUUID string) (*model.AgentProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.AgentProxy, error)
+	List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error)
+	Count(orgUUID string, opts AgentProxyListOptions) (int, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.AgentProxy, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(p *model.AgentProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
 type WebSubAPIHmacSecretRepository interface {
 	Create(secret *model.WebSubAPIHmacSecret) error

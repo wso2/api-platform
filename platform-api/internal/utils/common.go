@@ -121,7 +121,7 @@ func CreateLLMProxyYamlZip(proxyYamlMap map[string]string) ([]byte, error) {
 
 // CreateBatchDeploymentTarGz creates a TAR.GZ archive containing deployment YAML files
 // organized in directories by deployment ID. The filename prefix is determined
-// by the artifact kind: api-, llm-provider-, or llm-proxy-.
+// by the artifact kind: api-, llm-provider-, llm-proxy-, mcp-proxy- or agent-.
 // Structure:
 //
 //	batch.tar.gz
@@ -151,6 +151,8 @@ func CreateBatchDeploymentTarGz(deploymentContentMap map[string]*model.Deploymen
 			prefix = "llm-proxy"
 		case "Mcp":
 			prefix = "mcp-proxy"
+		case "AgentProxy":
+			prefix = "agent"
 		default: // RestApi and any future kinds
 			prefix = "api"
 		}
@@ -205,6 +207,26 @@ func CreateWebBrokerAPIYamlZip(apiYamlMap map[string]string) ([]byte, error) {
 
 	for apiID, yamlContent := range apiYamlMap {
 		fileName := fmt.Sprintf("webbroker-api-%s.yaml", apiID)
+		if err := addFileToZip(zipWriter, fileName, []byte(yamlContent)); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// CreateAgentYamlZip creates a ZIP file containing Agent proxy deployment YAML
+// files. Entries use the gateway's agent- prefix, keyed by artifact ID.
+func CreateAgentYamlZip(agentYamlMap map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	for agentID, yamlContent := range agentYamlMap {
+		fileName := fmt.Sprintf("agent-%s.yaml", agentID)
 		if err := addFileToZip(zipWriter, fileName, []byte(yamlContent)); err != nil {
 			return nil, err
 		}

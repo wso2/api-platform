@@ -385,6 +385,25 @@ func APIKeyCreatedEventFromModel(k *model.APIKey) *model.APIKeyCreatedEvent {
 	return event
 }
 
+// APIKeyItemFromModel projects a persisted API key onto its public metadata shape. It is the
+// one mapping every public key listing and metadata response goes through, and it carries no
+// key material: only the masked representation, never the hashes. CreatedBy is the stored
+// actor UUID; callers resolve it to an external identity with IdentityService.
+func APIKeyItemFromModel(k *model.APIKey) api.APIKeyItem {
+	return api.APIKeyItem{
+		Id:             &k.Name,
+		DisplayName:    k.DisplayName,
+		MaskedApiKey:   k.MaskedAPIKey,
+		Status:         api.APIKeyItemStatus(k.Status),
+		CreatedAt:      k.CreatedAt,
+		CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
+		UpdatedAt:      k.UpdatedAt,
+		ExpiresAt:      k.ExpiresAt,
+		Issuer:         k.Issuer,
+		AllowedTargets: k.AllowedTargets,
+	}
+}
+
 // BackfillAPIKeysToGateway (re)broadcasts an artifact's existing active API keys to a
 // gateway it has just been deployed/associated to. Keys are broadcast to their associated
 // gateways only once, at creation time (CreateAPIKey and the per-kind key services), so a
