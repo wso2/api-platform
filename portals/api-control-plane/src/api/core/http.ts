@@ -62,7 +62,7 @@ declare module 'axios' {
 export const ORG_HEADER = 'X-Org-Id';
 
 /** Default per-request deadline. Long operations override it per call. */
-export const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TIMEOUT_MS = 70_000;
 
 /**
  * Base for every platform-api call: the BFF's same-origin proxy prefix plus the
