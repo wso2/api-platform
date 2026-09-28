@@ -131,13 +131,15 @@ func AgentProxyToListItem(m *model.AgentProxy, projectHandle string) api.AgentPr
 // stored secret must survive that round trip rather than being erased by it.
 //
 // Inheritance is deliberately narrow: a value is carried forward only when the
+// endpoint still points at the same upstream target (URL and ref) and the
 // incoming auth block describes the *same configuration* as the stored one.
-// Changing any part of it — the type (including to "none", which removes auth) or
-// the header the credential is sent in — makes this a new configuration, and a new
-// configuration must carry its own credential. Otherwise a caller could retarget a
-// stored secret at a different header by editing one field, and the service's
-// "incomplete credentials on a changed auth configuration" check would be looking
-// at an inherited value rather than the real state.
+// Changing any part of it — the target, the type (including to "none", which
+// removes auth) or the header the credential is sent in — makes this a new
+// configuration, and a new configuration must carry its own credential. Otherwise
+// a caller could send a stored secret to a different upstream, or retarget it at a
+// different header, by editing one field, and the service's "incomplete
+// credentials on a changed auth configuration" check would be looking at an
+// inherited value rather than the real state.
 func PreserveAgentProxyUpstreamAuth(existing, updated *model.UpstreamConfig) *model.UpstreamConfig {
 	if updated == nil {
 		return existing
@@ -155,6 +157,9 @@ func preserveEndpointAuth(existing, updated *model.UpstreamEndpoint) {
 		return
 	}
 	if existing.Auth == nil || updated.Auth == nil {
+		return
+	}
+	if existing.URL != updated.URL || existing.Ref != updated.Ref {
 		return
 	}
 	if !authConfigurationUnchanged(existing.Auth, updated.Auth) {
