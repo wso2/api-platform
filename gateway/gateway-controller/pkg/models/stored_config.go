@@ -240,6 +240,34 @@ func (c *StoredConfig) GetPolicies() *[]api.Policy {
 	return nil
 }
 
+// GetAPILevelFaultPolicies returns the API-level fault policies: policies that run only on
+// the fault path, for every operation. Returns nil when the API kind does not support them
+// or none is configured.
+//
+// The field is spelled differently per kind, deliberately, and that is why this helper exists:
+// RestApi and Mcp call it `faultPolicies`, pairing with the `policies` list they already have,
+// while the LLM kinds call it `globalFaultPolicies`, pairing with their `globalPolicies`. One
+// scope, two spellings, each matching the normal-path field beside it.
+func (c *StoredConfig) GetAPILevelFaultPolicies() *[]api.Policy {
+	// Configuration is the NORMALISED form. Mcp, WebSubApi and the LLM kinds are all
+	// converted to a RestAPI before storage, and each conversion carries the fault list
+	// across, so this one case answers for every kind that can declare them.
+	if sc, ok := c.Configuration.(api.RestAPI); ok {
+		return sc.Spec.FaultPolicies
+	}
+	// SourceConfiguration is the user's original, consulted for a config that has not been
+	// normalised yet.
+	switch sc := c.SourceConfiguration.(type) {
+	case api.MCPProxyConfiguration:
+		return sc.Spec.FaultPolicies
+	case api.LLMProviderConfiguration:
+		return sc.Spec.GlobalFaultPolicies
+	case api.LLMProxyConfiguration:
+		return sc.Spec.GlobalFaultPolicies
+	}
+	return nil
+}
+
 // GetMetadata returns the metadata from the Configuration, regardless of type.
 func (c *StoredConfig) GetMetadata() *api.Metadata {
 	switch cfg := c.Configuration.(type) {
