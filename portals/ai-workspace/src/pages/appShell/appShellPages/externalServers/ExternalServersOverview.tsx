@@ -25,6 +25,7 @@ import React, {
 } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Avatar,
   Box,
   Button,
@@ -299,6 +300,16 @@ export default function ExternalServersOverview(): JSX.Element {
   // successful save, since the newly saved server's own capabilities are then current.
   const [refetchedCapabilities, setRefetchedCapabilities] =
     useState<MCPServerCapabilities | null>(null);
+  // The endpoint/credential the last successful Refetch Server Info actually validated
+  // against. Lets us detect when the form has since been edited away from it, so stale
+  // discovery data is never saved against a target it wasn't fetched from. Null for
+  // manually edited (drawer) capabilities, which were never validated against anything.
+  const [refetchedTarget, setRefetchedTarget] = useState<{
+    url: string;
+    headerName: string;
+    wasCredentialMasked: boolean;
+    headerValue: string; // only meaningful when wasCredentialMasked is false
+  } | null>(null);
   const [isCapabilitiesDrawerOpen, setIsCapabilitiesDrawerOpen] =
     useState(false);
 
@@ -599,6 +610,7 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
     setRefetchedCapabilities(null);
+    setRefetchedTarget(null);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -629,16 +641,44 @@ export default function ExternalServersOverview(): JSX.Element {
     hasCredentialChanged,
   ]);
 
+  // True once the endpoint/credential has been edited away from what the last refetch
+  // validated against — its discovered capabilities no longer describe the target that
+  // Save would persist. The credential value is only comparable when both the snapshot
+  // and the live field are unmasked; a masked value is just the display placeholder.
+  const isRefetchStale = useMemo(() => {
+    if (!refetchedCapabilities || !refetchedTarget) return false;
+    if (endpointUrl.trim() !== refetchedTarget.url) return true;
+    if (authHeaderName.trim() !== refetchedTarget.headerName) return true;
+    if (isCredentialMasked !== refetchedTarget.wasCredentialMasked) return true;
+    if (
+      !isCredentialMasked &&
+      !refetchedTarget.wasCredentialMasked &&
+      authHeaderValue.trim() !== refetchedTarget.headerValue
+    ) {
+      return true;
+    }
+    return false;
+  }, [
+    refetchedCapabilities,
+    refetchedTarget,
+    endpointUrl,
+    authHeaderName,
+    isCredentialMasked,
+    authHeaderValue,
+  ]);
+
   // A staged refetch only actually counts as a change if it discovered something
   // different from what's currently stored — an unedited refetch that finds the
-  // exact same tools/resources/prompts shouldn't flip Save on for no reason.
+  // exact same tools/resources/prompts shouldn't flip Save on for no reason. A stale
+  // refetch never counts: handleSaveChanges derives capabilitiesPayload from this, so
+  // treating it as unstaged is what keeps stale discovery data from being saved.
   const hasCapabilitiesChanges = useMemo(() => {
-    if (!refetchedCapabilities) return false;
+    if (!refetchedCapabilities || isRefetchStale) return false;
     return (
       JSON.stringify(refetchedCapabilities) !==
       JSON.stringify(normalizeCapabilities(server?.capabilities))
     );
-  }, [refetchedCapabilities, server]);
+  }, [refetchedCapabilities, isRefetchStale, server]);
 
   const hasUnsavedChanges =
     hasPolicyChanges || hasBackendConnectionChanges || hasCapabilitiesChanges;
@@ -655,6 +695,7 @@ export default function ExternalServersOverview(): JSX.Element {
       setHasCredentialChanged(false);
     }
     setRefetchedCapabilities(null);
+    setRefetchedTarget(null);
   };
 
   const handleSaveChanges = async () => {
@@ -856,6 +897,14 @@ export default function ExternalServersOverview(): JSX.Element {
         prompts: response.prompts ?? [],
       };
       setRefetchedCapabilities(discoveredCapabilities);
+      // Snapshot exactly what this fetch validated against. The masked placeholder is
+      // not a real credential, so the value is only recorded when it was typed live.
+      setRefetchedTarget({
+        url: trimmedUrl,
+        headerName: trimmedHeaderName,
+        wasCredentialMasked: isCredentialMasked,
+        headerValue: isCredentialMasked ? '' : authHeaderValue.trim(),
+      });
       // Only prompt to Save when the refetch actually found something different —
       // hasCapabilitiesChanges won't reflect the state just set above until the next
       // render, so this mirrors that same comparison directly against the response.
@@ -900,6 +949,8 @@ export default function ExternalServersOverview(): JSX.Element {
     try {
       const parsed = JSON.parse(value) as Record<string, unknown>;
       setRefetchedCapabilities(parseMCPServerCapabilities(parsed));
+      // Manual edits were never validated against any endpoint — nothing to snapshot.
+      setRefetchedTarget(null);
       setIsCapabilitiesDrawerOpen(false);
     } catch (err) {
       showSnackbar(
@@ -1137,7 +1188,9 @@ export default function ExternalServersOverview(): JSX.Element {
   const refetchedValidationResult: EndpointValidationResponse | null = useMemo(() => {
     if (!refetchedCapabilities) return null;
     return {
-      endpointUrl: endpointUrl.trim(),
+      // The URL the capabilities were actually fetched from, not the live form value —
+      // they differ once the refetch goes stale. Empty for manually edited capabilities.
+      endpointUrl: refetchedTarget?.url ?? '',
       serverInfo: {
         name: server?.displayName ?? '',
         version: server?.version ?? '',
@@ -1146,7 +1199,7 @@ export default function ExternalServersOverview(): JSX.Element {
       resources: refetchedCapabilities.resources as unknown as EndpointValidationResponse['resources'],
       prompts: refetchedCapabilities.prompts as unknown as EndpointValidationResponse['prompts'],
     };
-  }, [refetchedCapabilities, endpointUrl, server]);
+  }, [refetchedCapabilities, refetchedTarget, server]);
 
   if (isLoading) {
     return (
@@ -1698,6 +1751,17 @@ export default function ExternalServersOverview(): JSX.Element {
                     <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
                       Discovered Capabilities{' '}
                     </Typography>
+                    {isRefetchStale ? (
+                      <Alert
+                        severity="warning"
+                        sx={{ mb: 1 }}
+                        data-testid="backend-connection-refetch-stale"
+                      >
+                        Target or credentials have changed since these capabilities
+                        were fetched. Refetch server info to save the latest
+                        capabilities.
+                      </Alert>
+                    ) : null}
                     <ExternalServersValidationDetails
                       validationResult={refetchedValidationResult}
                       showHeader={false}
