@@ -22,7 +22,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -57,7 +58,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -92,7 +94,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -127,7 +130,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -162,7 +166,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"
@@ -197,7 +202,8 @@
                     "name": "X-Key",
                     "value": "k"
                   }
-                ]
+                ],
+                "phase": "body"
               }
             },
             "version": "v9.9.9"

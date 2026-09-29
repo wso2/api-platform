@@ -32,7 +32,12 @@ import {
   http,
   resetHttpClient,
 } from './http';
-import { onSessionExpired, resetSessionExpiryNotice } from './sessionEvents';
+import {
+  onForbidden,
+  onSessionExpired,
+  resetForbiddenNotice,
+  resetSessionExpiryNotice,
+} from './sessionEvents';
 
 /**
  * Transport-level behaviour, exercised through MSW rather than by stubbing
@@ -538,5 +543,74 @@ describe('session expiry', () => {
     await http.get('/rest-apis').catch(() => undefined);
 
     expect(notified).not.toHaveBeenCalled();
+  });
+});
+
+describe('forbidden operations', () => {
+  beforeEach(resetForbiddenNotice);
+
+  const failWith403 = (path: string) =>
+    server.use(
+      mswHttp.get(`${BASE}${path}`, () =>
+        HttpResponse.json(
+          { status: 'error', code: 'FORBIDDEN', message: 'Insufficient scope.' },
+          { status: 403 }
+        )
+      )
+    );
+
+  it('publishes the operation that was refused, so drift can be detected', async () => {
+    failWith403('/projects');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await http
+      .get('/projects', { operationName: 'ListProjects' })
+      .catch(() => undefined);
+
+    expect(notified).toHaveBeenCalledWith({ operation: 'ListProjects' });
+    unsubscribe();
+  });
+
+  it('collapses a burst of 403s for the same operation into one report', async () => {
+    failWith403('/projects');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined)
+      )
+    );
+
+    expect(notified).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('reports two different refused operations separately', async () => {
+    // Unlike a 401, two 403s are two distinct facts: one may be a real denial
+    // and the other a stale scope map. Collapsing them would hide the latter.
+    failWith403('/projects');
+    failWith403('/gateways');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined);
+    await http.get('/gateways', { operationName: 'ListGateways' }).catch(() => undefined);
+
+    expect(notified).toHaveBeenCalledTimes(2);
+    expect(notified).toHaveBeenCalledWith({ operation: 'ListGateways' });
+    unsubscribe();
+  });
+
+  it('does not announce a 403 as a dead session', async () => {
+    failWith403('/projects');
+    const expired = vi.fn();
+    const unsubscribe = onSessionExpired(expired);
+
+    await http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined);
+
+    expect(expired).not.toHaveBeenCalled();
+    unsubscribe();
   });
 });

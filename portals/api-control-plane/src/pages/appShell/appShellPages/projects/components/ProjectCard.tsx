@@ -37,6 +37,7 @@ import type { Project } from '@/api/resources/projects';
 import { relativeTime } from '@/utils/relativeTime';
 import { openableProps } from '@/components/openable';
 import { focusRingSx, interactiveCardSx } from '@/theme';
+import { useCan } from '@/permissions/useCan';
 
 type ProjectCardProps = {
   project: Project;
@@ -95,6 +96,7 @@ const messages = defineMessages({
 
 export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
   const intl = useIntl();
+  const canDelete = useCan('DeleteProject');
   const stopCardClick = (event: MouseEvent) => event.stopPropagation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -175,7 +177,7 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
           )}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        {onDelete && (
+        {onDelete && canDelete && (
           <>
             <Tooltip title={intl.formatMessage(messages.actionsLabel)}>
               <IconButton

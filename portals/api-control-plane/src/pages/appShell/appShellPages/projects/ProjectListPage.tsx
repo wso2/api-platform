@@ -46,6 +46,7 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { NewProjectDialog } from './components/NewProjectDialog';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFolderIllustration';
+import { Can } from '@/permissions/Can';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -299,7 +300,8 @@ export function ProjectListPage() {
         </PageTitle.SubHeader>
         {!isFirstRun && (
           <PageTitle.Actions>
-            <Button
+            <Can do="CreateProject" denied="hide">
+              <Button
               onClick={() => setCreateOpen(true)}
               startIcon={<Plus />}
               sx={{ borderRadius: 5 }}
@@ -307,6 +309,7 @@ export function ProjectListPage() {
             >
               <FormattedMessage {...messages.createProject} />
             </Button>
+            </Can>
           </PageTitle.Actions>
         )}
       </PageTitle>
@@ -319,6 +322,7 @@ export function ProjectListPage() {
           description={intl.formatMessage(messages.emptyDescription)}
           actionIcon={<Plus />}
           illustration={<ProjectFolderIllustration />}
+          operationId="CreateProject"
         />
       ) : (
         <Stack spacing={2} sx={{ flexGrow: 1 }}>

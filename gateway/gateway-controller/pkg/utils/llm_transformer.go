@@ -337,6 +337,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if pol != nil {
 				condition := selectedProviderExecutionCondition(name, ap.IsPrimary)
 				pol.ExecutionCondition = &condition
+				// A router may pick the provider while processing the request body,
+				// after the header phase; gate the credential on that final choice.
+				if len(attachments) > 1 {
+					*pol = withRequestBodyPhase(*pol)
+				}
 				upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
 			}
 		}
@@ -948,6 +953,38 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 	}
+}
+
+// withRequestBodyPhase returns pol with a set-headers credential moved to the
+// request-body phase, so its selected_provider condition is evaluated after a
+// router that selects while processing the body. Other policies, and a phase the
+// user set explicitly, are left as they are. Params are copied, never mutated:
+// user-supplied policyParams are passed through by reference.
+func withRequestBodyPhase(pol api.Policy) api.Policy {
+	if pol.Name != constants.SET_HEADERS_POLICY_NAME || pol.Params == nil {
+		return pol
+	}
+	request, ok := (*pol.Params)["request"].(map[string]interface{})
+	if !ok {
+		return pol
+	}
+	if _, set := request[constants.SET_HEADERS_REQUEST_PHASE_PARAM]; set {
+		return pol
+	}
+
+	phased := make(map[string]interface{}, len(request)+1)
+	for k, v := range request {
+		phased[k] = v
+	}
+	phased[constants.SET_HEADERS_REQUEST_PHASE_PARAM] = constants.SET_HEADERS_REQUEST_PHASE_BODY
+
+	params := make(map[string]interface{}, len(*pol.Params))
+	for k, v := range *pol.Params {
+		params[k] = v
+	}
+	params["request"] = phased
+	pol.Params = &params
+	return pol
 }
 
 // proxyInternalLoopbackMarkerPolicy builds an unconditional set-headers policy that stamps the

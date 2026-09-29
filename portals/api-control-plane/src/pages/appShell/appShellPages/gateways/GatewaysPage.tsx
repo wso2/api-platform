@@ -30,15 +30,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  LayoutGrid,
-  List,
-  Network,
-  Plus,
-  Shrub,
-  Wifi,
-  WifiOff,
-} from '@wso2/oxygen-ui-icons-react';
+import { LayoutGrid, List, Network, Plus, Shrub, Wifi, WifiOff } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -50,6 +42,7 @@ import { GatewayGridView } from './components/GatewayGridView';
 import { GatewayListView } from './components/GatewayListView';
 import { gatewayMode, gatewaySearchFields } from './utils/gatewayDisplay';
 import { groupGatewaysByEnvironment } from './utils/gatewayEnvironments';
+import { Can } from '@/permissions';
 
 /** Which hosting modes the listing is currently showing. */
 type GatewayFilter = 'all' | 'managed' | 'self';
@@ -213,9 +206,11 @@ export function GatewaysPage() {
         {/* Hidden on first run to avoid duplicate provision actions. */}
         {!isFirstRun && (
           <PageTitle.Actions>
-            <Button onClick={provision} startIcon={<Plus />} variant="contained">
-              <FormattedMessage {...messages.provisionButton} />
-            </Button>
+            <Can do="CreateGateway" denied="disable">
+              <Button onClick={provision} startIcon={<Plus />} variant="contained">
+                <FormattedMessage {...messages.provisionButton} />
+              </Button>
+            </Can>
           </PageTitle.Actions>
         )}
       </PageTitle>
@@ -228,6 +223,7 @@ export function GatewaysPage() {
           illustration={<GatewayIllustration />}
           onAction={provision}
           title={intl.formatMessage(messages.emptyTitle)}
+          operationId="CreateGateway"
         />
       ) : (
         <Stack spacing={3}>

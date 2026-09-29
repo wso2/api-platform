@@ -33,6 +33,7 @@ import { getLLMProviders } from '../../../../../apis/llmProviderApis';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { buildOrgPath } from '../../../../../utils/projectRouting';
+import { useResourceLimits } from '../../../../../hooks/useResourceLimits';
 
 export type AIGatewayStepBannerProps = {
   gatewayDisplayName?: string;
@@ -59,7 +60,7 @@ export default function AIGatewayStepBanner({
   const resolvedDisplayName = gatewayDisplayName?.trim() || 'AI Gateway';
   const completedSteps = isActive ? 2 : 1;
   const progressValue = (completedSteps / TOTAL_STEPS) * 100;
-  const isProviderQuotaReached = false;
+  const isProviderQuotaReached = !useResourceLimits().canCreate('llmProviders');
   const newProviderPath = buildOrgPath(
     currentOrganization,
     '/service-provider/create'

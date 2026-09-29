@@ -45,18 +45,38 @@ export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
  * message on failure. The `undefined` in the resolved type is deliberate: callers
  * must narrow before dereferencing an empty response.
  */
+import type {
+  LimitedComponent,
+  ResourceLimitSet,
+} from './hooks/useResourceLimits';
+
 export type ApiFetch = <T = unknown>(
   method: string,
   path: string,
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * Component creation limits as an extension sees them: read the verdict, or
+ * supply it. The host holds the state (see `hooks/useResourceLimits.tsx`) and
+ * knows nothing about where the numbers come from; a cloud plugin that does
+ * — subscription tier, billing service — calls `set`, and any other extension
+ * reads `canCreate`. Passing `null` to `set` clears them.
+ */
+export type ResourceLimitsPort = {
+  canCreate: (component: LimitedComponent) => boolean;
+  limitMessage: (component: LimitedComponent) => string;
+  set: (limits: ResourceLimitSet | null) => void;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
+  orgUuid?: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  resourceLimits: ResourceLimitsPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

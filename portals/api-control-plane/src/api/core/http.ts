@@ -30,7 +30,7 @@ import {
   CSRF_HEADER_VALUE,
 } from '../../contexts/auth/authConstants';
 import { ApiErrorKind, platformErrorFromBody, platformErrorFromTransport } from './errors';
-import { notifySessionExpired } from './sessionEvents';
+import { notifyForbidden, notifySessionExpired } from './sessionEvents';
 
 /**
  * Per-request context carried on the axios config. Declared via module
@@ -62,7 +62,7 @@ declare module 'axios' {
 export const ORG_HEADER = 'X-Org-Id';
 
 /** Default per-request deadline. Long operations override it per call. */
-export const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TIMEOUT_MS = 70_000;
 
 /**
  * Base for every platform-api call: the BFF's same-origin proxy prefix plus the
@@ -443,6 +443,9 @@ async function send(
     }
 
     if (response.status === 401) notifySessionExpired();
+    // Tagged with the operation so `PermissionProvider` can tell a genuine
+    // denial from the console having predicted this call would succeed.
+    if (response.status === 403) notifyForbidden(options.operationName);
 
     throw platformErrorFromBody(response.status, body, requestId, options.operationName);
   }

@@ -18,6 +18,9 @@ policies:
     - name: azure-content-safety-content-moderation
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
+    - name: azure-llm-cost
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/azure-llm-cost@v1
     - name: backend-jwt
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
@@ -55,13 +58,13 @@ policies:
       version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
     - name: llm-header-router
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-header-router@v0
     - name: log-message
       version: v1.0.3
@@ -100,19 +103,19 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
     - name: openai-to-anthropic-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-anthropic-transformer@v0
     - name: openai-to-azure-openai-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
     - name: openai-to-bedrock-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-gemini-transformer@v0
     - name: openai-to-mistral-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-mistral-transformer@v0
     - name: pii-masking-regex
       version: v1.0.4
@@ -154,7 +157,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v1
     - name: set-headers
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
     - name: subscription-validation
       version: v1.0.3

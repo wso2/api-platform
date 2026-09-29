@@ -115,6 +115,39 @@ export const AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT = 'page.llmProxyDeploy';
 export const AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT = 'page.llmProviderDeploy';
 
 /**
+ * Slot for overriding the built-in onboarding wizard at the full-screen
+ * `organizations/:orgSlug/quickstart` route. Same Slot/Hideable split as the
+ * page overrides above — the route stays, only its body changes — but with one
+ * difference worth knowing: this route is deliberately rendered *outside* the
+ * app shell (no navbar, sidebar or footer; see `appShellMain.tsx`), because a
+ * first-run wizard has nothing to navigate to yet.
+ */
+export const AI_WORKSPACE_QUICKSTART_SLOT = 'page.quickstart';
+
+/**
+ * Slot for headless entries mounted on every in-shell route. They render no UI
+ * of their own — they exist so a deployment can run cross-cutting policy the
+ * portal itself has no opinion about, the first case being cloud's first-run
+ * onboarding gate: "this organization has no LLM provider and no connected
+ * gateway, so send the user to `quickstart`". That decision is a product
+ * policy, not portal behaviour, which is why it is a slot rather than a
+ * built-in redirect.
+ *
+ * Gates do NOT run on the full-screen quickstart route itself (it renders
+ * outside the shell), so a gate that redirects there cannot loop.
+ */
+export const AI_WORKSPACE_APP_GATE_SLOT = 'app.gate';
+
+/**
+ * A headless, host-mounted policy hook — see `AI_WORKSPACE_APP_GATE_SLOT`.
+ * `render` is called with the live Port on every in-shell route; returning
+ * `null` (after, say, a redirect) is the normal case.
+ */
+export type AIWorkspaceAppGate = SlotEntry & {
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+};
+
+/**
  * `Hideable` region wrapping the built-in AI Gateways *sidebar item* (the page
  * itself is `AI_WORKSPACE_GATEWAYS_SLOT`). Separate name because a cloud build
  * may want to reposition the nav entry while still rendering at the built-in
@@ -132,7 +165,8 @@ export const hiddenRegionsOf = (
 export type AIWorkspaceCloudEntry =
   | AIWorkspaceExtension
   | AIWorkspacePageOverride
-  | AIWorkspaceHeaderAction;
+  | AIWorkspaceHeaderAction
+  | AIWorkspaceAppGate;
 
 export function ExtensionsProvider({
   extensions,

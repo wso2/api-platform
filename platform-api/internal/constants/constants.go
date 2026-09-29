@@ -72,6 +72,12 @@ var ValidGatewayFunctionalityType = map[string]bool{
 // DefaultGatewayFunctionalityType Default gateway functionality type for new gateways
 const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
+// PublicationAPITypeRestAPI is the type-agnostic path value for RestApi
+// in API Publication routes (/api-portals/{apiPortalId}/apis/{apiType}/...).
+// Distinct from the RestApi artifact-kind constant below: that one names the
+// artifact's kind column, this one is the lowercase-hyphenated URL segment.
+const PublicationAPITypeRestAPI = "rest-api"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"
@@ -263,6 +269,12 @@ var ValidThrottleLimitUnits = map[string]bool{
 // DefaultOpenAPISpecMaxBytes is the fallback maximum size for an OpenAPI specification
 // upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
+
+// DefaultOpenAPISpecFileName is the filename persisted for a spec that was
+// fetched by URL but whose URL has no usable last path segment to name the
+// file after.
+const DefaultOpenAPISpecYAMLFileName = "openapi.yaml"
+const DefaultOpenAPISpecJSONFileName = "openapi.json"
 
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type

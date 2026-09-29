@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -87,6 +88,38 @@ type OIDC struct {
 // (longer) request timeout.
 const discoveryTimeout = 15 * time.Second
 
+// TxTTL is how long a login transaction stays valid — the wall-clock budget for
+// everything the user does at the IDP: typing credentials, MFA, an account or org
+// picker, a password reset mid-flow, or simply leaving the tab for a while. Exceed
+// it and the callback cannot be matched, which the user sees as a failed login with
+// no explanation.
+//
+// Half an hour rather than a few minutes because the cost of being generous is one
+// small map entry per in-flight login, while the cost of being tight is a real
+// person's login failing for taking too long over MFA. It is not what protects the
+// flow: state+nonce binding, PKCE, and one-shot consumption do, and a transaction
+// buys nothing without the code the IDP hands back.
+//
+// Exported because the callback reports on it, and because the tx cookie's lifetime
+// is derived from it — see TxCookieTTL.
+const TxTTL = 30 * time.Minute
+
+// expiredRetention keeps an expired transaction in the map for a while after it
+// stops being usable, purely so the callback can say "expired" instead of "no such
+// transaction". Swept immediately, every slow login is indistinguishable from a
+// restart or a replay, which is the difference between a one-line diagnosis and an
+// afternoon. They are never accepted — Callback checks Expiry before State.
+const expiredRetention = 2 * time.Hour
+
+// TxCookieTTL is how long the browser keeps the login-transaction cookie. It
+// deliberately outlives the transaction by exactly expiredRetention: validity is
+// still governed by TxTTL (Callback checks Expiry and rejects anything past it),
+// but a cookie that died with the transaction would turn every aged-out login into
+// "no cookie at all" — a Path/SameSite-shaped fault — instead of the "expired" the
+// server is still able to report while the record is retained. A cookie that
+// outlives retention would be the mirror image, so the two move together.
+const TxCookieTTL = TxTTL + expiredRetention
+
 // NewOIDC fetches the discovery document and returns a ready authenticator.
 func NewOIDC(
 	ctx context.Context,
@@ -118,10 +151,25 @@ func NewOIDC(
 	return o, nil
 }
 
+// PendingTransactions reports how many login transactions are held, expired ones
+// included. Zero on a callback failure says the process has served no login it still
+// remembers — a restart — which is what separates that case from a slow or replayed
+// one in the logs.
+func (o *OIDC) PendingTransactions() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.txs)
+}
+
 // Close stops the background transaction sweeper. Safe to call multiple times.
 func (o *OIDC) Close() {
 	o.closeOnce.Do(func() { close(o.done) })
 }
+
+// TokenEndpoint is the endpoint discovered from the issuer. Exposed so a token
+// exchange configured without an explicit endpoint override can post to the same
+// IDP the user logged in to, without repeating discovery.
+func (o *OIDC) TokenEndpoint() string { return o.disco.TokenEndpoint }
 
 func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (discoveryDoc, error) {
 	u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
@@ -173,7 +221,7 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
-		Expiry:       time.Now().Add(10 * time.Minute),
+		Expiry:       time.Now().Add(TxTTL),
 	}
 	o.mu.Unlock()
 
@@ -191,10 +239,40 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }
 
-// ErrStateMismatch indicates a callback whose state didn't match the tx record.
-type ErrStateMismatch struct{}
+// ErrStateMismatch indicates a callback that could not be tied back to the login
+// this server started. Reason names WHICH of the four checks failed — they have very
+// different causes and fixes, and a single "state mismatch" string sends an operator
+// hunting for an attack when the usual explanation is a restarted process or a cookie
+// the browser never sent.
+//
+// The reason is for logs only. The browser is redirected with a generic auth_failed
+// either way: telling a caller which half of the check it failed is a probing oracle.
+type ErrStateMismatch struct{ Reason string }
 
-func (ErrStateMismatch) Error() string { return "oidc state mismatch" }
+func (e ErrStateMismatch) Error() string {
+	if e.Reason == "" {
+		return "oidc state mismatch"
+	}
+	return "oidc state mismatch: " + e.Reason
+}
+
+// Reasons an OIDC callback cannot be matched to a login transaction.
+const (
+	// The BFF keeps login transactions in memory, so every in-flight login is lost
+	// when the process restarts — by far the most common cause in development, where
+	// a container restart lands between the redirect to the IDP and the callback.
+	ReasonNoTransaction = "no login transaction for this id (server restarted, or the " +
+		"transaction already used)"
+	// The tx cookie never arrived: its Path does not cover the callback route, the
+	// browser dropped it (SameSite, Secure over plain http), or the user opened the
+	// callback URL directly.
+	ReasonNoTxCookie = "request carried no login-transaction cookie"
+	// Older than the 10-minute window: the user sat on the IDP's login page.
+	ReasonExpired = "login transaction expired"
+	// Everything was present and the state still differed — the one case that is
+	// genuinely suspicious.
+	ReasonStateDiffers = "state parameter does not match the stored transaction"
+)
 
 // ErrNonceMismatch indicates the id_token's nonce didn't match the tx record.
 type ErrNonceMismatch struct{}
@@ -204,16 +282,35 @@ func (ErrNonceMismatch) Error() string { return "oidc nonce mismatch" }
 // Callback validates the tx/state, exchanges the code for tokens, and returns a
 // populated session plus the sanitized return URL. txID comes from the tx cookie.
 func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session.Session, string, error) {
+	if txID == "" {
+		return nil, "", ErrStateMismatch{Reason: ReasonNoTxCookie}
+	}
+
 	o.mu.Lock()
 	tx, ok := o.txs[txID]
 	if ok {
 		delete(o.txs, txID)
 	}
+	pending := len(o.txs)
 	o.mu.Unlock()
 
-	if !ok || tx.Expiry.Before(time.Now()) || tx.State != state {
-		return nil, "", ErrStateMismatch{}
+	// Each branch is separate so the log names the actual cause. The checks
+	// themselves are unchanged, and all four still fail the login.
+	switch {
+	case !ok:
+		slog.Debug("oidc callback: no matching login transaction",
+			"pending_transactions", pending, "state_present", state != "")
+		return nil, "", ErrStateMismatch{Reason: ReasonNoTransaction}
+	case tx.Expiry.Before(time.Now()):
+		slog.Debug("oidc callback: login transaction expired",
+			"expired_at", tx.Expiry, "age", time.Since(tx.Expiry))
+		return nil, "", ErrStateMismatch{Reason: ReasonExpired}
+	case tx.State != state:
+		slog.Debug("oidc callback: state parameter differs from the stored transaction",
+			"state_present", state != "", "state_len", len(state), "stored_len", len(tx.State))
+		return nil, "", ErrStateMismatch{Reason: ReasonStateDiffers}
 	}
+	slog.Debug("oidc callback: login transaction matched", "pending_transactions", pending)
 
 	tok, err := o.exchange(ctx, code, tx.CodeVerifier)
 	if err != nil {
@@ -284,15 +381,28 @@ func (o *OIDC) postToken(ctx context.Context, form url.Values) (*tokenResponse, 
 
 // SessionFromToken builds a session from a refreshed token set, preserving the
 // previous refresh/id token when the IDP omits them on refresh.
+//
+// The carry-forward completes the token set BEFORE the session is built, and that
+// order is load-bearing rather than stylistic: sessionFromToken derives the display
+// User from the id_token's claims, so restoring the id_token onto the finished record
+// instead would leave User built from the access token alone. RFC 6749 §6 does not
+// require an id_token on refresh and most IDPs omit one, making that the ordinary
+// path — the user's name would fall back to the raw "sub" UUID and their email would
+// blank out, roughly an hour into every session, with nothing else changing to
+// explain it. A fresh id_token still wins wherever the IDP sends one.
 func (o *OIDC) SessionFromToken(tok *tokenResponse, prev *session.Session) *session.Session {
-	s := o.sessionFromToken(tok)
-	if s.RefreshToken == "" && prev != nil {
-		s.RefreshToken = prev.RefreshToken
+	// Copied rather than mutated in place: tok belongs to the caller, and a flat
+	// struct of scalars makes the copy exact.
+	effective := *tok
+	if prev != nil {
+		if effective.RefreshToken == "" {
+			effective.RefreshToken = prev.RefreshToken
+		}
+		if effective.IDToken == "" {
+			effective.IDToken = prev.IDToken
+		}
 	}
-	if s.IDToken == "" && prev != nil {
-		s.IDToken = prev.IDToken
-	}
-	return s
+	return o.sessionFromToken(&effective)
 }
 
 // UserFromAccessToken decodes the access token's claims (without verifying) and
@@ -348,9 +458,12 @@ func (o *OIDC) sweepTxns() {
 		case <-o.done:
 			return
 		case now := <-t.C:
+			// Dropped only once it is too old to explain itself — see
+			// expiredRetention. Unusable long before that, and never accepted.
+			cutoff := now.Add(-expiredRetention)
 			o.mu.Lock()
 			for id, tx := range o.txs {
-				if tx.Expiry.Before(now) {
+				if tx.Expiry.Before(cutoff) {
 					delete(o.txs, id)
 				}
 			}

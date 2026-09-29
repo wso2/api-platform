@@ -18,6 +18,8 @@ package config
 
 import "time"
 
+const defaultPolicyHubBaseURL = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0"
+
 // defaultConfig returns a Config with all built-in defaults. Load overlays the
 // parsed config.toml on top of it, so any key absent from the file keeps the
 // value here. The required keys (control_plane.url) have no meaningful default
@@ -25,6 +27,9 @@ import "time"
 // Load, not here.
 func defaultConfig() *Config {
 	return &Config{
+		PolicyHub: PolicyHubConfig{
+			BaseURL: defaultPolicyHubBaseURL,
+		},
 		Server: ServerConfig{
 			StaticDir: "/app",
 			HTTP: HTTPListener{
@@ -76,6 +81,11 @@ func defaultConfig() *Config {
 				OrgID:     "organization",
 				OrgName:   "org_name",
 				OrgHandle: "org_handle",
+			},
+			// Scope mode matches the Platform API's own default, so a deployment that
+			// never mentions [auth.authorization] keeps reading the scope claim.
+			Authorization: AuthorizationConfig{
+				Mode: AuthzModeScope,
 			},
 		},
 	}

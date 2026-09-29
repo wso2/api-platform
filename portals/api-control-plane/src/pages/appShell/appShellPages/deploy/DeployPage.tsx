@@ -168,6 +168,7 @@ function Deploy() {
           description={intl.formatMessage(messages.emptyDescription)}
           onAction={() => navigate(routes.newGateway(orgHandle))}
           title={intl.formatMessage(messages.emptyTitle)}
+          operationId="CreateGateway"
         />
       ) : (
         <>

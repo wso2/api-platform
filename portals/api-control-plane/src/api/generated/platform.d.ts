@@ -3876,7 +3876,11 @@ export interface components {
              * @example prod-gateway-01
              */
             gatewayId: string;
-            /** @description Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`. */
+            /**
+             * @description Optional metadata for the deployment. Supported keys are `endpointUrl`, `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes `endpointUrl` too, which replaces the backend it routes to, and `upstreamAuthValue` — the credential that deployment authenticates to the provider's upstream with, so one provider can run on several gateways against different accounts with the same vendor. It must be given as a `{{ secret "handle" }}` reference naming a secret of this organization, never the credential itself. Like the provider's own `auth.value` it is write-only: it is never returned by any read of a deployment, so replacing it means giving a new one rather than editing what came back. Omitting it leaves the provider's own credential in place.
+             *
+             *     `upstreamAuthHeader` names the header that credential is sent in. It is read only alongside `upstreamAuthValue`, and only where the upstream authenticates with an api-key — basic and bearer send `Authorization` by definition.
+             */
             metadata?: {
                 [key: string]: unknown;
             };
@@ -3970,15 +3974,14 @@ export interface components {
              */
             baseDeploymentId?: string | null;
             /**
-             * @description Build this deployment runs, such as `2026-01-31-2`. Every REST API deployment
-             *     has one: `base: build` runs the build it names, and `base: current` stores what
-             *     it renders as a build and runs that.
+             * @description Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+             *     LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+             *     it names, and `base: current` stores what it renders as a build and runs that.
              *
-             *     Null for artifact kinds that have no builds — MCP proxy, LLM and event API
-             *     deployments — including one promoted from another deployment, which reuses that
-             *     deployment's rendered artifact. Also null once the build it ran has been pruned.
-             *     Null means only that no build can be named; the deployment keeps its own
-             *     rendered artifact either way.
+             *     Null for artifact kinds that have no builds, and for a deployment promoted from
+             *     another, which reuses that deployment's rendered artifact. Also null once the
+             *     build it ran has been pruned. Null means only that no build can be named; the
+             *     deployment keeps its own rendered artifact either way.
              * @example 2026-01-31-2
              */
             buildId?: string | null;
@@ -5839,23 +5842,16 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description This API type has no projection onto the API Portal's own API types, so no listing can be created for it. */
-        PublicationTypeUnsupported: {
+        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything. */
+        PublicationPublishBadRequest: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                /**
-                 * @example {
-                 *       "status": "error",
-                 *       "code": "PUBLICATION_TYPE_UNSUPPORTED",
-                 *       "message": "APIs of this type cannot be published to an API Portal."
-                 *     }
-                 */
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status (unpublish needs a published or deprecated listing, deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may already hold the earlier copy while the local listing is unchanged; review the draft and publish again to bring them in line), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change — another API already holds this handle or display name and version, or the listing still has subscriptions or active API keys and so cannot be removed. A portal conflict does not clear on retry: the operator renames, removes the consumers, or deprecates instead. A state conflict clears once the publication is in a status that allows the action. No local state was changed by any of these; only a draft-changed conflict can leave the API Portal ahead of it until the next publish. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;
@@ -5888,14 +5884,14 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description The definition's raw content. Content-Type matches the serialization it was stored in: application/json or application/x-yaml for an OpenAPI or AsyncAPI contract, application/graphql for GraphQL SDL, application/xml for WSDL. */
+        /** @description The definition's raw content. Content-Type matches the serialization it was stored in: application/json or application/yaml for an OpenAPI or AsyncAPI contract, application/graphql for GraphQL SDL, application/xml for WSDL. */
         PublicationDefinitionResponse: {
             headers: {
                 [name: string]: unknown;
             };
             content: {
                 "application/json": string;
-                "application/x-yaml": string;
+                "application/yaml": string;
                 "application/graphql": string;
                 "application/xml": string;
             };
@@ -7245,11 +7241,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description The definition as raw bytes. The request's Content-Type selects the stored serialization and must match the contract the API's type uses; no other media type is accepted. */
+        /** @description The definition as raw bytes. The request's Content-Type selects the stored serialization; no other media type is accepted. Saving a draft never validates the content itself — including whether the Content-Type matches what the API's type actually uses — only publish does. */
         requestBody: {
             content: {
                 "application/json": string;
-                "application/x-yaml": string;
+                "application/yaml": string;
                 "application/graphql": string;
                 "application/xml": string;
             };
@@ -7424,7 +7420,7 @@ export interface operations {
                     "application/json": components["schemas"]["Publication"];
                 };
             };
-            400: components["responses"]["PublicationTypeUnsupported"];
+            400: components["responses"]["PublicationPublishBadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

@@ -66,6 +66,7 @@ import { getErrorMessage } from '../../../../utils/apiError';
 import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
@@ -83,9 +84,16 @@ export default function ExternalServersList(): React.JSX.Element {
   } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
-  const canCreateMcpProxy = hasPermission(SCOPES.MCP_PROXY_CREATE);
+  const { canCreate, limitMessage } = useResourceLimits();
+  const hasMcpProxyPermission = hasPermission(SCOPES.MCP_PROXY_CREATE);
+  const isMcpProxyQuotaReached = !canCreate('mcpProxies');
+  const canCreateMcpProxy = hasMcpProxyPermission && !isMcpProxyQuotaReached;
   const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
-  const createMcpProxyTooltip = canCreateMcpProxy ? '' : NO_PERMISSION_TOOLTIP;
+  // Permission first: not being allowed to create at all is the more fundamental
+  // reason, and a user without the scope has no use for a quota message.
+  const createMcpProxyTooltip = !hasMcpProxyPermission
+    ? NO_PERMISSION_TOOLTIP
+    : limitMessage('mcpProxies');
   const routeProject = useMemo(
     () =>
       projectsForCurrentOrganization.find(

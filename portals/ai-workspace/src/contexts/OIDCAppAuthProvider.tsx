@@ -19,7 +19,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
-import { USERNAME_CLAIM, EMAIL_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM, ORG_IDS_CLAIM } from '../config.env';
+import { USERNAME_CLAIM, EMAIL_CLAIM, PICTURE_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM, ORG_IDS_CLAIM } from '../config.env';
 import { BASE_PATH } from '../paths';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
@@ -100,6 +100,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     return {
       name: claim(USERNAME_CLAIM),
       email: claim(EMAIL_CLAIM),
+      picture: claim(PICTURE_CLAIM),
       role,
       scopes,
       org,
@@ -144,6 +145,12 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     () => ({
       isAuthenticated: auth.isAuthenticated,
       isLoading: auth.isLoading,
+      // Constant in this mode. sessionUnavailable reports a BFF that cannot mint the
+      // upstream token, and there is no BFF here: the browser holds the IDP token
+      // directly and react-oidc-context renews it, so the state cannot arise and
+      // there is correspondingly nothing for a retry to re-read.
+      sessionUnavailable: false,
+      refreshSession: async () => {},
       user,
       getAccessToken,
       hasPermission,
