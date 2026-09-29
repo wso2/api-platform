@@ -22,6 +22,7 @@ A policy is a plain Python class that the gateway executor loads at runtime. It 
   - [ResponsePolicy](#responsepolicy)
   - [StreamingRequestPolicy](#streamingrequestpolicy)
   - [StreamingResponsePolicy](#streamingresponsepolicy)
+  - [FaultPolicy](#faultpolicy)
 - [Processing mode](#processing-mode)
 - [Actions reference](#actions-reference)
 - [Context types](#context-types)
@@ -193,6 +194,7 @@ All policy interfaces live in `apip_sdk_core` (re-exported from `apip_sdk_core.p
 | `ResponsePolicy` | `on_response_body` | Response body transformation |
 | `StreamingRequestPolicy` | `on_request_body_chunk` | Streaming body inspection |
 | `StreamingResponsePolicy` | `on_response_body_chunk` | Streaming response inspection / SSE |
+| `FaultPolicy` | `on_fault` | Fault handling: notify, record, reshape the error |
 
 Every interface extends the base `Policy` class:
 
@@ -313,6 +315,41 @@ class StreamingResponsePolicy(ResponsePolicy, ABC):
 ```
 
 **Returns** `ForwardResponseChunk | TerminateResponseChunk | None`
+
+### FaultPolicy
+
+Called when a request **fails**, over the error response the gateway produced. A policy that
+implements this is attached through `faultPolicies` (`globalFaultPolicies` on the LLM kinds) rather
+than the normal chain, and never runs on a successful response.
+
+```python
+class FaultPolicy(Policy, ABC):
+    @abstractmethod
+    def on_fault(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: FaultContext,
+        params: dict[str, Any],
+    ) -> ResponseAction: ...
+```
+
+**Returns** `DownstreamResponseModifications | ImmediateResponse | None`
+
+Independent of every other interface: a notifier may implement this alone, leaving `mode()`
+fully SKIP so the policy costs nothing on the normal path. `FaultContext` extends
+`ResponseContext` — `ctx.response_status`, `ctx.response_body` and the rest read exactly as
+they do in `on_response_body` — and adds the description of the failure:
+
+| Field | Meaning |
+|---|---|
+| `original_status` | Status before a policy changed it, `0` when nothing did |
+| `policy` / `policy_version` | The policy that caused the failure. **Empty means no policy did** — a router failure |
+| `error` | The failure's code, class, direction and message. `None` when nothing described it |
+| `response_committed` | `True` when the response already reached the client, so any change here is discarded |
+| `route_key` | The matched route |
+
+Returning `None` leaves the error exactly as it was, which is what a handler that only
+notifies or records should do.
 
 ---
 
