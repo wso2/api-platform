@@ -295,7 +295,7 @@ export default function ExternalServersList(): React.JSX.Element {
             <PageTitle.Header>
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.external.servers"
-                defaultMessage="MCP Proxy"
+                defaultMessage="MCP Proxies"
               />
             </PageTitle.Header>
             <PageTitle.SubHeader>
