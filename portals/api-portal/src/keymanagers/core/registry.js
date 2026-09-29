@@ -82,9 +82,32 @@ function typeLabel(type) {
     return (entry && entry.label) || type;
 }
 
-/** Every registered type as `{ value, label }`, for populating a selector. */
+/**
+ * Every registered type as `{ value, label, keyCreation }`, for populating a
+ * selector.
+ *
+ * `keyCreation` comes off the driver itself — `register` for one that creates the
+ * application on the identity server, `provide` for one that records a client id
+ * created elsewhere. It is here so a caller can split the list by what a driver
+ * actually does rather than by naming a particular driver, which would go stale
+ * the moment a second one of either kind is added.
+ *
+ * Built by instantiating each driver with an empty config. That is safe because a
+ * driver's constructor only reads fields off `cfg` and assigns its own constants;
+ * nothing is dialled and no credential is touched until a key operation runs.
+ */
 function registeredTypeOptions() {
-    return registeredTypes().map((type) => ({ value: type, label: typeLabel(type) }));
+    return registeredTypes().map((type) => {
+        let keyCreation = 'register';
+        try {
+            const instance = drivers.get(type).create({}, null);
+            if (instance && instance.keyCreation) keyCreation = instance.keyCreation;
+        } catch (_err) {
+            // A driver that cannot be built from an empty config keeps the default;
+            // this list is for labelling a selector, never for dispatch.
+        }
+        return { value: type, label: typeLabel(type), keyCreation };
+    });
 }
 
 module.exports = { register, getDriver, registeredTypes, typeLabel, registeredTypeOptions };

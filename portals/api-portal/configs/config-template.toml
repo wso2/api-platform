@@ -483,7 +483,10 @@ max_response_bytes = 5242880   # 5 MiB
 # Operators add configuration, never code. Built-in `type` values live in
 # src/keymanagers/drivers/ — currently:
 #
-#   thunderid   ThunderID. RFC 7591 registration with RFC 7592 read/update/delete.
+#   custom      Any key manager that implements RFC 7591 + RFC 7592. Sends no vendor
+#               member and offers the full RFC 7591 metadata set. Start here for a key
+#               manager with no driver of its own below.
+#   thunderid   ThunderID. The same protocol, with a shorter property list.
 #   wso2is      WSO2 Identity Server 7.x, via its DCR v1.1 API.
 #   asgardeo    WSO2 Asgardeo, via its DCR v1.1 API. The same API as wso2is today, but
 #               a separate driver: separate products, separate release cadences.
@@ -536,6 +539,23 @@ max_response_bytes = 5242880   # 5 MiB
 # # Permits plain http:// for this key manager. Default true — an identity server
 # # commonly sits behind a TLS-terminating ingress. Set false to require https.
 # allow_http_endpoints    = true
+#
+# # Any RFC 7591/7592-conforming key manager. The endpoints come from its OIDC
+# # discovery document; `registration_endpoint` is the one that matters here.
+# #
+# # The credential is whatever that key manager wants for registration — swap the
+# # [.auth] block for method = "basic", "api_key" or "mtls" as needed.
+# [[api_portal.key_manager]]
+# id   = "my-idp"
+# name = "My Identity Provider"
+# type = "custom"
+# registration_endpoint = "https://idp.example.com/oauth2/register"
+# token_endpoint        = "https://idp.example.com/oauth2/token"
+# authorize_endpoint    = "https://idp.example.com/oauth2/authorize"
+#   [api_portal.key_manager.auth]
+#   method        = "client_credentials"
+#   client_id     = "<provisioning client id>"
+#   client_secret = '{{ env "MY_IDP_CLIENT_SECRET" }}'
 #
 # # WSO2 Asgardeo. The endpoints are the ones the organisation's OIDC discovery
 # # document advertises, at

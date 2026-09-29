@@ -235,13 +235,48 @@
       <label for="km-display">Name <span class="required">*</span></label>
       <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Production" />
     </div>
-    <div class="cfg-form-group" style="margin-bottom:16px;">
+    {{!-- Asked before the type, because it is the prior question: the type names
+          the driver, and this names what the key manager is for. It used to be one
+          of the type options, which read as a fifth driver and silently emptied the
+          form below when picked. Add only — a key manager's answer here is fixed at
+          creation, so editing shows the settled fact instead (km-creation-field). --}}
+    <div class="cfg-form-group" id="km-mode-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">How are OAuth2 applications created? <span class="required">*</span></span>
+      <div class="cfg-choice-group">
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-register" value="register" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">The portal creates them</span>
+            <span class="cfg-choice-desc">Registers an application on the identity server when a developer asks for keys, so they get a client ID and secret without leaving the portal.</span>
+          </span>
+        </label>
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-import" value="import" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">They already exist</span>
+            <span class="cfg-choice-desc">Created in the identity server itself. A developer pastes the client ID here and the portal records it, registering nothing.</span>
+          </span>
+        </label>
+      </div>
+    </div>
+    {{!-- Edit only, and only for a key manager that imports. Showing its driver
+          name — "Provision" — in a field labelled "Key manager type" reads as a
+          setting among the other drivers, which is the confusion this whole
+          section exists to remove. This states what the key manager is instead. --}}
+    <div class="cfg-form-group" id="km-creation-field" style="margin-bottom:16px;" hidden>
+      <label for="km-creation">Key creation</label>
+      <input type="text" id="km-creation" class="cfg-form-input" value="Imported" disabled />
+      <p class="cfg-form-hint">Applications are created in the identity server and imported here. Fixed at creation — add a new key manager to register keys from the portal.</p>
+    </div>
+    <div class="cfg-form-group" id="km-type-field" style="margin-bottom:16px;">
       <label for="km-type">Key manager type <span class="required">*</span></label>
       <select id="km-type" class="cfg-form-input">
-        {{!-- No default. Falling back to whichever driver sorts first would quietly
-              pick one that may not implement registration at all, and the admin
-              would only find out when a developer's key generation returned 409. --}}
-        <option value="">— Select a type —</option>
+        {{!-- Every option here registers applications: the one that does not is
+              filtered out by the controller and chosen with the control above. So
+              a default no longer risks quietly selecting a driver that cannot
+              register — which is what an empty placeholder used to guard against.
+              The script picks it, so a build without that driver falls back to the
+              first option rather than submitting an empty value. --}}
         {{!-- Label only. The value stays the driver id exactly as the registry
               spells it, which is what the API is given, so nothing has to undo
               this on the way out. The label comes from the registry too, beside

@@ -343,6 +343,10 @@ async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
             const on = appByKey.get(key.keyId);
             const row = {
                 keyId: key.keyId,
+                // Nullable, and blank on every key created before the column existed —
+                // both surfaces below fall back to the consumer key rather than
+                // rendering an empty label.
+                name: key.name || '',
                 keyManagerName: names.get(key.keyManagerId) || key.keyManagerId,
                 consumerKey: key.consumerKey,
                 status: String(key.status || 'ACTIVE'),

@@ -597,6 +597,41 @@ const deleteOAuth2Key = async (req, res) => {
 };
 
 /**
+ * Validate an RFC 8707 resource indicator.
+ *
+ * Two rules, both MUST-level in RFC 8707 §2 and restated by the MCP authorization
+ * spec: it has to be an absolute URI, and it must carry no fragment. Checked here
+ * rather than passed through because an invalid indicator does not fail loudly —
+ * an authorization server that does not implement RFC 8707 ignores the parameter
+ * entirely, so the caller gets a token that simply is not bound to anything, and
+ * finds out when the resource server rejects it.
+ *
+ * Deliberately not enforced: https-only (a local MCP server on http is a normal
+ * development case) and the no-trailing-slash preference, which the spec states as
+ * SHOULD. Rejecting either would refuse requests the spec permits.
+ *
+ * @returns {string|null} an error message, or null when the value is usable
+ */
+function _resourceIndicatorError(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+        return 'A resource indicator must be a non-empty string.';
+    }
+    let parsed;
+    try {
+        parsed = new URL(value);
+    } catch (_err) {
+        return 'A resource indicator must be an absolute URI, including a scheme.';
+    }
+    if (!parsed.protocol || !parsed.host) {
+        return 'A resource indicator must be an absolute URI, including a scheme and host.';
+    }
+    if (parsed.hash) {
+        return 'A resource indicator must not contain a fragment.';
+    }
+    return null;
+}
+
+/**
  * POST /oauth2-keys/{keyId}/generate-token — operationId generateOAuth2KeyToken.
  *
  * The portal holds no secret for a key — the key manager issues one once and never
@@ -659,9 +694,25 @@ const generateOAuth2KeyToken = async (req, res) => {
                 + 'token here. It is registered for: ' + grants.join(', ') + '.');
         }
 
-        const { consumerSecret, scopes, validityPeriod } = req.body;
+        const { consumerSecret, scopes, validityPeriod, resources } = req.body;
+
+        /*
+         * Resource indicators are what bind the issued token to the API it is for,
+         * so a malformed one is refused rather than dropped: an authorization
+         * server without RFC 8707 support ignores the parameter silently, and the
+         * caller would get an unbound token believing it was bound.
+         */
+        if (Array.isArray(resources)) {
+            for (const resource of resources) {
+                const problem = _resourceIndicatorError(resource);
+                if (problem) {
+                    return util.sendError(res, 400, problem);
+                }
+            }
+        }
         const token = await km.requestToken(record.consumerKey, consumerSecret, {
             scopes: Array.isArray(scopes) ? scopes.filter(Boolean) : [],
+            resources: Array.isArray(resources) ? resources.filter(Boolean) : [],
             validityPeriod,
             authMethod: clientMeta.token_endpoint_auth_method,
         });

@@ -646,6 +646,80 @@
   color: var(--text-subtle);
 }
 
+/* A question whose answers need a sentence each, so radio cards rather than a
+   dropdown. `.cfg-form-legend` matches `.cfg-form-group label` exactly — it is
+   the same thing visually, but it labels a group rather than one control, so it
+   must not be a <label> pointing at a single input. */
+.cfg-form-legend {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 8px;
+}
+
+.cfg-choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Scoped `.cfg-form-group .cfg-choice` (0,2,0) so it beats `.cfg-form-group
+   label` (0,1,1)... which it does not on specificity alone — (0,2,0) and (0,1,1)
+   are equal, and the later rule wins. This file's form-label rule comes first, so
+   this one wins by order; every property it sets is restated here anyway rather
+   than relying on that. */
+.cfg-form-group .cfg-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--white);
+  font-weight: 400;
+  cursor: pointer;
+  transition: border-color 0.13s, background 0.13s;
+}
+
+.cfg-form-group .cfg-choice:hover { border-color: var(--border-strong); }
+
+/* :has() lets the whole card show the selection, not just the dot. Browsers
+   without it still work — the radio itself is always visible. */
+.cfg-form-group .cfg-choice:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--surface-sunken);
+}
+
+.cfg-choice input[type="radio"] {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.cfg-choice-body { display: flex; flex-direction: column; gap: 3px; }
+
+.cfg-choice-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.cfg-choice-desc {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-subtle);
+}
+
+/* The settled-fact field in edit mode: readable, clearly not editable. */
+.cfg-form-input:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: default;
+}
+
 
 
 /* Read-only fields — handles, and values the operator sets elsewhere. A handle is
@@ -1210,10 +1284,27 @@
   padding: 0;
 }
 
-.cfg-icon-btn:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
+/* Hover is a promise that the control does something, so both hover rules exclude
+   :disabled. A config-declared key manager's buttons are rendered disabled because
+   PUT and DELETE answer 409 for one — but they still lit up under the cursor, which
+   reads as clickable and teaches exactly the "this page is broken" impression the
+   disabled state exists to prevent. */
+.cfg-icon-btn:hover:not(:disabled) { background: var(--surface-sunken); border-color: var(--border-strong); }
 
 .cfg-icon-btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, var(--surface)); }
-.cfg-icon-btn--danger:hover { background: var(--danger-surface); border-color: #e88; }
+.cfg-icon-btn--danger:hover:not(:disabled) { background: var(--danger-surface); border-color: #e88; }
+
+/* Scoped `.cfg-icon-btn:disabled` (0,2,0) so it also beats `.cfg-icon-btn--danger`
+   (0,1,0) — otherwise a disabled delete button stays red and still looks armed.
+   `cursor` is restated for the same reason the colours are: the base rule sets
+   `pointer`, which on its own tells the cursor this is clickable. */
+.cfg-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+  color: var(--text-muted);
+  background: var(--white);
+  border-color: var(--border);
+}
 
 /* ── Subscription plans table extras ──────────────────── */
 

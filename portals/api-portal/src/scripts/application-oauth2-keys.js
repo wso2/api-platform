@@ -63,9 +63,11 @@
         keys.forEach(function (key) {
             var opt = document.createElement('option');
             opt.value = key.keyId;
-            // Named by key manager and consumer key: a key has no display name of
-            // its own, and the consumer key is what identifies it to its owner.
-            var label = key.keyManagerName + ' · ' + key.consumerKey;
+            // Named by the key's own name, with the consumer key after it. Keys
+            // created before the name column existed have none, and a blank one
+            // would render a leading separator — so those fall back to the
+            // consumer key alone rather than an empty label.
+            var label = key.name ? key.name + ' · ' + key.consumerKey : key.consumerKey;
             // Say where it is now, so moving it is a decision rather than a surprise.
             opt.textContent = key.applicationName ? label + '  (on ' + key.applicationName + ')' : label;
             sel.appendChild(opt);

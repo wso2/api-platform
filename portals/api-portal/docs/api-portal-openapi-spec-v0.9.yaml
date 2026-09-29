@@ -6528,6 +6528,20 @@ components:
             type: string
           example:
             - read
+        resources:
+          type: array
+          description: >-
+            RFC 8707 resource indicators — the APIs this token is for, each given as the API's canonical URI.
+            The authorization server binds them into the token's audience, and a resource server that checks
+            `aud` then refuses a token minted for something else. Each entry must be an absolute URI with no
+            fragment; `400` otherwise. Sent even to a key manager that does not implement RFC 8707, which
+            ignores it — that is what makes the binding start working the moment support is added, with no
+            change here.
+          items:
+            type: string
+            format: uri
+          example:
+            - https://api.example.com/orders
         validityPeriod:
           type: integer
           format: int32

@@ -165,6 +165,11 @@
           <input type="text" id="ok-token-scopes" class="ok-form-input" placeholder="read write" />
           <p class="ok-form-hint">Space-separated, optional. The key manager decides what this client may actually have.</p>
         </div>
+        <div class="ok-form-group">
+          <label for="ok-token-resources">Resource indicators</label>
+          <input type="text" id="ok-token-resources" class="ok-form-input" placeholder="https://api.example.com/orders" />
+          <p class="ok-form-hint">Space-separated absolute URIs, optional. Names the APIs this token is for, so the key manager can bind it to them and it cannot be used against anything else.</p>
+        </div>
         </div>
       </div>
       <div class="ok-modal-footer">

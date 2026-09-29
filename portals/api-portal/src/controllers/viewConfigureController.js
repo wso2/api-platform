@@ -239,7 +239,16 @@ const loadSettingsPage = async (req, res) => {
         // Read from the registry rather than hardcoded in the template: adding a
         // driver is a code change, and the list must follow it without a second
         // edit that could be forgotten.
-        templateContent.keyManagerTypes = registeredTypeOptions();
+        /*
+         * Only the drivers that register applications. The one that records a
+         * client id created elsewhere is not a kind of key manager in the same
+         * sense — it answers "who creates the applications", which the modal now
+         * asks first, on its own control. Filtered by what the driver does rather
+         * than by its name, so a second driver of either kind lands in the right
+         * place without editing this.
+         */
+        templateContent.keyManagerTypes = registeredTypeOptions()
+            .filter((option) => option.keyCreation !== 'provide');
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

@@ -492,6 +492,7 @@
         // into the next key's dialog.
         document.getElementById('ok-token-secret').value = '';
         document.getElementById('ok-token-scopes').value = '';
+        document.getElementById('ok-token-resources').value = '';
 
         // Open first, then ask. The dialog appearing immediately is worth more than
         // it appearing already-decided, and the read is quick.
@@ -530,6 +531,10 @@
             return;
         }
         var scopes = document.getElementById('ok-token-scopes').value.split(/\s+/).filter(Boolean);
+        // Space-separated like scopes, but sent as repeated `resource` parameters
+        // rather than one joined string — RFC 8707 defines it that way, and a
+        // joined list would reach the key manager as a single malformed URI.
+        var resources = document.getElementById('ok-token-resources').value.split(/\s+/).filter(Boolean);
 
         _submitting = true;
         var btn = document.getElementById('ok-token-submit');
@@ -537,6 +542,7 @@
         try {
             var body = { consumerSecret: secret };
             if (scopes.length) body.scopes = scopes;
+            if (resources.length) body.resources = resources;
             var resp = await fetch(
                 window.apiPortalApi.root('/oauth2-keys/' + encodeURIComponent(_tokenKeyId) + '/generate-token'),
                 { method: 'POST', headers: mutationHeaders(), body: JSON.stringify(body) }

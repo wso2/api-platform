@@ -42,3 +42,4 @@ require('./provision');
 require('./thunderid');
 require('./wso2is');
 require('./asgardeo');
+require('./custom');

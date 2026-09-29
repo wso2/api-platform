@@ -43,6 +43,7 @@
     <table class="ak-table" id="application-oauth2-keys-table">
       <thead>
         <tr>
+          <th>Name</th>
           <th>Key manager</th>
           <th>Consumer key</th>
           <th>Status</th>
@@ -52,7 +53,10 @@
       <tbody>
         {{#each associatedOAuth2Keys}}
         <tr>
-          <td><span class="ak-key-name">{{this.keyManagerName}}</span></td>
+          {{!-- Blank rather than a placeholder when unset: a key created before the
+                name column existed simply has none, which is not an error. --}}
+          <td><span class="ak-key-name">{{this.name}}</span></td>
+          <td>{{this.keyManagerName}}</td>
           {{!-- The consumer key is an identifier, not a secret. The secret is
                 returned once at creation and never stored, so it cannot appear. --}}
           <td><span class="ak-key-masked">{{this.consumerKey}}</span></td>

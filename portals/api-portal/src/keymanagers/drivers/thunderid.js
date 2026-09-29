@@ -37,6 +37,20 @@ class ThunderIdKeyManager extends KeyManager {
         this.authRequest = authRequest;
     }
 
+    /*
+     * A deliberately short list: the members needed to register a working client,
+     * and nothing else.
+     *
+     * RFC 7591 defines more — `scope`, `contacts`, `client_uri`, `logo_uri`,
+     * `tos_uri`, `policy_uri` — and they were offered here until it became clear
+     * they were form noise for this key manager rather than settings anyone set.
+     * They are not gone from the portal: `custom.js` declares the full RFC 7591
+     * set, which is the driver to reach for against a key manager that uses them.
+     *
+     * Nothing stops an API caller sending one anyway — `toDcrBody` passes the whole
+     * properties bag through, so this list governs what the form offers, not what
+     * the endpoint accepts.
+     */
     metadata() {
         return this._metaEnvelope([
             prop('client_name', 'Application name', 'string',
@@ -60,24 +74,12 @@ class ThunderIdKeyManager extends KeyManager {
                     opt('token', 'token'),
                     opt('id_token', 'id_token'),
                 ]),
-            prop('scope', 'Scopes', 'string_list',
-                'Scopes this application may request.', false),
             prop('token_endpoint_auth_method', 'Client authentication method', 'select',
                 'How the application authenticates at the token endpoint.', false, [
                     opt('client_secret_basic', 'Client secret (Basic header)'),
                     opt('client_secret_post', 'Client secret (POST body)'),
                     opt('none', 'Public client (no secret)'),
                 ]),
-            prop('contacts', 'Contact emails', 'string_list',
-                'People responsible for this application.', false),
-            prop('client_uri', 'Application home page', 'uri',
-                'Public home page of the application.', false),
-            prop('logo_uri', 'Logo URL', 'uri',
-                'Logo shown on the consent screen.', false),
-            prop('tos_uri', 'Terms of service URL', 'uri',
-                'Link shown on the consent screen.', false),
-            prop('policy_uri', 'Privacy policy URL', 'uri',
-                'Link shown on the consent screen.', false),
         ]);
     }
 

@@ -132,13 +132,22 @@ class KeyManager {
      * @param {string} consumerSecret  used for this one request; never stored
      * @param {object} [opts]
      * @param {string[]} [opts.scopes]
+     * @param {string[]} [opts.resources] RFC 8707 resource indicators — the APIs this
+     *        token is for. The authorization server binds them into the token's
+     *        audience, and a resource server that checks `aud` then refuses a token
+     *        minted for something else. MCP requires this of its clients (spec
+     *        2025-06-18, "Resource Parameter Implementation"), so a token meant for an
+     *        MCP server needs one. Repeated rather than joined: RFC 8707 §2 defines
+     *        `resource` as a parameter that may appear more than once, and a
+     *        space-joined list would read as one malformed URI.
      * @param {number} [opts.validityPeriod]
      * @param {string} [opts.authMethod] the client's own `token_endpoint_auth_method`.
      *        Defaults to client_secret_basic, which is what a server assumes when a
      *        registration does not say otherwise.
      * @returns {Promise<{accessToken: string, tokenType: string, expiresIn: number, scope: string}>}
      */
-    async requestToken(consumerKey, consumerSecret, { scopes = [], validityPeriod, authMethod } = {}) {
+    async requestToken(consumerKey, consumerSecret,
+        { scopes = [], resources = [], validityPeriod, authMethod } = {}) {
         if (!this.tokenEndpoint) {
             throw this._unsupported('requestToken');
         }
@@ -181,6 +190,8 @@ class KeyManager {
         const form = new URLSearchParams();
         form.set('grant_type', 'client_credentials');
         if (scopes.length) form.set('scope', scopes.join(' '));
+        // append, not set — see the note on opts.resources
+        resources.forEach((resource) => form.append('resource', resource));
         // A hint the authorization server is free to ignore; the response carries
         // the lifetime that actually applies.
         if (validityPeriod) form.set('expiry_time', String(validityPeriod));

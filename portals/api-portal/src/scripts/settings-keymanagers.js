@@ -71,16 +71,56 @@
      not be submitted — an unused username would otherwise travel with a
      client_credentials payload and be rejected by the schema. */
   /*
-   * A provision-type key manager registers nothing, so everything below the type
-   * is meaningless for it: no endpoint to register at, no credential to present.
-   * Hidden rather than disabled — a disabled form still reads as "fill this in
-   * later", and there is no later.
+   * A key manager that imports registers nothing, so everything the registration
+   * section asks for is meaningless for it: no endpoint to register at, no
+   * credential to present. Hidden rather than disabled — a disabled form still
+   * reads as "fill this in later", and there is no later.
+   *
+   * There is no constant for the driver name here any more. The mode decides the
+   * payload, and the absence of a provisioning block is what the API reads as
+   * "this one imports" — so the browser never has to name the driver.
    */
-  var PROVISION_TYPE = 'provision';
+  /*
+   * What a fresh Add form starts on. Every option in the dropdown registers
+   * applications now, so a default no longer risks picking a driver that cannot —
+   * the guard the old empty placeholder existed for. Falls back to the first
+   * option when a build does not ship this driver, so the form is never left
+   * submitting an empty type.
+   */
+  var DEFAULT_TYPE = 'thunderid';
 
-  function syncKmType() {
-    setHidden('km-dcr-only', el('km-type').value === PROVISION_TYPE);
+  function isImportMode() {
+    var r = el('km-mode-import');
+    return !!(r && r.checked);
+  }
+
+  /*
+   * The mode decides the shape of the form, and the type only exists inside one
+   * branch of it. Both are driven from here so there is one place that knows the
+   * two are related.
+   */
+  function syncKmMode() {
+    var importing = isImportMode();
+    // editKmId is assigned before fillProvisioning runs, so this is already set
+    // by the time the first sync happens.
+    var editing = editKmId !== null;
+    // Settled at creation, so editing states it rather than asking again.
+    setHidden('km-mode-field', editing);
+    // Only where the answer would otherwise show as the driver name "Provision"
+    // in a field labelled "Key manager type".
+    setHidden('km-creation-field', !(editing && importing));
+    setHidden('km-type-field', importing);
+    setHidden('km-dcr-only', importing);
     syncKmSave();
+  }
+
+  function selectDefaultType() {
+    var sel = el('km-type');
+    if (!sel) return;
+    sel.value = DEFAULT_TYPE;
+    // Not shipped in this build — take whatever the registry did register rather
+    // than leaving the value empty.
+    if (!sel.value && sel.options.length) sel.value = sel.options[0].value;
   }
 
   function syncAuthMethod() {
@@ -116,7 +156,19 @@
     // inherit from whichever option happens to sort first.
     // No provisioning block on an existing key manager means it is provision
     // type — not "unconfigured". Only a brand new form is left on the placeholder.
-    el('km-type').value = on && p.type ? p.type : (isEdit ? PROVISION_TYPE : '');
+    /*
+     * The mode is the fact; the type is a detail inside one branch of it. A stored
+     * key manager with no provisioning block imports — that is what the absence
+     * means, not "unconfigured".
+     */
+    var importing = isEdit ? !on : false;
+    el('km-mode-import').checked = importing;
+    el('km-mode-register').checked = !importing;
+    if (on && p.type) {
+        el('km-type').value = p.type;
+    } else if (!isEdit) {
+        selectDefaultType();
+    }
     sv('km-registration-endpoint', on ? p.registrationEndpoint : '');
     sv('km-authorize-endpoint', on ? (p.authorizeEndpoint || '') : '');
     el('km-auth-method').value = on ? (p.authMethod || 'client_credentials') : 'client_credentials';
@@ -134,7 +186,7 @@
     markSecretOptional('km-client-secret-req', 'km-client-secret', on && !!p.hasClientSecret);
     markSecretOptional('km-password-req', 'km-password', on && !!p.hasPassword);
     markSecretOptional('km-api-key-req', 'km-api-key', on && !!p.hasApiKey);
-    syncKmType();
+    syncKmMode();
     syncAuthMethod();
   }
 
@@ -161,10 +213,11 @@
    * omission. That was equally true of the toggle's off position.
    */
   function collectProvisioning() {
-    // Provision type is the explicit way to say "this key manager registers
-    // nothing". It carries no provisioning block at all, which is exactly how a
-    // key manager created before DCR support is already stored.
-    if (el('km-type').value === PROVISION_TYPE) return {};
+    // "They already exist" is the explicit way to say "this key manager registers
+    // nothing". It sends no provisioning block at all, which is exactly how a key
+    // manager created before DCR support is already stored — so the payload is
+    // unchanged from when this was a type in the dropdown.
+    if (isImportMode()) return {};
     var touched = DCR_FIELDS.some(function(id) { return v(id) !== ''; });
     if (!touched) return {};
     var method = el('km-auth-method').value;
@@ -203,7 +256,8 @@
   }
 
   el('km-auth-method').addEventListener('change', syncAuthMethod);
-  el('km-type').addEventListener('change', syncKmType);
+  el('km-mode-register').addEventListener('change', syncKmMode);
+  el('km-mode-import').addEventListener('change', syncKmMode);
 
   /* Disable save until Name and Token endpoint are both filled. */
   var syncKmSave = bindFormValidity(document.getElementById('cfg-km-modal-save'), ['km-display', 'km-token-endpoint'], function() {
