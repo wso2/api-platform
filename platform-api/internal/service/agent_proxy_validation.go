@@ -54,7 +54,7 @@ import (
 // undeployable.
 //
 // Checks that need the organization (handle uniqueness, project and gateway
-// resolution, secret-handle resolution, the read-only origin guard) stay on the
+// resolution, secret-handle resolution, the gateway-origin edit restriction) stay on the
 // service's own call path, where the organization is in hand; everything in
 // this file is a function of the request body alone.
 
@@ -134,7 +134,7 @@ var requiredManagedAgentCardKeys = []string{
 // requires the same mandatory authoring fields as create, so a rule that holds
 // for one holds for the other. The rules that differ between them are about the
 // *stored* resource rather than the body — an immutable protocol, credential
-// retention, the read-only origin guard — and live on the service's call path.
+// retention, the gateway-origin edit restriction — and live on the service's call path.
 func validateAgentProxyRequest(req *api.A2AAgentProxy) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("A request body is required.")

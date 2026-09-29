@@ -112,8 +112,8 @@ type AgentProxy struct {
 }
 
 // IsReadOnly reports whether the Agent proxy was imported from a data-plane
-// gateway and is therefore not editable in the control plane. readOnly is derived
-// from origin, never stored a second time.
+// gateway. Only its description and gateway associations are editable in the control
+// plane; readOnly is derived from origin, never stored a second time.
 func (a *AgentProxy) IsReadOnly() bool {
 	return a != nil && a.Origin == constants.OriginDP
 }

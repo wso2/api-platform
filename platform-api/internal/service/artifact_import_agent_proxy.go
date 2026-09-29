@@ -47,7 +47,7 @@ import (
 // Like every other importer, this one is lenient: it stores what maps onto the
 // control-plane model and drops the rest. The deployment record the orchestrator
 // writes keeps the pushed configuration verbatim, so what the gateway actually
-// runs is never lost — only the read-only working copy is narrower. Fields the
+// runs is never lost — only the control-plane working copy is narrower. Fields the
 // importer knows about but cannot store (upstreamDefinitions, a manual host
 // rewrite, policy-backed upstream auth, enabled card signing) are named in a
 // warning log so the gap is visible to an operator; fields it does not know at all

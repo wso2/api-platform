@@ -1908,7 +1908,7 @@ type A2AAgentProxy struct {
 	// Protocol Communication protocol of this Agent proxy. Required, and immutable after creation.
 	Protocol A2AAgentProxyProtocol `json:"protocol" yaml:"protocol"`
 
-	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+	// ReadOnly True if the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane. False for control-plane created Agent proxies.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
 	// Resilience Agent-wide resilience defaults. Per-operation values under `a2a.operationConfigs.operations[].resilience` override these.
@@ -2174,7 +2174,7 @@ type AgentProxyListItem struct {
 	ProjectId string                     `json:"projectId" yaml:"projectId"`
 	Protocol  AgentProxyListItemProtocol `json:"protocol" yaml:"protocol"`
 
-	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	// ReadOnly True when the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane.
 	ReadOnly  *bool      `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	UpdatedBy *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`

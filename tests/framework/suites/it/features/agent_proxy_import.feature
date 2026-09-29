@@ -20,7 +20,7 @@
 Feature: Agents created on a gateway are imported into the control plane as read-only Agent proxies
   As a platform operator
   I want an Agent created directly on a gateway to appear in the control plane
-  So that gateway-authored A2A agents are visible, keyed and governed centrally without being editable there
+  So that gateway-authored A2A agents are visible, keyed and governed centrally while their runtime configuration stays owned by the gateway
 
   # The gateway pushes kind Agent; the control plane stores it as kind AgentProxy with protocol a2a
   # and the same a2a layout, so spec.a2a.operationConfigs.transports becomes
@@ -90,7 +90,7 @@ Feature: Agents created on a gateway are imported into the control plane as read
     And the JSON response array "list" item with "id" equal to "${CTX:agentName}" should have "projectId" equal to "${CTX:projectHandle}"
 
   @cp15-02
-  Scenario: The control plane refuses to edit, redeploy or delete a deployed gateway-originated Agent proxy
+  Scenario: The control plane edits only the metadata of a deployed gateway-originated Agent proxy and refuses to redeploy or delete it
     Given I generate a unique resource name from "agent-import-ro" and store it as "agentName"
     And I generate a unique API context from "/agent-import-ro" and store it as "agentContext"
     When I create Agent from "resources/templates/agent.yaml" with values:
@@ -107,12 +107,15 @@ Feature: Agents created on a gateway are imported into the control plane as read
     When I update the Agent proxy "${CTX:agentName}" via the control plane from "resources/templates/agent-proxy.yaml" with values:
       | id          | ${CTX:agentName}                                 |
       | displayName | Edited In The Control Plane                      |
+      | description | Described in the control plane                   |
       | projectId   | ${CTX:projectHandle}                             |
       | context     | ${CTX:agentContext}                              |
       | upstreamUrl | http://a2a-trip-planner:9099                     |
       | transports  | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
-    Then the response status code should be 403
-    And the JSON response field "code" should be "ARTIFACT_READ_ONLY"
+    Then the response status code should be 200
+    And the JSON response field "description" should be "Described in the control plane"
+    And the JSON response field "displayName" should be "Read Only Agent"
+    And the JSON response field "readOnly" should be "true"
 
     Given I store the registered gateway id as "gatewayId"
     When I send a "POST" request to the control plane at "/agent-proxies/${CTX:agentName}/deployments" with body:
@@ -129,6 +132,7 @@ Feature: Agents created on a gateway are imported into the control plane as read
     When I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentName}"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "Read Only Agent"
+    And the JSON response field "description" should be "Described in the control plane"
     And the JSON response field "readOnly" should be "true"
 
   @cp15-03

@@ -17,13 +17,14 @@
 
 // Service-layer rules the HTTP path cannot reach on its own: a protocol change
 // (no second protocol is registered, so the request decoder rejects one before
-// the service ever sees it), the read-only guard on a gateway-originated Agent
+// the service ever sees it), metadata edits on a gateway-originated Agent
 // proxy, and the project-deletion guard.
 
 package service
 
 import (
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -40,7 +41,7 @@ const (
 )
 
 // mockAgentProxyRepository is a minimal stand-in for the Agent proxy
-// repository. Only the reads the tests below reach are implemented; anything
+// repository. Only the operations the tests below reach are implemented; anything
 // else panics through the embedded nil interface rather than silently
 // succeeding.
 type mockAgentProxyRepository struct {
@@ -52,6 +53,11 @@ type mockAgentProxyRepository struct {
 
 func (m *mockAgentProxyRepository) GetByHandle(handle, orgUUID string) (*model.AgentProxy, error) {
 	return m.stored, nil
+}
+
+func (m *mockAgentProxyRepository) Update(proxy *model.AgentProxy) error {
+	m.stored = proxy
+	return nil
 }
 
 func (m *mockAgentProxyRepository) CountByProject(orgUUID, projectUUID string) (int, error) {
@@ -139,20 +145,61 @@ func TestAgentProxyServiceRejectsUnsupportedProtocolOnCreate(t *testing.T) {
 	}
 }
 
-// TestAgentProxyServiceUpdateRejectsReadOnlyArtifact covers the origin guard: a
-// gateway-originated Agent proxy is owned by its data plane and is not editable
-// here. The 403 comes from the stored origin, never from a caller-supplied
-// readOnly value.
-func TestAgentProxyServiceUpdateRejectsReadOnlyArtifact(t *testing.T) {
-	svc := newAgentProxyTestService(&mockAgentProxyRepository{stored: storedAgentProxy(constants.OriginDP)})
+func TestAgentProxyServiceUpdateDPMetadata(t *testing.T) {
+	for _, origin := range []string{constants.OriginDP, constants.OriginCP} {
+		t.Run(origin, func(t *testing.T) {
+			stored := storedAgentProxy(origin)
+			stored.Configuration.Upstream.Main.Auth = &model.UpstreamAuth{Type: "bearer", Value: "stored-credential"}
+			originalConfig := stored.Configuration
+			repo := &mockAgentProxyRepository{stored: stored}
+			svc := newAgentProxyTestService(repo)
+			svc.gatewayRepo = &buildTestGatewayRepo{gateway: &model.Gateway{ID: "gateway-uuid"}}
+			req := validAgentProxyRequest()
+			readOnly := false
+			req.ReadOnly = &readOnly
+			req.DisplayName = "Changed name"
+			req.Version = "v2.0"
+			description := "Updated description"
+			req.Description = &description
+			url := "http://changed-agent:9000"
+			req.Upstream.Main.Url = &url
+			context := "/changed"
+			req.Context = &context
+			req.AssociatedGateways = &[]api.AssociatedGateway{{Id: "gateway"}}
 
-	readOnly := false
-	req := validAgentProxyRequest()
-	req.ReadOnly = &readOnly // ignored: the request does not get to declare this
+			resp, err := svc.Update(agentTestOrg, stored.Handle, "", req)
+			if err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+			if resp.Description == nil || *resp.Description != description {
+				t.Fatalf("description was not updated: %v", resp.Description)
+			}
+			if !repo.stored.ReplaceAssociatedGateways || len(repo.stored.AssociatedGateways) != 1 || repo.stored.AssociatedGateways[0].GatewayUUID != "gateway-uuid" {
+				t.Fatalf("gateway associations were not replaced: %+v", repo.stored.AssociatedGateways)
+			}
+			if origin == constants.OriginDP {
+				if resp.DisplayName != "Weather Agent" || resp.Version != "v1.0" || !reflect.DeepEqual(repo.stored.Configuration, originalConfig) {
+					t.Fatal("DP-owned fields changed")
+				}
+				if repo.stored.Configuration.Upstream.Main.Auth.Value != "stored-credential" {
+					t.Fatal("stored upstream credential changed")
+				}
+				if resp.ReadOnly == nil || !*resp.ReadOnly {
+					t.Fatal("request overrode DP ownership")
+				}
+			} else if resp.DisplayName != req.DisplayName || resp.Version != req.Version || repo.stored.Configuration.Upstream.Main.URL != url {
+				t.Fatal("CP-owned fields were not updated")
+			}
 
-	_, err := svc.Update(agentTestOrg, "weather-agent", "alice", req)
-	if !apperror.ArtifactReadOnly.Is(err) {
-		t.Fatalf("expected ArtifactReadOnly, got: %v", err)
+			req.Description = nil
+			req.AssociatedGateways = nil
+			if _, err := svc.Update(agentTestOrg, stored.Handle, "", req); err != nil {
+				t.Fatalf("clear metadata: %v", err)
+			}
+			if repo.stored.Description != "" || len(repo.stored.AssociatedGateways) != 0 || !repo.stored.ReplaceAssociatedGateways {
+				t.Fatal("omitted metadata was not cleared by replacement")
+			}
+		})
 	}
 }
 

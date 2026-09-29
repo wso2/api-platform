@@ -233,7 +233,8 @@ func (s *AgentProxyService) List(orgUUID string, protocol *string, limit, offset
 	return resp, nil
 }
 
-// Update replaces the writable configuration of an existing Agent proxy.
+// Update replaces the writable configuration of an existing Agent proxy. For a
+// DP-originated proxy, only description and gateway associations are replaced.
 //
 // It is a full replacement and is idempotent: an omitted optional field resets
 // to its default or absence, so replaying the same body leaves the same
@@ -250,12 +251,6 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 
 	existing, err := s.load(orgUUID, handle)
 	if err != nil {
-		return nil, err
-	}
-
-	// A gateway-originated Agent proxy is owned by its data plane and is read-only
-	// here; readOnly in the request body is never consulted for this.
-	if err := ensureOriginMutable(existing.Origin); err != nil {
 		return nil, err
 	}
 
@@ -279,18 +274,21 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 
 	existingUpstream := existing.Configuration.Upstream
 
-	configuration := dto.AgentProxyConfigurationFromRequest(req)
-	configuration.Upstream = *dto.PreserveAgentProxyUpstreamAuth(&existingUpstream, &configuration.Upstream)
-
-	// The effective configuration is what is checked — after retention, so an
-	// unchanged auth block that legitimately arrived without its redacted value
-	// passes, while a *changed* one that arrived without a credential does not
-	// inherit the old secret and is rejected here rather than persisted empty.
-	if err := validateEffectiveUpstreamAuth(&configuration.Upstream); err != nil {
-		return nil, err
-	}
-	if err := s.validateSecretRefs(orgUUID, configuration); err != nil {
-		return nil, err
+	// DP-originated proxies accept only description and gateway association edits.
+	// Preserve the stored runtime configuration, including credentials redacted by GET.
+	// The request's readOnly flag never determines ownership.
+	configuration := existing.Configuration
+	if existing.Origin != constants.OriginDP {
+		configuration = dto.AgentProxyConfigurationFromRequest(req)
+		configuration.Upstream = *dto.PreserveAgentProxyUpstreamAuth(&existingUpstream, &configuration.Upstream)
+		if err := validateEffectiveUpstreamAuth(&configuration.Upstream); err != nil {
+			return nil, err
+		}
+		if err := s.validateSecretRefs(orgUUID, configuration); err != nil {
+			return nil, err
+		}
+		existing.Name = req.DisplayName
+		existing.Version = req.Version
 	}
 
 	// Full replacement extends to associations: an omitted list means an empty
@@ -301,9 +299,7 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 		return nil, err
 	}
 
-	existing.Name = req.DisplayName
 	existing.Description = utils.ValueOrEmpty(req.Description)
-	existing.Version = req.Version
 	existing.UpdatedBy = updatedBy
 	existing.Configuration = configuration
 	existing.AssociatedGateways = associatedGateways

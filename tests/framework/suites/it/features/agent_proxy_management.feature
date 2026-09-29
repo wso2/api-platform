@@ -25,8 +25,8 @@ Feature: Agent proxies are authored and managed through the control plane
   # Organization isolation and per-scope OAuth alternatives need a second organization or a
   # narrowed token, neither of which the suite's control-plane users can produce. They are covered
   # by the focused platform-api tests named in the Section 14 coverage record rather than by
-  # scenarios here. Read-only provenance is covered end to end by agent_proxy_import.feature,
-  # which imports a real gateway-created Agent.
+  # scenarios here. Read-only provenance (metadata-only edits of a gateway-originated proxy) is
+  # covered end to end by agent_proxy_import.feature, which imports a real gateway-created Agent.
 
   Background:
     Given the gateway services are running

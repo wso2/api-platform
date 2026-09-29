@@ -451,8 +451,9 @@ func TestAgentImport_InverseOfDeploymentBuilder(t *testing.T) {
 
 // The public read of an imported Agent proxy is the ordinary redacted A2A shape:
 // kind AgentProxy, protocol a2a at the root, the typed a2a block, readOnly: true,
-// and no upstream credential. Every public mutation is then refused with 403.
-func TestAgentImport_PublicResponseIsReadOnlyAndMutationsAreRefused(t *testing.T) {
+// and no upstream credential. A PUT may change only description and gateway
+// associations; redeploy is refused with 403 and delete with 409 while deployed.
+func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testing.T) {
 	d := setupAgentImportTest(t)
 
 	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
@@ -509,10 +510,24 @@ func TestAgentImport_PublicResponseIsReadOnlyAndMutationsAreRefused(t *testing.T
 		t.Error("the response exposes the internal artifact UUID")
 	}
 
-	// PUT with the body the caller just read back is refused as read-only, not as
-	// a validation failure.
-	if _, err := proxySvc.Update(importTestOrgID, "weather-agent", "someone", got); !apperror.ArtifactReadOnly.Is(err) {
-		t.Errorf("Update() error = %v, want ARTIFACT_READ_ONLY", err)
+	// PUT with the body the caller just read back is accepted: only description and
+	// gateway associations are editable, and the redacted credential in that body
+	// must not overwrite the stored one.
+	description := "Edited in the control plane"
+	got.Description = &description
+	got.DisplayName = "Edited In The Control Plane"
+	updated, err := proxySvc.Update(importTestOrgID, "weather-agent", "someone", got)
+	if err != nil {
+		t.Fatalf("Update() error = %v, want the description edit to be accepted", err)
+	}
+	if updated.Description == nil || *updated.Description != description {
+		t.Errorf("description = %v, want %q", updated.Description, description)
+	}
+	if updated.DisplayName == "Edited In The Control Plane" {
+		t.Error("displayName changed on a gateway-originated Agent proxy")
+	}
+	if updated.ReadOnly == nil || !*updated.ReadOnly {
+		t.Errorf("readOnly = %v after update, want true", updated.ReadOnly)
 	}
 	// Delete is refused while the gateway still runs it.
 	if err := proxySvc.Delete(importTestOrgID, "weather-agent", "someone"); !apperror.ArtifactDeployed.Is(err) {
@@ -528,14 +543,14 @@ func TestAgentImport_PublicResponseIsReadOnlyAndMutationsAreRefused(t *testing.T
 		t.Errorf("DeployByHandle() error = %v, want ARTIFACT_READ_ONLY", err)
 	}
 
-	// The refusals left the working copy exactly as imported.
+	// The metadata edit and the refusals left the imported configuration intact.
 	after, err := d.agentRepo.GetByHandle("weather-agent", importTestOrgID)
 	if err != nil || after == nil {
 		t.Fatalf("GetByHandle = (%v, %v)", after, err)
 	}
 	if after.Configuration.Upstream.Main == nil || after.Configuration.Upstream.Main.Auth == nil ||
 		after.Configuration.Upstream.Main.Auth.Value != `{{ secret "weather-upstream" }}` {
-		t.Errorf("stored upstream credential changed after refused mutations: %+v", after.Configuration.Upstream.Main)
+		t.Errorf("stored upstream credential changed after update and refused mutations: %+v", after.Configuration.Upstream.Main)
 	}
 }
 
