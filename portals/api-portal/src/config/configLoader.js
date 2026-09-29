@@ -761,8 +761,8 @@ validateOrgValidationConfig(config);
  * jwtVerify takes: a single value stays a string, as before; several become an array.
  *
  * In multi-tenancy mode it is required: without an audience check, a token the same IDP
- * issued to any other application would be accepted — and with every organization in
- * the database reachable (and, with enforce_org_validation off, provisionable) that
+ * issued to any other application would be accepted — and with every organization under
+ * this portal_id reachable (and, with enforce_org_validation off, provisionable) that
  * reaches far more than the one organization it would in single-organization mode.
  */
 function normalizeIdpAudience(cfg) {

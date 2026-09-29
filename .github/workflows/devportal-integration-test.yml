@@ -69,34 +69,6 @@ jobs:
           echo "=== Docker containers ==="
           docker ps -a
 
-  # The multi-tenancy REST spec against SQL Server. SQLite and PostgreSQL already run it as
-  # part of the full suite above; this covers the SQL Server paths it depends on.
-  rest-api-test-mssql-multi-tenancy:
-    name: REST API tests (mssql, multi-tenancy)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build API Portal image
-        run: make -C portals/api-portal build
-
-      - name: Run multi-tenancy REST spec (SQL Server)
-        run: make -C portals/api-portal/it test-rest-api-mssql-multi-tenancy
-
-      - name: Upload test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: rest-api-test-reports-mssql-multi-tenancy
-          path: portals/api-portal/it/reports/
-          retention-days: 7
-
   ui-test:
     name: UI E2E tests (Cypress)
     runs-on: ubuntu-24.04

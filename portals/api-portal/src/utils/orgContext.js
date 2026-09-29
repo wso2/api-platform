@@ -438,8 +438,9 @@ function insecureUrlProblem(url, setting) {
  * when the claim's integrity rests on a verified TLS connection to the IDP:
  *
  *   'login'  — the ID token arrives straight from the token endpoint over the code
- *              exchange and is not signature-checked, so it is only as trustworthy as
- *              that connection: auth.idp.token_url must be https.
+ *              exchange: auth.idp.token_url must be https. (passportConfig also
+ *              verifies it against auth.idp.jwks_url, but it is the token endpoint
+ *              connection that guarantees the token was issued for this login.)
  *   'bearer' — the token is signature-checked against a pinned certificate
  *              (auth.idp.certificate), or against keys fetched from auth.idp.jwks_url,
  *              which must then be https.

@@ -36,9 +36,9 @@ const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReloa
 
 const PORT = process.env.PORT || config.server.port;
 
-// Multi-tenancy mode serves every organization in this database, so an instance sharing
-// the database with a differently-configured portal would serve (and, once webhook
-// delivery covers all organizations, dispatch for) that portal's organizations too.
+// Multi-tenancy mode serves, and delivers webhooks for, every organization under this
+// portal_id, so any other deployment started with the same portal_id would have its
+// organizations served by this one too (portals under other portal_ids are unaffected).
 // That can't be detected reliably from here — an auto-provisioned organization and
 // another deployment's configured one look alike — so state the assumption and list
 // what this instance will serve, for the operator to check. Informational only.

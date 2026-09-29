@@ -252,7 +252,8 @@ async function markFailed(deliveryId, { httpStatus, error }) {
  */
 async function reconcile(delivery) {
     if (!delivery) return;
-    const all = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [delivery.event_uuid]);
+    const all = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ? AND portal_id = ?`,
+        [delivery.event_uuid, getPortalId()]);
     if (all.length === 0) return;
     const terminal = all.every((d) => d.status === 'DELIVERED' || d.status === 'FAILED');
     if (!terminal) return;
@@ -293,8 +294,8 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
     const ids = events.map((e) => e.uuid);
     const placeholders = ids.map(() => '?').join(', ');
     const deliveries = await db.query(
-        `SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid IN (${placeholders})`,
-        ids
+        `SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid IN (${placeholders}) AND portal_id = ?`,
+        [...ids, getPortalId()]
     );
     const deliveriesByEvent = groupBy(deliveries, 'event_uuid');
 
@@ -312,7 +313,8 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
 async function get(eventId) {
     const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ? AND portal_id = ?`, [eventId, getPortalId()]);
     if (!event) return null;
-    const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [eventId]);
+    const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ? AND portal_id = ?`,
+        [eventId, getPortalId()]);
     return parseEventRow({ ...event, event_deliveries: deliveries.map(parseDeliveryRow) });
 }
 

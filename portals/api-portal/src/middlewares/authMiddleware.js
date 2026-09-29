@@ -199,8 +199,11 @@ async function verifyBearerToken(token, req) {
  * In multi-tenancy mode (orgContext.isMultiTenancyEnabled) a credential's org claim is
  * resolved by orgContext.resolveClaimOrg instead, which accepts whichever
  * organization the claim names. `fromClaim: false` keeps the pinned-org rule
- * regardless: the `organization` header of an mTLS caller is a request header, not
- * something a verified credential asserted.
+ * regardless: the `organization` header of an mTLS or shared-key caller is a request
+ * header, not something a verified credential asserted. For shared-key calls this is
+ * what keeps platform-api publishing in the configured organization in multi-tenancy
+ * mode: the portal holds one shared key for every caller, so it can't vouch for which
+ * organization a call is for.
  *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
@@ -262,7 +265,8 @@ async function resolveScopedOrg(req, identifier, source, { fromClaim = true, pro
 }
 
 /**
- * Sets req.orgId for credentials that carry no organization of their own (mTLS) —
+ * Sets req.orgId for credentials that carry no organization of their own (mTLS, and
+ * platform-api's shared key) —
  * they are authenticated as this portal's operator, so the only organization they
  * can be acting on is the one this instance serves.
  *

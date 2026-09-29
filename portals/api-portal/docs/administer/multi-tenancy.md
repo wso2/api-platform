@@ -129,7 +129,8 @@ unless the claim arrived over verified TLS:
 
 - **Browser logins:** `auth.idp.token_url` must be `https` (plain `http` is allowed
   only to `localhost`/loopback). The ID token comes straight from the token endpoint
-  over that connection and is trusted on its strength.
+  over that connection; it is also verified against `auth.idp.jwks_url`, as every
+  login is.
 - **Bearer tokens:** a pinned `auth.idp.certificate`, or `auth.idp.jwks_url` over
   `https`.
 - Either way, `NODE_TLS_REJECT_UNAUTHORIZED=0` disables provisioning. To trust a

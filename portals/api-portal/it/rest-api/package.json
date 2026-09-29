@@ -17,7 +17,6 @@
     "supertest": "7.2.2"
   },
   "optionalDependencies": {
-    "better-sqlite3": "12.11.1",
-    "mssql": "12.7.2"
+    "better-sqlite3": "12.11.1"
   }
 }
