@@ -164,7 +164,7 @@ policies:
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
     - name: typesafe-jev-mcp-tool-intent-verification
       version: v0.8.0
-      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-intent-verification@v0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-intent-verification@v0.8.0
     - name: url-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
