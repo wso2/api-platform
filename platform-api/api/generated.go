@@ -1793,7 +1793,7 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
-	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. Legacy shape: prefer `providers`, which expresses the same thing uniformly. Always populated on a read alongside `providers`.
 	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
 
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
@@ -1820,6 +1820,9 @@ type LLMProxy struct {
 	// Id Unique handle for the proxy
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
+	// InboundTemplate Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+	InboundTemplate *string `json:"inboundTemplate,omitempty" yaml:"inboundTemplate,omitempty"`
+
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
@@ -1831,8 +1834,15 @@ type LLMProxy struct {
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
-	ProjectId string           `binding:"required" json:"projectId" yaml:"projectId"`
-	Provider  LLMProxyProvider `json:"provider" yaml:"provider"`
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Provider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
+	Provider *LLMProxyProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// Providers Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`, which supplies the proxy's provider identity and default upstream.
+	// On a request this is an alternative to the legacy `provider` plus `additionalProviders` pair, not an addition to it: when both are supplied `providers` wins and the legacy fields are ignored, so a client can write back a response it just read. Whichever shape arrives, only this one is stored.
+	// On a response both representations are always populated and always agree, so a client written against either contract works.
+	Providers *[]LLMProxyProviderEntry `json:"providers,omitempty" yaml:"providers,omitempty"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -1867,6 +1877,9 @@ type LLMProxyAPIKeyListResponse struct {
 type LLMProxyAdditionalProvider struct {
 	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
 	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `binding:"required" json:"id" yaml:"id"`
@@ -1912,13 +1925,37 @@ type LLMProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// LLMProxyProvider defines model for LLMProxyProvider.
+// LLMProxyProvider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
 type LLMProxyProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted. The same field as `alias` in the canonical shape.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
+// LLMProxyProviderEntry One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+type LLMProxyProviderEntry struct {
+	// Alias Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+	Alias *string `json:"alias,omitempty" yaml:"alias,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// IsPrimary Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true. Required on every entry, so a non-primary entry sends false explicitly rather than omitting it.
+	IsPrimary bool `binding:"required" json:"isPrimary" yaml:"isPrimary"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
 }
 
 // LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.

@@ -1,0 +1,33 @@
+{
+  "context": "/single",
+  "createdAt": "0001-01-01T00:00:00Z",
+  "createdBy": "compat-user",
+  "description": "A single-provider proxy in the legacy shape, as every proxy in a customer database is today.",
+  "displayName": "Compat Single Provider",
+  "globalPolicies": [
+    {
+      "name": "api-key-auth",
+      "params": {
+        "in": "header",
+        "key": "x-api-key"
+      },
+      "version": "v1"
+    }
+  ],
+  "id": "compat-single",
+  "openapi": "openapi: 3.0.3\ninfo:\n  title: Compat\n  version: v1.0\npaths: {}\n",
+  "operationPolicies": [],
+  "projectId": "project-1",
+  "provider": {
+    "auth": {
+      "header": "Authorization",
+      "type": "api-key"
+    },
+    "id": "openai-provider"
+  },
+  "readOnly": false,
+  "updatedAt": "0001-01-01T00:00:00Z",
+  "updatedBy": "compat-user",
+  "version": "v1.0",
+  "vhost": "api.example.com"
+}

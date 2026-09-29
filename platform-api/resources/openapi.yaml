@@ -9753,7 +9753,6 @@ components:
         - displayName
         - version
         - projectId
-        - provider
       properties:
         id:
           type: string
@@ -9827,8 +9826,38 @@ components:
             selectable upstreams. Policies route requests to any of these by
             setting the upstream name. The primary `provider` field above
             remains the default upstream and the FK target.
+            Legacy shape: prefer `providers`, which expresses the same thing
+            uniformly. Always populated on a read alongside `providers`.
           items:
             $ref: '#/components/schemas/LLMProxyAdditionalProvider'
+        providers:
+          type: array
+          minItems: 1
+          description: >
+            Canonical list of providers attached to this proxy. Each entry is
+            uniform and exactly one carries `isPrimary: true`, which supplies the
+            proxy's provider identity and default upstream.
+
+            On a request this is an alternative to the legacy `provider` plus
+            `additionalProviders` pair, not an addition to it: when both are
+            supplied `providers` wins and the legacy fields are ignored, so a
+            client can write back a response it just read. Whichever shape
+            arrives, only this one is stored.
+
+            On a response both representations are always populated and always
+            agree, so a client written against either contract works.
+          items:
+            $ref: '#/components/schemas/LLMProxyProviderEntry'
+        inboundTemplate:
+          type: string
+          description: >
+            Handle of the provider template describing the wire format this proxy
+            accepts from clients. Drives the extraction fields (model and token
+            locations) merged into every attached policy. When omitted, the primary
+            provider's own template is used, preserving existing behaviour.
+          minLength: 1
+          maxLength: 253
+          example: openai
         openapi:
           type: string
           description: OpenAPI specification (JSON or YAML) for the proxy endpoint
@@ -9963,6 +9992,9 @@ components:
       type: object
       required:
         - id
+      description: >
+        The proxy's primary provider in the legacy shape. Equivalent to the entry
+        carrying `isPrimary: true` in the canonical `providers` list.
       properties:
         id:
           type: string
@@ -9970,8 +10002,20 @@ components:
           minLength: 1
           maxLength: 40
           example: wso2-openai-provider
+        as:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique across the primary and all additional providers. Defaults to
+            `id` when omitted. The same field as `alias` in the canonical shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: openai-upstream
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
 
     LLMProxyAdditionalProvider:
       type: object
@@ -9994,6 +10038,46 @@ components:
           minLength: 1
           maxLength: 100
           example: anthropic-upstream
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
+
+    LLMProxyProviderEntry:
+      type: object
+      required:
+        - id
+        - isPrimary
+      description: >
+        One provider attached to this proxy in the canonical `providers` list.
+        Every entry is uniform: exactly one carries `isPrimary: true` and becomes
+        the proxy's provider identity and default upstream; the rest are
+        selectable upstreams. Equivalent to the legacy `provider` plus
+        `additionalProviders` shape, which remains supported.
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        alias:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted. The same field
+            as `as` in the legacy shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
+        isPrimary:
+          type: boolean
+          description: >
+            Marks this entry as the proxy's primary provider. Exactly one entry in
+            the list must set it to true. Required on every entry, so a non-primary
+            entry sends false explicitly rather than omitting it.
+          example: true
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
 

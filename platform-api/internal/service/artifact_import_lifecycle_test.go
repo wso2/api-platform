@@ -628,12 +628,18 @@ func TestImport_LLMProxy_MapsProviderAuth(t *testing.T) {
 	if err != nil || proxy == nil {
 		t.Fatalf("load proxy: (%v, %v)", proxy, err)
 	}
-	if proxy.Configuration.Provider != "prx-prov" {
-		t.Errorf("Configuration.Provider = %q, want 'prx-prov'", proxy.Configuration.Provider)
+	// A pushed artifact is stored canonically like any other write,
+	// so the provider and its credential are read off the primary attachment.
+	primary, err := model.PrimaryLLMProxyAttachment(proxy.Configuration)
+	if err != nil {
+		t.Fatalf("normalise imported proxy: %v", err)
 	}
-	auth := proxy.Configuration.UpstreamAuth
+	if primary.ID != "prx-prov" {
+		t.Errorf("primary provider = %q, want 'prx-prov'", primary.ID)
+	}
+	auth := primary.Auth
 	if auth == nil {
-		t.Fatalf("Configuration.UpstreamAuth = nil, want the provider auth mapped through")
+		t.Fatalf("primary attachment auth = nil, want the provider auth mapped through")
 	}
 	if auth.Type != "api-key" || auth.Header != "Authorization" || auth.Value != "proxy_key_xyz" {
 		t.Errorf("UpstreamAuth = %+v, want gateway provider auth", auth)
@@ -1016,7 +1022,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		mustImport(t, d, dpProxyReq("dp-x", "blk-proxy", "X", "px-prov"))
 
 		updated, err := svc.Update(importTestOrgID, "blk-proxy", "tester", &api.LLMProxy{
-			DisplayName: "Hacked", Version: "v2", Provider: api.LLMProxyProvider{Id: "px-prov"},
+			DisplayName: "Hacked", Version: "v2", Provider: &api.LLMProxyProvider{Id: "px-prov"},
 			Description: strPointer("a new description"),
 		})
 		if err != nil {

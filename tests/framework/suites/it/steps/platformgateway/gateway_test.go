@@ -22,10 +22,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -665,4 +668,72 @@ func TestServiceUnhealthy(t *testing.T) {
 
 	local.Set(healthResultsKey, map[string]bool{"policy-engine": false})
 	require.ErrorContains(t, steps.serviceUnhealthy(ctx, "policy-engine"), "stored as map[string]bool")
+}
+
+// stubBase counts InvokeWith calls and answers each one from a script, so a test can say
+// what the socket did without standing up a component.
+type stubBase struct {
+	Base
+	errs  []error
+	calls int
+}
+
+func (s *stubBase) InvokeWith(context.Context, string, string, map[string]string, []byte) error {
+	s.calls++
+	if s.calls <= len(s.errs) {
+		return s.errs[s.calls-1]
+	}
+	return nil
+}
+
+// refused is what reaches a step when a live component's published port is briefly not
+// forwarding: the transport error, wrapped the way httpx wraps it. The inner errno differs
+// by platform, so the tests below cover both the value Unix reports and the one Windows
+// does, to pin that neither is what the check depends on.
+func refused(errno syscall.Errno) error {
+	return fmt.Errorf("httpx: GET http://127.0.0.1:46383/x: %w",
+		&net.OpError{Op: "dial", Net: "tcp", Err: &os.SyscallError{Syscall: "connect", Err: errno}})
+}
+
+func TestInvokeServiceRidesOutARefusedConnection(t *testing.T) {
+	t.Run("re-dials until the port answers", func(t *testing.T) {
+		stub := &stubBase{errs: []error{refused(syscall.ECONNREFUSED), refused(wsaeconnrefused)}}
+		gateway := &Gateway{base: stub}
+
+		require.NoError(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil))
+		require.Equal(t, 3, stub.calls,
+			"should have re-dialled twice — once past a Unix refusal, once past a Winsock one")
+	})
+
+	t.Run("gives up rather than waiting forever", func(t *testing.T) {
+		stub := &stubBase{errs: []error{refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused), refused(wsaeconnrefused)}}
+		gateway := &Gateway{base: stub}
+
+		err := gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil)
+		require.ErrorIs(t, err, wsaeconnrefused)
+		require.Equal(t, serviceDialAttempts, stub.calls)
+	})
+
+	t.Run("does not spend the step's patience on a host that is not answering", func(t *testing.T) {
+		// A dial that timed out is not a moment's gap in forwarding. Retrying it
+		// would buy three more request timeouts to arrive at the same answer.
+		timedOut := fmt.Errorf("httpx: GET http://127.0.0.1:46383/x: %w",
+			&net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded})
+		stub := &stubBase{errs: []error{timedOut}}
+		gateway := &Gateway{base: stub}
+
+		require.ErrorIs(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil), os.ErrDeadlineExceeded)
+		require.Equal(t, 1, stub.calls, "a timed-out dial should not be repeated")
+	})
+
+	t.Run("reports anything that is not a refused connection at once", func(t *testing.T) {
+		// A component that answers has answered. Re-dialling past its reply would turn a
+		// scenario's real failure into a slow one, and could hide it behind a later success.
+		wanted := errors.New("httpx: GET http://127.0.0.1:46383/x: 500 Internal Server Error")
+		stub := &stubBase{errs: []error{wanted}}
+		gateway := &Gateway{base: stub}
+
+		require.ErrorIs(t, gateway.invokeService(context.Background(), http.MethodGet, "http://x", nil, nil), wanted)
+		require.Equal(t, 1, stub.calls, "an answered request should not be repeated")
+	})
 }
