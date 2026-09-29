@@ -31,12 +31,9 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';
-import PolicyMapper from '../externalServers/PolicyMapper';
-import type { SelectedPolicy } from '../externalServers/PolicyMapper';
+import AgentPolicyMapper from './AgentPolicyMapper';
+import type { SelectedPolicy } from './AgentPolicyMapper';
 import type { ParameterValues } from '../../PolicyParameterEditor/types';
-
-/** Policy Hub categories offered for Agent proxies. */
-export const AGENT_POLICY_CATEGORIES = 'Security,AI,Guardrails';
 
 /** The canonical A2A 1.0 operations, from common/agentproto. */
 export const A2A_OPERATIONS: ReadonlyArray<{
@@ -217,11 +214,9 @@ export default function AgentProxyGuardrailsTab({
   return (
     <Stack spacing={3}>
       <Stack spacing={1.5}>
-        <PolicyMapper
-          variant="pills"
+        <AgentPolicyMapper
           title="Global Operation Policies"
           description="Applies to all A2A operations. Drag policies to change their execution order."
-          categories={AGENT_POLICY_CATEGORIES}
           readOnly={readOnly}
           selectedPolicies={state.globalPolicies}
           onAddPolicy={globalHandlers.onAdd}
@@ -328,10 +323,8 @@ export default function AgentProxyGuardrailsTab({
                   </Tooltip>
                 </Stack>
                 <Box sx={{ p: 2, pt: 1.5 }}>
-                  <PolicyMapper
-                    variant="pills"
+                  <AgentPolicyMapper
                     title="Policies"
-                    categories={AGENT_POLICY_CATEGORIES}
                     readOnly={readOnly}
                     selectedPolicies={attached}
                     onAddPolicy={handlers.onAdd}
@@ -355,11 +348,9 @@ export default function AgentProxyGuardrailsTab({
       <Divider />
 
       <Stack spacing={1.5}>
-        <PolicyMapper
-          variant="pills"
+        <AgentPolicyMapper
           title="Public Agent Card Policies"
           description="Applies only to the public Agent Card discovery path."
-          categories={AGENT_POLICY_CATEGORIES}
           readOnly={readOnly}
           selectedPolicies={state.publicCardPolicies}
           onAddPolicy={cardHandlers.onAdd}
