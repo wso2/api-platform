@@ -75,6 +75,11 @@ import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
+import AgentProxiesList from './pages/appShell/appShellPages/agentProxies/AgentProxiesList';
+import AgentProxiesNew from './pages/appShell/appShellPages/agentProxies/AgentProxiesNew';
+import AgentProxyOverview from './pages/appShell/appShellPages/agentProxies/AgentProxyOverview';
+import EditAgentProxy from './pages/appShell/appShellPages/agentProxies/EditAgentProxy';
+import AgentProxiesDeploy from './pages/appShell/appShellPages/agentProxies/AgentProxiesDeploy';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
 import ExternalServersOverview from './pages/appShell/appShellPages/externalServers/ExternalServersOverview';
 import ExternalServersDeploy from './pages/appShell/appShellPages/externalServers/ExternalServersDeploy';
@@ -601,6 +606,46 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               }
             />
             <Route
+              path="agent-proxy"
+              element={
+                <WithPageBoundary>
+                  <AgentProxiesList />
+                </WithPageBoundary>
+              }
+            />
+            <Route
+              path="agent-proxy/create"
+              element={
+                <WithPageBoundary>
+                  <AgentProxiesNew />
+                </WithPageBoundary>
+              }
+            />
+            <Route
+              path="agent-proxy/:agentProxyId"
+              element={
+                <WithPageBoundary>
+                  <AgentProxyOverview />
+                </WithPageBoundary>
+              }
+            />
+            <Route
+              path="agent-proxy/:agentProxyId/edit"
+              element={
+                <WithPageBoundary>
+                  <EditAgentProxy />
+                </WithPageBoundary>
+              }
+            />
+            <Route
+              path="agent-proxy/:agentProxyId/deploy"
+              element={
+                <WithPageBoundary>
+                  <AgentProxiesDeploy />
+                </WithPageBoundary>
+              }
+            />
+            <Route
               path="mcp-proxy/create"
               element={
                 <WithPageBoundary>
@@ -858,6 +903,46 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 element={
                   <WithPageBoundary>
                     <ExternalServersList />
+                  </WithPageBoundary>
+                }
+              />
+              <Route
+                path="agent-proxy"
+                element={
+                  <WithPageBoundary>
+                    <AgentProxiesList />
+                  </WithPageBoundary>
+                }
+              />
+              <Route
+                path="agent-proxy/create"
+                element={
+                  <WithPageBoundary>
+                    <AgentProxiesNew />
+                  </WithPageBoundary>
+                }
+              />
+              <Route
+                path="agent-proxy/:agentProxyId"
+                element={
+                  <WithPageBoundary>
+                    <AgentProxyOverview />
+                  </WithPageBoundary>
+                }
+              />
+              <Route
+                path="agent-proxy/:agentProxyId/edit"
+                element={
+                  <WithPageBoundary>
+                    <EditAgentProxy />
+                  </WithPageBoundary>
+                }
+              />
+              <Route
+                path="agent-proxy/:agentProxyId/deploy"
+                element={
+                  <WithPageBoundary>
+                    <AgentProxiesDeploy />
                   </WithPageBoundary>
                 }
               />
