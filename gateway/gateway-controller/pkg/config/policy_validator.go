@@ -165,10 +165,39 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 	// Read through the shared defaults helper: agentCard and its public block are
 	// both optional, and an Agent that omitted them has no card policies rather
 	// than a missing scope to fail on.
-	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
+	card := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard)
+	if cardPolicies := card.Policies; cardPolicies != nil {
 		for i, policy := range *cardPolicies {
 			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i))
 			errors = append(errors, errs...)
+		}
+	}
+
+	// Fault policies, validated exactly like the normal ones across the same three scopes.
+	// A fault entry is an ordinary policy reference on a different path, so a misspelled
+	// name has to fail at deploy here too — the transformer only logs and skips what it
+	// cannot resolve, which would leave a typo as a handler that silently never runs.
+	for scope, list := range map[string]*[]api.Policy{
+		"spec.a2a.operationConfigs.faultPolicies": operationConfigs.FaultPolicies,
+		"spec.a2a.agentCard.public.faultPolicies": card.FaultPolicies,
+	} {
+		if list == nil {
+			continue
+		}
+		for i, policy := range *list {
+			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("%s[%d]", scope, i))...)
+		}
+	}
+
+	if operationConfigs.Operations != nil {
+		for opIdx, operation := range *operationConfigs.Operations {
+			if operation.FaultPolicies == nil {
+				continue
+			}
+			for pIdx, policy := range *operation.FaultPolicies {
+				errors = append(errors, pv.validatePolicy(policy,
+					fmt.Sprintf("spec.a2a.operationConfigs.operations[%d].faultPolicies[%d]", opIdx, pIdx))...)
+			}
 		}
 	}
 
