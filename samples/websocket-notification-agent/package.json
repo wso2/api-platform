@@ -1,0 +1,9 @@
+{
+  "name": "websocket-notification-agent-sample",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Companion sample for the AI agent that consumes a WebSocket notification stream and calls tools via an MCP proxy",
+  "scripts": {
+    "start:tools-server": "node tools-server/server.js"
+  }
+}
