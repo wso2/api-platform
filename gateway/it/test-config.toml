@@ -109,6 +109,13 @@ request_headers_timeout = "5s"
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
+[policy_engine.fault_policies]
+# handle_upstream_faults is OFF by default, because routing upstream errors to the fault policies
+# changes where an operator's existing response mediation runs. The suite covers the feature,
+# so it opts in: three scenarios in features/fault-policies.feature assert that a router
+# failure and a backend error reach the fault chain, and they are unreachable without this.
+handle_upstream_faults = true
+
 [policy_engine.logging]
 level = "debug"
 
