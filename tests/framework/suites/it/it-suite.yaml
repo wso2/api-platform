@@ -384,11 +384,11 @@ blocks:
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
       - name: graphql-deploy
-        tags: "gateway-version>=1.2.0"
+        tags: "gateway-version>1.2.0"
         features:
           - features/graphql_deploy.feature
       - name: graphql-api-keys
-        tags: "gateway-version>=1.2.0"
+        tags: "gateway-version>1.2.0"
         features:
           - features/graphql_api_keys.feature
       - name: oauth2-auth
@@ -586,7 +586,7 @@ blocks:
         features:
           - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
       - name: graphql-policies
-        tags: "gateway-version>=1.2.0"
+        tags: "gateway-version>1.2.0"
         features:
           - features/graphql_policies.feature
 
@@ -622,7 +622,7 @@ blocks:
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
       - name: graphql-analytics
-        tags: "gateway-version>=1.2.0"
+        tags: "gateway-version>1.2.0"
         features:
           - features/graphql_analytics.feature
       - name: subscription-analytics
