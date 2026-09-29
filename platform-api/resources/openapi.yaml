@@ -3099,6 +3099,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /graphql-apis/{graphqlApiId}/builds:
+    post:
+      summary: Prepare a build of a GraphQL API
+      description: |
+        Renders the GraphQL API's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A GraphQL API keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:create
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a GraphQL API
+      description: |
+        Lists the GraphQL API's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIBuilds
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:read
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:read
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the GraphQL API's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:delete
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template family
@@ -8588,6 +8788,10 @@ components:
             ap:graphql_api:api_key:delete: Delete an API key of a GraphQL API
             ap:graphql_api:api_key:manage: Full access to a GraphQL API's API keys
             ap:graphql_api:api_key:update: Update an API key of a GraphQL API
+            ap:graphql_api:build:create: Prepare a build of a GraphQL API
+            ap:graphql_api:build:delete: Delete a build of a GraphQL API
+            ap:graphql_api:build:manage: Full access to a GraphQL API's builds
+            ap:graphql_api:build:read: Read builds of a GraphQL API
             ap:graphql_api:create: Create a GraphQL API
             ap:graphql_api:delete: Delete a GraphQL API
             ap:graphql_api:deployment:create: Deploy a GraphQL API

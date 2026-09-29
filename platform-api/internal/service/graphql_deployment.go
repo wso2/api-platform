@@ -156,6 +156,61 @@ func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI) (dto.GraphQLAP
 	}, nil
 }
 
+// getGraphQLAPIUUIDByHandle resolves a GraphQL API's handle to its UUID, the
+// form the shared build store keys on.
+func (s *GraphQLAPIDeploymentService) getGraphQLAPIUUIDByHandle(apiHandle, orgUUID string) (string, error) {
+	apiModel, err := s.graphqlRepo.GetByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	if apiModel == nil {
+		return "", apperror.GraphQLAPINotFound.New()
+	}
+	return apiModel.ID, nil
+}
+
+// CreateBuildByHandle prepares a build of a GraphQL API without deploying it.
+//
+// Builds are the same thing for every artifact kind, so these four delegate to the
+// shared store; only resolving the handle is GraphQL's own, which keeps the
+// not-found this kind already reports.
+func (s *GraphQLAPIDeploymentService) CreateBuildByHandle(apiHandle, orgUUID, createdBy, description string,
+	metadata map[string]interface{},
+) (*api.BuildResponse, error) {
+	apiUUID, err := s.getGraphQLAPIUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Create(apiUUID, orgUUID, constants.GraphQLApi, createdBy, description, metadata)
+}
+
+// GetBuildByHandle returns one of a GraphQL API's builds.
+func (s *GraphQLAPIDeploymentService) GetBuildByHandle(apiHandle, buildID, orgUUID string) (*api.BuildResponse, error) {
+	apiUUID, err := s.getGraphQLAPIUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.Get(apiUUID, buildID, orgUUID, constants.GraphQLApi)
+}
+
+// GetBuildsByHandle lists a GraphQL API's builds, newest first.
+func (s *GraphQLAPIDeploymentService) GetBuildsByHandle(apiHandle, orgUUID string, limit int) (*api.BuildListResponse, error) {
+	apiUUID, err := s.getGraphQLAPIUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.builds.List(apiUUID, orgUUID, constants.GraphQLApi, limit)
+}
+
+// DeleteBuildByHandle removes one of a GraphQL API's builds.
+func (s *GraphQLAPIDeploymentService) DeleteBuildByHandle(apiHandle, buildID, orgUUID string) error {
+	apiUUID, err := s.getGraphQLAPIUUIDByHandle(apiHandle, orgUUID)
+	if err != nil {
+		return err
+	}
+	return s.builds.Delete(apiUUID, buildID, orgUUID, constants.GraphQLApi)
+}
+
 // DeployGraphQLAPI creates a new immutable deployment artifact and deploys it to a
 // gateway. Mirrors LLMProviderDeploymentService.DeployLLMProvider.
 func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {

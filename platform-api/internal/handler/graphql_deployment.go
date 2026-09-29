@@ -238,4 +238,14 @@ func (h *GraphQLAPIDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetGraphQLAPIDeployments))
 	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetGraphQLAPIDeployment))
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteGraphQLAPIDeployment))
+
+	// The same build endpoints every artifact kind has, on this kind's own path.
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "graphql-apis",
+		PathParam: "graphqlApiId",
+		Subject:   "GraphQL API",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }
