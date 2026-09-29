@@ -60,7 +60,12 @@ type Server struct {
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
 	proxies   []mountedProxy
-	handler   http.Handler
+	// upstream is the primary control-plane HTTP client (same transport/TLS
+	// trust as the primary reverse proxy). Also reused by handleGraphQLInvoke
+	// for its Platform API lookups and for the gateway-invoke call itself —
+	// see that file's doc comment for why a separate upstream isn't warranted.
+	upstream *http.Client
+	handler  http.Handler
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -124,6 +129,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		cfg:          cfg,
 		claims:       claims,
 		proxies:      proxies,
+		upstream:     upstream,
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -217,6 +223,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
 	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
 	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+
+	// GraphQL Test Console: same-origin invoke proxy to a deployed API's real
+	// gateway endpoint, resolved server-side — see graphql_invoke.go.
+	mux.HandleFunc("POST /api/graphql-console/{graphqlApiId}/gateways/{gatewayId}/invoke", withWriteDeadline(s.handleGraphQLInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the

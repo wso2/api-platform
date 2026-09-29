@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
 import { aDeployment, aGateway, aGraphQLApiDetail, collection, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
@@ -70,6 +71,21 @@ vi.mock('graphiql', () => ({
 vi.mock('graphiql/setup-workers/vite', () => ({}));
 vi.mock('graphiql/style.css', () => ({}));
 
+// createGraphiQLFetcher closes over its options with no getter, so the only
+// way to assert what URL/headers this page builds it with is to intercept the
+// call itself — everything else about the real toolkit stays intact.
+let lastFetcherOptions: import('@graphiql/toolkit').CreateFetcherOptions | undefined;
+vi.mock('@graphiql/toolkit', async () => {
+  const actual = await vi.importActual<typeof import('@graphiql/toolkit')>('@graphiql/toolkit');
+  return {
+    ...actual,
+    createGraphiQLFetcher: (options: import('@graphiql/toolkit').CreateFetcherOptions) => {
+      lastFetcherOptions = options;
+      return actual.createGraphiQLFetcher(options);
+    },
+  };
+});
+
 function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
@@ -99,6 +115,7 @@ const serveApi = (deployments: ReturnType<typeof aDeployment>[] = []) => {
 beforeEach(() => {
   resetHttpClient();
   lastGraphiQLProps = undefined;
+  lastFetcherOptions = undefined;
 });
 
 describe('GraphqlTestConsolePage — before anything is deployed', () => {
@@ -156,16 +173,24 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     expect(lastGraphiQLProps?.defaultQuery).toContain('# Welcome to GraphiQL');
   });
 
-  it('points the fetcher at the selected gateway’s invoke URL', async () => {
+  // The browser must never call the gateway directly (its CORS policy and,
+  // for a dev/self-signed certificate, its TLS trust are both out of this
+  // app's control) — the fetcher is built against this app's own same-origin
+  // BFF route instead, which resolves and proxies to the real gateway
+  // endpoint server-side. The CSRF header is required because GraphiQL's own
+  // fetch doesn't go through this app's normal HTTP client, which is what
+  // adds it automatically for every other mutating request.
+  it('points the fetcher at the same-origin BFF invoke proxy, not the gateway directly', async () => {
     serveApi([deployment]);
 
     renderPage();
 
     await screen.findByText('GraphiQL ready with schema');
-    // createGraphiQLFetcher closes over the URL rather than exposing it, so
-    // the endpoint text next to the selector is this page's own contract —
-    // asserted above — and is what the fetcher is built from.
     expect(lastGraphiQLProps?.fetcher).toBeInstanceOf(Function);
+    expect(lastFetcherOptions?.url).toBe(
+      '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke',
+    );
+    expect(lastFetcherOptions?.headers).toMatchObject({ [CSRF_HEADER]: CSRF_HEADER_VALUE });
   });
 
   // GraphiQL only strips the Headers tab from what it writes to `storage`
@@ -181,9 +206,8 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     expect(lastGraphiQLProps?.shouldPersistHeaders).toBeFalsy();
   });
 
-  // Regression test: a network-level fetch failure (most commonly the
-  // gateway's self-signed dev certificate, which the browser refuses without
-  // exposing why) used to surface as nothing but GraphiQL's own cryptic
+  // Regression test: a network-level fetch failure (e.g. the BFF itself being
+  // unreachable) used to surface as nothing but GraphiQL's own cryptic
   // "Failed to fetch" — no guidance anywhere in this page. The fetcher this
   // page builds now catches that specific failure class and shows an
   // actionable toast, while still rethrowing so GraphiQL's own panel keeps
@@ -215,7 +239,7 @@ describe('GraphqlTestConsolePage — once deployed', () => {
       });
 
       expect(
-        await screen.findByText(/Could not reach the endpoint/),
+        await screen.findByText(/Could not reach the test console service/),
       ).toBeInTheDocument();
     } finally {
       global.fetch = originalFetch;

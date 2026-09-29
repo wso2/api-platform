@@ -79,7 +79,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     expect(lastCall).not.toHaveProperty('sdlFile');
   });
 
-  it('carries `endpointUrl` (and no `sdlUrl`) when the "Design from scratch" endpoint resolves', async () => {
+  it('carries `endpointUrl` (and no `sdlUrl`) when the "Start from scratch" endpoint resolves', async () => {
     server.use(
       accepts(
         'post',
@@ -90,8 +90,8 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     );
     const { onDraftChange, user } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
-    await user.type(screen.getByLabelText(/Backend endpoint/i), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
+    await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
     await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
     await screen.findByText('Query', { exact: false });
@@ -114,7 +114,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     await user.tab();
     await screen.findByText('Query', { exact: false });
 
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
     expect(onDraftChange).toHaveBeenLastCalledWith(null);
   });
@@ -171,12 +171,12 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
     );
   });
 
-  it('suggests a name from the endpoint’s hostname for "Design from scratch"', async () => {
+  it('suggests a name from the endpoint’s hostname for "Start from scratch"', async () => {
     server.use(accepts('post', '/graphql-apis/validate-schema', { resolved: true, sdl: SAMPLE_SDL }));
     const { onDraftChange, user } = renderPanel();
 
-    await user.click(screen.getByRole('button', { name: /Design from scratch/ }));
-    await user.type(screen.getByLabelText(/Backend endpoint/i), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
+    await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
     await user.click(screen.getByRole('button', { name: 'Fetch' }));
     await screen.findByText('Query', { exact: false });
 

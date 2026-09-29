@@ -56,7 +56,7 @@ describe('GraphqlSchemaExplorer — before anything has loaded', () => {
 
   // Illustrative only — a hint at the shape a resolved schema takes, not a
   // dummy schema of its own, so it shows for every path with no `sdl` yet:
-  // "Start with a schema" before importing, "Design from scratch" before
+  // "Start with a schema" before importing, "Start from scratch" before
   // checking an endpoint, and a scratch endpoint where introspection is
   // disabled (which also never resolves an `sdl`).
   it('shows a skeleton preview of the Query/Mutation/Subscription shape alongside the empty state', () => {

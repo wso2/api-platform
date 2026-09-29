@@ -41,6 +41,7 @@ import { useParams } from 'react-router-dom';
 import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { versionLabel } from '@/utils/versionLabel';
@@ -72,10 +73,9 @@ const messages = defineMessages({
   },
   fetchFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed',
-    defaultMessage:
-      'Could not reach the endpoint. If it uses a self-signed certificate, open the endpoint URL above in a new tab once to trust it, then try again.',
+    defaultMessage: 'Could not reach the test console service. Check your connection and try again.',
     description:
-      'Shown when the browser fetch to the gateway invoke URL fails below the HTTP level (network/TLS) — a bare "Failed to fetch" the browser gives no further detail on, most commonly an untrusted dev/self-signed certificate on the gateway.',
+      'Shown when the browser fetch to this app\'s own backend fails below the HTTP level (network error) — a bare "Failed to fetch" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API\'s gateway, so this is not a CORS or gateway-certificate problem.',
   },
   gatewayLabel: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.gatewayLabel',
@@ -197,9 +197,22 @@ export function GraphqlTestConsolePage() {
   );
 
   const api = apiQuery.data;
+  // The real gateway URL — shown/copyable so it can be called directly (e.g.
+  // from curl), but no longer what the browser talks to; see invokeProxyUrl.
   const endpointUrl =
     selectedGateway && api
       ? buildInvokeUrl(gatewayEndpoint(selectedGateway), api.context, api.version)
+      : '';
+  // The browser never calls the gateway directly — it would need the
+  // gateway's own CORS policy configured and, for a dev/self-signed
+  // certificate, to be trusted first. Instead this same-origin BFF route
+  // resolves and proxies to the real gateway endpoint server-side (see
+  // bff/internal/server/graphql_invoke.go), so the query/variables/headers
+  // the user enters reach the gateway exactly as typed while the browser
+  // request itself stays same-origin.
+  const invokeProxyUrl =
+    graphqlApiHandler && selectedGateway?.id
+      ? `/api/graphql-console/${encodeURIComponent(graphqlApiHandler)}/gateways/${encodeURIComponent(selectedGateway.id)}/invoke`
       : '';
   // Supplies a wrapped `fetch` to createGraphiQLFetcher rather than wrapping
   // the fetcher's own return value: the toolkit doesn't always resolve a
@@ -207,15 +220,16 @@ export function GraphqlTestConsolePage() {
   // response as an async-iterable for incremental-delivery support), so a
   // try/catch around calling the fetcher never sees the underlying fetch()
   // rejection. `fetch` itself is the one place a network-level failure (no
-  // HTTP response at all — a bad host, a connection refused, or, most
-  // commonly for a gateway on a self-signed dev certificate, a TLS handshake
-  // the browser refuses without ever exposing why) surfaces as a plain
-  // rejected promise, so intercepting there is what actually works. An HTTP
-  // error response (4xx/5xx, including a GraphQL "errors" body) resolves
-  // normally and is untouched here — GraphiQL's own response panel keeps
-  // showing those as it always has. The error is rethrown either way so
-  // GraphiQL's panel still reflects the failure; this only adds the toast
-  // alongside it.
+  // HTTP response at all) surfaces as a plain rejected promise, so
+  // intercepting there is what actually works. Since the request target is
+  // this app's own same-origin BFF route, such a failure means the BFF
+  // itself couldn't be reached — not a CORS or gateway-certificate issue,
+  // both of which this proxy already sidesteps. An HTTP error response
+  // (4xx/5xx, including a GraphQL "errors" body, or the BFF's own structured
+  // error for a resolution failure) resolves normally and is untouched here —
+  // GraphiQL's own response panel keeps showing those as it always has. The
+  // error is rethrown either way so GraphiQL's panel still reflects the
+  // failure; this only adds the toast alongside it.
   const guardedFetch = useMemo<typeof fetch>(
     () =>
       async (...args) => {
@@ -231,8 +245,13 @@ export function GraphqlTestConsolePage() {
     [notify, intl],
   );
   const fetcher: Fetcher = useMemo(
-    () => createGraphiQLFetcher({ fetch: guardedFetch, url: endpointUrl }),
-    [endpointUrl, guardedFetch],
+    () =>
+      createGraphiQLFetcher({
+        fetch: guardedFetch,
+        headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE },
+        url: invokeProxyUrl,
+      }),
+    [invokeProxyUrl, guardedFetch],
   );
 
   if (!graphqlApiHandler || apiQuery.error) {
