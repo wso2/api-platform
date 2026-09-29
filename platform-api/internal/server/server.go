@@ -357,6 +357,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmProxyDeploymentService,
 		llmProviderDeploymentService,
 		agentDeploymentService,
+		graphqlAPIDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,

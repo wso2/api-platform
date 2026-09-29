@@ -5897,6 +5897,12 @@ type ListGraphQLAPIsParamsSortBy string
 // ListGraphQLAPIsParamsSortOrder defines parameters for ListGraphQLAPIs.
 type ListGraphQLAPIsParamsSortOrder string
 
+// GetGraphQLAPIBuildsParams defines parameters for GetGraphQLAPIBuilds.
+type GetGraphQLAPIBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
 // GetGraphQLAPIDeploymentsParams defines parameters for GetGraphQLAPIDeployments.
 type GetGraphQLAPIDeploymentsParams struct {
 	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
@@ -6391,6 +6397,9 @@ type CreateGraphQLAPIKeyJSONRequestBody = CreateAPIKeyRequest
 
 // UpdateGraphQLAPIKeyJSONRequestBody defines body for UpdateGraphQLAPIKey for application/json ContentType.
 type UpdateGraphQLAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateGraphQLAPIBuildJSONRequestBody defines body for CreateGraphQLAPIBuild for application/json ContentType.
+type CreateGraphQLAPIBuildJSONRequestBody = BuildRequest
 
 // DeployGraphQLAPIJSONRequestBody defines body for DeployGraphQLAPI for application/json ContentType.
 type DeployGraphQLAPIJSONRequestBody = DeployRequest
