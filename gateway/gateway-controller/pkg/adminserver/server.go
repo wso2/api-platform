@@ -32,7 +32,8 @@ const adminMcpRelPath = "/mcp"
 
 // MCPConfig carries everything the administrative MCP endpoint needs, expressed
 // purely as http.Handler and middleware values. Passed to NewServer; nil means
-// the MCP endpoint is disabled and the generated /mcp route answers 404.
+// the MCP endpoint is disabled and the generated /mcp route answers 404 to
+// authenticated callers.
 type MCPConfig struct {
 	// Handler serves POST <AdminAPIBasePath>/mcp
 	Handler http.Handler
@@ -213,8 +214,9 @@ func (s *Server) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleAdminMcp implements adminapi.ServerInterface. It answers 404 when the
-// MCP endpoint is disabled, so a gateway with MCP switched off is
-// indistinguishable from one that does not implement it.
+// MCP endpoint is disabled, so to an authenticated admin a gateway with MCP
+// switched off looks the same as one that does not implement it. As with
+// config_dump, the disabled check runs after authentication.
 func (s *Server) HandleAdminMcp(w http.ResponseWriter, r *http.Request) {
 	if s.mcpHandler == nil {
 		http.NotFound(w, r)
