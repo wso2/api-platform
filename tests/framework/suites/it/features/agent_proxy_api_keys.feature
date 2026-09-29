@@ -19,7 +19,7 @@
 @agent-proxy @agent-proxy-api-keys
 Feature: Agent proxy API keys are managed in the control plane and enforced by the gateway
   As an API publisher
-  I want to issue, rotate and revoke API keys for an Agent proxy through the control plane
+  I want to issue, rotate and delete API keys for an Agent proxy through the control plane
   So that callers authenticate to the agent at the gateway exactly as they do to a REST API
 
   # The actors are the suite's control-plane users: the administrator holds ap:agent_proxy:manage
@@ -36,7 +36,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @cp14-19 @type:smoke
-  Scenario: An API key is created, rotated and revoked, and the gateway follows each change on both bindings
+  Scenario: An API key is created, rotated and deleted, and the gateway follows each change on both bindings
     Given I generate a unique resource name from "agent-keys" and store it as "agentHandle"
     And I generate a unique API context from "/agent-keys" and store it as "agentContext"
     And I generate a unique resource name from "agent-key" and store it as "keyId"
@@ -122,7 +122,10 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
 
     When I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys"
     Then the response status code should be 200
-    And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "status" equal to "revoked"
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
+    When I send a "DELETE" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:keyId}"
+    Then the response status code should be 404
+    And the JSON response field "code" should be "REST_API_API_KEY_NOT_FOUND"
     When I send a "DELETE" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/no-such-agent-key"
     Then the response status code should be 404
     And the JSON response field "code" should be "REST_API_API_KEY_NOT_FOUND"
@@ -260,7 +263,7 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
     Then the response status code should be 204
 
   @cp14-20 @type:negative
-  Scenario: Key requests are validated and need a gateway to update or revoke
+  Scenario: Key requests are validated, and an update needs a gateway while a delete does not
     Given I generate a unique resource name from "agent-key-nogw" and store it as "agentHandle"
     And I generate a unique API context from "/agent-key-nogw" and store it as "agentContext"
     And I generate a unique resource name from "agent-key-stranded" and store it as "keyId"
@@ -283,9 +286,6 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
       """
       {"name": "${CTX:keyId}", "displayName": "Stranded key", "apiKey": "stranded-rotation-0123456789"}
       """
-    Then the response status code should be 503
-    And the JSON response field "code" should be "GATEWAY_CONNECTION_UNAVAILABLE"
-    When I send a "DELETE" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:keyId}"
     Then the response status code should be 503
     And the JSON response field "code" should be "GATEWAY_CONNECTION_UNAVAILABLE"
     When I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys"
@@ -327,6 +327,12 @@ Feature: Agent proxy API keys are managed in the control plane and enforced by t
       """
     Then the response status code should be 404
     And the JSON response field "code" should be "AGENT_PROXY_NOT_FOUND"
+
+    When I send a "DELETE" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys/${CTX:keyId}"
+    Then the response status code should be 204
+    When I send a "GET" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys"
+    Then the response status code should be 200
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
 
   @cp14-21
   Scenario: Agent proxy keys appear in the caller's own key listing under the control-plane kind

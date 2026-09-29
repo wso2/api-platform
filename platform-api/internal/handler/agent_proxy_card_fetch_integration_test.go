@@ -169,8 +169,8 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		repository.NewArtifactRepo(db, registry),
 		apiKeyRepo,
 		gatewayEvents,
-		noopAudit{},
-		nil, // defaults to [sha256]
+		repository.NewAuditRepo(db), // real rows, so key-deletion auditing is observable
+		nil,                         // defaults to [sha256]
 		slog.Default(),
 	)
 	keyListSvc := service.NewAgentProxyAPIKeyService(agentRepo, apiKeyRepo, identity)

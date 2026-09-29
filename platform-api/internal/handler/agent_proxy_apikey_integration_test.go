@@ -16,10 +16,11 @@
  */
 
 // End-to-end Agent proxy API keys over the real route -> handler -> service ->
-// repository stack, backed by SQLite. Create, update and revoke go through the
-// shared APIKeyService and so behave as REST API keys do; these tests pin that
-// behavior for the Agent kind, plus the Agent-only listing, the tenant and
-// ownership boundaries, the gateway events, and the gateway-internal backfill.
+// repository stack, backed by SQLite. Create and update go through the shared
+// APIKeyService and so behave as REST API keys do; delete removes the key row
+// and audits it. These tests pin that behavior
+// for the Agent kind, plus the Agent-only listing, the tenant and ownership
+// boundaries, the gateway events, and the gateway-internal backfill.
 
 package handler
 
@@ -89,8 +90,8 @@ func createAgentKey(t *testing.T, h http.Handler, proxy, body string) map[string
 }
 
 // deployedAgentKeysEnv is an Agent proxy deployed to one gateway, which update
-// and revoke require: like REST API keys, they refuse with 503 when the
-// artifact has no gateway to broadcast to.
+// requires: like REST API keys, it refuses with 503 when the artifact has no
+// gateway to broadcast to. Delete works either way.
 func deployedAgentKeysEnv(t *testing.T) *agentDeployEnv {
 	t.Helper()
 	env := setupAgentDeployEnv(t)
@@ -132,6 +133,39 @@ func agentUUIDOf(t *testing.T, env *agentProxyTestEnv, handle string) string {
 		t.Fatalf("resolve agent proxy uuid: %v", err)
 	}
 	return id
+}
+
+// agentKeyExists reports whether the key row is still stored.
+func agentKeyExists(t *testing.T, env *agentProxyTestEnv, proxy, key string) bool {
+	t.Helper()
+	var n int
+	if err := env.db.QueryRow(`SELECT COUNT(*) FROM api_keys k JOIN agent_proxies a ON a.uuid = k.artifact_uuid
+		WHERE a.handle = ? AND a.organization_uuid = ? AND k.handle = ?`, proxy, agentProxyOrg, key).Scan(&n); err != nil {
+		t.Fatalf("count stored key %s/%s: %v", proxy, key, err)
+	}
+	return n > 0
+}
+
+type auditRow struct{ Action, ResourceType, OrgUUID, PerformedBy string }
+
+// auditRowsFor returns the audit rows recorded against one resource UUID.
+func auditRowsFor(t *testing.T, env *agentProxyTestEnv, resourceUUID string) []auditRow {
+	t.Helper()
+	rows, err := env.db.Query(`SELECT action, resource_type, organization_uuid, performed_by
+		FROM audit WHERE resource_uuid = ? ORDER BY performed_at`, resourceUUID)
+	if err != nil {
+		t.Fatalf("query audit rows: %v", err)
+	}
+	defer rows.Close()
+	var out []auditRow
+	for rows.Next() {
+		var r auditRow
+		if err := rows.Scan(&r.Action, &r.ResourceType, &r.OrgUUID, &r.PerformedBy); err != nil {
+			t.Fatalf("scan audit row: %v", err)
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 func countAgentKeys(t *testing.T, env *agentProxyTestEnv) int {
@@ -505,27 +539,46 @@ func TestAgentProxyAPIKey_UpdateRejectionContract(t *testing.T) {
 	}
 }
 
-// --- revoke ------------------------------------------------------------------
+// --- delete ------------------------------------------------------------------
 
-func TestAgentProxyAPIKey_RevokeReturns204(t *testing.T) {
+// Delete removes the key row outright and records one DELETE audit entry
+// against the key.
+func TestAgentProxyAPIKey_DeleteRemovesTheKeyAndAuditsIt(t *testing.T) {
 	env := deployedAgentKeysEnv(t)
 	createAgentKey(t, env.handler, env.proxy, `{"id": "consumer-key", "displayName": "Consumer Key"}`)
+	stored := readAgentKey(t, env.agentProxyTestEnv, env.proxy, "consumer-key")
 
 	rec := callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "consumer-key"), "")
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("status = %d, body %q; want a bodyless 204", rec.Code, rec.Body.String())
 	}
-	if got := readAgentKey(t, env.agentProxyTestEnv, env.proxy, "consumer-key"); got.Status != constants.APIKeyStatusRevoked {
-		t.Fatalf("status = %q, want revoked", got.Status)
+	if agentKeyExists(t, env.agentProxyTestEnv, env.proxy, "consumer-key") {
+		t.Fatal("the key row is still stored after delete")
 	}
 
+	var deletes []auditRow
+	for _, r := range auditRowsFor(t, env.agentProxyTestEnv, stored.UUID) {
+		if r.Action == "DELETE" {
+			deletes = append(deletes, r)
+		}
+	}
+	want := auditRow{Action: "DELETE", ResourceType: "api_key", OrgUUID: agentProxyOrg, PerformedBy: stored.CreatedBy}
+	if len(deletes) != 1 || deletes[0] != want {
+		t.Fatalf("DELETE audit rows = %+v, want exactly [%+v]", deletes, want)
+	}
+
+	// A deleted key is gone: deleting it again, or an unknown key, is a 404.
+	rec = callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "consumer-key"), "")
+	assertAgentProxyError(t, rec, http.StatusNotFound, apperror.CodeRESTAPIAPIKeyNotFound)
 	rec = callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "no-such-key"), "")
 	assertAgentProxyError(t, rec, http.StatusNotFound, apperror.CodeRESTAPIAPIKeyNotFound)
 }
 
-// Like REST API keys, update and revoke need a gateway to broadcast to: on an
-// Agent proxy associated with none they are refused with 503 and change nothing.
-func TestAgentProxyAPIKey_UpdateAndRevokeNeedAGateway(t *testing.T) {
+// Update needs a gateway to broadcast to, as for REST API keys: on an Agent
+// proxy associated with none it is refused with 503 and changes nothing.
+// Delete does not: it removes the key centrally and simply has no gateway to
+// notify.
+func TestAgentProxyAPIKey_UpdateNeedsAGatewayButDeleteDoesNot(t *testing.T) {
 	env := newAgentProxyTestEnv(t, agentDeployConfig())
 	createAgentProxyForKeys(t, env.handler, "weather-agent")
 	createAgentKey(t, env.handler, "weather-agent", `{"id": "consumer-key", "displayName": "Consumer Key"}`)
@@ -533,11 +586,16 @@ func TestAgentProxyAPIKey_UpdateAndRevokeNeedAGateway(t *testing.T) {
 
 	rec := callAgentProxy(t, env.handler, http.MethodPut, agentKeyPath("weather-agent", "consumer-key"), updateKeyBody("new-value-0123456789", "K"))
 	assertAgentProxyError(t, rec, http.StatusServiceUnavailable, apperror.CodeGatewayConnectionUnavailable)
-	rec = callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath("weather-agent", "consumer-key"), "")
-	assertAgentProxyError(t, rec, http.StatusServiceUnavailable, apperror.CodeGatewayConnectionUnavailable)
-
 	if after := readAgentKey(t, env, "weather-agent", "consumer-key"); after != before {
-		t.Fatalf("a refused call changed the key: before %+v, after %+v", before, after)
+		t.Fatalf("a refused update changed the key: before %+v, after %+v", before, after)
+	}
+
+	rec = callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath("weather-agent", "consumer-key"), "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete on an undeployed Agent proxy = %d %s, want 204", rec.Code, rec.Body.String())
+	}
+	if agentKeyExists(t, env, "weather-agent", "consumer-key") {
+		t.Fatal("the key row is still stored after delete")
 	}
 }
 
@@ -619,8 +677,8 @@ func TestAgentProxyAPIKey_OwnershipIsCreatorScopedUnlessKeyAdmin(t *testing.T) {
 	decodeAgentProxyJSON(t, callAsKeyAdmin(t, env.handler, http.MethodPut, agentKeyPath(env.proxy, "authors-key"),
 		updateKeyBody("admin-rotated-0123456789", "Author's Key")), http.StatusOK)
 	decodeAgentProxyJSON(t, callAsKeyAdmin(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "authors-key"), ""), http.StatusNoContent)
-	if got := readAgentKey(t, env.agentProxyTestEnv, env.proxy, "authors-key"); got.Status != constants.APIKeyStatusRevoked {
-		t.Fatalf("key admin revoke left status %q", got.Status)
+	if agentKeyExists(t, env.agentProxyTestEnv, env.proxy, "authors-key") {
+		t.Fatal("key admin delete left the key stored")
 	}
 }
 
@@ -720,8 +778,8 @@ func TestAgentProxyAPIKey_BroadcastFailureDoesNotFailTheMutation(t *testing.T) {
 	}
 
 	decodeAgentProxyJSON(t, callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "consumer-key"), ""), http.StatusNoContent)
-	if got := readAgentKey(t, env.agentProxyTestEnv, env.proxy, "consumer-key"); got.Status != constants.APIKeyStatusRevoked {
-		t.Fatalf("status = %q, want revoked even though the revocation event could not be published", got.Status)
+	if agentKeyExists(t, env.agentProxyTestEnv, env.proxy, "consumer-key") {
+		t.Fatal("the key is still stored, want it deleted even though the revocation event could not be published")
 	}
 }
 
@@ -756,9 +814,11 @@ func TestAgentProxyAPIKey_PublicKeysFeedTheGatewayBackfill(t *testing.T) {
 	}
 
 	decodeAgentProxyJSON(t, callAgentProxy(t, env.handler, http.MethodDelete, agentKeyPath(env.proxy, "consumer-key"), ""), http.StatusNoContent)
+	// A deleted key drops out of the backfill; the gateway's reconnect sync
+	// removes any local key the control plane no longer lists.
 	keys = decodeKeyList(t, env.call(t, internalAgentAPIKeys, env.gatewayUUID))
-	if len(keys) != 1 || keys[0]["status"] != "revoked" {
-		t.Fatalf("backfill after revoke = %v, want the key reported as revoked", keys)
+	if len(keys) != 0 {
+		t.Fatalf("backfill after delete = %v, want the deleted key absent", keyNames(keys))
 	}
 
 	// The public listing never carries what the backfill does.

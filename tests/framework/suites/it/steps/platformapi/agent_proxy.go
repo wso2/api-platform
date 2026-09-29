@@ -242,7 +242,7 @@ func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body
 		case "api-keys":
 			record := handle + agentProxyRecordD + id
 			return s.registerTracked(ctx, platformAgentAPIKeyKind, record, func(ctx context.Context) error {
-				return s.revokeAgentAPIKey(ctx, record)
+				return s.deleteAgentAPIKey(ctx, record)
 			}, s.registerAgentAPIKeyDeleter)
 		}
 	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
@@ -338,7 +338,7 @@ func (s *Steps) registerAgentDeploymentDeleter(reg *cleanup.Registry) error {
 
 func (s *Steps) registerAgentAPIKeyDeleter(reg *cleanup.Registry) error {
 	return reg.RegisterDeleter(platformAgentAPIKeyKind, func(ctx context.Context, res cleanup.Resource) error {
-		return s.revokeAgentAPIKey(ctx, res.ID)
+		return s.deleteAgentAPIKey(ctx, res.ID)
 	})
 }
 
@@ -417,10 +417,9 @@ func (s *Steps) undeployAgentDeployment(ctx context.Context, record string) erro
 	return fmt.Errorf("undeploying Agent proxy %q deployment %q: %s", parts[0], parts[1], resp.Describe())
 }
 
-// revokeAgentAPIKey revokes a recorded API key. Revocation needs a gateway association, and a
-// key on an Agent proxy that was never deployed has none; such a key is removed with its Agent
-// proxy, whose own cleanup is always registered, so the documented 503 is not a leak.
-func (s *Steps) revokeAgentAPIKey(ctx context.Context, record string) error {
+// deleteAgentAPIKey deletes a recorded API key. A 404 means the key, or its Agent proxy, is
+// already gone.
+func (s *Steps) deleteAgentAPIKey(ctx context.Context, record string) error {
 	parts := strings.Split(record, agentProxyRecordD)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid Agent proxy API key cleanup record")
@@ -430,11 +429,10 @@ func (s *Steps) revokeAgentAPIKey(ctx context.Context, record string) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode == http.StatusNotFound || resp.Succeeded() ||
-		(resp.StatusCode == http.StatusServiceUnavailable && errorCode(resp) == "GATEWAY_CONNECTION_UNAVAILABLE") {
+	if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
 		return nil
 	}
-	return fmt.Errorf("revoking Agent proxy %q API key %q: %s", parts[0], parts[1], resp.Describe())
+	return fmt.Errorf("deleting Agent proxy %q API key %q: %s", parts[0], parts[1], resp.Describe())
 }
 
 // adminCall issues one unpublished administrator request, for cleanup and intermediate lookups

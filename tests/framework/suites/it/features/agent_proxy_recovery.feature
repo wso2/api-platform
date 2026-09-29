@@ -118,10 +118,10 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     Then the response status code should be 200
     And the JSON response field "status" should be "DEPLOYED"
 
-  # Keys issued, and keys revoked, while the gateway is away reach it only through the reconnect
+  # Keys issued, and keys removed, while the gateway is away reach it only through the reconnect
   # backfill. Each is proven where it matters, by authenticating or failing to authenticate at the
   # restarted gateway, for both Agent proxy keys and REST API keys; the gateway internal API then
-  # shows each kind's backfill is populated with exactly its own keys and their current status.
+  # shows each kind's backfill is populated with exactly its own current keys.
   @cp14-22
   Scenario: A reconnecting gateway restores Agent proxy and REST API key authentication from the backfill
     Given I generate a unique resource name from "agent-key-resync" and store it as "agentHandle"
@@ -178,7 +178,8 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     When I set header "API-Key" to "${CTX:restRevokedKeyValue}"
     Then I send a "GET" request to "${CTX:apiContext}/health" until status 200
 
-    # While the gateway is away one key of each kind is issued and one is revoked.
+    # While the gateway is away one key of each kind is issued; an Agent proxy key is deleted and a
+    # REST API key is revoked.
     Given I authenticate using basic auth as "admin"
     When I stop the gateway service "gateway-controller"
     And I send a "POST" request to the control plane at "/agent-proxies/${CTX:agentHandle}/api-keys" with body:
@@ -198,7 +199,7 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     When I start the gateway service "gateway-controller"
     And I wait for the gateway controller health endpoint
 
-    # Agent proxy keys: the issued key authenticates on both bindings, the revoked one no longer does.
+    # Agent proxy keys: the issued key authenticates on both bindings, the deleted one no longer does.
     And I clear all headers
     And I set header "A2A-Version" to "1.0"
     And I set header "API-Key" to "${CTX:keyValue}"
@@ -228,8 +229,8 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     And I send a "GET" request to "${CTX:apiContext}/health"
     Then the response status code should be 401
 
-    # Each kind's backfill carries exactly its own keys, a revocation included: revocation is a
-    # status, so the revoked key is backfilled as revoked rather than dropped.
+    # Each kind's backfill carries exactly its own keys. A deleted Agent proxy key is dropped from
+    # the backfill; a revoked REST API key is backfilled with its revoked status.
     Given I authenticate using basic auth as "admin"
     And I obtain an API key for the registered gateway via the control plane
     And I resolve the gateway internal artifact id of Agent proxy deployment "${CTX:deploymentId}" and store it as "agentUuid"
@@ -237,8 +238,7 @@ Feature: Agent proxies recover across gateway and control-plane restarts
     Then the response status code should be 200
     And the JSON response array "" item with "name" equal to "${CTX:keyId}" should have "artifactUuid" equal to "${CTX:agentUuid}"
     And the JSON response array "" item with "name" equal to "${CTX:keyId}" should have "status" equal to "active"
-    And the JSON response array "" item with "name" equal to "${CTX:agentEarlyKeyId}" should have "artifactUuid" equal to "${CTX:agentUuid}"
-    And the JSON response array "" item with "name" equal to "${CTX:agentEarlyKeyId}" should have "status" equal to "revoked"
+    And the JSON response array "" should not contain an item with "name" equal to "${CTX:agentEarlyKeyId}"
     And the JSON response array "" should not contain an item with "name" equal to "${CTX:restKeptKeyId}"
     When I send a "GET" request to the gateway internal API at "/apis/api-keys"
     Then the response status code should be 200

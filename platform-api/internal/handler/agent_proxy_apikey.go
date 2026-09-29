@@ -82,7 +82,7 @@ func (h *AgentProxyAPIKeyHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIKeys))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPIKey))
 	mux.HandleFunc("PUT "+base+"/{apiKeyId}", middleware.MapErrors(h.slogger, h.UpdateAPIKey))
-	mux.HandleFunc("DELETE "+base+"/{apiKeyId}", middleware.MapErrors(h.slogger, h.RevokeAPIKey))
+	mux.HandleFunc("DELETE "+base+"/{apiKeyId}", middleware.MapErrors(h.slogger, h.DeleteAPIKey))
 }
 
 // isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and
@@ -211,8 +211,9 @@ func (h *AgentProxyAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Re
 	return nil
 }
 
-// RevokeAPIKey handles DELETE /api/v0.9/agent-proxies/{agentProxyId}/api-keys/{apiKeyId}
-func (h *AgentProxyAPIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) error {
+// DeleteAPIKey handles DELETE /api/v0.9/agent-proxies/{agentProxyId}/api-keys/{apiKeyId}.
+// The key row is removed rather than kept as revoked.
+func (h *AgentProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
 		return apperror.Unauthorized.New().
@@ -227,16 +228,16 @@ func (h *AgentProxyAPIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Re
 		return apperror.ValidationFailed.New("API key name is required")
 	}
 
-	userID, err := resolveActorErr(r, h.identity, "revoke Agent proxy API key")
+	userID, err := resolveActorErr(r, h.identity, "delete Agent proxy API key")
 	if err != nil {
 		return err
 	}
 
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), handle, constants.AgentProxy, orgID, keyName, userID, h.isKeyAdmin(r), false); err != nil {
-		return h.mapServiceError(err, fmt.Sprintf("failed to revoke API key %s for Agent proxy %s in org %s", keyName, handle, orgID))
+	if err := h.apiKeyService.DeleteAPIKey(r.Context(), handle, constants.AgentProxy, orgID, keyName, userID, h.isKeyAdmin(r)); err != nil {
+		return h.mapServiceError(err, fmt.Sprintf("failed to delete API key %s for Agent proxy %s in org %s", keyName, handle, orgID))
 	}
 
-	h.slogger.Info("Revoked Agent proxy API key", "agentProxyId", handle, "organizationId", orgID, "keyName", keyName)
+	h.slogger.Info("Deleted Agent proxy API key", "agentProxyId", handle, "organizationId", orgID, "keyName", keyName)
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }

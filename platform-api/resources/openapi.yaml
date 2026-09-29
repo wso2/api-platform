@@ -5577,14 +5577,15 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
     delete:
-      summary: Revoke an API key for an Agent proxy
+      summary: Delete an API key for an Agent proxy
       description: |
-        Revokes the API key in the control plane, with the same behavior as REST API keys.
-        Revocation propagates to the gateways through the existing gateway event mechanism, so
-        a 204 confirms the control-plane revocation, not that every gateway has already dropped
-        the key. Only the key's creator may revoke it, unless the caller holds
-        `ap:api_key:all:manage`. The Agent proxy must be associated with at least one gateway;
-        otherwise the revocation is refused with 503.
+        Deletes the API key from the control plane and records the deletion in the audit log.
+        A revocation is then propagated to the gateways the
+        Agent proxy is associated with through the existing gateway event mechanism, so a 204
+        confirms the control-plane deletion, not that every gateway has already dropped the key.
+        An Agent proxy associated with no gateway has nothing to notify, and the key is still
+        deleted. Only the key's creator may delete it, unless the caller holds
+        `ap:api_key:all:manage`.
       operationId: revokeAgentProxyAPIKey
       security:
         - OAuth2Security:
@@ -5603,15 +5604,13 @@ paths:
         - $ref: '#/components/parameters/agentProxyApiKeyId'
       responses:
         '204':
-          description: API key revoked successfully (no content)
+          description: API key deleted successfully (no content)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '503':
-          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
