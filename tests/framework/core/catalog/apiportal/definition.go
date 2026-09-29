@@ -58,22 +58,10 @@ func APIPortalOtherOrg() *components.Definition {
 // APIPortalMultiTenancy returns an API Portal in multi-tenancy mode that signs users in
 // through the testbench identity provider.
 func APIPortalMultiTenancy() *components.Definition {
-	return multiTenancyDefinition(svcAPIPortalMultiTenancy, MultiTenancyPortalID)
-}
-
-// PortalID returns the portal_id a multi-tenancy API Portal component serves.
-func PortalID(component string) (string, bool) {
-	if component == svcAPIPortalMultiTenancy {
-		return MultiTenancyPortalID, true
-	}
-	return "", false
-}
-
-// multiTenancyDefinition builds a multi-tenancy portal instance.
-func multiTenancyDefinition(name, portalID string) *components.Definition {
-	d := apiPortalDefinition(name, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", portalID, svcAPIPortal)
+	d := apiPortalDefinition(svcAPIPortalMultiTenancy, "tests/framework/core/catalog/apiportal/docker-compose.yaml",
+		"default", "Default", MultiTenancyPortalID, svcAPIPortal)
 	d.SourceProduct = svcAPIPortal
-	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + name + ":9543/api-portal/default/callback"
+	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + svcAPIPortalMultiTenancy + ":9543/api-portal/default/callback"
 	d.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": portalRoleMapping}
 	d.Compose.GeneratedFiles["certs/cert.pem"] = multiTenancyTrustBundle()
 	d.Config.ExtraOverlays = []string{multiTenancyOverlay}
@@ -84,6 +72,14 @@ func multiTenancyDefinition(name, portalID string) *components.Definition {
 	health.Path = "/health"
 	d.Health = &health
 	return d
+}
+
+// PortalID returns the portal_id a multi-tenancy API Portal component serves.
+func PortalID(component string) (string, bool) {
+	if component == svcAPIPortalMultiTenancy {
+		return MultiTenancyPortalID, true
+	}
+	return "", false
 }
 
 // multiTenancyTrustBundle is the certificate bundle a multi-tenancy portal trusts: the
