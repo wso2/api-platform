@@ -123,6 +123,21 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
     expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument();
   });
 
+  it('filters the type list by an enum value, not just the enum type name', async () => {
+    // Regression test: filteredTypes' matches() call used to check only
+    // type.name, so searching a value the enum lists (rather than the enum's
+    // own name) silently returned nothing — "search types and fields" implied
+    // this should work, and the underlying summary data always had
+    // enumValues available; the filter just never looked at it.
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    await user.type(screen.getByPlaceholderText('Search types and fields'), 'ACTIVE');
+
+    expect(screen.getByRole('button', { name: /Status/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Country/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument();
+  });
+
   it('filters the type list by kind', async () => {
     const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 

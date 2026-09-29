@@ -94,7 +94,17 @@ func NewGraphQLAPIDeploymentService(
 // policy-transformation pipeline, since GraphQL's configuration shape
 // (policies + subscriptionPlans + a single upstream) is much closer to REST's
 // than to LLM's rate-limit/guardrail model.
-func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI) (dto.GraphQLAPIDeploymentYAML, error) {
+//
+// projectHandle is the resolved handle of the project apiModel.ProjectID (a
+// UUID, per model.GraphQLAPI's db:"project_uuid" tag) refers to. The
+// project-id annotation this function writes is read back on the DP→CP
+// import path (ResolveImportProject / artifact_import.go) via
+// GetProjectByHandleAndOrgID, which — despite the annotation's generic name —
+// has always expected a handle, not a UUID; passing the UUID straight through
+// silently broke that path with PROJECT_NOT_FOUND. The caller resolves the
+// handle once (graphqlAPIDefinition.Current, via its projectRepo) before
+// calling this function.
+func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI, projectHandle string) (dto.GraphQLAPIDeploymentYAML, error) {
 	if apiModel == nil {
 		return dto.GraphQLAPIDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateGraphQLAPIDeploymentYAML: apiModel is nil")
 	}
@@ -139,10 +149,10 @@ func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI) (dto.GraphQLAP
 		Metadata: dto.DeploymentMetadata{
 			Name: apiModel.Handle,
 			Annotations: map[string]string{
-				commonconstants.AnnotationProjectID: apiModel.ProjectID,
+				commonconstants.AnnotationProjectID: projectHandle,
 			},
 			Labels: map[string]string{
-				commonconstants.DeprecatedLabelProjectID: apiModel.ProjectID,
+				commonconstants.DeprecatedLabelProjectID: projectHandle,
 			},
 		},
 		Spec: dto.GraphQLAPIYAMLData{

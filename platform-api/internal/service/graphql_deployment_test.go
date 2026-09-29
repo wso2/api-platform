@@ -22,10 +22,12 @@ import (
 	"testing"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
@@ -51,6 +53,11 @@ func (m *mockGraphQLArtifactRepo) GetByUUID(uuid, orgUUID string) (*model.Artifa
 // LLMProviderDeploymentService's "if s.gatewayEventsService != nil" guard),
 // so tests don't need to stand up an EventHub.
 func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *mockDeploymentRepo, gatewayRepo *mockGatewayRepository) *GraphQLAPIDeploymentService {
+	// Default project handle used by tests that don't care about the specific
+	// value — GetProjectByUUIDAndOrgID.OrganizationID left empty matches any
+	// orgID (see mockProjectRepo, llm_test.go), which is fine since none of
+	// these tests assert on the project handle carried into the deployment.
+	projectRepo := &mockProjectRepo{project: &model.Project{Handle: "default-project"}}
 	return NewGraphQLAPIDeploymentService(
 		repo,
 		deploymentRepo,
@@ -59,7 +66,7 @@ func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *m
 		nil,
 		&mockGraphQLArtifactRepo{},
 		nil,
-		NewArtifactDefinitions(NewGraphQLAPIDefinition(repo)),
+		NewArtifactDefinitions(NewGraphQLAPIDefinition(repo, projectRepo)),
 		&config.Server{Deployments: config.Deployments{MaxPerAPIGateway: 20}},
 		newTestLogger(),
 	)
@@ -220,7 +227,7 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, "default-project")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -263,7 +270,7 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth(t *testing.T) {
 		},
 	}
 
-	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, "default-project")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -279,6 +286,92 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth(t *testing.T) {
 	}
 	if sandbox.Auth.Type != "bearer" || sandbox.Auth.Header != "Authorization" || sandbox.Auth.Value != "sandbox-secret-value" {
 		t.Errorf("upstream.sandbox.auth was not carried through unmodified: %+v", sandbox.Auth)
+	}
+}
+
+// TestGenerateGraphQLAPIDeploymentYAML_ProjectAnnotationIsHandleNotUUID pins
+// the fix for a DP→CP round-trip bug: the project-id annotation this
+// generator writes is read back on the artifact-import path
+// (ResolveImportProject / artifact_import.go) via
+// GetProjectByHandleAndOrgID, which has always expected a project *handle*.
+// apiModel.ProjectID is the project's UUID (db:"project_uuid"), not its
+// handle — passing it straight into the annotation made every DP→CP import
+// of a bottom-up-pushed GraphQL artifact fail with PROJECT_NOT_FOUND. The
+// caller now resolves the handle separately and passes it in explicitly; this
+// test guards that the annotation actually holds that resolved handle, not
+// apiModel.ProjectID.
+func TestGenerateGraphQLAPIDeploymentYAML_ProjectAnnotationIsHandleNotUUID(t *testing.T) {
+	ctx := "/countries"
+	apiModel := &model.GraphQLAPI{
+		ID:        "gql-uuid-1",
+		Handle:    "countries-graphql-api",
+		Name:      "Countries GraphQL API",
+		Version:   "v1.0",
+		ProjectID: "01a0ec74-a474-7d2d-98f7-b46b936969c3", // a UUID — must never end up in the annotation
+		Configuration: model.GraphQLAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+			},
+		},
+	}
+
+	const projectHandle = "countries-project"
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, projectHandle)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gotAnnotation := yamlData.Metadata.Annotations[commonconstants.AnnotationProjectID]
+	if gotAnnotation != projectHandle {
+		t.Errorf("project-id annotation = %q, want the resolved handle %q", gotAnnotation, projectHandle)
+	}
+	if gotAnnotation == apiModel.ProjectID {
+		t.Errorf("project-id annotation carried the raw UUID (%q) instead of the resolved handle", apiModel.ProjectID)
+	}
+
+	gotLabel := yamlData.Metadata.Labels[commonconstants.DeprecatedLabelProjectID]
+	if gotLabel != projectHandle {
+		t.Errorf("deprecated project-id label = %q, want the resolved handle %q", gotLabel, projectHandle)
+	}
+}
+
+// TestGraphQLAPIDefinition_Current_AnnotatesProjectHandle guards the same fix on
+// the path deployments actually take: builds and "current"-base deploys render
+// through graphqlAPIDefinition.Current, which must resolve the API's project
+// UUID to its handle before generating the YAML.
+func TestGraphQLAPIDefinition_Current_AnnotatesProjectHandle(t *testing.T) {
+	ctx := "/countries"
+	apiModel := &model.GraphQLAPI{
+		ID:        "gql-uuid-1",
+		Handle:    "countries-graphql-api",
+		Name:      "Countries GraphQL API",
+		Version:   "v1.0",
+		ProjectID: "01a0ec74-a474-7d2d-98f7-b46b936969c3",
+		Configuration: model.GraphQLAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByUUIDFunc: func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return apiModel, nil },
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{Handle: "countries-project"}}
+
+	snapshot, err := NewGraphQLAPIDefinition(repo, projectRepo).Current(
+		&model.Artifact{UUID: apiModel.ID, OrganizationUUID: "org-1", Type: constants.GraphQLApi},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	definition, ok := snapshot.Definition.(*dto.GraphQLAPIDeploymentYAML)
+	if !ok {
+		t.Fatalf("definition is %T, want *dto.GraphQLAPIDeploymentYAML", snapshot.Definition)
+	}
+	if got := definition.Metadata.Annotations[commonconstants.AnnotationProjectID]; got != "countries-project" {
+		t.Errorf("project-id annotation = %q, want the project handle %q", got, "countries-project")
 	}
 }
 

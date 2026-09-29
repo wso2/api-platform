@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { act } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -178,6 +179,47 @@ describe('GraphqlTestConsolePage — once deployed', () => {
 
     await screen.findByText('GraphiQL ready with schema');
     expect(lastGraphiQLProps?.shouldPersistHeaders).toBeFalsy();
+  });
+
+  // Regression test: a network-level fetch failure (most commonly the
+  // gateway's self-signed dev certificate, which the browser refuses without
+  // exposing why) used to surface as nothing but GraphiQL's own cryptic
+  // "Failed to fetch" — no guidance anywhere in this page. The fetcher this
+  // page builds now catches that specific failure class and shows an
+  // actionable toast, while still rethrowing so GraphiQL's own panel keeps
+  // reflecting the failure too.
+  it('shows a helpful toast when the endpoint fetch fails at the network level', async () => {
+    serveApi([deployment]);
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+    try {
+      renderPage();
+      await screen.findByText('GraphiQL ready with schema');
+
+      // createGraphiQLFetcher's incremental-delivery path (the default) is an
+      // async GENERATOR function: calling it only returns the generator
+      // object — the body, including the actual httpFetch() call, doesn't
+      // run until something iterates it (which is what the real, unmocked
+      // GraphiQL does when it consumes the result). So this drives that same
+      // iteration protocol directly, the way GraphiQL itself would, rather
+      // than asserting the top-level call's own return value rejects.
+      const fetcher = lastGraphiQLProps?.fetcher as (params: {
+        query: string;
+      }) => Promise<AsyncIterator<unknown> | unknown>;
+      await act(async () => {
+        const result = await fetcher({ query: '{ __typename }' });
+        if (result && typeof (result as AsyncIterator<unknown>).next === 'function') {
+          await (result as AsyncIterator<unknown>).next().catch(() => undefined);
+        }
+      });
+
+      expect(
+        await screen.findByText(/Could not reach the endpoint/),
+      ).toBeInTheDocument();
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it('copies the endpoint URL to the clipboard', async () => {

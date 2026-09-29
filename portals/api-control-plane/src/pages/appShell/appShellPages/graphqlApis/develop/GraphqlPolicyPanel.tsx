@@ -92,8 +92,17 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   const hubEnabled = useIsPolicyHubConfigured();
   const graphqlApiId = api.id;
   // Needed to faithfully resupply a non-introspection schemaSource on save —
-  // see save() below.
+  // see save() below. Only actually read there when the API isn't
+  // introspection-sourced (see needsSdlForSave) — fetched unconditionally
+  // regardless, since schemaSource is already known from `api` and there's no
+  // cheaper way to have the value ready by the time Save is clicked.
   const sdlQuery = useGraphQLApiSdl(graphqlApiId);
+  // Whether save() actually reads sdlQuery.data — true only for a
+  // non-introspection API, where the resolved SDL must be resupplied as
+  // 'inline' (see save()). An introspection-sourced API's save() never
+  // touches sdlQuery at all, so gating the Save button on this fetch's
+  // loading state was blocking the common case on an irrelevant request.
+  const needsSdlForSave = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   const [picked, setPicked] = useState<PolicySummary | null>(null);
@@ -271,7 +280,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
 
       <SaveBar
         dirty={dirty}
-        disabled={!graphqlApiId || sdlQuery.isPending}
+        disabled={!graphqlApiId || (needsSdlForSave && sdlQuery.isPending)}
         onCancel={cancel}
         onSave={save}
         saving={update.isPending}
