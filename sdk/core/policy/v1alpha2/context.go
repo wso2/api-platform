@@ -38,6 +38,11 @@ type Body struct {
 // the client request.
 type DownstreamContext struct {
 	Request *DownstreamRequest
+
+	// TLS carries the connection's TLS facts, or nil when the gateway did not
+	// populate them. Callers deciding on a certificate must treat nil as an
+	// authentication failure, never as "no certificate required".
+	TLS *DownstreamTLS
 }
 
 // DownstreamRequest holds a snapshot of the request as received from the
@@ -48,6 +53,48 @@ type DownstreamRequest struct {
 	Method    string
 	Authority string
 	Scheme    string
+}
+
+// DownstreamTLS carries the connection-level TLS facts Envoy reported through
+// ext_proc attributes. Every field describes the leaf only; the full SAN set
+// or chain must be parsed from PeerCertificatePEM and the XFCC header.
+type DownstreamTLS struct {
+	// MTLS is true when a peer certificate was presented on a TLS connection.
+	MTLS bool
+
+	// SHA256Thumbprint is the hex digest of the leaf's DER, as Envoy reports it
+	// (connection.sha256_peer_certificate_digest).
+	SHA256Thumbprint string
+
+	// SubjectDN is the leaf certificate's subject distinguished name
+	// (connection.subject_peer_certificate).
+	SubjectDN string
+
+	// FirstURISAN is the first URI subject alternative name only
+	// (connection.uri_san_peer_certificate).
+	FirstURISAN string
+
+	// FirstDNSSAN is the first DNS subject alternative name only
+	// (connection.dns_san_peer_certificate).
+	FirstDNSSAN string
+
+	// PeerCertificatePEM is the leaf client certificate, PEM-encoded
+	// (connection.peer_certificate).
+	PeerCertificatePEM string
+
+	// TLSVersion is the negotiated TLS protocol version
+	// (connection.tls_version).
+	TLSVersion string
+
+	// RequestedServerName is the SNI value the client requested
+	// (connection.requested_server_name).
+	RequestedServerName string
+
+	// PeerCertValid is Envoy's verification verdict against the client-CA pool
+	// (connection.peer_certificate_valid). The listener never closes a
+	// connection over it, so a policy must check it. Nil means no verdict was
+	// reported and must be treated as a deny.
+	PeerCertValid *bool
 }
 
 // UpstreamRequestContext identifies the route's resolved upstream target during
