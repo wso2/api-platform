@@ -102,6 +102,19 @@ const (
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
+	// ExtProcResponseAttributeCodeDetails carries Envoy's own account of who produced
+	// the response: "via_upstream" when the backend answered, and a specific reason
+	// ("no_healthy_upstream", "response_timeout",
+	// "upstream_reset_before_response_started{connection_failure}") when Envoy
+	// generated the response itself. It is the only signal that separates a backend's
+	// own 503 from the router's, which no status-code rule can do.
+	// Do NOT add "response.flags" here expecting it to work as a coarser alternative.
+	// It is empty at the response-headers phase — response flags are finalised at log
+	// time, so the same request that reports "UF" in the access log delivers "" over
+	// ext_proc. Verified against a running gateway. code_details is the only usable
+	// provenance signal on the request path.
+	ExtProcResponseAttributeCodeDetails = "response.code_details"
+
 	// Policy Engine
 	PolicyEngineClusterName       = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"

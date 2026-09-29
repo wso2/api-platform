@@ -949,3 +949,276 @@ func TestRestAPITransformer_ConnectTimeoutFromDefinition(t *testing.T) {
 		}
 	})
 }
+
+// makeRestAPIStoredConfigWithFaultPolicies builds a REST API carrying fault policies.
+func makeRestAPIStoredConfigWithFaultPolicies(faultPolicies []api.Policy) *models.StoredConfig {
+	cfg := makeRestAPIStoredConfig(nil, nil)
+	restAPI := cfg.Configuration.(api.RestAPI)
+	restAPI.Spec.FaultPolicies = &faultPolicies
+	cfg.Configuration = restAPI
+	cfg.SourceConfiguration = restAPI
+	return cfg
+}
+
+// The fault policies must reach models.PolicyChain.FaultPolicies on EVERY route: that
+// field is what pkg/policyxds serializes to the engine. Populating only the builder in
+// pkg/policy (which nothing calls in production) would leave the feature inert.
+func TestRestAPITransformer_FaultPoliciesReachesPolicyChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cond := "response.ResponseStatus >= 400"
+	cfg := makeRestAPIStoredConfigWithFaultPolicies([]api.Policy{
+		{Name: "set-headers", Version: "v1"},
+		{Name: "set-headers", Version: "v1", ExecutionCondition: &cond},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, rdc.PolicyChains)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		require.Len(t, chain.FaultPolicies, 2, "route %s must carry both fault entries", routeKey)
+		assert.Equal(t, "set-headers", chain.FaultPolicies[0].Name)
+		assert.Nil(t, chain.FaultPolicies[0].ExecutionCondition)
+		require.NotNil(t, chain.FaultPolicies[1].ExecutionCondition)
+		assert.Equal(t, cond, *chain.FaultPolicies[1].ExecutionCondition)
+	}
+}
+
+// A fault policy must never appear in the normal chain, or it would run on success.
+func TestRestAPITransformer_FaultPoliciesNotInNormalChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIStoredConfigWithFaultPolicies([]api.Policy{{Name: "set-headers", Version: "v1"}})
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		for _, p := range chain.Policies {
+			assert.NotEqual(t, "set-headers", p.Name,
+				"fault policy leaked into the normal chain for route %s — it would run on success", routeKey)
+		}
+	}
+}
+
+func TestRestAPITransformer_NoFaultPoliciesLeavesChainEmpty(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIStoredConfig([]api.Policy{{Name: "header-mutate", Version: "v1"}}, nil)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for _, chain := range rdc.PolicyChains {
+		assert.Empty(t, chain.FaultPolicies)
+	}
+}
+
+// makeRestAPIWithBothFaultLevels builds an API with two operations: the first carries its
+// own fault entries, the second carries none. Both share the API-level sequence.
+func makeRestAPIWithBothFaultLevels(apiFault, opFault []api.Policy) *models.StoredConfig {
+	apiData := api.APIConfigData{
+		DisplayName:   "Test API",
+		Context:       "/test",
+		Version:       "1.0.0",
+		FaultPolicies: &apiFault,
+		Operations: []api.Operation{
+			{
+				Method:        api.Ptr(api.OperationMethod("GET")),
+				Path:          api.Ptr("/scoped"),
+				FaultPolicies: &opFault,
+			},
+			{
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/plain"),
+			},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: api.Upstream{Url: ptrStr("http://backend:8080")}},
+	}
+	restAPI := api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec:     apiData,
+	}
+	return &models.StoredConfig{
+		UUID:          "test-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: restAPI,
+	}
+}
+
+func faultNames(chain *models.PolicyChain) []string {
+	out := make([]string, 0, len(chain.FaultPolicies))
+	for _, p := range chain.FaultPolicies {
+		out = append(out, p.Name)
+	}
+	return out
+}
+
+// The ordering decision. Operation-level entries execute FIRST, then API-level — matching
+// the order response policies execute in, where the operation is the more specific scope.
+//
+// Note the construction order here is the OPPOSITE of buildPolicyChain's (API then
+// operation). Both produce the same execution order, because the response chain is walked
+// back to front while a fault policy list is walked forward. Building this one API-first would
+// silently invert the precedence.
+func TestRestAPITransformer_FaultPoliciesOperationBeforeAPI(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},    // API level
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}}, // operation level
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	scoped := rdc.PolicyChains["GET|/test/scoped|main.local"]
+	require.NotNil(t, scoped, "route with an operation-level sequence must exist")
+	assert.Equal(t, []string{"remove-headers", "set-headers"}, faultNames(scoped),
+		"operation-level entries must come first, then API-level")
+}
+
+// An operation's entries must not leak onto a sibling route. The API-level sequence is
+// resolved once and shared, so a merge that mutated it in place would contaminate every
+// other operation.
+func TestRestAPITransformer_FaultPoliciesOperationScopeIsPerRoute(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}},
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	plain := rdc.PolicyChains["GET|/test/plain|main.local"]
+	require.NotNil(t, plain)
+	assert.Equal(t, []string{"set-headers"}, faultNames(plain),
+		"an operation with no sequence of its own must carry the API's only")
+}
+
+// Each level is tagged with the scope that attached it, so a fault policy can tell whether
+// it was configured on the operation or API-wide.
+func TestRestAPITransformer_FaultPoliciesRecordsAttachedLevel(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}},
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	scoped := rdc.PolicyChains["GET|/test/scoped|main.local"]
+	require.Len(t, scoped.FaultPolicies, 2)
+	assert.Equal(t, "route", scoped.FaultPolicies[0].Params["attachedTo"],
+		"the operation-level entry must be tagged as route-scoped")
+	assert.Equal(t, "api", scoped.FaultPolicies[1].Params["attachedTo"])
+}
+
+// Only one level configured — both directions must still work, since mergeFaultPolicies
+// short-circuits when either side is empty.
+func TestRestAPITransformer_FaultPoliciesSingleLevel(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	t.Run("operation only", func(t *testing.T) {
+		cfg := makeRestAPIWithBothFaultLevels(nil, []api.Policy{{Name: "remove-headers", Version: "v1"}})
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"remove-headers"},
+			faultNames(rdc.PolicyChains["GET|/test/scoped|main.local"]))
+		assert.Empty(t, faultNames(rdc.PolicyChains["GET|/test/plain|main.local"]))
+	})
+
+	t.Run("API only", func(t *testing.T) {
+		cfg := makeRestAPIWithBothFaultLevels([]api.Policy{{Name: "set-headers", Version: "v1"}}, nil)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		for routeKey, chain := range rdc.PolicyChains {
+			assert.Equal(t, []string{"set-headers"}, faultNames(chain), "route %s", routeKey)
+		}
+	})
+}
+
+// An operation-level fault entry must never reach the normal chain, for the same reason an
+// API-level one must not: it would run on every successful response.
+func TestRestAPITransformer_OperationLevelFaultPoliciesNotInNormalChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(nil, []api.Policy{{Name: "remove-headers", Version: "v1"}})
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		for _, p := range chain.Policies {
+			assert.NotEqual(t, "remove-headers", p.Name,
+				"route %s: a fault entry must not appear in the normal chain", routeKey)
+		}
+	}
+}
+
+// appendFaultSystemPolicies is the placement half of putting the collector on the fault
+// path, and "last" is the load-bearing part: the operator's entries may change the status,
+// body and description before the client sees them, so a collector running earlier would
+// record a failure that differs from the one delivered.
+func TestAppendFaultSystemPolicies_PlacesTheCollectorLast(t *testing.T) {
+	authored := []models.Policy{
+		{Name: "log-message", Version: "v1"},
+		{Name: "error-formatter", Version: "v1"},
+	}
+	systemFault := []models.Policy{{Name: "wso2_apip_sys_analytics", Version: "v1"}}
+
+	got := appendFaultSystemPolicies(authored, systemFault)
+
+	require.Len(t, got, 3)
+	assert.Equal(t, "log-message", got[0].Name, "the operator's order is preserved")
+	assert.Equal(t, "error-formatter", got[1].Name)
+	assert.Equal(t, "wso2_apip_sys_analytics", got[2].Name, "the collector runs last")
+}
+
+// The case that matters most in practice: most APIs declare no fault policies at all, and
+// those are exactly the APIs whose failures were previously unrecorded.
+func TestAppendFaultSystemPolicies_AppliesWithNothingAuthored(t *testing.T) {
+	systemFault := []models.Policy{{Name: "wso2_apip_sys_analytics", Version: "v1"}}
+
+	got := appendFaultSystemPolicies(nil, systemFault)
+
+	require.Len(t, got, 1)
+	assert.Equal(t, "wso2_apip_sys_analytics", got[0].Name,
+		"an API with no fault policies of its own still gets its failures recorded")
+}
+
+// With the collector disabled the authored list must come back untouched — and identical,
+// not merely equal, so a deployment with analytics off carries no fault chain it did not ask
+// for (which would also flip HasFaultPolicies for every route).
+func TestAppendFaultSystemPolicies_NoCollectorLeavesTheChainAlone(t *testing.T) {
+	assert.Nil(t, appendFaultSystemPolicies(nil, nil),
+		"no authored entries and no collector must stay nil, not become an empty slice")
+
+	authored := []models.Policy{{Name: "log-message", Version: "v1"}}
+	got := appendFaultSystemPolicies(authored, nil)
+	require.Len(t, got, 1)
+	assert.Equal(t, "log-message", got[0].Name)
+}
