@@ -317,6 +317,29 @@ url = "https://platform-api:9243"
 	}
 }
 
+// When [control_plane] cloud_url is set, the SPA learns only that the cloud proxy
+// hop exists — never the upstream URL itself.
+func TestLoad_CloudProxyEnabledWhenCloudURLConfigured(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+cloud_url = "http://localhost:8081/cloud"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_CLOUD_PROXY_ENABLED"]; got != "true" {
+		t.Errorf(`APIP_AIW_CLOUD_PROXY_ENABLED = %q, want "true"`, got)
+	}
+	for _, v := range cfg.RuntimeConfig {
+		if strings.Contains(v, "localhost:8081") {
+			t.Errorf("runtime config leaked cloud upstream URL: %q", v)
+		}
+	}
+}
+
 // A browser-safe key whose token resolves from the environment must reach the SPA
 // under that same name, exactly as if it had been written as a literal.
 func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {

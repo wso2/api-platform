@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -32,11 +32,16 @@ import {
 import { Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import {
+  fetchCollectorKey,
+  MoesifCollectorKeyUnavailableError,
+} from '@/api/cloud/analyticsApi';
 import { useRotateGatewayToken, type Gateway } from '@/api/resources/gateways';
 import dockerIconUrl from '@/assets/icons/docker.svg';
 import helmIconUrl from '@/assets/icons/helm.svg';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { runtimeConfig } from '@/config/runtime';
 import { gatewayEndpoint } from '../utils/gatewayDisplay';
 import { environmentForGateway } from '../utils/gatewayEnvironments';
 import {
@@ -48,6 +53,7 @@ import {
   setupTarget,
   startCommand,
   TOKEN_PLACEHOLDER,
+  type GatewaySetupOptions,
 } from '../utils/gatewaySetup';
 import { CopyableCommand } from './CopyableCommand';
 
@@ -210,6 +216,20 @@ const messages = defineMessages({
     id: 'gateways.detail.GetStarted.url.label',
     defaultMessage: 'URL',
   },
+  moesifLoading: {
+    id: 'gateways.detail.GetStarted.moesif.loading',
+    defaultMessage: 'Loading Moesif analytics configuration…',
+  },
+  moesifUnavailable: {
+    id: 'gateways.detail.GetStarted.moesif.unavailable',
+    defaultMessage:
+      "To configure analytics, add your existing Moesif key as MOESIF_KEY='<your-moesif-key>' to the keys.env file after creating it with the command below.",
+  },
+  moesifFetchFailed: {
+    id: 'gateways.detail.GetStarted.moesif.fetchFailed',
+    defaultMessage:
+      'Could not load Moesif analytics configuration. Gateway setup commands below omit the Moesif key; add MOESIF_KEY manually if you need analytics.',
+  },
 });
 
 /** Which install path the panel is showing. */
@@ -349,11 +369,60 @@ export function GatewayGetStartedPanel({
   const [tab, setTab] = useState<SetupTab>('quickStart');
   const [token, setToken] = useState<string>();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [moesifKey, setMoesifKey] = useState<string | null>(null);
+  const [moesifKeyLoading, setMoesifKeyLoading] = useState(false);
+  const [moesifUnavailable, setMoesifUnavailable] = useState(false);
+  const [moesifFetchFailed, setMoesifFetchFailed] = useState(false);
 
   const target = setupTarget(gateway, controlPlaneHost);
   const tokenValue = token ?? TOKEN_PLACEHOLDER;
   const environment = environmentForGateway(gateway);
   const activeTab = TABS.find((entry) => entry.value === tab) ?? TABS[0];
+
+  // Cloud self-hosted gateways publish analytics via Moesif; event gateways do not.
+  const includeMoesifAnalytics =
+    runtimeConfig.cloudProxyEnabled && gateway.functionalityType !== 'event';
+
+  useEffect(() => {
+    if (!includeMoesifAnalytics) {
+      setMoesifKey(null);
+      setMoesifUnavailable(false);
+      setMoesifFetchFailed(false);
+      setMoesifKeyLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setMoesifKeyLoading(true);
+    (async () => {
+      try {
+        const key = await fetchCollectorKey();
+        if (cancelled) return;
+        setMoesifKey(key);
+        setMoesifUnavailable(false);
+        setMoesifFetchFailed(false);
+      } catch (error) {
+        if (cancelled) return;
+        setMoesifKey(null);
+        const unavailable = error instanceof MoesifCollectorKeyUnavailableError;
+        setMoesifUnavailable(unavailable);
+        setMoesifFetchFailed(!unavailable);
+      } finally {
+        if (!cancelled) setMoesifKeyLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [includeMoesifAnalytics]);
+
+  const setupOptions: GatewaySetupOptions = {
+    includeMoesif: includeMoesifAnalytics && Boolean(moesifKey),
+    moesifKey: includeMoesifAnalytics ? moesifKey : null,
+  };
+
+  const setupCommandsReady = !includeMoesifAnalytics || !moesifKeyLoading;
 
   const reconfigure = () => {
     setConfirmOpen(false);
@@ -364,6 +433,28 @@ export function GatewayGetStartedPanel({
       },
     });
   };
+
+  const moesifStatusAlerts =
+    includeMoesifAnalytics &&
+    (moesifKeyLoading || moesifUnavailable || moesifFetchFailed) && (
+      <>
+        {moesifKeyLoading && (
+          <Alert severity="info">
+            <FormattedMessage {...messages.moesifLoading} />
+          </Alert>
+        )}
+        {!moesifKeyLoading && moesifUnavailable && (
+          <Alert severity="warning">
+            <FormattedMessage {...messages.moesifUnavailable} />
+          </Alert>
+        )}
+        {!moesifKeyLoading && moesifFetchFailed && (
+          <Alert severity="warning">
+            <FormattedMessage {...messages.moesifFetchFailed} />
+          </Alert>
+        )}
+      </>
+    );
 
   /**
    * Step 2 is the same on every path: the same warning, the same button, and —
@@ -391,7 +482,16 @@ export function GatewayGetStartedPanel({
           <FormattedMessage {...messages.tokenOnce} />
         </Alert>
       )}
-      {token && showEnvFile && <CopyableCommand code={configureCommand(target, token)} />}
+      {showEnvFile && moesifStatusAlerts}
+      {token && showEnvFile && setupCommandsReady && (
+        <CopyableCommand
+          code={configureCommand(target, token, setupOptions)}
+          copyCode={configureCommand(target, token, {
+            ...setupOptions,
+            forCopy: true,
+          })}
+        />
+      )}
     </SetupStep>
   );
 
@@ -474,7 +574,16 @@ export function GatewayGetStartedPanel({
                 <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.chartIntro} />
                 </Typography>
-                <CopyableCommand code={helmInstallCommand(target, gatewayId, tokenValue)} />
+                {moesifStatusAlerts}
+                {setupCommandsReady && (
+                  <CopyableCommand
+                    code={helmInstallCommand(target, gatewayId, tokenValue, setupOptions)}
+                    copyCode={helmInstallCommand(target, gatewayId, tokenValue, {
+                      ...setupOptions,
+                      forCopy: true,
+                    })}
+                  />
+                )}
               </SetupStep>
             </>
           ) : (
