@@ -496,12 +496,27 @@ func (t *RestAPITransformer) collectFaultPolicies(
 	faultPolicies *[]api.Policy,
 	level policyv1alpha.Level,
 ) []models.Policy {
+	return collectFaultPolicies(t.policyDefinitions, t.latestVersions, faultPolicies, level)
+}
+
+// collectFaultPolicies resolves a fault list against the policy registry.
+//
+// A free function rather than a method because two transformers need it and they are
+// different types: a REST API and an Agent resolve the same list the same way, and the only
+// thing either brings is the registry to resolve against. Duplicating it per transformer is
+// how the two would drift on which errors are skipped versus fatal.
+func collectFaultPolicies(
+	policyDefinitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	faultPolicies *[]api.Policy,
+	level policyv1alpha.Level,
+) []models.Policy {
 	if faultPolicies == nil || len(*faultPolicies) == 0 {
 		return nil
 	}
 	result := make([]models.Policy, 0, len(*faultPolicies))
 	for _, p := range *faultPolicies {
-		resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, p.Name, p.Version)
+		resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 		if err != nil {
 			slog.Error("Failed to resolve policy version for fault-policies policy",
 				"policy_name", p.Name, "level", string(level), "error", err)
