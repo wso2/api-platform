@@ -136,6 +136,61 @@ describe('GraphqlApiEditPage', () => {
     expect(await screen.findByText('API overview')).toBeInTheDocument();
   });
 
+  // Regression test: the edit form used to have no endpoint/upstream field at
+  // all — the backend PUT handler always fully supported updating
+  // upstream.main.url, but the form never collected it, so a user had no way
+  // to change a GraphQL API's endpoint after creation.
+  it('edits the endpoint URL and PUTs upstream.main.url updated', async () => {
+    server.use(resource('/graphql-apis/:graphqlApiId', api));
+    server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));
+    server.use(
+      accepts(
+        'put',
+        `/graphql-apis/${API}`,
+        { ...api, upstream: { main: { url: 'https://new-upstream.test/graphql' } } },
+        { record: requests },
+      ),
+    );
+
+    const { user } = renderPage();
+
+    const endpoint = await screen.findByDisplayValue('https://upstream.test/graphql');
+    await user.clear(endpoint);
+    await user.type(endpoint, 'https://new-upstream.test/graphql');
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(requests.last()?.method).toBe('PUT');
+    expect(await screen.findByText('API overview')).toBeInTheDocument();
+  });
+
+  it('blocks the save when the endpoint URL is cleared', async () => {
+    server.use(resource('/graphql-apis/:graphqlApiId', api));
+    server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));
+    server.use(accepts('put', `/graphql-apis/${API}`, api, { record: requests }));
+
+    const { user } = renderPage();
+
+    const endpoint = await screen.findByDisplayValue('https://upstream.test/graphql');
+    await user.clear(endpoint);
+    await user.click(screen.getByRole('button', { name: /Save changes/ }));
+
+    expect(await screen.findByText('Enter the GraphQL endpoint URL.')).toBeInTheDocument();
+    expect(requests.count()).toBe(0);
+  });
+
+  it('hides the endpoint field for a ref-based upstream', async () => {
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', { ...api, upstream: { main: { ref: 'shared-upstream' } } }),
+    );
+    server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));
+
+    renderPage();
+
+    await screen.findByDisplayValue('Countries GraphQL API');
+    expect(screen.queryByLabelText(/Endpoint URL/)).not.toBeInTheDocument();
+  });
+
   it('requires a version, and blocks the save once it is cleared', async () => {
     server.use(resource('/graphql-apis/:graphqlApiId', api));
     server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));

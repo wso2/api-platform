@@ -30,7 +30,7 @@ import {
   Tooltip,
 } from '@wso2/oxygen-ui';
 import { Copy } from '@wso2/oxygen-ui-icons-react';
-import { createGraphiQLFetcher, createLocalStorage } from '@graphiql/toolkit';
+import { createGraphiQLFetcher, createLocalStorage, type Fetcher } from '@graphiql/toolkit';
 import { GraphiQL } from 'graphiql';
 import 'graphiql/setup-workers/vite';
 import 'graphiql/style.css';
@@ -69,6 +69,13 @@ const messages = defineMessages({
   endpointLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel',
     defaultMessage: 'Endpoint URL',
+  },
+  fetchFailed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed',
+    defaultMessage:
+      'Could not reach the endpoint. If it uses a self-signed certificate, open the endpoint URL above in a new tab once to trust it, then try again.',
+    description:
+      'Shown when the browser fetch to the gateway invoke URL fails below the HTTP level (network/TLS) — a bare "Failed to fetch" the browser gives no further detail on, most commonly an untrusted dev/self-signed certificate on the gateway.',
   },
   gatewayLabel: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.gatewayLabel',
@@ -194,7 +201,39 @@ export function GraphqlTestConsolePage() {
     selectedGateway && api
       ? buildInvokeUrl(gatewayEndpoint(selectedGateway), api.context, api.version)
       : '';
-  const fetcher = useMemo(() => createGraphiQLFetcher({ url: endpointUrl }), [endpointUrl]);
+  // Supplies a wrapped `fetch` to createGraphiQLFetcher rather than wrapping
+  // the fetcher's own return value: the toolkit doesn't always resolve a
+  // plain Promise<ExecutionResult> (it can wrap even a non-subscription
+  // response as an async-iterable for incremental-delivery support), so a
+  // try/catch around calling the fetcher never sees the underlying fetch()
+  // rejection. `fetch` itself is the one place a network-level failure (no
+  // HTTP response at all — a bad host, a connection refused, or, most
+  // commonly for a gateway on a self-signed dev certificate, a TLS handshake
+  // the browser refuses without ever exposing why) surfaces as a plain
+  // rejected promise, so intercepting there is what actually works. An HTTP
+  // error response (4xx/5xx, including a GraphQL "errors" body) resolves
+  // normally and is untouched here — GraphiQL's own response panel keeps
+  // showing those as it always has. The error is rethrown either way so
+  // GraphiQL's panel still reflects the failure; this only adds the toast
+  // alongside it.
+  const guardedFetch = useMemo<typeof fetch>(
+    () =>
+      async (...args) => {
+        try {
+          return await fetch(...args);
+        } catch (error) {
+          if (error instanceof TypeError) {
+            notify(intl.formatMessage(messages.fetchFailed), 'error');
+          }
+          throw error;
+        }
+      },
+    [notify, intl],
+  );
+  const fetcher: Fetcher = useMemo(
+    () => createGraphiQLFetcher({ fetch: guardedFetch, url: endpointUrl }),
+    [endpointUrl, guardedFetch],
+  );
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -36,12 +37,18 @@ import (
 // LLMProviderDeploymentService's "if s.gatewayEventsService != nil" guard),
 // so tests don't need to stand up an EventHub.
 func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *mockDeploymentRepo, gatewayRepo *mockGatewayRepository) *GraphQLAPIDeploymentService {
+	// Default project handle used by tests that don't care about the specific
+	// value — GetProjectByUUIDAndOrgID.OrganizationID left empty matches any
+	// orgID (see mockProjectRepo, llm_test.go), which is fine since none of
+	// these tests assert on the project handle carried into the deployment.
+	projectRepo := &mockProjectRepo{project: &model.Project{Handle: "default-project"}}
 	return NewGraphQLAPIDeploymentService(
 		repo,
 		deploymentRepo,
 		gatewayRepo,
 		&mockOrganizationRepo{},
 		nil,
+		projectRepo,
 		nil,
 		&config.Server{Deployments: config.Deployments{MaxPerAPIGateway: 20}},
 		newTestLogger(),
@@ -201,7 +208,7 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, "default-project")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,7 +251,7 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth(t *testing.T) {
 		},
 	}
 
-	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, "default-project")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,6 +267,53 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth(t *testing.T) {
 	}
 	if sandbox.Auth.Type != "bearer" || sandbox.Auth.Header != "Authorization" || sandbox.Auth.Value != "sandbox-secret-value" {
 		t.Errorf("upstream.sandbox.auth was not carried through unmodified: %+v", sandbox.Auth)
+	}
+}
+
+// TestGenerateGraphQLAPIDeploymentYAML_ProjectAnnotationIsHandleNotUUID pins
+// the fix for a DP→CP round-trip bug: the project-id annotation this
+// generator writes is read back on the artifact-import path
+// (ResolveImportProject / artifact_import.go) via
+// GetProjectByHandleAndOrgID, which has always expected a project *handle*.
+// apiModel.ProjectID is the project's UUID (db:"project_uuid"), not its
+// handle — passing it straight into the annotation made every DP→CP import
+// of a bottom-up-pushed GraphQL artifact fail with PROJECT_NOT_FOUND. The
+// caller now resolves the handle separately and passes it in explicitly; this
+// test guards that the annotation actually holds that resolved handle, not
+// apiModel.ProjectID.
+func TestGenerateGraphQLAPIDeploymentYAML_ProjectAnnotationIsHandleNotUUID(t *testing.T) {
+	ctx := "/countries"
+	apiModel := &model.GraphQLAPI{
+		ID:        "gql-uuid-1",
+		Handle:    "countries-graphql-api",
+		Name:      "Countries GraphQL API",
+		Version:   "v1.0",
+		ProjectID: "01a0ec74-a474-7d2d-98f7-b46b936969c3", // a UUID — must never end up in the annotation
+		Configuration: model.GraphQLAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+			},
+		},
+	}
+
+	const projectHandle = "countries-project"
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel, projectHandle)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gotAnnotation := yamlData.Metadata.Annotations[commonconstants.AnnotationProjectID]
+	if gotAnnotation != projectHandle {
+		t.Errorf("project-id annotation = %q, want the resolved handle %q", gotAnnotation, projectHandle)
+	}
+	if gotAnnotation == apiModel.ProjectID {
+		t.Errorf("project-id annotation carried the raw UUID (%q) instead of the resolved handle", apiModel.ProjectID)
+	}
+
+	gotLabel := yamlData.Metadata.Labels[commonconstants.DeprecatedLabelProjectID]
+	if gotLabel != projectHandle {
+		t.Errorf("deprecated project-id label = %q, want the resolved handle %q", gotLabel, projectHandle)
 	}
 }
 

@@ -351,10 +351,20 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
   const query = search.trim().toLowerCase();
   const matches = (name: string) => query === '' || name.toLowerCase().includes(query);
 
+  // A type surfaces if its own name matches, or any of its enum values / union
+  // members does — the search box's placeholder promises "types and fields",
+  // and an enum's values (ACTIVE, INACTIVE, ...) or a union's members are the
+  // content a reader actually searches for, not just the enum/union's own
+  // name. Field names are matched separately, inside each type's accordion
+  // (see TypeRow), so a field-name match doesn't need to be repeated here.
   const filteredTypes = useMemo(() => {
     if (!summary) return [];
     return summary.types.filter(
-      (type) => (kindFilter === 'all' || type.kind === kindFilter) && matches(type.name),
+      (type) =>
+        (kindFilter === 'all' || type.kind === kindFilter) &&
+        (matches(type.name) ||
+          Boolean(type.enumValues?.some(matches)) ||
+          Boolean(type.unionMembers?.some(matches))),
     );
   }, [kindFilter, query, summary]);
 

@@ -66,7 +66,7 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle',
-    defaultMessage: 'Change the name, description, context and version of this API.',
+    defaultMessage: 'Change the name, description, context, version and endpoint of this API.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.title',
@@ -80,8 +80,12 @@ const messages = defineMessages({
  * The update endpoint's body is the whole `GraphQLAPI` (packed into the
  * multipart envelope `updateGraphQLApi` expects), so the original is spread
  * back with the edits laid over it — anything the form does not collect
- * (upstream, policies, subscriptionPlans) has to survive the round trip
- * untouched, same as `ApiEditPage`'s `toUpdateBody`.
+ * (policies, subscriptionPlans, upstream.sandbox, upstream.main.ref/auth) has
+ * to survive the round trip untouched, same as `ApiEditPage`'s
+ * `toUpdateBody`. `upstream.main.url` is the one upstream field the form does
+ * collect (see `EditGraphqlApiForm`'s `hasUrlUpstream`) — merged onto the
+ * existing `main`, never replacing it outright, so `auth`/`hostRewrite` on a
+ * URL-based upstream survive an endpoint-only edit.
  *
  * This is a metadata-only edit — the schema itself is untouched — so
  * `schemaSource` must be resupplied faithfully rather than forcing
@@ -110,6 +114,17 @@ const toUpdateBody = (
     ...(api.schemaSource === 'introspection' || api.schemaSource === undefined
       ? { schemaSource: 'introspection' as const }
       : { schemaSource: 'inline' as const, sdl }),
+    // Only a URL-based main upstream is ever form-editable (see
+    // EditGraphqlApiForm's hasUrlUpstream) — a ref-based one has no
+    // endpointUrl draft to apply, so upstream survives untouched for it.
+    ...(api.upstream?.main?.url !== undefined
+      ? {
+          upstream: {
+            ...api.upstream,
+            main: { ...api.upstream.main, url: values.endpointUrl.trim() },
+          },
+        }
+      : {}),
     version: values.version.trim(),
   },
 });

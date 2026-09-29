@@ -16,12 +16,13 @@
  * under the License.
  */
 
+import { http } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aGraphQLApiDetail, resource } from '@/test/msw';
+import { aGraphQLApiDetail, apiUrl, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -69,6 +70,27 @@ describe('GraphqlDevelopPoliciesPage', () => {
     renderPage();
 
     expect(await screen.findByText('cors')).toBeInTheDocument();
+  });
+
+  // Regression test: Save used to be gated on the SDL fetch's loading state
+  // (sdlQuery.isPending) unconditionally, even though save() only reads
+  // sdlQuery.data for a non-introspection API. For this fixture's
+  // introspection-sourced (schemaSource undefined) API, that fetch is never
+  // actually needed to save — but a slow/still-pending SDL request used to
+  // leave Save stuck disabled even after a policy edit made the form dirty,
+  // which looked exactly like "cannot add policies" from the outside.
+  it('keeps Save enabled once dirty, even while the (unneeded) SDL fetch is still pending', async () => {
+    server.use(resource('/graphql-apis/:graphqlApiId', api));
+    // Deliberately never resolves within the test — stands in for a slow SDL
+    // request. If Save depended on it, the button would still be disabled by
+    // the time the assertion below runs.
+    server.use(http.get(apiUrl('/graphql-apis/:graphqlApiId/sdl'), () => new Promise(() => {})));
+
+    const { user } = renderPage();
+
+    await user.click(await screen.findByLabelText('Remove policy'));
+
+    expect(await screen.findByRole('button', { name: /Save/ })).toBeEnabled();
   });
 
   it('shows an error state when the API cannot be found', async () => {
