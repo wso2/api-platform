@@ -32,13 +32,14 @@ import { useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import type { GraphQLApiDetail } from '@/api/resources/graphqlApis';
-import { CONTEXT_PATTERN, VERSION_PATTERN } from '../../apis/utils/basicInfoRules';
+import { CONTEXT_PATTERN, isHttpUrl, VERSION_PATTERN } from '../../apis/utils/basicInfoRules';
 
-/** The four fields this form edits. */
+/** The five fields this form edits. */
 export type GraphqlApiBasicInfoFormValues = {
   context: string;
   description: string;
   displayName: string;
+  endpointUrl: string;
   version: string;
 };
 
@@ -77,6 +78,22 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.description.label',
     defaultMessage: 'Description',
   },
+  endpointErrorInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.invalid',
+    defaultMessage: 'Enter a full URL, for example https://api.example.com/graphql.',
+  },
+  endpointErrorRequired: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.required',
+    defaultMessage: 'Enter the GraphQL endpoint URL.',
+  },
+  endpointHelper: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.helper',
+    defaultMessage: 'The GraphQL backend the gateway routes requests to.',
+  },
+  endpointLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.label',
+    defaultMessage: 'Endpoint URL',
+  },
   nameErrorRequired: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.EditApiForm.name.error.required',
     defaultMessage: 'Enter a name.',
@@ -105,26 +122,37 @@ const messages = defineMessages({
 });
 
 /** The fields that carry a validation rule — description has none. */
-type ValidatedField = 'context' | 'displayName' | 'version';
+type ValidatedField = 'context' | 'displayName' | 'endpointUrl' | 'version';
 
 type FieldErrors = Partial<Record<ValidatedField, MessageDescriptor>>;
 
 /**
  * Which spec field name a server-side field error binds to. The server names
  * the wire field, so the mapping is spelled out rather than guessed from the
- * input's own name.
+ * input's own name. `endpointUrl` maps to the nested `upstream.main.url` path
+ * the spec actually names (see Upstream/UpstreamDefinition in the OpenAPI
+ * spec) — there's no flat `endpointUrl` field on the wire.
  */
 const SERVER_FIELD_NAMES: Record<ValidatedField, string[]> = {
   context: ['context'],
   displayName: ['displayName'],
+  endpointUrl: ['upstream.main.url'],
   version: ['version'],
 };
 
 /**
  * Every rule in one pure pass, so the same answer drives the field errors and
  * the submit gate — there is no second, drifting copy of the rules.
+ *
+ * `validateEndpoint` is false for a ref-based upstream (`upstream.main.ref`
+ * set instead of `.url`) — this form only ever edits a literal URL (see
+ * `hasUrlUpstream` at the call site), so a ref-based API's untouched, always-
+ * empty `endpointUrl` draft must never be flagged as a missing required field.
  */
-const validate = (values: GraphqlApiBasicInfoFormValues): FieldErrors => {
+const validate = (
+  values: GraphqlApiBasicInfoFormValues,
+  validateEndpoint: boolean,
+): FieldErrors => {
   const errors: FieldErrors = {};
 
   if (values.displayName.trim() === '') {
@@ -145,6 +173,15 @@ const validate = (values: GraphqlApiBasicInfoFormValues): FieldErrors => {
     errors.context = messages.contextErrorPattern;
   }
 
+  if (validateEndpoint) {
+    const endpointUrl = values.endpointUrl.trim();
+    if (endpointUrl === '') {
+      errors.endpointUrl = messages.endpointErrorRequired;
+    } else if (!isHttpUrl(endpointUrl)) {
+      errors.endpointUrl = messages.endpointErrorInvalid;
+    }
+  }
+
   return errors;
 };
 
@@ -153,15 +190,18 @@ const toFormValues = (api: GraphQLApiDetail): GraphqlApiBasicInfoFormValues => (
   context: api.context ?? '',
   description: api.description ?? '',
   displayName: api.displayName ?? '',
+  endpointUrl: api.upstream?.main?.url ?? '',
   version: api.version ?? '',
 });
 
 /**
  * Fork of `apis/edit/components/EditApiForm.tsx` for a GraphQL API: same four
- * fields (name, description, context, version), same validation rules
- * (`basicInfoRules.ts` is generic, reused as-is) — the upstream, schema and
- * policies are not editable here, matching REST's own edit form leaving its
- * backend/operations/policies untouched.
+ * metadata fields (name, description, context, version, same validation
+ * rules from `basicInfoRules.ts`, reused as-is) plus one GraphQL-specific
+ * addition — the upstream endpoint URL, editable when the upstream is a
+ * literal URL (not a `ref` to a predefined upstream, which this form leaves
+ * untouched). Schema and policies still aren't editable here, matching
+ * REST's own edit form leaving its operations/policies untouched.
  *
  * It owns the draft and the validation only. The mutation, the merge back
  * onto the fetched `GraphQLAPIDetail` and the navigation belong to
@@ -169,6 +209,11 @@ const toFormValues = (api: GraphQLApiDetail): GraphqlApiBasicInfoFormValues => (
  */
 export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
   const intl = useIntl();
+
+  // A ref-based upstream (`upstream.main.ref`) has no literal URL for this
+  // form to edit — the endpoint field is hidden and excluded from validation
+  // for that case, rather than showing an always-empty required field.
+  const hasUrlUpstream = props.api.upstream?.main?.url !== undefined;
 
   // Lazy initialiser: the API is already loaded when this mounts, so the draft
   // is seeded once rather than recomputed on every render.
@@ -185,7 +230,7 @@ export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
   // of them the user is ready to see, so nothing shouts before it is typed in.
   const [touched, setTouched] = useState<Partial<Record<ValidatedField, boolean>>>({});
 
-  const errors = validate(values);
+  const errors = validate(values, hasUrlUpstream);
 
   const isDirty = (Object.keys(initialValues) as (keyof GraphqlApiBasicInfoFormValues)[]).some(
     (field) => values[field] !== initialValues[field],
@@ -218,7 +263,7 @@ export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
 
     if (Object.keys(errors).length > 0) {
       // Reveal every rule at once rather than one field per attempt.
-      setTouched({ context: true, displayName: true, version: true });
+      setTouched({ context: true, displayName: true, endpointUrl: true, version: true });
       return;
     }
 
@@ -226,6 +271,7 @@ export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
       context: values.context.trim(),
       description: values.description.trim(),
       displayName: values.displayName.trim(),
+      endpointUrl: values.endpointUrl.trim(),
       version: values.version.trim(),
     });
   };
@@ -252,6 +298,7 @@ export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
 
   const contextLabel = intl.formatMessage(messages.contextLabel);
   const descriptionLabel = intl.formatMessage(messages.descriptionLabel);
+  const endpointLabel = intl.formatMessage(messages.endpointLabel);
   const nameLabel = intl.formatMessage(messages.nameLabel);
   const versionLabel = intl.formatMessage(messages.versionLabel);
 
@@ -304,6 +351,21 @@ export const EditGraphqlApiForm = (props: EditGraphqlApiFormProps) => {
             />
             {helperFor('context')}
           </FormControl>
+
+          {hasUrlUpstream ? (
+            <FormControl error={hasError('endpointUrl')} fullWidth required>
+              <FormLabel htmlFor="endpointUrl">{endpointLabel}</FormLabel>
+              <OutlinedInput
+                disabled={props.isSaving}
+                id="endpointUrl"
+                name="endpointUrl"
+                onBlur={() => markTouched('endpointUrl')}
+                onChange={(event) => setField('endpointUrl', event.target.value)}
+                value={values.endpointUrl}
+              />
+              {helperFor('endpointUrl', <FormattedMessage {...messages.endpointHelper} />)}
+            </FormControl>
+          ) : null}
 
           <FormControl fullWidth>
             <FormLabel htmlFor="description">{descriptionLabel}</FormLabel>
