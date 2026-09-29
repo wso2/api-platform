@@ -479,7 +479,7 @@ func TestSessionReportsExchangedScopes(t *testing.T) {
 // returns the callback request the browser would send back.
 func (h *exchangeTestHarness) callbackRequest(t *testing.T) *http.Request {
 	t.Helper()
-	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base + "/")
+	authURL, txID, err := h.server.oidc.AuthCodeURL(paths.Base + "/", nil)
 	if err != nil {
 		t.Fatalf("AuthCodeURL: %v", err)
 	}

@@ -195,9 +195,17 @@ func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (di
 	return d, nil
 }
 
-// AuthCodeURL creates a new login transaction and returns the IDP authorize URL
+// AuthCodeURL creates a new login transaction and returns the IDP authorize URL.
+//
+// `extra` carries additional authorization-request parameters the caller wants the IDP
+// to see — `fidp` to name a federated provider, `login_hint` to prefill the account —
+// so a portal can put the provider choice on its OWN page and send the user straight
+// to Google or GitHub instead of through the IDP's chooser. The caller is responsible
+// for deciding which parameters are allowed (see the server's handleOIDCLogin): a
+// parameter set here CANNOT override the protocol ones below, which are written after
+// it precisely so that a stray `redirect_uri` or `scope` cannot widen the request.
 // plus the opaque tx id to store in the short-lived tx cookie.
-func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
+func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID string, err error) {
 	state, err := randString(32)
 	if err != nil {
 		return "", "", err
@@ -226,15 +234,26 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 	o.mu.Unlock()
 
 	challenge := pkceChallenge(verifier)
-	q := url.Values{
-		"response_type":         {"code"},
-		"client_id":             {o.clientID},
-		"redirect_uri":          {o.redirectURL},
-		"scope":                 {o.scopes},
-		"state":                 {state},
-		"nonce":                 {nonce},
-		"code_challenge":        {challenge},
-		"code_challenge_method": {"S256"},
+	// Seeded with the caller's extras, then the protocol parameters are assigned over
+	// the top: whatever `extra` contains, it can never change response_type,
+	// client_id, redirect_uri, scope, state, nonce or the PKCE challenge.
+	q := url.Values{}
+	for name, values := range extra {
+		if len(values) > 0 && values[0] != "" {
+			q.Set(name, values[0])
+		}
+	}
+	for name, value := range map[string]string{
+		"response_type":         "code",
+		"client_id":             o.clientID,
+		"redirect_uri":          o.redirectURL,
+		"scope":                 o.scopes,
+		"state":                 state,
+		"nonce":                 nonce,
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+	} {
+		q.Set(name, value)
 	}
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }
