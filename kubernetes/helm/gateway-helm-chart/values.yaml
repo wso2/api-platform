@@ -453,6 +453,20 @@ gateway:
       # Service name reported to the tracing backend
       tracing_service_name: policy-engine
 
+      # Which failures reach an API's fault policies
+      fault_policies:
+        # Route a failure the UPSTREAM or the ROUTER produced through the fault
+        # flow instead of the ordinary response policies.
+        #
+        # Off by default: every previous generation of this gateway ran an
+        # upstream error through the response policies, so enabling this moves
+        # where existing mediation runs — a backend 503 that reaches a response
+        # transformer or a response guardrail would stop reaching it.
+        #
+        # A policy's OWN rejection always reaches its fault policies and is not
+        # affected by this setting.
+        handle_upstream_faults: false
+
       # Caps decompressed bytes buffered per body (buffered mode) or per chunk
       # (streaming)
       request_body:
