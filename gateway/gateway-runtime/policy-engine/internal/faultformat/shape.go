@@ -37,6 +37,7 @@ package faultformat
 import (
 	"strings"
 
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -82,6 +83,8 @@ type Request struct {
 	APIKind     policy.APIKind
 	ContentType string // the request's Content-Type
 	Accept      string // the request's Accept
+	// Transport is the wire protocol an Agent route serves. See format.Request.Transport.
+	Transport string
 }
 
 // Renderer turns a gateway error into a body plus the content type describing it.
@@ -160,6 +163,28 @@ func (r *Registry) Render(shape ShapeID, in RenderInput) (body []byte, contentTy
 func Negotiate(req Request) ShapeID {
 	// 1. Protocols fixed by API kind. These ignore Accept entirely.
 	switch req.APIKind {
+	case policy.APIKindAgent:
+		// An Agent serves two transports over routes a content type cannot tell apart, so
+		// unlike MCP the kind does not settle the shape — the route does, and the resolver
+		// publishes which.
+		//
+		// Only JSON-RPC formats. The rule for joining supportedKinds is that the protocol
+		// leaves the caller unable to read anything else, and that is true of exactly this
+		// half of A2A: an HTTP+JSON client reads the plain JSON error perfectly well, so
+		// reshaping it would change bytes for no one's benefit. Passthrough, not a fall
+		// through to the JSON renderer, for that reason — the two differ, and only
+		// passthrough is a guarantee that nothing moves.
+		//
+		// An unresolved transport is passthrough on the same reasoning plus one more: a
+		// request refused before resolution has no operation and no request id, so the
+		// envelope it would get could carry only nulls.
+		if req.Transport != string(agentproto.TransportJSONRPC) {
+			return ShapePassthrough
+		}
+		if normalizeMediaType(req.ContentType) == mediaEventStream {
+			return ShapeJSONRPCEventStream
+		}
+		return ShapeJSONRPC
 	case policy.APIKindMCP:
 		// The framing, unlike the object inside it, IS decided by the request: an MCP caller
 		// that posted an event stream is reading frames and would hang on a bare JSON object.

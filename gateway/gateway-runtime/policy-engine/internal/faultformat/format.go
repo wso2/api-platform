@@ -45,14 +45,27 @@ var knownAPIKinds = []policy.APIKind{
 	policy.APIKindLlmProvider,
 	policy.APIKindLlmProxy,
 	policy.APIKindMCP,
+	policy.APIKindAgent,
 	policy.APIKindWebSubApi,
 }
 
 // supportedKinds is the set of API kinds the gateway synthesizes an error body for.
 //
 // In code rather than configuration because formatting is a protocol concern, not an operator
-// preference. Empty today, so every shipping kind returns the errors it always has.
-var supportedKinds = []policy.APIKind{}
+// preference.
+//
+// Agent only. Every other kind returns the errors it always has, and an Agent API has none to
+// preserve — it is new in this release, so there is no body any client has already been
+// written against.
+//
+// It is also the kind that needs this most. MCP fixes a protocol too, but its policies write
+// their own JSON-RPC envelope, so an MCP rejection is already the right shape before this
+// package is consulted. A2A has no such policies: a rejection on an Agent route comes from an
+// ordinary policy like api-key-auth, which writes ordinary JSON — unparseable to the JSON-RPC
+// client on the other end. Nothing else fills that gap.
+var supportedKinds = []policy.APIKind{
+	policy.APIKindAgent,
+}
 
 // SupportedKinds returns the kinds error-body synthesis is enabled for.
 //
@@ -148,6 +161,13 @@ type Input struct {
 	APIKind     policy.APIKind
 	ContentType string
 	Accept      string
+	// Transport is the wire protocol an Agent route serves, "JSONRPC" or "HTTP+JSON".
+	//
+	// Needed because an Agent API, unlike an MCP one, does not fix its protocol by kind:
+	// the two transports carry the same content type and are told apart only by how the
+	// route was configured. Empty for every other kind, and empty for an Agent request
+	// that failed before its operation resolved.
+	Transport string
 }
 
 // ShouldFormat decides whether to synthesize a body, and renders it if so.
@@ -190,6 +210,7 @@ func ShouldFormat(r *Registry, in Input) Decision {
 
 	shape := Negotiate(Request{
 		APIKind:     in.APIKind,
+		Transport:   in.Transport,
 		ContentType: in.ContentType,
 		Accept:      in.Accept,
 	})
