@@ -24,6 +24,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
+	"github.com/wso2/api-platform/gateway/common/agentproto"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -485,4 +488,59 @@ func TestRender_JSONRPC_DescriptionStillNeverReachesData(t *testing.T) {
 	if bytes.Contains(body, []byte("THE BLOCKED CONTENT")) {
 		t.Fatalf("Description leaked into the rendered body: %s", body)
 	}
+}
+
+// An Agent API is the one kind whose protocol is not settled by the kind: the same Agent
+// serves JSON-RPC and HTTP+JSON, on routes that are indistinguishable by content type. Only
+// the JSON-RPC half needs an envelope, and giving one to the other half would be as wrong as
+// withholding it from the first.
+func TestNegotiate_AgentShapeFollowsTheTransport(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		transport   string
+		contentType string
+		want        ShapeID
+	}{
+		{"json-rpc gets the envelope", string(agentproto.TransportJSONRPC), "application/json", ShapeJSONRPC},
+		{"json-rpc over an event stream is framed", string(agentproto.TransportJSONRPC), "text/event-stream", ShapeJSONRPCEventStream},
+		{"http+json is left alone", string(agentproto.TransportHTTPJSON), "application/json", ShapePassthrough},
+		// Before resolution there is no transport, and no operation or request id either, so
+		// an envelope could carry only nulls. Leaving the body alone claims nothing.
+		{"unresolved transport is left alone", "", "application/json", ShapePassthrough},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Negotiate(Request{
+				APIKind:     policy.APIKindAgent,
+				Transport:   tc.transport,
+				ContentType: tc.contentType,
+			})
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// The transport decides an Agent's shape and nothing else's. A stray value on another kind
+// must not pull it into a JSON-RPC envelope.
+func TestNegotiate_TransportIsIgnoredOffAgent(t *testing.T) {
+	for _, kind := range []policy.APIKind{policy.APIKindRestApi, policy.APIKindLlmProxy} {
+		got := Negotiate(Request{
+			APIKind:     kind,
+			Transport:   string(agentproto.TransportJSONRPC),
+			ContentType: "application/json",
+		})
+		assert.Equal(t, ShapeJSON, got, "%s must not follow an Agent transport", kind)
+	}
+}
+
+// Accept is not consulted for a JSON-RPC Agent, for the same reason it is not for MCP: an A2A
+// client advertises what it can read, not what its protocol permits, and an XML error would
+// be unreadable to it whatever it said it accepted.
+func TestNegotiate_AgentJSONRPCIgnoresAccept(t *testing.T) {
+	got := Negotiate(Request{
+		APIKind:     policy.APIKindAgent,
+		Transport:   string(agentproto.TransportJSONRPC),
+		ContentType: "application/json",
+		Accept:      "application/xml",
+	})
+	assert.Equal(t, ShapeJSONRPC, got)
 }

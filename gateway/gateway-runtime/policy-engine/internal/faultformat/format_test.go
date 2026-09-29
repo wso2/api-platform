@@ -27,20 +27,28 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// The shipped default. An operator who configures nothing gets no formatting anywhere, which
-// is what makes this releasable without changing any existing client's error bytes.
-// Every kind shipping today must format nothing. This is the whole of decision 5 from the
-// third design review: the errors a REST, MCP or LLM client receives are the errors it
-// received before the fault flow existed, and a kind joins the list only when its protocol
-// leaves the caller unable to read anything else — SoapApi and A2A when they land.
+// The shipped default, and the one list in this package that is wire-visible for every client
+// of a kind. Decision 5 from the third design review set the rule: a kind formats nothing
+// unless its protocol leaves the caller unable to read anything else, and named SoapApi and
+// A2A as the two that would qualify when they landed.
 //
-// Asserted rather than left to the declaration because adding a kind here is a wire-visible
-// change for every client of that kind, and it should not be possible to make it by accident.
-func TestSupportedKinds_NoShippingKindFormats(t *testing.T) {
+// A2A has landed, so Agent is here and nothing else is. The qualifying part is not that A2A
+// is new — it is that an Agent route serving JSON-RPC has no other way to answer. MCP fixes a
+// protocol too and is still absent, because its policies write the JSON-RPC envelope
+// themselves; A2A has no such policies, so a rejection there comes from an ordinary policy
+// writing ordinary JSON to a client that can only read JSON-RPC.
+//
+// Asserted rather than left to the declaration because adding a kind here changes bytes every
+// client of that kind parses, and it should not be possible to do by accident.
+func TestSupportedKinds_OnlyAgentFormats(t *testing.T) {
 	set := SupportedKinds()
 
-	assert.Empty(t, set, "no API kind shipping today may synthesize an error body")
+	assert.True(t, set.Enabled(policy.APIKindAgent),
+		"an Agent route serving JSON-RPC cannot read a plain JSON error")
 	for _, kind := range knownAPIKinds {
+		if kind == policy.APIKindAgent {
+			continue
+		}
 		assert.False(t, set.Enabled(kind),
 			"%s must forward its errors unchanged; adding it here changes bytes existing clients parse", kind)
 	}

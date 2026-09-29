@@ -26,6 +26,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/faultformat"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -92,6 +93,7 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 		Status:           status,
 		ErrorID:          ec.engineErrorID,
 		APIKind:          ec.apiKind(),
+		Transport:        ec.resolvedTransport(),
 		ContentType:      ec.requestHeader(headerContentType),
 		Accept:           ec.requestHeader(headerAccept),
 		RequestMethod:    ec.requestMethod(),
@@ -154,6 +156,20 @@ func (ec *PolicyExecutionContext) apiKind() policy.APIKind {
 	return ec.sharedCtx.APIKind
 }
 
+// resolvedTransport returns the wire protocol an Agent route serves, or "" for every other
+// kind and for a request that failed before its operation resolved.
+//
+// Read from the resolution attributes rather than the route config because that is where the
+// resolver publishes it, and it is the same value the A2A policies and the analytics event
+// see — one source, so an error body cannot describe a different transport than the event
+// recording it.
+func (ec *PolicyExecutionContext) resolvedTransport() string {
+	if ec.sharedCtx == nil {
+		return ""
+	}
+	return ec.sharedCtx.ResolutionAttributes.Get(resolver.AttrA2ATransport)
+}
+
 // requestMethod returns the request's method, or "" when the context has none.
 func (ec *PolicyExecutionContext) requestMethod() string {
 	if ec.requestHeaderCtx == nil {
@@ -200,6 +216,8 @@ type requestShapeSignals struct {
 	Method      string
 	ContentType string
 	Accept      string
+	// Transport is the Agent route's wire protocol. See faultformat.Request.Transport.
+	Transport string
 }
 
 // shapeSignalsFromHeaders reads the shape signals straight off the ext_proc request-headers
@@ -256,6 +274,7 @@ func (s *ExternalProcessorServer) formatSterileError(
 		Status:        status,
 		ErrorID:       errorID,
 		APIKind:       sig.APIKind,
+		Transport:     sig.Transport,
 		ContentType:   sig.ContentType,
 		Accept:        sig.Accept,
 		RequestMethod: sig.Method,
@@ -283,5 +302,6 @@ func (ec *PolicyExecutionContext) shapeSignals() requestShapeSignals {
 		Method:      ec.requestMethod(),
 		ContentType: ec.requestHeader(headerContentType),
 		Accept:      ec.requestHeader(headerAccept),
+		Transport:   ec.resolvedTransport(),
 	}
 }
