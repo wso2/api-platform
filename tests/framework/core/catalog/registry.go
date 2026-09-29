@@ -82,20 +82,21 @@ func sourceProducts(resolved *topology.Resolved) ([]builder.Product, error) {
 			if component.Def == nil || component.Version != "" || component.AddPoliciesFrom != "" {
 				continue
 			}
-			version, ok := shared.SourceVersion(component.Def.Name)
+			product := component.Def.Product()
+			version, ok := shared.SourceVersion(product)
 			if !ok {
 				continue
 			}
 			component.Version = version
-			if seen[component.Def.Name] {
+			if seen[product] {
 				continue
 			}
-			spec, err := BuildSpec(component.Def.Name, version)
+			spec, err := BuildSpec(product, version)
 			if err != nil {
 				return nil, fmt.Errorf("catalog: preparing source build for %s: %w", component.Def.Name, err)
 			}
 			products = append(products, builder.Product{Spec: spec, Version: version})
-			seen[component.Def.Name] = true
+			seen[product] = true
 		}
 	}
 	return products, nil
@@ -234,6 +235,9 @@ func All() []*components.Definition {
 		platformapi.PlatformAPI(),
 		apiportal.APIPortal(),
 		apiportal.APIPortalOtherOrg(),
+		apiportal.APIPortalMultiTenancy(),
+		apiportal.APIPortalMultiTenancyReplica(),
+		apiportal.APIPortalMultiTenancyOtherPortal(),
 		aiworkspace.AIWorkspace(),
 		browser.Browser(),
 		cloudconsole.CloudConsole(),

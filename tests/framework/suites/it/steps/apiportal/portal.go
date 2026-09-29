@@ -102,6 +102,8 @@ var (
 type Steps struct {
 	topo   *runtime.Topology
 	client *httpx.Client
+	// idp calls the testbench identity provider, verifying its certificate.
+	idp *httpx.Client
 }
 
 // Register binds the steps that drive api-portal's own REST API — subscription plans,
@@ -109,7 +111,12 @@ type Steps struct {
 // shared client every other suite request funnels through.
 func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.Client) {
 	s := &Steps{topo: topo, client: client}
+	idp, idpErr := newIdentityProviderClient()
+	s.idp = idp
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		if idpErr != nil {
+			return ctx, idpErr
+		}
 		_, ok := tcontext.SharedOf(ctx)
 		if !ok {
 			return ctx, fmt.Errorf("API Portal webhook partition requires shared context")
@@ -246,6 +253,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 		s.regenerateSubscriptionToken)
 	sc.Step(`^the subscription "([^"]*)" status is set to "([^"]*)" in the API Portal$`, s.setSubscriptionStatus)
 	sc.Step(`^the subscription "([^"]*)" is removed in the API Portal$`, s.removeSubscription)
+	s.registerMultiTenancySteps(sc)
 }
 
 const portalRESTDefinition = `{

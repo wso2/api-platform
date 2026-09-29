@@ -171,6 +171,54 @@ blocks:
         features:
           - features/apiportal/security/grant_table_parity.feature
 
+  # Multi-tenancy mode: IDP sign-in through the testbench identity provider, every
+  # organization under the portal's portal_id served. The replica shares the first
+  # instance's database as a second instance of the same deployment; the other portal
+  # shares it as a separate deployment under its own portal_id.
+  - name: api-portal-multi-tenancy
+    parallel: 3
+    components:
+      - name: testbench
+      - name: api-portal-multi-tenancy
+        db:
+          matrix: [postgres, sqlserver]
+      - name: api-portal-multi-tenancy-replica
+      - name: api-portal-multi-tenancy-other-portal
+    runners:
+      - name: claims
+        features:
+          - features/apiportal_multi_tenancy_claims.feature
+      - name: isolation
+        features:
+          - features/apiportal_multi_tenancy_isolation.feature
+      - name: login
+        features:
+          - features/apiportal_multi_tenancy_login.feature
+      - name: webhooks
+        features:
+          - features/apiportal_multi_tenancy_webhooks.feature
+      - name: publishing
+        features:
+          - features/apiportal_multi_tenancy_publishing.feature
+      - name: portals
+        features:
+          - features/apiportal_multi_tenancy_portals.feature
+
+  # Multi-tenancy mode with auth.enforce_org_validation on: its own portal, since the
+  # setting decides what every org claim resolves to.
+  - name: api-portal-multi-tenancy-strict
+    parallel: 1
+    components:
+      - name: testbench
+      - name: api-portal-multi-tenancy
+        overlay: tests/framework/core/catalog/overlays/api-portal-multi-tenancy-strict.toml
+        db:
+          matrix: [postgres, sqlserver]
+    runners:
+      - name: strict
+        features:
+          - features/apiportal_multi_tenancy_strict.feature
+
   - name: api-portal-foreign-org
     parallel: 1
     components:

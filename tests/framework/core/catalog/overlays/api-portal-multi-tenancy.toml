@@ -1,0 +1,59 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# API Portal in IDP mode against the testbench identity provider, in multi-tenancy mode: it
+# serves every organization under its portal_id, and provisions the organization an unknown
+# org claim names (api-portal-multi-tenancy-strict.toml turns that off). The provider is
+# reached over HTTPS, which provisioning requires.
+[api_portal.auth]
+mode = "idp"
+idp_org_id = "default"
+enforce_org_validation = false
+
+[api_portal.auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
+roles        = "roles"
+groups       = "groups"
+
+[api_portal.auth.idp]
+issuer            = "https://testbench:3013/oauth2/token"
+authorization_url = "https://testbench:3013/oauth2/authorize"
+token_url         = "https://testbench:3013/oauth2/token"
+jwks_url          = "https://testbench:3013/oauth2/jwks"
+client_id         = "api-portal-it-client"
+client_secret     = "api-portal-it-secret"
+audience          = "api-portal-it-client"
+callback_url      = '{{ env "APIP_AP_AUTH_IDP_CALLBACK_URL" }}'
+scope             = "openid profile email"
+silent_sso        = true
+
+[api_portal.auth.authorization.portal_roles]
+admin      = "ap_admin"
+subscriber = "ap_subscriber"
+
+[api_portal.multi_tenancy]
+enabled = true
+
+# The sha256 of the shared key the API Portal steps publish with, as platform-api would.
+[api_portal.internal_auth]
+hash = "5eaedf4d9f39bef4ce8f4dce21d10023f791840a0dc2ac868a32dba644d8ccf2"
+
+[api_portal.webhooks.delivery]
+poll_interval_ms = 1000

@@ -32,6 +32,30 @@ const EnvImageAPIPortal = "AP_IMAGE"
 const svcAPIPortal = "api-portal"
 const svcAPIPortalOtherOrg = "api-portal-other-org"
 
+// Multi-tenancy component names. The replica and the other portal share the first
+// instance's database: the replica as a second instance of the same deployment, the other
+// portal as a separate deployment under its own portal_id.
+const (
+	svcAPIPortalMultiTenancy            = "api-portal-multi-tenancy"
+	svcAPIPortalMultiTenancyReplica     = "api-portal-multi-tenancy-replica"
+	svcAPIPortalMultiTenancyOtherPortal = "api-portal-multi-tenancy-other-portal"
+)
+
+// MultiTenancyPortalID is the portal_id the multi-tenancy portal and its replica serve.
+const MultiTenancyPortalID = "portal_id"
+
+// MultiTenancyOtherPortalID is the portal_id of the second multi-tenancy portal on the same
+// database.
+const MultiTenancyOtherPortalID = "other_portal_id"
+
+// multiTenancyOverlay configures IDP sign-in through the testbench identity provider and
+// multi-tenancy mode.
+const multiTenancyOverlay = "tests/framework/core/catalog/overlays/api-portal-multi-tenancy.toml"
+
+// portalRoleMapping is the API Portal's own role-to-scope mapping, which also grants the
+// platform-api-system role that shared-key publishing calls are authorized as.
+const portalRoleMapping = "portals/api-portal/resources/role-to-scope-mapping.yaml"
+
 // APIPortal returns the API Portal component definition.
 func APIPortal() *components.Definition {
 	return apiPortalDefinition(svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", "portal_id", svcAPIPortal)
@@ -40,6 +64,69 @@ func APIPortal() *components.Definition {
 // APIPortalOtherOrg returns an API Portal instance pinned to another organization.
 func APIPortalOtherOrg() *components.Definition {
 	return apiPortalDefinition(svcAPIPortalOtherOrg, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "other-org", "Other Org", "other_portal_id", svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.other-org.yaml")
+}
+
+// APIPortalMultiTenancy returns an API Portal in multi-tenancy mode that signs users in
+// through the testbench identity provider.
+func APIPortalMultiTenancy() *components.Definition {
+	return multiTenancyDefinition(svcAPIPortalMultiTenancy, MultiTenancyPortalID, "")
+}
+
+// APIPortalMultiTenancyReplica returns a second instance of APIPortalMultiTenancy's
+// deployment: the same configuration and portal_id, on the same database.
+func APIPortalMultiTenancyReplica() *components.Definition {
+	return multiTenancyDefinition(svcAPIPortalMultiTenancyReplica, MultiTenancyPortalID, svcAPIPortalMultiTenancy)
+}
+
+// APIPortalMultiTenancyOtherPortal returns a separate multi-tenancy portal on
+// APIPortalMultiTenancy's database, under its own portal_id.
+func APIPortalMultiTenancyOtherPortal() *components.Definition {
+	return multiTenancyDefinition(svcAPIPortalMultiTenancyOtherPortal, MultiTenancyOtherPortalID, svcAPIPortalMultiTenancy)
+}
+
+// PortalID returns the portal_id a multi-tenancy API Portal component serves.
+func PortalID(component string) (string, bool) {
+	switch component {
+	case svcAPIPortalMultiTenancy, svcAPIPortalMultiTenancyReplica:
+		return MultiTenancyPortalID, true
+	case svcAPIPortalMultiTenancyOtherPortal:
+		return MultiTenancyOtherPortalID, true
+	default:
+		return "", false
+	}
+}
+
+// multiTenancyDefinition builds a multi-tenancy portal instance. A non-empty sharesWith puts
+// it on that component's database instead of one of its own.
+func multiTenancyDefinition(name, portalID, sharesWith string) *components.Definition {
+	d := apiPortalDefinition(name, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", portalID, svcAPIPortal)
+	d.SourceProduct = svcAPIPortal
+	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + name + ":9543/api-portal/default/callback"
+	d.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": portalRoleMapping}
+	d.Compose.GeneratedFiles["certs/cert.pem"] = multiTenancyTrustBundle()
+	d.Config.ExtraOverlays = []string{multiTenancyOverlay}
+	d.DependsOn = []string{"testbench"}
+	// The portal root redirects an anonymous visitor into silent sign-in at the identity
+	// provider in IDP mode, so readiness is the portal's own health endpoint instead.
+	health := *d.Health
+	health.Path = "/health"
+	d.Health = &health
+	if sharesWith != "" {
+		d.DB.SharesStoreWith = sharesWith
+		d.DB.Schema = nil
+		d.DependsOn = append(d.DependsOn, sharesWith)
+	}
+	return d
+}
+
+// multiTenancyTrustBundle is the certificate bundle a multi-tenancy portal trusts: the
+// control plane's and the testbench identity provider's.
+func multiTenancyTrustBundle() []byte {
+	bundle := append([]byte(nil), shared.ControlPlaneCrypto()["certs/cert.pem"]...)
+	if len(bundle) > 0 && bundle[len(bundle)-1] != '\n' {
+		bundle = append(bundle, '\n')
+	}
+	return append(bundle, shared.IdentityProviderTLS().CertPEM...)
 }
 
 func apiPortalDefinition(name, composeFile, organization, displayName, portalID, serviceName string, overrides ...string) *components.Definition {
@@ -91,9 +178,10 @@ func apiPortalDefinition(name, composeFile, organization, displayName, portalID,
 		},
 
 		DB: &components.DBContract{
-			Supported: []components.DBType{components.Postgres},
+			Supported: []components.DBType{components.Postgres, components.SQLServer},
 			Schema: map[components.DBType][]string{
-				components.Postgres: {"portals/api-portal/database/schema.postgres.sql"},
+				components.Postgres:  {"portals/api-portal/database/schema.postgres.sql"},
+				components.SQLServer: {"portals/api-portal/database/schema.sqlserver.sql"},
 			},
 			Env: apiPortalDBEnv,
 		},
@@ -146,8 +234,12 @@ func portalCryptoFiles() map[string][]byte {
 
 // apiPortalDBEnv converts a database DSN to the portal's environment variables.
 func apiPortalDBEnv(d components.DSN) map[string]string {
+	driver := "postgres"
+	if d.Type == components.SQLServer {
+		driver = "mssql"
+	}
 	return map[string]string{
-		"APIP_AP_DATABASE_DRIVER":   "postgres",
+		"APIP_AP_DATABASE_DRIVER":   driver,
 		"APIP_AP_DATABASE_HOST":     d.Host,
 		"APIP_AP_DATABASE_PORT":     strconv.Itoa(d.Port),
 		"APIP_AP_DATABASE_NAME":     d.Database,
