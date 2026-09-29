@@ -61,6 +61,7 @@ enum Phase {
   PHASE_NEEDS_MORE_RESPONSE_DATA = 7;
   PHASE_RESPONSE_BODY_CHUNK = 8;
   PHASE_CANCEL = 9;
+  PHASE_FAULT = 10;
 }
 
 enum DropHeaderActionType {
@@ -88,6 +89,7 @@ message StreamRequest {
     NeedsMoreResponseDataPayload needs_more_response_data = 14;
     ResponseChunkPayload response_chunk = 15;
     CancelExecutionPayload cancel_execution = 16;
+    FaultPayload fault_context = 17;
   }
 }
 
@@ -104,6 +106,9 @@ message StreamResponse {
     StreamingRequestActionPayload streaming_request_action = 8;
     StreamingResponseActionPayload streaming_response_action = 9;
     ExecutionError error = 10;
+    // on_fault's return. A distinct payload rather than reusing response_action, because a
+    // fault policy does not return a response action — see FaultResponse.
+    FaultResponsePayload fault_response_action = 11;
   }
 }
 
@@ -121,6 +126,9 @@ message PolicyCapabilities {
   bool response_body = 4;
   bool streaming_request = 5;
   bool streaming_response = 6;
+  // Whether the policy implements on_fault and may therefore be attached as a fault policy.
+  // Independent of every mode above: a policy can handle faults and nothing else.
+  bool on_fault = 7;
 }
 
 message InitPolicyRequest {
@@ -327,6 +335,61 @@ message ResponseContext {
   UpstreamResponseContext upstream = 9;
 }
 
+// FaultContext is what a fault policy receives through on_fault. Mirrors
+// sdk/core/policy/v1alpha2.FaultContext, which spells its response fields out rather than
+// embedding a response view — so this message does too.
+message FaultContext {
+  // Field 1 and the name `response` are reserved so a nested response view cannot be added
+  // under them later: the fault contract carries its response fields flat, and a nested view
+  // alongside them would let the two drift.
+  reserved 1;
+  reserved "response";
+
+  // The originating request, and the response the client is receiving — flat, not nested
+  // inside a response view.
+  Headers request_headers = 8;
+  Body request_body = 9;
+  string request_path = 10;
+  string request_method = 11;
+  Headers response_headers = 12;
+  Body response_body = 13;
+  int32 response_status = 14;
+  DownstreamContext downstream = 15;
+  // The route's resolved upstream target. Populated for a REQUEST-phase failure too, where
+  // the request never reached it: the target is projected from the request-phase context and
+  // `response` stays absent, because no upstream response ever existed.
+  UpstreamResponseContext upstream = 16;
+  // The rest of the request identity. Carried on the two request-phase contexts and neither
+  // response-phase one, so the gateway supplies them from whichever phase context holds
+  // them — a handler sees the same three values whatever phase failed.
+  string request_authority = 17;
+  string request_scheme = 18;
+  string request_vhost = 19;
+
+  // The status before a policy changed it, and 0 when nothing did.
+  int32 original_status = 2;
+  // The policy that caused the failure, EMPTY when no policy did (a router failure).
+  string policy = 3;
+  string policy_version = 4;
+  // The phase the failing policy was executing in. Empty exactly when policy is,
+  // and for the same reason: a failure no policy produced has no policy phase.
+  string policy_phase = 20;
+  // Whether the status, headers and at least one body chunk have already reached the client,
+  // so nothing this handler returns can change what they see. True only mid-stream.
+  bool response_committed = 5;
+  string route_key = 6;
+  // Which actor produced this error response: "gateway", "backend", "router", "noRoute" or
+  // "unknown". Never empty on the fault path.
+  //
+  // The distinction no status can express — a backend answering 503 and the router failing to
+  // reach that backend are both 503, and they mean opposite things.
+  string source = 21;
+  // What the producing policy — or, for a router failure, the gateway — said about the
+  // failure. Absent when nothing described it, which includes every BACKEND error: another
+  // service's 500 is not the gateway's to classify.
+  FaultDetails fault = 7;
+}
+
 message RequestStreamContext {
   Headers headers = 1;
   string path = 2;
@@ -365,6 +428,10 @@ message ResponseBodyPayload {
   ResponseContext context = 1;
 }
 
+message FaultPayload {
+  FaultContext context = 1;
+}
+
 message NeedsMoreRequestDataPayload {
   bytes accumulated = 1;
 }
@@ -401,6 +468,57 @@ message DropHeaderAction {
   repeated string headers = 2;
 }
 
+// FaultDetails is a policy's description of the failure it produced: what failed, and in
+// enough detail for the gateway to render it in the caller's protocol. Mirrors
+// sdk/core/policy/v1alpha2.FaultDetails.
+//
+// `policy` is deliberately absent. It is gateway-owned — the engine sets it from the chain it
+// just executed, overwriting whatever a policy claimed — so carrying it across the bridge
+// would only let a Python policy submit an attribution the engine discards.
+message FaultDetails {
+  string code = 1;
+  string type = 2;
+  string direction = 3;
+  string message = 4;
+  string description = 5;
+  // JSON-RPC wire detail, for a policy on an MCP (or, later, A2A) API. Absent for every
+  // other caller, and ignored by every renderer but the JSON-RPC one.
+  JSONRPCError jsonrpc = 6;
+  // Assessment detail for a guardrail intervention, and absent for every other failure.
+  GuardrailDetails guardrail = 7;
+}
+
+// GuardrailDetails is the detail a guardrail reports about an intervention. Mirrors
+// sdk/core/policy/v1alpha2.GuardrailDetails.
+//
+// Unlike JSONRPCError this is DOMAIN detail rather than protocol detail: every renderer emits
+// it, in whatever shape that renderer uses. Absent means "no guardrail was involved" — it does
+// not mean "the operator declined to show the assessment", which is expressed by leaving
+// assessments empty while still sending the block.
+message GuardrailDetails {
+  string intervening_guardrail = 1;
+  string action = 2;
+  string action_reason = 3;
+  // Struct, not a string map: an assessment is whatever the guardrail put there, and the
+  // shipped guardrails nest objects and arrays inside it.
+  //
+  // This field carries the content the guardrail existed to stop, so it is populated only
+  // where the guardrail's own showAssessment parameter permits. Everything above it is
+  // metadata and is sent on every intervention.
+  google.protobuf.Struct assessments = 4;
+}
+
+// JSONRPCError mirrors sdk/core/policy/v1alpha2.JSONRPCError: the two things a policy that
+// parsed the request knows and the engine cannot work out for itself.
+message JSONRPCError {
+  // Wrapped rather than a plain int32 so "unset" survives the bridge. A plain int32 arrives
+  // as 0, which would read as an explicit code and suppress the engine's status-derived one.
+  google.protobuf.Int32Value code = 1;
+  // Value, not string: JSON-RPC permits a string, a number, or null as the id, and a policy
+  // reads back whichever the client sent.
+  google.protobuf.Value id = 2;
+}
+
 message ImmediateResponse {
   int32 status_code = 1;
   map<string, string> headers = 2;
@@ -408,6 +526,11 @@ message ImmediateResponse {
   google.protobuf.Struct analytics_metadata = 4;
   map<string, google.protobuf.Struct> dynamic_metadata = 5;
   DropHeaderAction analytics_header_filter = 6;
+  // Whether this response is a failure the fault flow should act on. False — the zero
+  // value — means NO; a policy opts in explicitly and nothing opts in on its behalf.
+  bool is_fault = 7;
+  // Describes the failure for a renderer. Optional, and independent of is_fault.
+  FaultDetails fault = 8;
 }
 
 message UpstreamRequestHeaderModifications {
@@ -455,6 +578,11 @@ message DownstreamResponseModifications {
   google.protobuf.Struct analytics_metadata = 5;
   map<string, google.protobuf.Struct> dynamic_metadata = 6;
   DropHeaderAction analytics_header_filter = 7;
+  // Whether this modification represents a failure the fault flow should act on. This
+  // action carries every ordinary response mutation, not only rejections, so the false
+  // default matters more here than anywhere else.
+  bool is_fault = 8;
+  FaultDetails fault = 9;
 }
 
 message ForwardRequestChunk {
@@ -473,6 +601,11 @@ message TerminateResponseChunk {
   google.protobuf.BytesValue body = 1;
   google.protobuf.Struct analytics_metadata = 2;
   map<string, google.protobuf.Struct> dynamic_metadata = 3;
+  // A stream ends both for a guardrail intervention and for a clean close after the upstream's
+  // final event, and there is no status left to infer from — it went out with the headers. So
+  // unset means "not a failure"; a guardrail must say so.
+  bool is_fault = 4;
+  FaultDetails fault = 5;
 }
 
 message RequestHeaderActionPayload {
@@ -501,6 +634,38 @@ message ResponseActionPayload {
     DownstreamResponseModifications downstream_response_modifications = 1;
     ImmediateResponse immediate_response = 2;
   }
+}
+
+// FaultResponse is what a Python fault policy returns from on_fault. Mirrors
+// sdk/core/policy/v1alpha2.FaultResponse.
+//
+// Not a oneof: on the fault path there is no upstream response to forward, so the
+// forward-or-replace choice the response actions model does not arise. Every field is
+// optional and merges over the error the client is already receiving.
+message FaultResponse {
+  // Absent keeps the error's own status.
+  google.protobuf.Int32Value status_code = 1;
+  // Absent leaves the body alone; present-and-empty clears it. The wrapper is what keeps
+  // those two distinguishable, which a bare bytes field could not do.
+  google.protobuf.BytesValue body = 2;
+  // Absent keeps the existing description.
+  FaultDetails fault = 3;
+  // Applied over the error's existing headers rather than replacing them.
+  map<string, string> headers_to_set = 4;
+  map<string, StringList> headers_to_append = 5;
+  repeated string headers_to_remove = 6;
+  google.protobuf.Struct analytics_metadata = 7;
+  map<string, google.protobuf.Struct> dynamic_metadata = 8;
+  DropHeaderAction analytics_header_filter = 9;
+  // Stops the rest of the fault chain.
+  bool final = 10;
+}
+
+// FaultResponsePayload wraps the on_fault return. Absent action means the policy changed
+// nothing, which is the ordinary case for a notification or audit entry — the same meaning
+// nil carries in Go.
+message FaultResponsePayload {
+  FaultResponse fault_response = 1;
 }
 
 message NeedsMoreDecisionPayload {
