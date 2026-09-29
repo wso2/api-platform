@@ -111,6 +111,23 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
 }
 
 /**
+ * Write FAILED delivery rows, within the caller's transaction, for subscribers the event
+ * can't be delivered to at all (their secret can't be decrypted). The rows keep the event
+ * from reading as delivered to everyone, and show the reason in its delivery details.
+ */
+async function recordUndeliverable(eventId, subscribers, reason, transaction) {
+    const exec = transaction || db;
+    const portalId = getPortalId();
+    for (const sub of subscribers) {
+        await exec.execute(
+            `INSERT INTO ${DELIVERIES_TABLE} (uuid, portal_id, event_uuid, subscriber_id, target_url, status, last_error)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [crypto.randomUUID(), portalId, eventId, sub.id, sub.url, 'FAILED', String(reason).slice(0, 255)]
+        );
+    }
+}
+
+/**
  * Row-lock hints that make a claim SELECT skip rows another transaction is already
  * claiming. Postgres takes them as a trailing clause (`FOR UPDATE SKIP LOCKED`);
  * MSSQL takes them as a table hint right after the table name. SQLite has neither
@@ -340,7 +357,7 @@ async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
 }
 
 module.exports = {
-    create, createDeliveries,
+    create, createDeliveries, recordUndeliverable,
     claimPending, claimDueDeliveries,
     markDelivered, markFailed,
     list, get, listDeliveriesForSubscriber,

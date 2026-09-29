@@ -20,8 +20,9 @@
 
 /*
  * matchSubscribers runs inside the publishing request's transaction, so a subscriber
- * whose secret can't be decrypted must be skipped, not thrown — otherwise one broken
- * subscriber fails the user's own request (e.g. API key generation).
+ * whose secret can't be decrypted must be set aside, not thrown — otherwise one broken
+ * subscriber fails the user's own request (e.g. API key generation). It is returned as
+ * unreadable so the caller can record its delivery as failed.
  */
 
 const test = require('node:test');
@@ -61,18 +62,20 @@ const records = [
     { uuid: 's2', target_url: 'https://b.example.com/hook', event_patterns: ['apikey.*'], timeout_ms: 5000 },
 ];
 
-test('a subscriber whose secret cannot be decrypted is skipped and logged', async () => {
+test('a subscriber whose secret cannot be decrypted is returned as unreadable and logged', async () => {
     const { registry, errors } = loadRegistry(records, ['s1']);
-    const subs = await registry.matchSubscribers('org-1', 'apikey.generated');
-    assert.deepStrictEqual(subs.map((s) => s.id), ['s2']);
-    assert.strictEqual(subs[0].secret, 'secret-s2');
+    const { subscribers, unreadable } = await registry.matchSubscribers('org-1', 'apikey.generated');
+    assert.deepStrictEqual(subscribers.map((s) => s.id), ['s2']);
+    assert.strictEqual(subscribers[0].secret, 'secret-s2');
+    assert.deepStrictEqual(unreadable, [{ id: 's1', url: 'https://a.example.com/hook' }]);
     assert.strictEqual(errors.length, 1);
     assert.strictEqual(errors[0].meta.subscriberId, 's1');
 });
 
-test('decryptable subscribers are all returned', async () => {
+test('decryptable subscribers are all returned and none is unreadable', async () => {
     const { registry, errors } = loadRegistry(records, []);
-    const subs = await registry.matchSubscribers('org-1', 'apikey.generated');
-    assert.deepStrictEqual(subs.map((s) => s.id), ['s1', 's2']);
+    const { subscribers, unreadable } = await registry.matchSubscribers('org-1', 'apikey.generated');
+    assert.deepStrictEqual(subscribers.map((s) => s.id), ['s1', 's2']);
+    assert.deepStrictEqual(unreadable, []);
     assert.strictEqual(errors.length, 0);
 });

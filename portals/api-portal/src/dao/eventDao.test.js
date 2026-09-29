@@ -149,3 +149,27 @@ test('a scoped claim still filters on its organization', async () => {
     assert.match(select.sql, /AND e\.org_uuid = \?/);
     assert.deepStrictEqual(select.params, ['PENDING', PORTAL_ID, 'org-1', 50]);
 });
+
+test('recordUndeliverable writes one FAILED delivery per subscriber, under this portal', async () => {
+    const { eventDao } = loadEventDao({ dialect: 'postgres', rows: [] });
+    const calls = [];
+    const tx = { execute: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } };
+    await eventDao.recordUndeliverable('e1', [
+        { id: 's1', url: 'https://a.example.com/hook' },
+        { id: 's2', url: 'https://b.example.com/hook' },
+    ], 'Subscriber secret could not be decrypted', tx);
+    assert.strictEqual(calls.length, 2);
+    for (const [i, call] of calls.entries()) {
+        assert.match(call.sql, /^INSERT INTO event_deliveries \(uuid, portal_id, event_uuid, subscriber_id, target_url, status, last_error\)/);
+        const [, portalId, eventId, subscriberId, , status, lastError] = call.params;
+        assert.deepStrictEqual([portalId, eventId, subscriberId, status, lastError],
+            [PORTAL_ID, 'e1', `s${i + 1}`, 'FAILED', 'Subscriber secret could not be decrypted']);
+    }
+});
+
+test('recordUndeliverable writes nothing when every subscriber is readable', async () => {
+    const { eventDao } = loadEventDao({ dialect: 'postgres', rows: [] });
+    const calls = [];
+    await eventDao.recordUndeliverable('e1', [], 'reason', { execute: async (sql) => { calls.push(sql); } });
+    assert.strictEqual(calls.length, 0);
+});

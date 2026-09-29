@@ -299,10 +299,14 @@ const updateOrganization = async (req, res) => {
         if (payload.idpRefId !== undefined) {
             const existingIdpRefId = targetOrg ? targetOrg.idp_ref_id : (await orgDao.getByHandle(currentHandle)).idp_ref_id;
             if (payload.idpRefId !== existingIdpRefId) {
+                // Only the configured organization's value comes from auth.idp_org_id; a
+                // provisioned one's is the IDP organization claim it was created from.
+                const provisioned = targetOrg && targetOrg.uuid !== await orgContext.getOrgUuid();
                 return util.sendError(res, 400,
                     'The organization IDP reference cannot be changed through this API; it is what ' +
-                    "incoming tokens are matched against and is set by this portal's auth.idp_org_id " +
-                    'configuration.');
+                    'incoming tokens are matched against and is ' + (provisioned
+                        ? 'the IDP organization claim this organization was provisioned from.'
+                        : "set by this portal's auth.idp_org_id configuration."));
             }
         }
 

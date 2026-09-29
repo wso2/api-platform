@@ -135,6 +135,9 @@ client_id = "<API Portal client ID>"
 client_secret = "<API Portal client secret>"
 # Required in multi-tenancy mode.
 audience = "<API Portal client ID>"
+# The root organization's issuer, which bearer tokens are verified against. Unset, the
+# issuer isn't checked at all.
+issuer = "https://localhost:9443/oauth2/token"
 authorization_url = "https://localhost:9443/oauth2/authorize"
 token_url = "https://host.docker.internal:9443/oauth2/token"
 callback_url = "http://localhost:9543/api-portal/default/callback"
@@ -168,7 +171,13 @@ the portal provisioning organizations (see
 **Bearer tokens for the REST API** must come from the root organization's issuer
 (`auth.idp.issuer`). A token obtained directly from an organization's own token endpoint
 (`.../o/<organization id>/oauth2/token`) is rejected. Browser sign-ins, including every
-organization's users, don't use bearer tokens and are unaffected.
+organization's users, go through the root organization's endpoints, so their tokens carry
+that issuer too.
+
+To confirm the issuer, open the root organization's OIDC discovery document in a browser,
+`https://localhost:9443/oauth2/token/.well-known/openid-configuration`, and copy its
+`issuer` value exactly. The portal compares it character for character, so a different
+host name or a trailing slash rejects every token.
 
 ### The root organization
 
@@ -197,11 +206,13 @@ nobody can sign in to it:
 
 ```sql
 UPDATE organizations SET idp_ref_id = 'retired-super'
- WHERE handle = 'super' AND idp_ref_id = '10084a8d-113f-4211-a0d5-efe36b082211';
+ WHERE handle = 'super' AND idp_ref_id = '10084a8d-113f-4211-a0d5-efe36b082211'
+   AND portal_id = 'portal_id';
 ```
 
 Use the handle it was provisioned with (`super`, or `carbon.super` with
-`claim_mappings.org_handle` set).
+`claim_mappings.org_handle` set), and your deployment's `organization.portal_id`, so the
+statement can't touch another portal's organization in a shared database.
 
 ---
 

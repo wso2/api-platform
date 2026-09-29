@@ -224,7 +224,8 @@ API_PORTAL_URL="https://portal.example.com" \
 ```
 
 `PLAN_OVERRIDE` rewrites each sample's subscription plans to that list, so the catalog
-only advertises plans the organization has.
+only advertises plans the organization has. The token is only sent over verified HTTPS;
+for a privately issued portal certificate, set `API_PORTAL_CA_CERT` to its CA bundle.
 
 ## Turning it off
 

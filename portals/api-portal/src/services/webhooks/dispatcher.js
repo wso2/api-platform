@@ -17,7 +17,7 @@
  */
 const { config } = require('../../config/configLoader');
 const eventDao = require('../../dao/eventDao');
-const { matchSubscribers } = require('./subscriberRegistry');
+const { matchSubscribers, UNREADABLE_SECRET } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
 const db = require('../../db/driver');
 const logger = require('../../config/logger');
@@ -61,14 +61,23 @@ async function runBatch() {
 
     for (const event of events) {
         try {
-            const subscribers = await matchSubscribers(event.org_uuid, event.type);
+            const { subscribers, unreadable } = await matchSubscribers(event.org_uuid, event.type);
             if (subscribers.length === 0) {
-                // No matching subscribers — mark as delivered immediately.
-                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
-                    ['ALL_DELIVERED', event.uuid, orgContext.getPortalId()]);
+                // Nothing to deliver: delivered to everyone, or failed when a subscriber's
+                // secret couldn't be read.
+                await db.withTransaction(async (tx) => {
+                    await eventDao.recordUndeliverable(event.uuid, unreadable, UNREADABLE_SECRET, tx);
+                    await tx.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
+                        [unreadable.length > 0 ? 'FAILED' : 'ALL_DELIVERED', event.uuid, orgContext.getPortalId()]);
+                });
                 continue;
             }
-            await eventDao.createDeliveries(event.uuid, subscribers, null, null);
+            // One transaction, so a failure here leaves no rows behind for the retry to
+            // collide with.
+            await db.withTransaction(async (tx) => {
+                await eventDao.recordUndeliverable(event.uuid, unreadable, UNREADABLE_SECRET, tx);
+                await eventDao.createDeliveries(event.uuid, subscribers, null, tx);
+            });
         } catch (err) {
             logger.error('Failed to create deliveries for event', {
                 eventId: event.uuid, error: err.message

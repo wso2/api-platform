@@ -31,7 +31,9 @@
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 # credential prompt (used by CI). ACCESS_TOKEN supplies an already-issued bearer
 # token instead (e.g. from an external IDP) and skips the Platform API login
-# entirely. API_PORTAL_URL / PLATFORM_API_URL override the default local URLs.
+# entirely; it is only sent over verified HTTPS, so API_PORTAL_URL must be https://,
+# and API_PORTAL_CA_CERT names a CA bundle to trust for a privately issued portal
+# certificate. API_PORTAL_URL / PLATFORM_API_URL override the default local URLs.
 #
 # SAMPLES_DIR overrides which directory's apis/ and mcps/ subfolders get seeded
 # (default: auto-detected, see below) — e.g. one organization's own bundle when
@@ -131,6 +133,23 @@ else
 fi
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
+# TLS options for the calls that carry the token to the portal. The Platform API login
+# above targets the local deployment setup.sh creates, whose self-signed certificate
+# isn't verified. A supplied ACCESS_TOKEN is typically a real IDP credential, so it only
+# travels over verified HTTPS (--proto limits curl to https).
+PORTAL_TLS=(-k)
+if [ -n "${ACCESS_TOKEN:-}" ]; then
+    case "$API_PORTAL_URL" in
+        https://*) ;;
+        *) fail "ACCESS_TOKEN is only sent over HTTPS — set API_PORTAL_URL to an https:// URL." ;;
+    esac
+    PORTAL_TLS=(--proto =https)
+    if [ -n "${API_PORTAL_CA_CERT:-}" ]; then
+        [ -f "$API_PORTAL_CA_CERT" ] || fail "API_PORTAL_CA_CERT does not exist: $API_PORTAL_CA_CERT"
+        PORTAL_TLS+=(--cacert "$API_PORTAL_CA_CERT")
+    fi
+fi
+
 SECONDS=0
 API_CREATED=0; API_SKIPPED=0; API_FAILED=0
 MCP_CREATED=0; MCP_SKIPPED=0; MCP_FAILED=0
@@ -156,7 +175,7 @@ seed_docs() {
     (cd "$sample_dir/.." && zip -qr "$tmp_zip" "$(basename "$sample_dir")/docs/")
 
     local http_code
-    http_code=$(curl -sk -o /dev/null -w "%{http_code}" -X POST \
+    http_code=$(curl -s "${PORTAL_TLS[@]}" -o /dev/null -w "%{http_code}" -X POST \
         "$API_PORTAL_URL$resource_path/assets" \
         -H "$AUTH_HEADER" \
         -F "content=@$tmp_zip;type=application/zip")
@@ -234,7 +253,7 @@ seed_entry() {
     # filename=api.yaml overrides what curl would otherwise send (the temp file's
     # own name, when PLAN_OVERRIDE is set) — the server validates the uploaded
     # metadata part's filename against an allow-list.
-    local curl_args=(-sk -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
+    local curl_args=(-s "${PORTAL_TLS[@]}" -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
         -H "$AUTH_HEADER" \
         -F "metadata=@$api_yaml;filename=api.yaml;type=application/yaml")
     if [ -n "$definition" ]; then
