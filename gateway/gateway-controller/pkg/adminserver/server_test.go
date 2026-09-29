@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -492,7 +493,8 @@ func (c *challengeRecorder) WriteHeader(status int) {
 		if (status == http.StatusUnauthorized || status == http.StatusForbidden) &&
 			c.Header().Get("WWW-Authenticate") == "" {
 			c.Header().Set("WWW-Authenticate",
-				`Bearer resource_metadata="https://gw.example.com/.well-known/oauth-protected-resource"`)
+				`Bearer resource_metadata="https://gw.example.com/.well-known/oauth-protected-resource`+
+					AdminAPIBasePath+adminMcpRelPath+`"`)
 		}
 	}
 	c.ResponseWriter.WriteHeader(status)
@@ -561,6 +563,20 @@ func TestAdminServer_MCP_RequiresAuth(t *testing.T) {
 	challenge := rec.Header().Get("WWW-Authenticate")
 	assert.True(t, strings.HasPrefix(challenge, "Bearer "), "got %q", challenge)
 	assert.Contains(t, challenge, "resource_metadata=")
+
+	// The advertised document must be one this server actually serves.
+	const prefix = `resource_metadata="`
+	start := strings.Index(challenge, prefix)
+	require.NotEqual(t, -1, start, "no resource_metadata in %q", challenge)
+	rest := challenge[start+len(prefix):]
+	end := strings.IndexByte(rest, '"')
+	require.NotEqual(t, -1, end, "unterminated resource_metadata in %q", challenge)
+	u, err := url.Parse(rest[:end])
+	require.NoError(t, err)
+
+	metaRec := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(metaRec, httptest.NewRequest(http.MethodGet, u.Path, nil))
+	assert.Equal(t, http.StatusOK, metaRec.Code, "resource_metadata %q must resolve", u.String())
 }
 
 func TestAdminServer_MCP_NonAdminForbidden(t *testing.T) {
@@ -635,4 +651,24 @@ func TestAdminServer_MCP_MethodNotAllowed(t *testing.T) {
 
 	// Only POST is registered on the mux.
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+// With no IdP, main.go wires the admin MCP endpoint without OAuth discovery:
+// basic auth still protects it, but no Bearer challenge is sent and no RFC 9728
+// document is served, since there is no authorization server to name.
+func TestAdminServer_MCP_WithoutOAuthDiscovery(t *testing.T) {
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}},
+		&stubAPIServer{}, newAdminProtectMiddleware(t, []string{"admin"}), slog.Default(),
+		&MCPConfig{Handler: stubMCPHandler()})
+
+	rec := mcpRequest(t, s, "", false)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Empty(t, rec.Header().Get("WWW-Authenticate"))
+
+	assert.Equal(t, http.StatusOK, mcpRequest(t, s, "", true).Code)
+
+	meta := httptest.NewRecorder()
+	s.httpSrv.Handler.ServeHTTP(meta, httptest.NewRequest(http.MethodGet,
+		"/.well-known/oauth-protected-resource"+AdminAPIBasePath+"/mcp", nil))
+	assert.Equal(t, http.StatusNotFound, meta.Code)
 }
