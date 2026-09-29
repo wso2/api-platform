@@ -310,6 +310,14 @@ and
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -333,6 +341,14 @@ and
         ]
       },
       "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "faultPolicies": [
         {
           "name": "cors",
           "version": "v1",
@@ -367,6 +383,7 @@ and
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
 |subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
@@ -539,6 +556,14 @@ xor
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -557,6 +582,7 @@ An operation is matched either by the simple top-level method+path form, or by t
 |path|string|false|none|Route path with optional {param} placeholders (simple form; ignored when 'match' is set)|
 |match|[OperationMatch](#schemaoperationmatch)|false|none|Request matching criteria for an operation. Extensible with query params, cookies, etc.|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
 ## OperationMethod
@@ -1422,6 +1448,14 @@ and
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "tools": [
     {
       "name": "string",
@@ -1495,6 +1529,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[Policy](#schemapolicy)]|false|none|List of MCP Proxy level policies applied|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
 |prompts|[[MCPPrompt](#schemamcpprompt)]|false|none|none|
@@ -3980,6 +4015,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4021,6 +4080,8 @@ continued
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Provider (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
@@ -4558,6 +4619,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4580,6 +4665,8 @@ and
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |additionalProviders|[[LLMProxyAdditionalProvider](#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Proxy (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 

@@ -65,13 +65,20 @@ func BuildLatestVersionIndex(definitions map[string]models.PolicyDefinition) map
 func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfiguration) []ValidationError {
 	var errors []ValidationError
 
-	if mcpConfig.Spec.Policies == nil {
-		return errors
+	if mcpConfig.Spec.Policies != nil {
+		for i, policy := range *mcpConfig.Spec.Policies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
 	}
 
-	for i, policy := range *mcpConfig.Spec.Policies {
-		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
-		errors = append(errors, errs...)
+	// Fault policies are validated identically: a fault policy IS an ordinary policy
+	// invoked on a different path, so the same names, versions and parameter schemas apply.
+	if mcpConfig.Spec.FaultPolicies != nil {
+		for i, policy := range *mcpConfig.Spec.FaultPolicies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.faultPolicies[%d]", i))
+			errors = append(errors, errs...)
+		}
 	}
 
 	return errors
@@ -89,11 +96,30 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 		}
 	}
 
-	// Validate operation-level policies
+	// Validate the fault policies. Entries are validated exactly like normal policies —
+	// the same names, versions and parameter schemas apply, because fault policies
+	// runs ordinary policies over the error response rather than a special kind.
+	if apiConfig.Spec.FaultPolicies != nil {
+		for i, policy := range *apiConfig.Spec.FaultPolicies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.faultPolicies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	// Validate operation-level policies, and operation-level fault entries — which get the
+	// same treatment as any other policy reference, for the same reason the API-level fault
+	// sequence does: fault policies run ordinary policies, not a special kind.
 	for opIdx, operation := range apiConfig.Spec.Operations {
 		if operation.Policies != nil {
 			for pIdx, policy := range *operation.Policies {
 				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
+				errors = append(errors, errs...)
+			}
+		}
+		if operation.FaultPolicies != nil {
+			for pIdx, policy := range *operation.FaultPolicies {
+				errs := pv.validatePolicy(policy,
+					fmt.Sprintf("spec.operations[%d].faultPolicies[%d]", opIdx, pIdx))
 				errors = append(errors, errs...)
 			}
 		}
@@ -155,22 +181,45 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 // LLM->RestAPI transform (e.g. upstream auth) are intentionally not validated here so the
 // semantics match the REST API path, which only validates user-authored policies.
 func (pv *PolicyValidator) ValidateLLMProviderPolicies(cfg *api.LLMProviderConfiguration) []ValidationError {
-	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies)
+	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
+		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
 }
 
 // ValidateLLMProxyPolicies validates all policy references in an LLM proxy configuration.
 // See ValidateLLMProviderPolicies for the rationale on validating the source configuration.
 func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfiguration) []ValidationError {
-	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies)
+	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
+		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
 }
 
-// validateLLMPolicyRefs validates the three policy collections shared by LLM providers and
-// proxies: api-level (global) policies, operation-level policies, and the deprecated policies
-// list. Every collection gets its name/version reference resolved and its params validated
-// against the definition's declared parameter schema. An empty version resolves to the latest
-// available version (handled by ResolvePolicyVersion).
-func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) []ValidationError {
+// validateLLMPolicyRefs validates the policy collections shared by LLM providers and proxies:
+// api-level (global) policies, operation-level policies, the deprecated policies list, and
+// both levels of fault policy. Every collection gets its name/version reference resolved and
+// its params validated against the definition's declared parameter schema. An empty version
+// resolves to the latest available version (handled by ResolvePolicyVersion).
+func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy, globalFaultPolicies *[]api.Policy, operationFaultPolicies *[]api.OperationPolicy) []ValidationError {
 	var errors []ValidationError
+
+	// Fault policies, validated like any other policy reference for the same reason the
+	// REST path does it: a fault policy is an ordinary policy on a different path.
+	//
+	// The field path says globalFaultPolicies, which is what an LLM kind actually declares —
+	// naming it faultPolicies here would point an operator at a field this kind does not have.
+	if globalFaultPolicies != nil {
+		for i, policy := range *globalFaultPolicies {
+			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.globalFaultPolicies[%d]", i))...)
+		}
+	}
+
+	// Operation-level fault policies: name + version, matching how operationPolicies is
+	// validated below. Both are OperationPolicy, so both get the same treatment.
+	if operationFaultPolicies != nil {
+		for i, policy := range *operationFaultPolicies {
+			_, errs := pv.validatePolicyRef(policy.Name, policy.Version,
+				fmt.Sprintf("spec.operationFaultPolicies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
 
 	// Global (api-level) policies carry params on the policy itself, so reuse validatePolicy.
 	if globalPolicies != nil {
