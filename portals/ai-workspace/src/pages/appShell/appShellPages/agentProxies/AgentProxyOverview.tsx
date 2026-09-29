@@ -102,11 +102,10 @@ import { AGENT_TRANSPORT_OPTIONS } from './AgentProxiesCreateForm';
 import AgentProxyCardTab from './AgentProxyCardTab';
 import TransportPathField from './TransportPathField';
 import AgentProxyGuardrailsTab, {
-  AGENT_POLICY_CATEGORIES,
 } from './AgentProxyGuardrailsTab';
 import type { AgentPolicyState } from './AgentProxyGuardrailsTab';
-import type { SelectedPolicy } from '../externalServers/PolicyMapper';
-import { getGuardrails } from '../../../../apis/policyHubApis';
+import type { SelectedPolicy } from './AgentPolicyMapper';
+import { getPolicies } from '../../../../apis/policyHubApis';
 import {
   createSecret,
   deleteSecret,
@@ -354,7 +353,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
 
         const displayNames = new Map<string, string>();
         try {
-          const hub = await getGuardrails(AGENT_POLICY_CATEGORIES);
+          const hub = await getPolicies();
           (hub.data ?? []).forEach((policy) => {
             if (policy.displayName) {
               displayNames.set(policy.name, policy.displayName);
