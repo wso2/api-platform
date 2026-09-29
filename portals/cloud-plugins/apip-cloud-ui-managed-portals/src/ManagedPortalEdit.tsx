@@ -21,6 +21,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
@@ -155,12 +156,6 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
-              <FormLabel>Handle</FormLabel>
-              <TextField fullWidth value={portal.handle} disabled />
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12 }}>
             <FormControl fullWidth required error={Boolean(nameError) || missingRequired}>
               <FormLabel required>Name</FormLabel>
               <TextField
@@ -187,40 +182,55 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
               />
             </FormControl>
           </Grid>
-          <Grid size={{ xs: 12 }}>
-            <FormControl fullWidth>
-              <FormLabel>Login environment</FormLabel>
-              {/* Current env kept as a synthetic option when missing from the list, so out-of-band deletions show as a mismatch rather than a silent swap. */}
-              <Select
-                fullWidth
-                value={loginEnvironment}
-                onChange={(event) => setLoginEnvironment(String(event.target.value))}
-                disabled={submitting || envsLoading}
-                displayEmpty
-              >
-                {loginEnvironment && !environments.some((e) => e.name === loginEnvironment) && (
-                  <MenuItem value={loginEnvironment}>
-                    {loginEnvironment} (not in current environment list)
-                  </MenuItem>
+          {/* Login-env behaviour by env count:
+              - loading            → nothing (avoid flicker)
+              - error OR count ≤ 1 → read-only TextField showing the current env (never let the
+                user pick from an unknown/single set; failed env load shouldn't clear the field)
+              - count > 1          → editable Select
+              Rendering a disabled TextField in the error case is intentional: the user still sees
+              what the portal is bound to today and can't accidentally change it. */}
+          {envsLoading ? null : environments.length > 1 && !envsError ? (
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow placement="top-start">
+                  <FormLabel sx={{ width: 'fit-content' }}>Login environment</FormLabel>
+                </Tooltip>
+                {/* Current env kept as a synthetic option when missing from the list, so out-of-band deletions show as a mismatch rather than a silent swap. */}
+                <Select
+                  fullWidth
+                  value={loginEnvironment}
+                  onChange={(event) => setLoginEnvironment(String(event.target.value))}
+                  disabled={submitting}
+                  displayEmpty
+                >
+                  {loginEnvironment && !environments.some((e) => e.name === loginEnvironment) && (
+                    <MenuItem value={loginEnvironment}>
+                      {loginEnvironment} (not in current environment list)
+                    </MenuItem>
+                  )}
+                  {environments.map((env) => (
+                    <MenuItem key={env.name} value={env.name}>
+                      {env.displayName ? `${env.displayName} (${env.name})` : env.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          ) : loginEnvironment ? (
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow placement="top-start">
+                  <FormLabel sx={{ width: 'fit-content' }}>Login environment</FormLabel>
+                </Tooltip>
+                <TextField fullWidth value={loginEnvironment} disabled />
+                {envsError && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Read-only: could not load environments to edit ({envsError.message})
+                  </Typography>
                 )}
-                {environments.map((env) => (
-                  <MenuItem key={env.name} value={env.name}>
-                    {env.displayName ? `${env.displayName} (${env.name})` : env.name}
-                  </MenuItem>
-                ))}
-                {environments.length === 0 && !envsLoading && (
-                  <MenuItem value="" disabled>
-                    No environments - provision one first
-                  </MenuItem>
-                )}
-              </Select>
-              {envsError && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
-                  Failed to load environments: {envsError.message}
-                </Typography>
-              )}
-            </FormControl>
-          </Grid>
+              </FormControl>
+            </Grid>
+          ) : null}
         </Grid>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
