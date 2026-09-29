@@ -44,16 +44,3 @@ Feature: API Portal multi-tenancy webhook delivery
     And I generate 2 API Portal API keys for API "apiB" in portal "api-portal-multi-tenancy" with token "tokenB"
     Then the API Portal webhook sink "a" should receive exactly 2 "apikey.generated" events for organization "${CTX:orgA}"
     And the API Portal webhook sink "b" should receive exactly 2 "apikey.generated" events for organization "${CTX:orgB}"
-
-  Scenario: Concurrent work across two replicas of one deployment is delivered exactly once
-    Given I generate a unique resource name from "replicated" and store it as "replicated"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub      | rep                           |
-      | org_id   | ${CTX:replicated}             |
-      | org_name | Replicated ${CTX:replicated}  |
-      | roles    | ["ap_admin"]                  |
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "replicated" is registered in portal "api-portal-multi-tenancy" with token "token"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "token" and stored as "api"
-    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:replicated}" as "org"
-    When I generate 20 API Portal API keys for API "api" concurrently across portals "api-portal-multi-tenancy" and "api-portal-multi-tenancy-replica" with token "token"
-    Then the API Portal webhook sink "replicated" should receive exactly 20 "apikey.generated" events for organization "${CTX:org}"

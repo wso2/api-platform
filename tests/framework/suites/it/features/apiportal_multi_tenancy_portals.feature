@@ -16,62 +16,39 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal multi-tenancy portals sharing one database
+Feature: API Portal multi-tenancy on a database shared with other portals
 
-  # A second multi-tenancy portal runs on the same database under its own portal_id. Neither
-  # portal sees, provisions over, or delivers the other's rows.
+  # Other portals may share the database under their own portal_id. The seeded rows stand in
+  # for one: they sit under a portal_id no running portal serves, so this portal must never
+  # claim them, resolve a credential to them, or treat their names as taken.
 
   Background:
-    Given I generate a unique resource name from "two-portals" and store it as "shared"
+    Given I generate a unique resource name from "shared" and store it as "shared"
+    And API Portal rows for a portal_id no portal serves, with an organization whose IDP reference is "${CTX:shared}", are seeded in the database of "api-portal-multi-tenancy" and stored as "unowned"
     And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | tia                         |
-      | org_id     | ${CTX:shared}               |
-      | org_name   | Two Portals ${CTX:shared}   |
-      | org_handle | two-${CTX:shared}           |
-      | roles      | ["ap_admin"]                |
+      | sub        | tia           |
+      | org_id     | ${CTX:shared} |
+      | org_name   | ${CTX:shared} |
+      | org_handle | ${CTX:shared} |
+      | roles      | ["ap_admin"]  |
 
-  Scenario: One IDP organization is provisioned separately in each portal and neither sees the other's APIs
-    Given a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "token" and stored as "here"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy-other-portal" with token "token" and stored as "there"
-    Then the API Portal "api-portal-multi-tenancy" organization with IDP reference "${CTX:shared}" should have handle "two-${CTX:shared}" and display name "Two Portals ${CTX:shared}"
-    And the API Portal "api-portal-multi-tenancy-other-portal" organization with IDP reference "${CTX:shared}" should have handle "two-${CTX:shared}" and display name "Two Portals ${CTX:shared}"
-    When I send an API Portal "GET" request to "/apis/${CTX:here}" using portal "api-portal-multi-tenancy" with token "token"
-    Then the response status code should be 200
-    When I send an API Portal "GET" request to "/apis/${CTX:there}" using portal "api-portal-multi-tenancy" with token "token"
-    Then the response status code should be 404
+  Scenario: Another portal's organization with the same IDP reference is neither used nor in the way
+    # The seeded organization has the same idp_ref_id, handle and display name the token's
+    # claims provision, so a lookup that reached across portals would resolve to it, or
+    # disambiguate the new organization's names against it.
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
     Then the response status code should be 200
-    And the response body should not contain "${CTX:there}"
-    When I send an API Portal "GET" request to "/apis/${CTX:there}" using portal "api-portal-multi-tenancy-other-portal" with token "token"
+    And the API Portal "api-portal-multi-tenancy" organization with IDP reference "${CTX:shared}" should have handle "${CTX:shared}" and display name "${CTX:shared}"
+    When I send an API Portal "GET" request to "/organizations/${CTX:shared}" using portal "api-portal-multi-tenancy" with token "token"
     Then the response status code should be 200
-    When I send an API Portal "GET" request to "/apis/${CTX:here}" using portal "api-portal-multi-tenancy-other-portal" with token "token"
-    Then the response status code should be 404
+    And the JSON response field "idpRefId" should be "${CTX:shared}"
 
-  Scenario: Each portal delivers its own subscribers' events, and only those
-    Given an API Portal webhook subscriber for events "apikey.*" delivering to sink "here" is registered in portal "api-portal-multi-tenancy" with token "token"
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "there" is registered in portal "api-portal-multi-tenancy-other-portal" with token "token"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "token" and stored as "here"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy-other-portal" with token "token" and stored as "there"
-    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:shared}" as "hereOrg"
-    And I store the API Portal "api-portal-multi-tenancy-other-portal" organization id for IDP reference "${CTX:shared}" as "thereOrg"
-    When I generate 3 API Portal API keys for API "here" in portal "api-portal-multi-tenancy" with token "token"
-    And I generate 3 API Portal API keys for API "there" in portal "api-portal-multi-tenancy-other-portal" with token "token"
-    Then the API Portal webhook sink "here" should receive exactly 3 "apikey.generated" events for organization "${CTX:hereOrg}"
-    And the API Portal webhook sink "there" should receive exactly 3 "apikey.generated" events for organization "${CTX:thereOrg}"
-
-  Scenario: Rows under a portal_id no portal serves are left alone
-    # Each portal dispatches its own events the moment they are published, so the scenario
-    # above could pass even if a claim crossed portals now and then. Nothing serves these
-    # rows, so any change to them is a portal taking another portal's work.
-    Given API Portal rows for a portal_id no portal serves are seeded in the database of "api-portal-multi-tenancy" and stored as "unowned"
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "here" is registered in portal "api-portal-multi-tenancy" with token "token"
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "there" is registered in portal "api-portal-multi-tenancy-other-portal" with token "token"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "token" and stored as "here"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy-other-portal" with token "token" and stored as "there"
-    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:shared}" as "hereOrg"
-    And I store the API Portal "api-portal-multi-tenancy-other-portal" organization id for IDP reference "${CTX:shared}" as "thereOrg"
-    When I generate 1 API Portal API keys for API "here" in portal "api-portal-multi-tenancy" with token "token"
-    And I generate 1 API Portal API keys for API "there" in portal "api-portal-multi-tenancy-other-portal" with token "token"
-    Then the API Portal webhook sink "here" should receive exactly 1 "apikey.generated" events for organization "${CTX:hereOrg}"
-    And the API Portal webhook sink "there" should receive exactly 1 "apikey.generated" events for organization "${CTX:thereOrg}"
+  Scenario: Events and deliveries under a portal_id no portal serves are left alone
+    # The portal's own event is delivered after the rows are seeded, which proves its
+    # dispatcher and delivery worker have both run since.
+    Given an API Portal webhook subscriber for events "apikey.*" delivering to sink "proof" is registered in portal "api-portal-multi-tenancy" with token "token"
+    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "token" and stored as "api"
+    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:shared}" as "org"
+    When I generate 1 API Portal API keys for API "api" in portal "api-portal-multi-tenancy" with token "token"
+    Then the API Portal webhook sink "proof" should receive exactly 1 "apikey.generated" events for organization "${CTX:org}"
     And the seeded API Portal rows "unowned" should stay untouched

@@ -32,21 +32,10 @@ const EnvImageAPIPortal = "AP_IMAGE"
 const svcAPIPortal = "api-portal"
 const svcAPIPortalOtherOrg = "api-portal-other-org"
 
-// Multi-tenancy component names. The replica and the other portal share the first
-// instance's database: the replica as a second instance of the same deployment, the other
-// portal as a separate deployment under its own portal_id.
-const (
-	svcAPIPortalMultiTenancy            = "api-portal-multi-tenancy"
-	svcAPIPortalMultiTenancyReplica     = "api-portal-multi-tenancy-replica"
-	svcAPIPortalMultiTenancyOtherPortal = "api-portal-multi-tenancy-other-portal"
-)
+const svcAPIPortalMultiTenancy = "api-portal-multi-tenancy"
 
-// MultiTenancyPortalID is the portal_id the multi-tenancy portal and its replica serve.
+// MultiTenancyPortalID is the portal_id the multi-tenancy portal serves.
 const MultiTenancyPortalID = "portal_id"
-
-// MultiTenancyOtherPortalID is the portal_id of the second multi-tenancy portal on the same
-// database.
-const MultiTenancyOtherPortalID = "other_portal_id"
 
 // multiTenancyOverlay configures IDP sign-in through the testbench identity provider and
 // multi-tenancy mode.
@@ -69,36 +58,19 @@ func APIPortalOtherOrg() *components.Definition {
 // APIPortalMultiTenancy returns an API Portal in multi-tenancy mode that signs users in
 // through the testbench identity provider.
 func APIPortalMultiTenancy() *components.Definition {
-	return multiTenancyDefinition(svcAPIPortalMultiTenancy, MultiTenancyPortalID, "")
-}
-
-// APIPortalMultiTenancyReplica returns a second instance of APIPortalMultiTenancy's
-// deployment: the same configuration and portal_id, on the same database.
-func APIPortalMultiTenancyReplica() *components.Definition {
-	return multiTenancyDefinition(svcAPIPortalMultiTenancyReplica, MultiTenancyPortalID, svcAPIPortalMultiTenancy)
-}
-
-// APIPortalMultiTenancyOtherPortal returns a separate multi-tenancy portal on
-// APIPortalMultiTenancy's database, under its own portal_id.
-func APIPortalMultiTenancyOtherPortal() *components.Definition {
-	return multiTenancyDefinition(svcAPIPortalMultiTenancyOtherPortal, MultiTenancyOtherPortalID, svcAPIPortalMultiTenancy)
+	return multiTenancyDefinition(svcAPIPortalMultiTenancy, MultiTenancyPortalID)
 }
 
 // PortalID returns the portal_id a multi-tenancy API Portal component serves.
 func PortalID(component string) (string, bool) {
-	switch component {
-	case svcAPIPortalMultiTenancy, svcAPIPortalMultiTenancyReplica:
+	if component == svcAPIPortalMultiTenancy {
 		return MultiTenancyPortalID, true
-	case svcAPIPortalMultiTenancyOtherPortal:
-		return MultiTenancyOtherPortalID, true
-	default:
-		return "", false
 	}
+	return "", false
 }
 
-// multiTenancyDefinition builds a multi-tenancy portal instance. A non-empty sharesWith puts
-// it on that component's database instead of one of its own.
-func multiTenancyDefinition(name, portalID, sharesWith string) *components.Definition {
+// multiTenancyDefinition builds a multi-tenancy portal instance.
+func multiTenancyDefinition(name, portalID string) *components.Definition {
 	d := apiPortalDefinition(name, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", portalID, svcAPIPortal)
 	d.SourceProduct = svcAPIPortal
 	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + name + ":9543/api-portal/default/callback"
@@ -111,11 +83,6 @@ func multiTenancyDefinition(name, portalID, sharesWith string) *components.Defin
 	health := *d.Health
 	health.Path = "/health"
 	d.Health = &health
-	if sharesWith != "" {
-		d.DB.SharesStoreWith = sharesWith
-		d.DB.Schema = nil
-		d.DependsOn = append(d.DependsOn, sharesWith)
-	}
 	return d
 }
 

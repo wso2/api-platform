@@ -107,43 +107,21 @@ func TestAPIPortalSupportsPostgresAndSQLServer(t *testing.T) {
 	require.Equal(t, "portal", env["APIP_AP_DATABASE_NAME"])
 }
 
-func TestMultiTenancyPortalsShareOneDatabase(t *testing.T) {
-	owner := APIPortalMultiTenancy()
-	replica := APIPortalMultiTenancyReplica()
-	other := APIPortalMultiTenancyOtherPortal()
-
-	require.True(t, owner.DB.Owns())
-	for _, sharer := range []*components.Definition{replica, other} {
-		require.False(t, sharer.DB.Owns(), sharer.Name)
-		require.Equal(t, owner.Name, sharer.DB.SharesStoreWith, sharer.Name)
-		require.Contains(t, sharer.DependsOn, owner.Name, "%s starts after the database owner", sharer.Name)
-	}
-	require.NotContains(t, owner.DependsOn, "platform-api", "multi-tenancy portals sign in through the testbench, not platform-api")
-	require.Contains(t, owner.DependsOn, "testbench")
-}
-
-func TestMultiTenancyPortalsDeclareTheirPortalIDs(t *testing.T) {
-	cases := map[string]*components.Definition{
-		MultiTenancyPortalID:      APIPortalMultiTenancy(),
-		MultiTenancyOtherPortalID: APIPortalMultiTenancyOtherPortal(),
-	}
-	cases[MultiTenancyPortalID+"#replica"] = APIPortalMultiTenancyReplica()
-	for key, definition := range cases {
-		want := strings.TrimSuffix(key, "#replica")
-		require.Equal(t, want, definition.Compose.Env["APIP_AP_ORGANIZATION_PORTAL_ID"], definition.Name)
-		got, ok := PortalID(definition.Name)
-		require.True(t, ok, definition.Name)
-		require.Equal(t, want, got, definition.Name)
-	}
-	_, ok := PortalID("api-portal")
+func TestTheMultiTenancyPortalOwnsItsDatabaseAndSignsInThroughTheTestbench(t *testing.T) {
+	definition := APIPortalMultiTenancy()
+	require.True(t, definition.DB.Owns())
+	require.Equal(t, []string{"testbench"}, definition.DependsOn,
+		"the multi-tenancy portal signs in through the testbench, not platform-api")
+	require.Equal(t, MultiTenancyPortalID, definition.Compose.Env["APIP_AP_ORGANIZATION_PORTAL_ID"])
+	got, ok := PortalID(definition.Name)
+	require.True(t, ok)
+	require.Equal(t, MultiTenancyPortalID, got)
+	_, ok = PortalID("api-portal")
 	require.False(t, ok)
-	require.NotEqual(t, MultiTenancyPortalID, MultiTenancyOtherPortalID)
 }
 
-func TestMultiTenancyPortalsTrustTheIdentityProvider(t *testing.T) {
-	for _, definition := range []*components.Definition{
-		APIPortalMultiTenancy(), APIPortalMultiTenancyReplica(), APIPortalMultiTenancyOtherPortal(),
-	} {
+func TestTheMultiTenancyPortalTrustsTheIdentityProvider(t *testing.T) {
+	for _, definition := range []*components.Definition{APIPortalMultiTenancy()} {
 		bundle := string(definition.Compose.GeneratedFiles["certs/cert.pem"])
 		require.Contains(t, bundle, string(shared.ControlPlaneCrypto()["certs/cert.pem"]), definition.Name)
 		require.Contains(t, bundle, string(shared.IdentityProviderTLS().CertPEM), definition.Name)

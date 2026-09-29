@@ -98,8 +98,6 @@ func (s *Steps) registerMultiTenancySteps(sc *godog.ScenarioContext) {
 		s.createWebhookSubscriberWithToken)
 	sc.Step(`^I generate (\d+) API Portal API keys for API "([^"]*)" in portal "([^"]*)" with token "([^"]*)"$`,
 		s.generateAPIKeysWithToken)
-	sc.Step(`^I generate (\d+) API Portal API keys for API "([^"]*)" concurrently across portals "([^"]*)" and "([^"]*)" with token "([^"]*)"$`,
-		s.generateAPIKeysAcrossPortals)
 	sc.Step(`^the API Portal webhook sink "([^"]*)" should receive exactly (\d+) "([^"]*)" events for organization "([^"]*)"$`,
 		s.assertSinkReceivesExactly)
 	sc.Step(`^I publish a unique REST API to API Portal "([^"]*)" with shared key "([^"]*)" and store its id as "([^"]*)"$`,
@@ -129,7 +127,7 @@ func (s *Steps) registerMultiTenancySteps(sc *godog.ScenarioContext) {
 		s.assertOrganizationHandlePattern)
 	sc.Step(`^I store the API Portal "([^"]*)" organization id for IDP reference "([^"]*)" as "([^"]*)"$`,
 		s.storeOrganizationID)
-	sc.Step(`^API Portal rows for a portal_id no portal serves are seeded in the database of "([^"]*)" and stored as "([^"]*)"$`,
+	sc.Step(`^API Portal rows for a portal_id no portal serves, with an organization whose IDP reference is "([^"]*)", are seeded in the database of "([^"]*)" and stored as "([^"]*)"$`,
 		s.seedUnownedPortalRows)
 	sc.Step(`^the seeded API Portal rows "([^"]*)" should stay untouched$`, s.assertSeededRowsUntouched)
 }
@@ -578,17 +576,9 @@ func (s *Steps) generateAPIKey(ctx context.Context, portal, apiID string, header
 	return nil
 }
 
+// generateAPIKeysWithToken generates count keys, one after another, for the API stored under
+// apiKey.
 func (s *Steps) generateAPIKeysWithToken(ctx context.Context, count int, apiKey, portal, tokenKey string) error {
-	return s.generateAPIKeys(ctx, count, apiKey, []string{portal}, tokenKey, false)
-}
-
-func (s *Steps) generateAPIKeysAcrossPortals(ctx context.Context, count int, apiKey, first, second, tokenKey string) error {
-	return s.generateAPIKeys(ctx, count, apiKey, []string{first, second}, tokenKey, true)
-}
-
-// generateAPIKeys generates count keys for the API stored under apiKey, alternating between
-// portals, sequentially or all at once. The keys are removed with their API.
-func (s *Steps) generateAPIKeys(ctx context.Context, count int, apiKey string, portals []string, tokenKey string, concurrent bool) error {
 	if count <= 0 {
 		return fmt.Errorf("API Portal API key count must be positive, got %d", count)
 	}
@@ -600,25 +590,12 @@ func (s *Steps) generateAPIKeys(ctx context.Context, count int, apiKey string, p
 	if err != nil {
 		return err
 	}
-	if !concurrent {
-		for i := range count {
-			if err := s.generateAPIKey(ctx, portals[i%len(portals)], apiID, headers); err != nil {
-				return err
-			}
+	for range count {
+		if err := s.generateAPIKey(ctx, portal, apiID, headers); err != nil {
+			return err
 		}
-		return nil
 	}
-	errs := make([]error, count)
-	var wg sync.WaitGroup
-	for i := range count {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs[i] = s.generateAPIKey(ctx, portals[i%len(portals)], apiID, headers)
-		}()
-	}
-	wg.Wait()
-	return errors.Join(errs...)
+	return nil
 }
 
 // sinkDeliveries returns the bodies a named sink has received.
@@ -1187,10 +1164,19 @@ type seededRows struct {
 	StaleDelivery   string `json:"staleDelivery"`
 }
 
-// seedUnownedPortalRows writes an organization, a pending event, a pending delivery and a
-// delivery stranded in flight past the stale threshold, all under a portal_id no running
-// portal serves. Nothing may claim them, so any change is a portal reaching across portals.
-func (s *Steps) seedUnownedPortalRows(ctx context.Context, portal, storeAs string) error {
+// seedUnownedPortalRows writes the rows another portal on the same database would have, under
+// a portal_id no running portal serves: an organization whose handle, display name and
+// idp_ref_id are all idpRefID, a pending event, a pending delivery, and a delivery stranded
+// in flight past the stale threshold. Nothing may claim or resolve to them, so any change, and
+// any credential that resolves to that organization, is a portal reaching across portals.
+func (s *Steps) seedUnownedPortalRows(ctx context.Context, idpRefID, portal, storeAs string) error {
+	idpRefID, err := stepscommon.Expand(ctx, idpRefID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(idpRefID) == "" {
+		return errors.New("the seeded API Portal organization needs an IDP reference")
+	}
 	name, err := unique.Unique(ctx, "unowned-portal")
 	if err != nil {
 		return err
@@ -1241,7 +1227,7 @@ func (s *Steps) seedUnownedPortalRows(ctx context.Context, portal, storeAs strin
 		args  []any
 	}{
 		{"INSERT INTO organizations (uuid, portal_id, display_name, handle, idp_ref_id, configuration, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			[]any{ids[0], name, name, name, name, "{}", "it", "it"}},
+			[]any{ids[0], name, idpRefID, idpRefID, idpRefID, "{}", "it", "it"}},
 		{"INSERT INTO events (uuid, type, org_uuid, portal_id, aggregate_type, aggregate_uuid, payload, occurred_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			[]any{ids[1], "apikey.generated", ids[0], name, "api_key", ids[4], "{}", time.Now().UTC(), "PENDING"}},
 		{"INSERT INTO event_deliveries (uuid, event_uuid, portal_id, subscriber_id, target_url, status) VALUES (?, ?, ?, ?, ?, ?)",

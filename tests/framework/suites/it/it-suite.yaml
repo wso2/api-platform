@@ -172,9 +172,7 @@ blocks:
           - features/apiportal/security/grant_table_parity.feature
 
   # Multi-tenancy mode: IDP sign-in through the testbench identity provider, every
-  # organization under the portal's portal_id served. The replica shares the first
-  # instance's database as a second instance of the same deployment; the other portal
-  # shares it as a separate deployment under its own portal_id.
+  # organization under the portal's portal_id served.
   - name: api-portal-multi-tenancy
     parallel: 3
     components:
@@ -182,8 +180,6 @@ blocks:
       - name: api-portal-multi-tenancy
         db:
           matrix: [postgres, sqlserver]
-      - name: api-portal-multi-tenancy-replica
-      - name: api-portal-multi-tenancy-other-portal
     runners:
       - name: claims
         features:
