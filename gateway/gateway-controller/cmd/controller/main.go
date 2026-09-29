@@ -740,9 +740,16 @@ func main() {
 		base := strings.TrimRight(cfg.Controller.Server.ExternalBaseURL, "/")
 		const mcpRelPath = "/mcp"
 		mcpResource := base + managementAPIBasePath + mcpRelPath
-		// RFC 9728 path-insertion form, for a resource whose URI has a path.
-		mcpResourceMetadata = base + "/.well-known/oauth-protected-resource" +
-			managementAPIBasePath + mcpRelPath
+		// OAuth discovery (RFC 9728 metadata and the Bearer challenge) is only
+		// meaningful when an IdP issues the tokens. With basic auth alone there is
+		// no authorization server to name, and the MCP spec requires the metadata
+		// document to list at least one, so neither is published.
+		oauthDiscovery := cfg.Controller.Auth.IDP.Enabled
+		if oauthDiscovery {
+			// RFC 9728 path-insertion form, for a resource whose URI has a path.
+			mcpResourceMetadata = base + "/.well-known/oauth-protected-resource" +
+				managementAPIBasePath + mcpRelPath
+		}
 
 		roleMapping := cfg.Controller.Auth.IDP.RoleMapping
 		mcpHandler := apiServer.EnableMCP(authConfig.ResourceRoles, roleMapping, mcpResourceMetadata)
@@ -754,23 +761,24 @@ func main() {
 			cfg.Controller.Server.MCPServer.AdvertisedScopes,
 			mcpHandler.MCPBaselineRoles(), roleMapping, log)
 
-		mcpChallenge = onlyForPatterns(
-			handlers.MCPChallengeMiddleware(mcpResourceMetadata, advertisedScopes),
-			mcpRoutePatterns)
+		if oauthDiscovery {
+			mcpChallenge = onlyForPatterns(
+				handlers.MCPChallengeMiddleware(mcpResourceMetadata, advertisedScopes),
+				mcpRoutePatterns)
 
-		// Unauthenticated discovery document. Registered directly on the mux,
-		// outside every auth middleware: a client with no token must be able to
-		// read it to begin the OAuth flow. Exact patterns, not a prefix, so
-		// metadata is never served for some other path.
-		prHandler := handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
-			Resource:               mcpResource,
-			AuthorizationServers:   []string{cfg.Controller.Auth.IDP.Issuer},
-			ScopesSupported:        advertisedScopes,
-			BearerMethodsSupported: []string{"header"},
-		})
-		mux.HandleFunc("GET /.well-known/oauth-protected-resource"+managementAPIBasePath+mcpRelPath, prHandler)
-		mux.HandleFunc("GET /.well-known/oauth-protected-resource", prHandler)
-
+			// Unauthenticated discovery document. Registered directly on the mux,
+			// outside every auth middleware: a client with no token must be able to
+			// read it to begin the OAuth flow. Exact patterns, not a prefix, so
+			// metadata is never served for some other path.
+			prHandler := handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
+				Resource:               mcpResource,
+				AuthorizationServers:   []string{cfg.Controller.Auth.IDP.Issuer},
+				ScopesSupported:        advertisedScopes,
+				BearerMethodsSupported: []string{"header"},
+			})
+			mux.HandleFunc("GET /.well-known/oauth-protected-resource"+managementAPIBasePath+mcpRelPath, prHandler)
+			mux.HandleFunc("GET /.well-known/oauth-protected-resource", prHandler)
+		}
 	}
 
 	// Per-route middleware. The generated wrapper applies these as
@@ -857,9 +865,15 @@ func main() {
 				"POST " + adminMcpRelPath:                    true,
 			}
 			adminMcpResource := base + adminAPIBasePath + adminMcpRelPath
-			// RFC 9728 path-insertion form, for a resource whose URI has a path.
-			adminMcpResourceMetadata := base + "/.well-known/oauth-protected-resource" +
-				adminAPIBasePath + adminMcpRelPath
+			// As on the management endpoint: OAuth discovery only when an IdP
+			// issues the tokens.
+			oauthDiscovery := cfg.Controller.Auth.IDP.Enabled
+			adminMcpResourceMetadata := ""
+			if oauthDiscovery {
+				// RFC 9728 path-insertion form, for a resource whose URI has a path.
+				adminMcpResourceMetadata = base + "/.well-known/oauth-protected-resource" +
+					adminAPIBasePath + adminMcpRelPath
+			}
 
 			roleMapping := cfg.Controller.Auth.IDP.RoleMapping
 			adminMcpHandler := apiServer.EnableAdminMCP(
@@ -870,17 +884,17 @@ func main() {
 				cfg.Controller.AdminServer.MCPServer.AdvertisedScopes,
 				adminMcpHandler.MCPBaselineRoles(), roleMapping, log)
 
-			adminMcp = &adminserver.MCPConfig{
-				Handler: adminMcpHandler,
-				Challenge: onlyForPatterns(
+			adminMcp = &adminserver.MCPConfig{Handler: adminMcpHandler}
+			if oauthDiscovery {
+				adminMcp.Challenge = onlyForPatterns(
 					handlers.MCPChallengeMiddleware(adminMcpResourceMetadata, advertisedScopes),
-					adminMcpRoutePatterns),
-				Metadata: handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
+					adminMcpRoutePatterns)
+				adminMcp.Metadata = handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
 					Resource:               adminMcpResource,
 					AuthorizationServers:   []string{cfg.Controller.Auth.IDP.Issuer},
 					ScopesSupported:        advertisedScopes,
 					BearerMethodsSupported: []string{"header"},
-				}),
+				})
 			}
 		}
 
