@@ -131,7 +131,20 @@ else
         -d "username=$ENCODED_ADMIN_USERNAME&password=$ENCODED_ADMIN_PASSWORD" | jq -r '.token // empty')
     [ -n "$TOKEN" ] || fail "failed to obtain a token — check the credentials and that Platform API is reachable at $PLATFORM_API_URL."
 fi
-AUTH_HEADER="Authorization: Bearer $TOKEN"
+# Temporary files removed on every exit, including one set -e cuts short: the header
+# file carrying the token, and a sample's rewritten api.yaml (PLAN_OVERRIDE).
+AUTH_HEADER_FILE=""
+TMP_YAML=""
+cleanup() {
+    rm -f -- ${AUTH_HEADER_FILE:+"$AUTH_HEADER_FILE"} ${TMP_YAML:+"$TMP_YAML"}
+}
+trap cleanup EXIT
+
+# The token goes to curl through a 0600 header file (-H @file) rather than its argument
+# list, which other local users can read from the process table.
+AUTH_HEADER_FILE="$(mktemp "${TMPDIR:-/tmp}/seed-samples-auth.XXXXXX")"
+chmod 600 "$AUTH_HEADER_FILE"
+printf 'Authorization: Bearer %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
 
 # TLS options for the calls that carry the token to the portal. The Platform API login
 # above targets the local deployment setup.sh creates, whose self-signed certificate
@@ -177,7 +190,7 @@ seed_docs() {
     local http_code
     http_code=$(curl -s "${PORTAL_TLS[@]}" -o /dev/null -w "%{http_code}" -X POST \
         "$API_PORTAL_URL$resource_path/assets" \
-        -H "$AUTH_HEADER" \
+        -H "@$AUTH_HEADER_FILE" \
         -F "content=@$tmp_zip;type=application/zip")
     rm -f "$tmp_zip"
 
@@ -233,9 +246,9 @@ seed_entry() {
     # subscriptionPlans: block with exactly the target organization's plan set.
     # Every sample writes it as a multi-line block (subscriptionPlans:\n    - Plan),
     # so a targeted awk substitution is enough — no YAML parser needed.
-    local tmp_yaml=""
+    TMP_YAML=""
     if [ -n "${PLAN_OVERRIDE:-}" ]; then
-        tmp_yaml="$(mktemp "${TMPDIR:-/tmp}/seed-samples.XXXXXX")"
+        TMP_YAML="$(mktemp "${TMPDIR:-/tmp}/seed-samples.XXXXXX")"
         awk -v flat="$PLAN_OVERRIDE" '
             /^  subscriptionPlans:$/ {
                 print
@@ -246,15 +259,15 @@ seed_entry() {
             }
             in_block && /^    - / { next }
             { in_block = 0; print }
-        ' "$api_yaml" > "$tmp_yaml"
-        api_yaml="$tmp_yaml"
+        ' "$api_yaml" > "$TMP_YAML"
+        api_yaml="$TMP_YAML"
     fi
 
     # filename=api.yaml overrides what curl would otherwise send (the temp file's
     # own name, when PLAN_OVERRIDE is set) — the server validates the uploaded
     # metadata part's filename against an allow-list.
     local curl_args=(-s "${PORTAL_TLS[@]}" -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
-        -H "$AUTH_HEADER" \
+        -H "@$AUTH_HEADER_FILE" \
         -F "metadata=@$api_yaml;filename=api.yaml;type=application/yaml")
     if [ -n "$definition" ]; then
         curl_args+=(-F "definition=@$definition;type=application/octet-stream")
@@ -264,7 +277,10 @@ seed_entry() {
     response=$(curl "${curl_args[@]}" -w "\n%{http_code}")
     http_code=$(echo "$response" | tail -1)
     body=$(echo "$response" | sed '$d')
-    [ -n "$tmp_yaml" ] && rm -f "$tmp_yaml"
+    if [ -n "$TMP_YAML" ]; then
+        rm -f -- "$TMP_YAML"
+        TMP_YAML=""
+    fi
 
     if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
         id=$(echo "$body" | jq -r '.id // empty')
