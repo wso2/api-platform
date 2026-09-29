@@ -486,6 +486,7 @@ max_response_bytes = 5242880   # 5 MiB
 #   custom      Any key manager that implements RFC 7591 + RFC 7592. Sends no vendor
 #               member and offers the full RFC 7591 metadata set. Start here for a key
 #               manager with no driver of its own below.
+#   keycloak    Keycloak, via /realms/<realm>/clients-registrations/openid-connect.
 #   thunderid   ThunderID. The same protocol, with a shorter property list.
 #   wso2is      WSO2 Identity Server 7.x, via its DCR v1.1 API.
 #   asgardeo    WSO2 Asgardeo, via its DCR v1.1 API. The same API as wso2is today, but
@@ -539,6 +540,25 @@ max_response_bytes = 5242880   # 5 MiB
 # # Permits plain http:// for this key manager. Default true — an identity server
 # # commonly sits behind a TLS-terminating ingress. Set false to require https.
 # allow_http_endpoints    = true
+#
+# # Keycloak. Endpoints come from the realm's OIDC discovery document at
+# # https://<host>/realms/<realm>/.well-known/openid-configuration
+# #
+# # The provisioning credential needs rights to register clients in that realm — a
+# # service account with the realm-management `manage-clients` role, or an admin
+# # user. Keycloak rotates a client's registration access token on every update;
+# # the portal stores and rewrites it, so nothing extra is needed here.
+# [[api_portal.key_manager]]
+# id   = "keycloak"
+# name = "Keycloak"
+# type = "keycloak"
+# registration_endpoint = "https://kc.example.com/realms/<realm>/clients-registrations/openid-connect"
+# token_endpoint        = "https://kc.example.com/realms/<realm>/protocol/openid-connect/token"
+# authorize_endpoint    = "https://kc.example.com/realms/<realm>/protocol/openid-connect/auth"
+#   [api_portal.key_manager.auth]
+#   method        = "client_credentials"
+#   client_id     = "<service account client id>"
+#   client_secret = '{{ env "KEYCLOAK_CLIENT_SECRET" }}'
 #
 # # Any RFC 7591/7592-conforming key manager. The endpoints come from its OIDC
 # # discovery document; `registration_endpoint` is the one that matters here.

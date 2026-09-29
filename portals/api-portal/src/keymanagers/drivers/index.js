@@ -43,3 +43,4 @@ require('./thunderid');
 require('./wso2is');
 require('./asgardeo');
 require('./custom');
+require('./keycloak');

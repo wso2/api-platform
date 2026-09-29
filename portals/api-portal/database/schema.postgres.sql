@@ -443,6 +443,22 @@ CREATE TABLE IF NOT EXISTS oauth2_consumer_keys (
     -- driver need not collect a name, and a key imported by an older client
     -- may not carry one -- the UI falls back to the consumer key.
     name VARCHAR(255),
+    -- RFC 7592 client-configuration credentials, when the key manager issued them.
+    --
+    -- A conforming server returns a registration access token alongside the new
+    -- client, and read/update/delete of THAT client authenticate with it rather
+    -- than the portal's own provisioning credential. It may also rotate: Keycloak
+    -- returns a new token from every update and kills the old one immediately, so
+    -- these columns are rewritten from each response, not just at creation.
+    --
+    -- registration_client_uri is stored rather than rebuilt because RFC 7592 S3
+    -- makes it REQUIRED in the response precisely so the configuration endpoint
+    -- can sit on a different host or path than the registration endpoint --
+    -- Keycloak's does. NULL in both means this key is managed with the
+    -- provisioning credential against a constructed URL, which is how every key
+    -- on a key manager that issues no token behaves.
+    registration_access_token_enc BYTEA,
+    registration_client_uri VARCHAR(1023),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -523,7 +539,7 @@ CREATE TABLE IF NOT EXISTS key_manager_configurations (
     key_manager_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
     org_uuid VARCHAR(40) NOT NULL,
-    -- Which built-in driver handles it: thunderid | wso2is | asgardeo | provision. Resolved
+    -- Which built-in driver handles it: thunderid | wso2is | asgardeo | keycloak | custom | provision. Resolved
     -- against the driver registry at use time. Not a CHECK constraint
     -- (R4-NO-ENUM-CHECK): the valid set is the registered drivers, which ship in
     -- the image and change with it.

@@ -2396,9 +2396,19 @@ paths:
         offers an update operation; one that does not is answered with `409`.
 
 
-        This is a full replacement, not a merge — a property omitted from the body is cleared at the key manager, so
-        send the complete set as returned by `GET /oauth2-keys/{keyId}`. `keyManagerId` is immutable and is not
-        accepted here; to move a key to another key manager, delete it and generate a new one.
+        Send the complete set as returned by `GET /oauth2-keys/{keyId}`. The portal issues this as a full
+        replacement rather than a merge, which is what RFC 7592 §2.2 defines: a property omitted from the body is
+        offered to the key manager as a deletion.
+
+
+        Whether it is actually deleted is the key manager's own behaviour, and not all of them replace. Some merge,
+        preserving members the request left out; the portal cannot tell the difference from the response, and does
+        not try to force the outcome by clearing members it does not model. So treat an omission as a request to
+        clear, never as a guarantee — read the key back if you need to know what the key manager kept.
+
+
+        `keyManagerId` is immutable and is not accepted here; to move a key to another key manager, delete it and
+        generate a new one.
       operationId: updateOAuth2Key
       requestBody:
         $ref: "#/components/requestBodies/OAuth2KeyUpdateBody"
@@ -3827,8 +3837,10 @@ components:
     OAuth2KeyUpdateBody:
       required: true
       description: >-
-        Full replacement of the key's client metadata. Every property the key should keep must be present — an
-        omitted one is cleared at the key manager. `keyManagerId` is immutable and is not accepted here.
+        Full replacement of the key's client metadata. Every property the key should keep must be present: an
+        omitted one is offered to the key manager as a deletion, though whether it is actually deleted is that key
+        manager's own behaviour — see the operation description. `keyManagerId` is immutable and is not accepted
+        here.
       content:
         application/json:
           schema:

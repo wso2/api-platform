@@ -47,11 +47,24 @@ const crypto = require('crypto');
 
 const db = require('../db/driver');
 const { getPortalId } = require('../utils/orgContext');
+const { config } = require('../config/configLoader');
+const logger = require('../config/logger');
+const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const TABLE = 'oauth2_consumer_keys';
 
 // Named columns, never SELECT * (R7-NO-SELECT-STAR): a schema change should
 // surface here rather than as a silently different row shape.
+/*
+ * Built once. With no encryption key configured this throws on use rather than
+ * silently storing a plaintext credential — the same fail-closed posture
+ * keyManagerConfigurationDao takes.
+ */
+const keyCrypto = createCryptoUtil(config.security && config.security.encryptionKey);
+
+// Named columns, never SELECT * (R7-NO-SELECT-STAR). The encrypted registration
+// access token is NOT here: a read has to opt in to it, so the ordinary list and
+// detail paths cannot carry a credential they have no use for.
 const COLUMNS = [
     'uuid',
     'org_uuid',
@@ -59,11 +72,23 @@ const COLUMNS = [
     'consumer_key',
     'name',
     'status',
+    'registration_client_uri',
     'created_by',
     'created_at',
     'updated_by',
     'updated_at',
 ].join(', ');
+
+const COLUMNS_WITH_REGISTRATION = `${COLUMNS}, registration_access_token_enc`;
+
+function requireCrypto() {
+    if (!keyCrypto.enabled) {
+        throw new Error(
+            'A registration access token cannot be stored: security.encryption_key is not '
+            + 'configured. Set it to a 64-character hex string (openssl rand -hex 32).'
+        );
+    }
+}
 
 const STATUS_ACTIVE = 'ACTIVE';
 
@@ -100,6 +125,10 @@ function toRecord(row) {
         consumerKey: row.consumer_key,
         name: row.name || '',
         status: row.status,
+        // The URI is not a credential — it is the address the token is used at, and
+        // the driver needs it to build the request. The token itself arrives only
+        // through getWithRegistration below.
+        registrationClientUri: row.registration_client_uri || '',
         createdBy: row.created_by,
         createdAt: toIsoUtc(row.created_at),
         updatedBy: row.updated_by,
@@ -117,17 +146,88 @@ function toRecord(row) {
  * @param {string} params.createdBy
  * @returns {Promise<object>} the stored record
  */
-const create = async ({ orgId, keyManagerId, consumerKey, name, createdBy }) => {
+const create = async ({ orgId, keyManagerId, consumerKey, name, createdBy, registration }) => {
     const uuid = crypto.randomUUID();
+    // Only a key manager that implements RFC 7592 sends these. Absent, both stay
+    // NULL and this key is managed with the portal's provisioning credential.
+    const accessToken = (registration && registration.accessToken) || '';
+    const clientUri = (registration && registration.clientUri) || '';
+    if (accessToken) requireCrypto();
     await db.execute(
         `INSERT INTO ${TABLE} (
             uuid, org_uuid, portal_id, key_manager_id, consumer_key, name,
-            status, created_by, updated_by
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, registration_access_token_enc, registration_client_uri,
+            created_by, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [uuid, orgId, getPortalId(), keyManagerId, consumerKey, name || null,
-            STATUS_ACTIVE, createdBy, createdBy]
+            STATUS_ACTIVE,
+            accessToken ? keyCrypto.encrypt(accessToken) : null,
+            clientUri || null,
+            createdBy, createdBy]
     );
     return get(orgId, uuid, createdBy);
+};
+
+/**
+ * The key, plus its decrypted registration access token.
+ *
+ * Separate from `get` so the credential is fetched only where it is about to be
+ * used — the four driver calls — rather than riding along on every list and
+ * detail response.
+ *
+ * A token that cannot be decrypted is reported as absent rather than thrown:
+ * after `security.encryption_key` is rotated every stored token is unreadable,
+ * and failing here would make those keys permanently unmanageable. Absent means
+ * the caller falls back to the provisioning credential, which is exactly the
+ * recovery path a stale token takes.
+ */
+const getWithRegistration = async (orgId, keyId, createdBy) => {
+    const rows = await db.query(
+        `SELECT ${COLUMNS_WITH_REGISTRATION} FROM ${TABLE}
+          WHERE portal_id = ? AND org_uuid = ? AND uuid = ? AND created_by = ?`,
+        [getPortalId(), orgId, keyId, createdBy]
+    );
+    if (!rows.length) return null;
+    const record = toRecord(rows[0]);
+    let accessToken = '';
+    const payload = bufferToUtf8(rows[0].registration_access_token_enc);
+    if (payload) {
+        try {
+            accessToken = keyCrypto.decrypt(payload);
+        } catch (error) {
+            logger.warn('Stored registration access token could not be decrypted; '
+                + 'falling back to the provisioning credential', {
+                keyId, orgId, error: error.message,
+            });
+        }
+    }
+    return {
+        ...record,
+        registration: { accessToken, clientUri: record.registrationClientUri },
+    };
+};
+
+/**
+ * Replace the stored registration credentials.
+ *
+ * Called after every driver response that carried one, because RFC 7592 §5 lets a
+ * server rotate the token on any read or update — Keycloak does so on update and
+ * kills the previous token immediately, so a missed write leaves the key
+ * unmanageable until the fallback clears it.
+ *
+ * `{ accessToken: '' }` clears the pair, which is how a rejected token is
+ * discarded.
+ */
+const setRegistration = async (orgId, keyId, createdBy, { accessToken, clientUri }, updatedBy) => {
+    if (accessToken) requireCrypto();
+    await db.execute(
+        `UPDATE ${TABLE}
+            SET registration_access_token_enc = ?, registration_client_uri = ?,
+                updated_by = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE portal_id = ? AND org_uuid = ? AND uuid = ? AND created_by = ?`,
+        [accessToken ? keyCrypto.encrypt(accessToken) : null, clientUri || null,
+            updatedBy, getPortalId(), orgId, keyId, createdBy]
+    );
 };
 
 /**
@@ -233,6 +333,8 @@ module.exports = {
     create,
     get,
     listByCreator,
+    getWithRegistration,
+    setRegistration,
     countByKeyManager,
     setName,
     setStatus,

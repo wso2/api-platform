@@ -344,6 +344,88 @@ const getKeyManagerMetadata = async (req, res) => {
 };
 
 /**
+ * Run one RFC 7592 lifecycle call, with the stored registration credentials if
+ * this key has any, and recover from a stale one.
+ *
+ * Three things have to happen around every such call, and putting them here keeps
+ * them from being remembered separately at four call sites:
+ *
+ * 1. USE the stored token. Absent, the driver falls back to the provisioning
+ *    credential against a constructed URL — which is what every key on a key
+ *    manager that issues no token does.
+ *
+ * 2. PERSIST a rotated one. RFC 7592 §5 lets a server issue a new token on any
+ *    read or update. Keycloak does it on update and kills the old token at once,
+ *    so a missed write makes the key unmanageable from the very next call.
+ *    Best-effort: the operation the caller asked for has already succeeded, so a
+ *    failed write must not fail the response — step 3 is what recovers.
+ *
+ * 3. RECOVER from a stale one. A token the server no longer accepts comes back as
+ *    `provisioning_credential_rejected` (401/403). Rather than leaving the key
+ *    permanently unmanageable, the stored pair is cleared and the call retried
+ *    once with the provisioning credential — which a conforming server may well
+ *    accept: Keycloak's configuration endpoint takes an admin bearer. Retried
+ *    once only, and only on that reason: a 404 means the client is gone and
+ *    retrying proves nothing.
+ *
+ * @param {object} ctx  { orgId, keyId, actor, record }
+ * @param {(registration: object|null) => Promise<object>} call
+ */
+async function _withRegistration(ctx, call) {
+    const { orgId, keyId, actor } = ctx;
+    let stored = null;
+    try {
+        stored = await oauth2KeyDao.getWithRegistration(orgId, keyId, actor);
+    } catch (error) {
+        // Reading the credential must not break the operation; without it the
+        // driver simply uses the provisioning credential.
+        logger.warn('Could not read stored registration credentials', {
+            orgId, keyId, error: error.message,
+        });
+    }
+    const registration = stored && stored.registration && stored.registration.accessToken
+        ? stored.registration
+        : null;
+
+    const persist = async (result) => {
+        const issued = result && result.registration;
+        if (!issued || !issued.accessToken) return result;
+        const unchanged = registration
+            && issued.accessToken === registration.accessToken
+            && (issued.clientUri || '') === (registration.clientUri || '');
+        if (unchanged) return result;
+        try {
+            await oauth2KeyDao.setRegistration(orgId, keyId, actor, issued, actor);
+        } catch (error) {
+            logger.error('Failed to persist a rotated registration access token; this key may '
+                + 'need the provisioning-credential fallback on its next call', {
+                orgId, keyId, error: error.message,
+            });
+        }
+        return result;
+    };
+
+    try {
+        return await persist(await call(registration));
+    } catch (error) {
+        const stale = registration
+            && error instanceof KeyManagerCallError
+            && error.publicReason === 'provisioning_credential_rejected';
+        if (!stale) throw error;
+        logger.warn('Stored registration access token was rejected; clearing it and retrying '
+            + 'with the provisioning credential', { orgId, keyId });
+        try {
+            await oauth2KeyDao.setRegistration(orgId, keyId, actor, { accessToken: '', clientUri: '' }, actor);
+        } catch (clearError) {
+            logger.error('Could not clear a rejected registration access token', {
+                orgId, keyId, error: clearError.message,
+            });
+        }
+        return persist(await call(null));
+    }
+}
+
+/**
  * POST /oauth2-keys — operationId createOAuth2Key.
  *
  * Registers a new OAuth application on the selected key manager over DCR.
@@ -360,10 +442,11 @@ const createOAuth2Key = async (req, res) => {
         }
         const issued = await km.createKey(properties);
 
-        // Persist only what the portal needs to find this client again. The
-        // secret and the metadata are not stored — see the note at the top.
-        // issued.registration is intentionally dropped: the table stores neither
-        // the RFC 7592 URI nor its token. See the note at the top of this file.
+        // Persist only what the portal needs to find this client again and to
+        // manage it afterwards. The secret and the metadata are not stored — see
+        // the note at the top. `issued.registration` is: where the key manager
+        // implements RFC 7592, its token and configuration URI are what later
+        // read/update/delete calls authenticate with.
         // `client_name` is RFC 7591's member for the display name, and every driver
         // here declares it under that name — so one lookup covers all of them rather
         // than a per-driver mapping. Stored because a consumer key is not something a
@@ -374,6 +457,7 @@ const createOAuth2Key = async (req, res) => {
             consumerKey: issued.consumerKey,
             name: (issued.properties && issued.properties.client_name) || '',
             createdBy: actor,
+            registration: issued.registration,
         });
 
         logUserAction('OAUTH2_KEY_CREATED', req, {
@@ -466,7 +550,10 @@ const getOAuth2Key = async (req, res) => {
         let properties = {};
         if (km) {
             try {
-                const fresh = await km.getKey(record.consumerKey, null);
+                const fresh = await _withRegistration(
+                    { orgId, keyId, actor },
+                    (registration) => km.getKey(record.consumerKey, registration)
+                );
                 properties = fresh.properties;
             } catch (err) {
                 if (!(err instanceof KeyManagerCallError) ||
@@ -513,7 +600,10 @@ const updateOAuth2Key = async (req, res) => {
 
         // Upstream first: the key manager is the system of record for the
         // metadata, so a failed call must leave nothing changed here either.
-        const updated = await km.updateKey(record.consumerKey, req.body.properties, null);
+        const updated = await _withRegistration(
+            { orgId, keyId, actor },
+            (registration) => km.updateKey(record.consumerKey, req.body.properties, registration)
+        );
 
         /*
          * The name is the one thing persisted here, so it is the one thing an
@@ -596,7 +686,10 @@ const deleteOAuth2Key = async (req, res) => {
 
         // Upstream first: dropping the row before the key manager confirms would
         // leave a live OAuth client that nothing here can reach or delete.
-        await km.deleteKey(record.consumerKey, null);
+        await _withRegistration(
+            { orgId, keyId, actor },
+            (registration) => km.deleteKey(record.consumerKey, registration)
+        );
         await oauth2KeyDao.remove(orgId, keyId, actor);
 
         logUserAction('OAUTH2_KEY_DELETED', req, {
@@ -713,7 +806,10 @@ const generateOAuth2KeyToken = async (req, res) => {
          */
         let clientMeta = {};
         try {
-            const current = await km.getKey(record.consumerKey, null);
+            const current = await _withRegistration(
+                { orgId, keyId, actor },
+                (registration) => km.getKey(record.consumerKey, registration)
+            );
             clientMeta = (current && current.properties) || {};
         } catch (readError) {
             logger.debug('Could not read the client back before issuing a token', {
