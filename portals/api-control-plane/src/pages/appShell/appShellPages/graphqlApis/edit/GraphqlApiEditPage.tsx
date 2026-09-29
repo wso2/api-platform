@@ -30,6 +30,7 @@ import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { resuppliedSchemaSource } from '../utils/graphqlApiMetadataUpdate';
 import { EditGraphqlApiForm, type GraphqlApiBasicInfoFormValues } from './EditGraphqlApiForm';
 
 const messages = defineMessages({
@@ -88,18 +89,8 @@ const messages = defineMessages({
  * URL-based upstream survive an endpoint-only edit.
  *
  * This is a metadata-only edit — the schema itself is untouched — so
- * `schemaSource` must be resupplied faithfully rather than forcing
- * `'introspection'`: the service's structural validation rejects
- * `schemaSource` values whose required field isn't also present, and
- * forcing `'introspection'` on an inline/url/file-sourced API would either
- * hard-fail that check (no reachable `upstream.main.url`) or silently
- * re-derive the schema from upstream, discarding what was actually
- * authored. `GraphQLAPIDetail` has no `sdl` field of its own (see
- * `useGraphQLApiSdl`), so for anything other than `'introspection'` this
- * resupplies the already-resolved SDL as `'inline'` — resolution
- * re-validates that same text and is a no-op, without ever touching
- * upstream. `'introspection'` is the one source `GraphQLAPIDetail` can
- * always resupply as-is, since `upstream.main.url` is already part of it.
+ * `schemaSource`/`sdl` are resupplied via `resuppliedSchemaSource` rather
+ * than forced to `'introspection'` (see that function's doc comment).
  */
 const toUpdateBody = (
   api: GraphQLApiDetail,
@@ -111,9 +102,7 @@ const toUpdateBody = (
     context: values.context,
     description: values.description,
     displayName: values.displayName,
-    ...(api.schemaSource === 'introspection' || api.schemaSource === undefined
-      ? { schemaSource: 'introspection' as const }
-      : { schemaSource: 'inline' as const, sdl }),
+    ...resuppliedSchemaSource(api, sdl),
     // Only a URL-based main upstream is ever form-editable (see
     // EditGraphqlApiForm's hasUrlUpstream) — a ref-based one has no
     // endpointUrl draft to apply, so upstream survives untouched for it.
