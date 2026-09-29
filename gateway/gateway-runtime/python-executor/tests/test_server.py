@@ -10,8 +10,11 @@ from executor.translator import Translator
 import proto.python_executor_pb2 as proto
 from apip_sdk_core import (
     BodyProcessingMode,
+    FaultPolicy,
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
+    FaultResponse,
+    FaultDetails,
     ExecutionContext,
     ForwardRequestChunk,
     HeaderProcessingMode,
@@ -96,6 +99,43 @@ class SlowRequestPolicy(RequestPolicy):
 class InvalidStreamingModePolicy(Policy):
     def mode(self) -> ProcessingMode:
         return ProcessingMode(request_body_mode=BodyProcessingMode.STREAM)
+
+
+class FaultFixture(FaultPolicy):
+    """A fault-only policy: implements on_fault and nothing else, every mode SKIP.
+
+    This is the shape a notifier takes, and the reason the on_fault capability is not derived
+    from the processing modes.
+    """
+
+    def mode(self) -> ProcessingMode:
+        return ProcessingMode()
+
+    def on_fault(self, execution_ctx, ctx, params):
+        ctx.shared.metadata["phase"] = execution_ctx.phase.value
+        ctx.shared.metadata["status"] = ctx.response_status
+        ctx.shared.metadata["original_status"] = ctx.original_status
+        ctx.shared.metadata["policy"] = ctx.policy
+        ctx.shared.metadata["route_key"] = ctx.route_key
+        ctx.shared.metadata["committed"] = ctx.response_committed
+        ctx.shared.metadata["error_code"] = ctx.fault.code if ctx.fault else ""
+        ctx.shared.metadata["request_path"] = ctx.request_path
+        # A FaultResponse, not a response modification. There is no is_fault to set: the
+        # fault flow is already running by the time on_fault is called.
+        return FaultResponse(
+            headers_to_set={"x-fault-handled": "true"},
+            fault=FaultDetails(code="900123", message="handled"),
+        )
+
+
+class NotAFaultFixture(RequestHeaderPolicy):
+    """A perfectly ordinary policy. It must NOT report the on_fault capability."""
+
+    def mode(self) -> ProcessingMode:
+        return ProcessingMode(request_header_mode=HeaderProcessingMode.PROCESS)
+
+    def on_request_headers(self, execution_ctx, ctx, params):
+        return UpstreamRequestHeaderModifications()
 
 
 class PythonExecutorServicerTest(unittest.IsolatedAsyncioTestCase):
@@ -384,3 +424,117 @@ class PythonExecutorServicerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("execution_error", responses[0].error.error_type)
         self.assertIn("no policy instance", responses[0].error.message)
         self.assertEqual({}, tracker._executions)
+
+    async def test_init_policy_reports_on_error_capability(self):
+        servicer, _, _ = self._make_servicer(lambda metadata, params: FaultFixture())
+
+        response = await servicer.InitPolicy(
+            proto.InitPolicyRequest(
+                policy_name="fault-policy",
+                policy_version="v1.0.0",
+                policy_metadata=proto.PolicyMetadata(route_name="route-a"),
+            ),
+            None,
+        )
+
+        self.assertTrue(response.success)
+        self.assertTrue(response.capabilities.on_fault)
+        # A fault-only policy processes no phase, and that must not be read as a contract
+        # violation — the capability is independent of every mode.
+        self.assertFalse(response.capabilities.request_headers)
+        self.assertFalse(response.capabilities.response_body)
+
+    async def test_init_policy_does_not_report_on_error_for_an_ordinary_policy(self):
+        servicer, _, _ = self._make_servicer(lambda metadata, params: NotAFaultFixture())
+
+        response = await servicer.InitPolicy(
+            proto.InitPolicyRequest(
+                policy_name="plain-policy",
+                policy_version="v1.0.0",
+                policy_metadata=proto.PolicyMetadata(route_name="route-a"),
+            ),
+            None,
+        )
+
+        self.assertTrue(response.success)
+        self.assertFalse(response.capabilities.on_fault)
+
+    def test_execute_request_dispatches_error_context(self):
+        servicer, store, _ = self._make_servicer(lambda metadata, params: FaultFixture())
+        store.put(
+            instance_id="instance-fault",
+            instance=FaultFixture(),
+            policy_name="fault-policy",
+            policy_version="v1.0.0",
+            metadata=PolicyMetadata(route_name="route-fault"),
+        )
+
+        context = proto.FaultContext(
+            original_status=200,
+            policy="word-count-guardrail",
+            policy_version="v1.0.0",
+            response_committed=False,
+            route_key="route-fault",
+            fault=proto.FaultDetails(code="906000", type="guardrail", message="blocked"),
+        )
+        context.response_status = 422
+        context.request_path = "/petstore/v1/pets/123"
+
+        response = servicer._execute_request(
+            proto.StreamRequest(
+                request_id="req-fault",
+                instance_id="instance-fault",
+                policy_name="fault-policy",
+                policy_version="v1.0.0",
+                shared_context=self._shared_context(),
+                params=Translator.dict_to_struct({}),
+                execution_metadata=proto.ExecutionMetadata(
+                    phase=proto.PHASE_FAULT,
+                    route_name="route-fault",
+                ),
+                fault_context=proto.FaultPayload(context=context),
+            )
+        )
+        metadata = Translator.struct_to_dict(response.updated_metadata)
+
+        # Its own payload now, not the response-action one — a fault policy does not return
+        # a response action.
+        fault = response.fault_response_action.fault_response
+        self.assertEqual("true", fault.headers_to_set["x-fault-handled"])
+        self.assertEqual("900123", fault.fault.code)
+        self.assertFalse(fault.final, "a notifier must not end the fault chain")
+
+        self.assertEqual("fault", metadata["phase"])
+        self.assertEqual(422, metadata["status"])
+        self.assertEqual(200, metadata["original_status"])
+        self.assertEqual("word-count-guardrail", metadata["policy"])
+        self.assertEqual("route-fault", metadata["route_key"])
+        self.assertFalse(metadata["committed"])
+        self.assertEqual("906000", metadata["error_code"])
+        self.assertEqual("/petstore/v1/pets/123", metadata["request_path"])
+
+    def test_execute_request_rejects_error_context_for_a_policy_without_on_error(self):
+        servicer, store, _ = self._make_servicer(lambda metadata, params: NotAFaultFixture())
+        store.put(
+            instance_id="instance-plain",
+            instance=NotAFaultFixture(),
+            policy_name="plain-policy",
+            policy_version="v1.0.0",
+            metadata=PolicyMetadata(route_name="route-plain"),
+        )
+
+        # Unreachable in practice — the gateway drops such an entry at chain build — so this
+        # asserts the executor reports it rather than silently returning an empty action,
+        # which would look to the engine like "the handler chose to change nothing".
+        with self.assertRaisesRegex(ValueError, "fault_context"):
+            servicer._execute_request(
+                proto.StreamRequest(
+                    request_id="req-plain",
+                    instance_id="instance-plain",
+                    policy_name="plain-policy",
+                    policy_version="v1.0.0",
+                    shared_context=self._shared_context(),
+                    execution_metadata=proto.ExecutionMetadata(phase=proto.PHASE_FAULT),
+                    fault_context=proto.FaultPayload(context=proto.FaultContext()),
+                )
+            )
