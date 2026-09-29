@@ -4800,6 +4800,19 @@ components:
             route.
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every A2A operation, and like policies above it does not
+            apply to the public Agent Card discovery route — that route declares its own
+            under agentCard.public.faultPolicies.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
         operations:
           type: array
           description: >
@@ -4883,6 +4896,18 @@ components:
             operation is selected.
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when this operation fails, over the
+            error response.
+
+
+            Both levels run and the operation-level entries run FIRST. They are additive
+            rather than an override: a fault entry is a handler, not a setting, so an
+            operation-specific notification and an agent-wide audit hook both fire.
+          items:
+            $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
 
@@ -4958,6 +4983,19 @@ components:
         policies:
           type: array
           description: Ordered policies applied only to public Agent Card serving.
+          items:
+            $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when serving the public Agent Card
+            fails, over the error response.
+
+
+            Separate from spec.a2a.operationConfigs.faultPolicies for the same reason the
+            policies list is: discovery is reachable before any operation is invoked, and
+            an agent that leaves its card unauthenticated while guarding its operations
+            would otherwise have the operations' handlers fire for a discovery failure.
           items:
             $ref: "#/components/schemas/Policy"
         rewriteUrls:
