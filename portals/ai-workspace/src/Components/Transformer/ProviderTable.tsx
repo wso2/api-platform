@@ -33,6 +33,7 @@ import {
   Button,
   IconButton,
   ListingTable,
+  Skeleton,
   Switch,
   Tooltip,
   Typography,
@@ -124,14 +125,17 @@ export default function ProviderTable({
   ) => {
     const resolution = resolutionFor(entry);
 
+    // The catalogue has not answered yet, so what translates for this provider
+    // is not yet knowable. Held as a shape the size of the answer rather than a
+    // word: the row is waiting, not reporting, and a label reads as a verdict.
     if (resolution.status === 'unknown') {
       return (
-        <Typography variant="caption" color="text.secondary">
-          <FormattedMessage
-            id="aiWorkspace.components.providerTable.checking"
-            defaultMessage="Checking…"
-          />
-        </Typography>
+        <Skeleton
+          variant="rounded"
+          width={180}
+          height={34}
+          data-cyid={`${cyPrefix}-transformer-loading`}
+        />
       );
     }
 

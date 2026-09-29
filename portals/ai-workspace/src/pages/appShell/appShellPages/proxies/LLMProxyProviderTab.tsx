@@ -44,6 +44,7 @@ import { useProviderTemplates } from "../../../../contexts/llmProvider/providerT
 import { useAppShell } from "../../../../contexts/AppShellContext";
 import type {
   LLMProvider,
+  Proxy,
   ProxyApiKeySecurity,
   ProxyProviderEntry,
   ProxyProviderTransformer,
@@ -101,8 +102,13 @@ export default function LLMProxyProviderTab({
   const { currentOrganization } = useAppShell();
   const { hasPermission } = useAppAuth();
   const organizationId = currentOrganization?.uuid ?? "";
-  const { policies: transformerPolicies, isLoaded: transformerPoliciesLoaded } =
-    useTransformerPolicies();
+  const {
+    policies: transformerPolicies,
+    isLoaded: transformerPoliciesLoaded,
+    isLoading: transformerPoliciesLoading,
+    error: transformerPoliciesError,
+    reload: reloadTransformerPolicies,
+  } = useTransformerPolicies();
 
   const isReadOnlyProxy = Boolean(proxy?.readOnly);
   const providerOptions = providersResponse.list;
@@ -196,12 +202,28 @@ export default function LLMProxyProviderTab({
     return { enabled: Boolean(provider.security?.enabled), apiKey };
   };
 
+  /**
+   * The interface the proxy accepts, written down where it was only implied.
+   *
+   * A proxy that stores none runs on its primary provider's format. That makes
+   * changing the primary a change to what clients may send — silently, and to a
+   * proxy already serving them. Recording the interface that is in effect first
+   * leaves the change of primary a change of upstream and nothing else. It says
+   * what was already true, so nothing about the running proxy moves, and the
+   * Definition tab stays the only place the interface is changed on purpose.
+   */
+  const withInterfacePinned = (proxyValue: Proxy): Partial<Proxy> =>
+    proxyValue.inboundTemplate || !inboundHandle
+      ? {}
+      : { inboundTemplate: inboundHandle };
+
   const handleMakePrimary = (providerId: string) => {
     if (isReadOnlyProxy) return;
     setLocalProxy((prev) =>
       prev
         ? {
             ...prev,
+            ...withInterfacePinned(prev),
             providers: withPrimaryProvider(prev.providers ?? [], providerId),
           }
         : prev,
@@ -304,6 +326,9 @@ export default function LLMProxyProviderTab({
       const inheritsProxyIdentity = Boolean(detail) && primaryProviderChanged;
       return {
         ...prev,
+        // Swapping the provider behind the primary moves the format the proxy
+        // would fall back to, exactly as marking a different one primary does.
+        ...(primaryProviderChanged ? withInterfacePinned(prev) : {}),
         providers,
         ...(inheritsProxyIdentity && detail
           ? {
@@ -453,7 +478,12 @@ export default function LLMProxyProviderTab({
         open={transformerIndex !== null}
         onClose={() => setTransformerIndex(null)}
         policies={transformerPolicies}
-        isLoading={!transformerPoliciesLoaded}
+        // The read's own state, not "has it ever succeeded": a catalogue that
+        // failed is never loaded, and spinning on that forever hides the
+        // gateway policies that did arrive.
+        isLoading={transformerPoliciesLoading}
+        error={transformerPoliciesError}
+        onReload={reloadTransformerPolicies}
         current={transformerEntry?.transformer ?? null}
         notRequired={
           transformerEntry

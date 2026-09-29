@@ -488,8 +488,13 @@ function LLMProxyNewContent({
     setInboundTemplate(defaultInboundTemplate);
   }, [defaultInboundTemplate, hasChosenInterface]);
 
-  const { policies: transformerPolicies, isLoaded: transformerPoliciesLoaded } =
-    useTransformerPolicies();
+  const {
+    policies: transformerPolicies,
+    isLoaded: transformerPoliciesLoaded,
+    isLoading: transformerPoliciesLoading,
+    error: transformerPoliciesError,
+    reload: reloadTransformerPolicies,
+  } = useTransformerPolicies();
 
   /** The interface's display name, for wording that names it. */
   const inboundInterfaceLabel = useMemo(
@@ -943,10 +948,14 @@ function LLMProxyNewContent({
     setManualApiKeyValue(restores ? restore.manualApiKeyValue : '');
     setApiKeyDisplayName('');
     setIsApiKeyModalOpen(false);
-    // A removal was about the provider it was made on. A different provider
-    // starts fresh and is offered the match its own format calls for — except
-    // where this is an undo, which puts back the state it is undoing.
+    // A translator belongs to the pair of formats it was chosen for, and a
+    // removal to the provider it was made on. A different provider starts fresh
+    // on both counts — otherwise the translator picked for the last one is
+    // carried across and written on Create, and the proxy's own upstream fails
+    // at invocation. The exception is an undo, which puts back the state it is
+    // undoing; promotion and cancel both arrive that way.
     if (!restores) {
+      setPrimaryTransformer(null);
       setPrimaryTransformerCleared(false);
     }
   }, [formState.providerId]);
@@ -2409,7 +2418,12 @@ function LLMProxyNewContent({
         open={transformerTarget !== null}
         onClose={() => setTransformerTarget(null)}
         policies={transformerPolicies}
-        isLoading={!transformerPoliciesLoaded}
+        // The read's own state, not "has it ever succeeded": a catalogue that
+        // failed is never loaded, and spinning on that forever hides the
+        // gateway policies that did arrive.
+        isLoading={transformerPoliciesLoading}
+        error={transformerPoliciesError}
+        onReload={reloadTransformerPolicies}
         current={
           transformerTarget === PRIMARY_TARGET
             ? primaryTransformer

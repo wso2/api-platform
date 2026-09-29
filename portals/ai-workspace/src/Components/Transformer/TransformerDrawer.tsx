@@ -75,6 +75,10 @@ export type TransformerDrawerProps = {
   onClose: () => void;
   policies: SelectablePolicy[];
   isLoading?: boolean;
+  /** Why the catalogue could not be read, where it could not be. */
+  error?: Error | null;
+  /** Asks for the catalogue again, offered beside the error. */
+  onReload?: () => void;
   /** What is attached now, so re-opening lands on it with its saved values. */
   current?: ProxyProviderTransformer | null;
   onApply: (transformer: ProxyProviderTransformer) => void;
@@ -127,6 +131,8 @@ export default function TransformerDrawer({
   onClose,
   policies,
   isLoading = false,
+  error = null,
+  onReload,
   current,
   onApply,
   onRemove,
@@ -376,6 +382,39 @@ export default function TransformerDrawer({
                 }}
                 data-cyid="transformer-drawer-search"
               />
+
+              {/*
+                A failed catalogue read is reported, not spun on. The gateway's
+                own policies may well have loaded, so the list below is still
+                worth showing — what is missing is named, with the way to ask
+                again, rather than left as a spinner that never stops.
+              */}
+              {error && (
+                <Alert
+                  severity="warning"
+                  action={
+                    onReload ? (
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={onReload}
+                        data-cyid="transformer-drawer-reload"
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.components.transformerDrawer.retry"
+                          defaultMessage="Try again"
+                        />
+                      </Button>
+                    ) : undefined
+                  }
+                  data-cyid="transformer-drawer-error"
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.components.transformerDrawer.catalogueUnavailable"
+                    defaultMessage="The policy catalogue could not be read, so it is not listed here."
+                  />
+                </Alert>
+              )}
 
               {isLoading ? (
                 <Box display="flex" justifyContent="center" sx={{ py: 4 }}>

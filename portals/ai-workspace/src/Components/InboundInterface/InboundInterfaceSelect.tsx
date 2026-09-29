@@ -111,9 +111,14 @@ export default function InboundInterfaceSelect({
     );
   }
 
+  // The label is a sibling of the field rather than wrapping it, so the two are
+  // tied together by id. Without it a screen reader reaches the combobox with
+  // no name at all and can only say that it is a combobox.
+  const labelId = `${dataCyId}-label`;
+
   return (
     <FormControl fullWidth>
-      <FormLabel sx={{ mb: 0.5 }}>
+      <FormLabel id={labelId} sx={{ mb: 0.5 }}>
         <FormattedMessage
           id="aiWorkspace.components.inboundInterface.label"
           defaultMessage="Inbound Interface"
@@ -126,6 +131,7 @@ export default function InboundInterfaceSelect({
         }
         displayEmpty
         disabled={disabled || isLoading}
+        labelId={labelId}
         data-cyid={dataCyId}
       >
         {/*
