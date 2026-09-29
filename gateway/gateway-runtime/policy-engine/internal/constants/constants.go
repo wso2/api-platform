@@ -95,11 +95,16 @@ const (
 	AttrPolicySkipped             = "policy.skipped"
 	AttrSkipReason                = "skip.reason"
 	AttrSkipReasonConditionNotMet = "condition_not_met"
-	AttrPolicyExecutionTimeNS     = "policy.execution_time_ns"
-	AttrPolicyShortCircuit        = "policy.short_circuit"
-	AttrResolverName              = "resolver.name"
-	AttrPolicyChainKey            = "policy_chain_key"
-	AttrResolvedOperation         = "resolver.operation"
+	// AttrSkipReasonDisabled is the sibling of the above. It was a bare "disabled" literal
+	// at every skip site; named here so the fault chain reports both reasons the same way.
+	// The request/response chains in chain.go still use the literal — pre-existing, and
+	// left alone rather than churned as part of a fault-flow change.
+	AttrSkipReasonDisabled    = "disabled"
+	AttrPolicyExecutionTimeNS = "policy.execution_time_ns"
+	AttrPolicyShortCircuit    = "policy.short_circuit"
+	AttrResolverName          = "resolver.name"
+	AttrPolicyChainKey        = "policy_chain_key"
+	AttrResolvedOperation     = "resolver.operation"
 
 	// Attributes describing a request the engine refused before binding a chain.
 	//

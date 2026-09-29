@@ -54,6 +54,24 @@ const (
 	phaseResponseBody
 )
 
+// String names the phase for logs, using the SDK's PolicyPhase constants so a log line and a
+// fault policy spell the phase the same way. Reached via slog's Stringer handling; the fault
+// path takes the constants directly.
+func (p processingPhase) String() string {
+	switch p {
+	case phaseRequestHeaders:
+		return policy.PolicyPhaseRequestHeaders
+	case phaseRequestBody:
+		return policy.PolicyPhaseRequestBody
+	case phaseResponseHeaders:
+		return policy.PolicyPhaseResponseHeaders
+	case phaseResponseBody:
+		return policy.PolicyPhaseResponseBody
+	default:
+		return "unknown"
+	}
+}
+
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
 // This context is created when a request arrives and lives until the response is completed.
 // It encapsulates all state needed for processing both request and response phases.
@@ -193,7 +211,70 @@ type PolicyExecutionContext struct {
 	// Reference to server components
 	server *ExternalProcessorServer
 
+	// faultPoliciesRan records that this request already executed its fault
+	// sequence. The sequence runs at most once per request, which is what stops an
+	// error raised inside the fault chain from re-entering it, and stops a rejection and a
+	// triggers from both firing for the same failure.
+	faultPoliciesRan bool
+
+	// faultPolicyName/faultPolicyVersion attribute the failure to the policy that
+	// caused it, recorded by the phase handler that has the results and surfaced to
+	// fault policies through SharedContext.Metadata. Empty when the error did not come
+	// from a policy (a backend error or an Envoy local reply), which is deliberate:
+	// naming a policy there would be actively misleading.
+	faultPolicyName    string
+	faultPolicyVersion string
+
+	// upstreamFault reports that the response arrived from the upstream or the router
+	// already carrying an error status, with handle_upstream_faults on. The response phases
+	// then run no response policies and leave the failure to the fault policies. Set at the
+	// response-header phase — see noteUpstreamFault.
+	upstreamFault bool
+
+	// responseCodeDetails is Envoy's own account of who produced the response,
+	// delivered as an ext_proc response attribute and captured before any response
+	// policy runs. "via_upstream" means the backend answered; anything else means
+	// Envoy generated the response itself.
+	//
+	// Empty when the router does not send the attribute, so callers must treat "" as
+	// unknown — never as evidence of a local reply.
+	responseCodeDetails string
+
+	// faultDeclared is the FaultDetails the producing policy supplied, when it
+	// supplied one, captured at the same point the policy is attributed. Surfaced to fault
+	// policies through FaultContext (see attributedFault) so a handler sees the producer's
+	// own account of the failure.
+	faultDeclared *policy.FaultDetails
+
+	// faultSource is who produced the error currently being handled, resolved once when the
+	// fault flow runs so the chain and the formatter cannot disagree about it. Also what
+	// lets the engine decide whether it may describe the error itself (routerErrorFor).
+	faultSource faultSource
+
+	// engineErrorID is the correlation id of a failure the ENGINE itself produced, and is
+	// empty for everything a policy produced. The formatter renders it into the body, which
+	// is the only way it reaches a caller whose protocol has no room for a stray field —
+	// JSON-RPC and SOAP both. It matches the x-error-id header and the engine log entry.
+	engineErrorID string
+
+	// faultBodyAuthored records that a policy explicitly decided what body the client
+	// receives for this error — either the policy that rejected the request or a fault
+	// policy that ran afterwards. It is what switches the built-in error formatter off
+	// (see internal/faultformat), and it is authorship rather than emptiness on purpose: a
+	// router-generated body is non-empty but authored by nobody, while a policy returning
+	// an empty body has made a decision worth respecting.
+	faultBodyAuthored bool
+
+	// faultPolicyPhase is the phase the failing policy was executing in, recorded from the
+	// attribution alongside faultPolicyName. Empty whenever faultPolicyName is.
+	faultPolicyPhase string
+
 	// phase tracks the current ext_proc processing phase and is read by getModeOverride.
+	//
+	// NOT the source of FaultContext.PolicyPhase: it is set at the top of the three main
+	// phase handlers only, so the bodyless paths (processRequestBodyForEmptyRequest,
+	// processResponseBodyForEmptyResponse) report a fault while this still holds the
+	// previous phase. The fault path carries its phase in attribution instead.
 	phase processingPhase
 
 	// terminal is the last known terminal HTTP outcome for this request, memoized
@@ -315,35 +396,18 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 		"error", err,
 	)
 
-	errorBody := fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID)
-
-	resp := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-			ImmediateResponse: &extprocv3.ImmediateResponse{
-				Status: &typev3.HttpStatus{
-					Code: typev3.StatusCode_InternalServerError,
-				},
-				Headers: buildHeaderValueOptions(map[string]string{
-					"content-type": "application/json",
-					"x-error-id":   errorID,
-				}),
-				Body: []byte(errorBody),
-			},
+	return ec.engineError(ctx, engineFailure{
+		errorID: errorID,
+		status:  http.StatusInternalServerError,
+		body:    fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID),
+		reason:  constants.TerminalReasonPolicyError,
+		err: &policy.FaultDetails{
+			Code:      codeEngineInternal,
+			Type:      policy.FaultTypeInternal,
+			Direction: policy.DirectionResponse,
+			Message:   "The request could not be processed.",
 		},
-	}
-
-	// Tag this response as engine-generated so the span carries
-	// reason=policy_error and the same correlation id the client and the error
-	// log see.
-	ec.generated = generatedResponse{
-		resp: resp,
-		outcome: tracing.HTTPOutcome{
-			StatusCode: http.StatusInternalServerError,
-			Reason:     constants.TerminalReasonPolicyError,
-			ErrorID:    errorID,
-		},
-	}
-	return resp
+	})
 }
 
 // handlePayloadTooLarge builds an HTTP 413 immediate response for a buffered
@@ -366,32 +430,83 @@ func (ec *PolicyExecutionContext) handlePayloadTooLarge(
 		"error", err,
 	)
 
-	errorBody := fmt.Sprintf(`{"error":"Payload Too Large","error_id":"%s"}`, errorID)
+	return ec.engineError(ctx, engineFailure{
+		errorID: errorID,
+		status:  http.StatusRequestEntityTooLarge,
+		body:    fmt.Sprintf(`{"error":"Payload Too Large","error_id":"%s"}`, errorID),
+		reason:  constants.TerminalReasonPayloadTooLarge,
+		err: &policy.FaultDetails{
+			Code:      codePayloadTooLarge,
+			Type:      policy.FaultTypeRequestSize,
+			Direction: policy.DirectionRequest,
+			Message:   "The request payload is too large.",
+		},
+	})
+}
+
+// engineFailure describes a failure the engine itself produced, as opposed to one a policy
+// produced or one the router reported.
+type engineFailure struct {
+	errorID string
+	status  int
+	body    string
+	reason  string
+	err     *policy.FaultDetails
+}
+
+// engineError builds the ext_proc response for a failure the ENGINE produced, after running
+// the fault policies over it.
+//
+// The response body is left AUTHORED on purpose, which switches formatting off for it: the
+// body carries the correlation id that the x-error-id header and the internal error log also
+// carry, and re-rendering it would drop that. Fault policies still run, so a notifier reports
+// the failure — they just cannot reshape it.
+//
+// Not covered, deliberately: the 500 returned when no policy chain matched the route, since
+// there are no fault policies to select.
+func (ec *PolicyExecutionContext) engineError(
+	ctx context.Context,
+	f engineFailure,
+) *extprocv3.ProcessingResponse {
+	// Set before handleFault: the formatter runs inside it, and this is what it renders.
+	ec.engineErrorID = f.errorID
+
+	imm := policy.ImmediateResponse{
+		StatusCode: f.status,
+		Headers: map[string]string{
+			"content-type": "application/json",
+			"x-error-id":   f.errorID,
+		},
+		Body:    []byte(f.body),
+		IsFault: true,
+		Fault:   f.err,
+	}
+
+	ec.handleFault(ctx, fault{
+		origin:    originGateway,
+		rejection: &imm,
+		attrib:    faultAttribution{declared: f.err},
+		writeBack: func(out policy.ImmediateResponse) { imm = out },
+	})
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 			ImmediateResponse: &extprocv3.ImmediateResponse{
-				Status: &typev3.HttpStatus{
-					Code: typev3.StatusCode_PayloadTooLarge,
-				},
-				Headers: buildHeaderValueOptions(map[string]string{
-					"content-type": "application/json",
-					"x-error-id":   errorID,
-				}),
-				Body: []byte(errorBody),
+				Status:  &typev3.HttpStatus{Code: typev3.StatusCode(imm.StatusCode)},
+				Headers: buildHeaderValueOptions(imm.Headers),
+				Body:    imm.Body,
 			},
 		},
 	}
 
-	// Tag this response as engine-generated so the span carries
-	// reason=payload_too_large and the same correlation id the client and the
-	// warning log see.
+	// Tag this response as engine-generated so the span carries the reason and the same
+	// correlation id the client and the log see.
 	ec.generated = generatedResponse{
 		resp: resp,
 		outcome: tracing.HTTPOutcome{
-			StatusCode: http.StatusRequestEntityTooLarge,
-			Reason:     constants.TerminalReasonPayloadTooLarge,
-			ErrorID:    errorID,
+			StatusCode: imm.StatusCode,
+			Reason:     f.reason,
+			ErrorID:    f.errorID,
 		},
 	}
 	return resp
@@ -657,6 +772,29 @@ func (ec *PolicyExecutionContext) resolveTerminalOutcome(resp *extprocv3.Process
 	return out
 }
 
+// responseRejectedByPolicy reports whether any non-skipped, non-errored response-body policy
+// result DECLARED its modification a failure.
+//
+// Only the declaration counts. An earlier version also read "the policy changed the status" as
+// a rejection, which misread the three cases that legitimately set a status without rejecting:
+// a policy relabelling the backend's error, interceptor-service applying an external
+// interceptor's status, and any guardrail passing a response through unchanged but restyled.
+func responseRejectedByPolicy(results []executor.ResponsePolicyResult) bool {
+	for _, r := range results {
+		if r.Skipped || r.Error != nil {
+			continue
+		}
+		// Must agree with statusOverrideAction, or the fault would be attributed to a
+		// different policy than the one that triggered it. Distinct from
+		// responseStatusOverriddenByPolicy, which asks only whether a policy SUPPLIED the
+		// status — a policy may set one without rejecting anything.
+		if mods, ok := r.Action.(policy.DownstreamResponseModifications); ok && statusOverrideAction(mods) {
+			return true
+		}
+	}
+	return false
+}
+
 // responseStatusOverriddenByPolicy reports whether any non-skipped, non-errored
 // response-body policy result set DownstreamResponseModifications.StatusCode.
 // Mirrors the same Results scan translator.go performs when building the
@@ -851,6 +989,11 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		return ec.processRequestBodyForEmptyRequest(ctx, execResult)
 	}
 
+	// Only entered when a policy actually rejected. Runs before the ext_proc response is
+	// built, so a replacement or header mutation the fault chain produces reaches the client.
+	if f, isFault := faultFromRequestHeaders(execResult); isFault {
+		ec.handleFault(ctx, f)
+	}
 	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
 }
 
@@ -940,6 +1083,9 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 		return ec.handlePolicyError(ctx, err, "request_body_no_body"), nil
 	}
 
+	if f, isFault := faultFromRequestBody(bodyResult); isFault {
+		ec.handleFault(ctx, f)
+	}
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
@@ -958,11 +1104,12 @@ func (ec *PolicyExecutionContext) processResponseBodyForEmptyResponse(
 		"status", ec.responseHeaderCtx.ResponseStatus,
 	)
 
+	bodyPols, bodySpecs := ec.responsePolicies()
 	bodyResult, err := ec.server.executor.ExecuteResponsePolicies(
 		ctx,
-		ec.policyChain.Policies,
+		bodyPols,
 		ec.responseBodyCtx,
-		ec.policyChain.PolicySpecs,
+		bodySpecs,
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
@@ -970,10 +1117,15 @@ func (ec *PolicyExecutionContext) processResponseBodyForEmptyResponse(
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "response_body_no_body"), nil
 	}
+	rejected := responseRejectedByPolicy(bodyResult.Results)
 	if responseStatusOverriddenByPolicy(bodyResult.Results) {
 		ec.responseStatusOverridden = true
 	}
 
+	// Matters more than it looks: Envoy skips the ResponseBody phase entirely for a response
+	// with no body, so without this call every bodyless error — including an Envoy local reply
+	// that carries no payload — would lose fault-policies coverage.
+	ec.handleFault(ctx, faultFromResponseBody(bodyResult, rejected))
 	return TranslateResponseHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
@@ -1049,6 +1201,9 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			return ec.handlePolicyError(ctx, err, "request_body"), nil
 		}
 
+		if f, isFault := faultFromRequestBody(execResult); isFault {
+			ec.handleFault(ctx, f)
+		}
 		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
 	}
 
@@ -1329,11 +1484,26 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		"is_streaming_response", ec.isStreamingResponse,
 	)
 
+	// Decided before any response policy runs, which is what makes it usable: a
+	// request-phase rejection ends the exchange and never reaches here, so an error status
+	// at this point came from the upstream or the router.
+	ec.noteUpstreamFault(ec.responseHeaderCtx.ResponseStatus)
+	if ec.upstreamFault {
+		// Buffered even when the upstream streams it: the streaming path runs the response
+		// policies chunk by chunk, and the fault policies need the whole error body.
+		ec.isStreamingResponse = false
+		slog.DebugContext(ctx, "Response arrived already failing; skipping the response policies for the fault policies",
+			"request_id", ec.requestID, "route_key", ec.routeKey,
+			"status", ec.responseHeaderCtx.ResponseStatus,
+			"code_details", ec.responseCodeDetails)
+	}
+
+	headerPols, headerSpecs := ec.responsePolicies()
 	execResult, err := ec.server.executor.ExecuteResponseHeaderPolicies(
 		ctx,
-		ec.policyChain.Policies,
+		headerPols,
 		ec.responseHeaderCtx,
-		ec.policyChain.PolicySpecs,
+		headerSpecs,
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
@@ -1346,12 +1516,19 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// policies (OnResponseBody / OnResponseBodyChunk) observe the post-mutation headers.
 	applyResponseHeaderMutations(ec.responseHeaderCtx.ResponseHeaders, execResult.Results)
 
+	// A pass-through error is handed to the fault policies in the response-BODY phase, not
+	// here, so the error body is available to them (runFaultPoliciesOnResponse). Attaching
+	// fault policies forces RequiresResponseBody so that phase always runs.
+
 	// For bodyless responses Envoy skips the ResponseBody ext_proc phase entirely.
 	// Execute body policies inline now so they run on every response, receiving a nil body.
 	if !execResult.ShortCircuited && ec.policyChain.RequiresResponseBody && ec.responseHasNoBody() {
 		return ec.processResponseBodyForEmptyResponse(ctx, execResult)
 	}
 
+	if f, isFault := faultFromResponseHeaders(execResult); isFault {
+		ec.handleFault(ctx, f)
+	}
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
 	if err != nil {
 		return nil, err
@@ -1421,11 +1598,12 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			Present:     true,
 		}
 
+		bodyPols, bodySpecs := ec.responsePolicies()
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
 			ctx,
-			ec.policyChain.Policies,
+			bodyPols,
 			ec.responseBodyCtx,
-			ec.policyChain.PolicySpecs,
+			bodySpecs,
 			ec.sharedCtx.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,
@@ -1433,10 +1611,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
 		}
+		rejected := responseRejectedByPolicy(execResult.Results)
 		if responseStatusOverriddenByPolicy(execResult.Results) {
 			ec.responseStatusOverridden = true
 		}
 
+		// All three shapes of failure a response can carry are possible here — an outright
+		// replacement, a status-override rejection, and a pass-through error — so this is the
+		// one call site that hands over more than a short-circuit. See faultFromResponseBody.
+		ec.handleFault(ctx, faultFromResponseBody(execResult, rejected))
 		return TranslateResponseBodyActions(execResult, ec)
 	}
 
@@ -1628,6 +1811,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	)
 	if err != nil {
 		ec.streamAccumulator = nil
+		ec.handleFault(ctx, faultFromStream(err, nil))
 		// NOTE: Mid-stream error — response headers and any previously flushed chunks
 		// are already committed to the downstream client. The ImmediateResponse
 		// returned by handlePolicyError is silently ignored by Envoy in
@@ -1639,6 +1823,9 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 
 	if execResult.StreamTerminated {
 		ec.streamTerminated = true
+		if isFault, declared := streamTerminationIsFault(execResult.FinalAction); isFault {
+			ec.handleFault(ctx, faultFromStream(nil, declared))
+		}
 	}
 	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
 }

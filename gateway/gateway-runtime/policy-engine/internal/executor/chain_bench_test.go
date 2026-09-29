@@ -61,6 +61,9 @@ func (e *alwaysTrueCELEvaluator) EvaluateResponseHeaderCondition(string, *policy
 func (e *alwaysTrueCELEvaluator) EvaluateResponseBodyCondition(string, *policy.ResponseContext) (bool, error) {
 	return true, nil
 }
+func (e *alwaysTrueCELEvaluator) EvaluateFaultCondition(string, *policy.FaultContext) (bool, error) {
+	return true, nil
+}
 func (e *alwaysTrueCELEvaluator) EvaluateStreamingRequestCondition(string, *policy.RequestStreamContext) (bool, error) {
 	return true, nil
 }
@@ -86,6 +89,10 @@ func (e *sometimesFalseCELEvaluator) EvaluateResponseHeaderCondition(string, *po
 	return e.counter%3 != 0, nil
 }
 func (e *sometimesFalseCELEvaluator) EvaluateResponseBodyCondition(string, *policy.ResponseContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+func (e *sometimesFalseCELEvaluator) EvaluateFaultCondition(string, *policy.FaultContext) (bool, error) {
 	e.counter++
 	return e.counter%3 != 0, nil
 }
