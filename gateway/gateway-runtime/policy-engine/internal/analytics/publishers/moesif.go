@@ -348,6 +348,23 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["requestSize"] = requestSize
 	}
 
+	// Failure classification, absent on a successful request.
+	//
+	// Nested under one key rather than flattened into a dozen metadata entries: the object
+	// is the shape prepareAnalyticEvent already built, and following the aiMetadata /
+	// mcpAnalytics precedent keeps Moesif's metadata browsable instead of a wall of
+	// error_* siblings. errorType stays a separate key because it is the flat
+	// category and a Moesif user filtering on "which bucket" wants it at one level.
+	//
+	// Safe to send: the collector never stamps the fault's Description or a guardrail's
+	// Assessments, so nothing here carries content a guardrail blocked.
+	if event.Error != nil {
+		metadataMap["error"] = event.Error
+	}
+	if event.ErrorType != "" {
+		metadataMap["errorType"] = event.ErrorType
+	}
+
 	// Advanced latency info
 	if event.Latencies != nil {
 		metadataMap["backendLatency"] = event.Latencies.BackendLatency
