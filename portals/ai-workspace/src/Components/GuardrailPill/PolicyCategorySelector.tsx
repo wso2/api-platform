@@ -33,6 +33,7 @@ export const POLICY_CATEGORIES = [
   'AI',
   'Analytics & Monitoring',
   'Guardrails',
+  'LLM Transformation',
   'Logging',
   'Security',
   'Transformation',

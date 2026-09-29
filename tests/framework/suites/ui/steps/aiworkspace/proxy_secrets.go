@@ -30,16 +30,27 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
-// opensProxyProviderTab switches the proxy overview to its Provider tab.
+// opensProxyProviderTab switches the proxy overview to its Providers tab and opens the
+// first provider's settings.
+//
+// A proxy now serves a list of providers, so the tab is a list of rows rather than one
+// provider's fields — the credential lives in the settings panel a row opens. Opening it
+// here keeps every caller on the same footing as before: the step leaves the page with the
+// credential field on screen and ready to type into.
 func (u *Steps) opensProxyProviderTab(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
 	}
-	if err := page.GetByRole("tab", playwright.PageGetByRoleOptions{Name: "Provider"}).Click(); err != nil {
-		return fmt.Errorf("opening the Provider tab: %w", err)
+	if err := page.GetByRole("tab", playwright.PageGetByRoleOptions{
+		Name: "Providers", Exact: playwright.Bool(true),
+	}).Click(); err != nil {
+		return fmt.Errorf("opening the Providers tab: %w", err)
 	}
-	return u.expect.Locator(page.Locator(`input[placeholder="Enter API key"]`)).ToBeVisible()
+	if err := cyid(page, "provider-row-0-edit").Click(); err != nil {
+		return fmt.Errorf("opening the provider's settings: %w", err)
+	}
+	return u.expect.Locator(cyid(page, "provider-settings-api-key")).ToBeVisible()
 }
 
 // changesProxyCredential types a new value into the unmasked API key field and clicks the
@@ -56,10 +67,18 @@ func (u *Steps) changesProxyCredential(ctx context.Context, newValue string) err
 	if err != nil {
 		return err
 	}
-	if err := page.Locator(`input[placeholder="Enter API key"]`).Fill(newValue); err != nil {
+	if err := cyid(page, "provider-settings-api-key").Locator("input:visible").Fill(newValue); err != nil {
 		return fmt.Errorf("typing the new credential: %w", err)
 	}
-	if err := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Save"}).Click(); err != nil {
+	// Two saves, because there are two decisions. The panel's save applies the change to
+	// the provider it is editing; the page's save is what sends the whole list. Between
+	// them the proxy on the server is untouched, which is what lets a user back out.
+	if err := cyid(page, "provider-settings-save").Click(); err != nil {
+		return fmt.Errorf("saving the provider's settings: %w", err)
+	}
+	if err := page.GetByRole("button", playwright.PageGetByRoleOptions{
+		Name: "Save", Exact: playwright.Bool(true),
+	}).Click(); err != nil {
 		return fmt.Errorf("clicking Save: %w", err)
 	}
 	return nil
@@ -73,18 +92,48 @@ func (u *Steps) changesProxyCredentialToPlaceholder(ctx context.Context, handle 
 
 // proxyAuthValue decodes the credential value a proxy create/update request body carries,
 // out from under whatever JSON string-escaping the raw body uses.
+//
+// Two shapes describe a proxy's providers and a request carries one of them: the list,
+// where the credential belongs to the entry marked primary, or the single `provider` a
+// client written before the list still sends. A reader that knows only one shape reports a
+// proxy with no credential at all rather than saying it could not find one.
+//
+// Which shape is present decides where to look, and the other is not consulted. A request
+// that sends the list has said where its credential lives; reading a legacy `provider`
+// alongside it would let a list with no credential on its primary pass on the strength of
+// a field the application no longer sends — the assertion would hold while the thing it
+// asserts had stopped being true.
 func proxyAuthValue(call recordedCall) (string, error) {
+	type auth struct {
+		Value string `json:"value"`
+	}
 	var body struct {
-		Provider struct {
-			Auth struct {
-				Value string `json:"value"`
-			} `json:"auth"`
+		Providers []struct {
+			IsPrimary bool  `json:"isPrimary"`
+			Auth      *auth `json:"auth"`
+		} `json:"providers"`
+		Provider *struct {
+			Auth *auth `json:"auth"`
 		} `json:"provider"`
 	}
 	if err := json.Unmarshal([]byte(call.body), &body); err != nil {
 		return "", fmt.Errorf("parsing the request body: %w", err)
 	}
-	return body.Provider.Auth.Value, nil
+	if len(body.Providers) > 0 {
+		for _, entry := range body.Providers {
+			if entry.IsPrimary {
+				if entry.Auth == nil {
+					return "", fmt.Errorf("the provider list carries no credential on its primary entry")
+				}
+				return entry.Auth.Value, nil
+			}
+		}
+		return "", fmt.Errorf("the provider list names no primary entry")
+	}
+	if body.Provider != nil && body.Provider.Auth != nil {
+		return body.Provider.Auth.Value, nil
+	}
+	return "", nil
 }
 
 // proxyCallCarriesAPlaceholder asserts the most recent request of the given method carries
