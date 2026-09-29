@@ -69,7 +69,7 @@ const messages = defineMessages({
   },
   scratchTitle: {
     id: 'api.create.graphql.definePanel.scratch.title',
-    defaultMessage: 'Design from scratch',
+    defaultMessage: 'Start from scratch',
   },
 });
 

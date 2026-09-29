@@ -573,7 +573,7 @@
     "defaultMessage": "Start blank, or seed the schema from a backend endpoint."
   },
   "api.create.graphql.definePanel.scratch.title": {
-    "defaultMessage": "Design from scratch"
+    "defaultMessage": "Start from scratch"
   },
   "api.create.graphql.definePanel.source.fromFile": {
     "defaultMessage": "Imported from {fileName}"
@@ -589,6 +589,9 @@
   },
   "api.create.graphql.introspection.disabledHint": {
     "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
+  },
+  "api.create.graphql.introspection.endpoint.description": {
+    "defaultMessage": "Every operation goes through this single endpoint to a running service. Calls are proxied through as soon as you deploy."
   },
   "api.create.graphql.introspection.endpoint.required": {
     "defaultMessage": "Enter the GraphQL endpoint to introspect."
@@ -2149,8 +2152,8 @@
     "defaultMessage": "Endpoint URL copied to clipboard."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed": {
-    "defaultMessage": "Could not reach the endpoint. If it uses a self-signed certificate, open the endpoint URL above in a new tab once to trust it, then try again.",
-    "description": "Shown when the browser fetch to the gateway invoke URL fails below the HTTP level (network/TLS) — a bare \"Failed to fetch\" the browser gives no further detail on, most commonly an untrusted dev/self-signed certificate on the gateway."
+    "defaultMessage": "Could not reach the test console service. Check your connection and try again.",
+    "description": "Shown when the browser fetch to this app's own backend fails below the HTTP level (network error) — a bare \"Failed to fetch\" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API's gateway, so this is not a CORS or gateway-certificate problem."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment": {
     "defaultMessage": "Deploy this API to a gateway before testing it here."

@@ -227,7 +227,10 @@ const OperationSection = ({
           color={color}
           label={title}
           size="small"
-          sx={{ fontFamily: 'monospace', fontWeight: 700 }}
+          // borderRadius matches SwaggerOperationsView's own method chip
+          // (GET/POST/...) exactly — Oxygen's default Chip radius is a much
+          // rounder pill that reads as a different control from REST's.
+          sx={{ borderRadius: 0.4, fontFamily: 'monospace', fontWeight: 700 }}
         />
         <Typography color="text.secondary" variant="caption">
           {hint}
@@ -488,7 +491,12 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
               borderColor: 'divider',
               borderRadius: 2,
               fontFamily: 'monospace',
-              fontSize: theme.typography.body2.fontSize,
+              // Matches the read-only Monaco viewer `ApiResourcesPreview` uses
+              // for REST's own raw-text view exactly (12px / 20px line-height)
+              // — this box is a plain <pre>, not Monaco, but should still read
+              // as the same code viewer rather than at body-text scale.
+              fontSize: 12,
+              lineHeight: '20px',
               m: 0,
               maxWidth: '100%',
               // Horizontal only: the surrounding content box (below) is the

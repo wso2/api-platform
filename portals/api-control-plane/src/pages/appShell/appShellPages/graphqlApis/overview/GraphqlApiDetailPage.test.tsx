@@ -22,16 +22,19 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
+  accepts,
   aDeployment,
   aGateway,
   aGraphQLApiDetail,
   collection,
+  recorder,
   resource,
   type DeploymentFixture,
+  type Recorder,
 } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlApiDetailPage } from './GraphqlApiDetailPage';
 
 const ORG = 'api-platform-demo';
@@ -67,8 +70,11 @@ function renderPage() {
   );
 }
 
+let requests: Recorder;
+
 beforeEach(() => {
   resetHttpClient();
+  requests = recorder();
 });
 
 describe('GraphqlApiDetailPage', () => {
@@ -117,6 +123,7 @@ describe('GraphqlApiDetailPage', () => {
     await screen.findByRole('heading', { name: 'Countries GraphQL API' });
     expect(screen.getByText('Gateway-managed')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit API details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit endpoint' })).not.toBeInTheDocument();
   });
 
   it('shows only the endpoint, not invoke URL or API keys, before anything is deployed', async () => {
@@ -159,6 +166,56 @@ describe('GraphqlApiDetailPage', () => {
     expect(screen.getByText('API Keys')).toBeInTheDocument();
     expect(screen.getByText('Deployed gateways')).toBeInTheDocument();
     expect(screen.getAllByText('Edge Gateway').length).toBeGreaterThan(0);
+  });
+
+  it('opens the endpoint editor pre-filled with the current URL', async () => {
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByRole('heading', { name: 'Countries GraphQL API' });
+    await user.click(screen.getByRole('button', { name: 'Edit endpoint' }));
+
+    expect(await screen.findByText('Edit endpoint')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://upstream.test/graphql')).toBeInTheDocument();
+  });
+
+  // Regression coverage for the endpoint-only editor added to the Overview
+  // page (mirrors REST's `EndpointsPanel`): a metadata-only save must still
+  // resupply schemaSource faithfully via `resuppliedSchemaSource` — see that
+  // function's doc comment and `GraphqlApiEditPage.test.tsx`'s own coverage
+  // of the same rule for the full edit form.
+  it('saves an edited endpoint URL via PUT', async () => {
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+      accepts(
+        'put',
+        `/graphql-apis/${API}`,
+        { ...api, upstream: { main: { url: 'https://new-upstream.test/graphql' } } },
+        { record: requests },
+      ),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByRole('heading', { name: 'Countries GraphQL API' });
+    await user.click(screen.getByRole('button', { name: 'Edit endpoint' }));
+
+    const endpointField = await screen.findByDisplayValue('https://upstream.test/graphql');
+    await user.clear(endpointField);
+    await user.type(endpointField, 'https://new-upstream.test/graphql');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(requests.last()?.method).toBe('PUT');
   });
 
   it('shows an error state when the API cannot be found', async () => {
