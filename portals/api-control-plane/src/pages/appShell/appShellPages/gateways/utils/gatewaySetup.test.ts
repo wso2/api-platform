@@ -19,7 +19,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { aGateway } from '@/test/msw';
-import { configureCommand, downloadCommand, helmInstallCommand, setupTarget } from './gatewaySetup';
+import {
+  configureCommand,
+  downloadCommand,
+  helmInstallCommand,
+  MOESIF_KEY_PLACEHOLDER,
+  setupTarget,
+} from './gatewaySetup';
 
 const HOST = 'connect.example.com';
 
@@ -69,6 +75,27 @@ describe('gatewaySetup', () => {
     expect(command).toContain('GATEWAY_REGISTRATION_TOKEN=secret-token');
   });
 
+  it('shows a Moesif placeholder on screen but the real key when copying', () => {
+    const target = setupTarget(aGateway({ version: '1.0' }), HOST);
+    const options = { includeMoesif: true, moesifKey: 'collector-jwt' };
+    const display = configureCommand(target, 'secret-token', options);
+    const copy = configureCommand(target, 'secret-token', { ...options, forCopy: true });
+
+    expect(display).toContain(`MOESIF_KEY=${MOESIF_KEY_PLACEHOLDER}`);
+    expect(display).not.toContain('collector-jwt');
+    expect(copy).toContain('MOESIF_KEY=collector-jwt');
+  });
+
+  it('omits MOESIF_KEY when analytics is disabled for the gateway type', () => {
+    const target = setupTarget(aGateway({ version: '1.0' }), HOST);
+    const command = configureCommand(target, 'secret-token', {
+      includeMoesif: false,
+      moesifKey: 'collector-jwt',
+    });
+
+    expect(command).not.toContain('MOESIF_KEY');
+  });
+
   it('installs the Helm chart under the gateway handle, with the token bound', () => {
     const target = setupTarget(aGateway({ version: '1.0' }), HOST);
     const command = helmInstallCommand(target, 'edge-gateway', 'secret-token');
@@ -77,5 +104,23 @@ describe('gatewaySetup', () => {
     expect(command).toContain('--version 1.0');
     expect(command).toContain(`controlPlane.host="${HOST}"`);
     expect(command).toContain('token.value="secret-token"');
+  });
+
+  it('adds Helm Moesif analytics placeholders for display and real values for copy', () => {
+    const target = setupTarget(aGateway({ version: '1.0' }), HOST);
+    const options = { includeMoesif: true, moesifKey: 'collector-jwt' };
+    const display = helmInstallCommand(target, 'edge-gateway', 'secret-token', options);
+    const copy = helmInstallCommand(target, 'edge-gateway', 'secret-token', {
+      ...options,
+      forCopy: true,
+    });
+
+    expect(display).toContain(
+      `gateway.config.analytics.publishers.moesif.application_id=${MOESIF_KEY_PLACEHOLDER}`,
+    );
+    expect(copy).toContain(
+      'gateway.config.analytics.publishers.moesif.application_id="collector-jwt"',
+    );
+    expect(display).toContain('gateway.config.analytics.enabled=true');
   });
 });
