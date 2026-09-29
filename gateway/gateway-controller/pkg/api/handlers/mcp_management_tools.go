@@ -1280,6 +1280,17 @@ func (h *McpHandler) manageCertificates(ctx context.Context, _ *mcp.CallToolRequ
 // reading the service's sentinels rather than its error strings.
 func mcpCertError(action, subject string, err error) error {
 	if errors.Is(err, certificate.ErrCertStoreNotConfigured) {
+		// Upload saves the row before it discovers there is no cert store, so
+		// apply has changed state even though it failed. Say so, or the model
+		// retries into a name conflict it cannot clear (delete is refused too).
+		if action == certActionApply {
+			return fmt.Errorf(
+				"certificate %q was stored, but this Gateway has no custom certificate store "+
+					"(router.upstream.tls.customCertsPath is unset), so the router is not using it. "+
+					"Do not repeat this call: the name is now taken, and certificates cannot be deleted "+
+					"or reloaded on this Gateway until a certificate store is configured. Tell the user; "+
+					"the certificate appears in action=list", subject)
+		}
 		return fmt.Errorf(
 			"this Gateway was started without a custom certificate store " +
 				"(router.upstream.tls.customCertsPath is unset), so certificate operations are unavailable")
@@ -1435,7 +1446,7 @@ func (h *McpHandler) manageSubscription(op subAction, in manageSubscriptionsInpu
 		return nil, nil, fmt.Errorf(`apply requires "spec"`)
 	}
 
-	if in.ID != "" {
+	if strings.TrimSpace(in.ID) != "" {
 		req, err := spec.toSubscriptionUpdate()
 		if err != nil {
 			return nil, nil, err
@@ -1522,7 +1533,7 @@ func (h *McpHandler) manageSubscriptionPlan(op subAction, in manageSubscriptions
 		return nil, nil, fmt.Errorf(`apply requires "spec"`)
 	}
 
-	if in.ID != "" {
+	if strings.TrimSpace(in.ID) != "" {
 		req, err := spec.toPlanUpdate()
 		if err != nil {
 			return nil, nil, err

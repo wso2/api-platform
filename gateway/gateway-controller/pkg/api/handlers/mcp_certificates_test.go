@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 )
 
 // The expected route keys below are written by hand rather than read from
@@ -170,4 +171,18 @@ func TestManageCertificatesDeniesWithoutGate(t *testing.T) {
 	_, _, err := h.manageCertificates(context.Background(), nil, manageCertificatesInput{Action: "list"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not available")
+}
+
+// Upload saves the row before it finds there is no cert store, so apply must
+// report that state changed; the other actions changed nothing.
+func TestMcpCertErrorWithoutCertStore(t *testing.T) {
+	err := mcpCertError(certActionApply, "upstream", certificate.ErrCertStoreNotConfigured)
+	assert.Contains(t, err.Error(), `"upstream" was stored`)
+	assert.Contains(t, err.Error(), "Do not repeat this call")
+
+	for _, action := range []string{certActionList, certActionDelete, certActionReload} {
+		err := mcpCertError(action, "", certificate.ErrCertStoreNotConfigured)
+		assert.NotContains(t, err.Error(), "was stored", action)
+		assert.Contains(t, err.Error(), "unavailable", action)
+	}
 }
