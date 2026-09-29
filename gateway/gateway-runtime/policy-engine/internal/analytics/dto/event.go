@@ -56,6 +56,34 @@ const (
 	// up here. Consumed by the stdout traffic-logging publisher's global
 	// "$ctx:metadata['<key>']" property (see internal/analytics/publishers/global_properties.go).
 	PropKeyMetadata = "x-wso2-metadata"
+
+	// Fault metadata keys, written only on the fault path by the collector system policy's
+	// OnFault (gateway/system-policies/analytics — a separate Go module, hence the matching
+	// string literals here rather than a shared Go constant, exactly as for PropKeyAuth*
+	// above).
+	//
+	// Unlike every other PropKey* in this block, these are TRANSPORT ONLY and never become
+	// event properties. The collector reaches the engine over Envoy's dynamic metadata,
+	// which is a flat map, so a flat key is the only shape available on that hop;
+	// prepareAnalyticEvent reads them and builds the typed Error object instead (see the
+	// doc on Error for why a property bag was the wrong home for this).
+	//
+	// There is deliberately no key for the fault's Description or a guardrail's
+	// Assessments: for a guardrail rejection those hold the content the guardrail existed
+	// to stop, and an event goes to external publishers.
+	PropKeyFaultCode            = "x-wso2-fault-code"
+	PropKeyFaultType            = "x-wso2-fault-type"
+	PropKeyFaultDirection       = "x-wso2-fault-direction"
+	PropKeyFaultMessage         = "x-wso2-fault-message"
+	PropKeyFaultPolicy          = "x-wso2-fault-policy"
+	PropKeyFaultPolicyPhase     = "x-wso2-fault-policy-phase"
+	PropKeyFaultSource          = "x-wso2-fault-source"
+	PropKeyFaultStatus          = "x-wso2-fault-status"
+	PropKeyFaultOriginalStatus  = "x-wso2-fault-original-status"
+	PropKeyFaultGuardrail       = "x-wso2-fault-guardrail"
+	PropKeyFaultGuardrailAction = "x-wso2-fault-guardrail-action"
+	PropKeyFaultGuardrailReason = "x-wso2-fault-guardrail-reason"
+	PropKeyFaultJSONRPCCode     = "x-wso2-fault-jsonrpc-code"
 )
 
 // Event represents analytics event data.

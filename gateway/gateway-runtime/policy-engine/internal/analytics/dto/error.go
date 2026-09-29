@@ -18,7 +18,62 @@
 package dto
 
 // Error represents the error attributes in an analytics event.
+//
+// The first two fields are the established shape and keep their names and JSON keys. Note
+// ErrorMessage is not a message: it holds the classification enum (AUTHENTICATION_FAILURE,
+// API_LEVEL_LIMIT_EXCEEDED, ...). The human-readable text is Summary, below.
+//
+// Every added field is omitempty, so a failure that could not be classified still serialises
+// as the two-field object the established shape expects.
+//
+// Deliberately no Status field: Event.ProxyResponseCode already carries the status the client
+// received. OriginalStatus IS here, because once a guardrail turns a 200 into a 446 the
+// upstream's own status is gone from every other view.
+//
+// Deliberately no Description and no guardrail Assessments: for a guardrail rejection those
+// hold the content the guardrail existed to stop, and an event is forwarded to external
+// publishers.
 type Error struct {
 	ErrorCode    int              `json:"errorCode"`
 	ErrorMessage FaultSubCategory `json:"errorMessage"`
+
+	// Type is the failing policy's own class — "authentication", "guardrail", "upstream".
+	// It sits alongside Event.ErrorType rather than replacing it: that one is the
+	// category derived from the code's range, this one is what the policy said it was, and
+	// a guardrail shows why both are wanted — it categorises as OTHER while its type is
+	// precisely "guardrail".
+	Type string `json:"type,omitempty"`
+	// Direction states which side was rejected: the content the caller sent, or the content
+	// the upstream returned. Two operationally different events that share a status code.
+	Direction string `json:"direction,omitempty"`
+	// Summary is the client-facing message. Named Summary, not Message, because
+	// ErrorMessage above is already taken by the classification enum.
+	Summary string `json:"summary,omitempty"`
+	// Policy and PolicyPhase name what failed and where. Empty when no policy did — an
+	// infrastructure failure — which means "not caused by a policy", never "unknown".
+	Policy      string `json:"policy,omitempty"`
+	PolicyPhase string `json:"policyPhase,omitempty"`
+	// Source is which actor produced the response: gateway, backend, router, noRoute. The
+	// one thing a status cannot say — a backend's own 503 and the router's are the same
+	// number and mean opposite things.
+	Source string `json:"source,omitempty"`
+	// OriginalStatus is the upstream's status before a policy changed it. Absent when
+	// nothing changed it, and absent for a rejection, where no upstream response existed.
+	OriginalStatus int `json:"originalStatus,omitempty"`
+	// Guardrail carries the intervention detail, and is nil for every non-guardrail
+	// failure.
+	Guardrail *ErrorGuardrail `json:"guardrail,omitempty"`
+	// JSONRPCCode is the wire-level code for a JSON-RPC caller (MCP today), and is 0 for
+	// every other protocol.
+	JSONRPCCode int `json:"jsonRpcCode,omitempty"`
+}
+
+// ErrorGuardrail is the guardrail-specific half of Error.
+//
+// Assessments are deliberately absent: for a response guardrail they are the blocked content
+// itself. The name, action and reason carry the operationally useful part without the payload.
+type ErrorGuardrail struct {
+	Name   string `json:"name,omitempty"`
+	Action string `json:"action,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
