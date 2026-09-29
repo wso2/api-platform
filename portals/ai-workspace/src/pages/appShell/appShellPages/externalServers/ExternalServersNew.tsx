@@ -232,6 +232,13 @@ export default function ExternalServersNew(): JSX.Element {
 
   const handleCreate = async () => {
     if (!effectiveProject?.id || !MCP_VERSION_PATTERN.test(serverVersion.trim())) return;
+    if (isTargetStale) {
+      showSnackbar(
+        'Target has changed since validation. Please re-fetch server info before creating.',
+        'error'
+      );
+      return;
+    }
 
     // Encrypt the upstream auth value as a secret so the plaintext credential is
     // never stored in the MCP server config. Skip if already a placeholder.
@@ -345,13 +352,25 @@ export default function ExternalServersNew(): JSX.Element {
     ? `/${effectiveProjectSlug}/${generateServerId(serverName)}`
     : `/${generateServerId(serverName)}`;
   const serverContext = serverContextOverride ?? computedContext;
+
+  // The exact URL that discovery actually validated against — captured once,
+  // at validation time, in validationResult.endpointUrl.
+  const validatedUrl = validationResult?.endpointUrl ?? '';
+  // True whenever the Target field (editable on step 2) no longer matches
+  // what was actually validated — e.g. the user edited it after discovery.
+  const isTargetStale = serverTarget.trim() !== validatedUrl;
+
   const versionValidationError =
     serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())
       ? MCP_VERSION_ERROR
       : undefined;
+  const targetStaleError = isTargetStale
+    ? 'Target has changed since validation. Go back and re-fetch server info before creating.'
+    : undefined;
   const formFieldErrors = {
     ...createFieldErrors,
     version: versionValidationError ?? createFieldErrors.version,
+    target: targetStaleError ?? createFieldErrors.target,
   };
 
   const isCreateDisabled =
@@ -360,7 +379,8 @@ export default function ExternalServersNew(): JSX.Element {
     !serverName.trim() ||
     !serverVersion.trim() ||
     Boolean(versionValidationError) ||
-    !serverTarget.trim();
+    !serverTarget.trim() ||
+    isTargetStale;
 
   if (!canCreateMcpProxy) {
     return (
