@@ -31,11 +31,16 @@ from apip_sdk_core import (
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
     DropHeaderAction,
+    FaultContext,
+    FaultResponse,
+    FaultDetails,
     ExecutionPhase,
     ForwardRequestChunk,
     ForwardResponseChunk,
+    GuardrailDetails,
     Headers,
     ImmediateResponse,
+    JSONRPCError,
     PolicyMetadata,
     ProcessingMode,
     RequestAction,
@@ -74,6 +79,7 @@ class Translator:
         proto.PHASE_NEEDS_MORE_RESPONSE_DATA: ExecutionPhase.NEEDS_MORE_RESPONSE_DATA,
         proto.PHASE_RESPONSE_BODY_CHUNK: ExecutionPhase.RESPONSE_BODY_CHUNK,
         proto.PHASE_CANCEL: ExecutionPhase.CANCEL,
+        proto.PHASE_FAULT: ExecutionPhase.FAULT,
     }
 
     _DROP_HEADER_ACTION_TO_PROTO = {
@@ -240,6 +246,114 @@ class Translator:
         )
 
     @staticmethod
+    def to_python_error_context(
+        proto_ctx: proto.FaultContext,
+        shared: SharedContext,
+    ) -> FaultContext:
+        """Build the context a fault handler receives.
+
+        Field-for-field now that both sides are flat: the proto message carries the response
+        fields directly, and so does the SDK type, so there is no nested view to unwrap and
+        no chance of reading a field off the wrong level.
+        """
+        request_body = (
+            Translator._to_python_body(proto_ctx.request_body)
+            if proto_ctx.HasField("request_body")
+            else None
+        )
+        response_body = (
+            Translator._to_python_body(proto_ctx.response_body)
+            if proto_ctx.HasField("response_body")
+            else None
+        )
+        return FaultContext(
+            shared=shared,
+            request_headers=Translator._to_python_headers(proto_ctx.request_headers),
+            request_body=request_body,
+            request_path=proto_ctx.request_path,
+            request_method=proto_ctx.request_method,
+            request_authority=proto_ctx.request_authority,
+            request_scheme=proto_ctx.request_scheme,
+            request_vhost=proto_ctx.request_vhost,
+            response_headers=Translator._to_python_headers(proto_ctx.response_headers),
+            response_body=response_body,
+            response_status=proto_ctx.response_status,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_upstream(proto_ctx),
+            original_status=proto_ctx.original_status,
+            policy=proto_ctx.policy,
+            policy_version=proto_ctx.policy_version,
+            policy_phase=proto_ctx.policy_phase,
+            response_committed=proto_ctx.response_committed,
+            route_key=proto_ctx.route_key,
+            source=proto_ctx.source,
+            # Absent stays None: a handler has to be able to tell "nothing described this
+            # failure" from "described an empty one", since only the former means falling
+            # back to the status.
+            fault=(
+                Translator._to_python_error_response(proto_ctx.fault)
+                if proto_ctx.HasField("fault")
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _to_python_error_response(proto_error: proto.FaultDetails) -> FaultDetails:
+        return FaultDetails(
+            code=proto_error.code,
+            type=proto_error.type,
+            direction=proto_error.direction,
+            message=proto_error.message,
+            description=proto_error.description,
+            jsonrpc=(
+                Translator._to_python_jsonrpc_error(proto_error.jsonrpc)
+                if proto_error.HasField("jsonrpc")
+                else None
+            ),
+            guardrail=(
+                Translator._to_python_guardrail_error(proto_error.guardrail)
+                if proto_error.HasField("guardrail")
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _to_python_guardrail_error(proto_guardrail: proto.GuardrailDetails) -> GuardrailDetails:
+        """Convert the guardrail block a failing policy supplied.
+
+        An absent assessments Struct becomes None rather than an empty dict: "the operator did
+        not opt into showing the assessment" and "the guardrail reported an empty assessment"
+        are different statements, and only the former is what showAssessment: false means.
+        """
+        return GuardrailDetails(
+            intervening_guardrail=proto_guardrail.intervening_guardrail,
+            action=proto_guardrail.action,
+            action_reason=proto_guardrail.action_reason,
+            assessments=(
+                Translator.struct_to_dict(proto_guardrail.assessments)
+                if proto_guardrail.HasField("assessments")
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _to_python_jsonrpc_error(proto_jsonrpc: proto.JSONRPCError) -> JSONRPCError:
+        """Convert the JSON-RPC block a failing policy supplied.
+
+        An unset code stays None rather than becoming 0. The distinction is load-bearing: a
+        policy that filled in an id but no code is asking for the id to be echoed and the code
+        to be derived from the status, and 0 is not a valid JSON-RPC code anyway.
+        """
+        return JSONRPCError(
+            code=proto_jsonrpc.code.value if proto_jsonrpc.HasField("code") else None,
+            id=(
+                Translator._proto_value_to_python(proto_jsonrpc.id)
+                if proto_jsonrpc.HasField("id")
+                else None
+            ),
+        )
+
+    @staticmethod
     def to_python_request_stream_context(
         proto_ctx: proto.RequestStreamContext,
         shared: SharedContext,
@@ -347,6 +461,38 @@ class Translator:
         raise TypeError(f"unsupported response action type: {type(action)!r}")
 
     @staticmethod
+    def to_proto_fault_response(fault: FaultResponse | None) -> proto.FaultResponsePayload:
+        """Serialize an ``on_fault`` return.
+
+        ``None`` produces a payload with no action set, which the gateway reads as "changed
+        nothing" — the same meaning nil carries in the Go contract. An empty FaultResponse is
+        a different thing on the wire (an action that changes nothing) and stays
+        distinguishable, though the outcome is identical.
+        """
+        payload = proto.FaultResponsePayload()
+        if fault is None:
+            return payload
+        if not isinstance(fault, FaultResponse):
+            raise TypeError(f"unsupported fault response type: {type(fault)!r}")
+        message = payload.fault_response
+        Translator._copy_int32_value(message.status_code, fault.status_code)
+        Translator._copy_bytes_value(message.body, fault.body)
+        message.headers_to_set.update(fault.headers_to_set)
+        for name, values in fault.headers_to_append.items():
+            message.headers_to_append[name].values.extend(values)
+        message.headers_to_remove.extend(fault.headers_to_remove)
+        Translator._copy_struct(message.analytics_metadata, fault.analytics_metadata)
+        Translator._populate_struct_map(message.dynamic_metadata, fault.dynamic_metadata)
+        Translator._copy_drop_header_action(
+            message.analytics_header_filter,
+            fault.analytics_header_filter,
+        )
+        message.final = fault.final
+        if fault.fault is not None:
+            Translator._copy_fault_details(message.fault, fault.fault)
+        return payload
+
+    @staticmethod
     def to_proto_streaming_request_action(
         action: StreamingRequestAction,
     ) -> proto.StreamingRequestActionPayload:
@@ -408,6 +554,25 @@ class Translator:
         if kind == "list_value":
             return [Translator._proto_value_to_python(v) for v in value.list_value.values]
         return None
+
+    @staticmethod
+    def _python_to_proto_value(value: Any) -> Value:
+        """Wrap a JSON-RPC id for the wire. The inverse of _proto_value_to_python.
+
+        The id is whatever the client sent, so the protocol permits a string, a number, or
+        null. Anything else cannot have come from a parsed request; it is stringified rather
+        than raising, since losing the exact type of a malformed id beats failing the whole
+        error response.
+        """
+        if value is None:
+            return Value(null_value=0)
+        if isinstance(value, bool):
+            return Value(bool_value=value)
+        if isinstance(value, (int, float)):
+            return Value(number_value=float(value))
+        if isinstance(value, str):
+            return Value(string_value=value)
+        return Value(string_value=str(value))
 
     @staticmethod
     def _to_python_headers(proto_headers: proto.Headers) -> Headers:
@@ -505,6 +670,69 @@ class Translator:
         return headers
 
     @staticmethod
+    def _copy_fault_declaration(message, action) -> None:
+        """Copy a policy's fault declaration onto the outgoing action message.
+
+        One helper for all three declaring actions — the two buffered ones and
+        TerminateResponseChunk. They briefly diverged, while the buffered actions had their
+        status read instead of a flag; they declare alike again.
+
+        ``is_fault`` is a plain bool, so False and unset are the same wire value — which is
+        exactly the intent: a policy that says nothing is not declaring a failure.
+
+        ``fault`` is only set when the policy supplied one. Leaving the submessage absent
+        keeps "described nothing" distinguishable from "described an empty fault", which the
+        gateway relies on to decide whether there is anything to render.
+        """
+        message.is_fault = action.is_fault
+        if action.fault is None:
+            return
+        Translator._copy_fault_details(message.fault, action.fault)
+
+    @staticmethod
+    def _copy_fault_details(target, declared) -> None:
+        """Copy a FaultDetails onto an outgoing message's ``fault`` submessage.
+
+        Split out of _copy_fault_declaration so the fault path can reuse it: a FaultResponse
+        describes a fault but has no ``is_fault`` to declare, the fault flow being already
+        under way. Keeping one copy of this means the guardrail and JSON-RPC presence rules
+        below cannot drift between the two callers.
+        """
+        message_fault = target
+        message_fault.code = declared.code
+        message_fault.type = declared.type
+        message_fault.direction = declared.direction
+        message_fault.message = declared.message
+        message_fault.description = declared.description
+        guardrail = declared.guardrail
+        if guardrail is not None:
+            message_fault.guardrail.intervening_guardrail = guardrail.intervening_guardrail
+            message_fault.guardrail.action = guardrail.action
+            message_fault.guardrail.action_reason = guardrail.action_reason
+            # Only set when the operator opted in. Touching the field would mark it present,
+            # which on the far side reads as "an assessment was supplied and it was empty".
+            if guardrail.assessments:
+                Translator._copy_struct(message_fault.guardrail.assessments, guardrail.assessments)
+            else:
+                # A block with no assessment still has to exist — its metadata names which
+                # guardrail acted, which is the part a fault handler needs most.
+                message_fault.guardrail.SetInParent()
+
+        jsonrpc = declared.jsonrpc
+        if jsonrpc is None:
+            return
+        # Touching the submessage is what marks it present, so only do it when the policy
+        # supplied one — an empty block would read as "an explicit JSON-RPC error with
+        # nothing in it" rather than "not a JSON-RPC caller".
+        Translator._copy_int32_value(message_fault.jsonrpc.code, jsonrpc.code)
+        if jsonrpc.id is not None:
+            message_fault.jsonrpc.id.CopyFrom(Translator._python_to_proto_value(jsonrpc.id))
+        else:
+            # An id-less block still has to exist if a code was set; setting the field
+            # explicitly is what makes HasField("jsonrpc") true on the far side.
+            message_fault.jsonrpc.SetInParent()
+
+    @staticmethod
     def _to_proto_immediate_response(action: ImmediateResponse) -> proto.ImmediateResponse:
         message = proto.ImmediateResponse(status_code=action.status_code)
         message.headers.update(action.headers)
@@ -515,6 +743,7 @@ class Translator:
             message.analytics_header_filter,
             action.analytics_header_filter,
         )
+        Translator._copy_fault_declaration(message, action)
         return message
 
     @staticmethod
@@ -596,6 +825,7 @@ class Translator:
             message.analytics_header_filter,
             action.analytics_header_filter,
         )
+        Translator._copy_fault_declaration(message, action)
         return message
 
     @staticmethod
@@ -622,6 +852,7 @@ class Translator:
         Translator._copy_bytes_value(message.body, action.body)
         Translator._copy_struct(message.analytics_metadata, action.analytics_metadata)
         Translator._populate_struct_map(message.dynamic_metadata, action.dynamic_metadata)
+        Translator._copy_fault_declaration(message, action)
         return message
 
     @staticmethod
