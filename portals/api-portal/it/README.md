@@ -41,6 +41,14 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
   organization and refuses a login carrying any other one's — a check the matched pair above
   can never reach. Started only for the `test-rest-api*` targets (as a `rest-api-tests`
   dependency), and driven by `rest-api/auth/foreign-org-login.spec.js`.
+- **developer-portal-multi-tenancy** / **-multi-tenancy-strict** (and, on PostgreSQL and SQL
+  Server, **-multi-tenancy-replica**) — instances in multi-tenancy mode
+  (`multi_tenancy.enabled`), IDP auth against a mock OIDC provider that the `rest-api-tests`
+  container serves over HTTPS (`rest-api/support/mock-idp.js`, certificate from
+  `make ensure-certs`). One provisions organizations from token claims
+  (`enforce_org_validation = false`), the strict one refuses them; the replica shares the
+  first one's database. Each of the other two has its own database. Driven by
+  `rest-api/multi-tenancy/multi-tenancy.spec.js`, which skips itself when they aren't running.
 - **Jest + Supertest** — REST API test framework.
 - **Cypress** — UI E2E test framework (headless Electron).
 - **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
@@ -131,6 +139,7 @@ portals/api-portal/it/
 | `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) — both modes |
 | `make test-rest-api-postgres-scope` | Same, scope mode only |
 | `make test-rest-api-postgres-role` | Same, role mode only |
+| `make test-rest-api-mssql-multi-tenancy` | Run only the multi-tenancy REST spec against SQL Server (azure-sql-edge on arm64) |
 | `make open` | Open the Cypress interactive UI against a locally running portal |
 | `make deps` | Install Node dependencies (only needed for `make open`) |
 | `make clean` | Remove test containers, volumes, and report artifacts |

@@ -45,7 +45,7 @@ const orgDao = require('../dao/organizationDao');
 const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
-const { NotFoundError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 const sharedKeyAuth = require('./sharedKeyAuth');
 
@@ -196,10 +196,28 @@ async function verifyBearerToken(token, req) {
  * and orgDao resolves all three. Comparing after resolution makes every spelling of
  * this organization match and every spelling of any other organization not match.
  *
+ * In multi-tenancy mode (orgContext.isMultiTenancyEnabled) a credential's org claim is
+ * resolved by orgContext.resolveClaimOrg instead, which accepts whichever
+ * organization the claim names. `fromClaim: false` keeps the pinned-org rule
+ * regardless: the `organization` header of an mTLS caller is a request header, not
+ * something a verified credential asserted.
+ *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
-async function resolveScopedOrg(req, identifier, source) {
+async function resolveScopedOrg(req, identifier, source, { fromClaim = true, provision = false, orgNames } = {}) {
     if (!identifier) return null;
+    if (fromClaim && orgContext.isMultiTenancyEnabled()) {
+        try {
+            req.orgId = await orgContext.resolveClaimOrg(identifier, source, { provision, orgNames });
+            return null;
+        } catch (e) {
+            const forbidden = e instanceof CustomError && e.statusCode === 403;
+            if (!forbidden) logger.error('Org lookup failed', { error: e.message, source });
+            const err = new Error(forbidden ? 'Forbidden' : 'Internal Server Error');
+            err.status = forbidden ? 403 : 500;
+            return err;
+        }
+    }
     let resolvedUuid;
     try {
         resolvedUuid = await orgDao.getId(identifier);
@@ -258,7 +276,34 @@ async function resolveScopedOrg(req, identifier, source) {
 async function resolvePortalOrg(req) {
     const orgHeader = req.headers.organization;
     if (orgHeader) {
-        return resolveScopedOrg(req, orgHeader, 'organization header');
+        return resolveScopedOrg(req, orgHeader, 'organization header', { fromClaim: false });
+    }
+    try {
+        req.orgId = await orgContext.getOrgUuid();
+        return null;
+    } catch (e) {
+        logger.error('Configured organization could not be resolved', {
+            error: e.message,
+            handle: orgContext.getHandle(),
+        });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+}
+
+/**
+ * For an IDP-mode credential carrying no organization claim: with
+ * auth.enforce_org_validation off it is admitted to this instance's configured
+ * organization; with it on (the default) it is refused, as it always was.
+ *
+ * @returns {Promise<Error|null>} null on success, or an Error with .status
+ */
+async function resolveMissingOrgClaim(req, message) {
+    if (orgContext.isOrgValidationEnforced()) {
+        const err = new Error(message);
+        err.status = 403;
+        return err;
     }
     try {
         req.orgId = await orgContext.getOrgUuid();
@@ -359,13 +404,15 @@ async function authResolver(req, res, next) {
             // in typical IDP configs, which would leave req.orgId empty and break every
             // tenant-scoped operation (reads return the wrong scope; writes fail the
             // org_uuid foreign key). Fail closed when no org claim is present.
+            // No claim: admitted to the configured organization only when
+            // auth.enforce_org_validation is off (resolveMissingOrgClaim). A session
+            // logged in under that setting normally already carries the configured
+            // organization's claim (passportConfig records it), so this covers
+            // sessions from before the setting changed.
             const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-            if (!sessionOrgClaim) {
-                const err = new Error('Missing organization claim in session');
-                err.status = 403;
-                return next(err);
-            }
-            const orgErr = await resolveScopedOrg(req, sessionOrgClaim, 'idp session');
+            const orgErr = sessionOrgClaim
+                ? await resolveScopedOrg(req, sessionOrgClaim, 'idp session')
+                : await resolveMissingOrgClaim(req, 'Missing organization claim in session');
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
@@ -398,13 +445,25 @@ async function authResolver(req, res, next) {
             // platform-JWT tokens carry no org claim.
             if (config.auth.mode === 'idp') {
                 const orgClaimKey = config.auth.claimMappings?.organization;
-                const tokenOrgClaim = (orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined) || decoded.org_handle;
-                if (!tokenOrgClaim) {
-                    const err = new Error('Missing organization claim in token');
-                    err.status = 403;
-                    return next(err);
+                const mappedOrgClaim = orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined;
+                // Multi-tenancy mode matches claims against idp_ref_id only, so a handle is
+                // never a stand-in for the organization id there; the org_handle fallback
+                // stays for single-organization mode, whose lookup also accepts a handle.
+                let tokenOrgClaim = mappedOrgClaim
+                    || (orgContext.isMultiTenancyEnabled() ? undefined : decoded.org_handle);
+                if (orgContext.isMultiTenancyEnabled()) {
+                    try {
+                        tokenOrgClaim = orgContext.normalizeOrgClaim(tokenOrgClaim);
+                    } catch {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
                 }
-                const orgErr = await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim');
+                const orgErr = tokenOrgClaim
+                    ? await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim',
+                        { provision: 'bearer', orgNames: orgContext.orgNameClaims(decoded) })
+                    : await resolveMissingOrgClaim(req, 'Missing organization claim in token');
                 if (orgErr) return next(orgErr);
             } else if (decoded.org_handle) {
                 const orgErr = await resolveScopedOrg(req, decoded.org_handle, 'bearer token org_handle');

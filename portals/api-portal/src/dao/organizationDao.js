@@ -124,6 +124,28 @@ const getByHandle = async (handle, t) => {
     return organization;
 };
 
+// Every organization of this portal whose idp_ref_id is exactly `idpRefId` — no handle/display_name
+// fallback. Returns all matches rather than the first, because idp_ref_id carries no
+// unique constraint: a caller matching a token's org claim must be able to tell "one
+// organization" from "ambiguous" instead of silently picking one.
+//
+// "Exactly" is enforced here, not left to the database: SQL Server's default
+// collation compares case-insensitively and ignores trailing spaces, so on MSSQL the
+// query alone would also return the row for "acme" given "ACME" or "acme " — letting a
+// token whose org claim merely differs in case act as another organization.
+const listByIdpRefId = async (idpRefId, t) => {
+    const exec = t || db;
+    const rows = await exec.query(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ? AND portal_id = ?`, [idpRefId, getPortalId()]);
+    return rows.filter((row) => row.idp_ref_id === idpRefId).map(normalizeOrgRow);
+};
+
+// This portal's organization whose display name is exactly `displayName`, or null.
+// display_name is unique per portal, so a caller creating an organization checks here first.
+const findByDisplayName = async (displayName, t) => {
+    const exec = t || db;
+    return normalizeOrgRow(await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ? AND portal_id = ?`, [displayName, getPortalId()]));
+};
+
 const getId = async (orgName) => {
     const organization = await findOrgByIdentifier(orgName);
     if (!organization) {
@@ -403,6 +425,8 @@ module.exports = {
     getByUuid,
     getByHandle,
     getId,
+    listByIdpRefId,
+    findByDisplayName,
     list,
     update,
     updateIdpRefId,

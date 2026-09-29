@@ -710,6 +710,81 @@ function validateIdpConfig(cfg) {
 
 validateIdpConfig(config);
 
+/**
+ * Normalizes multi_tenancy.enabled to a boolean and refuses anything that isn't one — a
+ * misspelt value silently reading as "off" (or "on") would change which organizations
+ * this portal serves. Warns when it is set outside IDP mode, where it has no effect.
+ */
+function validateMultiTenancyConfig(cfg) {
+    const raw = cfg.multiTenancy?.enabled;
+    if (typeof raw !== 'boolean') {
+        process.stderr.write(`[FATAL] multi_tenancy.enabled must be true or false, got ${JSON.stringify(raw)}.\n`);
+        process.exit(1);
+    }
+    if (raw && cfg.auth?.mode !== 'idp') {
+        process.stderr.write(
+            '[WARN] multi_tenancy.enabled = true has no effect with auth.mode = "' + cfg.auth?.mode +
+            '" — multi-tenancy mode needs an IDP whose tokens carry the organization claim. ' +
+            'Serving only organization.handle.\n'
+        );
+    }
+}
+
+validateMultiTenancyConfig(config);
+
+/**
+ * auth.enforce_org_validation must be a real boolean (a typo silently reading as the
+ * default could open or close access). Turning it off is a deliberate loosening, so it
+ * is announced at startup.
+ */
+function validateOrgValidationConfig(cfg) {
+    const raw = cfg.auth?.enforceOrgValidation;
+    if (typeof raw !== 'boolean') {
+        process.stderr.write(`[FATAL] auth.enforce_org_validation must be true or false, got ${JSON.stringify(raw)}.\n`);
+        process.exit(1);
+    }
+    if (!raw && cfg.auth?.mode === 'idp') {
+        process.stderr.write(
+            '[WARN] auth.enforce_org_validation = false — an IDP credential with no organization claim is ' +
+            `admitted to organization "${cfg.organization?.handle}"` +
+            (cfg.multiTenancy?.enabled ? ', and one naming an unknown organization provisions it' : '') + '.\n'
+        );
+    }
+}
+
+validateOrgValidationConfig(config);
+
+/**
+ * auth.idp.audience may name several accepted audiences — a comma-separated string or a
+ * TOML array — for IDPs that issue an organization's tokens to its own copy of the
+ * client (WSO2 IS / Asgardeo sub-organizations). Normalized once here to what jose's
+ * jwtVerify takes: a single value stays a string, as before; several become an array.
+ *
+ * In multi-tenancy mode it is required: without an audience check, a token the same IDP
+ * issued to any other application would be accepted — and with every organization in
+ * the database reachable (and, with enforce_org_validation off, provisionable) that
+ * reaches far more than the one organization it would in single-organization mode.
+ */
+function normalizeIdpAudience(cfg) {
+    const idp = cfg.auth?.idp;
+    if (!idp) return;
+    const raw = idp.audience;
+    const list = (Array.isArray(raw) ? raw : String(raw ?? '').split(','))
+        .map((a) => String(a).trim())
+        .filter(Boolean);
+    idp.audience = list.length > 1 ? list : (list[0] || '');
+    if (cfg.multiTenancy?.enabled && cfg.auth.mode === 'idp' && list.length === 0) {
+        process.stderr.write(
+            '[FATAL] multi_tenancy.enabled = true requires auth.idp.audience — the audience (usually the client id) ' +
+            'bearer tokens must be issued for. Without it a token the IDP issued to any other application would ' +
+            'be accepted for every organization. Several values may be given, comma-separated or as an array.\n'
+        );
+        process.exit(1);
+    }
+}
+
+normalizeIdpAudience(config);
+
 // Every artifact type this portal knows how to serve. `artifacts.enabled_types`
 // is an allowlist drawn from this set.
 const KNOWN_ARTIFACT_TYPES = ['apis', 'mcp-servers', 'api-workflows'];
@@ -883,4 +958,4 @@ function validateAuthorizationConfig(cfg) {
 rejectRetiredAuthKeys(interpolatedTomlConfig.auth);
 validateAuthorizationConfig(config);
 
-module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES };
+module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES, ORG_HANDLE_PATTERN, RESERVED_ORG_HANDLES };

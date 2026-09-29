@@ -30,7 +30,16 @@ const orgContext = require('../../utils/orgContext');
 const EVENTS_TABLE = 'events';
 
 let running = false;
+
+/** The organization to claim work for, or null for every organization (multi-tenancy mode). */
+async function claimScope() {
+    return orgContext.isMultiTenancyEnabled() ? null : orgContext.getOrgUuid();
+}
 let intervalHandle = null;
+// True while a batch is in progress. tick() fires from both the poll interval and
+// every publish, so without this a burst of publishes (or a slow batch) would run
+// overlapping batches that compete for the same rows.
+let batchInProgress = false;
 
 /**
  * Process one batch of this organization's PENDING (non-key) events: resolve
@@ -38,12 +47,16 @@ let intervalHandle = null;
  *
  * Claims are scoped to the organization this instance serves — the events table is
  * shared with every other instance pointed at this database, and each one dispatches
- * only its own.
+ * only its own. In multi-tenancy mode this instance serves every organization under its
+ * portal_id, so it dispatches for all of them.
  */
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPending(batchSize, await orgContext.getOrgUuid());
+    // Multi-tenancy mode delivers for every organization under this portal_id — this
+    // deployment owns it (see orgContext.isMultiTenancyEnabled) — so the claim drops
+    // the organization filter there.
+    const events = await eventDao.claimPending(batchSize, await claimScope());
     if (events.length === 0) return;
 
     for (const event of events) {
@@ -83,6 +96,8 @@ function start() {
     const pollMs = (delivery && delivery.pollIntervalMs) || 2000;
 
     async function tick() {
+        if (batchInProgress) return;
+        batchInProgress = true;
         try {
             // runDetached() matters here specifically because of the onPublished(tick)
             // registration below: eventPublisher.js's bus.emit('event_published') fires
@@ -93,6 +108,8 @@ function start() {
             await db.runDetached(runBatch);
         } catch (err) {
             logger.error('Batch error', { error: err.message || String(err) });
+        } finally {
+            batchInProgress = false;
         }
     }
 

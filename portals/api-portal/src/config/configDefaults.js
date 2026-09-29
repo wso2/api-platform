@@ -153,10 +153,31 @@ const DEFAULTS = {
         // the setting never silently resets it. Matched verbatim against the claim, so
         // it is NOT lowercased, unlike the handle.
         idpOrgId: '',
+        // How an IDP-mode credential's organization claim is enforced (see
+        // orgContext.resolveClaimOrg and authMiddleware.authResolver).
+        //   true  (default) — a credential with no organization claim is refused, and
+        //                     one naming an organization this portal doesn't serve is
+        //                     refused. This is the behaviour of every earlier release.
+        //   false — a credential with no organization claim falls back to
+        //           organization.handle (the session records it as that organization),
+        //           and in multi_tenancy mode one naming an organization that doesn't exist
+        //           yet provisions it. A claim naming an existing organization that this
+        //           portal does not serve is still refused either way.
+        enforceOrgValidation: true,
         // JWT claim name mappings — which token claim carries each field.
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
+            // Optional claim carrying the organization's human-readable name. Used only
+            // when an organization is provisioned from a claim (multi_tenancy mode with
+            // enforce_org_validation = false): its URL handle and display name are
+            // derived from it. Empty — or absent from the token — derives both from
+            // the organization claim above instead.
+            orgName: '',
+            // Optional claim carrying the organization's URL handle (e.g. WSO2 IS's
+            // org_handle). Provisioning uses it as the handle as-is when it is a valid,
+            // unreserved one; otherwise the handle is derived as above.
+            orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
         },
@@ -303,6 +324,20 @@ const DEFAULTS = {
         // organization.portal_id in a local config file for on-premise. When neither
         // is set the template resolves to 'portal_id'.
         portalId: '',
+    },
+    // Multi-tenancy mode. Off (the default) — the portal serves only the
+    // organization above, exactly as described there. On — one portal serves every
+    // organization under its portal_id: page URLs, org claims and the organization APIs
+    // resolve to whichever organization they name, not only the configured one (which
+    // stays the default and fallback). Takes effect in auth.mode = "idp" only; local
+    // auth stays single-organization.
+    //
+    // Assumes this deployment owns its portal_id: several instances may share it only
+    // as replicas with identical configuration, since any instance may serve any
+    // organization under it. Other deployments may share the database under a
+    // different portal_id. See src/utils/orgContext.js.
+    multiTenancy: {
+        enabled: false,
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here
     // gets no nav entry, no landing-page section, and 404s on its routes. Any

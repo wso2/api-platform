@@ -1,0 +1,63 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Layered on top of test-config.toml (passed as a second --config) for the multi-tenancy
+# portal instances: IDP mode against the suite's mock IDP (rest-api/support/mock-idp.js,
+# served by the rest-api-tests container over HTTPS) and multi-tenancy mode.
+# enforce_org_validation comes from the environment so the
+# same file drives both the provisioning instance and the strict one.
+
+[api_portal.auth]
+mode = "idp"
+idp_org_id = "default"
+enforce_org_validation = '{{ env "APIP_AP_AUTH_ENFORCE_ORG_VALIDATION" "false" }}'
+
+[api_portal.auth.claim_mappings]
+organization = "org_id"
+org_name = "org_name"
+org_handle = "org_handle"
+roles = "roles"
+groups = "groups"
+
+[api_portal.auth.idp]
+issuer = "https://rest-api-tests:4510/oauth2/token"
+authorization_url = "https://rest-api-tests:4510/oauth2/authorize"
+token_url = "https://rest-api-tests:4510/oauth2/token"
+jwks_url = "https://rest-api-tests:4510/oauth2/jwks"
+client_id = "portal-it-client"
+client_secret = "portal-it-secret"
+audience = "portal-it-client"
+callback_url = '{{ env "APIP_AP_AUTH_IDP_CALLBACK_URL" "http://api-portal-multi-tenancy:9543/api-portal/default/callback" }}'
+scope = "openid profile email"
+# On for the provisioning instance (the shipped default), off for the strict one.
+silent_sso = '{{ env "APIP_AP_AUTH_IDP_SILENT_SSO" "false" }}'
+
+[api_portal.auth.authorization]
+mode = "role"
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+page_role_validation = true
+
+[api_portal.auth.authorization.portal_roles]
+admin = "ap_admin"
+subscriber = "ap_subscriber"
+
+[api_portal.multi_tenancy]
+enabled = true
+
+[api_portal.webhooks.delivery]
+poll_interval_ms = 1000

@@ -24,7 +24,7 @@ const { clearPortalCookies } = require('../utils/sessionCookies');
 const { validationResult } = require('express-validator');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
-const { safeDecodeJwt } = require('../utils/jwtDecode');
+const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent } = require('../utils/tokenUtil');
@@ -136,16 +136,17 @@ function hasRole(roleClaimValue, roleName) {
 // multi-tenant isolation; avoids the org check being bypassable just because the
 // looked-up org row happens to have a blank idp_ref_id). Sessions with no org claim at
 // all (e.g. an IDP that doesn't emit one) are left to the role-based ensurePermission
-// gate below, which is the existing, separate authorization mechanism for that case.
+// gate below, which is the existing, separate authorization mechanism for that case —
+// except in multi-tenancy mode, where every organization's pages are routable and a
+// claimless session would pass this check for all of them, so it is denied instead.
+// (Such a session can't normally exist there: login refuses a missing claim, or with
+// auth.enforce_org_validation off records the configured organization's.)
 function belongsToTargetOrg(req, orgDetails) {
     const tokenOrgClaim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
-    if (!tokenOrgClaim) return true;
-    const orgIdentifier = orgDetails?.idp_ref_id;
-    const authorizedOrgs = req.user?.authorizedOrgs;
-    return !!orgIdentifier && (
-        tokenOrgClaim === orgIdentifier ||
-        (Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgIdentifier))
-    );
+    if (!tokenOrgClaim) return !orgContext.isMultiTenancyEnabled();
+    // The same rule the page chrome uses to decide which links to show
+    // (orgContext.isForeignOrgSession, via orgGuard), so the two can't disagree.
+    return orgContext.claimBelongsToOrg(req.user, orgDetails);
 }
 
 // Two tiers, matching the two personas this portal serves: an administrator, and a
@@ -377,6 +378,42 @@ const ensureAuthenticated = async (req, res, next) => {
 // a route param containing '/' (e.g. a reverse-DNS MCP server identifier segment) becomes
 // '&#x2F;' on the first pass and '&amp;#x2F;' on a second, which callers' unescapeParam-style
 // reversal (a single-pass '&#x2F;' -> '/' replace) can no longer undo.
+/**
+ * Multi-tenancy mode: true only when the caller's own organization is the one the route's
+ * URL names (req.orgId, set by orgGuard). A verified token or session proves who the
+ * caller is and what scopes they hold, not which organization they may act in — and in
+ * this mode the URL can name any organization under this portal_id, so without this an
+ * administrator of one organization could write to another's through a route that
+ * resolves its target from the URL (the MCP registry's publish/update/delete).
+ *
+ * The caller's organization comes from the session's recorded claim, else the verified
+ * token's, resolved exactly as authResolver resolves it for the REST API — never
+ * provisioning. A credential without a claim belongs to the configured organization
+ * only when auth.enforce_org_validation is off. Routes without an organization in the
+ * URL, and the default single-organization mode (where orgGuard admits only the
+ * configured organization), are unaffected.
+ */
+async function callerOwnsTargetOrg(req, verifiedClaims) {
+    if (!orgContext.isMultiTenancyEnabled() || !req.orgId) return true;
+    try {
+        let claim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
+        if (!claim) {
+            const key = config.auth.claimMappings?.organization;
+            claim = orgContext.normalizeOrgClaim(key ? getNestedClaim(verifiedClaims || {}, key) : undefined);
+        }
+        let callerOrg;
+        if (claim) callerOrg = await orgContext.resolveClaimOrg(claim, 'enforceSecurity');
+        else if (!orgContext.isOrgValidationEnforced()) callerOrg = await orgContext.getOrgUuid();
+        if (callerOrg && callerOrg === req.orgId) return true;
+    } catch (err) {
+        if (!(err instanceof CustomError)) {
+            logger.error('Could not resolve the caller\'s organization', { error: err.message, operation: 'callerOwnsTargetOrg' });
+        }
+    }
+    logger.warn('Rejected a write to an organization other than the caller\'s own', { operation: 'callerOwnsTargetOrg' });
+    return false;
+}
+
 function validateAuthentication(scope) {
     return async function (req, res, next) {
         let accessToken;
@@ -396,6 +433,9 @@ function validateAuthentication(scope) {
             const tokenScopes = effectiveScopes(scopes, verifiedClaims);
             req.tokenScopes = tokenScopes;
             if (matchesAnyScope(tokenScopes, scope)) {
+                if (!(await callerOwnsTargetOrg(req, verifiedClaims))) {
+                    return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+                }
                 return next();
             }
             return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));

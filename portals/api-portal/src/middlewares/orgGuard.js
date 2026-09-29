@@ -19,7 +19,8 @@
 
 /*
  * Pins the {orgHandle} segment of a page URL to the single organization this
- * instance serves (src/utils/orgContext.js).
+ * instance serves (src/utils/orgContext.js) — or, in multi-tenancy mode, to any
+ * organization that exists (resolveAnyKnownOrg below).
  *
  * The database is shared across organizations, so without this the URL segment is
  * an unauthenticated selector for *any* organization's portal content: a visitor
@@ -59,6 +60,8 @@ async function pinOrgParam(req, res, next, value, onReject) {
     // validation skips the handle check there, so there is nothing to compare to.
     if (config.designMode?.enabled) return next();
 
+    if (orgContext.isMultiTenancyEnabled()) return resolveAnyKnownOrg(req, res, next, value, onReject);
+
     if (String(value || '').toLowerCase() !== orgContext.getHandle()) {
         logger.warn('Rejected request for a non-local organization', {
             requested: value,
@@ -88,6 +91,42 @@ async function pinOrgParam(req, res, next, value, onReject) {
     }
 
     return next();
+}
+
+/**
+ * Multi-tenancy mode's form of the guard: any organization whose handle the segment is
+ * resolves, and anything else is the same 404. It only establishes that the URL names
+ * a real organization — which organization a signed-in caller may act in is still
+ * ensureAuthenticated.belongsToTargetOrg's decision (their org claim against this
+ * organization's idp_ref_id), and a URL never provisions one.
+ */
+async function resolveAnyKnownOrg(req, res, next, value, onReject) {
+    try {
+        const org = await orgContext.requireKnownOrg(value);
+        req.orgId = org.uuid;
+        // Lets pages hide Settings from an administrator of another organization;
+        // access itself is still decided by ensureAuthenticated.
+        req.foreignOrgSession = orgContext.isForeignOrgSession(req.user, org);
+        return next();
+    } catch (error) {
+        if (error instanceof NotFoundError) {
+            logger.warn('Rejected request for an unknown organization', {
+                requested: value,
+                operation: 'pinOrgParam',
+            });
+            const err = new Error('Not Found');
+            err.status = 404;
+            return onReject ? onReject(res, err) : next(err);
+        }
+        logger.error('Organization lookup failed', {
+            requested: value,
+            error: error.message,
+            operation: 'pinOrgParam',
+        });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return onReject ? onReject(res, err) : next(err);
+    }
 }
 
 /**

@@ -16,6 +16,7 @@
  * under the License.
  */
 const whDao = require('../../dao/webhookSubscriberDao');
+const logger = require('../../config/logger');
 
 /**
  * Maps a WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
@@ -38,13 +39,29 @@ function toRuntimeSubscriber(record) {
  * Returns all enabled subscribers for the given org that should receive an
  * event of the given type.
  *
+ * A subscriber whose stored secret cannot be decrypted (e.g. it was encrypted under
+ * a different security.encryption_key) is logged and left out rather than thrown:
+ * this runs inside the caller's transaction (eventPublisher.publish), so one broken
+ * subscriber would otherwise fail the user's own request — an API key generation,
+ * say — instead of just that subscriber's delivery.
+ *
  * @param {string} orgId
  * @param {string} eventType      — e.g. "apikey.generated"
  * @returns {Promise<Array<{id,url,secret,events,timeoutMs}>>}
  */
 async function matchSubscribers(orgId, eventType) {
     const records = await whDao.matchSubscribers(orgId, eventType);
-    return records.map(toRuntimeSubscriber);
+    const subscribers = [];
+    for (const record of records) {
+        try {
+            subscribers.push(toRuntimeSubscriber(record));
+        } catch (err) {
+            logger.error('Skipping webhook subscriber whose secret could not be decrypted', {
+                subscriberId: record.uuid, eventType, error: err.message,
+            });
+        }
+    }
+    return subscribers;
 }
 
 /**

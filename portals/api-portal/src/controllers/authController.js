@@ -55,6 +55,56 @@ function getLocalLoginHttpsAgent(cfg) {
     return insecureLocalLoginAgent;
 }
 
+// Longest `?org=` login hint forwarded to the IDP — generous for any organization id or
+// handle, and keeps an arbitrary query string from being passed through unbounded.
+const MAX_ORG_HINT_LENGTH = 255;
+
+/**
+ * The organization hint (the authorize request's `org` parameter) for a login started
+ * from `orgName`'s page, or undefined for none.
+ *
+ * Default mode: that organization's idp_ref_id, as always.
+ *
+ * Multi-tenancy mode:
+ *   - an explicit `?org=<id>` on the login URL wins — a direct sign-in link for one
+ *     tenant, whatever page it is opened from;
+ *   - otherwise the configured organization's page sends NO hint: a user whose
+ *     organization this portal hasn't seen yet can only start from there (unknown
+ *     handles 404), and a hint would pin their login to the configured organization's
+ *     user store. Without one the IDP runs its own login and organization selection;
+ *   - any other organization's page sends that organization's idp_ref_id.
+ */
+async function loginOrgHint(req, orgName) {
+    const orgDetails = await orgDao.get(orgName);
+    if (!orgContext.isMultiTenancyEnabled()) return orgDetails?.idp_ref_id;
+
+    const explicit = typeof req.query.org === 'string' ? req.query.org.trim() : '';
+    if (explicit) return explicit.length <= MAX_ORG_HINT_LENGTH ? explicit : undefined;
+    if (!orgDetails || orgDetails.uuid === await orgContext.getOrgUuid()) return undefined;
+    return orgDetails.idp_ref_id || undefined;
+}
+
+/**
+ * Multi-tenancy mode: where to land after a login that resolved to organization
+ * `orgUuid`. Every login returns through the one configured callback URL, which sits
+ * under the configured organization, so the captured return path can belong to a
+ * different organization than the one the user actually signed in to — e.g. signing
+ * in to a newly provisioned organization from the configured one's page. Keep the
+ * return path only when it is inside the user's own organization; otherwise land on
+ * that organization's default view.
+ */
+async function landingForOrg(orgUuid, returnTo) {
+    const org = await orgDao.getByUuid(orgUuid);
+    const orgBase = `${constants.ROUTE.BASE_PATH}/${org.handle}`;
+    // Handles are stored lowercase but page URLs resolve in any case (orgGuard), so
+    // compare lowercased and keep the path as the user had it.
+    if (typeof returnTo === 'string') {
+        const path = returnTo.toLowerCase();
+        if (path === orgBase || path.startsWith(`${orgBase}/`)) return returnTo;
+    }
+    return `${orgBase}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle(orgUuid)}`;
+}
+
 const login = async (req, res, next) => {
     const orgName = req.params.orgName;
     const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
@@ -63,8 +113,8 @@ const login = async (req, res, next) => {
         const fidpMap = config.auth.idp?.fidp || {};
         if (config.auth.mode === 'idp') {
             // IDP mode: redirect directly to the IDP, no intermediate login page
-            const orgDetails = await orgDao.get(orgName);
-            const orgIdentifier = orgDetails?.idp_ref_id;
+            delete req.session.silentLoginInFlight;
+            const orgIdentifier = await loginOrgHint(req, orgName);
             if (fidp && fidpMap[fidp]) {
                 if (fidp === 'enterprise' && req.query.username) {
                     req.session.username = req.query.username;
@@ -129,12 +179,21 @@ const handleCallback = async (req, res, next) => {
                 delete req.session.returnTo;
                 req.session.portalId = orgContext.getPortalId();
                 logUserAction('USER_LOGIN', req, { orgName: req.params.orgName });
-                req.session.save((saveErr) => {
+                // A silent sign-in happened while the visitor was browsing a page, which
+                // they may keep reading (public pages are open to every organization) —
+                // it stays where it was rather than jumping to the user's own organization.
+                const landing = req.user.loginOrgUuid && !req.user.silentLogin
+                    ? landingForOrg(req.user.loginOrgUuid, req.user.returnTo).catch((landingErr) => {
+                        logger.error('Could not resolve the post-login organization', { error: landingErr.message });
+                        return returnTo;
+                    })
+                    : Promise.resolve(returnTo);
+                landing.then((target) => req.session.save((saveErr) => {
                     if (saveErr) {
                         logger.error('Session save failed after login', { error: saveErr.message });
                     }
-                    res.redirect(returnTo);
-                });
+                    res.redirect(target);
+                }));
             });
         })(req, res, next);
 };
@@ -246,14 +305,31 @@ const handleSilentSSO = async (req, res, next) => {
         return next();
     }
 
+    // Multi-tenancy mode: the same hint an explicit login from this page would send, so a
+    // silent sign-in only succeeds for the organization being browsed (or, from the
+    // configured organization's pages, whichever one the IDP session belongs to).
+    let org;
+    if (orgContext.isMultiTenancyEnabled()) {
+        try {
+            org = await loginOrgHint(req, req.params.orgName);
+        } catch (err) {
+            logger.warn('Skipping silent SSO: organization lookup failed', { error: err.message });
+            return next();
+        }
+    }
+
     req.session.returnTo = req.originalUrl;
     req.session.silentAuthRedirected = true;
+    // Marks this particular round trip as silent (see passportConfig's silentLogin).
+    // Unlike silentAuthRedirected, which stays set to stop repeat attempts, an explicit
+    // login clears it, so a later Login click is never mistaken for a silent sign-in.
+    req.session.silentLoginInFlight = true;
     req.session.save((err) => {
         if (err) {
             logger.error('Session save failed during silent SSO', { error: err.message });
             return next();
         }
-        passport.authenticate('oauth2', { prompt: 'none' })(req, res, next);
+        passport.authenticate('oauth2', { prompt: 'none', ...(org && { org }) })(req, res, next);
     });
 };
 

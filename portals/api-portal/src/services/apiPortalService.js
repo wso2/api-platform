@@ -54,8 +54,9 @@ function serveDefaultContentAsset(res, fileType, fileName) {
 const getOrganization = async (req, res) => {
     try {
         // Only this instance's own organization is readable — the {orgId} parameter
-        // selects nothing else, even though the shared database holds other orgs.
-        await orgContext.requirePinnedOrg(req.params.orgId);
+        // selects nothing else, even though the shared database holds other orgs. In
+        // multi-tenancy mode, only the caller's own organization.
+        await orgContext.requireCallerOrg(req.params.orgId, req.orgId);
         const organization = await getOrganizationDetails(req.params.orgId);
         res.status(200).json(organization);
     } catch (error) {
@@ -97,9 +98,13 @@ const getOrgContent = async (req, res) => {
             // fault, no such asset — degrades to the packaged default content below
             // rather than a hard 404. The org is also guarded because passing an
             // undefined one into the DAO throws.
+            //
+            // In multi-tenancy mode every organization's public pages are open, and so is
+            // their branding: ?orgId then names the organization whose page is being
+            // rendered (see orgContext.resolvePublicContentOrg).
             let assetOrgId = req.orgId;
-            if (!assetOrgId && DEFAULT_CONTENT_DIRS[req.query.fileType]) {
-                assetOrgId = await orgContext.getOrgUuid().catch(() => null);
+            if (DEFAULT_CONTENT_DIRS[req.query.fileType] && (!assetOrgId || orgContext.isMultiTenancyEnabled())) {
+                assetOrgId = await orgContext.resolvePublicContentOrg(req.query.orgId, req.orgId).catch(() => null);
             }
             let asset = null;
             if (assetOrgId) {

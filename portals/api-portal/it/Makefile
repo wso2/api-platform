@@ -18,6 +18,7 @@
 
 .PHONY: all test test-postgres test-rest-api test-rest-api-scope test-rest-api-role \
         test-rest-api-postgres test-rest-api-postgres-scope test-rest-api-postgres-role \
+        test-rest-api-mssql-multi-tenancy \
         open clean deps ensure-test-tag ensure-certs
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
@@ -70,6 +71,20 @@ ensure-certs:
 		openssl rsa -in $(CERT_DIR)/jwt_private.pem -pubout \
 			-out $(CERT_DIR)/jwt_public.pem 2>/dev/null; \
 		chmod 644 $(CERT_DIR)/jwt_private.pem $(CERT_DIR)/jwt_public.pem; \
+	fi
+	@# TLS pair for the multi-tenancy specs' mock IDP (rest-api/support/mock-idp.js), which
+	@# the rest-api-tests container serves over HTTPS as "rest-api-tests". The
+	@# multi-tenancy portal instances trust it through NODE_EXTRA_CA_CERTS — they only
+	@# provision organizations from an IDP reached over verified TLS.
+	@if [ -f $(CERT_DIR)/idp-cert.pem ] && [ -f $(CERT_DIR)/idp-key.pem ]; then \
+		echo "Using existing $(CERT_DIR)/idp-{cert,key}.pem"; \
+	else \
+		echo "Generating mock IDP TLS certificate at $(CERT_DIR) ..."; \
+		openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+			-keyout $(CERT_DIR)/idp-key.pem -out $(CERT_DIR)/idp-cert.pem \
+			-subj "/O=WSO2 API Platform/CN=rest-api-tests" \
+			-addext "subjectAltName=DNS:rest-api-tests,DNS:localhost,IP:127.0.0.1" 2>/dev/null; \
+		chmod 644 $(CERT_DIR)/idp-key.pem $(CERT_DIR)/idp-cert.pem; \
 	fi
 
 # Tag the pre-built API Portal image as :test so docker-compose.test.yaml can
@@ -151,6 +166,21 @@ test-rest-api-postgres-scope test-rest-api-postgres-role: ensure-test-tag ensure
 	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	exit $$EXIT
+
+# Multi-tenancy REST spec only (rest-api/multi-tenancy/multi-tenancy.spec.js), against SQL Server.
+# The SQLite and PostgreSQL targets above already run it as part of the full suite;
+# this fixture exists for the SQL Server-specific paths it depends on (row-locked
+# claims, provisioning races). SQL Server's image does not run on arm64, so Apple
+# Silicon hosts get azure-sql-edge, the same engine for these features.
+IT_PROJECT_MSSQL := api-portal-it-mssql
+MSSQL_IMAGE ?= $(shell [ "$$(uname -m)" = "arm64" ] && echo "mcr.microsoft.com/azure-sql-edge:latest" || echo "mcr.microsoft.com/mssql/server:2022-latest")
+
+test-rest-api-mssql-multi-tenancy: ensure-test-tag ensure-certs
+	@echo "==> Multi-tenancy REST spec (SQL Server: $(MSSQL_IMAGE))"
+	@MSSQL_IMAGE=$(MSSQL_IMAGE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_MSSQL) -f docker-compose.test.mssql.yaml up rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	EXIT=$$?; \
+	docker compose -p $(IT_PROJECT_MSSQL) -f docker-compose.test.mssql.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running portal (not in Docker).

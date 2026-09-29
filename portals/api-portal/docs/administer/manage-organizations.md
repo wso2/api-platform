@@ -1,6 +1,8 @@
 # Manage the Organization
 
-An organization owns an API catalog, its applications, subscriptions, and branding. **A API Portal instance serves exactly one organization**, named by `organization.handle` in its configuration. That handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
+An organization owns an API catalog, its applications, subscriptions, and branding. **By default an API Portal instance serves exactly one organization**, named by `organization.handle` in its configuration. That handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
+
+> To serve many organizations from one portal — each user in the organization their IDP says they belong to — see [Multi-Tenancy Mode](multi-tenancy.md). The rest of this page describes the default, single-organization mode; `organization.handle` remains the default and fallback organization in both.
 
 The database schema is still multi-organization, so one shared database can hold many organizations — but each is served by its own portal instance, and an instance rejects anything belonging to another one:
 

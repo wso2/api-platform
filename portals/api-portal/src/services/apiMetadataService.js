@@ -1137,7 +1137,13 @@ const getAPIFile = async (req, res) => {
     // because getOrgUuid() hits the database and can throw.
     let orgId;
     try {
-        orgId = req.orgId || (isImageType ? await orgContext.getOrgUuid() : undefined);
+        // In multi-tenancy mode an icon belongs to the organization whose page links it
+        // (?orgId), which need not be the session's — see resolvePublicContentOrg.
+        if (isImageType && orgContext.isMultiTenancyEnabled()) {
+            orgId = await orgContext.resolvePublicContentOrg(req.query.orgId, req.orgId);
+        } else {
+            orgId = req.orgId || (isImageType ? await orgContext.getOrgUuid() : undefined);
+        }
         if (!orgId) {
             // No session org and a non-image type — non-image content is session-scoped.
             return util.sendError(res, 401, 'Authentication required');

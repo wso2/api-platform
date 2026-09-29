@@ -92,7 +92,7 @@ const loadSettingsPage = async (req, res) => {
         templateContent.views = views;
         const requestedView = typeof req.query.view === 'string' ? req.query.view : '';
         const viewExists = (name) => views.some(v => v.id === name);
-        let viewName = await orgContext.getFallbackViewHandle();
+        let viewName = await orgContext.getFallbackViewHandle(orgId);
         if (requestedView && viewExists(requestedView)) {
             viewName = requestedView;
         }

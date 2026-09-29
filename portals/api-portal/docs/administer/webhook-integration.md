@@ -19,6 +19,8 @@ Your webhook subscriber endpoint
 
 The portal fires events in the background via a delivery worker. Each delivery is attempted exactly once — there is no retry. Your subscriber endpoint never needs a reverse connection into the portal — it just needs to be a reachable HTTPS endpoint that accepts the POST and does whatever is appropriate on your side (e.g. registering the change with your gateway).
 
+In [multi-tenancy mode](multi-tenancy.md#webhooks) one portal delivers every organization's events; each organization's subscribers receive only that organization's events.
+
 ## Webhook Events
 
 | Event | Description | Sensitive field |

@@ -28,6 +28,10 @@ The API Portal is a self-hosted, multi-tenant web application where API publishe
 1. [Asgardeo Setup](administer/asgardeo-setup.md)
 2. [Get a Bearer Token via curl](administer/api-token-curl.md)
 
+**Serving many organizations from one portal**
+1. [Multi-Tenancy Mode](administer/multi-tenancy.md)
+2. [WSO2 Identity Server Setup](administer/wso2-is-setup.md)
+
 **As a developer consuming APIs**
 1. [What is the API Portal?](introduction/what-is-api-portal.md)
 2. [Core Concepts](introduction/concepts.md)
