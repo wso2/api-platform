@@ -44,8 +44,9 @@
  *     <registration_endpoint>/<consumer_key>, so a key manager that issues a
  *     URI in some other shape is not reachable for update/delete.
  *
- * The key↔application association has no store yet (its schema is pending), so
- * the three association endpoints fail rather than silently discarding it.
+ * The key↔application association lives in `oauth2_consumer_key_app_mappings`,
+ * reached through `keyAppMappingDao`. A key belongs to at most one application;
+ * an application may hold any number of keys.
  */
 
 const crypto = require('crypto');
@@ -306,9 +307,29 @@ const getKeyManagerMetadata = async (req, res) => {
         const entries = await kmRegistry.list(orgId);
         for (const entry of entries) {
             if (entry.source !== kmRegistry.SOURCE_API) continue;
-            const driver = await kmRegistry.resolveDriver(orgId, entry.handle);
-            // Null now means only "driver type this build does not ship" — left
-            // out rather than listed as broken.
+            let driver = null;
+            try {
+                driver = await kmRegistry.resolveDriver(orgId, entry.handle);
+            } catch (entryError) {
+                /*
+                 * One key manager must not empty this list. Building a driver
+                 * decrypts its stored credential, and that throws a plain Error
+                 * — not a KeyManagerCallError — when the credential cannot be
+                 * read: after `security.encryption_key` is rotated, or a database
+                 * is restored under a portal holding a different key. Unhandled,
+                 * that answers 500 here and the key generation form fails for
+                 * every developer, including for the key managers that are fine.
+                 *
+                 * Skipped the same way an unshipped driver type already is, and
+                 * logged so the cause is visible to an operator.
+                 */
+                logger.warn('Key manager left out of the metadata listing', {
+                    orgId, keyManagerId: entry.handle, error: entryError.message,
+                });
+                continue;
+            }
+            // Null means "driver type this build does not ship" — left out rather
+            // than listed as broken.
             if (driver) metadata.push(driver.metadata());
         }
         metadata.sort((a, b) => a.id.localeCompare(b.id));
@@ -616,17 +637,30 @@ function _resourceIndicatorError(value) {
     if (typeof value !== 'string' || !value.trim()) {
         return 'A resource indicator must be a non-empty string.';
     }
+    /*
+     * A fragment is forbidden, and an EMPTY one still counts: `URL` parses
+     * "https://api.example.com/orders#" with `hash === ''`, so testing `parsed.hash`
+     * for truthiness lets it through. RFC 3986 makes a literal `#` the fragment
+     * delimiter wherever it appears, so the raw string is what to check. A
+     * percent-encoded `%23` is an ordinary character and stays allowed.
+     */
+    if (value.indexOf('#') !== -1) {
+        return 'A resource indicator must not contain a fragment.';
+    }
     let parsed;
     try {
         parsed = new URL(value);
     } catch (_err) {
         return 'A resource indicator must be an absolute URI, including a scheme.';
     }
-    if (!parsed.protocol || !parsed.host) {
-        return 'A resource indicator must be an absolute URI, including a scheme and host.';
-    }
-    if (parsed.hash) {
-        return 'A resource indicator must not contain a fragment.';
+    /*
+     * A scheme is required; a host is NOT. RFC 8707 §2 asks for an absolute URI and
+     * explicitly allows an abstract identifier — `urn:example:orders` is a valid
+     * resource indicator with no authority component at all. Requiring a host
+     * refused those before they ever reached the key manager.
+     */
+    if (!parsed.protocol) {
+        return 'A resource indicator must be an absolute URI, including a scheme.';
     }
     return null;
 }

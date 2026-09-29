@@ -21,8 +21,6 @@
  * Tag: OAuth2 Keys
  *
  * Mutating ops are CSRF-protected.
- *
- * The service behind these is still a stub — see src/services/oauth2KeyService.js.
  */
 const oauth2KeyService = require('../../../services/oauth2KeyService');
 const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');

@@ -499,7 +499,7 @@ CREATE INDEX idx_api_key_app_mappings_app_uuid ON dbo.api_key_app_mappings(app_u
 -- in configuration ([[api_portal.key_manager]]), not rows in key_managers, so
 -- there is nothing to reference.
 --
--- The key↔application association lives in its own table (schema pending), not
+-- The key↔application association lives in oauth2_consumer_key_app_mappings, not
 -- as a column here.
 -- ---------------------------------------------------------------------------
 IF OBJECT_ID(N'dbo.oauth2_consumer_keys', N'U') IS NULL

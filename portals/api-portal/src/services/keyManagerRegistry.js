@@ -44,10 +44,11 @@
  * config-declared key manager as non-existent, and one that consulted only
  * config would let a mutation through on a row it should not touch.
  *
- * NOT the resolver for the DCR path. oauth2KeyService needs a driver *instance*
- * to make RFC 7591 calls with, and only config-declared entries have one until
- * `key_manager_configurations` exists — so that path resolves against the
- * factory directly and treats a database-only key manager as unusable.
+ * This module is also the resolver for the DCR path: `resolveDriver` returns the
+ * driver *instance* oauth2KeyService makes RFC 7591 calls with, and serves both
+ * sources — a config-declared entry comes from the factory, a stored one is built
+ * from its `key_manager_configurations` row, and a stored one with no such row
+ * resolves to the provision driver.
  */
 
 const { getFactory } = require('../keymanagers');

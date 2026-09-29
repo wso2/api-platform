@@ -157,9 +157,18 @@ class CustomDcrKeyManager extends KeyManager {
         return toKey(this, this._propertiesFromDcr(dcr || {}), dcr || {});
     }
 
+    /**
+     * Update, carrying the client's own id in the body.
+     *
+     * RFC 7592 §2.2 requires `client_id` in every update request, and a conforming
+     * server may refuse a PUT without it even once the request is authenticated.
+     * It is set from the key being updated rather than taken from `properties`, so
+     * a caller cannot rename a client onto another id by putting one in the bag.
+     */
     async updateKey(consumerKey, properties, registration) {
+        const body = { ...toDcrBody(properties), client_id: consumerKey };
         const dcr = await this._call(
-            'PUT', this._clientUrl(consumerKey, registration), toDcrBody(properties), [200], registration
+            'PUT', this._clientUrl(consumerKey, registration), body, [200], registration
         );
         return toKey(this, properties, dcr || {});
     }

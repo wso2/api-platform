@@ -35,7 +35,7 @@
  *   - The client configuration URI. The driver constructs
  *     <registration_endpoint>/<consumer_key> from config plus this row.
  *
- * The key↔application association lives in its own table (schema pending), not
+ * The key↔application association lives in oauth2_consumer_key_app_mappings, not
  * as a column here.
  *
  * Every query is scoped by `portal_id` AND `org_uuid`, and the ownership filter

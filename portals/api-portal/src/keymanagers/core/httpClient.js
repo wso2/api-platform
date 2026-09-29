@@ -103,9 +103,14 @@ function resolvePolicy(policy) {
 /**
  * Assert a configured key-manager URL may be dialled.
  *
- * Called at startup for every configured endpoint (so a bad one fails the boot,
- * not the first request) and again per request for IP literals, which Node
- * connects to without ever consulting the Agent's `lookup` hook.
+ * Called at startup for every configured endpoint, so a bad one fails the boot
+ * rather than the first request, and again by the REST layer when a key manager is
+ * created or updated through the API. It is NOT called per request: `buildClient`
+ * installs the guarded `lookup`, which covers a hostname at the moment it
+ * resolves, but Node connects to an IP literal without consulting that hook at
+ * all — so a literal endpoint rests entirely on these two earlier checks. That
+ * holds because an endpoint cannot change without passing through one of them, and
+ * would stop holding the moment an endpoint could be set anywhere else.
  *
  * The policy is passed in rather than read from configLoader: this runs inside
  * configLoader's own module body, before its `module.exports` has executed, so

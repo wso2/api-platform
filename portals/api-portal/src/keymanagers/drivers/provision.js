@@ -47,7 +47,7 @@
  */
 
 const { register } = require('../core/registry');
-const { KeyManager, prop, toKey } = require('../core/keyManager');
+const { KeyManager, KeyManagerCallError, prop, toKey } = require('../core/keyManager');
 
 const TYPE = 'provision';
 
@@ -103,7 +103,18 @@ class ProvisionKeyManager extends KeyManager {
             ? properties.consumerKey.trim()
             : '';
         if (!consumerKey) {
-            throw this._unsupported('createKey');
+            /*
+             * Caller input, so a 400 — not `unsupported_operation`, which maps to
+             * 409 and says this key manager cannot do the operation at all. It can:
+             * the request simply did not carry the client id it needs. The property
+             * is declared in metadata() but the OpenAPI schema cannot require it,
+             * because `properties` is an open bag shared by every driver.
+             */
+            throw new KeyManagerCallError(
+                'rejected',
+                `${this.type}: createKey requires a non-empty "consumerKey" property`,
+                null
+            );
         }
         return toKey(this, properties, { client_id: consumerKey });
     }

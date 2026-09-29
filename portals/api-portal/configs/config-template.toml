@@ -600,13 +600,23 @@ max_response_bytes = 5242880   # 5 MiB
 #   method   = "basic"
 #   username = '{{ env "WSO2IS_ADMIN_USER" }}'
 #   password = '{{ env "WSO2IS_ADMIN_PASSWORD" }}'
+
+# -----------------------------------------------------------------------------
+# REFERENCE: the [api_portal.key_manager.auth] table
+# -----------------------------------------------------------------------------
+# How the portal authenticates ITSELF to a key manager in order to register
+# clients on it — a privileged provisioning credential, distinct from the end
+# user's token on the inbound request.
 #
-#   # How the portal authenticates ITSELF to this key manager in order to
-#   # register clients on it — a privileged provisioning credential, distinct
-#   # from the end user's token on the inbound request.
+# Every entry above already carries its own [api_portal.key_manager.auth]. This
+# block is documentation for the four methods, NOT another entry: uncommenting it
+# alongside one of the examples would declare that table twice inside the same
+# key manager, which TOML rejects as a duplicate. Copy the lines you need into
+# the entry's existing auth table instead.
+#
 #   [api_portal.key_manager.auth]
-#   method        = "client_credentials"   # client_credentials | basic | mtls
-#   # token_endpoint defaults to the key manager's own token_endpoint above;
+#   method        = "client_credentials"   # client_credentials | basic | mtls | api_key
+#   # token_endpoint defaults to the key manager's own token_endpoint;
 #   # set it only when the provisioning token comes from somewhere else.
 #   client_id     = "my-system-app"
 #   # Secrets use this file's own {{ env }} interpolation, which fails startup

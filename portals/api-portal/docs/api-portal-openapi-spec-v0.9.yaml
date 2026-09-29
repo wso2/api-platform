@@ -2478,6 +2478,17 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            This key cannot be used to request a token. The key and the caller are both fine; the client's own
+            registration is what rules it out — it is a public client with no secret, it authenticates with a
+            method the portal cannot present on its behalf, it is not registered for the `client_credentials`
+            grant, its key manager has been disabled, or that key manager does not implement token requests at
+            all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":
@@ -6532,11 +6543,13 @@ components:
           type: array
           description: >-
             RFC 8707 resource indicators — the APIs this token is for, each given as the API's canonical URI.
-            The authorization server binds them into the token's audience, and a resource server that checks
-            `aud` then refuses a token minted for something else. Each entry must be an absolute URI with no
-            fragment; `400` otherwise. Sent even to a key manager that does not implement RFC 8707, which
-            ignores it — that is what makes the binding start working the moment support is added, with no
-            change here.
+            An authorization server that supports them SHOULD restrict the issued token's audience
+            accordingly, so a resource server checking `aud` refuses a token minted for something else. That
+            is a request, not a guarantee: a server without RFC 8707 support may ignore the parameter or
+            reject the request outright, and RFC 8707 leaves the restriction at SHOULD even where it is
+            supported. Confirm the issued token's audience before relying on it. Each entry must be an
+            absolute URI with no fragment — a host is not required, so an abstract identifier such as
+            `urn:example:orders` is valid; `400` otherwise.
           items:
             type: string
             format: uri

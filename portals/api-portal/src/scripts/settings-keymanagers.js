@@ -190,15 +190,6 @@
     syncAuthMethod();
   }
 
-  /* Every field the section owns. Used to tell "the admin left this alone" from
-     "the admin filled it in", now that no switch says so explicitly. */
-  var DCR_FIELDS = [
-    'km-type', 'km-registration-endpoint', 'km-authorize-endpoint',
-    'km-client-id', 'km-client-secret', 'km-scopes', 'km-resource',
-    'km-username', 'km-password',
-    'km-header-name', 'km-scheme', 'km-api-key',
-  ];
-
   /*
    * Returns { provisioning } or { error } or {} when the section was left empty.
    *
@@ -218,8 +209,22 @@
     // manager created before DCR support is already stored — so the payload is
     // unchanged from when this was a type in the dropdown.
     if (isImportMode()) return {};
-    var touched = DCR_FIELDS.some(function(id) { return v(id) !== ''; });
-    if (!touched) return {};
+    /*
+     * Register mode with every field blank is a mistake, not a request to import.
+     * Omitting the block here would save a key manager that registers nothing —
+     * the opposite of what the admin selected — and silently, because the API
+     * reads an absent block as "this one imports".
+     *
+     * This was near-unreachable before: the type dropdown opened on a placeholder,
+     * so a half-filled form failed on the missing type first. Now that the form
+     * opens on Register, an admin who fills in only the name and token endpoint
+     * lands here directly. Fall through to the per-method checks below, which name
+     * whichever credential field is missing.
+     */
+    if (!v('km-registration-endpoint')) {
+      return { error: 'Registration endpoint is required when the portal creates the applications. '
+        + 'Choose "They already exist" if the applications are created in the identity server instead.' };
+    }
     var method = el('km-auth-method').value;
     var auth = { method: method };
     if (method === 'client_credentials') {
