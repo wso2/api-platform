@@ -592,7 +592,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
   };
 
   const handleTransportToggle = (protocolBinding: string) => {
-    if (isReadOnlyAgentProxy) return;
+    if (isConnectionDisabled) return;
     setSelectedTransports((prev) =>
       prev.includes(protocolBinding)
         ? prev.filter((binding) => binding !== protocolBinding)
@@ -1189,7 +1189,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
                                 border: '1px solid',
                                 borderColor: 'divider',
                                 borderRadius: 1,
-                                cursor: isReadOnlyAgentProxy
+                                cursor: isConnectionDisabled
                                   ? 'default'
                                   : 'pointer',
                               }}
@@ -1197,9 +1197,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
                               <Checkbox
                                 size="small"
                                 sx={{ p: 0, mt: 0.25 }}
-                                disabled={
-                                  isReadOnlyAgentProxy || !canUpdateAgentProxy
-                                }
+                                disabled={isConnectionDisabled}
                                 checked={selectedTransports.includes(
                                   transport.protocolBinding
                                 )}
@@ -1245,9 +1243,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
                                   <IconButton
                                     size="small"
                                     sx={{ mt: -0.5, mr: -0.5 }}
-                                    disabled={
-                                      isReadOnlyAgentProxy || !canUpdateAgentProxy
-                                    }
+                                    disabled={isConnectionDisabled}
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       setEditingTransport(
