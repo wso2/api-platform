@@ -31,7 +31,6 @@ import (
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
 
-	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 )
@@ -271,8 +270,6 @@ func usesLegacyLLMContract(version string) bool {
 // resource and routing contracts.
 func usesLegacyGatewayContract(version string) bool {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	// Normalize patch tags before applying the release contract.
-	version = components.ReleaseVersion(version)
 	version, _, _ = strings.Cut(version, "-")
 	parts := strings.Split(version, ".")
 	if len(parts) != 3 {

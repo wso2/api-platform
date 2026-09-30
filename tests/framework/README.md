@@ -147,6 +147,17 @@ management paths, and compatibility selection. For example, the command above pu
 `registry.example/test-gateway/gateway-controller:1.1.0` and
 `registry.example/test-gateway/gateway-runtime:1.1.0`.
 
+To verify a fix against Gateway 1.1.0 before it reaches `ghcr.io/wso2/api-platform`,
+pull the same `1.1.0` tag from `docker.io/isurangaws` instead:
+
+```
+go test -gateway-version 1.1.0 -host docker.io/isurangaws -blocks gateway-core/sqlite
+```
+
+The default registry's `1.1.0` image is only updated on a GA release, so it does not
+reflect an unreleased fix. Use the `-host` override above to test against it; there is
+no separate version-tag convention for this — the Gateway release stays `1.1.0`.
+
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
 
