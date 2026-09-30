@@ -50,6 +50,10 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
+	// GatewayInvoke configures the GraphQL Test Console's server-side call to
+	// a deployed API's gateway — a different trust boundary from the control
+	// plane, so it never inherits [control_plane]'s TLS settings.
+	GatewayInvoke GatewayInvokeConfig `koanf:"gateway_invoke"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
 }
@@ -57,6 +61,21 @@ type Config struct {
 // PolicyHubConfig configures the public catalog called directly by the browser.
 type PolicyHubConfig struct {
 	BaseURL string `koanf:"base_url"`
+}
+
+// GatewayInvokeConfig is [api_control_plane.gateway_invoke]: TLS trust for the
+// GraphQL Test Console's server-side request to a gateway's registered endpoint
+// (see server/graphql_invoke.go). Gateways commonly present a private or
+// self-signed certificate, so it is configured separately from the control
+// plane — trusting a gateway's CA must not widen trust for the Platform API hop,
+// and vice versa. Verification is on by default.
+type GatewayInvokeConfig struct {
+	// CAFile is a PEM bundle appended to the system roots to trust gateway
+	// certificates. Ignored when TLSSkipVerify is true.
+	CAFile string `koanf:"ca_file"`
+	// TLSSkipVerify disables gateway certificate verification entirely.
+	// Last-resort escape hatch for dev/demo only; prefer CAFile.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -407,6 +426,10 @@ func (c *Config) validate() error {
 
 	if err := validateUpstream("control_plane", c.ControlPlane.URL, c.ControlPlane.CAFile, c.ControlPlane.TLSSkipVerify); err != nil {
 		return err
+	}
+	if c.GatewayInvoke.TLSSkipVerify {
+		slog.Warn("[gateway_invoke] tls_skip_verify = true — gateway certificate verification is DISABLED for " +
+			"GraphQL Test Console requests. Trust the gateway certificate with ca_file instead.")
 	}
 	if c.PolicyHub.BaseURL != "" {
 		if err := validateAbsoluteURL("[policy_hub] base_url", c.PolicyHub.BaseURL); err != nil {

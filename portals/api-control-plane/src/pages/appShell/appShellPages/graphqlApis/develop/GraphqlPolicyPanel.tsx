@@ -45,10 +45,14 @@ const messages = defineMessages({
     defaultMessage:
       'These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has.',
   },
+  // Not the REST panel's "…or use Add Policy." copy: that button only picks
+  // which REST scope (API vs. resource) the next catalog selection attaches
+  // to. A GraphQL API has a single scope, so the list is rendered headerless
+  // (no Add Policy button) and a policy is attached straight from the catalog.
   empty: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
-    defaultMessage: 'Drag and drop policies here, or use Add Policy.',
-    description: '"Add Policy" is the label of a button in this same list.',
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty',
+    defaultMessage: 'Drag a policy here, or select one from Available policies.',
+    description: '"Available policies" is the heading of the policy catalog panel beside this list.',
   },
   policyUpdated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyUpdated',

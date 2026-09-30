@@ -20,12 +20,16 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -329,5 +333,135 @@ func TestBuildGraphQLInvokeURL(t *testing.T) {
 				t.Errorf("buildGraphQLInvokeURL(%q, %q, %q) = %q, want %q", tt.endpoint, tt.context, tt.version, got, tt.want)
 			}
 		})
+	}
+}
+
+// invokeThroughBFF logs in and POSTs a trivial query through the Test Console
+// route against a fake Platform API that registers gatewayEndpointURL for the
+// gateway, returning the BFF's response.
+func invokeThroughBFF(t *testing.T, cfgMutate func(*config.Config), gatewayEndpointURL string) *http.Response {
+	t.Helper()
+	tok := makeJWT(map[string]any{"username": "admin"})
+	platform := newGraphQLInvokeTestPlatform(t, tok, gatewayEndpointURL, true)
+	t.Cleanup(platform.Close)
+
+	cfg := newTestConfig(platform.URL)
+	if cfgMutate != nil {
+		cfgMutate(cfg)
+	}
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	bff := httptest.NewServer(srv.Handler())
+	t.Cleanup(bff.Close)
+
+	client := loginTestClient(t, bff.URL)
+	req, _ := http.NewRequest(http.MethodPost,
+		bff.URL+"/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke",
+		strings.NewReader(`{"query":"{ __typename }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	t.Cleanup(func() { res.Body.Close() })
+	return res
+}
+
+func errorCode(t *testing.T, res *http.Response) string {
+	t.Helper()
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	return body.Code
+}
+
+func newTLSGateway(t *testing.T) *httptest.Server {
+	t.Helper()
+	gw := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":{"__typename":"Query"}}`)
+	}))
+	t.Cleanup(gw.Close)
+	return gw
+}
+
+// A self-signed gateway certificate is rejected by default — the invoke client
+// must not inherit the control plane's TLS settings — and the failure is
+// reported as a certificate-trust problem rather than a bare "unreachable".
+func TestGraphQLInvoke_UntrustedGatewayCertificateReported(t *testing.T) {
+	gw := newTLSGateway(t)
+	res := invokeThroughBFF(t, func(cfg *config.Config) {
+		cfg.ControlPlane.TLSSkipVerify = true // must NOT leak onto the gateway hop
+	}, gw.URL)
+	assertStatus(t, res, http.StatusBadGateway)
+	if code := errorCode(t, res); code != "GATEWAY_TLS_UNTRUSTED" {
+		t.Errorf("code = %q, want GATEWAY_TLS_UNTRUSTED", code)
+	}
+}
+
+func TestGraphQLInvoke_GatewayCAFileTrusted(t *testing.T) {
+	gw := newTLSGateway(t)
+	caPath := filepath.Join(t.TempDir(), "gateway-ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: gw.Certificate().Raw})
+	if err := os.WriteFile(caPath, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := invokeThroughBFF(t, func(cfg *config.Config) { cfg.GatewayInvoke.CAFile = caPath }, gw.URL)
+	assertStatus(t, res, http.StatusOK)
+}
+
+func TestGraphQLInvoke_GatewaySkipVerify(t *testing.T) {
+	gw := newTLSGateway(t)
+	res := invokeThroughBFF(t, func(cfg *config.Config) { cfg.GatewayInvoke.TLSSkipVerify = true }, gw.URL)
+	assertStatus(t, res, http.StatusOK)
+}
+
+// The gateway's redirect is relayed, never followed server-side.
+func TestGraphQLInvoke_GatewayRedirectNotFollowed(t *testing.T) {
+	var followed bool
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed = true }))
+	t.Cleanup(target.Close)
+	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(gw.Close)
+
+	res := invokeThroughBFF(t, nil, gw.URL)
+	assertStatus(t, res, http.StatusTemporaryRedirect)
+	if followed {
+		t.Error("redirect target was dialed; the invoke client must not follow gateway redirects")
+	}
+}
+
+// https://localhost:... is the classic misregistration: fine from the
+// operator's browser, but from the console backend it is the backend itself.
+func TestGraphQLInvoke_LoopbackEndpointExplained(t *testing.T) {
+	// Grab a free loopback port, then close it so the dial is refused.
+	l := httptest.NewServer(http.NotFoundHandler())
+	port := l.Listener.Addr().(*net.TCPAddr).Port
+	l.Close()
+
+	res := invokeThroughBFF(t, nil, fmt.Sprintf("http://localhost:%d", port))
+	assertStatus(t, res, http.StatusBadGateway)
+	if code := errorCode(t, res); code != "GATEWAY_ENDPOINT_LOOPBACK" {
+		t.Errorf("code = %q, want GATEWAY_ENDPOINT_LOOPBACK", code)
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"localhost": true, "LOCALHOST": true, "gw.localhost": true, "127.0.0.1": true, "127.1.2.3": true, "::1": true,
+		"gateway-runtime": false, "10.0.0.5": false, "example.com": false, "": false,
+	} {
+		if got := isLoopbackHost(host); got != want {
+			t.Errorf("isLoopbackHost(%q) = %v, want %v", host, got, want)
+		}
 	}
 }

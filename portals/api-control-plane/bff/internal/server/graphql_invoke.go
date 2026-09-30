@@ -19,11 +19,14 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -82,8 +85,12 @@ type deploymentListLookupResponse struct {
 // handleGraphQLInvoke (POST /api/graphql-console/{graphqlApiId}/gateways/{gatewayId}/invoke)
 // lets the GraphQL Test Console call a deployed GraphQL API's real gateway
 // endpoint through this same-origin BFF route instead of the browser talking
-// to the gateway directly — sidestepping both the gateway's CORS
-// configuration and its (often self-signed, dev-only) TLS certificate.
+// to the gateway directly — sidestepping the gateway's CORS configuration,
+// and moving trust of its (often self-signed, dev-only) TLS certificate from
+// every reviewer's browser to one server-side setting ([gateway_invoke]).
+// Because the endpoint is dialed from here, it must be reachable from this
+// server: a registered https://localhost:... endpoint resolves to this
+// backend's own host, not the gateway (see classifyGatewayInvokeError).
 //
 // The target URL is resolved entirely from the caller's own organization-scoped
 // Platform API records (the GraphQL API's context/version, the gateway's
@@ -179,9 +186,15 @@ func (s *Server) handleGraphQLInvoke(w http.ResponseWriter, r *http.Request) {
 		upstreamReq.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := s.upstream.Do(upstreamReq)
+	resp, err := s.gatewayInvoke.Do(upstreamReq)
 	if err != nil {
-		writeErrorJSON(w, http.StatusBadGateway, "INVOKE_FAILED", "the gateway could not be reached")
+		status, code, message := classifyGatewayInvokeError(err, upstreamReq.URL)
+		// The concrete cause stays in the server log (with the request id the
+		// client also receives), never in the response body.
+		slog.Warn("graphql invoke: gateway request failed",
+			"err", err, "gateway_host", upstreamReq.URL.Host, "code", code,
+			"request_id", w.Header().Get("X-Request-Id"))
+		writeServerErrorJSON(w, status, code, message, w.Header().Get("X-Request-Id"))
 		return
 	}
 	defer resp.Body.Close()
@@ -210,6 +223,42 @@ func (s *Server) handleGraphQLInvoke(w http.ResponseWriter, r *http.Request) {
 // their organization), confirms the API is actually DEPLOYED to that gateway,
 // and builds the real invoke URL the same way InvokeUrlPanel.tsx's
 // buildInvokeUrl does client-side.
+// classifyGatewayInvokeError maps a failed gateway round trip to the status,
+// code and message the console shows. The categories are ones the caller can
+// act on for their own gateway registration (fix the endpoint, trust the
+// certificate); the underlying error text is logged, not returned.
+func classifyGatewayInvokeError(err error, target *url.URL) (status int, code, message string) {
+	var (
+		certErr     *tls.CertificateVerificationError
+		unknownAuth x509.UnknownAuthorityError
+		hostErr     x509.HostnameError
+		invalidErr  x509.CertificateInvalidError
+	)
+	switch {
+	case errors.As(err, &certErr), errors.As(err, &unknownAuth), errors.As(err, &hostErr), errors.As(err, &invalidErr):
+		return http.StatusBadGateway, "GATEWAY_TLS_UNTRUSTED",
+			"the gateway's TLS certificate is not trusted by the console backend; trust its CA via [gateway_invoke] ca_file"
+	case errors.Is(err, context.DeadlineExceeded):
+		return http.StatusGatewayTimeout, "GATEWAY_TIMEOUT", "the gateway did not respond in time"
+	case isLoopbackHost(target.Hostname()):
+		// The most common misregistration: an endpoint like https://localhost:8443
+		// works from the operator's browser but, resolved here, points at the
+		// console backend's own host/container rather than the gateway.
+		return http.StatusBadGateway, "GATEWAY_ENDPOINT_LOOPBACK",
+			"the gateway's registered endpoint is a loopback address, which the console backend cannot use to reach the gateway; register an endpoint reachable from the console backend"
+	default:
+		return http.StatusBadGateway, "INVOKE_FAILED", "the gateway could not be reached"
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func (s *Server) resolveGraphQLInvokeURL(ctx context.Context, token, graphqlAPIID, gatewayID string) (string, error) {
 	api, err := s.fetchGraphQLAPIForInvoke(ctx, token, graphqlAPIID)
 	if err != nil {

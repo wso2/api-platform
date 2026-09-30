@@ -27,6 +27,14 @@ url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" 
 tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 
 
+[api_control_plane.gateway_invoke]
+
+# TLS trust for the GraphQL Test Console's server-side call to a deployed API's
+# gateway — separate from [control_plane] on purpose (different trust boundary).
+# Prefer ca_file (a PEM bundle for the gateway's CA) over tls_skip_verify.
+ca_file         = '{{ env "APIP_ACP_GATEWAY_INVOKE_CA_FILE" "" }}'
+tls_skip_verify = '{{ env "APIP_ACP_GATEWAY_INVOKE_TLS_SKIP_VERIFY" "false" }}'
+
 [api_control_plane.policy_hub]
 
 # Public catalog URL exposed to the browser at runtime, including production builds.
