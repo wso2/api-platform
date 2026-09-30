@@ -618,7 +618,22 @@ func (u *Steps) seesAnErrorNotification(ctx context.Context) error {
 // --- direct-to-platform-api secret steps ---
 
 func (u *Steps) aSecretAlreadyHoldsTheValue(ctx context.Context, handle, value string) error {
+	handle, err := secretHandleFor(ctx, handle)
+	if err != nil {
+		return err
+	}
 	return u.createSecretDirectly(ctx, handle, value)
+}
+
+// secretHandleFor resolves a feature's secret handle, expanding any UNIQUE placeholder and
+// slugging the result into the lowercase, dash-separated form platform-api accepts. An
+// already-valid literal handle is returned unchanged.
+func secretHandleFor(ctx context.Context, handle string) (string, error) {
+	expanded, err := expandUIValue(ctx, handle)
+	if err != nil {
+		return "", err
+	}
+	return toProviderID(expanded), nil
 }
 
 func (u *Steps) fetchingTheSecretDirectlyReturnsNoPlaintextValue(ctx context.Context, handle string) error {

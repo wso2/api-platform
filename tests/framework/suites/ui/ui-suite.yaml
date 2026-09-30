@@ -152,6 +152,9 @@ blocks:
       - name: mcp-backend-connection-refetch
         features:
           - features/mcp_backend_connection_refetch.feature
+      - name: mcp-upstream-auth-deploy
+        features:
+          - features/mcp_upstream_auth_deploy.feature
       - name: genai-application
         features:
           - features/genai_application.feature
