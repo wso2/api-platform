@@ -84,17 +84,27 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     },
   },
   awsbedrock: {
-    path: '/model/amazon.titan-text-express-v1/invoke',
+    path: '/model/amazon.nova-lite-v1:0/converse',
     body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: 'Say hello!' }],
+        },
+      ],
+      inferenceConfig: { maxTokens: 256, temperature: 0.7 },
     },
   },
   'aws-bedrock': {
-    path: '/model/amazon.titan-text-express-v1/invoke',
+    path: '/model/amazon.nova-lite-v1:0/converse',
     body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: 'Say hello!' }],
+        },
+      ],
+      inferenceConfig: { maxTokens: 256, temperature: 0.7 },
     },
   },
   'google-vertex': {
