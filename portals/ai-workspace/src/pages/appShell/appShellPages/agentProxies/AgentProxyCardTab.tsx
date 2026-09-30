@@ -208,9 +208,6 @@ export default function AgentProxyCardTab({
           <Chip size="small" variant="outlined" label="Read Only" />
         </Stack>
         <CardEditor value={fetchedCard ?? ''} readOnly />
-        <Typography variant="caption" color="text.disabled">
-          Fetched from the upstream. Switch to Managed to edit it.
-        </Typography>
       </Stack>
     );
   };
@@ -318,8 +315,8 @@ export default function AgentProxyCardTab({
             <Box>
               <Tooltip
                 title={
-                  isPublicManaged
-                    ? 'The upstream card is shown in Passthrough mode. This card is authored here, so there is nothing to fetch.'
+                  disabled
+                    ? 'Fetching the upstream Agent Card is not available here.'
                     : ''
                 }
               >
@@ -328,7 +325,7 @@ export default function AgentProxyCardTab({
                     variant="outlined"
                     size="small"
                     onClick={onRefetch}
-                    disabled={isFetching || isPublicManaged}
+                    disabled={isFetching || disabled}
                   >
                     Fetch Agent Info
                   </Button>
