@@ -18,11 +18,11 @@
 
 import { useState } from 'react';
 import {
-  Box,
   Button,
   Chip,
   IconButton,
   ListingTable,
+  PageTitle,
   SearchBar,
   Stack,
   Switch,
@@ -259,25 +259,15 @@ export function SubscriptionPlansSettingsPage() {
 
   return (
     <>
-      <Stack spacing={2.5}>
-        <Box
-          sx={{
-            alignItems: 'flex-start',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
-            justifyContent: 'space-between',
-          }}
-        >
-          <Stack spacing={0.5} sx={{ minWidth: 260 }}>
-            <Typography sx={{ fontWeight: 700 }} variant="h5">
-              <FormattedMessage {...messages.title} />
-            </Typography>
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage {...messages.subtitle} />
-            </Typography>
-          </Stack>
-          {!isFirstRun && (
+      <PageTitle>
+        <PageTitle.Header variant="h5">
+          <FormattedMessage {...messages.title} />
+        </PageTitle.Header>
+        <PageTitle.SubHeader>
+          <FormattedMessage {...messages.subtitle} />
+        </PageTitle.SubHeader>
+        {!isFirstRun && (
+          <PageTitle.Actions>
             <Can do="CreateSubscriptionPlan" denied="disable">
               <Button
                 onClick={() => setDialogTarget('create')}
@@ -287,147 +277,147 @@ export function SubscriptionPlansSettingsPage() {
                 <FormattedMessage {...messages.createButton} />
               </Button>
             </Can>
-          )}
-        </Box>
+          </PageTitle.Actions>
+        )}
+      </PageTitle>
 
-        {isFirstRun ? (
-          <EmptyState
-            actionIcon={<Plus size={18} />}
-            actionLabel={intl.formatMessage(messages.emptyAction)}
-            description={intl.formatMessage(messages.emptyDescription)}
-            onAction={() => setDialogTarget('create')}
-            operationId="CreateSubscriptionPlan"
-            title={intl.formatMessage(messages.emptyTitle)}
+      {isFirstRun ? (
+        <EmptyState
+          actionIcon={<Plus size={18} />}
+          actionLabel={intl.formatMessage(messages.emptyAction)}
+          description={intl.formatMessage(messages.emptyDescription)}
+          onAction={() => setDialogTarget('create')}
+          operationId="CreateSubscriptionPlan"
+          title={intl.formatMessage(messages.emptyTitle)}
+        />
+      ) : (
+        <Stack spacing={2.5}>
+          <SearchBar
+            fullWidth
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchPlaceholder)}
+            value={search}
           />
-        ) : (
-          <>
-            <SearchBar
-              fullWidth
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={intl.formatMessage(messages.searchPlaceholder)}
-              value={search}
-            />
 
-            {filtered.length === 0 ? (
-              <EmptyState
-                description={intl.formatMessage(messages.noMatchesDescription)}
-                title={intl.formatMessage(messages.noMatchesTitle)}
-              />
-            ) : (
-              <ListingTable.Provider>
-                <ListingTable.Container>
-                  <ListingTable>
-                    <ListingTable.Head>
-                      <ListingTable.Row>
+          {filtered.length === 0 ? (
+            <EmptyState
+              description={intl.formatMessage(messages.noMatchesDescription)}
+              title={intl.formatMessage(messages.noMatchesTitle)}
+            />
+          ) : (
+            <ListingTable.Provider>
+              <ListingTable.Container>
+                <ListingTable>
+                  <ListingTable.Head>
+                    <ListingTable.Row>
+                      <ListingTable.Cell>
+                        <FormattedMessage {...messages.columnName} />
+                      </ListingTable.Cell>
+                      <ListingTable.Cell>
+                        <FormattedMessage {...messages.columnLimits} />
+                      </ListingTable.Cell>
+                      <ListingTable.Cell align="center" sx={{ width: 96 }}>
+                        <FormattedMessage {...messages.columnStatus} />
+                      </ListingTable.Cell>
+                      <ListingTable.Cell align="center" sx={{ width: 112 }}>
+                        <FormattedMessage {...messages.columnActions} />
+                      </ListingTable.Cell>
+                    </ListingTable.Row>
+                  </ListingTable.Head>
+                  <ListingTable.Body>
+                    {filtered.map((plan) => (
+                      <ListingTable.Row key={plan.id ?? plan.displayName}>
                         <ListingTable.Cell>
-                          <FormattedMessage {...messages.columnName} />
+                          <Typography sx={{ fontWeight: 600 }} variant="body2">
+                            {plan.displayName}
+                          </Typography>
                         </ListingTable.Cell>
                         <ListingTable.Cell>
-                          <FormattedMessage {...messages.columnLimits} />
+                          <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                            {limitChipLabels(plan).map((label, index) => (
+                              <Chip
+                                key={label + index}
+                                label={label}
+                                size="small"
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 500,
+                                  opacity: index === 0 ? 1 : 0.6,
+                                  typography: 'caption',
+                                }}
+                                variant="filled"
+                              />
+                            ))}
+                          </Stack>
                         </ListingTable.Cell>
-                        <ListingTable.Cell align="center" sx={{ width: 96 }}>
-                          <FormattedMessage {...messages.columnStatus} />
+                        <ListingTable.Cell align="center">
+                          <Can do="UpdateSubscriptionPlan" denied="disable">
+                            <Switch
+                              checked={plan.status === 'ACTIVE'}
+                              disabled={updateMutation.isPending}
+                              onChange={() => toggleStatus(plan)}
+                              size="small"
+                              slotProps={{
+                                input: {
+                                  'aria-label': intl.formatMessage(
+                                    plan.status === 'ACTIVE'
+                                      ? messages.statusActive
+                                      : messages.statusInactive,
+                                    { name: plan.displayName },
+                                  ),
+                                },
+                              }}
+                            />
+                          </Can>
                         </ListingTable.Cell>
-                        <ListingTable.Cell align="center" sx={{ width: 112 }}>
-                          <FormattedMessage {...messages.columnActions} />
+                        <ListingTable.Cell align="center">
+                          <Stack direction="row" justifyContent="center" spacing={0.5}>
+                            <Can do="UpdateSubscriptionPlan" denied="hide">
+                              <Tooltip
+                                title={intl.formatMessage(messages.editAction, {
+                                  name: plan.displayName,
+                                })}
+                              >
+                                <IconButton
+                                  aria-label={intl.formatMessage(messages.editAction, {
+                                    name: plan.displayName,
+                                  })}
+                                  onClick={() => setDialogTarget(plan)}
+                                  size="small"
+                                >
+                                  <Pencil size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            </Can>
+                            <Can do="DeleteSubscriptionPlan" denied="hide">
+                              <Tooltip
+                                title={intl.formatMessage(messages.deleteAction, {
+                                  name: plan.displayName,
+                                })}
+                              >
+                                <IconButton
+                                  aria-label={intl.formatMessage(messages.deleteAction, {
+                                    name: plan.displayName,
+                                  })}
+                                  color="error"
+                                  onClick={() => setDeleteTarget(plan)}
+                                  size="small"
+                                >
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            </Can>
+                          </Stack>
                         </ListingTable.Cell>
                       </ListingTable.Row>
-                    </ListingTable.Head>
-                    <ListingTable.Body>
-                      {filtered.map((plan) => (
-                        <ListingTable.Row key={plan.id ?? plan.displayName}>
-                          <ListingTable.Cell>
-                            <Typography sx={{ fontWeight: 600 }} variant="body2">
-                              {plan.displayName}
-                            </Typography>
-                          </ListingTable.Cell>
-                          <ListingTable.Cell>
-                            <Stack direction="row" flexWrap="wrap" gap={0.75}>
-                              {limitChipLabels(plan).map((label, index) => (
-                                <Chip
-                                  key={label + index}
-                                  label={label}
-                                  size="small"
-                                  sx={{
-                                    fontFamily: 'monospace',
-                                    fontWeight: 500,
-                                    opacity: index === 0 ? 1 : 0.6,
-                                    typography: 'caption',
-                                  }}
-                                  variant="filled"
-                                />
-                              ))}
-                            </Stack>
-                          </ListingTable.Cell>
-                          <ListingTable.Cell align="center">
-                            <Can do="UpdateSubscriptionPlan" denied="disable">
-                              <Switch
-                                checked={plan.status === 'ACTIVE'}
-                                disabled={updateMutation.isPending}
-                                onChange={() => toggleStatus(plan)}
-                                size="small"
-                                slotProps={{
-                                  input: {
-                                    'aria-label': intl.formatMessage(
-                                      plan.status === 'ACTIVE'
-                                        ? messages.statusActive
-                                        : messages.statusInactive,
-                                      { name: plan.displayName },
-                                    ),
-                                  },
-                                }}
-                              />
-                            </Can>
-                          </ListingTable.Cell>
-                          <ListingTable.Cell align="center">
-                            <Stack direction="row" justifyContent="center" spacing={0.5}>
-                              <Can do="UpdateSubscriptionPlan" denied="hide">
-                                <Tooltip
-                                  title={intl.formatMessage(messages.editAction, {
-                                    name: plan.displayName,
-                                  })}
-                                >
-                                  <IconButton
-                                    aria-label={intl.formatMessage(messages.editAction, {
-                                      name: plan.displayName,
-                                    })}
-                                    onClick={() => setDialogTarget(plan)}
-                                    size="small"
-                                  >
-                                    <Pencil size={16} />
-                                  </IconButton>
-                                </Tooltip>
-                              </Can>
-                              <Can do="DeleteSubscriptionPlan" denied="hide">
-                                <Tooltip
-                                  title={intl.formatMessage(messages.deleteAction, {
-                                    name: plan.displayName,
-                                  })}
-                                >
-                                  <IconButton
-                                    aria-label={intl.formatMessage(messages.deleteAction, {
-                                      name: plan.displayName,
-                                    })}
-                                    color="error"
-                                    onClick={() => setDeleteTarget(plan)}
-                                    size="small"
-                                  >
-                                    <Trash2 size={16} />
-                                  </IconButton>
-                                </Tooltip>
-                              </Can>
-                            </Stack>
-                          </ListingTable.Cell>
-                        </ListingTable.Row>
-                      ))}
-                    </ListingTable.Body>
-                  </ListingTable>
-                </ListingTable.Container>
-              </ListingTable.Provider>
-            )}
-          </>
-        )}
-      </Stack>
+                    ))}
+                  </ListingTable.Body>
+                </ListingTable>
+              </ListingTable.Container>
+            </ListingTable.Provider>
+          )}
+        </Stack>
+      )}
 
       <SubscriptionPlanFormDialog
         onClose={() => setDialogTarget(null)}

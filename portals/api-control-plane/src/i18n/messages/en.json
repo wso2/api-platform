@@ -2339,10 +2339,6 @@
     "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
     "description": "Body copy explaining which settings areas the MVP deliberately leaves out."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.subtitle": {
-    "defaultMessage": "Minimal settings overview for {subject}.",
-    "description": "Sub-heading of the Settings page. {subject} is the display name of the organization or project being configured — never translated."
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
     "defaultMessage": "Settings",
     "description": "Heading of the Settings page."
@@ -3411,6 +3407,10 @@
   "develop.definition.DefinitionPanel.saveSpecInvalid": {
     "defaultMessage": "The specification is not a valid OpenAPI document:",
     "description": "Heading above spec validation errors shown either after an import or when Save is clicked."
+  },
+  "develop.definition.DefinitionPanel.saveValidationUnavailable": {
+    "defaultMessage": "The specification could not be validated. Please try again.",
+    "description": "Shown in the save-bar error list when the backend validation call itself fails (network / server error), so the user knows the save was blocked but not by their spec content."
   },
   "develop.definition.DefinitionPanel.title": {
     "defaultMessage": "Definition"
