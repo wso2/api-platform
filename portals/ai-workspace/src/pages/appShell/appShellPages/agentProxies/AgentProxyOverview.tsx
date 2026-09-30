@@ -492,7 +492,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
     void loadPassthroughCard();
   }, [initialCardState.publicMode, loadPassthroughCard]);
 
-  useEffect(() => {
+  const resetConnectionFields = React.useCallback(() => {
     if (!agentProxy) return;
     setEndpointUrl(agentProxy.upstream?.main?.url ?? '');
     setAuthType(agentProxy.upstream?.main?.auth?.type || 'none');
@@ -504,6 +504,10 @@ export default function AgentProxyOverview(): React.JSX.Element {
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
   }, [agentProxy]);
+
+  useEffect(() => {
+    resetConnectionFields();
+  }, [resetConnectionFields]);
 
   const hasBackendConnectionChanges = useMemo(() => {
     if (!agentProxy) return false;
@@ -846,6 +850,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
     setTransportPaths(initialTransportPaths);
     setCardState(initialCardState);
     setPolicyState(initialPolicyState);
+    resetConnectionFields();
   };
 
   const handleDeleteConfirm = async () => {
