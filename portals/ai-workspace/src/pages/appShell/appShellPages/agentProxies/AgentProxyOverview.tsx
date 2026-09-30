@@ -322,6 +322,9 @@ export default function AgentProxyOverview(): React.JSX.Element {
   const [newKeyName, setNewKeyName] = useState('');
   const [isCreatingKey, setIsCreatingKey] = useState(false);
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null);
+  const [apiKeyPendingDelete, setApiKeyPendingDelete] =
+    useState<UserAPIKey | null>(null);
+  const [isDeletingApiKey, setIsDeletingApiKey] = useState(false);
 
   const isReadOnlyAgentProxy = Boolean(agentProxy?.readOnly);
   const isConnectionDisabled = isReadOnlyAgentProxy || !canUpdateAgentProxy;
@@ -894,8 +897,10 @@ export default function AgentProxyOverview(): React.JSX.Element {
     }
   };
 
-  const handleRevokeKey = async (apiKey: UserAPIKey) => {
-    if (!agentProxy?.id || !apiKey.id) return;
+  const handleDeleteKeyConfirm = async () => {
+    const apiKey = apiKeyPendingDelete;
+    if (!agentProxy?.id || !apiKey?.id) return;
+    setIsDeletingApiKey(true);
     try {
       await agentProxiesApis.revokeAgentProxyAPIKey(
         agentProxy.id,
@@ -903,12 +908,15 @@ export default function AgentProxyOverview(): React.JSX.Element {
         apimBaseUrl
       );
       setApiKeys((prev) => prev.filter((key) => key.id !== apiKey.id));
-      showSnackbar('API key revoked.', 'success');
+      showSnackbar('API key deleted.', 'success');
+      setApiKeyPendingDelete(null);
     } catch (error) {
       showSnackbar(
-        getErrorDescription(error, 'Failed to revoke API key.'),
+        getErrorDescription(error, 'Failed to delete API key.'),
         'error'
       );
+    } finally {
+      setIsDeletingApiKey(false);
     }
   };
 
@@ -1452,9 +1460,9 @@ export default function AgentProxyOverview(): React.JSX.Element {
                                             color="error"
                                             disabled={!canDeleteApiKey}
                                             onClick={() =>
-                                              void handleRevokeKey(apiKey)
+                                              setApiKeyPendingDelete(apiKey)
                                             }
-                                            aria-label={`Revoke ${apiKey.displayName}`}
+                                            aria-label={`Delete ${apiKey.displayName}`}
                                           >
                                             <Trash2 size={16} />
                                           </IconButton>
@@ -1799,6 +1807,55 @@ export default function AgentProxyOverview(): React.JSX.Element {
             onClick={() => void handleDeleteConfirm()}
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(apiKeyPendingDelete)}
+        onClose={() => {
+          if (isDeletingApiKey) return;
+          setApiKeyPendingDelete(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete API Key</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to delete this API key?
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
+            {apiKeyPendingDelete?.displayName}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            size="small"
+            onClick={() => setApiKeyPendingDelete(null)}
+            disabled={isDeletingApiKey}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            onClick={() => {
+              void handleDeleteKeyConfirm();
+            }}
+            disabled={isDeletingApiKey || !canDeleteApiKey}
+          >
+            {isDeletingApiKey ? (
+              <>
+                <CircularProgress size={16} sx={{ mr: 1 }} />
+                Deleting...
+              </>
+            ) : (
+              'Delete'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
