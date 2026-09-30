@@ -69,6 +69,15 @@ type FormState = {
   expiryDate: string;
 };
 
+/** Tracks whether a field was edited and then blurred, so a validation error
+ * only shows once the user has actually rejected the field — not merely
+ * moved focus off it (autofocus lands on the name field on open). */
+type FieldVisit = { blurred: boolean; edited: boolean };
+
+const UNVISITED: FieldVisit = { blurred: false, edited: false };
+
+const settled = (visit: FieldVisit) => visit.blurred && visit.edited;
+
 const NAME_FIELD = 'subscription-plan-name';
 const EXPIRY_FIELD = 'subscription-plan-expiry';
 
@@ -309,6 +318,8 @@ export function SubscriptionPlanFormDialog({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitted, setSubmitted] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [nameVisit, setNameVisit] = useState<FieldVisit>(UNVISITED);
+  const [limitVisit, setLimitVisit] = useState<FieldVisit>(UNVISITED);
 
   useEffect(() => {
     if (!open) return;
@@ -328,6 +339,8 @@ export function SubscriptionPlanFormDialog({
     );
     setSubmitted(false);
     setConflict(false);
+    setNameVisit(UNVISITED);
+    setLimitVisit(UNVISITED);
   }, [open, plan]);
 
   const addLimit = () => {
@@ -371,8 +384,8 @@ export function SubscriptionPlanFormDialog({
           : null;
   const hasNameError = nameErrorMessage !== null;
 
-  const showNameError = submitted && hasNameError;
-  const showLimitError = submitted && hasLimitError;
+  const showNameError = (submitted || settled(nameVisit)) && hasNameError;
+  const showLimitError = (submitted || settled(limitVisit)) && hasLimitError;
   const canSubmit = !hasNameError && !hasLimitError && !mutation.isPending;
 
   // A 409 surfaces as an inline field error (the name is likely the culprit);
@@ -473,8 +486,10 @@ export function SubscriptionPlanFormDialog({
                 aria-describedby={`${NAME_FIELD}-helper-text`}
                 autoFocus
                 id={NAME_FIELD}
+                onBlur={() => setNameVisit((visit) => ({ ...visit, blurred: true }))}
                 onChange={(event) => {
                   setForm((current) => ({ ...current, displayName: event.target.value }));
+                  setNameVisit((visit) => ({ ...visit, edited: true }));
                   setConflict(false);
                 }}
                 placeholder={intl.formatMessage(messages.namePlaceholder)}
@@ -536,7 +551,11 @@ export function SubscriptionPlanFormDialog({
                       inputMode: 'numeric',
                       min: 1,
                     }}
-                    onChange={(event) => updateLimit(limit.key, { limitCount: event.target.value })}
+                    onBlur={() => setLimitVisit((visit) => ({ ...visit, blurred: true }))}
+                    onChange={(event) => {
+                      updateLimit(limit.key, { limitCount: event.target.value });
+                      setLimitVisit((visit) => ({ ...visit, edited: true }));
+                    }}
                     placeholder="10000"
                     size="small"
                     type="number"

@@ -75,7 +75,8 @@ const messages = defineMessages({
   },
   deleteAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete',
-    defaultMessage: 'Delete plan',
+    defaultMessage: 'Delete {name}',
+    description: 'Accessible name of the per-row delete icon button; {name} is the plan.',
   },
   deleteConfirmAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmAction',
@@ -103,7 +104,8 @@ const messages = defineMessages({
   },
   editAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.edit',
-    defaultMessage: 'Edit plan',
+    defaultMessage: 'Edit {name}',
+    description: 'Accessible name of the per-row edit icon button; {name} is the plan.',
   },
   emptyAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.action',
@@ -147,11 +149,13 @@ const messages = defineMessages({
   },
   statusActive: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.active',
-    defaultMessage: 'Active',
+    defaultMessage: '{name}, active',
+    description: 'Accessible name of the per-row status switch when the plan is active.',
   },
   statusInactive: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.inactive',
-    defaultMessage: 'Inactive',
+    defaultMessage: '{name}, inactive',
+    description: 'Accessible name of the per-row status switch when the plan is inactive.',
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.subtitle',
@@ -364,6 +368,7 @@ export function SubscriptionPlansSettingsPage() {
                                       plan.status === 'ACTIVE'
                                         ? messages.statusActive
                                         : messages.statusInactive,
+                                      { name: plan.displayName },
                                     ),
                                   },
                                 }}
@@ -373,9 +378,15 @@ export function SubscriptionPlansSettingsPage() {
                           <ListingTable.Cell align="center">
                             <Stack direction="row" justifyContent="center" spacing={0.5}>
                               <Can do="UpdateSubscriptionPlan" denied="hide">
-                                <Tooltip title={intl.formatMessage(messages.editAction)}>
+                                <Tooltip
+                                  title={intl.formatMessage(messages.editAction, {
+                                    name: plan.displayName,
+                                  })}
+                                >
                                   <IconButton
-                                    aria-label={intl.formatMessage(messages.editAction)}
+                                    aria-label={intl.formatMessage(messages.editAction, {
+                                      name: plan.displayName,
+                                    })}
                                     onClick={() => setDialogTarget(plan)}
                                     size="small"
                                   >
@@ -384,9 +395,15 @@ export function SubscriptionPlansSettingsPage() {
                                 </Tooltip>
                               </Can>
                               <Can do="DeleteSubscriptionPlan" denied="hide">
-                                <Tooltip title={intl.formatMessage(messages.deleteAction)}>
+                                <Tooltip
+                                  title={intl.formatMessage(messages.deleteAction, {
+                                    name: plan.displayName,
+                                  })}
+                                >
                                   <IconButton
-                                    aria-label={intl.formatMessage(messages.deleteAction)}
+                                    aria-label={intl.formatMessage(messages.deleteAction, {
+                                      name: plan.displayName,
+                                    })}
                                     color="error"
                                     onClick={() => setDeleteTarget(plan)}
                                     size="small"

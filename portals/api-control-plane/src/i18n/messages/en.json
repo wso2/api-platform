@@ -2351,10 +2351,12 @@
     "defaultMessage": "Create plan"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete": {
-    "defaultMessage": "Delete plan"
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible name of the per-row delete icon button; {name} is the plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.edit": {
-    "defaultMessage": "Edit plan"
+    "defaultMessage": "Edit {name}",
+    "description": "Accessible name of the per-row edit icon button; {name} is the plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.actions": {
     "defaultMessage": "Actions"
@@ -2421,10 +2423,12 @@
     "defaultMessage": "Search plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.active": {
-    "defaultMessage": "Active"
+    "defaultMessage": "{name}, active",
+    "description": "Accessible name of the per-row status switch when the plan is active."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.inactive": {
-    "defaultMessage": "Inactive"
+    "defaultMessage": "{name}, inactive",
+    "description": "Accessible name of the per-row status switch when the plan is inactive."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.subtitle": {
     "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
