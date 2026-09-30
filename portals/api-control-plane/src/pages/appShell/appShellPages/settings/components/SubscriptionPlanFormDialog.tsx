@@ -409,6 +409,8 @@ export function SubscriptionPlanFormDialog({
       limitCount: Number(limit.limitCount),
       limitType: 'REQUEST_COUNT',
       stopOnQuotaReach: form.stopOnQuotaReach,
+      // platform-api always persists this as 1 regardless of what is sent, so
+      // there is no amount field in the UI to source it from.
       timeAmount: 1,
       timeUnit: limit.timeUnit,
     }));

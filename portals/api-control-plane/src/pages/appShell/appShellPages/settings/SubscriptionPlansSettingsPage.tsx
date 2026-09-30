@@ -216,7 +216,11 @@ export function SubscriptionPlansSettingsPage() {
     if (!plan.id) return;
     const nextStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     updateMutation.mutate(
-      { body: { ...plan, status: nextStatus }, subscriptionPlanId: plan.id },
+      {
+        // Sends a partial update so a stale plan can't overwrite its limits.
+        body: { displayName: plan.displayName, id: plan.id, status: nextStatus },
+        subscriptionPlanId: plan.id,
+      },
       {
         onError: (error) =>
           notify(error.message || intl.formatMessage(messages.updateFailed), 'error'),

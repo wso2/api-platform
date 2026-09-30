@@ -123,26 +123,33 @@ describe('SubscriptionPlansSettingsPage', () => {
     expect(screen.queryByText('Create your first subscription plan')).not.toBeInTheDocument();
   });
 
-  it("toggles a plan's status from the row switch", async () => {
+  it("toggles a plan's status from the row switch, without resending its limits", async () => {
     server.use(
       collection(PLANS, plans, { record: requests }),
       accepts(
         'put',
-        `${PLANS}/gold`,
-        aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' }),
+        `${PLANS}/bronze`,
+        aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze', status: 'INACTIVE' }),
         { record: requests },
       ),
     );
     const { user } = renderPage();
 
-    await screen.findByText('Gold');
-    await user.click(screen.getByRole('checkbox', { name: 'Gold, inactive' }));
+    await screen.findByText('Bronze');
+    await user.click(screen.getByRole('checkbox', { name: 'Bronze, active' }));
 
     // Not `.last()`: the mutation's own success invalidation refetches the
     // list, and that GET can land after the PUT.
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
     const putCall = requests.calls.find((call) => call.method === 'PUT');
-    expect(JSON.parse(putCall!.body)).toMatchObject({ status: 'ACTIVE' });
+    // Bronze has a limit configured; a stale cached copy of it must never be
+    // resent, since the server would persist it verbatim, undoing whatever
+    // the limit's actual current value is.
+    expect(JSON.parse(putCall!.body)).toEqual({
+      displayName: 'Bronze',
+      id: 'bronze',
+      status: 'INACTIVE',
+    });
   });
 
   it('opens the edit dialog only from the pencil icon, not the row itself', async () => {
