@@ -21,7 +21,6 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -65,36 +64,6 @@ func TestExpandUIValueRejectsMalformedPlaceholderAfterExpansion(t *testing.T) {
 	_, err = expandUIValue(ctx, "prefix-${UNIQUE:Provider}-${UNIQUE:broken")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "malformed UNIQUE placeholder")
-}
-
-func TestSecretHandleForProducesAPlatformAPIHandle(t *testing.T) {
-	generator, err := unique.NewGenerator()
-	require.NoError(t, err)
-	ctx := tcontext.WithLocal(
-		tcontext.WithShared(context.Background(), tcontext.NewShared("ui")),
-		tcontext.NewLocal("scenario"),
-	)
-	require.NoError(t, unique.Install(ctx, generator))
-	ctx = withUIExpansionState(ctx)
-	validHandle := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-	literal, err := secretHandleFor(ctx, "tc82-existing-key")
-	require.NoError(t, err)
-	require.Equal(t, "tc82-existing-key", literal, "an already-valid literal handle is unchanged")
-
-	generated, err := secretHandleFor(ctx, "${UNIQUE:MCP-Legacy_Key}")
-	require.NoError(t, err)
-	require.Regexp(t, validHandle, generated)
-	again, err := secretHandleFor(ctx, "${UNIQUE:MCP-Legacy_Key}")
-	require.NoError(t, err)
-	require.Equal(t, generated, again, "the same placeholder resolves to the same handle within a scenario")
-
-	empty, err := secretHandleFor(ctx, "")
-	require.NoError(t, err)
-	require.Empty(t, empty)
-
-	_, err = secretHandleFor(ctx, "${UNIQUE:broken")
-	require.Error(t, err)
 }
 
 func TestPlatformAPIReadinessClientVerifiesCertificates(t *testing.T) {

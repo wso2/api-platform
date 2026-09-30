@@ -27,7 +27,6 @@ import (
 
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -69,73 +68,6 @@ func (u *Steps) captureBaseURL() (string, error) {
 	return base + "/" + u.topo.Block.PartitionKey(), nil
 }
 
-// seedsLegacyMCPProxy stores an MCP proxy through platform-api with the upstream auth type
-// "header" that older AI Workspace releases wrote, in the scenario's latest project. The
-// current UI never writes that type, so the proxy is created through the API.
-func (u *Steps) seedsLegacyMCPProxy(ctx context.Context, name, authHeader, secretHandle string) error {
-	name, err := expandUIValue(ctx, name)
-	if err != nil {
-		return err
-	}
-	if secretHandle, err = secretHandleFor(ctx, secretHandle); err != nil {
-		return err
-	}
-	projectID, err := u.latestProjectID(ctx)
-	if err != nil {
-		return err
-	}
-	id := toProviderID(name)
-	upstreamURL, err := u.mcpCaptureUpstream(ctx, id)
-	if err != nil {
-		return err
-	}
-	page, base, token, err := u.platformAPI(ctx)
-	if err != nil {
-		return err
-	}
-	resp, err := page.Context().Request().Post(base+"/api/v0.9/mcp-proxies",
-		playwright.APIRequestContextPostOptions{
-			Headers: map[string]string{"Authorization": "Bearer " + token},
-			Data: map[string]any{
-				"id":             id,
-				"displayName":    name,
-				"version":        "v1.0",
-				"projectId":      projectID,
-				"context":        "/" + id,
-				"mcpSpecVersion": "2025-06-18",
-				"upstream": map[string]any{"main": map[string]any{
-					"url": upstreamURL,
-					"auth": map[string]any{
-						"type":   "header",
-						"header": authHeader,
-						"value":  fmt.Sprintf("{{ secret %q }}", secretHandle),
-					},
-				}},
-			},
-			IgnoreHttpsErrors: playwright.Bool(true),
-		})
-	if err != nil {
-		return fmt.Errorf("creating the legacy MCP proxy %q: %w", name, err)
-	}
-	if status := resp.Status(); status != http.StatusCreated && status != http.StatusOK {
-		body, _ := resp.Text()
-		return fmt.Errorf("creating the legacy MCP proxy %q returned %d: %s", name, status, body)
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindMCPServer, ID: id, Actor: u.topo.Admin.Username,
-	}); err != nil {
-		if _, delErr := page.Context().Request().Delete(base+"/api/v0.9/mcp-proxies/"+id,
-			playwright.APIRequestContextDeleteOptions{
-				Headers:           map[string]string{"Authorization": "Bearer " + token},
-				IgnoreHttpsErrors: playwright.Bool(true),
-			}); delErr != nil {
-			return fmt.Errorf("registering MCP proxy %q for cleanup: %w; compensating delete failed: %v", id, err, delErr)
-		}
-		return fmt.Errorf("registering MCP proxy %q for cleanup: %w", id, err)
-	}
-	return tcontext.Set(ctx, keyLatestMCPProxyID, id)
-}
-
 // submitsMCPProxyAtCaptureWithCredential creates an MCP proxy through the UI form, pointed at
 // the testbench capture service, with an explicit auth header and value.
 func (u *Steps) submitsMCPProxyAtCaptureWithCredential(ctx context.Context, name, authHeader, authValue string) error {
@@ -148,22 +80,6 @@ func (u *Steps) submitsMCPProxyAtCaptureWithCredential(ctx context.Context, name
 		return err
 	}
 	return u.submitsMCPProxyWithCredential(ctx, name, upstreamURL, authHeader, authValue)
-}
-
-// opensMCPProxy opens the named proxy from the current project's MCP Proxies list.
-func (u *Steps) opensMCPProxy(ctx context.Context, name string) error {
-	name, err := expandUIValue(ctx, name)
-	if err != nil {
-		return err
-	}
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	if err := page.GetByText(name, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).First().Click(); err != nil {
-		return fmt.Errorf("opening the MCP proxy %q: %w", name, err)
-	}
-	return nil
 }
 
 // invokesMCPProxyThroughGateway sends an MCP initialize request to the scenario's latest MCP
