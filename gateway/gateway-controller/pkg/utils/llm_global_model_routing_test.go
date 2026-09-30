@@ -40,7 +40,13 @@ func globalRoutingTemplateWithUnchangedRequestModel() *models.StoredLLMProviderT
 }
 
 func TestGlobalModelRoutingMappingsPreserveScopeOrderAndIsolation(t *testing.T) {
-	for _, name := range []string{"time-based-model-routing", "semantic-model-routing", "cost-based-model-routing"} {
+	for _, name := range []string{
+		"time-based-model-routing",
+		"semantic-model-routing",
+		"cost-based-model-routing",
+		"model-round-robin",
+		"model-weighted-round-robin",
+	} {
 		t.Run(name, func(t *testing.T) {
 			shared := map[string]interface{}{"attachedTo": "api", "setting": "keep", "requestModel": map[string]interface{}{"identifier": "stale"}}
 			condition := "true"
@@ -91,6 +97,22 @@ func TestGlobalModelRoutingExpandsOnlyChangedRequestModelMappings(t *testing.T) 
 		catchAll = append(catchAll, api.Operation{Path: api.Ptr("/*"), Method: api.Ptr(method)})
 	}
 	require.Equal(t, catchAll, expandGlobalModelRoutingOperations(catchAll, &globals, globalRoutingTemplateWithUnchangedRequestModel()))
+}
+
+func TestGlobalRoundRobinPoliciesExpandChangedRequestModelMappings(t *testing.T) {
+	ops := []api.Operation{{Path: api.Ptr("/*"), Method: api.Ptr(api.OperationMethod("POST"))}}
+
+	for _, name := range []string{"model-round-robin", "model-weighted-round-robin"} {
+		t.Run(name, func(t *testing.T) {
+			globals := []api.Policy{{Name: name, Version: "v1"}}
+			expanded := expandGlobalModelRoutingOperations(ops, &globals, globalRoutingTemplate())
+
+			require.Len(t, expanded, 3)
+			require.True(t, hasOperation(expanded, "/special/exact", "POST"))
+			require.True(t, hasOperation(expanded, "/special/*", "POST"))
+			require.True(t, hasOperation(expanded, "/*", "POST"))
+		})
+	}
 }
 
 func TestGlobalModelRoutingExpansionRunsForProvidersAndProxies(t *testing.T) {

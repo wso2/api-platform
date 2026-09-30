@@ -65,7 +65,8 @@ func containsGlobalModelRoutingPolicy(policies []api.Policy) bool {
 
 func isGlobalModelRoutingPolicy(name string) bool {
 	switch name {
-	case "cost-based-model-routing", "semantic-model-routing", "time-based-model-routing":
+	case "cost-based-model-routing", "semantic-model-routing", "time-based-model-routing",
+		"model-round-robin", "model-weighted-round-robin":
 		return true
 	default:
 		return false
