@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 5
+-- Version: 6
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -132,11 +132,38 @@ CREATE TABLE dbo.certificates (
     not_before DATETIME2(7) NOT NULL,
     not_after DATETIME2(7) NOT NULL,
     cert_count INT NOT NULL DEFAULT 1,
+    -- usage separates backend/upstream trust, a pooled client certificate
+    -- authority (mTLS), and (usage: identity) a gateway identity — a
+    -- certificate chain plus its encrypted private key presented to a
+    -- backend requiring mutual TLS on outbound connections; the three
+    -- purposes never share a trust bundle. role only applies to usage:
+    -- downstream. private_key_ciphertext/key_algorithm only apply to usage:
+    -- identity and stay NULL for every other usage.
+    usage NVARCHAR(20) NOT NULL DEFAULT 'upstream',
+    role NVARCHAR(20) NOT NULL DEFAULT 'client',
+    -- match_json narrows a role: relay entry to the connections it vouches
+    -- for (JSON-encoded {"dnsSANs": [...], "uriSANs": [...]}); NULL means
+    -- unnarrowed. Only meaningful for role: relay.
+    match_json NVARCHAR(MAX) NULL,
+    private_key_ciphertext NVARCHAR(MAX) NULL,
+    key_algorithm NVARCHAR(32) NULL,
     created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, name)
 );
+-- Upgrade path for already-provisioned databases (the guarded CREATE TABLE
+-- above is a no-op against them): add the columns if this table pre-dates them.
+IF COL_LENGTH('dbo.certificates', 'usage') IS NULL
+ALTER TABLE dbo.certificates ADD usage NVARCHAR(20) NOT NULL DEFAULT 'upstream';
+IF COL_LENGTH('dbo.certificates', 'role') IS NULL
+ALTER TABLE dbo.certificates ADD role NVARCHAR(20) NOT NULL DEFAULT 'client';
+IF COL_LENGTH('dbo.certificates', 'match_json') IS NULL
+ALTER TABLE dbo.certificates ADD match_json NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.certificates', 'private_key_ciphertext') IS NULL
+ALTER TABLE dbo.certificates ADD private_key_ciphertext NVARCHAR(MAX) NULL;
+IF COL_LENGTH('dbo.certificates', 'key_algorithm') IS NULL
+ALTER TABLE dbo.certificates ADD key_algorithm NVARCHAR(32) NULL;
 
 -- LLM Provider Templates table
 IF OBJECT_ID(N'dbo.llm_provider_templates', N'U') IS NULL

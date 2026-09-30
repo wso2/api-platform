@@ -107,7 +107,8 @@ func DefaultConfig() *Config {
 		RedisURL:                   fmt.Sprintf("localhost:%s", RedisPort),
 		HTTPTimeout:                10 * time.Second,
 		Users: map[string]AuthUser{
-			"admin": {Username: "admin", Password: "admin"},
+			"admin":     {Username: "admin", Password: "admin"},
+			"developer": {Username: "developer", Password: "developer"},
 		},
 	}
 }
@@ -178,6 +179,13 @@ func (s *TestState) SetContextValue(key string, value interface{}) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.Context[key] = value
+}
+
+// DeleteContextValue removes a value from the context
+func (s *TestState) DeleteContextValue(key string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	delete(s.Context, key)
 }
 
 // GetContextValue retrieves a value from the context

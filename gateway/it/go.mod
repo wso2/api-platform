@@ -9,6 +9,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/compose v0.43.0
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/gateway/gateway-controller v0.0.0-20260326080301-410bef294a7f
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 replace github.com/wso2/api-platform/common => ../../common
@@ -172,7 +173,6 @@ require (
 	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	tags.cncf.io/container-device-interface v1.1.0 // indirect
 )

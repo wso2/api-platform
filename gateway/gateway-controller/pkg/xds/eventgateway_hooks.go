@@ -91,9 +91,12 @@ func (t *Translator) CreateRoutePerTopic(apiId, apiName, apiVersion, context, me
 	return t.createRoutePerTopic(apiId, apiName, apiVersion, context, method, channelName, clusterName, vhost, apiKind, projectID)
 }
 
-// CreateCluster exposes createCluster for use by EventGatewayXDSHooks implementations.
+// CreateCluster exposes createCluster for use by EventGatewayXDSHooks
+// implementations. A WebSub hub cluster never carries a tls block, so
+// createCluster cannot fail here.
 func (t *Translator) CreateCluster(name string, upstreamURL *url.URL, upstreamCerts map[string][]byte, connectTimeout *time.Duration) *cluster.Cluster {
-	return t.createCluster(name, upstreamURL, upstreamCerts, connectTimeout)
+	c, _ := t.createCluster(name, upstreamURL, upstreamCerts, connectTimeout, nil, "")
+	return c
 }
 
 // ExtractTemplateHandle exposes extractTemplateHandle for use by EventGatewayXDSHooks implementations.
@@ -135,7 +138,9 @@ func (t *Translator) CreateTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	return t.createTracingConfig()
 }
 
-// CreateDownstreamTLSContext exposes createDownstreamTLSContext for use by EventGatewayXDSHooks implementations.
+// CreateDownstreamTLSContext exposes createDownstreamTLSContext for use by
+// EventGatewayXDSHooks implementations. The WebSub hub listener never
+// requests a client certificate.
 func (t *Translator) CreateDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, error) {
-	return t.createDownstreamTLSContext()
+	return t.createDownstreamTLSContext(false)
 }

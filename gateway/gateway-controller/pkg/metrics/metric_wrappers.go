@@ -67,6 +67,8 @@ type Gauge interface {
 type GaugeVec interface {
 	WithLabelValues(labels ...string) Gauge
 	With(prometheus.Labels) Gauge
+	// Reset removes every series set on this vector.
+	Reset()
 }
 
 // GaugeFunc wraps prometheus.GaugeFunc for callback-based gauges
@@ -114,6 +116,7 @@ type noopGaugeVec struct{}
 
 func (noopGaugeVec) WithLabelValues(...string) Gauge { return safeNoopGauge }
 func (noopGaugeVec) With(prometheus.Labels) Gauge    { return safeNoopGauge }
+func (noopGaugeVec) Reset()                          {}
 
 // safeNoopGaugeFunc returns a singleton noop GaugeFunc that's safe to use
 func safeNoopGaugeFunc() GaugeFunc {

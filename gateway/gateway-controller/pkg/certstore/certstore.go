@@ -32,9 +32,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+// filterUpstreamCertificates returns only the certificates whose Usage is
+// upstream trust. A row with no usage stored is an upstream certificate.
+func filterUpstreamCertificates(certs []*models.StoredCertificate) []*models.StoredCertificate {
+	filtered := make([]*models.StoredCertificate, 0, len(certs))
+	for _, cert := range certs {
+		if cert.EffectiveUsage() == models.CertificateUsageUpstream {
+			filtered = append(filtered, cert)
+		}
+	}
+	return filtered
+}
 
 // generateCertificateID creates a unique ID for a certificate (UUID v7)
 func generateCertificateID() (string, error) {
@@ -53,6 +66,18 @@ type CertStore struct {
 	combinedCerts  []byte
 	db             storage.Storage
 	mu             sync.RWMutex // Protects combinedCerts from concurrent access
+
+	// encryptionManager decrypts gateway identity private keys. It is set
+	// after construction; while nil, GetGatewayIdentityMaterial fails.
+	encryptionManager *encryption.ProviderManager
+}
+
+// SetEncryptionManager wires the encryption provider manager used to
+// decrypt a gateway identity's private key ciphertext.
+func (cs *CertStore) SetEncryptionManager(mgr *encryption.ProviderManager) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.encryptionManager = mgr
 }
 
 // NewCertStore creates a new certificate store
@@ -85,9 +110,10 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	// Load custom certificates from database (primary and only source for custom certs)
 	dbCerts, count, err := cs.loadDatabaseCertificates()
 	if err != nil {
-		cs.logger.Warn("Failed to load certificates from database",
-			slog.Any("error", err))
-	} else if count > 0 {
+		// A read failure must not yield a bundle with rows silently missing.
+		return nil, fmt.Errorf("loading certificates from database: %w", err)
+	}
+	if count > 0 {
 		certBuffer.Write(dbCerts)
 		loadedCount += count
 		cs.logger.Info("Loaded custom certificates from database",
@@ -101,10 +127,6 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 			cs.logger.Warn("Failed to load system certificates",
 				slog.String("path", cs.systemCertPath),
 				slog.Any("error", err))
-			// If we have custom certs, we can continue without system certs
-			if loadedCount == 0 {
-				return nil, fmt.Errorf("failed to load both custom and system certificates")
-			}
 		} else {
 			// Add system certificates to the buffer
 			certBuffer.Write(systemCerts)
@@ -113,9 +135,15 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 		}
 	}
 
-	// If no certificates were loaded, return an error
+	// An empty bundle is a valid state: the store still serves the listener
+	// certificate, client-CA pool and gateway identities over SDS, and an
+	// upstream definition that needs trust is refused at translation until
+	// a certificate exists. It is loud, because every HTTPS upstream that
+	// relies on the gateway bundle fails its handshake meanwhile.
 	if certBuffer.Len() == 0 {
-		return nil, fmt.Errorf("no certificates loaded from custom or system sources")
+		cs.logger.Warn("No upstream trust certificates loaded; HTTPS upstreams without their own trustedCAs will fail until an upstream trust certificate is added",
+			slog.String("custom_certs_path", cs.certsDir),
+			slog.String("system_cert_path", cs.systemCertPath))
 	}
 
 	cs.mu.Lock()
@@ -129,12 +157,19 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	return certBuffer.Bytes(), nil
 }
 
-// loadDatabaseCertificates loads all certificates from the database
+// loadDatabaseCertificates loads all upstream-trust certificates from the
+// database. usage: downstream rows are never included: the two trust purposes
+// must never share a bundle.
 func (cs *CertStore) loadDatabaseCertificates() ([]byte, int, error) {
+	if cs.db == nil {
+		return nil, 0, nil
+	}
 	certs, err := cs.db.ListCertificates()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list certificates: %w", err)
 	}
+
+	certs = filterUpstreamCertificates(certs)
 
 	if len(certs) == 0 {
 		cs.logger.Debug("No certificates found in database")
@@ -303,6 +338,84 @@ func (cs *CertStore) GetCombinedCertificates() []byte {
 	return result
 }
 
+// GetClientCABundle returns the concatenated PEM bundle of every usage:
+// downstream certificate, in store order. It returns (nil, nil) for an empty
+// pool or a store with no database; deploy-time validation keeps mtls-auth
+// off an empty pool.
+func (cs *CertStore) GetClientCABundle() ([]byte, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	certs, err := cs.db.ListCertificatesByUsage(models.CertificateUsageDownstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list client-CA pool: %w", err)
+	}
+
+	var buf bytes.Buffer
+	for _, cert := range certs {
+		buf.Write(cert.Certificate)
+		if !bytes.HasSuffix(cert.Certificate, []byte("\n")) {
+			buf.WriteString("\n")
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+// GetGatewayIdentityMaterial resolves a usage: identity row by name to its
+// PEM certificate chain, leaf first, and decrypted private key. It never
+// returns a partial or still-encrypted result.
+func (cs *CertStore) GetGatewayIdentityMaterial(name string) (certChainPEM []byte, privateKeyPEM []byte, err error) {
+	cert, err := cs.db.GetCertificateByName(name)
+	if err != nil {
+		return nil, nil, fmt.Errorf("gateway identity %q not found: %w", name, err)
+	}
+	if cert.Usage != models.CertificateUsageIdentity {
+		return nil, nil, fmt.Errorf("%q is not a gateway identity (usage: identity)", name)
+	}
+
+	cs.mu.RLock()
+	mgr := cs.encryptionManager
+	cs.mu.RUnlock()
+	if mgr == nil {
+		return nil, nil, fmt.Errorf("no encryption provider configured; cannot decrypt gateway identity %q", name)
+	}
+
+	payload, err := encryption.UnmarshalPayload(cert.PrivateKeyCiphertext)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal encrypted payload for gateway identity %q: %w", name, err)
+	}
+	plaintext, err := mgr.Decrypt(payload)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decrypt private key for gateway identity %q: %w", name, err)
+	}
+
+	return cert.Certificate, plaintext, nil
+}
+
+// GetUpstreamTrustBundle concatenates the PEM certificates of the named
+// usage: upstream rows, in the given order. It errors if any name is missing
+// rather than build a smaller trust set than configured.
+func (cs *CertStore) GetUpstreamTrustBundle(names []string) ([]byte, error) {
+	var buf bytes.Buffer
+	for _, name := range names {
+		cert, err := cs.db.GetCertificateByName(name)
+		if err != nil {
+			return nil, fmt.Errorf("certificate %q not found: %w", name, err)
+		}
+		usage := cert.EffectiveUsage()
+		if usage != models.CertificateUsageUpstream {
+			// Never build a trust bundle out of a client authority or a
+			// gateway identity.
+			return nil, fmt.Errorf("certificate %q is not usage: upstream", name)
+		}
+		buf.Write(cert.Certificate)
+		if !bytes.HasSuffix(cert.Certificate, []byte("\n")) {
+			buf.WriteString("\n")
+		}
+	}
+	return buf.Bytes(), nil
+}
+
 // GetCertsDir returns the custom certificates directory path
 func (cs *CertStore) GetCertsDir() string {
 	return cs.certsDir
@@ -388,6 +501,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 			NotBefore:   x509Cert.NotBefore,
 			NotAfter:    x509Cert.NotAfter,
 			CertCount:   count,
+			Usage:       models.CertificateUsageUpstream,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}

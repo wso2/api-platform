@@ -1033,3 +1033,25 @@ func TestExecuteStreamingResponsePolicies_IndexSurvivesBodyTransformation(t *tes
 	assert.Equal(t, []uint64{1, 2, 3}, recorder.seen,
 		"the downstream policy must see the kernel's indexes, not zeros")
 }
+
+// The status label reports "denied" only for a 401 or 403 immediate response,
+// "short_circuited" for any other immediate response, and "executed" for
+// every other action.
+func TestExecutionStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		action any
+		want   string
+	}{
+		{"401 immediate response", policy.ImmediateResponse{StatusCode: 401}, "denied"},
+		{"403 immediate response", policy.ImmediateResponse{StatusCode: 403}, "denied"},
+		{"429 immediate response", policy.ImmediateResponse{StatusCode: 429}, "short_circuited"},
+		{"upstream request modification", policy.UpstreamRequestModifications{}, "executed"},
+		{"no action", nil, "executed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, executionStatus(tt.action))
+		})
+	}
+}

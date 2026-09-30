@@ -102,6 +102,18 @@ const (
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
+	// Connection attributes sent to the policy engine so mtls-auth can
+	// authenticate the certificate presented on the connection.
+	ExtProcRequestAttributeConnectionMTLS                   = "connection.mtls"
+	ExtProcRequestAttributeConnectionPeerCertificate        = "connection.peer_certificate"
+	ExtProcRequestAttributeConnectionPeerCertificateDigest  = "connection.sha256_peer_certificate_digest"
+	ExtProcRequestAttributeConnectionSubjectPeerCertificate = "connection.subject_peer_certificate"
+	ExtProcRequestAttributeConnectionURISANPeerCertificate  = "connection.uri_san_peer_certificate"
+	ExtProcRequestAttributeConnectionDNSSANPeerCertificate  = "connection.dns_san_peer_certificate"
+	ExtProcRequestAttributeConnectionTLSVersion             = "connection.tls_version"
+	ExtProcRequestAttributeConnectionRequestedServerName    = "connection.requested_server_name"
+	ExtProcRequestAttributeConnectionPeerCertificateValid   = "connection.peer_certificate_valid"
+
 	// Policy Engine
 	PolicyEngineClusterName       = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"

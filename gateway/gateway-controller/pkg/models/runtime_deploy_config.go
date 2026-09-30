@@ -198,7 +198,22 @@ type Endpoint struct {
 
 // UpstreamTLS holds TLS configuration for an upstream cluster.
 type UpstreamTLS struct {
+	// Enabled is true when the target URL scheme is https.
 	Enabled bool
+
+	// HasTLSBlock is true when the definition carried a tls block, possibly
+	// empty. The fields below are consulted only when it is true.
+	HasTLSBlock bool
+
+	// IdentityName is the gateway identity to present, or "" for none.
+	IdentityName string
+
+	// TrustedCANames lists the usage: upstream certificates trusted for this
+	// backend instead of the gateway bundle. Empty means the gateway bundle.
+	TrustedCANames []string
+
+	// VerifyHostName controls hostname verification. It defaults to true.
+	VerifyHostName bool
 }
 
 // ConfigTransformer transforms a StoredConfig into a RuntimeDeployConfig.

@@ -231,7 +231,8 @@ func newAgentReplica(t *testing.T, db storage.Storage) *agentReplica {
 	policyManager.SetRuntimeStore(runtimeStore)
 	policyManager.SetTransformers(registry)
 
-	snapshotManager := xds.NewSnapshotManager(store, logger, routerConfig, db, systemConfig)
+	snapshotManager, err := xds.NewSnapshotManager(store, logger, routerConfig, db, systemConfig)
+	require.NoError(t, err)
 	snapshotManager.GetTranslator().SetTransformers(map[string]models.ConfigTransformer{
 		models.KindAgent: registry,
 	})
@@ -245,7 +246,7 @@ func newAgentReplica(t *testing.T, db storage.Storage) *agentReplica {
 			routerConfig:      routerConfig,
 			systemConfig:      systemConfig,
 			policyDefinitions: policyDefinitions,
-			policyValidator:   config.NewPolicyValidator(policyDefinitions),
+			policyValidator:   config.NewPolicyValidator(policyDefinitions, nil),
 			secretResolver:    stubSecretResolver{value: "42"},
 			logger:            logger,
 		},

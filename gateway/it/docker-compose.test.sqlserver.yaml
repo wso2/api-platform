@@ -161,7 +161,7 @@ services:
     mem_limit: 2000m
     mem_reservation: 2000m
     cpus: 1
-    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    command: ["--pol.config", "/etc/policy-engine/config.toml", "--rtr.file-flush-interval-msec", "500"]
     ports:
       # Router (Envoy)
       - "8080:8080"   # HTTP ingress
@@ -325,6 +325,36 @@ services:
     depends_on:
       mock-openapi:
         condition: service_healthy
+    networks:
+      - it-gateway-runtime-network
+
+  # Outbound mTLS test backends: each
+  # requires a client certificate signed by its own trusted authority and
+  # echoes the presented client subject back in X-Client-Subject.
+  mtls-backend-a:
+    image: nginx:1.25
+    container_name: it-mtls-backend-a
+    volumes:
+      - ./mock-api/mtls-backend-a.conf:/etc/nginx/nginx.conf:ro
+      - ./resources/mtls-pki:/etc/mtls-pki:ro
+    networks:
+      - it-gateway-runtime-network
+
+  mtls-backend-b:
+    image: nginx:1.25
+    container_name: it-mtls-backend-b
+    volumes:
+      - ./mock-api/mtls-backend-b.conf:/etc/nginx/nginx.conf:ro
+      - ./resources/mtls-pki:/etc/mtls-pki:ro
+    networks:
+      - it-gateway-runtime-network
+
+  mtls-backend-wronghost:
+    image: nginx:1.25
+    container_name: it-mtls-backend-wronghost
+    volumes:
+      - ./mock-api/mtls-backend-wronghost.conf:/etc/nginx/nginx.conf:ro
+      - ./resources/mtls-pki:/etc/mtls-pki:ro
     networks:
       - it-gateway-runtime-network
 

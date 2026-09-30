@@ -64,6 +64,8 @@ type EventListener struct {
 	subscriptionManager   SubscriptionSnapshotUpdater
 	apiKeyXDSManager      APIKeyXDSManager
 	lazyResourceManager   *lazyresourcexds.LazyResourceStateManager
+	clientAuthorities     ClientAuthorityPublisher
+	certificates          certificateSnapshot
 	policyManager         *policyxds.PolicyManager
 	routerConfig          *config.RouterConfig
 	logger                *slog.Logger
@@ -88,6 +90,7 @@ func NewEventListener(
 	subscriptionManager SubscriptionSnapshotUpdater,
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
+	clientAuthorities ClientAuthorityPublisher,
 	policyManager *policyxds.PolicyManager,
 	routerConfig *config.RouterConfig,
 	logger *slog.Logger,
@@ -108,9 +111,17 @@ func NewEventListener(
 	if logger == nil {
 		panic("event listener requires non-nil logger")
 	}
+	if clientAuthorities == nil {
+		panic("event listener requires a non-nil client authority publisher")
+	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
 		panic("event listener requires non-empty gateway ID")
+	}
+
+	var certificates certificateSnapshot
+	if snapshotManager != nil {
+		certificates = snapshotManagerCertificates{snapshotManager: snapshotManager}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,12 +133,14 @@ func NewEventListener(
 		subscriptionManager:   subscriptionManager,
 		apiKeyXDSManager:      apiKeyXDSManager,
 		lazyResourceManager:   lazyResourceManager,
+		clientAuthorities:     clientAuthorities,
+		certificates:          certificates,
 		policyManager:         policyManager,
 		routerConfig:          routerConfig,
 		logger:                logger,
 		systemConfig:          systemConfig,
 		policyDefinitions:     policyDefinitions,
-		policyValidator:       config.NewPolicyValidator(policyDefinitions),
+		policyValidator:       config.NewPolicyValidator(policyDefinitions, nil),
 		secretResolver:        secretResolver,
 		policyVersionResolver: policyVersionResolver,
 		ctx:                   ctx,
@@ -222,8 +235,7 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeAPIKey:
 		l.processAPIKeyEvent(event)
 	case eventhub.EventTypeCertificate:
-		l.logger.Info("Certificate event received (processing not yet implemented)",
-			slog.String("entity_id", event.EntityID))
+		l.processCertificateEvent(event)
 	case eventhub.EventTypeSubscription:
 		l.processSubscriptionEvent(event)
 	case eventhub.EventTypeSubscriptionPlan:

@@ -1333,6 +1333,7 @@ func TestGatewayVersionSelectionFiltersRunnersAndReportsSkips(t *testing.T) {
 	}{
 		{name: "legacy release", version: "1.2.0", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
 		{name: "newer release", version: "1.3.0", wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0"},
+		{name: "four-part released tag", version: "1.2.0.6", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
 		{name: "source build", source: true, wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version current source build does not satisfy gateway-version<=1.2.0"},
 	}
 	for _, tc := range cases {

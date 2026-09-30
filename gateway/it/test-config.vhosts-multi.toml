@@ -64,6 +64,12 @@ password = "admin"
 password_hashed = false
 roles = ["admin"]
 
+[[controller.auth.basic.users]]
+username = "developer"
+password = "developer"
+password_hashed = false
+roles = ["developer"]
+
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 

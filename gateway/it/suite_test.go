@@ -21,6 +21,7 @@ package it
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,6 +132,13 @@ func getFeaturePaths() []string {
 		"features/redirect.feature",
 		"features/llm-provider.feature",
 		"features/certificates.feature",
+		"features/mtls-client-ca-pool.feature",
+		"features/mtls-listener.feature",
+		"features/mtls-auth.feature",
+		"features/mtls-pool-references.feature",
+		"features/mtls-header-relay.feature",
+		"features/mtls-outbound.feature",
+		"features/mtls-observability.feature",
 		"features/config-dump.feature",
 		"features/api-management.feature",
 		"features/api-error-responses.feature",
@@ -165,6 +173,7 @@ func getFeaturePaths() []string {
 		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
+		// "features/mtls-header-bypass.feature", // cd it && make test-mtls-header-bypass
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -258,6 +267,9 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"mock-aws-bedrock-guardrail": testState.Config.MockAWSBedrockGuardrailURL,
 			"mock-embedding-provider":    testState.Config.MockEmbeddingProviderURL,
 			"mock-platform-api":          testState.Config.MockPlatformAPIURL,
+		})
+		httpSteps.SetBeforeSend(func(req *http.Request) error {
+			return beforeRequest(testState, req)
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 
@@ -363,11 +375,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
-		RegisterAnalyticsSteps(ctx, testState, httpSteps)
+		analyticsSteps := RegisterAnalyticsSteps(ctx, testState, httpSteps)
 		RegisterSubscriptionSteps(ctx, testState, httpSteps)
 		RegisterSecretSteps(ctx, testState, httpSteps)
 		RegisterTemplateSteps(ctx, testState, httpSteps)
 		RegisterDPToCPSteps(ctx, testState)
+		mtlsStepDefs := RegisterMTLSSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterMTLSObservabilitySteps(ctx, composeManager, mtlsStepDefs, analyticsSteps)
 	}
 
 	// Register common HTTP and assertion steps

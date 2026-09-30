@@ -29,6 +29,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
@@ -96,7 +97,7 @@ func (h *RestAPIHandler) CreateRestAPI(w http.ResponseWriter, r *http.Request) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
+	httputil.WriteJSON(w, http.StatusCreated, h.buildDeployResponse(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
 
 // ListRestAPIs implements ServerInterface.ListRestAPIs
@@ -194,7 +195,29 @@ func (h *RestAPIHandler) UpdateRestAPI(w http.ResponseWriter, r *http.Request, i
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config))
+	httputil.WriteJSON(w, http.StatusOK, h.buildDeployResponse(result.Config.SourceConfiguration, result.Config))
+}
+
+// buildDeployResponse builds the create/update response body, adding the
+// accept-list echo and warnings for a RestAPI.
+func (h *RestAPIHandler) buildDeployResponse(sourceConfig any, stored *models.StoredConfig) any {
+	switch cfg := sourceConfig.(type) {
+	case api.RestAPI:
+		resolved, warnings := h.service.ResolveMtlsAuthForResponse(cfg)
+		warnings = append(warnings, h.service.ResolveUpstreamTLSWarnings(resolved)...)
+		h.logDeployWarnings(stored, warnings)
+		return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+	case *api.RestAPI:
+		if cfg == nil {
+			return buildResourceResponseFromStored(sourceConfig, stored)
+		}
+		resolved, warnings := h.service.ResolveMtlsAuthForResponse(*cfg)
+		warnings = append(warnings, h.service.ResolveUpstreamTLSWarnings(resolved)...)
+		h.logDeployWarnings(stored, warnings)
+		return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+	default:
+		return buildResourceResponseFromStored(sourceConfig, stored)
+	}
 }
 
 // DeleteRestAPI implements ServerInterface.DeleteRestAPI
@@ -383,4 +406,19 @@ func isRestAPICreateBadRequest(err error) bool {
 		strings.Contains(message, "resource kind is required") ||
 		strings.Contains(message, "unsupported resource kind") ||
 		strings.Contains(message, "invalid or missing origin")
+}
+
+// logDeployWarnings logs every deploy warning so the operator sees what the
+// caller was told.
+func (h *RestAPIHandler) logDeployWarnings(stored *models.StoredConfig, warnings []clientca.Warning) {
+	if h.logger == nil {
+		return
+	}
+	for _, w := range warnings {
+		attrs := []any{slog.String("code", w.Code), slog.String("field", w.Field), slog.String("message", w.Message)}
+		if stored != nil {
+			attrs = append(attrs, slog.String("api", stored.UUID))
+		}
+		h.logger.Warn("Deployment warning", attrs...)
+	}
 }

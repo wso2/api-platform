@@ -19,6 +19,7 @@
 package storage
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -708,6 +709,138 @@ func TestSQLiteStorage_GetCertificate_Success(t *testing.T) {
 	assert.Equal(t, retrieved.UUID, cert.UUID)
 	assert.Equal(t, retrieved.Name, cert.Name)
 	assert.Equal(t, retrieved.Subject, cert.Subject)
+}
+
+func TestSQLiteStorage_ListCertificatesByUsage(t *testing.T) {
+	store := setupTestStorage(t)
+	defer store.db.Close()
+
+	upstreamCert := createTestStoredCertificate()
+	upstreamCert.Name = "usage-filter-upstream-cert"
+	upstreamCert.Usage = models.CertificateUsageUpstream
+	assert.NilError(t, store.SaveCertificate(upstreamCert))
+
+	clientCert := createTestStoredCertificate()
+	clientCert.Name = "usage-filter-client-cert"
+	clientCert.Usage = models.CertificateUsageDownstream
+	assert.NilError(t, store.SaveCertificate(clientCert))
+
+	clientResults, err := store.ListCertificatesByUsage(models.CertificateUsageDownstream)
+	assert.NilError(t, err)
+	assert.Equal(t, len(clientResults), 1)
+	assert.Equal(t, clientResults[0].UUID, clientCert.UUID)
+
+	upstreamResults, err := store.ListCertificatesByUsage(models.CertificateUsageUpstream)
+	assert.NilError(t, err)
+	assert.Equal(t, len(upstreamResults), 1)
+	assert.Equal(t, upstreamResults[0].UUID, upstreamCert.UUID)
+}
+
+// A database at the previous schema version is migrated in place: its row
+// reads back with the column defaults and a new row saves with explicit usage
+// and role.
+func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
+	const preMigrationSchemaVersion = previousSchemaVersion
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "upgrade-test.db")
+	gatewayID := "platform-gateway-id"
+
+	rawDB, err := sql.Open("sqlite3", dbPath)
+	assert.NilError(t, err)
+
+	_, err = rawDB.Exec(`
+		CREATE TABLE certificates (
+			uuid TEXT NOT NULL,
+			gateway_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			certificate BLOB NOT NULL,
+			subject TEXT NOT NULL,
+			issuer TEXT NOT NULL,
+			not_before TIMESTAMP NOT NULL,
+			not_after TIMESTAMP NOT NULL,
+			cert_count INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (gateway_id, uuid),
+			UNIQUE(gateway_id, name)
+		)
+	`)
+	assert.NilError(t, err)
+
+	notBefore := time.Now().Add(-24 * time.Hour)
+	notAfter := time.Now().Add(365 * 24 * time.Hour)
+	_, err = rawDB.Exec(`
+		INSERT INTO certificates (uuid, gateway_id, name, certificate, subject, issuer, not_before, not_after, cert_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		"pre-migration-cert", gatewayID, "pre-migration-cert",
+		[]byte("-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"),
+		"CN=pre-migration.example.com", "CN=Test CA", notBefore, notAfter, 1,
+	)
+	assert.NilError(t, err)
+
+	_, err = rawDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", preMigrationSchemaVersion))
+	assert.NilError(t, err)
+	assert.NilError(t, rawDB.Close())
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	existing, err := upgraded.GetCertificate("pre-migration-cert")
+	assert.NilError(t, err)
+	assert.Equal(t, existing.Usage, models.CertificateUsageUpstream)
+	assert.Equal(t, existing.Role, models.CertificateRoleClient)
+	// match_json has no default, so the migrated row has a nil Match.
+	if existing.Match != nil {
+		t.Fatalf("expected a nil Match for the pre-migration row, got %+v", existing.Match)
+	}
+
+	newCert := createTestStoredCertificate()
+	newCert.Usage = models.CertificateUsageDownstream
+	assert.NilError(t, upgraded.SaveCertificate(newCert))
+
+	saved, err := upgraded.GetCertificate(newCert.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, saved.Usage, models.CertificateUsageDownstream)
+
+	// Probe the match_json column directly, then round-trip a relay row.
+	sqlDB := upgraded.(*sqlStore).db
+	rows, err := sqlDB.Query(`PRAGMA table_info(certificates)`)
+	assert.NilError(t, err)
+	defer rows.Close()
+	hasMatchJSONColumn := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		assert.NilError(t, rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk))
+		if name == "match_json" {
+			hasMatchJSONColumn = true
+		}
+	}
+	assert.NilError(t, rows.Err())
+	if !hasMatchJSONColumn {
+		t.Fatal("expected the migrated schema to have a certificates.match_json column")
+	}
+
+	relayCert := createTestStoredCertificate()
+	relayCert.UUID = "post-upgrade-relay-cert"
+	relayCert.Name = "post-upgrade-relay-cert"
+	relayCert.Usage = models.CertificateUsageDownstream
+	relayCert.Role = models.CertificateRoleRelay
+	relayCert.Match = &models.CertificateMatch{DNSSANs: []string{"lb.corp.test"}}
+	assert.NilError(t, upgraded.SaveCertificate(relayCert))
+
+	savedRelay, err := upgraded.GetCertificate(relayCert.UUID)
+	assert.NilError(t, err)
+	if savedRelay.Match == nil {
+		t.Fatal("expected a non-nil Match for the relay row saved after upgrading a v4 database")
+	}
+	assert.DeepEqual(t, savedRelay.Match.DNSSANs, relayCert.Match.DNSSANs)
 }
 
 func TestSQLiteStorage_GetAPIKeyByID_NotFound(t *testing.T) {

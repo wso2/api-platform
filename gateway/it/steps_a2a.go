@@ -174,6 +174,7 @@ func RegisterA2ASteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 // ---- Management API ----
 
 func (a *A2ASteps) deployAgent(body *godog.DocString) error {
+	recordDeployedAgentName(a.state, body.Content)
 	a.httpSteps.SetHeader("Content-Type", "application/yaml")
 	if err := a.httpSteps.SendPOSTToService("gateway-controller", "/agents", body); err != nil {
 		return err

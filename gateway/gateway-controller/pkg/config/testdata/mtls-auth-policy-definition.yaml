@@ -1,0 +1,100 @@
+name: mtls-auth
+version: v1.0.0
+description: |
+  Authenticates API callers using mutual TLS. The gateway matches the client
+  certificate presented on the connection against the accepted client
+  certificate authorities configured for this policy, optionally narrowed by
+  subject alternative name or certificate thumbprint.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    accept:
+      type: array
+      description: >-
+        Client certificate authorities this policy accepts, each optionally
+        narrowed to a subset of certificates issued by that authority. Omit
+        entirely to accept a certificate issued by any client authority in
+        this gateway's client-CA pool (POST /certificates with
+        usage: downstream).
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          ca:
+            type: string
+            description: >-
+              Name of a client certificate authority in this gateway's
+              client-CA pool that this entry accepts certificates from.
+          match:
+            type: object
+            additionalProperties: false
+            description: >-
+              Narrows this entry to certificates whose subject alternative
+              names overlap the listed values. Omit to accept any certificate
+              issued by `ca`.
+            properties:
+              uriSANs:
+                type: array
+                description: Accepted URI subject alternative names.
+                items:
+                  type: string
+              dnsSANs:
+                type: array
+                description: Accepted DNS subject alternative names.
+                items:
+                  type: string
+          thumbprints:
+            type: array
+            description: >-
+              Narrows this entry to certificates whose SHA-256 thumbprint is
+              one of these values. Accepts 64 hex characters, with or without
+              colon separators and a "sha256:" prefix; normalised to 64
+              lowercase hex characters. Omit to accept any certificate issued
+              by `ca`.
+            items:
+              type: string
+
+    forwardCertificate:
+      type: boolean
+      description: >-
+        Whether the client certificate headers reach this API's backend on an
+        allowed request. Set to false to remove X-Forwarded-Client-Cert, and
+        the certificate header relayed by a front proxy, before the request is
+        forwarded.
+      default: true
+
+    onFailureStatusCode:
+      type: integer
+      description: HTTP status code to return on authentication failure (401 for Unauthorized, 403 for Forbidden).
+      minimum: 400
+      maximum: 599
+      default: 401
+
+    errorMessageFormat:
+      type: string
+      description: Format of error response on mTLS validation failure. Supported values are "json" (structured error), "plain" (plain text), or "minimal" (minimal response).
+      enum: [json, plain, minimal]
+      default: json
+
+    errorMessage:
+      type: string
+      description: Custom error message to include in the response body on authentication failure.
+      default: "Authentication failed"
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    headerName:
+      type: string
+      description: HTTP header in which a trusted front proxy relays the client certificate as PEM or base64-encoded PEM.
+      default: "X-WSO2-CLIENT-CERTIFICATE"
+      "wso2/defaultValue": "${config.router.downstream_tls.client_certificate_header.name}"
+
+    trustAny:
+      type: boolean
+      description: Whether the relayed certificate header is believed on any connection, not only one from a pooled relay authority; safe only when nothing but a trusted front proxy can reach the gateway.
+      default: false
+      "wso2/defaultValue": "${config.router.downstream_tls.client_certificate_header.trust_any}"

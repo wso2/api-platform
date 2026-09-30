@@ -49,6 +49,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -802,6 +803,13 @@ func (s *ExternalProcessorServer) newBoundExecutionContext(
 	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 	ec.defaultUpstream = routeMetadata.DefaultUpstream
 	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+
+	// req.Attributes lives on the ProcessingRequest, not the HttpHeaders message
+	// buildRequestContexts receives. Every phase shares this DownstreamContext,
+	// so setting TLS once covers the response phase too.
+	if ec.requestHeaderCtx != nil && ec.requestHeaderCtx.Downstream != nil {
+		ec.requestHeaderCtx.Downstream.TLS = extractDownstreamTLS(req.Attributes)
+	}
 	return ec
 }
 
@@ -821,6 +829,49 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 		}
 	}
 	return "default"
+}
+
+// extractDownstreamTLS reads the connection.* ext_proc attributes into a
+// policy.DownstreamTLS, or returns nil when Envoy sent no ext_proc attributes
+// at all. PeerCertValid stays nil unless Envoy sent a verdict. Never log
+// PeerCertificatePEM or SHA256Thumbprint.
+func extractDownstreamTLS(attrs map[string]*structpb.Struct) *policy.DownstreamTLS {
+	extProcAttrs, ok := attrs[constants.ExtProcFilter]
+	if !ok || extProcAttrs == nil {
+		return nil
+	}
+	tls := &policy.DownstreamTLS{}
+	fields := extProcAttrs.Fields
+
+	if v, ok := fields[constants.ExtProcAttrConnectionMTLS]; ok {
+		tls.MTLS = v.GetBoolValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificateDigest]; ok {
+		tls.SHA256Thumbprint = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionSubjectPeerCertificate]; ok {
+		tls.SubjectDN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionURISANPeerCertificate]; ok {
+		tls.FirstURISAN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionDNSSANPeerCertificate]; ok {
+		tls.FirstDNSSAN = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificate]; ok {
+		tls.PeerCertificatePEM = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionTLSVersion]; ok {
+		tls.TLSVersion = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionRequestedServerName]; ok {
+		tls.RequestedServerName = v.GetStringValue()
+	}
+	if v, ok := fields[constants.ExtProcAttrConnectionPeerCertificateValid]; ok {
+		valid := v.GetBoolValue()
+		tls.PeerCertValid = &valid
+	}
+	return tls
 }
 
 // skipAllProcessing returns a response that skips all processing phases

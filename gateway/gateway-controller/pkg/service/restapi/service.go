@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -209,6 +210,21 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		StoredConfig: result.StoredConfig,
 		IsUpdate:     result.IsUpdate,
 	}, nil
+}
+
+// ResolveMtlsAuthForResponse computes the mtls-auth warnings and accept-list
+// echo of a successful deploy without changing what is persisted.
+func (s *RestAPIService) ResolveMtlsAuthForResponse(cfg api.RestAPI) (api.RestAPI, []clientca.Warning) {
+	v := config.NewMtlsAuthValidator(s.db, s.routerConfig.HTTPSEnabled,
+		s.routerConfig.DownstreamTLS.ClientCertificateHeader.TrustAny, nil)
+	return v.ResolveMtlsAuthForResponse(cfg)
+}
+
+// ResolveUpstreamTLSWarnings computes the tls-block warnings of a successful
+// deploy.
+func (s *RestAPIService) ResolveUpstreamTLSWarnings(cfg api.RestAPI) []clientca.Warning {
+	v := config.NewUpstreamTLSValidator(s.db, s.systemConfig.Router.Upstream.TLS.DisableSslVerification)
+	return v.ResolveWarnings(cfg)
 }
 
 func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {

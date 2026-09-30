@@ -1,0 +1,172 @@
+# Integration Test Configuration — mTLS profile: client certificate relayed in
+# a header, believed from any connection (trust_any bypass). Runs via
+# `cd it && make test-mtls-header-bypass` (see features/mtls-header-bypass.feature).
+
+# =============================================================================
+# ROOT-LEVEL POLICY CONFIGURATIONS (accessed via ${config.xxx})
+# =============================================================================
+
+# AWS Bedrock Guardrail Policy Configuration
+awsbedrock_guardrail_region = "us-east-1"
+awsbedrock_guardrail_id = "test-guardrail-id"
+awsbedrock_guardrail_version = "DRAFT"
+awsbedrock_access_key_id = "test-access-key"
+awsbedrock_secret_access_key = "test-secret-key"
+awsbedrock_session_token = ""
+awsbedrock_role_arn = ""
+awsbedrock_role_region = ""
+awsbedrock_role_external_id = ""
+
+# Azure Content Safety Policy Configuration
+azurecontentsafety_endpoint = "http://mock-azure-content-safety:8080"
+azurecontentsafety_key = "test-subscription-key"
+
+# Embedding Provider Configuration (for semantic-cache and semantic-prompt-guard)
+embedding_provider = "OPENAI"
+embedding_provider_endpoint = "http://mock-embedding-provider:8080/v1/embeddings"
+embedding_provider_model = "text-embedding-ada-002"
+embedding_provider_dimension = 1536
+embedding_provider_api_key = "test-api-key"
+
+# Redis Configuration (for semantic-cache)
+redis_host = "redis"
+redis_port = 6379
+redis_password = "redis"
+redis_db = 0
+
+# Vector DB Provider Configuration (for semantic-cache)
+vector_db_provider = "REDIS"
+vector_db_provider_host = "redis"
+vector_db_provider_port = 6379
+vector_db_provider_username = "default"
+vector_db_provider_password = "redis"
+vector_db_provider_database = "0"
+vector_db_provider_ttl = 3600  # 1 hour in seconds
+
+# =============================================================================
+# GATEWAY CONTROLLER CONFIGURATION
+# =============================================================================
+
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
+
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
+[controller.storage.postgres]
+host     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST" "" }}'
+port     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT" "5432" }}'
+database = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE" "" }}'
+user     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER" "" }}'
+password = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'
+sslmode  = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE" "disable" }}'
+
+[controller.storage.database]
+# SQL Server DSN (used only when type = "sqlserver").
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
+
+[controller.controlplane]
+host                    = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+token                   = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
+insecure_skip_verify    = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "false" }}'
+deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
+
+[controller.event_hub]
+# Faster poll interval for test responsiveness (default: 3s)
+poll_interval = "200ms"
+
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username = "admin"
+password = "admin"
+password_hashed = false
+roles = ["admin"]
+
+[[controller.auth.basic.users]]
+username = "developer"
+password = "developer"
+password_hashed = false
+roles = ["developer"]
+
+[controller.logging]
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
+
+[controller.metrics]
+enabled = true
+
+[controller.admin_server.config_dump]
+# config_dump is off by default in production; the IT suite (config-dump.feature)
+# exercises this endpoint, so enable it explicitly here.
+enabled = true
+
+# =============================================================================
+# ROUTER CONFIGURATION
+# =============================================================================
+
+[router.access_logs]
+enabled = true
+format = "text"
+
+[router.http_listener.timeouts]
+# This is the only HCM timeout set to a small, testable value here.
+request_headers_timeout = "5s"
+
+[router.downstream_tls.client_certificate_header]
+trust_any = true # believe the relayed certificate from any connection
+
+# =============================================================================
+# POLICY ENGINE CONFIGURATION
+# =============================================================================
+
+[policy_engine.logging]
+level = "debug"
+
+[policy_engine.admin.config_dump]
+# config_dump is off by default in production; enabled here for the IT suite.
+enabled = true
+
+[policy_engine.metrics]
+enabled = true
+
+# =============================================================================
+# POLICY CONFIGURATIONS
+# =============================================================================
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://mock-jwks:8080/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://mock-jwks:8080/jwks"
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "wrong-issuer-km"
+issuer = "http://expected-issuer.com"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://mock-jwks:8080/jwks"
+
+[policy_configurations.ratelimit_v1]
+algorithm = "fixed-window"
+
+[policy_configurations.llm_cost_v1]
+pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
+
+# =============================================================================
+# ANALYTICS CONFIGURATION
+# =============================================================================
+
+[analytics]
+enabled = true
+allow_payloads = false
+send_request_body = false
+send_response_body = false
+enabled_publishers = ["moesif"]
+
+[analytics.publishers.moesif]
+application_id = "test-application-id"
+moesif_base_url = "http://mock-analytics-collector:8080"
+publish_interval = 2
+timer_wakeup_seconds = 1

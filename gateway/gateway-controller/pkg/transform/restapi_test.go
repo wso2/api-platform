@@ -547,6 +547,76 @@ func TestRestAPITransformer_DefaultClusterReferencesRealCluster(t *testing.T) {
 	}
 }
 
+func TestUpstreamClusterKeySeparatesTLSSettings(t *testing.T) {
+	withBlock := func(identity string, verifyHostName bool, trustedCAs ...string) *models.UpstreamTLS {
+		return &models.UpstreamTLS{Enabled: true, HasTLSBlock: true, IdentityName: identity,
+			TrustedCANames: trustedCAs, VerifyHostName: verifyHostName}
+	}
+	key := func(scheme string, tls *models.UpstreamTLS) string {
+		return upstreamClusterKey("main", "backend", 8443, scheme, tls)
+	}
+
+	assert.Equal(t, "upstream_main_backend_8443", key("http", &models.UpstreamTLS{}),
+		"a plain http upstream keeps its host and port name")
+	assert.Equal(t, "upstream_main_backend_8443", key("https", &models.UpstreamTLS{Enabled: true}),
+		"an https upstream without a tls block keeps its host and port name")
+	assert.NotEqual(t, key("https", withBlock("identity-a", true)), key("https", withBlock("identity-b", true)),
+		"different identities are different clusters")
+	assert.NotEqual(t, key("https", &models.UpstreamTLS{Enabled: true}), key("https", withBlock("identity-a", true)),
+		"an upstream without a tls block does not share a cluster with one that presents an identity")
+	assert.NotEqual(t, key("https", withBlock("", true, "ca-a")), key("https", withBlock("", true, "ca-b")),
+		"different trusted authorities are different clusters")
+	assert.NotEqual(t, key("https", withBlock("", true)), key("https", withBlock("", false)),
+		"hostname verification on and off are different clusters")
+	assert.Equal(t, key("https", withBlock("identity-a", true, "ca-a", "ca-b")), key("https", withBlock("identity-a", true, "ca-b", "ca-a")),
+		"the same settings share a cluster whatever the order of trustedCAs")
+	assert.Regexp(t, `^upstream_main_backend_8443_[0-9a-f]{8}$`, key("https", withBlock("identity-a", true)))
+}
+
+func TestRestAPITransformer_APIsSharingABackendKeepTheirOwnIdentity(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	clusterFor := func(identity string) (string, *models.UpstreamCluster) {
+		tls := map[string]interface{}{"identity": identity}
+		upDefs := []api.UpstreamDefinition{{Name: "backend", Tls: &tls, Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "https://backend:8443"}}}}
+		apiData := api.APIConfigData{
+			DisplayName:         "api-" + identity,
+			Context:             "/" + identity,
+			Version:             "1.0.0",
+			UpstreamDefinitions: &upDefs,
+			Operations:          []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Ref: ptrStr("backend")},
+			},
+		}
+		cfg := &models.StoredConfig{
+			UUID:          "api-" + identity,
+			Kind:          string(api.RestAPIKindRestApi),
+			Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "api-" + identity}, Spec: apiData},
+		}
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		for _, r := range rdc.Routes {
+			return r.Upstream.ClusterKey, rdc.UpstreamClusters[r.Upstream.ClusterKey]
+		}
+		t.Fatal("the API produced no routes")
+		return "", nil
+	}
+
+	keyA, clusterA := clusterFor("identity-a")
+	keyB, clusterB := clusterFor("identity-b")
+	assert.NotEqual(t, keyA, keyB)
+	require.NotNil(t, clusterA)
+	require.NotNil(t, clusterB)
+	assert.Equal(t, "identity-a", clusterA.TLS.IdentityName)
+	assert.Equal(t, "identity-b", clusterB.TLS.IdentityName)
+}
+
 func upstreamClusterKeys(rdc *models.RuntimeDeployConfig) []string {
 	keys := make([]string, 0, len(rdc.UpstreamClusters))
 	for k := range rdc.UpstreamClusters {

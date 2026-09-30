@@ -40,7 +40,23 @@ Feature: Certificate management
     And the JSON response should have field "certificates"
     And the JSON response should have field "totalCount"
 
+  @certificate-refusal-current
   Scenario: Upload certificate with invalid PEM format is rejected
+    When I send a "POST" request to the "gateway-controller" service at "/certificates" with body:
+      """
+      {
+        "name": "invalid-cert",
+        "certificate": "This is not a valid PEM certificate"
+      }
+      """
+    Then the response status should be 400
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the JSON response field "message" should contain "certificate upload is invalid"
+    And the JSON response field "errors[0].message" should contain "not a PEM-encoded certificate"
+
+  @certificate-refusal-1.2.0
+  Scenario: Upload certificate with invalid PEM format is rejected by a 1.2.0 gateway
     When I send a "POST" request to the "gateway-controller" service at "/certificates" with body:
       """
       {

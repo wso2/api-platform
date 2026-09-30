@@ -77,6 +77,10 @@ type HTTPSteps struct {
 	lastBody     []byte
 	headers      map[string]string
 	requestHost  string
+
+	// beforeSend, when set, runs just before every request is sent. An error
+	// fails the request's step without sending it.
+	beforeSend func(*http.Request) error
 }
 
 // NewHTTPSteps creates a new HTTPSteps instance
@@ -131,9 +135,28 @@ func (h *HTTPSteps) Reset() {
 	h.requestHost = ""
 }
 
+// SetBeforeSend installs fn to run just before every request this instance
+// sends, whichever step builds it. An error from fn is returned by the send.
+func (h *HTTPSteps) SetBeforeSend(fn func(*http.Request) error) {
+	h.beforeSend = fn
+}
+
+// runBeforeSend calls the installed beforeSend hook, if any.
+func (h *HTTPSteps) runBeforeSend(req *http.Request) error {
+	if h.beforeSend != nil {
+		return h.beforeSend(req)
+	}
+	return nil
+}
+
 // SetHeader sets a header for subsequent requests
 func (h *HTTPSteps) SetHeader(name, value string) {
 	h.headers[name] = value
+}
+
+// RemoveHeader removes a persistent header from subsequent requests.
+func (h *HTTPSteps) RemoveHeader(name string) {
+	delete(h.headers, name)
 }
 
 // SendPOSTToService sends a POST request to a named service with body
@@ -460,6 +483,9 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
 	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
+	if err := h.runBeforeSend(req); err != nil {
+		return err
+	}
 	resp, err := h.client.Do(req)
 	if err != nil {
 		log.Printf("ERROR: Failed to send request to %s: %v", url, err)
@@ -495,6 +521,20 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 
 // sendRequest is a helper to send HTTP requests
 func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
+	return h.sendRequestWith(h.client, method, url, body)
+}
+
+// SendToServiceWithClient sends a request to a named service through client,
+// with the scenario's headers, and records the response like every other step.
+func (h *HTTPSteps) SendToServiceWithClient(client *http.Client, method, serviceName, path string, body []byte) error {
+	baseURL, ok := h.baseURLs[serviceName]
+	if !ok {
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
+	return h.sendRequestWith(client, method, baseURL+path, body)
+}
+
+func (h *HTTPSteps) sendRequestWith(client *http.Client, method, url string, body []byte) error {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -522,20 +562,28 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 		}
 	}
 
+	return h.doRequest(client, req)
+}
+
+// doRequest sends an already-built request with the given client and records
+// the request, response and body for the assertion steps.
+func (h *HTTPSteps) doRequest(client *http.Client, req *http.Request) error {
 	h.lastRequest = req
 
 	reqDump, _ := httputil.DumpRequestOut(req, true)
 	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
-	// Log the request for debugging
-	log.Printf("DEBUG: Sending %s request to %s", method, url)
+	log.Printf("DEBUG: Sending %s request to %s", req.Method, req.URL.String())
 
-	resp, err := h.client.Do(req)
+	if err := h.runBeforeSend(req); err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("ERROR: Failed to send request to %s: %v", url, err)
-		return fmt.Errorf("failed to send request to %s: %w", url, err)
+		log.Printf("ERROR: Failed to send request to %s: %v", req.URL.String(), err)
+		return fmt.Errorf("failed to send request to %s: %w", req.URL.String(), err)
 	}
 
-	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
+	log.Printf("DEBUG: Received response from %s: status=%d", req.URL.String(), resp.StatusCode)
 	// Log response headers
 	for name, values := range resp.Header {
 		for _, value := range values {
@@ -562,6 +610,25 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	return nil
 }
 
+// SendRequestWithClient sends a bodyless request with the given client
+// instead of the shared one, applying the persistent headers and Host
+// override. It serves steps that need a per-connection TLS client certificate.
+func (h *HTTPSteps) SendRequestWithClient(client *http.Client, method, url string) error {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	for name, value := range h.headers {
+		req.Header.Set(name, value)
+	}
+	if host := h.resolveRequestHost("", ""); host != "" {
+		req.Host = host
+	}
+
+	return h.doRequest(client, req)
+}
+
 func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 	var bodyReader io.Reader
 	if body != nil {
@@ -586,6 +653,9 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 
 	h.lastRequest = httpReq
 
+	if err := h.runBeforeSend(httpReq); err != nil {
+		return err
+	}
 	resp, err := h.client.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("failed to reach MCP server for initialize: %w", err)

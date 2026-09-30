@@ -37,14 +37,15 @@ func validConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
-				APIPort:           8080,
-				XDSPort:           18000,
-				GatewayID:         constants.PlatformGatewayId,
-				ReadTimeout:       30 * time.Second,
-				ReadHeaderTimeout: 30 * time.Second,
-				WriteTimeout:      60 * time.Second,
-				IdleTimeout:       120 * time.Second,
-				MaxHeaderBytes:    1 << 20,
+				APIPort:                   8080,
+				XDSPort:                   18000,
+				GatewayID:                 constants.PlatformGatewayId,
+				ReadTimeout:               30 * time.Second,
+				ReadHeaderTimeout:         30 * time.Second,
+				WriteTimeout:              60 * time.Second,
+				IdleTimeout:               120 * time.Second,
+				MaxHeaderBytes:            1 << 20,
+				MaxCertificateUploadBytes: 1 << 20,
 			},
 			Storage: StorageConfig{
 				Type: "sqlite",
@@ -1073,6 +1074,46 @@ func TestDefaultConfig_AdminServerDefaults(t *testing.T) {
 	assert.True(t, cfg.Controller.AdminServer.Enabled)
 	assert.Equal(t, 9092, cfg.Controller.AdminServer.Port)
 	assert.Equal(t, []string{"*"}, cfg.Controller.AdminServer.AllowedIPs)
+}
+
+// Header names must be RFC 7230 tokens that carry no proxy or framing
+// semantics, whatever https_enabled says.
+func TestConfig_ValidateClientCertificateHeaderName(t *testing.T) {
+	tests := []struct {
+		name        string
+		headerName  string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "shipped default", headerName: "X-WSO2-CLIENT-CERTIFICATE", wantErr: false},
+		{name: "space is not a valid tchar", headerName: "X Bad", wantErr: true, errContains: "is not a valid HTTP header name"},
+		{name: "colon is not a valid tchar", headerName: "X:Y", wantErr: true, errContains: "is not a valid HTTP header name"},
+		{name: "reserved x-forwarded-client-cert", headerName: "x-forwarded-client-cert", wantErr: true, errContains: "x-forwarded-client-cert cannot be used as the client certificate header"},
+		{name: "reserved X-Forwarded-Client-Cert", headerName: "X-Forwarded-Client-Cert", wantErr: true, errContains: "X-Forwarded-Client-Cert cannot be used as the client certificate header"},
+		{name: "reserved Host", headerName: "Host", wantErr: true, errContains: "Host cannot be used as the client certificate header"},
+		{name: "reserved connection", headerName: "connection", wantErr: true, errContains: "connection cannot be used as the client certificate header"},
+		{name: "reserved Content-Length", headerName: "Content-Length", wantErr: true, errContains: "Content-Length cannot be used as the client certificate header"},
+		{name: "reserved Transfer-Encoding", headerName: "Transfer-Encoding", wantErr: true, errContains: "Transfer-Encoding cannot be used as the client certificate header"},
+		{name: "reserved TE", headerName: "TE", wantErr: true, errContains: "TE cannot be used as the client certificate header"},
+		{name: "reserved Upgrade", headerName: "Upgrade", wantErr: true, errContains: "Upgrade cannot be used as the client certificate header"},
+		{name: "reserved Keep-Alive", headerName: "Keep-Alive", wantErr: true, errContains: "Keep-Alive cannot be used as the client certificate header"},
+		{name: "reserved Proxy-Connection", headerName: "Proxy-Connection", wantErr: true, errContains: "Proxy-Connection cannot be used as the client certificate header"},
+		{name: "reserved Trailer", headerName: "Trailer", wantErr: true, errContains: "Trailer cannot be used as the client certificate header"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.DownstreamTLS.ClientCertificateHeader.Name = tt.headerName
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestConfig_Validate_HTTPSPort(t *testing.T) {
@@ -2369,4 +2410,36 @@ func TestValidate_CustomTextAccessLogWithoutTagIsNotFatal(t *testing.T) {
 
 	assert.False(t, textAccessLogStartsWithComponentTag(cfg.Router.AccessLogs.TextFormat))
 	assert.NoError(t, cfg.Validate())
+}
+
+func TestConfig_Validate_EmptyClientCertificateHeaderNameBecomesDefault(t *testing.T) {
+	cfg := validConfig()
+	cfg.Router.DownstreamTLS.ClientCertificateHeader.Name = ""
+	require.NoError(t, cfg.Validate())
+	assert.Equal(t, DefaultClientCertificateHeaderName, cfg.Router.DownstreamTLS.ClientCertificateHeader.Name)
+}
+
+func TestConfig_Validate_MaxCertificateUploadBytes(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   int64
+		wantErr string
+	}{
+		{name: "default is accepted", value: 1 << 20},
+		{name: "zero is rejected", value: 0, wantErr: "server.max_certificate_upload_bytes must be positive, got: 0"},
+		{name: "negative is rejected", value: -1, wantErr: "server.max_certificate_upload_bytes must be positive, got: -1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.Server.MaxCertificateUploadBytes = tt.value
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
 }

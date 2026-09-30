@@ -291,6 +291,11 @@ blocks:
         features:
           - features/cel_conditions.feature
       - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
         features:
           - features/certificates.feature
       - name: secrets

@@ -63,7 +63,7 @@ services:
     mem_limit: 2000m
     mem_reservation: 2000m
     cpus: 1
-    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    command: ["--pol.config", "/etc/policy-engine/config.toml", "--rtr.file-flush-interval-msec", "500"]
     ports:
       # Router (Envoy)
       - "8080:8080"   # HTTP ingress

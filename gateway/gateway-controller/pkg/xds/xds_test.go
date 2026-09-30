@@ -213,7 +213,7 @@ func TestNewSDSSecretManager(t *testing.T) {
 	testCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 	nodeID := "test-node"
 
-	manager := NewSDSSecretManager(nil, testCache, nodeID, logger)
+	manager := NewSDSSecretManager(nil, testCache, nodeID, logger, "", "", false)
 
 	if manager == nil {
 		t.Fatal("NewSDSSecretManager() returned nil")
@@ -236,7 +236,7 @@ func TestSDSSecretManager_UpdateSecrets_NoCertStore(t *testing.T) {
 	logger := createTestLogger()
 	testCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 
-	manager := NewSDSSecretManager(nil, testCache, "test-node", logger)
+	manager := NewSDSSecretManager(nil, testCache, "test-node", logger, "", "", false)
 
 	// Should not error when cert store is nil
 	err := manager.UpdateSecrets()
@@ -249,7 +249,7 @@ func TestSDSSecretManager_GetSecret_NoCertStore(t *testing.T) {
 	logger := createTestLogger()
 	testCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 
-	manager := NewSDSSecretManager(nil, testCache, "test-node", logger)
+	manager := NewSDSSecretManager(nil, testCache, "test-node", logger, "", "", false)
 
 	// Should return error when cert store is nil
 	_, err := manager.GetSecret()
@@ -265,7 +265,7 @@ func TestSDSSecretManager_WithCertStore(t *testing.T) {
 	// Create a cert store with mock data
 	cs := certstore.NewCertStore(logger, nil, "", "")
 
-	manager := NewSDSSecretManager(cs, testCache, "test-node", logger)
+	manager := NewSDSSecretManager(cs, testCache, "test-node", logger, "", "", false)
 
 	// GetSecret should return error because cert store has no certs
 	_, err := manager.GetSecret()
@@ -279,7 +279,7 @@ func TestSDSSecretManager_UpdateSecrets_EmptyCertStore(t *testing.T) {
 	testCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 	cs := certstore.NewCertStore(logger, nil, "", "")
 
-	manager := NewSDSSecretManager(cs, testCache, "test-node", logger)
+	manager := NewSDSSecretManager(cs, testCache, "test-node", logger, "", "", false)
 
 	// Should not error, but log warning
 	err := manager.UpdateSecrets()
