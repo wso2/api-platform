@@ -371,7 +371,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	target := dto.Target{}
 	target.ResponseCacheHit = isCacheHit(logEntry)
 	if response != nil {
-		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
+		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().GetValue())
 		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
 		target.Destination = logEntry.GetRequest().GetAuthority() + requestPath
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
@@ -455,7 +455,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if logEntry.GetCommonProperties().GetStreamId() != "" {
 		metaInfo.CorrelationID = logEntry.GetCommonProperties().GetStreamId()
 	} else {
-		metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+		metaInfo.CorrelationID = logEntry.GetRequest().GetRequestId()
 	}
 	metaInfo.RegionID = keyValuePairsFromMetadata[RegionKey]
 
@@ -482,7 +482,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.UserAgentHeader = userAgent
 	event.UserName = userName
 	event.UserIP = userIP
-	event.ProxyResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
+	event.ProxyResponseCode = int(logEntry.GetResponse().GetResponseCode().GetValue())
 	event.RequestTimestamp = logEntry.GetCommonProperties().GetStartTime().AsTime()
 	event.Properties = make(map[string]interface{}, 0)
 

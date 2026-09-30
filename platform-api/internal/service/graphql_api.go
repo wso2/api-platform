@@ -689,7 +689,10 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
 	}
 
-	upstream := mapUpstreamAPIToModel(req.Upstream)
+	// auth.value is redacted on GET, so a read-modify-write that only changes the
+	// endpoint URL never has the stored credential to resend — backfill it from the
+	// existing (unredacted) model, as the REST API update does, instead of wiping it.
+	upstream := mapUpstreamAPIToModel(preserveUpstreamAuthOnAPIUpdate(existing.Configuration.Upstream, req.Upstream))
 	var schemaSource string
 	if req.SchemaSource != nil {
 		schemaSource = string(*req.SchemaSource)
