@@ -140,20 +140,27 @@ func (d *restAPIDefinition) Decode(content []byte) (any, error) {
 	return definition, nil
 }
 
-// llmProxyDefinition renders LLM proxies. It holds the provider repository as
-// well as the proxy's own: the artifact's provider shape depends on the primary
-// provider's template, which the proxy row records only by provider id.
+// llmProxyDefinition renders LLM proxies. It holds the provider and template
+// repositories as well as the proxy's own: the artifact's provider shape
+// depends on the primary provider's template, which the proxy row records only
+// by provider id and the provider row only by template uuid.
 type llmProxyDefinition struct {
 	proxyRepo    repository.LLMProxyRepository
 	providerRepo repository.LLMProviderRepository
+	templateRepo repository.LLMProviderTemplateRepository
 }
 
 // NewLLMProxyDefinition returns the ArtifactDefinition for LLM proxies.
 func NewLLMProxyDefinition(
 	proxyRepo repository.LLMProxyRepository,
 	providerRepo repository.LLMProviderRepository,
+	templateRepo repository.LLMProviderTemplateRepository,
 ) ArtifactDefinition {
-	return &llmProxyDefinition{proxyRepo: proxyRepo, providerRepo: providerRepo}
+	return &llmProxyDefinition{
+		proxyRepo:    proxyRepo,
+		providerRepo: providerRepo,
+		templateRepo: templateRepo,
+	}
 }
 
 // primaryProviderTemplate is the template handle the proxy's primary provider
@@ -166,7 +173,7 @@ func NewLLMProxyDefinition(
 // needs a newer gateway fails loudly on an older one rather than deploying
 // there with a field silently dropped.
 func (d *llmProxyDefinition) primaryProviderTemplate(proxy *model.LLMProxy) string {
-	if d.providerRepo == nil || proxy == nil {
+	if d.providerRepo == nil || d.templateRepo == nil || proxy == nil {
 		return ""
 	}
 	primaryID := model.PrimaryLLMProxyProviderID(proxy.Configuration)
@@ -174,10 +181,18 @@ func (d *llmProxyDefinition) primaryProviderTemplate(proxy *model.LLMProxy) stri
 		return ""
 	}
 	provider, err := d.providerRepo.GetByID(primaryID, proxy.OrganizationUUID)
-	if err != nil || provider == nil {
+	if err != nil || provider == nil || provider.TemplateUUID == "" {
 		return ""
 	}
-	return provider.Configuration.Template
+	// The template is resolved through the provider's templateUuid, the only
+	// place a provider created here records it: the configuration's template
+	// field is filled in by an imported spec alone, so reading it would leave
+	// every provider created through the API looking template-less.
+	template, err := d.templateRepo.GetByUUID(provider.TemplateUUID, proxy.OrganizationUUID)
+	if err != nil || template == nil {
+		return ""
+	}
+	return template.ID
 }
 
 func (d *llmProxyDefinition) Kind() string { return constants.LLMProxy }
