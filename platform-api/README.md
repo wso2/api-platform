@@ -327,6 +327,8 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
 | `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
 | `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
+| `READ_ONLY_ORGANIZATIONS` | _(empty)_ | Comma-separated organization UUIDs whose write operations (POST/PUT/DELETE) are rejected with HTTP 503; reads keep working. Restart-time setting. |
+| `READ_ONLY_ALL_ORGANIZATIONS` | `false` | Reject writes for every organization (full freeze); takes precedence over the list. |
 
 ## Documentation
 
