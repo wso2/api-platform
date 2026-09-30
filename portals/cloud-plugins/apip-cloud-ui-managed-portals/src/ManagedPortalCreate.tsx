@@ -122,9 +122,7 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
                   nameError
                   ?? (handleTaken
                     ? `A portal with handle "${derivedHandle}" already exists in this organization.`
-                    : (derivedHandle
-                      ? `Handle: ${derivedHandle}`
-                      : 'The portal handle is derived from this name and cannot be changed later.'))
+                    : undefined)
                 }
               />
             </FormControl>
