@@ -75,7 +75,6 @@ roles:
       - ap:llm_provider:manage
       - ap:llm_proxy:manage
       - ap:mcp_proxy:manage
-      - ap:agent_proxy:manage
       - ap:secret:manage
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
@@ -127,9 +126,7 @@ roles:
       - ap:llm_proxy:read
       - ap:llm_proxy:deployment:manage
       - ap:mcp_proxy:read
-      - ap:agent_proxy:read
       - ap:mcp_proxy:deployment:manage
-      - ap:agent_proxy:deployment:manage
       - ap:subscription_plan:manage
       - ap:application:read
       - ap:application:api_key:read
@@ -176,7 +173,6 @@ roles:
       - ap:project:manage
       - ap:rest_api:manage
       - ap:mcp_proxy:manage
-      - ap:agent_proxy:manage
       - ap:llm_provider:read
       - ap:llm_proxy:manage
       - ap:llm_template:read
@@ -224,7 +220,6 @@ roles:
       - ap:subscription_plan:read
       - ap:rest_api:read
       - ap:mcp_proxy:read
-      - ap:agent_proxy:read
       - ap:llm_proxy:read
       - ap:llm_provider:read
       - ap:api_key:read
@@ -271,9 +266,7 @@ roles:
       - ap:llm_proxy:deployment:read
       - ap:llm_proxy:api_key:read
       - ap:mcp_proxy:read
-      - ap:agent_proxy:read
       - ap:mcp_proxy:deployment:read
-      - ap:agent_proxy:deployment:read
       - ap:secret:read
       - ap:api_key:read
       - ap:api_portal:draft:read
