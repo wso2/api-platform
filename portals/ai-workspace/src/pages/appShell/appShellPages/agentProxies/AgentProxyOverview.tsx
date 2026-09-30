@@ -152,6 +152,9 @@ function pathsOf(proxy: AgentProxy): Record<string, string> {
   );
 }
 
+const TRANSPORTS_READ_ONLY_MESSAGE =
+  'Transports are managed by the gateway that created this agent proxy and are read-only here.';
+
 const TAB_LABELS = [
   'Overview',
   'Agent Card',
@@ -1224,7 +1227,15 @@ export default function AgentProxyOverview(): React.JSX.Element {
                                   }
                                 />
                               </Stack>
-                              <Tooltip title="Edit path">
+                              <Tooltip
+                                title={
+                                  isReadOnlyAgentProxy
+                                    ? TRANSPORTS_READ_ONLY_MESSAGE
+                                    : !canUpdateAgentProxy
+                                      ? NO_PERMISSION_TOOLTIP
+                                      : 'Edit path'
+                                }
+                              >
                                 <Box component="span">
                                   <IconButton
                                     size="small"
@@ -1485,6 +1496,9 @@ export default function AgentProxyOverview(): React.JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
+              {isReadOnlyAgentProxy && (
+                <GatewayArtifactReadOnlyBanner message="Agent Card configuration is managed by the gateway that created this agent proxy and is read-only here." />
+              )}
               <AgentProxyCardTab
                 state={cardState}
                 onChange={(patch) =>
@@ -1499,6 +1513,9 @@ export default function AgentProxyOverview(): React.JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
+              {isReadOnlyAgentProxy && (
+                <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this agent proxy and are read-only here." />
+              )}
               <AgentProxyGuardrailsTab
                 state={policyState}
                 onChange={setPolicyState}

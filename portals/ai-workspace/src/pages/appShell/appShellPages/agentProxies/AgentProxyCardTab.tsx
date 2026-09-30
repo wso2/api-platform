@@ -75,15 +75,18 @@ function ModeOption({
   label,
   description,
   isDefault,
+  disabled,
 }: {
   value: AgentCardMode;
   label: string;
   description: string;
   isDefault?: boolean;
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <FormControlLabel
       value={value}
+      disabled={disabled}
       control={<Radio size="small" sx={{ alignSelf: 'flex-start', pt: 0.5 }} />}
       sx={{
         alignItems: 'flex-start',
@@ -253,12 +256,14 @@ export default function AgentProxyCardTab({
             >
               <ModeOption
                 value="passthrough"
+                disabled={disabled}
                 label="Passthrough"
                 description="Forwards the upstream's own card. Upstream changes flow through automatically."
                 isDefault
               />
               <ModeOption
                 value="managed"
+                disabled={disabled}
                 label="Managed"
                 description="The platform stores and serves an authored card, edited below."
               />
@@ -310,16 +315,26 @@ export default function AgentProxyCardTab({
             renderPassthroughCard()
           )}
 
-          <Box>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={onRefetch}
-              disabled={isFetching}
-            >
-              Fetch Agent Info
-            </Button>
-          </Box>
+            <Box>
+              <Tooltip
+                title={
+                  isPublicManaged
+                    ? 'The upstream card is shown in Passthrough mode. This card is authored here, so there is nothing to fetch.'
+                    : ''
+                }
+              >
+                <Box component="span">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={onRefetch}
+                    disabled={isFetching || isPublicManaged}
+                  >
+                    Fetch Agent Info
+                  </Button>
+                </Box>
+              </Tooltip>
+            </Box>
         </Stack>
       </Box>
 
@@ -361,11 +376,13 @@ export default function AgentProxyCardTab({
             >
               <ModeOption
                 value="passthrough"
+                disabled={disabled}
                 label="Passthrough"
                 description="Forwards the upstream's own card. Upstream changes flow through automatically."
               />
               <ModeOption
                 value="managed"
+                disabled={disabled}
                 label="Managed"
                 description="The platform stores and serves an authored card, edited below."
               />
