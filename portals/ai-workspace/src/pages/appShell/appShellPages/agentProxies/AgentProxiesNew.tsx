@@ -55,9 +55,11 @@ import AgentProxyCardDetails from './AgentProxyCardDetails';
 import AgentProxiesCreateForm, {
   AGENT_TRANSPORT_OPTIONS,
 } from './AgentProxiesCreateForm';
+import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
 
 export const AGENT_VERSION_PATTERN = /^v\d+\.\d+$/;
 export const AGENT_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
+export const AGENT_TARGET_ERROR = 'The provided URL is invalid.';
 const DEFAULT_AGENT_VERSION = 'v1.0';
 
 function generateAgentProxyId(name: string): string {
@@ -143,6 +145,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
   const [endpointUrl, setEndpointUrl] = useState('');
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [agentCard, setAgentCard] = useState<AgentCardDocument | null>(null);
   const [lastFetchedUrl, setLastFetchedUrl] = useState('');
   const [isCreateStep, setIsCreateStep] = useState(false);
@@ -174,12 +177,24 @@ export default function AgentProxiesNew(): React.JSX.Element {
     agentVersion.trim() && !AGENT_VERSION_PATTERN.test(agentVersion.trim())
       ? AGENT_VERSION_ERROR
       : undefined;
+  const targetValidationError =
+    agentTarget.trim() && !isValidHttpUrl(agentTarget.trim())
+      ? AGENT_TARGET_ERROR
+      : undefined;
 
   const fetchCard = async (rawUrl: string) => {
     const normalizedUrl = rawUrl.trim();
     if (!normalizedUrl) return;
 
+    if (!isValidHttpUrl(normalizedUrl)) {
+      setUrlError(AGENT_TARGET_ERROR);
+      setFetchError(null);
+      setAgentCard(null);
+      return;
+    }
+
     setIsFetching(true);
+    setUrlError(null);
     setFetchError(null);
     setAgentCard(null);
     setLastFetchedUrl(normalizedUrl);
@@ -204,6 +219,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
 
   const handleEndpointChange = (value: string) => {
     setEndpointUrl(value);
+    setUrlError(null);
     if (value.trim() !== lastFetchedUrl) {
       setFetchError(null);
       setAgentCard(null);
@@ -227,7 +243,8 @@ export default function AgentProxiesNew(): React.JSX.Element {
   };
 
   const handleCreate = async () => {
-    if (!effectiveProject?.id || versionValidationError) return;
+    if (!effectiveProject?.id || versionValidationError || targetValidationError)
+      return;
 
     const transports: A2ATransport[] = AGENT_TRANSPORT_OPTIONS.filter(
       (transport) => selectedTransports.includes(transport.protocolBinding)
@@ -293,6 +310,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
     !agentVersion.trim() ||
     Boolean(versionValidationError) ||
     !agentTarget.trim() ||
+    Boolean(targetValidationError) ||
     selectedTransports.length === 0;
 
   if (!canCreateAgentProxy) {
@@ -371,7 +389,10 @@ export default function AgentProxiesNew(): React.JSX.Element {
           onTransportPathChange={(binding, path) =>
             setTransportPaths((prev) => ({ ...prev, [binding]: path }))
           }
-          fieldErrors={{ version: versionValidationError }}
+          fieldErrors={{
+            version: versionValidationError,
+            target: targetValidationError,
+          }}
           onCancel={() => setIsCreateStep(false)}
           onCreate={handleCreate}
           onContextChange={setAgentContextOverride}
@@ -415,8 +436,8 @@ export default function AgentProxiesNew(): React.JSX.Element {
                   />
                 </FormControl>
 
-                {fetchError ? (
-                  <Alert severity="error">{fetchError}</Alert>
+                {fetchError || urlError ? (
+                  <Alert severity="error">{fetchError ?? urlError}</Alert>
                 ) : null}
               </Stack>
             </Card>
