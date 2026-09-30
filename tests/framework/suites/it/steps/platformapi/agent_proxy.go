@@ -673,7 +673,9 @@ func agentCardFixtureURL(base, scope, mode string) string {
 	return strings.TrimSuffix(base, "/") + "/" + scope + "/" + mode
 }
 
-// agentCardFixtureCount reads how many card requests the fixture received for a scope.
+// agentCardFixtureCount reads how many card requests the fixture received for a scope. A
+// transport failure is marked transient: the testbench is shared, and attaching it to or
+// detaching it from another block's network briefly refuses connections on its host port.
 func (s *Steps) agentCardFixtureCount(ctx context.Context, scope string) (int, error) {
 	base, err := s.topo.URL("testbench", agentCardFixtureEndpoint)
 	if err != nil {
@@ -687,7 +689,7 @@ func (s *Steps) agentCardFixtureCount(ctx context.Context, scope string) (int, e
 		URL:    base + "/" + s.topo.Block.PartitionKey() + "/test/requests?scope=" + url.QueryEscape(scope),
 	}, 0, 0)
 	if err != nil {
-		return 0, fmt.Errorf("reading the Agent Card fixture counter: %w", err)
+		return 0, retry.Transient(fmt.Errorf("reading the Agent Card fixture counter: %w", err))
 	}
 	return parseFixtureCount(resp, scope)
 }
@@ -711,7 +713,9 @@ func (s *Steps) agentCardFixtureCountIs(ctx context.Context, want int, scope str
 	if err != nil {
 		return err
 	}
-	got, err := s.agentCardFixtureCount(ctx, resolved)
+	got, err := retry.Until(ctx, retry.Options{}, func(ctx context.Context) (int, error) {
+		return s.agentCardFixtureCount(ctx, resolved)
+	}, func(int) bool { return true })
 	if err != nil {
 		return err
 	}
