@@ -75,24 +75,18 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
   // handle, which the route always carries, so the heading still says what it is
   // about while the display name is still loading.
   const subject =
-    project?.displayName ??
-    organization?.displayName ??
-    params.projectHandler ??
-    params.orgHandle;
+    project?.displayName ?? organization?.displayName ?? params.projectHandler ?? params.orgHandle;
 
   // The index route carries no tab segment, and renders the first tab's
   // content — so it highlights the first tab rather than nothing at all.
   const selectedId =
-    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ??
-    tabs[0]?.id;
+    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ?? tabs[0]?.id;
 
   const goToTab = (path: string) => {
     if (!params.orgHandle) return;
     if (level === 'project') {
       if (!params.projectHandler) return;
-      navigate(
-        routes.projectSettingsTab(path, params.orgHandle, params.projectHandler)
-      );
+      navigate(routes.projectSettingsTab(path, params.orgHandle, params.projectHandler));
       return;
     }
     navigate(routes.settingsTab(path, params.orgHandle));
@@ -110,9 +104,7 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
       <Box sx={{ flexShrink: 0, pr: 3, width: { md: 280, xs: 200 } }}>
         <Stack spacing={2}>
           <PageTitle>
-            <PageTitle.Header>
-              {intl.formatMessage(messages.title)}
-            </PageTitle.Header>
+            <PageTitle.Header>{intl.formatMessage(messages.title)}</PageTitle.Header>
             <PageTitle.SubHeader>
               {intl.formatMessage(messages.subtitle, { subject })}
             </PageTitle.SubHeader>
@@ -124,17 +116,20 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
                 onClick={() => goToTab(tab.path)}
                 selected={tab.id === selectedId}
                 sx={{
+                  border: 1,
                   borderColor: 'divider',
                   borderRadius: 1,
-                  border: 1,
                   mb: 0.5,
+                  '&.Mui-selected, &.Mui-selected:hover': {
+                    bgcolor: 'action.selected',
+                    borderColor: 'primary.main',
+                    '& .MuiListItemIcon-root': { color: 'primary.main' },
+                    '& .MuiListItemText-primary': { color: 'primary.main', fontWeight: 500 },
+                  },
                 }}
               >
                 <ListItemIcon sx={{ minWidth: 32 }}>{tab.icon}</ListItemIcon>
-                <ListItemText
-                  primary={tab.label}
-                  slotProps={{ primary: { noWrap: true } }}
-                />
+                <ListItemText primary={tab.label} slotProps={{ primary: { noWrap: true } }} />
               </ListItemButton>
             ))}
           </List>

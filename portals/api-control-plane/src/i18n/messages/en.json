@@ -628,6 +628,14 @@
   "apiControlPlane.components.ErrorFallback.stale.title": {
     "defaultMessage": "A newer version of the console is available"
   },
+  "apiControlPlane.components.StateViews.forbiddenDescription": {
+    "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
+    "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
+  },
+  "apiControlPlane.components.StateViews.forbiddenTitle": {
+    "defaultMessage": "You don't have permission to view this",
+    "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
+  },
   "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.overflow": {
     "defaultMessage": "{count, plural, one {# more policy} other {# more policies}}: {names}",
     "description": "Tooltip on the \"+N\" circle standing for policies too numerous to draw. {names} is a comma-separated list of policy names, which are not translated."
@@ -705,13 +713,13 @@
     "defaultMessage": "Settings",
     "description": "Browser tab title for any Settings tab."
   },
-  "apiControlPlane.components.StateViews.forbiddenTitle": {
-    "defaultMessage": "You don't have permission to view this",
-    "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
-  },
   "apiControlPlane.navigation.useSettingsTabs.generalTab": {
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
+  },
+  "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
+    "defaultMessage": "Subscription plans",
+    "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
     "defaultMessage": "APIs"
@@ -2103,6 +2111,9 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
     "defaultMessage": "Draft saved."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly": {
+    "defaultMessage": "Details saved. The specification has an error and was not saved."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
     "defaultMessage": "Unable to load the publish details."
   },
@@ -2207,10 +2218,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.invalidOpenApi": {
-    "defaultMessage": "This is not a valid OpenAPI definition:",
-    "description": "Heading above the list of OpenAPI validation errors."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
@@ -2339,6 +2346,223 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
     "defaultMessage": "Settings",
     "description": "Heading of the Settings page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.create": {
+    "defaultMessage": "Create plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete": {
+    "defaultMessage": "Delete plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.edit": {
+    "defaultMessage": "Edit plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.actions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.limits": {
+    "defaultMessage": "Limits"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.name": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.status": {
+    "defaultMessage": "Status"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmAction": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmInputLabel": {
+    "defaultMessage": "Type the plan name to confirm"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.failed": {
+    "defaultMessage": "Failed to delete the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.message": {
+    "defaultMessage": "This permanently deletes \"{name}\". This can’t be undone."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.succeeded": {
+    "defaultMessage": "Deleted plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.title": {
+    "defaultMessage": "Delete plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.action": {
+    "defaultMessage": "Create plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.description": {
+    "defaultMessage": "Plans define how many requests an application can make in a time window. Create a plan, then enable it on the APIs you publish."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.title": {
+    "defaultMessage": "Create your first subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.error.message": {
+    "defaultMessage": "Unable to load subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.limitChip": {
+    "defaultMessage": "req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}",
+    "description": "Compact monospace tag summarizing one throttling limit, e.g. \"req · 1000 / hr\" or \"req · 100000 / 2 hr\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.loading": {
+    "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.description": {
+    "defaultMessage": "Try a different search term."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.title": {
+    "defaultMessage": "No matching plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.activated": {
+    "defaultMessage": "Activated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.deactivated": {
+    "defaultMessage": "Deactivated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.searchPlaceholder": {
+    "defaultMessage": "Search plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.active": {
+    "defaultMessage": "Active"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.inactive": {
+    "defaultMessage": "Inactive"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.subtitle": {
+    "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title": {
+    "defaultMessage": "Subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip": {
+    "defaultMessage": "req · ∞",
+    "description": "Chip shown for a plan with no configured limits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.update.failed": {
+    "defaultMessage": "Failed to update the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.addPlan": {
+    "defaultMessage": "Add plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.adding": {
+    "defaultMessage": "Adding…",
+    "description": "Label on the submit button while a new plan is being created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.close": {
+    "defaultMessage": "Close",
+    "description": "Accessible name of the icon button that dismisses the dialog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.saveChanges": {
+    "defaultMessage": "Save changes"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Label on the submit button while edits to an existing plan are being saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.addLimit": {
+    "defaultMessage": "Add limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.message": {
+    "defaultMessage": "A plan named \"{name}\" already exists in this organization. Choose a different name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.title": {
+    "defaultMessage": "Plan not created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.helper": {
+    "defaultMessage": "The plan stops accepting subscriptions after this date."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label": {
+    "defaultMessage": "Expiry date (optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel": {
+    "defaultMessage": "Request count",
+    "description": "Accessible name of the numeric field holding how many requests are allowed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.error": {
+    "defaultMessage": "Enter a whole number of at least 1."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.per": {
+    "defaultMessage": "/ per"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.remove": {
+    "defaultMessage": "Remove limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.bandwidth": {
+    "defaultMessage": "Bandwidth"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.comingSoon": {
+    "defaultMessage": "Coming soon",
+    "description": "Chip shown next to a limit type that is not selectable yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.requestCount": {
+    "defaultMessage": "Request count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.tokenCount": {
+    "defaultMessage": "Token count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.typeLabel": {
+    "defaultMessage": "Limit type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.unitLabel": {
+    "defaultMessage": "Time window unit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.helper": {
+    "defaultMessage": "Leave empty for an unlimited plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.label": {
+    "defaultMessage": "Limits"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.conflict": {
+    "defaultMessage": "A plan with this name already exists"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.invalidChars": {
+    "defaultMessage": "Use letters or numbers in the name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.required": {
+    "defaultMessage": "Enter a display name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.label": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.placeholder": {
+    "defaultMessage": "Gold"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.createFailed": {
+    "defaultMessage": "Failed to create the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.created": {
+    "defaultMessage": "Created plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updateFailed": {
+    "defaultMessage": "Failed to update the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updated": {
+    "defaultMessage": "Updated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.helper": {
+    "defaultMessage": "Reject requests that exceed the limit."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.label": {
+    "defaultMessage": "Block requests when quota is reached"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.create": {
+    "defaultMessage": "Add subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.edit": {
+    "defaultMessage": "Edit subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.day": {
+    "defaultMessage": "Day"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.hour": {
+    "defaultMessage": "Hour"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.minute": {
+    "defaultMessage": "Minute"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month": {
+    "defaultMessage": "Month"
   },
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.body": {
     "defaultMessage": "Legacy routes that are outside the MVP are intentionally not exposed."
@@ -2823,6 +3047,10 @@
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
   },
+  "apiControlPlane.permissions.useCan.denied": {
+    "defaultMessage": "You don't have permission to perform this action.",
+    "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
+  },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
   },
@@ -2852,14 +3080,6 @@
   },
   "apiControlPlane.projects.ProjectStatistics.selectType": {
     "defaultMessage": "Filter APIs by {type}"
-  },
-  "apiControlPlane.permissions.useCan.denied": {
-    "defaultMessage": "You don't have permission to perform this action.",
-    "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
-  },
-  "apiListPage.count": {
-    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
-    "description": "Heading above the listing, counting every match, not the page."
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",

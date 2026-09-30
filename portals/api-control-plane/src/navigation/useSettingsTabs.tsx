@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import { Settings } from '@wso2/oxygen-ui-icons-react';
+import { Gauge, Settings } from '@wso2/oxygen-ui-icons-react';
 
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
 import {
@@ -35,6 +35,12 @@ const messages = defineMessages({
     defaultMessage: 'General',
     description:
       'Label for the built-in first tab of the Settings page. A noun naming the section, not a command.',
+  },
+  subscriptionPlansTab: {
+    id: 'apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab',
+    defaultMessage: 'Subscription plans',
+    description:
+      'Label for the built-in organization-level Settings tab listing rate-limit tiers.',
   },
 });
 
@@ -84,6 +90,18 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
           path: 'general',
         },
       ];
+
+  // Subscription plans are organization-scoped (platform-api has no
+  // project-level plan endpoint), so the tab only appears at that level.
+  if (level === 'organization') {
+    builtInTabs.push({
+      icon: <Gauge size={18} />,
+      id: 'subscription-plans',
+      label: intl.formatMessage(messages.subscriptionPlansTab),
+      order: 1,
+      path: 'subscription-plans',
+    });
+  }
 
   return [...builtInTabs, ...extensionTabs].sort(
     (left, right) => left.order - right.order
