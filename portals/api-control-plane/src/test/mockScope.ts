@@ -48,6 +48,7 @@ export function makeConsoleScope(overrides: Partial<ConsoleScope> = {}): Console
     isLoading: false,
     isOrganizationScope: Boolean(organization),
     isProjectScope: Boolean(project),
+    orgAccessDenied: false,
     organization,
     organizations: overrides.organizations ?? [anOrganization()],
     params,
