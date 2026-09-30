@@ -194,15 +194,11 @@ func (u *Steps) invokesMCPProxyThroughGateway(ctx context.Context) error {
 	if proxy.Context == "" {
 		return fmt.Errorf("MCP proxy %q has no context", id)
 	}
-	inst, err := u.topo.Component("platform-gateway")
+	gatewayURL, err := u.deployedGatewayEndpoint(ctx, id)
 	if err != nil {
 		return err
 	}
-	gatewayURL, err := inst.InternalURL("http")
-	if err != nil {
-		return err
-	}
-	invokeURL := gatewayURL + strings.TrimSuffix(proxy.Context, "/") + "/mcp"
+	invokeURL := strings.TrimSuffix(gatewayURL, "/") + strings.TrimSuffix(proxy.Context, "/") + "/mcp"
 	inv, err := retry.Until(ctx, retry.Options{}, func(context.Context) (invocation, error) {
 		resp, err := page.Context().Request().Post(invokeURL, playwright.APIRequestContextPostOptions{
 			Headers: map[string]string{"Accept": "application/json, text/event-stream"},
@@ -225,6 +221,56 @@ func (u *Steps) invokesMCPProxyThroughGateway(ctx context.Context) error {
 		return fmt.Errorf("invoking %s: %w", invokeURL, err)
 	}
 	return tcontext.Set(ctx, keyInvocation, inv)
+}
+
+// deployedGatewayEndpoint returns the invoke endpoint registered for the gateway the MCP proxy
+// is deployed to. The gateway is a multi-container component with no single network alias, so
+// the endpoint platform-api holds for it is the address its router answers on.
+func (u *Steps) deployedGatewayEndpoint(ctx context.Context, proxyID string) (string, error) {
+	page, base, token, err := u.platformAPI(ctx)
+	if err != nil {
+		return "", err
+	}
+	headers := map[string]string{"Authorization": "Bearer " + token}
+	resp, err := page.Context().Request().Get(base+"/api/v0.9/mcp-proxies/"+proxyID+"/deployments",
+		playwright.APIRequestContextGetOptions{Headers: headers, IgnoreHttpsErrors: playwright.Bool(true)})
+	if err != nil {
+		return "", fmt.Errorf("listing deployments of MCP proxy %q: %w", proxyID, err)
+	}
+	var deployments struct {
+		List []struct {
+			GatewayID string `json:"gatewayId"`
+			Status    string `json:"status"`
+		} `json:"list"`
+	}
+	if err := resp.JSON(&deployments); err != nil {
+		return "", fmt.Errorf("reading deployments of MCP proxy %q: %w", proxyID, err)
+	}
+	gatewayID := ""
+	for _, d := range deployments.List {
+		if d.Status == "DEPLOYED" && d.GatewayID != "" {
+			gatewayID = d.GatewayID
+			break
+		}
+	}
+	if gatewayID == "" {
+		return "", fmt.Errorf("MCP proxy %q has no active deployment", proxyID)
+	}
+	resp, err = page.Context().Request().Get(base+"/api/v0.9/gateways/"+gatewayID,
+		playwright.APIRequestContextGetOptions{Headers: headers, IgnoreHttpsErrors: playwright.Bool(true)})
+	if err != nil {
+		return "", fmt.Errorf("reading gateway %q: %w", gatewayID, err)
+	}
+	var gateway struct {
+		Endpoints []string `json:"endpoints"`
+	}
+	if err := resp.JSON(&gateway); err != nil {
+		return "", fmt.Errorf("reading gateway %q: %w", gatewayID, err)
+	}
+	if len(gateway.Endpoints) == 0 || gateway.Endpoints[0] == "" {
+		return "", fmt.Errorf("gateway %q has no registered endpoint", gatewayID)
+	}
+	return gateway.Endpoints[0], nil
 }
 
 // mcpUpstreamReceivedHeader asserts the capture service recorded the scenario's MCP request
