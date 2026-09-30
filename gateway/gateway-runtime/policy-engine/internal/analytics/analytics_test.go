@@ -638,6 +638,27 @@ func TestPrepareAnalyticEvent_WithFilterMetadata(t *testing.T) {
 	assert.Equal(t, "TestApp", event.Application.ApplicationName)
 }
 
+// TestPrepareAnalyticEvent_NoResponseCode covers an access-log entry Envoy emits
+// without a response code, e.g. when the client disconnects before any response is
+// sent downstream. Reading the unset wrapper's .Value directly used to nil-deref;
+// Process recovered the panic but dropped the event and logged "panic occurred".
+func TestPrepareAnalyticEvent_NoResponseCode(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	logEntry := createLogEntryWithMetadata(map[string]string{APINameKey: "TestAPI"})
+	logEntry.Response.ResponseCode = nil
+	logEntry.Request.RequestId = ""
+	if logEntry.CommonProperties != nil {
+		logEntry.CommonProperties.StreamId = ""
+	}
+
+	var event *dto.Event
+	require.NotPanics(t, func() { event = analytics.prepareAnalyticEvent(logEntry) })
+	require.NotNil(t, event)
+	assert.Equal(t, 0, event.ProxyResponseCode)
+	assert.Equal(t, 0, event.Target.TargetResponseCode)
+}
+
 func TestPrepareAnalyticEvent_WithAnonymousApp(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)
