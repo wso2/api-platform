@@ -280,9 +280,8 @@ All in the portal:
   issues a token with its client secret.
 - **Subscriptions** — on an API's page, **Subscribe** and pick a plan.
 
-APIs and MCP servers are published into the organization as usual. To load the sample
-catalog for a demo, `scripts/seed-samples.sh` takes a token issued for the organization's
-administrator (`ACCESS_TOKEN`); see
+APIs and MCP servers are published into the organization through the portal's REST API,
+with a token issued for the organization's administrator; see
 [Onboarding an organization's catalog](multi-organization.md#onboarding-an-organizations-catalog).
 
 ---

@@ -29,21 +29,8 @@
 #   ./scripts/seed-samples.sh
 #
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
-# credential prompt (used by CI). ACCESS_TOKEN supplies an already-issued bearer
-# token instead (e.g. from an external IDP) and skips the Platform API login
-# entirely; it is only sent over verified HTTPS, so API_PORTAL_URL must be https://,
-# and API_PORTAL_CA_CERT names a CA bundle to trust for a privately issued portal
-# certificate. API_PORTAL_URL / PLATFORM_API_URL override the default local URLs.
-#
-# SAMPLES_DIR overrides which directory's apis/ and mcps/ subfolders get seeded
-# (default: auto-detected, see below) — e.g. one organization's own bundle when
-# onboarding an organization in multi-organization mode. With ACCESS_TOKEN issued for that
-# organization, the entries are created in it (docs/administer/multi-organization.md).
-#
-# PLAN_OVERRIDE (optional), pipe-delimited plan handles, e.g. "Gold|Silver" — when
-# set, each sample's subscriptionPlans: block is rewritten to exactly this list
-# before upload, so a seeded catalog only advertises plans that exist in the target
-# organization.
+# credential prompt (used by CI). API_PORTAL_URL / PLATFORM_API_URL override
+# the default local URLs.
 #
 # Safe to re-run: entries that already exist (matched by name + version) are
 # skipped, not duplicated.
@@ -65,12 +52,9 @@ else
     exit 1
 fi
 
-# SAMPLES_DIR, if the caller supplied one, is used as-is. Otherwise: the
-# distribution zip ships samples under resources/samples/; the source repo
-# keeps them at samples/ (see Makefile's dist target for the copy).
-if [ -n "${SAMPLES_DIR:-}" ]; then
-    [ -d "$SAMPLES_DIR" ] || { echo "[seed-samples] ERROR: SAMPLES_DIR does not exist: $SAMPLES_DIR" >&2; exit 1; }
-elif [ -d "$ROOT_DIR/resources/samples" ]; then
+# The distribution zip ships samples under resources/samples/; the source
+# repo keeps them at samples/ (see Makefile's dist target for the copy).
+if [ -d "$ROOT_DIR/resources/samples" ]; then
     SAMPLES_DIR="$ROOT_DIR/resources/samples"
 elif [ -d "$ROOT_DIR/samples" ]; then
     SAMPLES_DIR="$ROOT_DIR/samples"
@@ -102,66 +86,28 @@ command -v curl >/dev/null 2>&1 || fail "curl is required but not found on PATH.
 command -v jq   >/dev/null 2>&1 || fail "jq is required but not found on PATH."
 command -v zip  >/dev/null 2>&1 || fail "zip is required but not found on PATH."
 
-# ACCESS_TOKEN lets a caller supply an already-issued bearer token (e.g. one
-# obtained from an external IDP) instead of logging in to Platform API here —
-# the only auth backend this script otherwise knows about.
-if [ -n "${ACCESS_TOKEN:-}" ]; then
-    log "Using supplied ACCESS_TOKEN — skipping Platform API login."
-    TOKEN="$ACCESS_TOKEN"
-else
-    if [ -z "${ADMIN_USERNAME:-}" ] && [ -t 0 ]; then
-        read -r -p "API Portal admin username: " ADMIN_USERNAME
-    fi
-    [ -n "${ADMIN_USERNAME:-}" ] || fail "an admin username is required (set ADMIN_USERNAME/ADMIN_PASSWORD, or ACCESS_TOKEN, or run interactively)."
-
-    if [ -z "${ADMIN_PASSWORD:-}" ] && [ -t 0 ]; then
-        read -r -s -p "API Portal admin password: " ADMIN_PASSWORD
-        echo
-    fi
-    [ -n "${ADMIN_PASSWORD:-}" ] || fail "an admin password is required (set ADMIN_USERNAME/ADMIN_PASSWORD, or ACCESS_TOKEN, or run interactively)."
-
-    log "Logging in to Platform API at $PLATFORM_API_URL ..."
-    # Percent-encode both values — a raw '&'/'='/'+'/'%' in either would otherwise
-    # split or corrupt the application/x-www-form-urlencoded body. jq is already a
-    # hard requirement above, so @uri is used rather than adding a new dependency.
-    urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
-    ENCODED_ADMIN_USERNAME="$(urlencode "$ADMIN_USERNAME")"
-    ENCODED_ADMIN_PASSWORD="$(urlencode "$ADMIN_PASSWORD")"
-    TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v0.9/auth/login" \
-        -d "username=$ENCODED_ADMIN_USERNAME&password=$ENCODED_ADMIN_PASSWORD" | jq -r '.token // empty')
-    [ -n "$TOKEN" ] || fail "failed to obtain a token — check the credentials and that Platform API is reachable at $PLATFORM_API_URL."
+if [ -z "${ADMIN_USERNAME:-}" ] && [ -t 0 ]; then
+    read -r -p "API Portal admin username: " ADMIN_USERNAME
 fi
-# Temporary files removed on every exit, including one set -e cuts short: the header
-# file carrying the token, and a sample's rewritten api.yaml (PLAN_OVERRIDE).
-AUTH_HEADER_FILE=""
-TMP_YAML=""
-cleanup() {
-    rm -f -- ${AUTH_HEADER_FILE:+"$AUTH_HEADER_FILE"} ${TMP_YAML:+"$TMP_YAML"}
-}
-trap cleanup EXIT
+[ -n "${ADMIN_USERNAME:-}" ] || fail "an admin username is required (set ADMIN_USERNAME or run interactively)."
 
-# The token goes to curl through a 0600 header file (-H @file) rather than its argument
-# list, which other local users can read from the process table.
-AUTH_HEADER_FILE="$(mktemp "${TMPDIR:-/tmp}/seed-samples-auth.XXXXXX")"
-chmod 600 "$AUTH_HEADER_FILE"
-printf 'Authorization: Bearer %s\n' "$TOKEN" > "$AUTH_HEADER_FILE"
-
-# TLS options for the calls that carry the token to the portal. The Platform API login
-# above targets the local deployment setup.sh creates, whose self-signed certificate
-# isn't verified. A supplied ACCESS_TOKEN is typically a real IDP credential, so it only
-# travels over verified HTTPS (--proto limits curl to https).
-PORTAL_TLS=(-k)
-if [ -n "${ACCESS_TOKEN:-}" ]; then
-    case "$API_PORTAL_URL" in
-        https://*) ;;
-        *) fail "ACCESS_TOKEN is only sent over HTTPS — set API_PORTAL_URL to an https:// URL." ;;
-    esac
-    PORTAL_TLS=(--proto =https)
-    if [ -n "${API_PORTAL_CA_CERT:-}" ]; then
-        [ -f "$API_PORTAL_CA_CERT" ] || fail "API_PORTAL_CA_CERT does not exist: $API_PORTAL_CA_CERT"
-        PORTAL_TLS+=(--cacert "$API_PORTAL_CA_CERT")
-    fi
+if [ -z "${ADMIN_PASSWORD:-}" ] && [ -t 0 ]; then
+    read -r -s -p "API Portal admin password: " ADMIN_PASSWORD
+    echo
 fi
+[ -n "${ADMIN_PASSWORD:-}" ] || fail "an admin password is required (set ADMIN_PASSWORD or run interactively)."
+
+log "Logging in to Platform API at $PLATFORM_API_URL ..."
+# Percent-encode both values — a raw '&'/'='/'+'/'%' in either would otherwise
+# split or corrupt the application/x-www-form-urlencoded body. jq is already a
+# hard requirement above, so @uri is used rather than adding a new dependency.
+urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
+ENCODED_ADMIN_USERNAME="$(urlencode "$ADMIN_USERNAME")"
+ENCODED_ADMIN_PASSWORD="$(urlencode "$ADMIN_PASSWORD")"
+TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v0.9/auth/login" \
+    -d "username=$ENCODED_ADMIN_USERNAME&password=$ENCODED_ADMIN_PASSWORD" | jq -r '.token // empty')
+[ -n "$TOKEN" ] || fail "failed to obtain a token — check the credentials and that Platform API is reachable at $PLATFORM_API_URL."
+AUTH_HEADER="Authorization: Bearer $TOKEN"
 
 SECONDS=0
 API_CREATED=0; API_SKIPPED=0; API_FAILED=0
@@ -188,9 +134,9 @@ seed_docs() {
     (cd "$sample_dir/.." && zip -qr "$tmp_zip" "$(basename "$sample_dir")/docs/")
 
     local http_code
-    http_code=$(curl -s "${PORTAL_TLS[@]}" -o /dev/null -w "%{http_code}" -X POST \
+    http_code=$(curl -sk -o /dev/null -w "%{http_code}" -X POST \
         "$API_PORTAL_URL$resource_path/assets" \
-        -H "@$AUTH_HEADER_FILE" \
+        -H "$AUTH_HEADER" \
         -F "content=@$tmp_zip;type=application/zip")
     rm -f "$tmp_zip"
 
@@ -242,33 +188,9 @@ seed_entry() {
     local definition
     definition=$(compgen -G "$sample_dir/definition.*" 2>/dev/null | head -1 || true)
 
-    # PLAN_OVERRIDE (see the header comment) replaces the sample's own
-    # subscriptionPlans: block with exactly the target organization's plan set.
-    # Every sample writes it as a multi-line block (subscriptionPlans:\n    - Plan),
-    # so a targeted awk substitution is enough — no YAML parser needed.
-    TMP_YAML=""
-    if [ -n "${PLAN_OVERRIDE:-}" ]; then
-        TMP_YAML="$(mktemp "${TMPDIR:-/tmp}/seed-samples.XXXXXX")"
-        awk -v flat="$PLAN_OVERRIDE" '
-            /^  subscriptionPlans:$/ {
-                print
-                n = split(flat, arr, "|")
-                for (i = 1; i <= n; i++) print "    - " arr[i]
-                in_block = 1
-                next
-            }
-            in_block && /^    - / { next }
-            { in_block = 0; print }
-        ' "$api_yaml" > "$TMP_YAML"
-        api_yaml="$TMP_YAML"
-    fi
-
-    # filename=api.yaml overrides what curl would otherwise send (the temp file's
-    # own name, when PLAN_OVERRIDE is set) — the server validates the uploaded
-    # metadata part's filename against an allow-list.
-    local curl_args=(-s "${PORTAL_TLS[@]}" -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
-        -H "@$AUTH_HEADER_FILE" \
-        -F "metadata=@$api_yaml;filename=api.yaml;type=application/yaml")
+    local curl_args=(-sk -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
+        -H "$AUTH_HEADER" \
+        -F "metadata=@$api_yaml;type=application/yaml")
     if [ -n "$definition" ]; then
         curl_args+=(-F "definition=@$definition;type=application/octet-stream")
     fi
@@ -277,10 +199,6 @@ seed_entry() {
     response=$(curl "${curl_args[@]}" -w "\n%{http_code}")
     http_code=$(echo "$response" | tail -1)
     body=$(echo "$response" | sed '$d')
-    if [ -n "$TMP_YAML" ]; then
-        rm -f -- "$TMP_YAML"
-        TMP_YAML=""
-    fi
 
     if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
         id=$(echo "$body" | jq -r '.id // empty')

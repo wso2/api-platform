@@ -220,21 +220,6 @@ all of them, so it doesn't let those calls pick an organization, and one whose
 `organization` header names any other organization is refused with `403`. A provisioned
 organization gets its catalog through the portal's REST API, with a token issued for it.
 
-`scripts/seed-samples.sh` can seed one organization's APIs and MCP servers with a token
-issued for it:
-
-```bash
-ACCESS_TOKEN="<a token for the organization's admin>" \
-SAMPLES_DIR="<that organization's samples directory>" \
-PLAN_OVERRIDE="Gold|Silver" \
-API_PORTAL_URL="https://portal.example.com" \
-  ./scripts/seed-samples.sh
-```
-
-`PLAN_OVERRIDE` rewrites each sample's subscription plans to that list, so the catalog
-only advertises plans the organization has. The token is only sent over verified HTTPS;
-for a privately issued portal certificate, set `API_PORTAL_CA_CERT` to its CA bundle.
-
 ## Turning it off
 
 With `multi_organization.enabled = false` the portal serves only `organization.handle`
