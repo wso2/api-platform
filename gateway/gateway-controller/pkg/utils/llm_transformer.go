@@ -408,7 +408,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// A proxy is always allow-all with no access control, so there are no deny routes:
 	// attach API-level resilience to all generated routes.
 	applyResilienceToTrafficRoutes(ops, proxy.Spec.Resilience, nil)
-	spec.Operations = ops
+	spec.Operations = expandGlobalModelRoutingOperations(ops, proxy.Spec.GlobalPolicies, tmpl)
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
@@ -787,7 +787,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 	// Attach API-level resilience to every traffic-forwarding route, skipping the deny routes.
 	applyResilienceToTrafficRoutes(ops, provider.Spec.Resilience, denyOpKeys)
-	spec.Operations = ops
+	spec.Operations = expandGlobalModelRoutingOperations(ops, provider.Spec.GlobalPolicies, tmpl)
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.

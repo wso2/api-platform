@@ -96,6 +96,9 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 	if err != nil {
 		return nil, fmt.Errorf("RestAPI transformation for LLM failed: %w", err)
 	}
+	if err := t.llmTransformer.ResolveGlobalRequestModels(cfg.SourceConfiguration, rdc); err != nil {
+		return nil, fmt.Errorf("global LLM model mapping resolution failed: %w", err)
+	}
 
 	// Step 4: Enrich metadata with LLM-specific fields
 	rdc.Metadata.Kind = cfg.Kind // Restore original kind (LlmProvider/LlmProxy)
