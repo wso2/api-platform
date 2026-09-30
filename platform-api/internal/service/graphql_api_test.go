@@ -1385,6 +1385,61 @@ func TestGraphQLUpdate_Success(t *testing.T) {
 	}
 }
 
+// TestGraphQLUpdate_EndpointOnlyEdit_PreservesUpstreamAuth guards an endpoint-URL edit
+// from the console, which round-trips the GET response (auth.value redacted) back into
+// the PUT. Update used to map req.Upstream straight onto the model, silently wiping the
+// stored credential; it must now be backfilled from the existing model, as REST does.
+func TestGraphQLUpdate_EndpointOnlyEdit_PreservesUpstreamAuth(t *testing.T) {
+	stored := &model.GraphQLAPI{
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		ProjectID:      "project-uuid",
+		Origin:         "control_plane",
+		Configuration: model.GraphQLAPIConfig{
+			SDL: validCountriesGraphQLSDL,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{Type: "apiKey", Header: "X-Api-Key", Value: "super-secret-main-credential"},
+				},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return stored, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	authType := api.UpstreamAuthType("apiKey")
+	req := &api.GraphQLAPI{
+		DisplayName: "Countries GraphQL API",
+		Context:     graphQLStrPtr("/countries"),
+		Version:     "v1.0",
+		Sdl:         graphQLStrPtr(validCountriesGraphQLSDL),
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  graphQLStrPtr("https://countries-v2.example.com/graphql"),
+			Auth: &api.UpstreamAuth{Type: &authType, Header: graphQLStrPtr("X-Api-Key")}, // value redacted on GET
+		}},
+	}
+
+	if _, err := svc.Update("org-1", "countries-graphql-api", "updater-uuid", req); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if repo.updated == nil {
+		t.Fatal("expected the repository Update to be called")
+	}
+	main := repo.updated.Configuration.Upstream.Main
+	if main == nil || main.URL != "https://countries-v2.example.com/graphql" {
+		t.Fatalf("expected the new endpoint URL to be stored, got %+v", main)
+	}
+	if main.Auth == nil || main.Auth.Value != "super-secret-main-credential" {
+		t.Errorf("expected the stored upstream credential to be preserved, got %+v", main.Auth)
+	}
+}
+
 // TestGraphQLUpdate_IDMismatch_400 pins Update's body-vs-path handle guard
 // (graphql_api.go: "if req.Id != nil && *req.Id != "" && *req.Id != handle"),
 // which had no test at all despite being a real, already-shipped check —

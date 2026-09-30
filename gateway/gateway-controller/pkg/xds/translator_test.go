@@ -1107,6 +1107,37 @@ func TestTranslator_GraphQLOperationPathNotAppendedToUpstream(t *testing.T) {
 		"upstream path must be passed through unchanged, not have OperationPath appended a second time")
 }
 
+// TestTranslator_GraphQLRootUpstreamRewritesToSlash guards against a GraphQLApi whose
+// upstream URL has no path, or only "/" (e.g. "https://countries.trevorblades.com/").
+// The route used to fall through to the default "(.*)" capture rewrite, which for an
+// exact-matched GraphQL route captures nothing, so the substitution was "" + "" and
+// Envoy forwarded an empty path the backend rejected with a 404.
+func TestTranslator_GraphQLRootUpstreamRewritesToSlash(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	for _, basePath := range []string{"", "/"} {
+		rdc := &models.RuntimeDeployConfig{
+			Metadata: models.Metadata{Kind: string(models.KindGraphQLApi)},
+			UpstreamClusters: map[string]*models.UpstreamCluster{
+				"main": {BasePath: basePath, Endpoints: []models.Endpoint{{Host: "countries.trevorblades.com", Port: 443}}},
+			},
+		}
+		rdcRoute := &models.Route{
+			Method:          "POST",
+			Path:            "/countries/v1.0/graphql",
+			OperationPath:   "graphql",
+			PathMatchType:   "Exact",
+			AutoHostRewrite: true,
+			Upstream:        models.RouteUpstream{ClusterKey: "main"},
+		}
+		r := translator.createRouteFromRDC("POST|/countries/v1.0/graphql|", rdcRoute, rdc)
+		require.NotNil(t, r)
+		assert.Equal(t, "/", applyEnvoyRegexRewrite(t, r, "/countries/v1.0/graphql"),
+			"basePath %q: a root upstream must receive \"/\", never an empty path", basePath)
+	}
+}
+
 // TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
 // conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
 // regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
