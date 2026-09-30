@@ -138,6 +138,43 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
     expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument();
   });
 
+  it('finds a field of a non-root type and expands that type to show it', async () => {
+    // Regression test: only root Query/Mutation fields were searched; a field
+    // on any other type (Country.name) filtered its type out entirely, so the
+    // search returned nothing despite promising "types and fields".
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    await user.type(screen.getByPlaceholderText('Search types and fields'), 'name');
+
+    const countryRow = screen.getByRole('button', { name: /Country/ });
+    expect(countryRow).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Status/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps a type matched by its own name collapsed', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    await user.type(screen.getByPlaceholderText('Search types and fields'), 'Country');
+
+    expect(screen.getByRole('button', { name: /Country/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('says so when nothing in the schema matches', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    await user.type(screen.getByPlaceholderText('Search types and fields'), 'zzz');
+
+    expect(screen.getByText('Nothing in this schema matches "zzz".')).toBeInTheDocument();
+  });
+
+  it('labels an enum by its values and an object by its fields', () => {
+    renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    expect(screen.getByRole('button', { name: /Status.*2 values/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Country.*2 fields/ })).toBeInTheDocument();
+  });
+
   it('filters the type list by kind', async () => {
     const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 

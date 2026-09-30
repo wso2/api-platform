@@ -66,7 +66,7 @@ const messages = defineMessages({
     description: 'Confirmation shown after the API details are saved.',
   },
   subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle',
     defaultMessage: 'Change the name, description, context, version and endpoint of this API.',
   },
   title: {
