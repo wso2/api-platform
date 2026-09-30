@@ -200,21 +200,6 @@ blocks:
         features:
           - features/apiportal_multi_organization_portals.feature
 
-  # Multi-organization mode with auth.enforce_org_validation on: its own portal, since the
-  # setting decides what every org claim resolves to.
-  - name: api-portal-multi-organization-strict
-    parallel: 1
-    components:
-      - name: testbench
-      - name: api-portal-multi-organization
-        overlay: tests/framework/core/catalog/overlays/api-portal-multi-organization-strict.toml
-        db:
-          matrix: [postgres, sqlserver]
-    runners:
-      - name: strict
-        features:
-          - features/apiportal_multi_organization_strict.feature
-
   - name: api-portal-foreign-org
     parallel: 1
     components:

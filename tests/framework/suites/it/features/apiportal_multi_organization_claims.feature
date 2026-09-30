@@ -18,8 +18,8 @@
 
 Feature: API Portal multi-organization organization claims
 
-  # The portal serves every organization under its portal_id and, with
-  # auth.enforce_org_validation off, provisions the organization an unknown org claim names.
+  # The portal serves every organization under its portal_id and provisions the
+  # organization an unknown org claim names.
 
   Scenario: The configured organization is served as always
     Given I mint an API Portal IDP token stored as "token" with claims:
@@ -29,6 +29,21 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 200
     And the JSON response field "id" should be "default"
+
+  Scenario Outline: A claim differing only in case or trailing spaces does not match an organization
+    # SQL Server's default collation would match these to "default" in the query itself.
+    Given I mint an API Portal IDP token stored as "token" with claims:
+      | sub    | c            |
+      | org_id | <claim>      |
+      | roles  | ["ap_admin"] |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 403
+
+    Examples:
+      | claim      |
+      | DEFAULT    |
+      | Default    |
+      | "default " |
 
   Scenario: An unknown organization is provisioned from the claim and named from the org-name claim
     Given I generate a unique resource name from "globex" and store it as "globex"

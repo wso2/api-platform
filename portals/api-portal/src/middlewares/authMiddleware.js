@@ -297,18 +297,13 @@ async function resolvePortalOrg(req) {
 }
 
 /**
- * For an IDP-mode credential carrying no organization claim: with
- * auth.enforce_org_validation off it is admitted to this instance's configured
- * organization; with it on (the default) it is refused, as it always was.
+ * For an IDP-mode credential carrying no organization claim: it is admitted to this
+ * instance's configured organization, in either mode (docs/administer/authentication.md,
+ * "Organization claims").
  *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
-async function resolveMissingOrgClaim(req, message) {
-    if (orgContext.isOrgValidationEnforced()) {
-        const err = new Error(message);
-        err.status = 403;
-        return err;
-    }
+async function resolveMissingOrgClaim(req) {
     try {
         req.orgId = await orgContext.getOrgUuid();
         return null;
@@ -407,16 +402,14 @@ async function authResolver(req, res, next) {
             // gate on config.auth.idp.claims.orgId, which has no default and is unset
             // in typical IDP configs, which would leave req.orgId empty and break every
             // tenant-scoped operation (reads return the wrong scope; writes fail the
-            // org_uuid foreign key). Fail closed when no org claim is present.
-            // No claim: admitted to the configured organization only when
-            // auth.enforce_org_validation is off (resolveMissingOrgClaim). A session
-            // logged in under that setting normally already carries the configured
-            // organization's claim (passportConfig records it), so this covers
-            // sessions from before the setting changed.
+            // org_uuid foreign key).
+            // No claim: admitted to the configured organization (resolveMissingOrgClaim).
+            // A login without a claim already records the configured organization's
+            // (passportConfig), so this covers sessions from before it did.
             const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
             const orgErr = sessionOrgClaim
                 ? await resolveScopedOrg(req, sessionOrgClaim, 'idp session')
-                : await resolveMissingOrgClaim(req, 'Missing organization claim in session');
+                : await resolveMissingOrgClaim(req);
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
@@ -468,7 +461,7 @@ async function authResolver(req, res, next) {
                 const orgErr = tokenOrgClaim
                     ? await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim',
                         { provision: 'bearer', orgNames: orgContext.orgNameClaims(decoded) })
-                    : await resolveMissingOrgClaim(req, 'Missing organization claim in token');
+                    : await resolveMissingOrgClaim(req);
                 if (orgErr) return next(orgErr);
             } else if (decoded.org_handle) {
                 const orgErr = await resolveScopedOrg(req, decoded.org_handle, 'bearer token org_handle');

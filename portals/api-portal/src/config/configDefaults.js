@@ -153,26 +153,14 @@ const DEFAULTS = {
         // the setting never silently resets it. Matched verbatim against the claim, so
         // it is NOT lowercased, unlike the handle.
         idpOrgId: '',
-        // How an IDP-mode credential's organization claim is enforced (see
-        // orgContext.resolveClaimOrg and authMiddleware.authResolver).
-        //   true  (default) — a credential with no organization claim is refused, and
-        //                     one naming an organization this portal doesn't serve is
-        //                     refused. This is the behaviour of every earlier release.
-        //   false — a credential with no organization claim falls back to
-        //           organization.handle (the session records it as that organization),
-        //           and in multi-organization mode one naming an organization that
-        //           doesn't exist yet provisions it. A claim naming an existing
-        //           organization this portal does not serve is still refused either way.
-        enforceOrgValidation: true,
         // JWT claim name mappings — which token claim carries each field.
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
             // Optional claim carrying the organization's human-readable name. Used only
-            // when an organization is provisioned from a claim (multi-organization mode
-            // with enforce_org_validation = false): its URL handle and display name are
-            // derived from it. Empty — or absent from the token — derives both from the
-            // organization claim above instead.
+            // when an organization is provisioned from a claim (multi-organization mode):
+            // its URL handle and display name are derived from it. Empty — or absent from
+            // the token — derives both from the organization claim above instead.
             orgName: '',
             // Optional claim carrying the organization's URL handle (e.g. WSO2 IS's
             // org_handle). Provisioning uses it as the handle as-is when it is a valid,

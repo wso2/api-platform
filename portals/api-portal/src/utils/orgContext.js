@@ -383,28 +383,18 @@ function normalizeOrgClaim(raw) {
 }
 
 /**
- * True when auth.enforce_org_validation is on — the default, and the behaviour of
- * every release before the setting existed.
- *
- * @returns {boolean}
- */
-function isOrgValidationEnforced() {
-    return config.auth?.enforceOrgValidation !== false;
-}
-
-/**
  * True when an org claim naming an organization that doesn't exist yet provisions it:
- * multi-organization mode with enforce_org_validation turned off.
+ * always in multi-organization mode, never in the default mode.
  *
  * @returns {boolean}
  */
 function isOrgProvisioningEnabled() {
-    return isMultiOrganizationEnabled() && !isOrgValidationEnforced();
+    return isMultiOrganizationEnabled();
 }
 
 /**
  * The value the configured organization's claim carries — its stored idp_ref_id — so a
- * credential that fell back to it (no org claim, enforce_org_validation off) can be
+ * credential that fell back to it (no org claim) can be
  * recorded as belonging to it. Read from the row rather than config: with
  * auth.idp_org_id unset the row keeps whatever it was seeded with, which is what every
  * other check (ensureAuthenticated.belongsToTargetOrg) compares against.
@@ -775,7 +765,6 @@ module.exports = {
     claimBelongsToOrg,
     findSharedIdpRefIds,
     isForeignOrgSession,
-    isOrgValidationEnforced,
     isOrgProvisioningEnabled,
     getConfiguredOrgIdpRefId,
     deriveHandle,

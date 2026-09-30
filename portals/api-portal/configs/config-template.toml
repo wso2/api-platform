@@ -222,14 +222,17 @@ mode = "local"          # local | idp
 # claim value must log in again after a change.
 # idp_org_id = "default"
 
-# How an IDP credential's organization claim is enforced.
-#   true  (default) — no organization claim: 403; an organization this portal doesn't
-#                     serve: 403. The behaviour of earlier releases.
-#   false — no organization claim: admitted to organization.handle; and with
-#           [api_portal.multi_organization] enabled, an organization that doesn't
-#           exist yet is provisioned from the claim. See
-#           docs/administer/multi-organization.md.
-# enforce_org_validation = true
+# How an IDP credential's organization claim (claim_mappings.organization) is
+# handled. Fixed behaviour, not a setting:
+#   this portal's organization     — admitted.
+#   another existing organization  — 403; in multi-organization mode, admitted as
+#                                    that organization.
+#   an organization that doesn't   — 403; in multi-organization mode, the organization
+#   exist yet                        is created from the claim, then admitted.
+#   no organization claim          — admitted to organization.handle, with the
+#                                    credential's own roles. Make sure the IDP puts the
+#                                    claim on every user's tokens.
+# See docs/administer/authentication.md#organization-claims.
 
 # JWT claim name mappings — which token claim carries each field.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").

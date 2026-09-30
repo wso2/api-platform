@@ -23,9 +23,6 @@ enabled = true
 
 [api_portal.auth]
 mode = "idp"
-# false: provision organizations from token claims, and admit a token with no
-# organization claim to organization.handle. Leave at true to refuse both.
-enforce_org_validation = false
 
 [api_portal.auth.claim_mappings]
 organization = "org_id"       # claim carrying the organization's stable id
@@ -86,24 +83,34 @@ An org claim that is a list or a map (Keycloak Organizations can send either) is
 accepted when it names exactly one organization and refused (`403`) when it names
 several. An `idp_ref_id` shared by more than one organization is refused as ambiguous.
 
-## `enforce_org_validation`
+## Organization claims
 
-| Claim in the token | Single-org, `true` (default) | Single-org, `false` | Multi-organization, `true` | Multi-organization, `false` |
-|---|---|---|---|---|
-| The configured organization | allowed | allowed | allowed | allowed |
-| Another existing organization | `403` | `403` | allowed, as that organization | allowed, as that organization |
-| An organization that doesn't exist yet | `403` | `403` | `403` | **provisioned**, then allowed |
-| No organization claim | `403` | the configured organization | `403` (login refused) | the configured organization |
+This behaviour is fixed; there is no setting for it.
 
-With `false`, a login without an organization claim is recorded in the session as the
-configured organization, so every later check treats it exactly like a login that
-asserted it. A claim naming an organization is never redirected to the configured one.
-The portal logs a warning at startup whenever this setting is `false`.
+| Claim in the token | Single-organization mode | Multi-organization mode |
+|---|---|---|
+| The configured organization | allowed | allowed |
+| Another existing organization | `403` | allowed, as that organization |
+| An organization that doesn't exist yet | `403` | **provisioned**, then allowed |
+| No organization claim | allowed, as the configured organization | allowed, as the configured organization |
+
+A login without an organization claim is recorded in the session as the configured
+organization, so every later check treats it exactly like a login that asserted it; a
+bearer token without one is handled the same way. Either keeps its own roles or scopes.
+A claim that names an organization is never redirected to the configured one.
+
+> **Make sure every user's tokens carry the organization claim.** A user whose token
+> comes without it lands in the configured organization with the roles their token
+> carries, so an administrator of their own organization becomes an administrator of
+> the configured one. That happens, for example, with a Keycloak client that has no
+> organization mapper, or an Auth0 user who signs in without choosing an organization.
+> Check too that `claim_mappings.organization` names the claim your IDP actually sends:
+> a wrong name makes every token claimless.
 
 ## Provisioning
 
-With `multi_organization.enabled = true` and `enforce_org_validation = false`, a
-verified token whose org claim names no known organization creates it, with the same
+With `multi_organization.enabled = true`, a verified token whose org claim names no
+known organization creates it, with the same
 defaults as the configured organization gets on first start: a `default` view and
 label, and (with `organization.auto_create_subscription_plans`) the default
 subscription plans.
@@ -163,8 +170,8 @@ mode:
   `org_id` UUIDs, Keycloak, Auth0) they are signed in to their own organization wherever
   they browse — their session still only reaches their own organization's signed-in pages
   and data. Either way a silent sign-in leaves the visitor on the page they were
-  reading, and with `enforce_org_validation = false` it can provision the visitor's
-  organization exactly as an explicit login would.
+  reading, and it can provision the visitor's organization exactly as an explicit login
+  would.
 - Roles and groups are read from the access token first, then the ID token; a user
   with no display name shows `preferred_username`, `username` or `sub`.
 
@@ -239,9 +246,8 @@ webhook deliveries stay pending until the mode is turned back on.
 
 | Log line | Meaning |
 |---|---|
-| `Rejected org claim naming an unknown organization` | The claim matches no organization's `idp_ref_id`, and provisioning is off (`enforce_org_validation = true`). |
+| `Rejected org claim naming an unknown organization` | The claim matches no organization's `idp_ref_id` on a check that never provisions — a page's organization check, not a sign-in or a bearer token. |
 | `Refused to provision an organization from an org claim: …` | Provisioning is on, but the IDP channel isn't verified TLS — the reason follows. |
 | `Org claim matches more than one organization's idp_ref_id` | Two organizations share an `idp_ref_id`; fix the data. |
 | `Multi-organization: organizations share an idp_ref_id …` (at startup) | The same, found before anyone signs in; it names the organizations. Common after pointing `auth.idp_org_id` at an id an already-provisioned organization holds — for WSO2 IS's root organization see [The root organization](wso2-is-setup.md#the-root-organization). |
 | `Rejected org claim naming more than one organization` | A list/map org claim names several organizations. |
-| `Rejected login: token carries no organization claim` | Multi-organization mode with enforcement on; check `claim_mappings.organization`. |

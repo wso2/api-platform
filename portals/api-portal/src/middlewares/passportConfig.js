@@ -198,25 +198,18 @@ function configurePassport(SERVER_ID) {
             // to and refuse the login otherwise — authResolver would reject each
             // subsequent request anyway, leaving the user with a session that 403s
             // on every page. (In multi-organization mode: any organization it serves, and
-            // with auth.enforce_org_validation off one it doesn't have yet is
-            // provisioned.)
+            // one it doesn't have yet is provisioned.)
             //
-            // An absent claim depends on auth.enforce_org_validation:
-            //   off — the login belongs to the configured organization, and the session
-            //         records that organization's claim so every later check
-            //         (authResolver, ensureAuthenticated.belongsToTargetOrg) treats it
-            //         exactly like a login that asserted it.
-            //   on, single-org — let through as before: authResolver fails closed on
-            //         each REST call without a claim.
-            //   on, multi-organization — refused here. Pages of every organization are
-            //         routable in this mode, and a session with no claim would otherwise
-            //         pass the page org check for all of them.
+            // An absent claim means the login belongs to the configured organization, and
+            // the session records that organization's claim so every later check
+            // (authResolver, ensureAuthenticated.belongsToTargetOrg) treats it exactly
+            // like a login that asserted it.
             let loginOrgUuid;
             if (organizationId) {
                 const allowed = await assertLoginOrgAllowed(organizationId, orgContext.orgNameClaims(decodedJWT));
                 if (allowed.error) return done(allowed.error);
                 loginOrgUuid = allowed.orgUuid;
-            } else if (!orgContext.isOrgValidationEnforced()) {
+            } else {
                 try {
                     organizationId = await orgContext.getConfiguredOrgIdpRefId();
                     loginOrgUuid = await orgContext.getOrgUuid();
@@ -226,13 +219,6 @@ function configurePassport(SERVER_ID) {
                     failure.status = 500;
                     return done(failure);
                 }
-            } else if (orgContext.isMultiOrganizationEnabled()) {
-                logger.warn('Rejected login: token carries no organization claim', {
-                    claim: config.auth.claimMappings.organization,
-                });
-                const failure = new Error('Forbidden');
-                failure.status = 403;
-                return done(failure);
             }
 
             const returnTo = req.session.returnTo;

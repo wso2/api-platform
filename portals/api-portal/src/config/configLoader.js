@@ -734,28 +734,6 @@ function validateMultiOrganizationConfig(cfg) {
 validateMultiOrganizationConfig(config);
 
 /**
- * auth.enforce_org_validation must be a real boolean (a typo silently reading as the
- * default could open or close access). Turning it off is a deliberate loosening, so it
- * is announced at startup.
- */
-function validateOrgValidationConfig(cfg) {
-    const raw = cfg.auth?.enforceOrgValidation;
-    if (typeof raw !== 'boolean') {
-        process.stderr.write(`[FATAL] auth.enforce_org_validation must be true or false, got ${JSON.stringify(raw)}.\n`);
-        process.exit(1);
-    }
-    if (!raw && cfg.auth?.mode === 'idp') {
-        process.stderr.write(
-            '[WARN] auth.enforce_org_validation = false — an IDP credential with no organization claim is ' +
-            `admitted to organization "${cfg.organization?.handle}"` +
-            (cfg.multiOrganization?.enabled ? ', and one naming an unknown organization provisions it' : '') + '.\n'
-        );
-    }
-}
-
-validateOrgValidationConfig(config);
-
-/**
  * auth.idp.audience may name several accepted audiences — a comma-separated string or a
  * TOML array — for IDPs that issue an organization's tokens to its own copy of the
  * client (WSO2 IS / Asgardeo sub-organizations). Normalized once here to what jose's
@@ -763,9 +741,8 @@ validateOrgValidationConfig(config);
  *
  * In multi-organization mode it is required: without an audience check, a token the
  * same IDP issued to any other application would be accepted — and with every
- * organization under this portal_id reachable (and, with enforce_org_validation off,
- * provisionable) that reaches far more than the one organization it would in
- * single-organization mode.
+ * organization under this portal_id reachable (and provisionable) that reaches far more
+ * than the one organization it would in single-organization mode.
  */
 function normalizeIdpAudience(cfg) {
     const idp = cfg.auth?.idp;

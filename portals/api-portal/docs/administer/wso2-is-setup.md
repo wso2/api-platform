@@ -15,9 +15,9 @@ model is the same.
    shared with every organization. Each organization gets its own copy of it (shown as a
    *Shared app* in that organization).
 2. A portal organization maps to one IS organization through the `org_id` claim in the
-   tokens IS issues for it (stored as the portal organization's `idp_ref_id`). With
-   `enforce_org_validation = false` the portal creates that organization itself the first
-   time one of its users signs in — there is no portal-side registration step.
+   tokens IS issues for it (stored as the portal organization's `idp_ref_id`). The portal
+   creates that organization itself the first time one of its users signs in — there is
+   no portal-side registration step.
 3. Two roles, `dp_admin` and `dp_subscriber`, are created once on the root application and
    appear in every organization automatically. Assigning a user one of them is what gives
    them the portal's administrator or subscriber tier
@@ -121,8 +121,6 @@ enabled = true
 mode = "idp"
 # The root organization's org_id — see "The root organization" below.
 idp_org_id = "10084a8d-113f-4211-a0d5-efe36b082211"
-# false: an organization's first sign-in provisions its portal organization.
-enforce_org_validation = false
 
 [api_portal.auth.claim_mappings]
 organization = "org_id"
@@ -188,10 +186,10 @@ claim too: the root organization's own id, which on WSO2 IS 7.x (checked on 7.3)
 organization (`organization.handle`, usually `default`) *is* the root organization.
 
 Leave it unset and `idp_ref_id` of the configured organization defaults to its handle,
-which no token carries — so with `enforce_org_validation = false` the first root-org
-sign-in provisions a separate organization named `Super` (handle `super`, or
-`carbon.super` with `claim_mappings.org_handle` set), and root users land there instead of
-in the configured organization.
+which no token carries — so the first root-org sign-in provisions a separate
+organization named `Super` (handle `super`, or `carbon.super` with
+`claim_mappings.org_handle` set), and root users land there instead of in the configured
+organization.
 
 Confirm the id on your IS by decoding a root user's token (`jq -R 'split(".")[1] |
 @base64d | fromjson | .org_id'`). The portal writes `idp_org_id` into the configured

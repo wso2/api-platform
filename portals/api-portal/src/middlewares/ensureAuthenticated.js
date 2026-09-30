@@ -139,8 +139,8 @@ function hasRole(roleClaimValue, roleName) {
 // gate below, which is the existing, separate authorization mechanism for that case —
 // except in multi-organization mode, where every organization's pages are routable and a
 // claimless session would pass this check for all of them, so it is denied instead.
-// (Such a session can't normally exist there: login refuses a missing claim, or with
-// auth.enforce_org_validation off records the configured organization's.)
+// (Such a session can't normally exist there: a login without a claim records the
+// configured organization's.)
 function belongsToTargetOrg(req, orgDetails) {
     const tokenOrgClaim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
     if (!tokenOrgClaim) return !orgContext.isMultiOrganizationEnabled();
@@ -388,8 +388,8 @@ const ensureAuthenticated = async (req, res, next) => {
  *
  * The caller's organization comes from the session's recorded claim, else the verified
  * token's, resolved exactly as authResolver resolves it for the REST API — never
- * provisioning. A credential without a claim belongs to the configured organization
- * only when auth.enforce_org_validation is off. Routes without an organization in the
+ * provisioning. A credential without a claim belongs to the configured organization.
+ * Routes without an organization in the
  * URL, and the default single-organization mode (where orgGuard admits only the
  * configured organization), are unaffected.
  */
@@ -403,7 +403,7 @@ async function callerOwnsTargetOrg(req, verifiedClaims) {
         }
         let callerOrg;
         if (claim) callerOrg = await orgContext.resolveClaimOrg(claim, 'enforceSecurity');
-        else if (!orgContext.isOrgValidationEnforced()) callerOrg = await orgContext.getOrgUuid();
+        else callerOrg = await orgContext.getOrgUuid();
         if (callerOrg && callerOrg === req.orgId) return true;
     } catch (err) {
         if (!(err instanceof CustomError)) {
