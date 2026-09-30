@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/google/uuid"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	kenv "github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
@@ -87,6 +88,7 @@ type Server struct {
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
 	Logging          Logging          `koanf:"logging"`
+	ReadOnly         ReadOnly         `koanf:"read_only"`
 
 	EnableScopeValidation      bool `koanf:"enable_scope_validation"`
 	OrgCreationRequiresAuth    bool `koanf:"org_creation_requires_auth"`
@@ -228,6 +230,42 @@ type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
 }
 
+// ReadOnly holds organization-scoped read-only (maintenance) mode configuration.
+// An organization is read-only when AllOrganizations is set or its UUID is listed in
+// Organizations; write operations for it are rejected with HTTP 503 while reads keep
+// working. Both empty/false disables the feature. Entries are canonicalised to lowercase
+// UUID form at load time (see validateReadOnlyConfig).
+type ReadOnly struct {
+	AllOrganizations bool     `koanf:"all_organizations"`
+	Organizations    []string `koanf:"organizations"`
+}
+
+// Enabled reports whether any read-only rule is configured. Nil-safe.
+func (r *ReadOnly) Enabled() bool {
+	return r != nil && (r.AllOrganizations || len(r.Organizations) > 0)
+}
+
+// IsReadOnlyOrg reports whether write operations for the given organization UUID must be
+// rejected. Nil-safe. An empty orgUUID is read-only only in all-organizations mode.
+func (r *ReadOnly) IsReadOnlyOrg(orgUUID string) bool {
+	if r == nil {
+		return false
+	}
+	if r.AllOrganizations {
+		return true
+	}
+	id := strings.TrimSpace(orgUUID)
+	if id == "" {
+		return false
+	}
+	for _, o := range r.Organizations {
+		if strings.EqualFold(strings.TrimSpace(o), id) {
+			return true
+		}
+	}
+	return false
+}
+
 // package-level singleton.
 var (
 	configFilePath  string
@@ -308,6 +346,9 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
+		return nil, err
+	}
+	if err := validateReadOnlyConfig(&cfg.ReadOnly); err != nil {
 		return nil, err
 	}
 
@@ -451,6 +492,10 @@ func envToKoanfKey(s string) string {
 	// Logging
 	case "logging_access_log_format": return "logging.access_log_format"
 
+	// Read-only mode
+	case "read_only_all_organizations": return "read_only.all_organizations"
+	case "read_only_organizations":     return "read_only.organizations"
+
 	default:
 		return ""
 	}
@@ -566,5 +611,35 @@ func validateDeploymentsConfig(cfg *Deployments) error {
 	if cfg.TimeoutDuration <= 0 {
 		return fmt.Errorf("deployments.timeout_duration must be a positive integer (got %d)", cfg.TimeoutDuration)
 	}
+	return nil
+}
+
+// validateReadOnlyConfig trims, canonicalises and de-duplicates read_only.organizations.
+// It fails startup on any entry that is not a UUID so that a handle passed by mistake is
+// caught immediately instead of silently leaving that organization writable.
+func validateReadOnlyConfig(cfg *ReadOnly) error {
+	seen := make(map[string]struct{}, len(cfg.Organizations))
+	normalized := make([]string, 0, len(cfg.Organizations))
+	for _, raw := range cfg.Organizations {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		parsed, err := uuid.Parse(entry)
+		if err != nil {
+			return fmt.Errorf("read_only.organizations entry %q is not a valid UUID (organizations must be identified by UUID, not handle): %w", entry, err)
+		}
+		id := parsed.String()
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
+	}
+	if len(normalized) == 0 {
+		cfg.Organizations = nil
+		return nil
+	}
+	cfg.Organizations = normalized
 	return nil
 }

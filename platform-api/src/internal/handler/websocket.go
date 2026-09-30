@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"platform-api/src/config"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/service"
@@ -39,6 +40,7 @@ type WebSocketHandler struct {
 	manager           *ws.Manager
 	gatewayService    *service.GatewayService
 	deploymentService *service.DeploymentService
+	readOnly          *config.ReadOnly
 	upgrader          websocket.Upgrader
 	slogger           *slog.Logger
 
@@ -49,11 +51,12 @@ type WebSocketHandler struct {
 }
 
 // NewWebSocketHandler creates a new WebSocket handler
-func NewWebSocketHandler(manager *ws.Manager, gatewayService *service.GatewayService, deploymentService *service.DeploymentService, rateLimitCount int, slogger *slog.Logger) *WebSocketHandler {
+func NewWebSocketHandler(manager *ws.Manager, gatewayService *service.GatewayService, deploymentService *service.DeploymentService, rateLimitCount int, readOnly *config.ReadOnly, slogger *slog.Logger) *WebSocketHandler {
 	return &WebSocketHandler{
 		manager:           manager,
 		gatewayService:    gatewayService,
 		deploymentService: deploymentService,
+		readOnly:          readOnly,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				// TODO: Implement proper origin checking in production
@@ -178,8 +181,11 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 
 	h.slogger.Info("WebSocket connection established", "gatewayID", gateway.ID, "connectionID", connection.ConnectionID)
 
-	// Update gateway active status to true when connection is established
-	if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, true); err != nil {
+	// Update gateway active status to true when connection is established.
+	// Skipped in read-only mode so the organization's gateway rows stay untouched.
+	if h.readOnly.IsReadOnlyOrg(gateway.OrganizationID) {
+		h.slogger.Warn("Read-only mode: skipping gateway active-status update", "gatewayID", gateway.ID, "orgID", gateway.OrganizationID)
+	} else if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, true); err != nil {
 		h.slogger.Error("Failed to update gateway active status to true", "gatewayID", gateway.ID, "error", err)
 	}
 
@@ -191,9 +197,11 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	h.slogger.Info("WebSocket connection closed", "gatewayID", gateway.ID, "connectionID", connection.ConnectionID)
 	h.manager.Unregister(gateway.ID, connection.ConnectionID)
 
-	// Only set inactive if no remaining connections for this gateway
+	// Only set inactive if no remaining connections for this gateway (skipped in read-only mode)
 	if len(h.manager.GetConnections(gateway.ID)) == 0 {
-		if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, false); err != nil {
+		if h.readOnly.IsReadOnlyOrg(gateway.OrganizationID) {
+			h.slogger.Warn("Read-only mode: skipping gateway active-status update", "gatewayID", gateway.ID, "orgID", gateway.OrganizationID)
+		} else if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, false); err != nil {
 			h.slogger.Error("Failed to update gateway active status to false", "gatewayID", gateway.ID, "error", err)
 		}
 	}
@@ -260,6 +268,14 @@ func (h *WebSocketHandler) handleDeploymentAck(conn *ws.Connection, payload json
 		"gatewayID", conn.GatewayID, "artifactID", ack.ArtifactID,
 		"deploymentID", ack.DeploymentID, "action", ack.Action,
 		"status", ack.Status, "performedAt", ack.PerformedAt)
+
+	// Drop acks for read-only organizations: their deployment status rows must not change.
+	if h.readOnly.IsReadOnlyOrg(conn.OrganizationID) {
+		h.slogger.Warn("Read-only mode: dropping deployment.ack",
+			"gatewayID", conn.GatewayID, "orgID", conn.OrganizationID,
+			"artifactID", ack.ArtifactID, "deploymentID", ack.DeploymentID, "status", ack.Status)
+		return
+	}
 
 	if h.deploymentService == nil {
 		h.slogger.Error("DeploymentService not available for ack handling",

@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"time"
 
+	"platform-api/src/config"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 )
@@ -38,18 +39,22 @@ type DeploymentTimeoutConfig struct {
 type DeploymentTimeoutService struct {
 	deploymentRepo repository.DeploymentRepository
 	config         DeploymentTimeoutConfig
+	readOnly       *config.ReadOnly
 	slogger        *slog.Logger
 }
 
-// NewDeploymentTimeoutService creates a new timeout service
+// NewDeploymentTimeoutService creates a new timeout service. Stale entries belonging to
+// organizations in read-only mode are left untouched.
 func NewDeploymentTimeoutService(
 	deploymentRepo repository.DeploymentRepository,
-	config DeploymentTimeoutConfig,
+	cfg DeploymentTimeoutConfig,
+	readOnly *config.ReadOnly,
 	slogger *slog.Logger,
 ) *DeploymentTimeoutService {
 	return &DeploymentTimeoutService{
 		deploymentRepo: deploymentRepo,
-		config:         config,
+		config:         cfg,
+		readOnly:       readOnly,
 		slogger:        slogger,
 	}
 }
@@ -98,9 +103,29 @@ func (s *DeploymentTimeoutService) processStaleStatuses(timeout time.Duration) {
 		return
 	}
 
-	s.slogger.Info("Processing stale deployment statuses", "count", len(stale))
-
+	// Skip entries that belong to read-only organizations: their deployment rows must not
+	// change while the organization is frozen. Partition first so the Info log below does
+	// not fire on every tick for permanently frozen rows.
+	actionable := make([]repository.StaleDeploymentStatus, 0, len(stale))
+	skipped := 0
 	for _, entry := range stale {
+		if s.readOnly.IsReadOnlyOrg(entry.OrganizationUUID) {
+			skipped++
+			s.slogger.Debug("Read-only mode: skipping stale deployment status",
+				"orgUUID", entry.OrganizationUUID,
+				"artifactUUID", entry.ArtifactUUID,
+				"gatewayUUID", entry.GatewayUUID)
+			continue
+		}
+		actionable = append(actionable, entry)
+	}
+	if len(actionable) == 0 {
+		return
+	}
+
+	s.slogger.Info("Processing stale deployment statuses", "count", len(actionable), "skippedReadOnly", skipped)
+
+	for _, entry := range actionable {
 		newStatus := model.DeploymentStatusFailed
 		statusReason := model.DeploymentErrorTimeout
 

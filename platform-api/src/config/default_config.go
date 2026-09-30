@@ -134,5 +134,9 @@ func defaultConfig() *Server {
 		Logging: Logging{
 			AccessLogFormat: DefaultAccessLogFormat,
 		},
+		ReadOnly: ReadOnly{
+			AllOrganizations: false,
+			Organizations:    nil,
+		},
 	}
 }

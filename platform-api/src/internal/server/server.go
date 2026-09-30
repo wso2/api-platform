@@ -70,6 +70,13 @@ type Server struct {
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+	if cfg.ReadOnly.Enabled() {
+		slogger.Warn("READ-ONLY MODE ENABLED — write operations for the affected organizations will be rejected with HTTP 503",
+			slog.Bool("allOrganizations", cfg.ReadOnly.AllOrganizations),
+			slog.Int("organizationCount", len(cfg.ReadOnly.Organizations)),
+			slog.Any("organizations", cfg.ReadOnly.Organizations))
+	}
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -153,6 +160,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			}
 			for _, org := range orgs {
 				if org == nil || org.ID == "" {
+					continue
+				}
+				if cfg.ReadOnly.IsReadOnlyOrg(org.ID) {
+					slogger.Debug("Read-only mode: skipping LLM template seeding", "orgID", org.ID)
 					continue
 				}
 				if seedErr := llmTemplateSeeder.SeedForOrg(org.ID); seedErr != nil {
@@ -293,8 +304,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, slogger)
-	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
-	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, &cfg.ReadOnly, slogger)
+	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, &cfg.ReadOnly, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, slogger)
@@ -318,7 +329,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		Interval: time.Duration(cfg.Deployments.TimeoutInterval) * time.Second,
 		Timeout:  time.Duration(cfg.Deployments.TimeoutDuration) * time.Second,
 	}
-	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
+	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, &cfg.ReadOnly, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
 	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
@@ -397,6 +408,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
 		Enabled:        cfg.EnableScopeValidation,
 	}))
+
+	// Reject write requests for organizations in read-only mode. Registered after
+	// authentication and scope enforcement so those behave exactly as before; only
+	// would-be-successful writes are turned into 503s.
+	router.Use(middleware.ReadOnlyGuard(&cfg.ReadOnly, slogger))
 
 	// Register routes
 	orgHandler.RegisterRoutes(router)

@@ -22,8 +22,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/utils"
 	"time"
@@ -36,14 +38,16 @@ import (
 type GatewayInternalAPIHandler struct {
 	gatewayService         *service.GatewayService
 	gatewayInternalService *service.GatewayInternalAPIService
+	readOnly               *config.ReadOnly
 	slogger                *slog.Logger
 }
 
 func NewGatewayInternalAPIHandler(gatewayService *service.GatewayService,
-	gatewayInternalService *service.GatewayInternalAPIService, slogger *slog.Logger) *GatewayInternalAPIHandler {
+	gatewayInternalService *service.GatewayInternalAPIService, readOnly *config.ReadOnly, slogger *slog.Logger) *GatewayInternalAPIHandler {
 	return &GatewayInternalAPIHandler{
 		gatewayService:         gatewayService,
 		gatewayInternalService: gatewayInternalService,
+		readOnly:               readOnly,
 		slogger:                slogger,
 	}
 }
@@ -79,6 +83,20 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(c *gin.Context) (orgID, 
 		return "", "", false
 	}
 	return gateway.OrganizationID, gateway.ID, true
+}
+
+// rejectIfReadOnly writes a 503 response and returns true when the gateway's organization
+// is in read-only mode. 503 is deliberate: the gateway-controller treats 401/403/404/409/422
+// as permanent failures and exits, but retries 503.
+func (h *GatewayInternalAPIHandler) rejectIfReadOnly(c *gin.Context, orgID, gatewayID string) bool {
+	if !h.readOnly.IsReadOnlyOrg(orgID) {
+		return false
+	}
+	h.slogger.Warn("Rejected gateway write in read-only mode",
+		"orgID", orgID, "gatewayID", gatewayID, "path", c.FullPath())
+	c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(http.StatusServiceUnavailable,
+		"Service Unavailable", middleware.ReadOnlyErrorDescription))
+	return true
 }
 
 // GetAPI handles GET /api/internal/v1/apis/:apiId
@@ -134,6 +152,9 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 func (h *GatewayInternalAPIHandler) CreateGatewayDeployment(c *gin.Context) {
 	orgID, gatewayID, ok := h.authenticateRequest(c)
 	if !ok {
+		return
+	}
+	if h.rejectIfReadOnly(c, orgID, gatewayID) {
 		return
 	}
 
@@ -642,6 +663,9 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(c *gin.Context) {
 func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 	orgID, gatewayID, ok := h.authenticateRequest(c)
 	if !ok {
+		return
+	}
+	if h.rejectIfReadOnly(c, orgID, gatewayID) {
 		return
 	}
 

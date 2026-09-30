@@ -90,3 +90,13 @@ scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_poli
 # ---------------------------------------------------------------------------
 [default_devportal]
 enabled = false
+
+# ---------------------------------------------------------------------------
+# Read-only (maintenance) mode — rejects write operations (503) for the listed
+# organizations, or for every organization, while GET requests keep working.
+# Used during the v1 → v2 database migration so migrated rows do not change.
+# Restart-time setting. Env: READ_ONLY_ALL_ORGANIZATIONS, READ_ONLY_ORGANIZATIONS
+# ---------------------------------------------------------------------------
+# [read_only]
+# all_organizations = false                          # freeze every organization
+# organizations     = ["<org-uuid>", "<org-uuid>"]   # freeze only these (UUIDs, not handles)
