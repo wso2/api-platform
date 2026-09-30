@@ -137,13 +137,13 @@ function hasRole(roleClaimValue, roleName) {
 // looked-up org row happens to have a blank idp_ref_id). Sessions with no org claim at
 // all (e.g. an IDP that doesn't emit one) are left to the role-based ensurePermission
 // gate below, which is the existing, separate authorization mechanism for that case —
-// except in multi-tenancy mode, where every organization's pages are routable and a
+// except in multi-organization mode, where every organization's pages are routable and a
 // claimless session would pass this check for all of them, so it is denied instead.
 // (Such a session can't normally exist there: login refuses a missing claim, or with
 // auth.enforce_org_validation off records the configured organization's.)
 function belongsToTargetOrg(req, orgDetails) {
     const tokenOrgClaim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
-    if (!tokenOrgClaim) return !orgContext.isMultiTenancyEnabled();
+    if (!tokenOrgClaim) return !orgContext.isMultiOrganizationEnabled();
     // The same rule the page chrome uses to decide which links to show
     // (orgContext.isForeignOrgSession, via orgGuard), so the two can't disagree.
     return orgContext.claimBelongsToOrg(req.user, orgDetails);
@@ -379,12 +379,12 @@ const ensureAuthenticated = async (req, res, next) => {
 // '&#x2F;' on the first pass and '&amp;#x2F;' on a second, which callers' unescapeParam-style
 // reversal (a single-pass '&#x2F;' -> '/' replace) can no longer undo.
 /**
- * Multi-tenancy mode: true only when the caller's own organization is the one the route's
- * URL names (req.orgId, set by orgGuard). A verified token or session proves who the
- * caller is and what scopes they hold, not which organization they may act in — and in
- * this mode the URL can name any organization under this portal_id, so without this an
- * administrator of one organization could write to another's through a route that
- * resolves its target from the URL (the MCP registry's publish/update/delete).
+ * Multi-organization mode: true only when the caller's own organization is the one the
+ * route's URL names (req.orgId, set by orgGuard). A verified token or session proves who the
+ * caller is and what scopes they hold, not which organization they may act in — and in this
+ * mode the URL can name any organization under this portal_id, so without this an
+ * administrator of one organization could write to another's through a route that resolves
+ * its target from the URL (the MCP registry's publish/update/delete).
  *
  * The caller's organization comes from the session's recorded claim, else the verified
  * token's, resolved exactly as authResolver resolves it for the REST API — never
@@ -394,7 +394,7 @@ const ensureAuthenticated = async (req, res, next) => {
  * configured organization), are unaffected.
  */
 async function callerOwnsTargetOrg(req, verifiedClaims) {
-    if (!orgContext.isMultiTenancyEnabled() || !req.orgId) return true;
+    if (!orgContext.isMultiOrganizationEnabled() || !req.orgId) return true;
     try {
         let claim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
         if (!claim) {

@@ -80,7 +80,7 @@ async function reconcileIdpOrgId(org) {
  * missing defaults is repaired without skipping the rest.
  *
  * Lookup is by exact handle, not orgDao.get()'s handle→display_name→idp_ref_id
- * ladder: in a shared multi-tenancy database the looser match could resolve to
+ * ladder: in a shared database the looser match could resolve to
  * a *different* organization that happens to carry this handle as its display name,
  * and the seed would then adopt that row.
  *

@@ -711,26 +711,27 @@ function validateIdpConfig(cfg) {
 validateIdpConfig(config);
 
 /**
- * Normalizes multi_tenancy.enabled to a boolean and refuses anything that isn't one — a
- * misspelt value silently reading as "off" (or "on") would change which organizations
- * this portal serves. Warns when it is set outside IDP mode, where it has no effect.
+ * Normalizes multi_organization.enabled to a boolean and refuses anything that isn't
+ * one — a misspelt value silently reading as "off" (or "on") would change which
+ * organizations this portal serves. Warns when it is set outside IDP mode, where it has
+ * no effect.
  */
-function validateMultiTenancyConfig(cfg) {
-    const raw = cfg.multiTenancy?.enabled;
+function validateMultiOrganizationConfig(cfg) {
+    const raw = cfg.multiOrganization?.enabled;
     if (typeof raw !== 'boolean') {
-        process.stderr.write(`[FATAL] multi_tenancy.enabled must be true or false, got ${JSON.stringify(raw)}.\n`);
+        process.stderr.write(`[FATAL] multi_organization.enabled must be true or false, got ${JSON.stringify(raw)}.\n`);
         process.exit(1);
     }
     if (raw && cfg.auth?.mode !== 'idp') {
         process.stderr.write(
-            '[WARN] multi_tenancy.enabled = true has no effect with auth.mode = "' + cfg.auth?.mode +
-            '" — multi-tenancy mode needs an IDP whose tokens carry the organization claim. ' +
+            '[WARN] multi_organization.enabled = true has no effect with auth.mode = "' + cfg.auth?.mode +
+            '" — multi-organization mode needs an IDP whose tokens carry the organization claim. ' +
             'Serving only organization.handle.\n'
         );
     }
 }
 
-validateMultiTenancyConfig(config);
+validateMultiOrganizationConfig(config);
 
 /**
  * auth.enforce_org_validation must be a real boolean (a typo silently reading as the
@@ -747,7 +748,7 @@ function validateOrgValidationConfig(cfg) {
         process.stderr.write(
             '[WARN] auth.enforce_org_validation = false — an IDP credential with no organization claim is ' +
             `admitted to organization "${cfg.organization?.handle}"` +
-            (cfg.multiTenancy?.enabled ? ', and one naming an unknown organization provisions it' : '') + '.\n'
+            (cfg.multiOrganization?.enabled ? ', and one naming an unknown organization provisions it' : '') + '.\n'
         );
     }
 }
@@ -760,10 +761,11 @@ validateOrgValidationConfig(config);
  * client (WSO2 IS / Asgardeo sub-organizations). Normalized once here to what jose's
  * jwtVerify takes: a single value stays a string, as before; several become an array.
  *
- * In multi-tenancy mode it is required: without an audience check, a token the same IDP
- * issued to any other application would be accepted — and with every organization under
- * this portal_id reachable (and, with enforce_org_validation off, provisionable) that
- * reaches far more than the one organization it would in single-organization mode.
+ * In multi-organization mode it is required: without an audience check, a token the
+ * same IDP issued to any other application would be accepted — and with every
+ * organization under this portal_id reachable (and, with enforce_org_validation off,
+ * provisionable) that reaches far more than the one organization it would in
+ * single-organization mode.
  */
 function normalizeIdpAudience(cfg) {
     const idp = cfg.auth?.idp;
@@ -773,9 +775,9 @@ function normalizeIdpAudience(cfg) {
         .map((a) => String(a).trim())
         .filter(Boolean);
     idp.audience = list.length > 1 ? list : (list[0] || '');
-    if (cfg.multiTenancy?.enabled && cfg.auth.mode === 'idp' && list.length === 0) {
+    if (cfg.multiOrganization?.enabled && cfg.auth.mode === 'idp' && list.length === 0) {
         process.stderr.write(
-            '[FATAL] multi_tenancy.enabled = true requires auth.idp.audience — the audience (usually the client id) ' +
+            '[FATAL] multi_organization.enabled = true requires auth.idp.audience — the audience (usually the client id) ' +
             'bearer tokens must be issued for. Without it a token the IDP issued to any other application would ' +
             'be accepted for every organization. Several values may be given, comma-separated or as an array.\n'
         );

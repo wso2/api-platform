@@ -211,7 +211,7 @@ func TestSourceProductsResolveVersionsForEveryBlock(t *testing.T) {
 func TestSourceProductsBuildAComponentFromItsSourceProduct(t *testing.T) {
 	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{
 		{Components: []topology.ResolvedComponent{
-			{Def: &components.Definition{Name: "api-portal-multi-tenancy", SourceProduct: "api-portal"}},
+			{Def: &components.Definition{Name: "api-portal-multi-organization", SourceProduct: "api-portal"}},
 			{Def: &components.Definition{Name: "api-portal-other-variant", SourceProduct: "api-portal"}},
 			{Def: &components.Definition{Name: "testbench"}},
 		}},

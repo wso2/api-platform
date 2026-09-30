@@ -36,21 +36,22 @@ const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReloa
 
 const PORT = process.env.PORT || config.server.port;
 
-// Multi-tenancy mode serves, and delivers webhooks for, every organization under this
-// portal_id, so any other deployment started with the same portal_id would have its
-// organizations served by this one too (portals under other portal_ids are unaffected).
-// That can't be detected reliably from here — an auto-provisioned organization and
-// another deployment's configured one look alike — so state the assumption and list
-// what this instance will serve, for the operator to check. Informational only.
-async function logMultiTenancyMode() {
-    if (!orgContext.isMultiTenancyEnabled()) return;
+// Multi-organization mode serves, and delivers webhooks for, every organization under
+// this portal_id, so any other deployment started with the same portal_id would have
+// its organizations served by this one too (portals under other portal_ids are
+// unaffected). That can't be detected reliably from here — an auto-provisioned
+// organization and another deployment's configured one look alike — so state the
+// assumption and list what this instance will serve, for the operator to check.
+// Informational only.
+async function logMultiOrganizationMode() {
+    if (!orgContext.isMultiOrganizationEnabled()) return;
     let orgs = [];
     try {
         orgs = await orgDao.list();
     } catch (err) {
-        logger.warn('Multi-tenancy: could not list organizations', { error: err.message });
+        logger.warn('Multi-organization: could not list organizations', { error: err.message });
     }
-    logger.info('Multi-tenancy mode: serving every organization under this portal_id. This deployment must own ' +
+    logger.info('Multi-organization mode: serving every organization under this portal_id. This deployment must own ' +
         'the portal_id — other instances may use it only as replicas with identical configuration ' +
         '(including security.encryption_key).', {
         portalId: orgContext.getPortalId(),
@@ -61,8 +62,8 @@ async function logMultiTenancyMode() {
     // organizations can be used until the data is fixed. The identifier itself is left
     // out of the log (it is the IDP's organization id); the handles are enough to find it.
     for (const { handles } of orgContext.findSharedIdpRefIds(orgs)) {
-        logger.error('Multi-tenancy: organizations share an idp_ref_id — sign-ins to them are refused as ambiguous ' +
-            'until one is changed (see docs/administer/multi-tenancy.md)', { organizations: handles });
+        logger.error('Multi-organization: organizations share an idp_ref_id — sign-ins to them are refused as ambiguous ' +
+            'until one is changed (see docs/administer/multi-organization.md)', { organizations: handles });
     }
 }
 
@@ -189,7 +190,7 @@ async function startServer() {
     // above and the designMode branch in app.js.
     if (!config.designMode?.enabled) {
         await seedDefaultOrg();
-        await logMultiTenancyMode();
+        await logMultiOrganizationMode();
     }
 
     if (!config.server.https.enabled || config.designMode?.enabled) {

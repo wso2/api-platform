@@ -66,7 +66,7 @@ async function verifyIdpJwt(token, audience) {
 
 /**
  * Checks an IDP-asserted organization claim against the organization(s) this
- * instance serves — its configured one, or in multi-tenancy mode any that exists.
+ * instance serves — its configured one, or in multi-organization mode any that exists.
  *
  * The decision itself is orgContext.resolveClaimOrg's — deliberately, rather than
  * a second resolve-and-compare written out here. There is no IDP in the integration
@@ -76,7 +76,7 @@ async function verifyIdpJwt(token, audience) {
  * to translating its outcome into a login failure. In the default mode it also
  * resolves the claim before comparing, so a handle, display name, or idp_ref_id
  * spelling of the same organization all match — which matters here because the
- * flavour of the mapped claim is IDP-specific. In multi-tenancy mode only an exact
+ * flavour of the mapped claim is IDP-specific. In multi-organization mode only an exact
  * idp_ref_id match counts (see resolveClaimOrg for why).
  *
  * A rejection is a flat 403 whether the organization is unknown or merely someone
@@ -96,7 +96,7 @@ async function assertLoginOrgAllowed(organizationId, orgNames) {
     } catch (err) {
         if (err instanceof CustomError && err.statusCode === 403) {
             logger.warn('Rejected login: token organization is not served by this portal', {
-                expected: orgContext.isMultiTenancyEnabled() ? 'any known organization' : orgContext.getHandle(),
+                expected: orgContext.isMultiOrganizationEnabled() ? 'any known organization' : orgContext.getHandle(),
                 asserted: organizationId,
             });
             const failure = new Error('Forbidden');
@@ -154,15 +154,16 @@ function configurePassport(SERVER_ID) {
                 });
                 return done(new Error('Login failed: token verification error'));
             }
-            const multiTenancy = orgContext.isMultiTenancyEnabled();
-            // Multi-tenancy tenants are commonly provisioned with a username only, so fall
-            // back through the standard username claims rather than show a blank name.
-            const firstName = decodedJWT['given_name'] || decodedJWT['nickname'] || (multiTenancy
+            const multiOrganization = orgContext.isMultiOrganizationEnabled();
+            // In multi-organization mode, users are commonly provisioned with a username
+            // only, so fall back through the standard username claims rather than show a
+            // blank name.
+            const firstName = decodedJWT['given_name'] || decodedJWT['nickname'] || (multiOrganization
                 ? decodedJWT['preferred_username'] || decodedJWT['username'] || decodedJWT['sub']
                 : undefined);
             const lastName = decodedJWT['family_name'];
             let organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
-            if (multiTenancy) {
+            if (multiOrganization) {
                 try {
                     organizationId = orgContext.normalizeOrgClaim(organizationId);
                 } catch {
@@ -171,11 +172,11 @@ function configurePassport(SERVER_ID) {
                     return done(failure);
                 }
             }
-            // Multi-tenancy mode reads roles/groups from the access token first: that is the
-            // token authResolver's bearer path authorizes, and some IDPs (WSO2 IS for B2B
-            // organization users among them) put the role assignment there without it
-            // reaching the ID token.
-            const fromTokens = (claim) => (multiTenancy
+            // Multi-organization mode reads roles/groups from the access token first:
+            // that is the token authResolver's bearer path authorizes, and some IDPs
+            // (WSO2 IS for B2B organization users among them) put the role assignment
+            // there without it reaching the ID token.
+            const fromTokens = (claim) => (multiOrganization
                 ? getNestedClaim(decodedAccessToken || {}, claim) ?? getNestedClaim(decodedJWT, claim)
                 : getNestedClaim(decodedJWT, claim));
             const rawRoles = fromTokens(config.auth.claimMappings.roles) ?? '';
@@ -196,8 +197,9 @@ function configurePassport(SERVER_ID) {
             // the mapped organization claim against the one this instance is pinned
             // to and refuse the login otherwise — authResolver would reject each
             // subsequent request anyway, leaving the user with a session that 403s
-            // on every page. (In multi-tenancy mode: any organization it serves, and with
-            // auth.enforce_org_validation off one it doesn't have yet is provisioned.)
+            // on every page. (In multi-organization mode: any organization it serves, and
+            // with auth.enforce_org_validation off one it doesn't have yet is
+            // provisioned.)
             //
             // An absent claim depends on auth.enforce_org_validation:
             //   off — the login belongs to the configured organization, and the session
@@ -206,9 +208,9 @@ function configurePassport(SERVER_ID) {
             //         exactly like a login that asserted it.
             //   on, single-org — let through as before: authResolver fails closed on
             //         each REST call without a claim.
-            //   on, multi-tenancy — refused here. Pages of every organization are routable
-            //         in this mode, and a session with no claim would otherwise pass the
-            //         page org check for all of them.
+            //   on, multi-organization — refused here. Pages of every organization are
+            //         routable in this mode, and a session with no claim would otherwise
+            //         pass the page org check for all of them.
             let loginOrgUuid;
             if (organizationId) {
                 const allowed = await assertLoginOrgAllowed(organizationId, orgContext.orgNameClaims(decodedJWT));
@@ -224,7 +226,7 @@ function configurePassport(SERVER_ID) {
                     failure.status = 500;
                     return done(failure);
                 }
-            } else if (orgContext.isMultiTenancyEnabled()) {
+            } else if (orgContext.isMultiOrganizationEnabled()) {
                 logger.warn('Rejected login: token carries no organization claim', {
                     claim: config.auth.claimMappings.organization,
                 });
@@ -263,13 +265,14 @@ function configurePassport(SERVER_ID) {
                 [constants.USER_ID]: decodedAccessToken?.[constants.USER_ID],
                 serverId: SERVER_ID,
                 imageURL,
-                // Multi-tenancy mode: the organization this login resolved to, so the callback
-                // can land the user in it (authController.handleCallback). Deliberately not
-                // kept by serializeUser below — nothing after that one redirect needs it.
-                ...(multiTenancy && loginOrgUuid && { loginOrgUuid }),
+                // Multi-organization mode: the organization this login resolved to, so
+                // the callback can land the user in it (authController.handleCallback).
+                // Deliberately not kept by serializeUser below — nothing after that one
+                // redirect needs it.
+                ...(multiOrganization && loginOrgUuid && { loginOrgUuid }),
                 // Whether this login is handleSilentSSO's prompt=none round trip — read
                 // here because the session (and its flag) is regenerated just below.
-                ...(multiTenancy && req.session.silentLoginInFlight && { silentLogin: true }),
+                ...(multiOrganization && req.session.silentLoginInFlight && { silentLogin: true }),
             };
             req.session.regenerate((err) => {
                 if (err) {

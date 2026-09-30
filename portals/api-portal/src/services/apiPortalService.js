@@ -55,7 +55,7 @@ const getOrganization = async (req, res) => {
     try {
         // Only this instance's own organization is readable — the {orgId} parameter
         // selects nothing else, even though the shared database holds other orgs. In
-        // multi-tenancy mode, only the caller's own organization.
+        // multi-organization mode, only the caller's own organization.
         await orgContext.requireCallerOrg(req.params.orgId, req.orgId);
         const organization = await getOrganizationDetails(req.params.orgId);
         res.status(200).json(organization);
@@ -99,11 +99,11 @@ const getOrgContent = async (req, res) => {
             // rather than a hard 404. The org is also guarded because passing an
             // undefined one into the DAO throws.
             //
-            // In multi-tenancy mode every organization's public pages are open, and so is
-            // their branding: ?orgId then names the organization whose page is being
-            // rendered (see orgContext.resolvePublicContentOrg).
+            // In multi-organization mode every organization's public pages are open,
+            // and so is their branding: ?orgId then names the organization whose page
+            // is being rendered (see orgContext.resolvePublicContentOrg).
             let assetOrgId = req.orgId;
-            if (DEFAULT_CONTENT_DIRS[req.query.fileType] && (!assetOrgId || orgContext.isMultiTenancyEnabled())) {
+            if (DEFAULT_CONTENT_DIRS[req.query.fileType] && (!assetOrgId || orgContext.isMultiOrganizationEnabled())) {
                 assetOrgId = await orgContext.resolvePublicContentOrg(req.query.orgId, req.orgId).catch(() => null);
             }
             let asset = null;

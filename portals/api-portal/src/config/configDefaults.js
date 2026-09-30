@@ -160,19 +160,19 @@ const DEFAULTS = {
         //                     refused. This is the behaviour of every earlier release.
         //   false — a credential with no organization claim falls back to
         //           organization.handle (the session records it as that organization),
-        //           and in multi_tenancy mode one naming an organization that doesn't exist
-        //           yet provisions it. A claim naming an existing organization that this
-        //           portal does not serve is still refused either way.
+        //           and in multi-organization mode one naming an organization that
+        //           doesn't exist yet provisions it. A claim naming an existing
+        //           organization this portal does not serve is still refused either way.
         enforceOrgValidation: true,
         // JWT claim name mappings — which token claim carries each field.
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
             // Optional claim carrying the organization's human-readable name. Used only
-            // when an organization is provisioned from a claim (multi_tenancy mode with
-            // enforce_org_validation = false): its URL handle and display name are
-            // derived from it. Empty — or absent from the token — derives both from
-            // the organization claim above instead.
+            // when an organization is provisioned from a claim (multi-organization mode
+            // with enforce_org_validation = false): its URL handle and display name are
+            // derived from it. Empty — or absent from the token — derives both from the
+            // organization claim above instead.
             orgName: '',
             // Optional claim carrying the organization's URL handle (e.g. WSO2 IS's
             // org_handle). Provisioning uses it as the handle as-is when it is a valid,
@@ -287,13 +287,12 @@ const DEFAULTS = {
         authenticated: [],
         authorized: [],
     },
-    // The single organization this portal instance serves. The database schema is
-    // still multi-org (one shared database can hold many organizations, each served
-    // by its own portal instance), but a given instance is pinned to exactly one:
-    // every page route, REST request, and background worker is scoped to `handle`,
-    // and anything resolving to a different organization is rejected. See
-    // src/utils/orgContext.js. The organization is seeded on first startup if it
-    // doesn't exist yet (src/services/seederService.js).
+    // The single organization this portal instance serves. One shared database can
+    // hold many organizations, each served by its own portal instance, but a given
+    // instance is pinned to exactly one: every page route, REST request, and
+    // background worker is scoped to `handle`, and anything resolving to a different
+    // organization is rejected. See src/utils/orgContext.js. The organization is
+    // seeded on first startup if it doesn't exist yet (src/services/seederService.js).
     organization: {
         // Handle (URL slug) of this instance's organization — the {orgHandle}
         // segment of /{orgHandle}/views/{viewName}. Mirrors platform-api's
@@ -325,7 +324,7 @@ const DEFAULTS = {
         // is set the template resolves to 'portal_id'.
         portalId: '',
     },
-    // Multi-tenancy mode. Off (the default) — the portal serves only the
+    // Multi-organization mode. Off (the default) — the portal serves only the
     // organization above, exactly as described there. On — one portal serves every
     // organization under its portal_id: page URLs, org claims and the organization APIs
     // resolve to whichever organization they name, not only the configured one (which
@@ -336,7 +335,7 @@ const DEFAULTS = {
     // as replicas with identical configuration, since any instance may serve any
     // organization under it. Other deployments may share the database under a
     // different portal_id. See src/utils/orgContext.js.
-    multiTenancy: {
+    multiOrganization: {
         enabled: false,
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here

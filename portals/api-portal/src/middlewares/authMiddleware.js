@@ -196,20 +196,20 @@ async function verifyBearerToken(token, req) {
  * and orgDao resolves all three. Comparing after resolution makes every spelling of
  * this organization match and every spelling of any other organization not match.
  *
- * In multi-tenancy mode (orgContext.isMultiTenancyEnabled) a credential's org claim is
- * resolved by orgContext.resolveClaimOrg instead, which accepts whichever
- * organization the claim names. `fromClaim: false` keeps the pinned-org rule
- * regardless: the `organization` header of an mTLS or shared-key caller is a request
- * header, not something a verified credential asserted. For shared-key calls this is
- * what keeps platform-api publishing in the configured organization in multi-tenancy
- * mode: the portal holds one shared key for every caller, so it can't vouch for which
- * organization a call is for.
+ * In multi-organization mode (orgContext.isMultiOrganizationEnabled) a credential's org
+ * claim is resolved by orgContext.resolveClaimOrg instead, which accepts whichever
+ * organization the claim names. `fromClaim: false` keeps the pinned-org rule regardless:
+ * the `organization` header of an mTLS or shared-key caller is a request header, not
+ * something a verified credential asserted. For shared-key calls this is what keeps
+ * platform-api publishing in the configured organization in multi-organization mode: the
+ * portal holds one shared key for every caller, so it can't vouch for which organization
+ * a call is for.
  *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
 async function resolveScopedOrg(req, identifier, source, { fromClaim = true, provision = false, orgNames } = {}) {
     if (!identifier) return null;
-    if (fromClaim && orgContext.isMultiTenancyEnabled()) {
+    if (fromClaim && orgContext.isMultiOrganizationEnabled()) {
         try {
             req.orgId = await orgContext.resolveClaimOrg(identifier, source, { provision, orgNames });
             return null;
@@ -450,12 +450,13 @@ async function authResolver(req, res, next) {
             if (config.auth.mode === 'idp') {
                 const orgClaimKey = config.auth.claimMappings?.organization;
                 const mappedOrgClaim = orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined;
-                // Multi-tenancy mode matches claims against idp_ref_id only, so a handle is
-                // never a stand-in for the organization id there; the org_handle fallback
-                // stays for single-organization mode, whose lookup also accepts a handle.
+                // Multi-organization mode matches claims against idp_ref_id only, so a
+                // handle is never a stand-in for the organization id there; the
+                // org_handle fallback stays for single-organization mode, whose lookup
+                // also accepts a handle.
                 let tokenOrgClaim = mappedOrgClaim
-                    || (orgContext.isMultiTenancyEnabled() ? undefined : decoded.org_handle);
-                if (orgContext.isMultiTenancyEnabled()) {
+                    || (orgContext.isMultiOrganizationEnabled() ? undefined : decoded.org_handle);
+                if (orgContext.isMultiOrganizationEnabled()) {
                     try {
                         tokenOrgClaim = orgContext.normalizeOrgClaim(tokenOrgClaim);
                     } catch {

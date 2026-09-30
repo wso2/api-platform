@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal multi-tenancy pages and browser sign-in
+Feature: API Portal multi-organization pages and browser sign-in
 
   # Every organization's public pages are open, sign-in goes through the one configured
   # callback under the configured organization, and silent sign-in only succeeds for the
@@ -29,13 +29,13 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:pages}       |
       | org_name | Pages ${CTX:pages} |
       | roles    | ["ap_admin"]       |
-    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     And the response status code should be 200
     And the API Portal browser "visitor" has no IDP session
-    When I browse API Portal page "/api-portal/pages-${CTX:pages}/views/default" using portal "api-portal-multi-tenancy" as browser "visitor"
+    When I browse API Portal page "/api-portal/pages-${CTX:pages}/views/default" using portal "api-portal-multi-organization" as browser "visitor"
     Then the response status code should be 200
     And the API Portal browser "visitor" should be on page "/api-portal/pages-${CTX:pages}/views/default"
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/no-such-${CTX:pages}/views/default" using portal "api-portal-multi-tenancy"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/no-such-${CTX:pages}/views/default" using portal "api-portal-multi-organization"
     Then the response status code should be 404
 
   Scenario: A new organization's user signs in from the configured organization's page and lands in their own
@@ -45,15 +45,15 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:initech}         |
       | org_name | Initech ${CTX:initech} |
       | roles    | ["ap_admin"]           |
-    When I sign in to API Portal "api-portal-multi-tenancy" from "/api-portal/default/views/default/login" as browser "ivy"
+    When I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "ivy"
     Then the response status code should be 302
     And the response header "Location" should be "/api-portal/initech-${CTX:initech}/views/default"
     And the API Portal browser "ivy" last IDP authorization parameter "org" should be absent
-    When I send an API Portal "GET" request to "/api-portal/initech-${CTX:initech}/views/default/applications" using portal "api-portal-multi-tenancy" as browser "ivy"
+    When I send an API Portal "GET" request to "/api-portal/initech-${CTX:initech}/views/default/applications" using portal "api-portal-multi-organization" as browser "ivy"
     Then the response status code should be 200
-    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-tenancy" as browser "ivy"
+    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-organization" as browser "ivy"
     Then the response status code should be 403
-    When I send an API Portal "GET" request to "/organizations/initech-${CTX:initech}" using portal "api-portal-multi-tenancy" as browser "ivy"
+    When I send an API Portal "GET" request to "/organizations/initech-${CTX:initech}" using portal "api-portal-multi-organization" as browser "ivy"
     Then the response status code should be 200
 
   Scenario: An administrator sees Settings only on their own organization's pages
@@ -63,17 +63,17 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:navs}      |
       | org_name | Navs ${CTX:navs} |
       | roles    | ["ap_admin"]     |
-    And I sign in to API Portal "api-portal-multi-tenancy" from "/api-portal/default/views/default/login" as browser "ada"
+    And I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "ada"
     And the response status code should be 302
-    When I send an API Portal "GET" request to "/api-portal/navs-${CTX:navs}/views/default" using portal "api-portal-multi-tenancy" as browser "ada"
+    When I send an API Portal "GET" request to "/api-portal/navs-${CTX:navs}/views/default" using portal "api-portal-multi-organization" as browser "ada"
     Then the response status code should be 200
     And the response body should match pattern "id=.admin-settings."
     And the response body should match pattern "id=.applications."
-    When I send an API Portal "GET" request to "/api-portal/default/views/default" using portal "api-portal-multi-tenancy" as browser "ada"
+    When I send an API Portal "GET" request to "/api-portal/default/views/default" using portal "api-portal-multi-organization" as browser "ada"
     Then the response status code should be 200
     And the response body should not contain "admin-settings"
     And the response body should match pattern "id=.applications."
-    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-tenancy" as browser "ada"
+    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-organization" as browser "ada"
     Then the response status code should be 403
     And the response body should not contain "admin-settings"
 
@@ -84,15 +84,15 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:hinted}        |
       | org_name | Hinted ${CTX:hinted} |
       | roles    | ["ap_admin"]         |
-    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     And the response status code should be 200
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/hinted-${CTX:hinted}/views/default/login" using portal "api-portal-multi-tenancy"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/hinted-${CTX:hinted}/views/default/login" using portal "api-portal-multi-organization"
     Then the response status code should be 302
     And the API Portal redirect parameter "org" should be "${CTX:hinted}"
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/login?org=${CTX:hinted}" using portal "api-portal-multi-tenancy"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/login?org=${CTX:hinted}" using portal "api-portal-multi-organization"
     Then the response status code should be 302
     And the API Portal redirect parameter "org" should be "${CTX:hinted}"
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/login" using portal "api-portal-multi-tenancy"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/login" using portal "api-portal-multi-organization"
     Then the response status code should be 302
     And the API Portal redirect parameter "org" should be absent
 
@@ -103,16 +103,16 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:elsewhere}           |
       | org_name | Elsewhere ${CTX:elsewhere} |
       | roles    | ["ap_admin"]               |
-    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     And the response status code should be 200
     And the API Portal browser "nobody" has an IDP session with claims:
       | sub   | nobody       |
       | roles | ["ap_admin"] |
-    When I sign in to API Portal "api-portal-multi-tenancy" from "/api-portal/default/views/default/login" as browser "nobody"
+    When I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "nobody"
     Then the response status code should be 302
-    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-tenancy" as browser "nobody"
+    When I send an API Portal "GET" request to "/api-portal/default/views/default/applications" using portal "api-portal-multi-organization" as browser "nobody"
     Then the response status code should be 200
-    When I send an API Portal "GET" request to "/api-portal/elsewhere-${CTX:elsewhere}/views/default/applications" using portal "api-portal-multi-tenancy" as browser "nobody"
+    When I send an API Portal "GET" request to "/api-portal/elsewhere-${CTX:elsewhere}/views/default/applications" using portal "api-portal-multi-organization" as browser "nobody"
     Then the response status code should be 403
 
   Scenario: Silent sign-in asks the IDP only for the organization being browsed
@@ -123,19 +123,19 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:silentY}          |
       | org_name | Silent Y ${CTX:silentY} |
       | roles    | ["ap_admin"]            |
-    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "tokenY"
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenY"
     And the response status code should be 200
     And the API Portal browser "sam" has an IDP session with claims:
       | sub      | sam                     |
       | org_id   | ${CTX:silentX}          |
       | org_name | Silent X ${CTX:silentX} |
       | roles    | ["ap_admin"]            |
-    When I browse API Portal page "/api-portal/silent-y-${CTX:silentY}/views/default" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I browse API Portal page "/api-portal/silent-y-${CTX:silentY}/views/default" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 200
     And the API Portal browser "sam" should be on page "/api-portal/silent-y-${CTX:silentY}/views/default"
     And the API Portal browser "sam" last IDP authorization parameter "prompt" should be "none"
     And the API Portal browser "sam" last IDP authorization parameter "org" should be "${CTX:silentY}"
-    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 401
 
   Scenario: Silent sign-in signs the visitor in on their own organization's page, in place
@@ -145,17 +145,17 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:silentX}          |
       | org_name | Silent X ${CTX:silentX} |
       | roles    | ["ap_admin"]            |
-    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "tokenX"
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenX"
     And the response status code should be 200
     And the API Portal browser "sam" has an IDP session with claims:
       | sub      | sam                     |
       | org_id   | ${CTX:silentX}          |
       | org_name | Silent X ${CTX:silentX} |
       | roles    | ["ap_admin"]            |
-    When I browse API Portal page "/api-portal/silent-x-${CTX:silentX}/views/default" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I browse API Portal page "/api-portal/silent-x-${CTX:silentX}/views/default" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 200
     And the API Portal browser "sam" should be on page "/api-portal/silent-x-${CTX:silentX}/views/default"
-    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 200
 
   Scenario: Silent sign-in from the configured organization's page signs in whoever the IDP knows without moving them
@@ -165,23 +165,23 @@ Feature: API Portal multi-tenancy pages and browser sign-in
       | org_id   | ${CTX:silentX}          |
       | org_name | Silent X ${CTX:silentX} |
       | roles    | ["ap_admin"]            |
-    When I browse API Portal page "/api-portal/default/views/default" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I browse API Portal page "/api-portal/default/views/default" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 200
     And the API Portal browser "sam" should be on page "/api-portal/default/views/default"
     And the API Portal browser "sam" last IDP authorization parameter "org" should be absent
-    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-tenancy" as browser "sam"
+    When I send an API Portal "GET" request to "/organizations/silent-x-${CTX:silentX}" using portal "api-portal-multi-organization" as browser "sam"
     Then the response status code should be 200
 
   Scenario: An explicit login after a failed silent attempt still lands in the user's own organization
     Given I generate a unique resource name from "silent-x" and store it as "silentX"
     And the API Portal browser "sam" has no IDP session
-    And I browse API Portal page "/api-portal/default/views/default" using portal "api-portal-multi-tenancy" as browser "sam"
+    And I browse API Portal page "/api-portal/default/views/default" using portal "api-portal-multi-organization" as browser "sam"
     And the response status code should be 200
     And the API Portal browser "sam" has an IDP session with claims:
       | sub      | sam                     |
       | org_id   | ${CTX:silentX}          |
       | org_name | Silent X ${CTX:silentX} |
       | roles    | ["ap_admin"]            |
-    When I sign in to API Portal "api-portal-multi-tenancy" from "/api-portal/default/views/default/login" as browser "sam"
+    When I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "sam"
     Then the response status code should be 302
     And the response header "Location" should be "/api-portal/silent-x-${CTX:silentX}/views/default"

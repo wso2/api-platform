@@ -20,11 +20,11 @@
 /*
  * Which portal, and which organization(s), this portal instance serves.
  *
- * The database schema is multi-organization — one shared database can hold many
- * organizations, each served by its own portal instance. Every instance is pinned to
- * exactly one portal, identified by `organization.portal_id` in config.toml (resolved
- * from the APIP_AP_ORGANIZATION_PORTAL_ID env var via the {{ env }} template token),
- * and by default to exactly one org within it, named by `organization.handle`. This
+ * One shared database can hold many organizations, each served by its own portal
+ * instance. Every instance is pinned to exactly one portal, identified by
+ * `organization.portal_id` in config.toml (resolved from the
+ * APIP_AP_ORGANIZATION_PORTAL_ID env var via the {{ env }} template token), and by
+ * default to exactly one org within it, named by `organization.handle`. This
  * module is the only place that resolves both, and every org/portal-scoped surface
  * goes through here:
  *
@@ -32,12 +32,12 @@
  *   - orgGuard.js        — verifies the {orgHandle} URL segment matches the pin
  *   - webhook workers    — scope their global claim queries to the pinned org
  *
- * With multi_tenancy.enabled (IDP mode only, see isMultiTenancyEnabled) one instance serves
- * every organization under its portal_id instead: the same call sites ask the
- * multi-tenancy-aware questions below (resolveClaimOrg, requireKnownOrgHandle,
- * requireCallerOrg, resolvePublicContentOrg) and get "any organization that exists"
- * where the default mode answers "only the pinned one". The configured organization
- * stays the default and fallback either way.
+ * With multi_organization.enabled (IDP mode only, see isMultiOrganizationEnabled) one
+ * instance serves every organization under its portal_id instead: the same call sites
+ * ask the multi-organization-aware questions below (resolveClaimOrg,
+ * requireKnownOrgHandle, requireCallerOrg, resolvePublicContentOrg) and get "any
+ * organization that exists" where the default mode answers "only the pinned one". The
+ * configured organization stays the default and fallback either way.
  *
  * The organization row itself is seeded on startup (seederService.js), so
  * getOrgUuid() is expected to succeed from then on. It is resolved lazily rather
@@ -121,14 +121,14 @@ async function getFallbackViewHandle(orgUuid) {
 
 /**
  * True when this instance serves every organization under its portal_id rather than only
- * the configured one: multi_tenancy.enabled, in IDP mode. Local auth has no per-user
- * organization claim to route by, so it stays single-organization regardless (the
- * config loader warns when the flag is set there).
+ * the configured one: multi_organization.enabled, in IDP mode. Local auth has no
+ * per-user organization claim to route by, so it stays single-organization regardless
+ * (the config loader warns when the flag is set there).
  *
  * @returns {boolean}
  */
-function isMultiTenancyEnabled() {
-    return config.multiTenancy?.enabled === true && config.auth?.mode === 'idp';
+function isMultiOrganizationEnabled() {
+    return config.multiOrganization?.enabled === true && config.auth?.mode === 'idp';
 }
 
 /**
@@ -307,13 +307,13 @@ function forbiddenOrg() {
  *
  * Default mode: the claim must name this instance's organization — resolved through
  * orgDao's handle/display_name/idp_ref_id ladder and compared by uuid, exactly as
- * before multi-tenancy mode existed.
+ * before multi-organization mode existed.
  *
- * Multi-tenancy mode: the claim is matched against idp_ref_id exactly — the one field the
- * IDP's organization identifier is stored in — and any organization it names is
- * accepted. No handle/display_name fallback: a claim value that happened to equal some
- * other organization's display name must not resolve to it. idp_ref_id has no unique
- * constraint, so more than one match is treated as ambiguous and refused.
+ * Multi-organization mode: the claim is matched against idp_ref_id exactly — the one
+ * field the IDP's organization identifier is stored in — and any organization it names
+ * is accepted. No handle/display_name fallback: a claim value that happened to equal
+ * some other organization's display name must not resolve to it. idp_ref_id has no
+ * unique constraint, so more than one match is treated as ambiguous and refused.
  *
  * An unknown organization and a refused one both surface as the same 403, so the
  * difference can't be used to probe which organizations exist.
@@ -331,7 +331,7 @@ function forbiddenOrg() {
  * @throws {CustomError} 403 when the claim is not accepted
  */
 async function resolveClaimOrg(claim, source, { provision = false, orgNames } = {}) {
-    if (!isMultiTenancyEnabled()) {
+    if (!isMultiOrganizationEnabled()) {
         return requirePinnedOrg(claim);
     }
     const matches = await orgDao.listByIdpRefId(claim);
@@ -355,13 +355,13 @@ async function resolveClaimOrg(claim, source, { provision = false, orgNames } = 
 }
 
 /**
- * Multi-tenancy mode: reduces a raw org claim to the single organization identifier it
- * names. IDPs differ in shape — WSO2 IS/Asgardeo and Auth0 send a string, Keycloak's
- * Organizations feature sends a list of aliases or a map keyed by alias — so a list
- * or map naming exactly one organization is that organization. One naming several is
- * refused rather than resolved to an arbitrary member: this portal scopes a session
- * to one organization, and picking the first entry could silently put a user in the
- * wrong one.
+ * Multi-organization mode: reduces a raw org claim to the single organization
+ * identifier it names. IDPs differ in shape — WSO2 IS/Asgardeo and Auth0 send a
+ * string, Keycloak's Organizations feature sends a list of aliases or a map keyed by
+ * alias — so a list or map naming exactly one organization is that organization. One
+ * naming several is refused rather than resolved to an arbitrary member: this portal
+ * scopes a session to one organization, and picking the first entry could silently put
+ * a user in the wrong one.
  *
  * @param {*} raw the claim value from the token
  * @returns {string} the identifier, or '' when the claim is absent/empty
@@ -394,12 +394,12 @@ function isOrgValidationEnforced() {
 
 /**
  * True when an org claim naming an organization that doesn't exist yet provisions it:
- * multi-tenancy mode with enforce_org_validation turned off.
+ * multi-organization mode with enforce_org_validation turned off.
  *
  * @returns {boolean}
  */
 function isOrgProvisioningEnabled() {
-    return isMultiTenancyEnabled() && !isOrgValidationEnforced();
+    return isMultiOrganizationEnabled() && !isOrgValidationEnforced();
 }
 
 /**
@@ -617,10 +617,11 @@ async function provisionOrg(claim, orgNames, source) {
 }
 
 /**
- * Multi-tenancy mode: resolves the {orgHandle} segment of a page URL to the uuid of the
- * organization with exactly that handle — never a display name or idp_ref_id, since a
- * page has one canonical URL. A URL never creates an organization. (The default mode
- * never gets here: orgGuard compares against getHandle() without a lookup.)
+ * Multi-organization mode: resolves the {orgHandle} segment of a page URL to the uuid
+ * of the organization with exactly that handle — never a display name or idp_ref_id,
+ * since a page has one canonical URL. A URL never creates an organization. (The
+ * default mode never gets here: orgGuard compares against getHandle() without a
+ * lookup.)
  *
  * @param {string} value the URL segment
  * @returns {Promise<string>} the organization's uuid
@@ -646,10 +647,10 @@ async function requireKnownOrg(value) {
  * returns its uuid, throwing 403 unless the caller may act on it.
  *
  * Default mode: it must be this instance's organization (requirePinnedOrg).
- * Multi-tenancy mode: it must be the caller's *own* organization — the one authResolver
- * resolved from the caller's verified org claim (req.orgId). "Any known organization"
- * would let an administrator of one tenant read and rewrite another's settings just by
- * changing the path parameter.
+ * Multi-organization mode: it must be the caller's *own* organization — the one
+ * authResolver resolved from the caller's verified org claim (req.orgId). "Any known
+ * organization" would let an administrator of one tenant read and rewrite another's
+ * settings just by changing the path parameter.
  *
  * @param {string} identifier the {orgId} path parameter
  * @param {string} callerOrgUuid req.orgId
@@ -657,7 +658,7 @@ async function requireKnownOrg(value) {
  * @throws {CustomError} 403 otherwise
  */
 async function requireCallerOrg(identifier, callerOrgUuid) {
-    if (!isMultiTenancyEnabled()) return requirePinnedOrg(identifier);
+    if (!isMultiOrganizationEnabled()) return requirePinnedOrg(identifier);
     let resolvedUuid = null;
     try {
         resolvedUuid = await orgDao.getId(identifier);
@@ -680,17 +681,18 @@ async function requireCallerOrg(identifier, callerOrgUuid) {
  * `?orgId` query parameter is ignored, since it would otherwise be an unauthenticated
  * selector for any tenant's content in a shared database.
  *
- * Multi-tenancy mode: every organization's public pages are open to anonymous visitors, so
- * their branding is too. `?orgId` (an organization uuid, as the portal's own templates
- * emit it) is honoured when it names an existing organization — the page being
- * rendered, which may not be the session's own — and otherwise falls back as above.
+ * Multi-organization mode: every organization's public pages are open to anonymous
+ * visitors, so their branding is too. `?orgId` (an organization uuid, as the portal's
+ * own templates emit it) is honoured when it names an existing organization — the page
+ * being rendered, which may not be the session's own — and otherwise falls back as
+ * above.
  *
  * @param {string|undefined} queryOrgId the request's ?orgId
  * @param {string|undefined} sessionOrgUuid req.orgId
  * @returns {Promise<string|null>}
  */
 async function resolvePublicContentOrg(queryOrgId, sessionOrgUuid) {
-    if (isMultiTenancyEnabled() && typeof queryOrgId === 'string' && queryOrgId) {
+    if (isMultiOrganizationEnabled() && typeof queryOrgId === 'string' && queryOrgId) {
         try {
             return (await orgDao.getByUuid(queryOrgId)).uuid;
         } catch (err) {
@@ -746,9 +748,9 @@ function claimBelongsToOrg(user, org) {
  * For page chrome: true when a signed-in user is browsing an organization other than
  * their own, where they are no administrator (the sidebar's Settings link is hidden,
  * as for an anonymous visitor; the signed-in pages answer 403). orgGuard records the
- * answer on the request as req.foreignOrgSession for multi-tenancy page routes; it is
- * never set in the default single-organization mode (there is only one organization
- * to be in) or for anonymous visitors.
+ * answer on the request as req.foreignOrgSession for multi-organization page routes;
+ * it is never set in the default single-organization mode (there is only one
+ * organization to be in) or for anonymous visitors.
  *
  * @param {object} user req.user
  * @param {object} org the page's organization row
@@ -767,7 +769,7 @@ module.exports = {
     getOrgUuid,
     isPinnedOrg,
     requirePinnedOrg,
-    isMultiTenancyEnabled,
+    isMultiOrganizationEnabled,
     normalizeOrgClaim,
     orgNameClaims,
     claimBelongsToOrg,

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal multi-tenancy with organization validation enforced
+Feature: API Portal multi-organization with organization validation enforced
 
   # auth.enforce_org_validation = true: an unknown organization is refused rather than
   # provisioned, and so is a credential that names none.
@@ -26,7 +26,7 @@ Feature: API Portal multi-tenancy with organization validation enforced
       | sub    | alice        |
       | org_id | default      |
       | roles  | ["ap_admin"] |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-tenancy" with token "token"
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 200
 
   Scenario Outline: A claim differing only in case or trailing spaces matches no organization
@@ -35,7 +35,7 @@ Feature: API Portal multi-tenancy with organization validation enforced
       | sub    | c            |
       | org_id | <claim>      |
       | roles  | ["ap_admin"] |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-tenancy" with token "token"
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 403
 
     Examples:
@@ -50,11 +50,11 @@ Feature: API Portal multi-tenancy with organization validation enforced
       | sub    | x                |
       | org_id | ${CTX:strictNew} |
       | roles  | ["ap_admin"]     |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 403
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "token"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 403
-    And the API Portal "api-portal-multi-tenancy" should have 0 organizations with IDP reference "${CTX:strictNew}"
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:strictNew}"
 
   Scenario: A missing organization claim is refused for a token and for a login
     Given I mint an API Portal IDP token stored as "noClaim" with claims:
@@ -64,12 +64,12 @@ Feature: API Portal multi-tenancy with organization validation enforced
       | sub        | y2           |
       | org_handle | default      |
       | roles      | ["ap_admin"] |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "noClaim"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "noClaim"
     Then the response status code should be 403
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-tenancy" with token "handleOnly"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "handleOnly"
     Then the response status code should be 403
     Given the API Portal browser "z" has an IDP session with claims:
       | sub   | z            |
       | roles | ["ap_admin"] |
-    When I sign in to API Portal "api-portal-multi-tenancy" from "/api-portal/default/views/default/login" as browser "z"
+    When I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "z"
     Then the response status code should be 403

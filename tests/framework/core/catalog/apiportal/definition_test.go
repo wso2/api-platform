@@ -107,28 +107,28 @@ func TestAPIPortalSupportsPostgresAndSQLServer(t *testing.T) {
 	require.Equal(t, "portal", env["APIP_AP_DATABASE_NAME"])
 }
 
-func TestTheMultiTenancyPortalOwnsItsDatabaseAndSignsInThroughTheTestbench(t *testing.T) {
-	definition := APIPortalMultiTenancy()
+func TestTheMultiOrganizationPortalOwnsItsDatabaseAndSignsInThroughTheTestbench(t *testing.T) {
+	definition := APIPortalMultiOrganization()
 	require.True(t, definition.DB.Owns())
 	require.Equal(t, []string{"testbench"}, definition.DependsOn,
-		"the multi-tenancy portal signs in through the testbench, not platform-api")
-	require.Equal(t, MultiTenancyPortalID, definition.Compose.Env["APIP_AP_ORGANIZATION_PORTAL_ID"])
+		"the multi-organization portal signs in through the testbench, not platform-api")
+	require.Equal(t, MultiOrganizationPortalID, definition.Compose.Env["APIP_AP_ORGANIZATION_PORTAL_ID"])
 	got, ok := PortalID(definition.Name)
 	require.True(t, ok)
-	require.Equal(t, MultiTenancyPortalID, got)
+	require.Equal(t, MultiOrganizationPortalID, got)
 	_, ok = PortalID("api-portal")
 	require.False(t, ok)
 }
 
-func TestTheMultiTenancyPortalTrustsTheIdentityProvider(t *testing.T) {
-	for _, definition := range []*components.Definition{APIPortalMultiTenancy()} {
+func TestTheMultiOrganizationPortalTrustsTheIdentityProvider(t *testing.T) {
+	for _, definition := range []*components.Definition{APIPortalMultiOrganization()} {
 		bundle := string(definition.Compose.GeneratedFiles["certs/cert.pem"])
 		require.Contains(t, bundle, string(shared.ControlPlaneCrypto()["certs/cert.pem"]), definition.Name)
 		require.Contains(t, bundle, string(shared.IdentityProviderTLS().CertPEM), definition.Name)
 		require.Equal(t, 2, strings.Count(bundle, "BEGIN CERTIFICATE"), definition.Name)
 
 		require.Equal(t, "api-portal", definition.Product(), "%s is built from the api-portal source", definition.Name)
-		require.Equal(t, []string{multiTenancyOverlay}, definition.Config.ExtraOverlays, definition.Name)
+		require.Equal(t, []string{multiOrganizationOverlay}, definition.Config.ExtraOverlays, definition.Name)
 		require.Equal(t, portalRoleMapping, definition.Compose.StagedFiles["role-to-scope-mapping.yaml"], definition.Name)
 		require.Equal(t, "http://"+definition.Name+":9543/api-portal/default/callback",
 			definition.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"], definition.Name)

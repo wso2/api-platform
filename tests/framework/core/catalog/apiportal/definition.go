@@ -32,14 +32,14 @@ const EnvImageAPIPortal = "AP_IMAGE"
 const svcAPIPortal = "api-portal"
 const svcAPIPortalOtherOrg = "api-portal-other-org"
 
-const svcAPIPortalMultiTenancy = "api-portal-multi-tenancy"
+const svcAPIPortalMultiOrganization = "api-portal-multi-organization"
 
-// MultiTenancyPortalID is the portal_id the multi-tenancy portal serves.
-const MultiTenancyPortalID = "portal_id"
+// MultiOrganizationPortalID is the portal_id the multi-organization portal serves.
+const MultiOrganizationPortalID = "portal_id"
 
-// multiTenancyOverlay configures IDP sign-in through the testbench identity provider and
-// multi-tenancy mode.
-const multiTenancyOverlay = "tests/framework/core/catalog/overlays/api-portal-multi-tenancy.toml"
+// multiOrganizationOverlay configures IDP sign-in through the testbench identity
+// provider and multi-organization mode.
+const multiOrganizationOverlay = "tests/framework/core/catalog/overlays/api-portal-multi-organization.toml"
 
 // portalRoleMapping is the API Portal's own role-to-scope mapping, which also grants the
 // platform-api-system role that shared-key publishing calls are authorized as.
@@ -55,16 +55,16 @@ func APIPortalOtherOrg() *components.Definition {
 	return apiPortalDefinition(svcAPIPortalOtherOrg, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "other-org", "Other Org", "other_portal_id", svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.other-org.yaml")
 }
 
-// APIPortalMultiTenancy returns an API Portal in multi-tenancy mode that signs users in
-// through the testbench identity provider.
-func APIPortalMultiTenancy() *components.Definition {
-	d := apiPortalDefinition(svcAPIPortalMultiTenancy, "tests/framework/core/catalog/apiportal/docker-compose.yaml",
-		"default", "Default", MultiTenancyPortalID, svcAPIPortal)
+// APIPortalMultiOrganization returns an API Portal in multi-organization mode that
+// signs users in through the testbench identity provider.
+func APIPortalMultiOrganization() *components.Definition {
+	d := apiPortalDefinition(svcAPIPortalMultiOrganization, "tests/framework/core/catalog/apiportal/docker-compose.yaml",
+		"default", "Default", MultiOrganizationPortalID, svcAPIPortal)
 	d.SourceProduct = svcAPIPortal
-	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + svcAPIPortalMultiTenancy + ":9543/api-portal/default/callback"
+	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + svcAPIPortalMultiOrganization + ":9543/api-portal/default/callback"
 	d.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": portalRoleMapping}
-	d.Compose.GeneratedFiles["certs/cert.pem"] = multiTenancyTrustBundle()
-	d.Config.ExtraOverlays = []string{multiTenancyOverlay}
+	d.Compose.GeneratedFiles["certs/cert.pem"] = multiOrganizationTrustBundle()
+	d.Config.ExtraOverlays = []string{multiOrganizationOverlay}
 	d.DependsOn = []string{"testbench"}
 	// The portal root redirects an anonymous visitor into silent sign-in at the identity
 	// provider in IDP mode, so readiness is the portal's own health endpoint instead.
@@ -74,17 +74,17 @@ func APIPortalMultiTenancy() *components.Definition {
 	return d
 }
 
-// PortalID returns the portal_id a multi-tenancy API Portal component serves.
+// PortalID returns the portal_id a multi-organization API Portal component serves.
 func PortalID(component string) (string, bool) {
-	if component == svcAPIPortalMultiTenancy {
-		return MultiTenancyPortalID, true
+	if component == svcAPIPortalMultiOrganization {
+		return MultiOrganizationPortalID, true
 	}
 	return "", false
 }
 
-// multiTenancyTrustBundle is the certificate bundle a multi-tenancy portal trusts: the
-// control plane's and the testbench identity provider's.
-func multiTenancyTrustBundle() []byte {
+// multiOrganizationTrustBundle is the certificate bundle a multi-organization portal
+// trusts: the control plane's and the testbench identity provider's.
+func multiOrganizationTrustBundle() []byte {
 	bundle := append([]byte(nil), shared.ControlPlaneCrypto()["certs/cert.pem"]...)
 	if len(bundle) > 0 && bundle[len(bundle)-1] != '\n' {
 		bundle = append(bundle, '\n')

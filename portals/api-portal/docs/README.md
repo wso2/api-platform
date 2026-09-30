@@ -29,7 +29,7 @@ The API Portal is a self-hosted, multi-tenant web application where API publishe
 2. [Get a Bearer Token via curl](administer/api-token-curl.md)
 
 **Serving many organizations from one portal**
-1. [Multi-Tenancy Mode](administer/multi-tenancy.md)
+1. [Multi-Organization Mode](administer/multi-organization.md)
 2. [WSO2 Identity Server Setup](administer/wso2-is-setup.md)
 
 **As a developer consuming APIs**

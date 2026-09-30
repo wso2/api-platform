@@ -37,8 +37,8 @@
 #
 # SAMPLES_DIR overrides which directory's apis/ and mcps/ subfolders get seeded
 # (default: auto-detected, see below) — e.g. one organization's own bundle when
-# onboarding a tenant in multi-tenancy mode. With ACCESS_TOKEN issued for that
-# organization, the entries are created in it (docs/administer/multi-tenancy.md).
+# onboarding an organization in multi-organization mode. With ACCESS_TOKEN issued for that
+# organization, the entries are created in it (docs/administer/multi-organization.md).
 #
 # PLAN_OVERRIDE (optional), pipe-delimited plan handles, e.g. "Gold|Silver" — when
 # set, each sample's subscriptionPlans: block is rewritten to exactly this list

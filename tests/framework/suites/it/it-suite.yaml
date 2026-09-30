@@ -171,49 +171,49 @@ blocks:
         features:
           - features/apiportal/security/grant_table_parity.feature
 
-  # Multi-tenancy mode: IDP sign-in through the testbench identity provider, every
+  # Multi-organization mode: IDP sign-in through the testbench identity provider, every
   # organization under the portal's portal_id served.
-  - name: api-portal-multi-tenancy
+  - name: api-portal-multi-organization
     parallel: 3
     components:
       - name: testbench
-      - name: api-portal-multi-tenancy
+      - name: api-portal-multi-organization
         db:
           matrix: [postgres, sqlserver]
     runners:
       - name: claims
         features:
-          - features/apiportal_multi_tenancy_claims.feature
+          - features/apiportal_multi_organization_claims.feature
       - name: isolation
         features:
-          - features/apiportal_multi_tenancy_isolation.feature
+          - features/apiportal_multi_organization_isolation.feature
       - name: login
         features:
-          - features/apiportal_multi_tenancy_login.feature
+          - features/apiportal_multi_organization_login.feature
       - name: webhooks
         features:
-          - features/apiportal_multi_tenancy_webhooks.feature
+          - features/apiportal_multi_organization_webhooks.feature
       - name: publishing
         features:
-          - features/apiportal_multi_tenancy_publishing.feature
+          - features/apiportal_multi_organization_publishing.feature
       - name: portals
         features:
-          - features/apiportal_multi_tenancy_portals.feature
+          - features/apiportal_multi_organization_portals.feature
 
-  # Multi-tenancy mode with auth.enforce_org_validation on: its own portal, since the
+  # Multi-organization mode with auth.enforce_org_validation on: its own portal, since the
   # setting decides what every org claim resolves to.
-  - name: api-portal-multi-tenancy-strict
+  - name: api-portal-multi-organization-strict
     parallel: 1
     components:
       - name: testbench
-      - name: api-portal-multi-tenancy
-        overlay: tests/framework/core/catalog/overlays/api-portal-multi-tenancy-strict.toml
+      - name: api-portal-multi-organization
+        overlay: tests/framework/core/catalog/overlays/api-portal-multi-organization-strict.toml
         db:
           matrix: [postgres, sqlserver]
     runners:
       - name: strict
         features:
-          - features/apiportal_multi_tenancy_strict.feature
+          - features/apiportal_multi_organization_strict.feature
 
   - name: api-portal-foreign-org
     parallel: 1

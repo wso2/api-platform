@@ -65,9 +65,9 @@ const MAX_ORG_HINT_LENGTH = 255;
  *
  * Default mode: that organization's idp_ref_id, as always.
  *
- * Multi-tenancy mode:
+ * Multi-organization mode:
  *   - an explicit `?org=<id>` on the login URL wins — a direct sign-in link for one
- *     tenant, whatever page it is opened from;
+ *     organization, whatever page it is opened from;
  *   - otherwise the configured organization's page sends NO hint: a user whose
  *     organization this portal hasn't seen yet can only start from there (unknown
  *     handles 404), and a hint would pin their login to the configured organization's
@@ -76,7 +76,7 @@ const MAX_ORG_HINT_LENGTH = 255;
  */
 async function loginOrgHint(req, orgName) {
     const orgDetails = await orgDao.get(orgName);
-    if (!orgContext.isMultiTenancyEnabled()) return orgDetails?.idp_ref_id;
+    if (!orgContext.isMultiOrganizationEnabled()) return orgDetails?.idp_ref_id;
 
     const explicit = typeof req.query.org === 'string' ? req.query.org.trim() : '';
     if (explicit) return explicit.length <= MAX_ORG_HINT_LENGTH ? explicit : undefined;
@@ -85,7 +85,7 @@ async function loginOrgHint(req, orgName) {
 }
 
 /**
- * Multi-tenancy mode: where to land after a login that resolved to organization
+ * Multi-organization mode: where to land after a login that resolved to organization
  * `orgUuid`. Every login returns through the one configured callback URL, which sits
  * under the configured organization, so the captured return path can belong to a
  * different organization than the one the user actually signed in to — e.g. signing
@@ -305,11 +305,12 @@ const handleSilentSSO = async (req, res, next) => {
         return next();
     }
 
-    // Multi-tenancy mode: the same hint an explicit login from this page would send, so a
-    // silent sign-in only succeeds for the organization being browsed (or, from the
-    // configured organization's pages, whichever one the IDP session belongs to).
+    // Multi-organization mode: the same hint an explicit login from this page would
+    // send, so a silent sign-in only succeeds for the organization being browsed (or,
+    // from the configured organization's pages, whichever one the IDP session belongs
+    // to).
     let org;
-    if (orgContext.isMultiTenancyEnabled()) {
+    if (orgContext.isMultiOrganizationEnabled()) {
         try {
             org = await loginOrgHint(req, req.params.orgName);
         } catch (err) {

@@ -49,14 +49,14 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 )
 
-// idpClientID is the client the multi-tenancy portals are registered as with the testbench
-// identity provider (core/catalog/overlays/api-portal-multi-tenancy.toml), and so the default
-// audience of the tokens minted here.
+// idpClientID is the client the multi-organization portals are registered as with the
+// testbench identity provider (core/catalog/overlays/api-portal-multi-organization.toml), and
+// so the default audience of the tokens minted here.
 const idpClientID = "api-portal-it-client"
 
-// portalSharedKey is the shared key the multi-tenancy portals accept for platform-api's
-// publishing calls; its sha256 is internal_auth.hash in api-portal-multi-tenancy.toml.
-const portalSharedKey = "api-portal-multi-tenancy-it-shared-key"
+// portalSharedKey is the shared key the multi-organization portals accept for platform-api's
+// publishing calls; its sha256 is internal_auth.hash in api-portal-multi-organization.toml.
+const portalSharedKey = "api-portal-multi-organization-it-shared-key"
 
 // maxBrowserHops bounds the redirects one browser navigation follows.
 const maxBrowserHops = 8
@@ -79,10 +79,10 @@ const (
 	seededRowsOrder    = 90
 )
 
-// registerMultiTenancySteps binds the steps that drive the API Portal in IDP and multi-
-// tenancy mode: tokens from the testbench identity provider, browser sign-in through it,
-// shared-key publishing, and the database state those modes leave behind.
-func (s *Steps) registerMultiTenancySteps(sc *godog.ScenarioContext) {
+// registerMultiOrganizationSteps binds the steps that drive the API Portal in IDP and
+// multi-organization mode: tokens from the testbench identity provider, browser sign-in
+// through it, shared-key publishing, and the database state those modes leave behind.
+func (s *Steps) registerMultiOrganizationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I mint an API Portal IDP token stored as "([^"]*)" with claims:$`, s.mintIDPToken)
 	sc.Step(`^I send an API Portal "([^"]*)" request to "([^"]*)" using portal "([^"]*)" with token "([^"]*)"$`,
 		s.sendWithToken)
@@ -355,7 +355,7 @@ func deletion(path string) idpRemoval { return idpRemoval{method: http.MethodDel
 // restAPIMetadata is the smallest published REST API the portal accepts, under id.
 func restAPIMetadata(id string) string {
 	metadata, _ := json.Marshal(map[string]any{
-		"id": id, "name": "Multi-tenancy " + id, "version": "v1.0", "type": "REST", "status": "PUBLISHED",
+		"id": id, "name": "Multi-organization " + id, "version": "v1.0", "type": "REST", "status": "PUBLISHED",
 		"endPoints": map[string]string{
 			"productionURL": "https://backend.example.invalid/" + id,
 			"sandboxURL":    "https://sandbox.example.invalid/" + id,
@@ -399,7 +399,7 @@ func (s *Steps) createAPI(ctx context.Context, portal string, headers map[string
 // multipart posts API metadata and a definition to the portal's REST API.
 func (s *Steps) multipart(ctx context.Context, base, path string, headers map[string]string, metadata, definition, filename, contentType string) (*httpx.Response, error) {
 	var body strings.Builder
-	boundary := "api-portal-multi-tenancy-boundary"
+	boundary := "api-portal-multi-organization-boundary"
 	fmt.Fprintf(&body, "--%s\r\nContent-Disposition: form-data; name=\"metadata\"\r\n\r\n%s\r\n", boundary, metadata)
 	fmt.Fprintf(&body, "--%s\r\nContent-Disposition: form-data; name=\"definition\"; filename=%q\r\nContent-Type: %s\r\n\r\n%s\r\n",
 		boundary, filename, contentType, definition)
@@ -990,8 +990,8 @@ func (s *Steps) assertRedirectParameterAbsent(ctx context.Context, name string) 
 	return nil
 }
 
-// portalDB opens the database a multi-tenancy portal component uses and returns it with the
-// portal_id that component serves.
+// portalDB opens the database a multi-organization portal component uses and returns it with
+// the portal_id that component serves.
 func (s *Steps) portalDB(ctx context.Context, portal string) (*portalDatabase, error) {
 	portalID, ok := portalcatalog.PortalID(portal)
 	if !ok {

@@ -20,9 +20,9 @@
 
 /*
  * Organization resolution in both modes. The default mode must keep answering "only
- * the configured organization"; multi-tenancy mode must accept any existing organization
- * where that is safe (claims, page URLs, public branding) while still confining a
- * REST caller to its own organization.
+ * the configured organization"; multi-organization mode must accept any existing
+ * organization where that is safe (claims, page URLs, public branding) while still
+ * confining a REST caller to its own organization.
  */
 
 const test = require('node:test');
@@ -50,12 +50,12 @@ const ORGS = [
     { uuid: 'u-lookalike', handle: 'lookalike', display_name: 'acme-id-lookalike', idp_ref_id: 'x' },
 ];
 
-function loadOrgContext({ multiTenancy, mode = 'idp', enforce = true, idp = { tokenUrl: 'https://idp.example.com/token', jwksUrl: 'https://idp.example.com/jwks' }, orgs = ORGS, seeded = [], claimMappings = {} }) {
+function loadOrgContext({ multiOrganization, mode = 'idp', enforce = true, idp = { tokenUrl: 'https://idp.example.com/token', jwksUrl: 'https://idp.example.com/jwks' }, orgs = ORGS, seeded = [], claimMappings = {} }) {
     const notFound = () => { throw new NotFoundError('Organization not found'); };
     const ORGS = orgs; // this load's own table, so provisioning in one test cannot leak into another
     const stubs = {
         configLoader: {
-            config: { multiTenancy: { enabled: multiTenancy }, auth: { mode, enforceOrgValidation: enforce, idp, claimMappings }, organization: { handle: 'default' } },
+            config: { multiOrganization: { enabled: multiOrganization }, auth: { mode, enforceOrgValidation: enforce, idp, claimMappings }, organization: { handle: 'default' } },
             ORG_HANDLE_PATTERN: /^[a-z0-9][a-z0-9._-]*$/,
             RESERVED_ORG_HANDLES: new Set(['api', 'health', 'registry']),
         },
@@ -94,40 +94,40 @@ function loadOrgContext({ multiTenancy, mode = 'idp', enforce = true, idp = { to
 
 const is403 = (err) => err instanceof CustomError && err.statusCode === 403;
 
-test('multi-tenancy mode is off by default and never on outside IDP mode', () => {
-    assert.strictEqual(loadOrgContext({ multiTenancy: false }).isMultiTenancyEnabled(), false);
-    assert.strictEqual(loadOrgContext({ multiTenancy: true, mode: 'local' }).isMultiTenancyEnabled(), false);
-    assert.strictEqual(loadOrgContext({ multiTenancy: true }).isMultiTenancyEnabled(), true);
+test('multi-organization mode is off by default and never on outside IDP mode', () => {
+    assert.strictEqual(loadOrgContext({ multiOrganization: false }).isMultiOrganizationEnabled(), false);
+    assert.strictEqual(loadOrgContext({ multiOrganization: true, mode: 'local' }).isMultiOrganizationEnabled(), false);
+    assert.strictEqual(loadOrgContext({ multiOrganization: true }).isMultiOrganizationEnabled(), true);
 });
 
 test('default mode: a claim must name the configured organization, by any spelling', async () => {
-    const ctx = loadOrgContext({ multiTenancy: false });
+    const ctx = loadOrgContext({ multiOrganization: false });
     assert.strictEqual(await ctx.resolveClaimOrg('default', 't'), 'u-default');
     assert.strictEqual(await ctx.resolveClaimOrg('Default', 't'), 'u-default'); // display name
     await assert.rejects(ctx.resolveClaimOrg('acme-id', 't'), is403);
     await assert.rejects(ctx.resolveClaimOrg('nope', 't'), is403);
 });
 
-test('multi-tenancy mode: a claim resolves by exact idp_ref_id to any organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: a claim resolves by exact idp_ref_id to any organization', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(await ctx.resolveClaimOrg('acme-id', 't'), 'u-acme');
     assert.strictEqual(await ctx.resolveClaimOrg('default', 't'), 'u-default');
 });
 
-test('multi-tenancy mode: a claim never resolves through a handle or display name', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: a claim never resolves through a handle or display name', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     await assert.rejects(ctx.resolveClaimOrg('acme', 't'), is403); // acme's handle, not its idp_ref_id
     await assert.rejects(ctx.resolveClaimOrg('Acme', 't'), is403); // display name
     await assert.rejects(ctx.resolveClaimOrg('unknown', 't'), is403);
 });
 
-test('multi-tenancy mode: an idp_ref_id shared by two organizations is refused as ambiguous', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: an idp_ref_id shared by two organizations is refused as ambiguous', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     await assert.rejects(ctx.resolveClaimOrg('dup', 't'), is403);
 });
 
-test('multi-tenancy mode: a page URL resolves by exact handle only', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: a page URL resolves by exact handle only', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(await ctx.requireKnownOrgHandle('acme'), 'u-acme');
     assert.strictEqual(await ctx.requireKnownOrgHandle('ACME'), 'u-acme');
     await assert.rejects(ctx.requireKnownOrgHandle('acme-id'), NotFoundError); // idp_ref_id
@@ -135,13 +135,13 @@ test('multi-tenancy mode: a page URL resolves by exact handle only', async () =>
 });
 
 test('default mode: an {orgId} parameter must be the configured organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: false });
+    const ctx = loadOrgContext({ multiOrganization: false });
     assert.strictEqual(await ctx.requireCallerOrg('default', 'u-default'), 'u-default');
     await assert.rejects(ctx.requireCallerOrg('acme', 'u-acme'), is403);
 });
 
-test('multi-tenancy mode: an {orgId} parameter must be the caller\'s own organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: an {orgId} parameter must be the caller\'s own organization', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(await ctx.requireCallerOrg('acme', 'u-acme'), 'u-acme');
     // An existing organization, but not the caller's — the cross-tenant case.
     await assert.rejects(ctx.requireCallerOrg('default', 'u-acme'), is403);
@@ -150,26 +150,26 @@ test('multi-tenancy mode: an {orgId} parameter must be the caller\'s own organiz
 });
 
 test('default mode: public content ignores ?orgId', async () => {
-    const ctx = loadOrgContext({ multiTenancy: false });
+    const ctx = loadOrgContext({ multiOrganization: false });
     assert.strictEqual(await ctx.resolvePublicContentOrg('u-acme', undefined), 'u-default');
     assert.strictEqual(await ctx.resolvePublicContentOrg('u-acme', 'u-default'), 'u-default');
 });
 
-test('multi-tenancy mode: public content follows ?orgId when it names an organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+test('multi-organization mode: public content follows ?orgId when it names an organization', async () => {
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(await ctx.resolvePublicContentOrg('u-acme', 'u-default'), 'u-acme');
     assert.strictEqual(await ctx.resolvePublicContentOrg('u-missing', 'u-acme'), 'u-acme');
     assert.strictEqual(await ctx.resolvePublicContentOrg(undefined, undefined), 'u-default');
 });
 
 test('the fallback view is chosen from the given organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(await ctx.getFallbackViewHandle('u-acme'), 'view-of-u-acme');
     assert.strictEqual(await ctx.getFallbackViewHandle(), 'view-of-u-default');
 });
 
 test('deriveHandle makes a URL-safe slug from a name or id claim', () => {
-    const { deriveHandle } = loadOrgContext({ multiTenancy: true });
+    const { deriveHandle } = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(deriveHandle('Acme Corp'), 'acme-corp');
     assert.strictEqual(deriveHandle('Société Générale'), 'societe-generale');
     assert.strictEqual(deriveHandle('  --Weird__Name!!  '), 'weird__name');
@@ -178,23 +178,23 @@ test('deriveHandle makes a URL-safe slug from a name or id claim', () => {
     assert.ok(deriveHandle('x'.repeat(200)).length <= 48);
 });
 
-test('enforcement on: an unknown org is refused even in multi-tenancy mode', async () => {
+test('enforcement on: an unknown org is refused even in multi-organization mode', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: true, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: true, orgs: [...ORGS], seeded });
     await assert.rejects(ctx.resolveClaimOrg('new-org', 't', { provision: 'login' }), is403);
     assert.strictEqual(seeded.length, 0);
 });
 
-test('multi-tenancy off: enforcement off never provisions', async () => {
+test('multi-organization off: enforcement off never provisions', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: false, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: false, enforce: false, orgs: [...ORGS], seeded });
     await assert.rejects(ctx.resolveClaimOrg('new-org', 't', { provision: 'login' }), is403);
     assert.strictEqual(seeded.length, 0);
 });
 
 test('provisioning: an unknown org is created with the claim as its idp_ref_id and a name-derived handle', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     const uuid = await ctx.resolveClaimOrg('9d1a-org-id', 't', { provision: 'login', orgNames: { name: 'Globex Corp' } });
     assert.strictEqual(uuid, 'u-new-1');
     assert.deepStrictEqual(seeded, [{ handle: 'globex-corp', displayName: 'Globex Corp', idpRefId: '9d1a-org-id' }]);
@@ -205,14 +205,14 @@ test('provisioning: an unknown org is created with the claim as its idp_ref_id a
 
 test('provisioning without a name claim derives the handle from the org claim', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     await ctx.resolveClaimOrg('Initech', 't', { provision: 'bearer' });
     assert.deepStrictEqual(seeded, [{ handle: 'initech', displayName: 'Initech', idpRefId: 'Initech' }]);
 });
 
 test('provisioning moves to a suffixed handle and display name when another org holds them', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     // "acme" (handle) and "Acme" (display name) belong to the existing acme organization.
     await ctx.resolveClaimOrg('other-acme-id', 't', { provision: 'login', orgNames: { name: 'Acme' } });
     assert.strictEqual(seeded.length, 1);
@@ -223,7 +223,7 @@ test('provisioning moves to a suffixed handle and display name when another org 
 
 test('provisioning never uses a reserved or unusable handle', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     await ctx.resolveClaimOrg('org-x', 't', { provision: 'login', orgNames: { name: 'API' } });
     assert.match(seeded[0].handle, /^api-[0-9a-f]{6}$/);
     await ctx.resolveClaimOrg('org-y', 't', { provision: 'login', orgNames: { name: '組織' } });
@@ -235,7 +235,7 @@ test('provisioning never uses a reserved or unusable handle', async () => {
 
 test('provisioning takes the handle claim as-is, and names the org from the name claim', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     await ctx.resolveClaimOrg('7f0c-uuid', 't', { provision: 'login', orgNames: { name: 'TEST 1', handle: 'test1' } });
     assert.deepStrictEqual(seeded, [{ handle: 'test1', displayName: 'TEST 1', idpRefId: '7f0c-uuid' }]);
     // Handles are stored lowercase; without a name claim the handle claim names the org.
@@ -245,7 +245,7 @@ test('provisioning takes the handle claim as-is, and names the org from the name
 
 test('an unusable or taken handle claim falls back like a derived handle would', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     // Taken by the existing acme organization: suffixed, never another org's handle.
     await ctx.resolveClaimOrg('u-1', 't', { provision: 'login', orgNames: { name: 'Acme Two', handle: 'acme' } });
     assert.match(seeded[0].handle, /^acme-[0-9a-f]{6}$/);
@@ -259,16 +259,16 @@ test('an unusable or taken handle claim falls back like a derived handle would',
 });
 
 test('orgNameClaims reads only the mapped name and handle claims', () => {
-    const ctx = loadOrgContext({ multiTenancy: true, claimMappings: { orgName: 'org_name', orgHandle: 'org.handle' } });
+    const ctx = loadOrgContext({ multiOrganization: true, claimMappings: { orgName: 'org_name', orgHandle: 'org.handle' } });
     assert.deepStrictEqual(ctx.orgNameClaims({ org_name: ' TEST 1 ', org: { handle: 'test1' } }), { name: 'TEST 1', handle: 'test1' });
     assert.deepStrictEqual(ctx.orgNameClaims({ org_name: '', org: { handle: 42 } }), { name: undefined, handle: undefined });
-    assert.deepStrictEqual(loadOrgContext({ multiTenancy: true }).orgNameClaims({ org_name: 'x', org_handle: 'y' }), { name: undefined, handle: undefined });
+    assert.deepStrictEqual(loadOrgContext({ multiOrganization: true }).orgNameClaims({ org_name: 'x', org_handle: 'y' }), { name: undefined, handle: undefined });
 });
 
 test('provisioning is refused when the claim\'s channel is not verified TLS', async () => {
     const plainHttp = { tokenUrl: 'http://idp.example.com/token', jwksUrl: 'http://idp.example.com/jwks' };
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, idp: plainHttp, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, idp: plainHttp, orgs: [...ORGS], seeded });
     await assert.rejects(ctx.resolveClaimOrg('new-org', 't', { provision: 'login' }), is403);
     await assert.rejects(ctx.resolveClaimOrg('new-org', 't', { provision: 'bearer' }), is403);
     // Existing organizations are unaffected by the guard.
@@ -278,16 +278,16 @@ test('provisioning is refused when the claim\'s channel is not verified TLS', as
 
 test('provisioning allows plain http to a loopback IDP, and a pinned certificate for bearer tokens', async () => {
     const seeded = [];
-    const loopback = loadOrgContext({ multiTenancy: true, enforce: false, idp: { tokenUrl: 'http://localhost:9900/token' }, orgs: [...ORGS], seeded });
+    const loopback = loadOrgContext({ multiOrganization: true, enforce: false, idp: { tokenUrl: 'http://localhost:9900/token' }, orgs: [...ORGS], seeded });
     await loopback.resolveClaimOrg('dev-org', 't', { provision: 'login' });
-    const pinned = loadOrgContext({ multiTenancy: true, enforce: false, idp: { certificate: 'PEM', jwksUrl: 'http://idp.example.com/jwks' }, orgs: [...ORGS], seeded });
+    const pinned = loadOrgContext({ multiOrganization: true, enforce: false, idp: { certificate: 'PEM', jwksUrl: 'http://idp.example.com/jwks' }, orgs: [...ORGS], seeded });
     await pinned.resolveClaimOrg('cert-org', 't', { provision: 'bearer' });
     assert.strictEqual(seeded.length, 2);
 });
 
 test('provisioning is refused when TLS verification is disabled process-wide', async () => {
     const seeded = [];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs: [...ORGS], seeded });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs: [...ORGS], seeded });
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     try {
         await assert.rejects(ctx.resolveClaimOrg('new-org', 't', { provision: 'login' }), is403);
@@ -299,12 +299,12 @@ test('provisioning is refused when TLS verification is disabled process-wide', a
 
 test('the configured organization\'s claim value comes from its stored idp_ref_id', async () => {
     const orgs = [{ uuid: 'u-default', handle: 'default', display_name: 'Default', idp_ref_id: 'SEEDED-ID' }];
-    const ctx = loadOrgContext({ multiTenancy: true, enforce: false, orgs });
+    const ctx = loadOrgContext({ multiOrganization: true, enforce: false, orgs });
     assert.strictEqual(await ctx.getConfiguredOrgIdpRefId(), 'SEEDED-ID');
 });
 
 test('normalizeOrgClaim: a string is kept verbatim, a single-entry list or map is its entry', () => {
-    const { normalizeOrgClaim } = loadOrgContext({ multiTenancy: true });
+    const { normalizeOrgClaim } = loadOrgContext({ multiOrganization: true });
     assert.strictEqual(normalizeOrgClaim('Acme-ID'), 'Acme-ID');
     assert.strictEqual(normalizeOrgClaim(['acme']), 'acme');
     assert.strictEqual(normalizeOrgClaim({ acme: { id: '1f2e' } }), 'acme');
@@ -314,13 +314,13 @@ test('normalizeOrgClaim: a string is kept verbatim, a single-entry list or map i
 });
 
 test('normalizeOrgClaim: a claim naming more than one organization is refused', () => {
-    const { normalizeOrgClaim } = loadOrgContext({ multiTenancy: true });
+    const { normalizeOrgClaim } = loadOrgContext({ multiOrganization: true });
     assert.throws(() => normalizeOrgClaim(['acme', 'globex']), is403);
     assert.throws(() => normalizeOrgClaim({ acme: {}, globex: {} }), is403);
 });
 
 test('claimBelongsToOrg: exact idp_ref_id or an authorizedOrgs entry, nothing looser', () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+    const ctx = loadOrgContext({ multiOrganization: true });
     const acme = ORGS[1];
     assert.strictEqual(ctx.claimBelongsToOrg({ orgClaimName: 'acme-id' }, acme), true);
     assert.strictEqual(ctx.claimBelongsToOrg({ orgClaimName: 'other', authorizedOrgs: ['acme-id'] }, acme), true);
@@ -331,7 +331,7 @@ test('claimBelongsToOrg: exact idp_ref_id or an authorizedOrgs entry, nothing lo
 });
 
 test('isForeignOrgSession: only a signed-in user of another organization', async () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+    const ctx = loadOrgContext({ multiOrganization: true });
     const acme = await ctx.requireKnownOrg('acme');
     assert.strictEqual(acme.uuid, 'u-acme');
     assert.strictEqual(ctx.isForeignOrgSession(null, acme), false); // anonymous
@@ -341,7 +341,7 @@ test('isForeignOrgSession: only a signed-in user of another organization', async
 });
 
 test('findSharedIdpRefIds reports each idp_ref_id carried by more than one organization', () => {
-    const ctx = loadOrgContext({ multiTenancy: true });
+    const ctx = loadOrgContext({ multiOrganization: true });
     assert.deepStrictEqual(ctx.findSharedIdpRefIds(ORGS), [{ idpRefId: 'dup', handles: ['dup1', 'dup2'] }]);
     assert.deepStrictEqual(ctx.findSharedIdpRefIds([
         { handle: 'default', idp_ref_id: 'root-uuid' }, { handle: 'super', idp_ref_id: 'root-uuid' },

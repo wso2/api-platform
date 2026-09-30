@@ -327,12 +327,13 @@ app.use(async (err, req, res, next) => {
     // orgContext.getFallbackViewHandle — which matters on this path above all others.
     const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + await orgContext.getFallbackViewHandle();
     let profile = typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null;
-    // The page's links point at the configured organization; in multi-tenancy mode a user
-    // of another one is no administrator there (see orgGuard). Compared with the stored
-    // idp_ref_id — what sign-ins are matched against, which auth.idp_org_id need not equal
-    // (an unset setting leaves the stored value alone). Must not throw on this path, so a
-    // failed lookup counts as foreign: a missing admin link is the safe default.
-    if (profile && orgContext.isMultiTenancyEnabled()) {
+    // The page's links point at the configured organization; in multi-organization mode a
+    // user of another one is no administrator there (see orgGuard). Compared with the
+    // stored idp_ref_id — what sign-ins are matched against, which auth.idp_org_id need
+    // not equal (an unset setting leaves the stored value alone). Must not throw on this
+    // path, so a failed lookup counts as foreign: a missing admin link is the safe
+    // default.
+    if (profile && orgContext.isMultiOrganizationEnabled()) {
         const idpRefId = await orgContext.getConfiguredOrgIdpRefId().catch(() => null);
         if (orgContext.isForeignOrgSession(profile, { idp_ref_id: idpRefId })) {
             profile = { ...profile, isAdmin: false };

@@ -30,9 +30,9 @@ const { buildOutboundAgents } = require('../../config/httpClientOptions');
 
 let running = false;
 
-/** The organization to claim work for, or null for every organization (multi-tenancy mode). */
+/** The organization to claim work for, or null for every organization (multi-organization mode). */
 async function claimScope() {
-    return orgContext.isMultiTenancyEnabled() ? null : orgContext.getOrgUuid();
+    return orgContext.isMultiOrganizationEnabled() ? null : orgContext.getOrgUuid();
 }
 let intervalHandle = null;
 // True while a batch is in progress, so a batch that outlasts the poll interval
@@ -127,9 +127,9 @@ async function runBatch() {
     // Scoped to the organization this instance serves: the deliveries table is shared
     // with every other instance on this database, and each one must only make the
     // outbound calls for its own organization's subscribers.
-    // Multi-tenancy mode delivers for every organization under this portal_id — this
-    // deployment owns it (see orgContext.isMultiTenancyEnabled) — so the claim drops
-    // the organization filter there.
+    // Multi-organization mode delivers for every organization under this portal_id —
+    // this deployment owns it (see orgContext.isMultiOrganizationEnabled) — so the
+    // claim drops the organization filter there.
     const deliveries = await eventDao.claimDueDeliveries(batchSize, await claimScope());
     if (deliveries.length === 0) return;
 

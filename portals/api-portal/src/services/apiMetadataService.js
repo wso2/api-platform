@@ -1129,7 +1129,7 @@ const getAPIFile = async (req, res) => {
     // selector for any tenant's API icons. It is still accepted (the portal's own
     // templates append it, and the spec declares it) and simply ignored.
     //
-    // In multi-tenancy mode every organization's public pages are open to anonymous
+    // In multi-organization mode every organization's public pages are open to anonymous
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
@@ -1141,9 +1141,9 @@ const getAPIFile = async (req, res) => {
     // because getOrgUuid() hits the database and can throw.
     let orgId;
     try {
-        // In multi-tenancy mode an icon belongs to the organization whose page links it
+        // In multi-organization mode an icon belongs to the organization whose page links it
         // (?orgId), which need not be the session's — see resolvePublicContentOrg.
-        if (isImageType && orgContext.isMultiTenancyEnabled()) {
+        if (isImageType && orgContext.isMultiOrganizationEnabled()) {
             orgId = await orgContext.resolvePublicContentOrg(req.query.orgId, req.orgId);
         } else {
             orgId = req.orgId || (isImageType ? await orgContext.getOrgUuid() : undefined);

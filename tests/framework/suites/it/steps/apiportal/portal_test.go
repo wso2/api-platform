@@ -219,11 +219,11 @@ func TestBrowserRedirectsAreRoutedToTheirTarget(t *testing.T) {
 	}
 	require.True(t, isIdentityProvider(parse("https://testbench:3013/oauth2/authorize?org=a")))
 	require.False(t, isIdentityProvider(parse("/api-portal/default/views/default")))
-	require.False(t, isIdentityProvider(parse("http://api-portal-multi-tenancy:9543/api-portal/default/callback")))
+	require.False(t, isIdentityProvider(parse("http://api-portal-multi-organization:9543/api-portal/default/callback")))
 	require.False(t, isIdentityProvider(parse("https://testbench.evil.example/oauth2/authorize")))
 
 	require.Equal(t, "/api-portal/default/callback?code=c&state=s",
-		portalTarget(parse("http://api-portal-multi-tenancy:9543/api-portal/default/callback?code=c&state=s")))
+		portalTarget(parse("http://api-portal-multi-organization:9543/api-portal/default/callback?code=c&state=s")))
 	require.Equal(t, "/api-portal/a%2Fb/views/default", portalTarget(parse("/api-portal/a%2Fb/views/default")))
 
 	for status, want := range map[int]bool{

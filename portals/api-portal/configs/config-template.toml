@@ -226,8 +226,9 @@ mode = "local"          # local | idp
 #   true  (default) — no organization claim: 403; an organization this portal doesn't
 #                     serve: 403. The behaviour of earlier releases.
 #   false — no organization claim: admitted to organization.handle; and with
-#           [api_portal.multi_tenancy] enabled, an organization that doesn't exist yet is
-#           provisioned from the claim. See docs/administer/multi-tenancy.md.
+#           [api_portal.multi_organization] enabled, an organization that doesn't
+#           exist yet is provisioned from the claim. See
+#           docs/administer/multi-organization.md.
 # enforce_org_validation = true
 
 # JWT claim name mappings — which token claim carries each field.
@@ -237,7 +238,7 @@ organization = "org_name"   # claim carrying the org ID
 roles = "roles"             # claim carrying the user's roles
 groups = "groups"
 # Optional: the claim carrying the organization's name, used to name organizations
-# provisioned in multi-tenancy mode. Unset, they are named from the org claim.
+# provisioned in multi-organization mode. Unset, they are named from the org claim.
 # org_name = "org_name"
 # Optional: the claim carrying the organization's URL handle (WSO2 IS: org_handle).
 # A provisioned organization takes it as its handle when it is a valid, unreserved,
@@ -289,7 +290,8 @@ user_info_url = ""
 client_id = ""
 client_secret = ""
 # Audience bearer tokens must be issued for (usually the client id). Several may be
-# given, comma-separated or as an array. REQUIRED when [api_portal.multi_tenancy] is enabled.
+# given, comma-separated or as an array. REQUIRED when
+# [api_portal.multi_organization] is enabled.
 audience = ""
 callback_url = ""
 scope = "openid profile email"
@@ -377,13 +379,12 @@ subscriber = "ap_subscriber"
 # =============================================================================
 # ORGANIZATION CONFIGURATION
 # =============================================================================
-# By default this portal instance serves exactly ONE organization (see MULTI-TENANCY
-# MODE below for the alternative). The database schema is
-# still multi-organization — one shared database can hold many, each served by its
-# own portal instance — but this instance is pinned to `handle`: every page route,
-# REST request, and background worker is scoped to it, and anything resolving to a
-# different organization is rejected. The organization is seeded on startup if it
-# doesn't exist yet (idempotent).
+# By default this portal instance serves exactly ONE organization (see MULTI-ORGANIZATION
+# MODE below for the alternative). One shared database can hold many organizations,
+# each served by its own portal instance, but this instance is pinned to `handle`:
+# every page route, REST request, and background worker is scoped to it, and anything
+# resolving to a different organization is rejected. The organization is seeded on
+# startup if it doesn't exist yet (idempotent).
 #
 # `handle` is REQUIRED: the portal refuses to start without it (design mode
 # excepted, since it renders from disk and has no organization to pin).
@@ -405,7 +406,7 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # default_name = "default"               # DEPRECATED alias for `handle` — rename it
 
 # =============================================================================
-# MULTI-TENANCY MODE
+# MULTI-ORGANIZATION MODE
 # =============================================================================
 # Off (default): this portal serves only organization.handle, as described above.
 # On: it serves every organization under organization.portal_id — page URLs, IDP organization
@@ -416,8 +417,8 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # Assumes this deployment owns its portal_id: other instances may use the same
 # portal_id only as replicas with identical configuration (including
 # security.encryption_key). Other portals may share the database under their own
-# portal_id. See docs/administer/multi-tenancy.md.
-# [api_portal.multi_tenancy]
+# portal_id. See docs/administer/multi-organization.md.
+# [api_portal.multi_organization]
 # enabled = false
 
 # =============================================================================

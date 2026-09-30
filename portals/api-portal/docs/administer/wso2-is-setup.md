@@ -1,8 +1,8 @@
 # WSO2 Identity Server Setup
 
 This guide configures a self-hosted **WSO2 Identity Server** (7.1+) as the identity
-provider for an API Portal in [multi-tenancy mode](multi-tenancy.md), and then
-onboards a tenant organization. Every step uses the IS **Console**
+provider for an API Portal in [multi-organization mode](multi-organization.md), and then
+onboards an organization. Every step uses the IS **Console**
 (`https://<is-host>:9443/console`) and the portal's own UI; screen and field names are
 as in WSO2 IS 7.3.
 
@@ -22,9 +22,9 @@ model is the same.
    appear in every organization automatically. Assigning a user one of them is what gives
    them the portal's administrator or subscriber tier
    (`[api_portal.auth.authorization.portal_roles]`).
-4. Onboarding a tenant is then: create the IS organization, add its users and assign
-   roles; its first sign-in to the portal provisions it; its administrator sets it up in
-   the portal (Section 4).
+4. Onboarding an organization is then: create the IS organization, add its users and
+   assign roles; its first sign-in to the portal provisions it; its administrator sets it
+   up in the portal (Section 4).
 
 ## Prerequisites
 
@@ -114,7 +114,7 @@ Set `[api_portal.auth.idp]` to the application's credentials (Section 1a), and t
 roles to the names from Section 2:
 
 ```toml
-[api_portal.multi_tenancy]
+[api_portal.multi_organization]
 enabled = true
 
 [api_portal.auth]
@@ -133,7 +133,7 @@ roles        = "roles"
 [api_portal.auth.idp]
 client_id = "<API Portal client ID>"
 client_secret = "<API Portal client secret>"
-# Required in multi-tenancy mode.
+# Required in multi-organization mode.
 audience = "<API Portal client ID>"
 # The root organization's issuer, which bearer tokens are verified against. Unset, the
 # issuer isn't checked at all.
@@ -166,7 +166,7 @@ portal outside Docker, use `localhost` for all of them.
 at IS's certificate (in Docker, mount it into the container first). Don't use
 `NODE_TLS_REJECT_UNAUTHORIZED=0` — besides disabling verification everywhere, it stops
 the portal provisioning organizations (see
-[Provisioning](multi-tenancy.md#provisioning)).
+[Provisioning](multi-organization.md#provisioning)).
 
 **Bearer tokens for the REST API** must come from the root organization's issuer
 (`auth.idp.issuer`). A token obtained directly from an organization's own token endpoint
@@ -216,9 +216,9 @@ statement can't touch another portal's organization in a shared database.
 
 ---
 
-## 4. Onboard a tenant organization
+## 4. Onboard an organization
 
-The example tenant is `acme`.
+The example organization is `acme`.
 
 ### 4a. Create the organization in IS
 
@@ -226,8 +226,8 @@ In the root organization's Console, go to **Organizations** → **New Organizati
 
 - **Organization Name:** `acme`
 - **Organization Handle:** `acme` — set it explicitly. With `claim_mappings.org_handle` set
-  it becomes the tenant's portal URL (`/api-portal/acme/...`), and it can't be changed
-  after the organization is created.
+  it becomes the organization's portal URL (`/api-portal/acme/...`), and it can't be
+  changed after the organization is created.
 - **Description:** optional.
 
 Click **Create**.
@@ -241,28 +241,29 @@ on its row. The header then shows **Super / acme**, and the organization's id is
 On the organization's **Applications** page, **API Portal** is listed as a *Shared app*.
 Then:
 
-1. **User Management** → **Users** → **Add User**: create the tenant's administrator (for
-   example `acmeadmin`), and any subscriber users.
+1. **User Management** → **Users** → **Add User**: create the organization's
+   administrator (for example `acmeadmin`), and any subscriber users.
 2. **User Management** → **Roles** → **dp_admin** → **Users** → **Assign User**: assign the
    administrator. Assign subscriber users to **dp_subscriber** the same way.
 
 ### 4c. First sign-in
 
-The tenant's administrator signs in to the portal from the configured organization's page
-(`http://localhost:9543/api-portal/default`) and picks their organization at the IS login.
-The portal creates the tenant's organization — handle and name from the IS organization —
-and lands them in it (`/api-portal/acme/...`). Its public pages are browsable from then on.
+The organization's administrator signs in to the portal from the configured
+organization's page (`http://localhost:9543/api-portal/default`) and picks their
+organization at the IS login. The portal creates the organization — handle and name
+from the IS organization — and lands them in it (`/api-portal/acme/...`). Its public
+pages are browsable from then on.
 
 ### 4d. Key manager (optional)
 
-A key manager lets the tenant's applications get tokens from the tenant's own IS
+A key manager lets the organization's applications get tokens from its own IS
 organization. See [Key Manager Integration](key-manager-integration.md).
 
 1. In IS, switched into the organization: **Applications** → **New Application** →
    **M2M Application**, named for example `acme-key-manager`. Its **Protocol** tab shows
    the **Client ID** and **Client secret** used below.
-2. In the portal, signed in as the tenant's administrator: **Settings** → **Key Managers**
-   → **Add key manager**, with **Token endpoint**
+2. In the portal, signed in as the organization's administrator: **Settings** →
+   **Key Managers** → **Add key manager**, with **Token endpoint**
    `https://host.docker.internal:9443/o/<organization id>/oauth2/token`.
 
 The token endpoint is called by the portal container, so use the IS host the container
@@ -284,7 +285,7 @@ All in the portal:
 APIs and MCP servers are published into the organization as usual. To load the sample
 catalog for a demo, `scripts/seed-samples.sh` takes a token issued for the organization's
 administrator (`ACCESS_TOKEN`); see
-[Onboarding a tenant's catalog](multi-tenancy.md#onboarding-a-tenants-catalog).
+[Onboarding an organization's catalog](multi-organization.md#onboarding-an-organizations-catalog).
 
 ---
 
@@ -293,7 +294,7 @@ administrator (`ACCESS_TOKEN`); see
 | Symptom | Cause |
 |---|---|
 | Users sign in with no name, or get no access | The application's **User Attributes** (1b) or **Access Token Attributes** (1a) are missing `roles` / profile attributes. |
-| A tenant user signs in but gets no admin or subscriber access | **Enable enhanced organization login** (1c) is off, or the user isn't assigned `dp_admin` / `dp_subscriber` in *their* organization (4b). |
+| A sub-organization user signs in but gets no admin or subscriber access | **Enable enhanced organization login** (1c) is off, or the user isn't assigned `dp_admin` / `dp_subscriber` in *their* organization (4b). |
 | The IS administrator lands in an organization called `Super` | `auth.idp_org_id` isn't the root organization's id — see [The root organization](#the-root-organization). |
 | `Org claim matches more than one organization's idp_ref_id` | Two portal organizations share an IS organization id — typically a leftover `Super` organization; see [The root organization](#the-root-organization). |
 | The portal can't reach IS (`token_url`, JWKS) from Docker, or TLS errors | Section 3: container-side URLs use `host.docker.internal`, and IS's certificate must be trusted with `NODE_EXTRA_CA_CERTS`. |

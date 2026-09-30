@@ -16,9 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal multi-tenancy webhook delivery
+Feature: API Portal multi-organization webhook delivery
 
-  # The dispatcher and delivery worker of a multi-tenancy portal handle every organization
+  # The dispatcher and delivery worker of a multi-organization portal handle every organization
   # under its portal_id; each organization's subscribers still receive only its own events.
 
   Scenario: Each organization's subscribers receive exactly that organization's events, once
@@ -34,13 +34,13 @@ Feature: API Portal multi-tenancy webhook delivery
       | org_id   | ${CTX:hookB}        |
       | org_name | Hook ${CTX:hookB}   |
       | roles    | ["ap_admin"]        |
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "a" is registered in portal "api-portal-multi-tenancy" with token "tokenA"
-    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "b" is registered in portal "api-portal-multi-tenancy" with token "tokenB"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "tokenA" and stored as "apiA"
-    And a unique API Portal REST API is created in portal "api-portal-multi-tenancy" with token "tokenB" and stored as "apiB"
-    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:hookA}" as "orgA"
-    And I store the API Portal "api-portal-multi-tenancy" organization id for IDP reference "${CTX:hookB}" as "orgB"
-    When I generate 2 API Portal API keys for API "apiA" in portal "api-portal-multi-tenancy" with token "tokenA"
-    And I generate 2 API Portal API keys for API "apiB" in portal "api-portal-multi-tenancy" with token "tokenB"
+    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "a" is registered in portal "api-portal-multi-organization" with token "tokenA"
+    And an API Portal webhook subscriber for events "apikey.*" delivering to sink "b" is registered in portal "api-portal-multi-organization" with token "tokenB"
+    And a unique API Portal REST API is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "apiA"
+    And a unique API Portal REST API is created in portal "api-portal-multi-organization" with token "tokenB" and stored as "apiB"
+    And I store the API Portal "api-portal-multi-organization" organization id for IDP reference "${CTX:hookA}" as "orgA"
+    And I store the API Portal "api-portal-multi-organization" organization id for IDP reference "${CTX:hookB}" as "orgB"
+    When I generate 2 API Portal API keys for API "apiA" in portal "api-portal-multi-organization" with token "tokenA"
+    And I generate 2 API Portal API keys for API "apiB" in portal "api-portal-multi-organization" with token "tokenB"
     Then the API Portal webhook sink "a" should receive exactly 2 "apikey.generated" events for organization "${CTX:orgA}"
     And the API Portal webhook sink "b" should receive exactly 2 "apikey.generated" events for organization "${CTX:orgB}"

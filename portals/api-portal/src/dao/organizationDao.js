@@ -110,7 +110,7 @@ const getByUuid = async (uuid, t) => {
 
 // Exact handle match only — no fallback to display_name/idp_ref_id. Used to resolve
 // the single organization this instance is pinned to (src/utils/orgContext.js): in a
-// shared multi-organization database, one org's handle can legitimately equal
+// shared database, one org's handle can legitimately equal
 // another's display name, so findOrgByIdentifier's priority ladder is too loose to
 // establish the pin itself.
 const getByHandle = async (handle, t) => {
@@ -217,7 +217,7 @@ const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
  * Returns another organization that findOrgByIdentifier would resolve `value` to —
  * i.e. one whose handle, display_name, or idp_ref_id already equals it — or null.
  *
- * A shared multi-organization database is the case this guards: pointing this
+ * A shared database is the case this guards: pointing this
  * instance's idp_ref_id at a value another organization already answers to would
  * shadow that organization's own identifier resolution, so the seeder refuses the
  * change rather than breaking a neighbouring tenant.

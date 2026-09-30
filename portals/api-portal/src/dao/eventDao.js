@@ -172,7 +172,8 @@ async function claimRows(tx, table, rows, setClause, setParams) {
  * network policy that organization's deployment has.
  */
 // `orgUuid` null/undefined claims across every organization of this portal_id —
-// multi-tenancy mode, where this instance delivers for all of them (see dispatcher.js).
+// multi-organization mode, where this instance delivers for all of them (see
+// dispatcher.js).
 async function claimPending(batchSize, orgUuid) {
     const { tableHint, trailing } = claimLockHints();
     const orgFilter = orgUuid ? ' AND org_uuid = ?' : '';
@@ -203,9 +204,10 @@ async function claimPending(batchSize, orgUuid) {
  * in play, a bare FOR UPDATE would also try to lock the events rows.
  */
 // `orgUuid` null/undefined claims, and sweeps stale rows, across every organization of
-// this portal_id — multi-tenancy mode, where this deployment is the only one using that
-// portal_id. The sweep is safe without an org filter there: its five-minute threshold is far past any subscriber
-// timeout, so a row that old is abandoned, not in flight on some replica.
+// this portal_id — multi-organization mode, where this deployment is the only one using
+// that portal_id. The sweep is safe without an org filter there: its five-minute
+// threshold is far past any subscriber timeout, so a row that old is abandoned, not in
+// flight on some replica.
 async function claimDueDeliveries(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
     const { tableHint } = claimLockHints();

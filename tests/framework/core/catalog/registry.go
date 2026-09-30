@@ -235,7 +235,7 @@ func All() []*components.Definition {
 		platformapi.PlatformAPI(),
 		apiportal.APIPortal(),
 		apiportal.APIPortalOtherOrg(),
-		apiportal.APIPortalMultiTenancy(),
+		apiportal.APIPortalMultiOrganization(),
 		aiworkspace.AIWorkspace(),
 		browser.Browser(),
 		cloudconsole.CloudConsole(),

@@ -123,7 +123,7 @@ test('claimDueDeliveries drops rows another claimer already took', async () => {
     for (const u of updates) assert.strictEqual(u.params[0], 'IN_FLIGHT');
 });
 
-test('an unscoped claim (multi-tenancy mode) filters on its portal_id but no organization', async () => {
+test('an unscoped claim (multi-organization mode) filters on its portal_id but no organization', async () => {
     const { eventDao, calls } = loadEventDao({ dialect: 'postgres', rows: pendingEvents });
     const claimed = await eventDao.claimPending(50, null);
     assert.strictEqual(claimed.length, 3);

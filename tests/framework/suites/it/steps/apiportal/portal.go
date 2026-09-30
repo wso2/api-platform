@@ -253,7 +253,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 		s.regenerateSubscriptionToken)
 	sc.Step(`^the subscription "([^"]*)" status is set to "([^"]*)" in the API Portal$`, s.setSubscriptionStatus)
 	sc.Step(`^the subscription "([^"]*)" is removed in the API Portal$`, s.removeSubscription)
-	s.registerMultiTenancySteps(sc)
+	s.registerMultiOrganizationSteps(sc)
 }
 
 const portalRESTDefinition = `{

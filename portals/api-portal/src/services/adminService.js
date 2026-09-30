@@ -262,7 +262,7 @@ const updateOrganization = async (req, res) => {
     });
     try {
         // Only this instance's own organization is updatable, whatever else the
-        // shared database holds — in multi-tenancy mode, only the caller's own.
+        // shared database holds — in multi-organization mode, only the caller's own.
         const targetOrgUuid = await orgContext.requireCallerOrg(orgId, req.orgId);
 
         const payload = req.body;
@@ -280,10 +280,10 @@ const updateOrganization = async (req, res) => {
         // organization it can no longer find — every page 404ing and every login
         // 403ing until an operator edits config to match. Reject instead.
         //
-        // In multi-tenancy mode the same holds for every organization, not just the
+        // In multi-organization mode the same holds for every organization, not just the
         // configured one: page URLs resolve by handle and token claims by idp_ref_id,
         // so both stay fixed to the target row's current values.
-        const targetOrg = orgContext.isMultiTenancyEnabled() ? await orgDao.getByUuid(targetOrgUuid) : null;
+        const targetOrg = orgContext.isMultiOrganizationEnabled() ? await orgDao.getByUuid(targetOrgUuid) : null;
         const currentHandle = targetOrg ? targetOrg.handle : orgContext.getHandle();
         if (payload.handle !== undefined && String(payload.handle).toLowerCase() !== currentHandle) {
             return util.sendError(res, 400, targetOrg

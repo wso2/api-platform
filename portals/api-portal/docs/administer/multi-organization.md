@@ -1,24 +1,24 @@
-# Multi-Tenancy Mode
+# Multi-Organization Mode
 
 By default an API Portal instance serves exactly one organization — the one named by
 `organization.handle` (see [Manage the Organization](manage-organizations.md)).
-**Multi-tenancy mode** lets one portal serve every organization under its
+**Multi-organization mode** lets one portal serve every organization under its
 `organization.portal_id` instead: each user works in the organization their identity provider (IDP) says they
 belong to, and, if you allow it, an organization the portal hasn't seen before is
 created the first time one of its users signs in.
 
 Use it when one IDP (for example WSO2 Identity Server or Asgardeo with B2B
-sub-organizations, or Keycloak with Organizations) holds many tenant organizations and
+sub-organizations, or Keycloak with Organizations) holds many organizations and
 you want a single portal deployment for all of them.
 
-> Multi-tenancy mode needs `auth.mode = "idp"`. Local auth (the Platform API
+> Multi-organization mode needs `auth.mode = "idp"`. Local auth (the Platform API
 > login) has no per-user organization claim to route by, so it stays single-organization
 > even with the setting on — the portal logs a warning at startup if you combine them.
 
 ## Quick start
 
 ```toml
-[api_portal.multi_tenancy]
+[api_portal.multi_organization]
 enabled = true
 
 [api_portal.auth]
@@ -47,12 +47,12 @@ organization — see [Authentication](authentication.md).
   `organization.portal_id`, and in this mode any instance may serve — and deliver
   webhooks for — any organization under it. Several instances may share a `portal_id`
   only as replicas of the same deployment, with identical configuration. Don't run any
-  other portal, single-organization or multi-tenancy, with the same `portal_id`.
+  other portal, single-organization or multi-organization, with the same `portal_id`.
 - **Other portals may share the database under their own `portal_id`.** A
-  single-organization portal, or a second multi-tenancy portal, sees none of this
+  single-organization portal, or a second multi-organization portal, sees none of this
   portal's organizations, sessions or events, and this portal sees none of theirs. An
-  IDP organization that signs in to two multi-tenancy portals is provisioned separately
-  in each.
+  IDP organization that signs in to two multi-organization portals is provisioned
+  separately in each.
 - **Replicas share `security.encryption_key`.** Webhook subscriber secrets are
   encrypted with it, and any replica may be the one that signs a delivery or encrypts a
   generated API key for a subscriber.
@@ -62,7 +62,7 @@ organization — see [Authentication](authentication.md).
   every organization. Browser logins are unaffected — their tokens come from the
   portal's own code exchange.
 
-At startup the portal logs that it is running in multi-tenancy mode and lists the
+At startup the portal logs that it is running in multi-organization mode and lists the
 organizations it found under its `portal_id`, so you can check it is pointed at the
 database and `portal_id` you meant. It
 also logs an error for organizations that share an `idp_ref_id`: sign-ins to them are
@@ -70,7 +70,7 @@ refused as ambiguous until one is changed.
 
 ## How organizations are resolved
 
-| Where | Single-organization mode | Multi-tenancy mode |
+| Where | Single-organization mode | Multi-organization mode |
 |---|---|---|
 | Page URL `/api-portal/<handle>/...` | only `organization.handle`; anything else `404` | any existing organization with exactly that handle; unknown handles `404`. A URL never creates an organization. |
 | Org claim of a session or bearer token | must name `organization.handle`'s organization | matched against organizations' `idp_ref_id`, **exactly** — never a handle or display name |
@@ -88,7 +88,7 @@ several. An `idp_ref_id` shared by more than one organization is refused as ambi
 
 ## `enforce_org_validation`
 
-| Claim in the token | Single-org, `true` (default) | Single-org, `false` | Multi-tenancy, `true` | Multi-tenancy, `false` |
+| Claim in the token | Single-org, `true` (default) | Single-org, `false` | Multi-organization, `true` | Multi-organization, `false` |
 |---|---|---|---|---|
 | The configured organization | allowed | allowed | allowed | allowed |
 | Another existing organization | `403` | `403` | allowed, as that organization | allowed, as that organization |
@@ -102,10 +102,11 @@ The portal logs a warning at startup whenever this setting is `false`.
 
 ## Provisioning
 
-With `multi_tenancy.enabled = true` and `enforce_org_validation = false`, a verified token
-whose org claim names no known organization creates it, with the same defaults as the
-configured organization gets on first start: a `default` view and label, and (with
-`organization.auto_create_subscription_plans`) the default subscription plans.
+With `multi_organization.enabled = true` and `enforce_org_validation = false`, a
+verified token whose org claim names no known organization creates it, with the same
+defaults as the configured organization gets on first start: a `default` view and
+label, and (with `organization.auto_create_subscription_plans`) the default
+subscription plans.
 
 - `idp_ref_id` is the org claim's value, verbatim.
 - The URL handle is the `claim_mappings.org_handle` claim, lowercased, when
@@ -140,7 +141,7 @@ Existing organizations keep working when provisioning is refused.
 
 ## Signing in
 
-Every login returns through the single `auth.idp.callback_url`. In multi-tenancy
+Every login returns through the single `auth.idp.callback_url`. In multi-organization
 mode:
 
 - **The configured organization's login page sends no organization hint** to the IDP,
@@ -153,7 +154,7 @@ mode:
   `orgId=<uuid>`, or `org=<handle>`), so its users choose their organization on the IS
   login page instead; the organization check after login is the same either way.
 - **`?org=<id>` on a login URL** overrides the hint — useful as a direct sign-in link
-  for one tenant: `/api-portal/default/views/default/login?org=<orgId>`.
+  for one organization: `/api-portal/default/views/default/login?org=<orgId>`.
 - After login the user lands in **their own organization**: back on the page they came
   from if it belongs to it, otherwise on its default view.
 - **Silent SSO** (`auth.idp.silent_sso`, on by default) sends the same hint as a login
@@ -181,7 +182,7 @@ unaffected: they go through the configured issuer.
 
 ## Webhooks
 
-In multi-tenancy mode the webhook dispatcher and delivery worker handle every
+In multi-organization mode the webhook dispatcher and delivery worker handle every
 organization's events. Each organization's subscribers receive only that organization's
 events (subscribers are registered per organization, through the caller's own token).
 Events of other portals in the same database, under a different `portal_id`, are left to
@@ -195,16 +196,16 @@ configuration. Decode a real token (for example with `jq -R 'split(".")[1] | @ba
 
 | IDP | `claim_mappings.organization` | `claim_mappings.org_name` | `claim_mappings.org_handle` | Notes |
 |---|---|---|---|---|
-| WSO2 IS 7.x | `org_id` | `org_name` | `org_handle` | Shared root app, one sub-organization per tenant. Set `auth.idp_org_id` to the root organization's `org_id` so root users map to the configured organization — see [WSO2 Identity Server Setup](wso2-is-setup.md#the-root-organization). |
+| WSO2 IS 7.x | `org_id` | `org_name` | `org_handle` | Shared root app; each portal organization is an IS sub-organization. Set `auth.idp_org_id` to the root organization's `org_id` so root users map to the configured organization — see [WSO2 Identity Server Setup](wso2-is-setup.md#the-root-organization). |
 | Asgardeo | `org_id` | `org_name` | check your tokens | Same model as WSO2 IS — see [Asgardeo Setup](asgardeo-setup.md). |
 | Keycloak (Organizations) | `organization` | — | — | The claim is a list or map of organization aliases; one per user. The portal's `org` login hint is not a Keycloak parameter, so users pick their organization in Keycloak. |
 | Auth0 (Organizations) | `org_id` | `org_name` | — | Auth0 prompts for the organization itself; the portal's `org` hint is not Auth0's `organization` parameter. |
 | Okta | your custom org claim | — | — | Add the claim to your authorization server's access and ID tokens. |
 
-Keycloak's realm-per-tenant model (a different login endpoint and client per
+Keycloak's realm-per-organization model (a different login endpoint and client per
 organization) is not supported: the portal has one IDP login configuration.
 
-## Onboarding a tenant's catalog
+## Onboarding an organization's catalog
 
 APIs published from the Platform API (its shared-key calls to the portal) always land in
 the configured organization, `organization.handle`: the portal has one shared key for
@@ -216,8 +217,8 @@ organization gets its catalog through the portal's REST API, with a token issued
 issued for it:
 
 ```bash
-ACCESS_TOKEN="<a token for the tenant's admin>" \
-SAMPLES_DIR="<that tenant's samples directory>" \
+ACCESS_TOKEN="<a token for the organization's admin>" \
+SAMPLES_DIR="<that organization's samples directory>" \
 PLAN_OVERRIDE="Gold|Silver" \
 API_PORTAL_URL="https://portal.example.com" \
   ./scripts/seed-samples.sh
@@ -229,10 +230,10 @@ for a privately issued portal certificate, set `API_PORTAL_CA_CERT` to its CA bu
 
 ## Turning it off
 
-With `multi_tenancy.enabled = false` the portal serves only `organization.handle` again.
-Organizations created while it was on stay in the database but are no longer reachable
-— their pages `404`, their users' tokens are refused, and their pending webhook
-deliveries stay pending until the mode is turned back on.
+With `multi_organization.enabled = false` the portal serves only `organization.handle`
+again. Organizations created while it was on stay in the database but are no longer
+reachable — their pages `404`, their users' tokens are refused, and their pending
+webhook deliveries stay pending until the mode is turned back on.
 
 ## Troubleshooting
 
@@ -241,6 +242,6 @@ deliveries stay pending until the mode is turned back on.
 | `Rejected org claim naming an unknown organization` | The claim matches no organization's `idp_ref_id`, and provisioning is off (`enforce_org_validation = true`). |
 | `Refused to provision an organization from an org claim: …` | Provisioning is on, but the IDP channel isn't verified TLS — the reason follows. |
 | `Org claim matches more than one organization's idp_ref_id` | Two organizations share an `idp_ref_id`; fix the data. |
-| `Multi-tenancy: organizations share an idp_ref_id …` (at startup) | The same, found before anyone signs in; it names the organizations. Common after pointing `auth.idp_org_id` at an id an already-provisioned organization holds — for WSO2 IS's root organization see [The root organization](wso2-is-setup.md#the-root-organization). |
+| `Multi-organization: organizations share an idp_ref_id …` (at startup) | The same, found before anyone signs in; it names the organizations. Common after pointing `auth.idp_org_id` at an id an already-provisioned organization holds — for WSO2 IS's root organization see [The root organization](wso2-is-setup.md#the-root-organization). |
 | `Rejected org claim naming more than one organization` | A list/map org claim names several organizations. |
-| `Rejected login: token carries no organization claim` | Multi-tenancy mode with enforcement on; check `claim_mappings.organization`. |
+| `Rejected login: token carries no organization claim` | Multi-organization mode with enforcement on; check `claim_mappings.organization`. |

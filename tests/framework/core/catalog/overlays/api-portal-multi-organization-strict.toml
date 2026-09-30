@@ -16,8 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Multi-tenancy mode with auth.enforce_org_validation on: an org claim naming an unknown
-# organization is refused rather than provisioned, and so is a credential with none.
+# Multi-organization mode with auth.enforce_org_validation on: an org claim
+# naming an unknown organization is refused rather than provisioned, and so is a
+# credential with none.
 [api_portal.auth]
 enforce_org_validation = true
 
