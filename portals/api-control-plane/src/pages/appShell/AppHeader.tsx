@@ -18,6 +18,7 @@
 
 import { ColorSchemeImage, ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
 import { LogOut, Menu } from '@wso2/oxygen-ui-icons-react';
+import { Fragment } from 'react';
 import { useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -25,13 +26,38 @@ import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
+import { HEADER_ACTIONS_SLOT, type ApiControlPlaneHeaderAction } from '@/extensions';
+import { usePort } from '@/hostPort';
 import { routes } from '@/routes/paths';
 import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
+import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
 const BRAND_LOGO_HEIGHT = 32;
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
+
+/**
+ * Renders the header's cloud extension entries.
+ *
+ * Split out so `usePort` is called only when there is an entry to render: the
+ * Port is a cloud concern, and a standalone console registers no entry and so
+ * needs no provider. AppHeader itself stays renderable without one.
+ */
+function HeaderExtensionActions({
+  entries,
+}: {
+  entries: readonly ApiControlPlaneHeaderAction[];
+}) {
+  const port = usePort();
+  return (
+    <>
+      {entries.map((entry) => (
+        <Fragment key={entry.id}>{entry.render(port)}</Fragment>
+      ))}
+    </>
+  );
+}
 
 export function AppHeader() {
   const intl = useIntl();
@@ -40,6 +66,8 @@ export function AppHeader() {
   // const { actions } = useAppShell();
   const auth = useAuth();
   const brandLogo = useBrandLogo();
+  // Cloud-only entries; empty in a standalone console, which registers none.
+  const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
@@ -86,6 +114,8 @@ export function AppHeader() {
       <Header.Spacer />
 
       <Header.Actions>
+        {headerActions.length > 0 && <HeaderExtensionActions entries={headerActions} />}
+
         <ColorSchemeToggle />
         {/* Commenting out the notification bell for now, as it is not yet implemented. */}
         {/* <Tooltip title={intl.formatMessage({ id: 'appShell.header.notifications', defaultMessage: 'Notifications' })}>
