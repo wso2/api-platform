@@ -467,6 +467,13 @@ duplicating it.
   shared block overlay. Malformed selectors, a missing Godog expression after
   `;`, or more than one `;` are configuration errors and must not be worked
   around with looser tags.
+- `-gateway-version` selects the Gateway release and its version-specific
+  configuration and management contracts. When the same release images are
+  published under another repository prefix, `-host` may be supplied with
+  `-gateway-version` to replace `ghcr.io/wso2/api-platform` for the Gateway
+  controller and runtime images only. The value is an image repository prefix,
+  such as `registry.example/test-gateway`, not a URL and not the Testcontainers host
+  override. Do not use `-host` without `-gateway-version`.
 - Use `defaults.components.platform-gateway.dbCompatibility` for Gateway database
   support boundaries shared by matrix blocks, for example
   `sqlserver: "gateway-version>=1.2.0"`. Its values use the same strict selector
