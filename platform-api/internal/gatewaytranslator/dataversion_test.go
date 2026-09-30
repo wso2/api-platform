@@ -35,7 +35,7 @@ func TestComputeDataVersion(t *testing.T) {
 		{"llm provider is 1.1", constants.LLMProvider, constants.GatewayApiVersion, "1.1"},
 		{"llm proxy is 1.1", constants.LLMProxy, constants.GatewayApiVersion, "1.1"},
 		{"rest api is 1.0", constants.RestApi, constants.GatewayApiVersion, "1.0"},
-		{"mcp proxy is 1.0", constants.MCPProxy, constants.GatewayApiVersion, "1.0"},
+		{"mcp proxy is 1.1", constants.MCPProxy, constants.GatewayApiVersion, "1.1"},
 		{"websub api is 1.0", constants.WebSubApi, constants.GatewayApiVersion, "1.0"},
 		{"webbroker api is 1.0", constants.WebBrokerApi, constants.GatewayApiVersion, "1.0"},
 		{"legacy v1alpha1 llm provider is still major 1", constants.LLMProvider, constants.GatewayApiVersionV1Alpha1, "1.1"},
