@@ -199,22 +199,20 @@ export const DefineApiPanel = ({
     if (contract?.spec === undefined) return null;
     const base = extractApiDetails(contract.spec);
     const rawText = contract.rawText;
-    if (rawText !== undefined) {
-      const isJson = rawText.trimStart().startsWith('{');
-      const contentType = isJson ? 'application/json' : 'application/yaml';
-      let fileName = contract.values.file?.name;
-      if (!fileName) {
-        fileName = isJson ? 'api_definition.json' : 'api_definition.yaml';
-      }
-      const rawBlob = new Blob([rawText], { type: contentType });
-      return {
-        ...base,
-        contractImport: {
-          specFile: new File([rawBlob], fileName, { type: contentType }),
-        },
-      };
+    if (rawText === undefined) return null;
+    const isJson = rawText.trimStart().startsWith('{');
+    const contentType = isJson ? 'application/json' : 'application/yaml';
+    let fileName = contract.values.file?.name;
+    if (!fileName) {
+      fileName = isJson ? 'api_definition.json' : 'api_definition.yaml';
     }
-    return null;
+    const rawBlob = new Blob([rawText], { type: contentType });
+    return {
+      ...base,
+      contractImport: {
+        specFile: new File([rawBlob], fileName, { type: contentType }),
+      },
+    };
   }, [contract]);
 
   useEffect(() => {

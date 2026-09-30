@@ -612,10 +612,12 @@ type AddGatewayToRESTAPIRequest struct {
 type ApiPortalListItem struct {
 	CreatedAt   time.Time `binding:"required" json:"createdAt" yaml:"createdAt"`
 	Description *string   `json:"description" yaml:"description"`
-	Handle      string    `binding:"required" json:"handle" yaml:"handle"`
-	Id          string    `binding:"required" json:"id" yaml:"id"`
-	Name        string    `binding:"required" json:"name" yaml:"name"`
-	Url         string    `binding:"required" json:"url" yaml:"url"`
+
+	// Id URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
+	Id        string     `binding:"required" json:"id" yaml:"id"`
+	Name      string     `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt *time.Time `json:"updatedAt" yaml:"updatedAt"`
+	Url       string     `binding:"required" json:"url" yaml:"url"`
 }
 
 // ApiPortalListResponse defines model for ApiPortalListResponse.
@@ -634,10 +636,7 @@ type ApiPortalResponse struct {
 	CreatedAt   *time.Time `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	Description *string    `json:"description" yaml:"description"`
 
-	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
-	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
-
-	// Id Handle (URL-friendly slug) of the API Portal, primary identifier.
+	// Id URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
 	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
@@ -1455,7 +1454,9 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
-// ImportOpenAPIRequest defines model for ImportOpenAPIRequest.
+// ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+// `file` or `url` must be provided; the backend rejects requests that
+// supply both or neither.
 type ImportOpenAPIRequest struct {
 	Context     string  `binding:"required" json:"context" yaml:"context"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
@@ -1463,8 +1464,8 @@ type ImportOpenAPIRequest struct {
 	// DisplayName Human-readable name for the API
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
 
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+	// File OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
 
 	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
@@ -1474,7 +1475,11 @@ type ImportOpenAPIRequest struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+	// from.
+	Url     *string `json:"url,omitempty" yaml:"url,omitempty"`
+	Version string  `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMAccessControl defines model for LLMAccessControl.
@@ -2124,10 +2129,17 @@ type OpenAPIContent struct {
 	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
 }
 
-// OpenAPISpecFileRequest defines model for OpenAPISpecFileRequest.
+// OpenAPISpecFileRequest Multipart form for `POST /rest-apis/validate-openapi` and
+// `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+// must be provided; the backend rejects requests that supply both or
+// neither.
 type OpenAPISpecFileRequest struct {
-	// File OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
-	File openapi_types.File `binding:"required" json:"file" yaml:"file"`
+	// File OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
+
+	// Url HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+	// from. Mutually exclusive with `file`.
+	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
 // OpenAPISpecInfo defines model for OpenAPISpecInfo.
@@ -3130,6 +3142,10 @@ type UserAPIKeyListResponse struct {
 
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
+	// Content The exact bytes the validator ran against. Always echoed for file
+	// uploads; for URL sources it is echoed only when isValid is true.
+	Content *string `json:"content,omitempty" yaml:"content,omitempty"`
+
 	// Errors Validation errors; empty when isValid is true
 	Errors []OpenAPIValidationError `binding:"required" json:"errors" yaml:"errors"`
 	Info   *OpenAPISpecInfo         `json:"info,omitempty" yaml:"info,omitempty"`
@@ -3240,8 +3256,8 @@ type PublicationConflict = Error
 // PublicationDefinitionResponse defines model for PublicationDefinitionResponse.
 type PublicationDefinitionResponse = openapi_types.File
 
-// PublicationTypeUnsupported The single error shape returned by every failed request across the API.
-type PublicationTypeUnsupported = Error
+// PublicationPublishBadRequest The single error shape returned by every failed request across the API.
+type PublicationPublishBadRequest = Error
 
 // ServiceUnavailable The single error shape returned by every failed request across the API.
 type ServiceUnavailable = Error

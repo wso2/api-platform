@@ -206,6 +206,24 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
   });
 
+  it('explains a missing draft once, without retrying, when the definition save 404s', async () => {
+    servePublicationState();
+    const draftRequests = recorder();
+    server.use(
+      failure('put', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', { message: 'raw server text' }),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText(/Unable to save the draft/)).toBeInTheDocument();
+    expect(screen.queryByText('raw server text')).not.toBeInTheDocument();
+    expect(draftRequests.count()).toBe(1);
+  });
+
   it('Save Draft writes the details before the definition', async () => {
     servePublicationState();
     const draftRequests = recorder();
@@ -324,12 +342,13 @@ describe('PortalPublishPage', () => {
     });
   });
 
-  it('sends the user back to the Specification tab, naming the format, when the definition cannot be read', async () => {
+  it('still saves the details when the definition cannot be read, and reports the partial save', async () => {
     servePublicationState({ draft: aPublicationDraftDetails() });
     server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const draftRequests = recorder();
     const definitionRequests = recorder();
     server.use(
-      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
       accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
     );
 
@@ -344,7 +363,49 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
+    // Details and definition are separate endpoints, so an unparseable
+    // definition doesn't cost the user their unrelated Details edits.
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(definitionRequests.count()).toBe(0);
+    expect(
+      await screen.findByText('Details saved. The specification has an error and was not saved.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Draft saved.')).not.toBeInTheDocument();
+  });
+
+  it('Save Draft succeeds with an empty definition — only Publish checks validity', async () => {
+    // No draft/publication/own-spec definition is served, so definitionText
+    // stays "" and definitionFormat stays its default, 'json'.
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? 'null')).toEqual({});
+  });
+
+  it('Save Draft succeeds with a syntactically valid but incomplete OpenAPI object', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, '{"foo":1}', 'application/json'));
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? 'null')).toEqual({ foo: 1 });
   });
 
   it('still opens with a definition that was saved as JSON', async () => {
@@ -398,10 +459,12 @@ describe('PortalPublishPage', () => {
   });
 
   it('Publish saves the draft, then calls the publish action', async () => {
-    servePublicationState();
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const definitionRequests = recorder();
     server.use(
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
-      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
       accepts('post', PUBLISH_PATH, aPublication(), { record: requests }),
     );
 
@@ -410,8 +473,48 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'Publish' }));
 
+    // Publish only ever calls the publish action once the definition it
+    // carries has actually been saved — not the empty-draft placeholder.
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(JSON.parse(definitionRequests.last()?.body ?? '{}')).toMatchObject({
+      openapi: '3.0.3',
+      info: { title: 'Loan Management Service', version: '1.0.0' },
+    });
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(await screen.findByText('Published to acme-portal.')).toBeInTheDocument();
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+  });
+
+  it('Publish saves the details but does not call publish when the definition cannot be read', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'));
+    const draftRequests = recorder();
+    const definitionRequests = recorder();
+    const publishRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+      accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+    );
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.type(
+      await screen.findByRole('textbox', { name: 'API definition (YAML)' }),
+      '\n  bad: [[',
+    );
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText(/This is not valid YAML:/)).toBeInTheDocument();
+    // Details still saves — it's a separate, unaffected endpoint — but
+    // publishing a stale definition under a broken edit is never allowed.
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(definitionRequests.count()).toBe(0);
+    expect(publishRequests.count()).toBe(0);
+    expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
 
   it('Unpublish is disabled until the API is actually live, then asks for confirmation', async () => {
@@ -446,6 +549,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Published, so the primary button reads Republish, not Publish.
+    expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     const deprecateItem = await screen.findByRole('menuitem', { name: 'Deprecate' });
     expect(deprecateItem).not.toHaveAttribute('aria-disabled', 'true');
@@ -467,6 +572,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Never published, so the primary button still reads Publish.
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
       'aria-disabled',
@@ -480,6 +587,8 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    // Deprecated, not published, so the primary button reads Publish, not Republish.
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute(
       'aria-disabled',
@@ -491,7 +600,7 @@ describe('PortalPublishPage', () => {
     );
   });
 
-  it('goes back to Publish once the API has been unpublished', async () => {
+  it('returns to the portals list once the API has been unpublished', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(noContent('post', UNPUBLISH_PATH));
 
@@ -501,16 +610,33 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
     await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
 
-    // The refetch that follows the unpublish now finds no live listing.
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(screen.getByText('Unpublished from acme-portal.')).toBeInTheDocument();
+  });
+
+  it('does not report success when the API was already unpublished elsewhere, and refreshes to Publish', async () => {
+    servePublicationState({ publication: aPublication() });
+    const message = 'This API is already unpublished from this API Portal. No changes were made.';
+    server.use(failure('post', UNPUBLISH_PATH, 409, 'PUBLICATION_STATE_CONFLICT', { message }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+
     server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
     await confirmInDialog(user);
 
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Unpublished from acme-portal.')).not.toBeInTheDocument();
   });
 
-  it('goes back to Publish once the API has been deprecated', async () => {
+  it('returns to the portals list once the API has been deprecated', async () => {
     servePublicationState({ publication: aPublication() });
     server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' })));
 
@@ -520,40 +646,11 @@ describe('PortalPublishPage', () => {
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
     await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
-
-    server.use(resource(PUBLICATION_PATH, aPublication({ status: 'DEPRECATED' })));
     await confirmInDialog(user);
 
-    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
-  });
-
-  it('keeps Publish as the button after unpublishing and publishing again', async () => {
-    servePublicationState({ publication: aPublication() });
-    server.use(
-      noContent('post', UNPUBLISH_PATH),
-      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
-      accepts('put', DRAFT_DEFINITION_PATH, undefined),
-      accepts('post', PUBLISH_PATH, aPublication()),
-    );
-
-    const { user } = renderPage();
-
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
-    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
-    server.use(failure('get', PUBLICATION_PATH, 404, 'PUBLICATION_NOT_FOUND'));
-    await confirmInDialog(user);
-    await screen.findByText('Unpublished from acme-portal.');
-
-    server.use(resource(PUBLICATION_PATH, aPublication()));
-    await user.click(await screen.findByRole('button', { name: 'Publish' }));
-    await screen.findByText('Published to acme-portal.');
-
-    // Live again — the primary side must still say Publish, not fall back to the old Unpublish.
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    // Nothing left to do here once the action succeeds — back to the listing.
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(screen.getByText('Deprecated on acme-portal.')).toBeInTheDocument();
   });
 
   it('lists Deprecate before Unpublish in the dropdown', async () => {
@@ -593,7 +690,7 @@ describe('PortalPublishPage', () => {
         within(dialog).getByText(
           action === 'Unpublish'
             ? `This removes the API "${API_NAME}" from acme-portal. You can publish it again later.`
-            : `This marks the API "${API_NAME}" as deprecated on acme-portal. It stays visible there.`,
+            : `The API "${API_NAME}" will be marked as deprecated on acme-portal. It will remain listed.`,
         ),
       ).toBeInTheDocument();
       expect(confirm).toBeDisabled();
@@ -724,5 +821,70 @@ describe('PortalPublishPage', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
+  });
+
+  it('stays usable when Publish rejects the definition as invalid, and sends the user to the Specification tab', async () => {
+    // No client-side check exists any more: the draft (with whatever
+    // definition it holds) saves unconditionally, and only the publish call
+    // itself can reject it. The message itself is surfaced by the ordinary
+    // global error snackbar, not any bespoke handling here — this only
+    // checks that the user lands where they'd actually fix the problem.
+    servePublicationState();
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(screen.getByRole('tab', { name: 'API Details' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+    );
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
+    expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
+  });
+
+  it('does not switch tabs when Publish fails for a reason unrelated to the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 409, 'PUBLICATION_PORTAL_CONFLICT'),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.getByRole('tab', { name: 'API Details' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('says the user lacks permission when the draft cannot be read (403)', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
+    expect(screen.queryByText(/Unable to load the publish details/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic message when loading fails for a reason other than permission', async () => {
+    servePublicationState();
+    server.use(failure('get', DRAFT_PATH, 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByText(/Unable to load the publish details/)).toBeInTheDocument();
+    expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });

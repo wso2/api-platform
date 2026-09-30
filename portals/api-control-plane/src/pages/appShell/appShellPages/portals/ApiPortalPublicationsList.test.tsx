@@ -26,6 +26,7 @@ import {
   aPublicationSummary,
   aRestApi,
   collection,
+  failure,
   recorder,
   type PublicationSummaryFixture,
   type Recorder,
@@ -98,6 +99,8 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('Published')).toBeInTheDocument();
+    // Published, so there's a live listing to link to.
+    expect(screen.getByText('View in Portal')).toBeInTheDocument();
   });
 
   it('shows Draft instead of Published when a draft is pending, even once live', async () => {
@@ -120,6 +123,8 @@ describe('ApiPortalPublicationsList', () => {
     expect(screen.queryByText('Published')).not.toBeInTheDocument();
     expect(screen.queryByText('Draft')).not.toBeInTheDocument();
     expect(screen.queryByText('Deprecated')).not.toBeInTheDocument();
+    // Never published, so there's no listing on the portal to link to yet.
+    expect(screen.queryByText('View in Portal')).not.toBeInTheDocument();
   });
 
   it('shows the shared empty state when the organization has no portals', async () => {
@@ -165,6 +170,8 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     expect(await screen.findByText('Deprecated')).toBeInTheDocument();
+    // Deprecated listings are still live on the portal, so the link stays.
+    expect(screen.getByText('View in Portal')).toBeInTheDocument();
   });
 
   it('titles the page with the API handle until its display name is known', async () => {
@@ -211,5 +218,23 @@ describe('ApiPortalPublicationsList', () => {
 
     await screen.findByText('No Portals Available');
     expect(screen.queryByPlaceholderText('Search portals')).not.toBeInTheDocument();
+  });
+
+  it('says the user lacks permission when the portals cannot be listed (403)', async () => {
+    server.use(failure('get', '/api-publications', 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('You don’t have permission')).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load portals')).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic message for a failure that is not a permission problem', async () => {
+    server.use(failure('get', '/api-publications', 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByText('Unable to load portals')).toBeInTheDocument();
+    expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });

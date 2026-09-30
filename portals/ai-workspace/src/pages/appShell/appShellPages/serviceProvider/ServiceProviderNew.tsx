@@ -59,6 +59,7 @@ import {
 } from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { withUpstreamValuePrefix } from '../../../../utils/providerTemplateFields';
 import { FormattedMessage } from 'react-intl';
 import { reorderItem } from '../../../../Components/GuardrailPill';
 
@@ -373,9 +374,10 @@ export default function ServiceProviderNew() {
           : {
               type: formState.upstreamAuthType,
               header: formState.upstreamAuthHeader,
-              value: formState.valuePrefix
-                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-                : formState.upstreamAuthValue,
+              value: withUpstreamValuePrefix(
+                formState.valuePrefix,
+                formState.upstreamAuthValue
+              ),
             };
 
       const upstream = {

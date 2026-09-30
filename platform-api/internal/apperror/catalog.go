@@ -233,6 +233,10 @@ var (
 	// unresolvable plan/document handle, or content over the configured size
 	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
 	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+	// APIPublicationTypeUnsupported: the API type has no projection onto the
+	// API Portal's own API types, so no listing can be created for it.
+	APIPublicationTypeUnsupported = def(CodeAPIPublicationTypeUnsupported, http.StatusBadRequest,
+		"APIs of this type cannot be published to an API Portal.")
 	// APIPublicationPortalConflict is a rejection the portal will keep making
 	// (a conflicting handle/display name, active subscriptions/API keys, or
 	// any other portal-side rejection) — never retried, distinct from the
@@ -243,14 +247,16 @@ var (
 	// the portal's own raw error text; falls back to "the conflict is
 	// resolved" (this entry's original, fixed wording) for anything else.
 	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
-		"The API Portal rejected this request and will keep rejecting it until %s.")
+		"The API Portal cannot accept this request until %s.")
 	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
 		"The API Portal could not be reached. Please try again.")
 	// APIPublicationStateConflict: the action is not valid for the listing's
-	// current status. %s is the refused action, e.g. "unpublished".
-	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict,
-		"This API's current status on this API Portal does not allow it to be %s.")
+	// current status. %s is the full user-facing sentence saying why, so the
+	// caller can name the state it found (e.g. "already unpublished").
+	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict, "%s")
 	// APIPublicationDraftChanged: the draft was saved during its own publish.
+	// The push is not undone, so the API Portal may hold the earlier copy until
+	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
-		"The draft was changed while it was being published, so the API Portal may hold an earlier copy. Review the draft and publish again.")
+		"The draft changed while publishing. Review it and publish again.")
 )

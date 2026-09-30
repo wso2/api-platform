@@ -40,16 +40,87 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  * component can be reused by another host app without depending on this
  * portal's own hooks — see `hostPort.tsx`.
  */
-export type ApiControlPlaneExtension = SlotEntry & {
+type ExtensionRender = (port: CloudHostPort) => ReactNode;
+
+type ApiControlPlaneExtensionBase = SlotEntry & {
   routePath: string;
-  render: (port: CloudHostPort) => ReactNode;
   label: string;
   icon?: ReactNode;
   level: NavigationLevel;
   /** Sidebar section heading. Defaults to the level's own section (e.g. "Organization"). */
   group?: string;
   isVisible?: (scope: ConsoleScope) => boolean;
+  /**
+   * A built-in sidebar item this entry stands in for, named by its id.
+   *
+   * A built-in may be scoped differently from what a host needs, and two items
+   * of the same name side by side would be worse than either. Declaring the
+   * claim drops the built-in for as long as this entry is itself visible, so a
+   * claim can never remove both.
+   */
+  claims?: string;
+  /**
+   * Extra segments, at this entry's `level`, that redirect to its `routePath` —
+   * e.g. to keep a page's former URL working after it moved. Sidebar entries
+   * only. Query string and hash are carried over.
+   */
+  aliases?: readonly string[];
 };
+
+export type ApiControlPlaneExtension = ApiControlPlaneExtensionBase &
+  (
+    | {
+        render: ExtensionRender;
+        /**
+         * Sub-items, which turn this entry into a disclosure the way a built-in
+         * parent's `children` do. Each is a page of its own, mounted under the
+         * parent's `routePath` and at the parent's `level`.
+         */
+        children?: readonly ApiControlPlaneExtensionChild[];
+      }
+    | {
+        /**
+         * Omitted on a parent: a direct hit on its own `routePath` redirects to
+         * its first visible child, so the URL always names the page shown and
+         * the sidebar highlights it.
+         */
+        render?: undefined;
+        children: readonly [ApiControlPlaneExtensionChild, ...ApiControlPlaneExtensionChild[]];
+      }
+  );
+
+/** An entry that renders a page of its own — every entry but a childful parent that omits `render`. */
+export type RenderableExtension = ApiControlPlaneExtension & { render: ExtensionRender };
+
+export const hasRender = (
+  extension: ApiControlPlaneExtension
+): extension is RenderableExtension => typeof extension.render === 'function';
+
+/**
+ * One page under an extension parent. It carries no `level`, `group` or `order`:
+ * all three come from the parent, so a sub-item cannot drift into another scope,
+ * another divider cluster, or out of the order it was declared in.
+ *
+ * `routePath` is its own segment only. The parent's is prefixed for it — see
+ * `childRoutePath`.
+ */
+export type ApiControlPlaneExtensionChild = {
+  id: string;
+  routePath: string;
+  render: ExtensionRender;
+  label: string;
+  icon?: ReactNode;
+  isVisible?: (scope: ConsoleScope) => boolean;
+};
+
+/**
+ * Where a child page is mounted. Composed here rather than written out at the
+ * registration site, so a child cannot name a path outside its parent — a bare
+ * `gateways` would otherwise register a top-level route that shadows the
+ * built-in page of that name.
+ */
+export const childRoutePath = (parentRoutePath: string, segment: string): string =>
+  `${parentRoutePath.replace(/\/\*$/, '')}/${segment}`;
 
 /**
  * Slot names core knows about. Both live here rather than being spelled out at
@@ -81,6 +152,14 @@ export const PAGE_GATEWAYS_SLOT = 'page.gateways';
  */
 export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
 
+/**
+ * Slot for overriding the built-in per-API Logs page under Observability. Same
+ * arrangement as `PAGE_API_DEPLOY_SLOT`: consumed by the
+ * `apiObservabilityLogs` route wrapper in `AppRoutes`, with `routePath`/`level`
+ * inert.
+ */
+export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
+
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
@@ -105,13 +184,15 @@ export const isPageOverride = (extension: ApiControlPlaneExtension): boolean =>
  * `slot` and `level` must agree: a type-valid but inconsistent descriptor
  * (`slot: 'settings.organization.tabs'` with `level: 'project'`) would
  * otherwise render against the wrong scope's Port, so it is dropped here and
- * in the matching route pass rather than half-honoured.
+ * in the matching route pass rather than half-honoured. An entry with no
+ * `render` has nothing to show in a tab and is dropped the same way.
  */
 export const settingsTabExtensions = (
   extensions: readonly ApiControlPlaneExtension[],
   level: NavigationLevel
-): ApiControlPlaneExtension[] =>
+): RenderableExtension[] =>
   extensions
+    .filter(hasRender)
     .filter(
       (extension) =>
         extension.slot === settingsTabSlot(level) && extension.level === level

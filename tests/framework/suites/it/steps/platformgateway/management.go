@@ -108,14 +108,23 @@ func assertSuccessfulAPIResponse(response *httpx.Response, version, operation st
 	return document, nil
 }
 
+// usesResourceStatus reports whether a Gateway release returns the resource status object.
+// Gateway 1.0 and older return a "success" string; later and unrecognised versions,
+// including calendar versions, use the current status object.
 func usesResourceStatus(version string) bool {
 	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	parts := strings.SplitN(version, ".", 3)
-	if len(parts) < 2 || parts[0] != "1" {
-		return false
+	version, _, _ = strings.Cut(version, "-")
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return true
 	}
-	minor, err := strconv.Atoi(parts[1])
-	return err == nil && minor >= 1
+	major, majorErr := strconv.Atoi(parts[0])
+	minor, minorErr := strconv.Atoi(parts[1])
+	patch, patchErr := strconv.Atoi(parts[2])
+	if majorErr != nil || minorErr != nil || patchErr != nil || major < 0 || minor < 0 || patch < 0 {
+		return true
+	}
+	return major > 1 || (major == 1 && minor >= 1)
 }
 
 func assertResourceStatus(value any, version, operation string, response *httpx.Response) error {

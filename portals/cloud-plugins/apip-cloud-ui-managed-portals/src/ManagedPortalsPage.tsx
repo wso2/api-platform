@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageContent, Typography } from '@wso2/oxygen-ui';
 
 import type { CloudHostPort } from './hostPort';
@@ -43,6 +43,13 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
 
   const [view, setView] = useState<PageView>({ kind: 'list' });
 
+  // Reset to the list when the org switches: an edit view of the previous
+  // org's portalId is meaningless in the new org, and a create view carries
+  // form state that shouldn't survive the switch (env list changes shape).
+  useEffect(() => {
+    setView({ kind: 'list' });
+  }, [port.orgHandle]);
+
   if (!portalPort) {
     return (
       <PageContent fullWidth>
@@ -58,12 +65,17 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
 
   const goToList = () => setView({ kind: 'list' });
 
+  // Keying the child views on orgHandle forces a remount when the user
+  // switches org while the create/edit view is active. Without this, the
+  // form's local state (loginEnvironment picked from the previous org's env
+  // list, in-progress name/description) survives the switch and can be
+  // submitted against the new org's environment set.
   return (
     <PortalFeatureProvider value={{ port: portalPort, host: port }}>
       {view.kind === 'create' ? (
-        <ManagedPortalCreate onCancel={goToList} onCreated={goToList} />
+        <ManagedPortalCreate key={port.orgHandle} onCancel={goToList} onCreated={goToList} />
       ) : view.kind === 'edit' ? (
-        <ManagedPortalEdit portalId={view.portalId} onCancel={goToList} onSaved={goToList} />
+        <ManagedPortalEdit key={port.orgHandle} portalId={view.portalId} onCancel={goToList} onSaved={goToList} />
       ) : (
         <ManagedPortalsList
           onCreate={() => setView({ kind: 'create' })}
