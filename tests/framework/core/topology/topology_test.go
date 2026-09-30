@@ -1192,9 +1192,9 @@ func TestGatewayVersionAndHostSelectionOverride(t *testing.T) {
 	var flags Selection
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	flags.Flags(fs)
-	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0", "-host=docker.io/isurangaws"}))
+	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0", "-host=registry.example/test-gateway"}))
 	require.Equal(t, "1.1.0", flags.GatewayVersion)
-	require.Equal(t, "docker.io/isurangaws", flags.GatewayHost)
+	require.Equal(t, "registry.example/test-gateway", flags.GatewayHost)
 
 	original := &components.Definition{
 		Name:  "platform-gateway",
@@ -1215,9 +1215,9 @@ func TestGatewayVersionAndHostSelectionOverride(t *testing.T) {
 	component := got.Blocks[0].Components[0]
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource)
-	require.Equal(t, "docker.io/isurangaws/gateway-controller:1.1.0", component.Def.Image.Ref)
-	require.Equal(t, "docker.io/isurangaws/gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
-	require.Equal(t, "docker.io/isurangaws/gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Image.Ref)
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
 	require.Equal(t, "docker.io/library/postgres:1.1.0", component.Def.Compose.Env["OTHER_IMAGE"])
 	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
 
@@ -1259,12 +1259,12 @@ func TestGatewayVersionSelectionWithoutHostPreservesExistingBehavior(t *testing.
 }
 
 func TestGatewayHostRequiresVersion(t *testing.T) {
-	_, err := (Selection{GatewayHost: "docker.io/isurangaws"}).Apply(&Resolved{})
+	_, err := (Selection{GatewayHost: "registry.example/test-gateway"}).Apply(&Resolved{})
 	require.ErrorContains(t, err, "-host requires -gateway-version")
 }
 
 func TestGatewayHostRejectsURLs(t *testing.T) {
-	_, err := (Selection{GatewayVersion: "1.1.0", GatewayHost: "https://docker.io/isurangaws"}).Apply(&Resolved{})
+	_, err := (Selection{GatewayVersion: "1.1.0", GatewayHost: "https://registry.example/test-gateway"}).Apply(&Resolved{})
 	require.ErrorContains(t, err, "-host must be an image repository prefix")
 }
 

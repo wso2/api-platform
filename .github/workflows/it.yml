@@ -113,9 +113,7 @@ jobs:
           # The released 1.2.0 Gateway.
           - leg: gateway-1.2.0
             suite_flags: '-gateway-version=1.2.0'
-          # The 1.1.0 Gateway release. Pulled from docker.io/isurangaws, which carries the
-          # #2739 controller/runtime fix; ghcr.io/wso2/api-platform's 1.1.0 image does not
-          # yet include it.
+          # The released 1.1.0 Gateway.
           - leg: gateway-1.1.0
             suite_flags: '-gateway-version=1.1.0 -host=docker.io/isurangaws'
     steps:

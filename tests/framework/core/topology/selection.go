@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
 
@@ -92,8 +93,6 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 		"select the cloud environment for external cloud-console components")
 }
 
-const defaultGatewayImagePrefix = "ghcr.io/wso2/api-platform"
-
 func normalizeGatewayHost(raw string) (string, error) {
 	host := strings.TrimRight(strings.TrimSpace(raw), "/")
 	if host == "" {
@@ -139,10 +138,10 @@ func withGatewayImageHost(image components.ImageRef, host string) components.Ima
 }
 
 func rewriteGatewayImageHost(ref, host string) string {
-	if !strings.HasPrefix(ref, defaultGatewayImagePrefix+"/") {
+	if !strings.HasPrefix(ref, shared.GatewayReleaseRegistry+"/") {
 		return ref
 	}
-	return host + strings.TrimPrefix(ref, defaultGatewayImagePrefix)
+	return host + strings.TrimPrefix(ref, shared.GatewayReleaseRegistry)
 }
 
 func splitList(v string) []string {
