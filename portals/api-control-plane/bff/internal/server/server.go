@@ -62,9 +62,13 @@ type Server struct {
 	proxies   []mountedProxy
 	// upstream is the primary control-plane HTTP client (same transport/TLS
 	// trust as the primary reverse proxy). Also reused by handleGraphQLInvoke
-	// for its Platform API lookups and for the gateway-invoke call itself —
-	// see that file's doc comment for why a separate upstream isn't warranted.
+	// for its Platform API lookups.
 	upstream *http.Client
+	// gatewayInvoke is handleGraphQLInvoke's client for the call to the
+	// gateway itself. A gateway is a different trust boundary from the control
+	// plane, so it has its own TLS settings ([gateway_invoke]) instead of
+	// inheriting [control_plane]'s, and never follows redirects.
+	gatewayInvoke *http.Client
 	handler  http.Handler
 
 	refreshMu    sync.Mutex
@@ -125,12 +129,29 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		proxies = append(proxies, mountedProxy{prefix: prefix, rp: proxy.ReverseProxy(target, prefix, upstreamTransport)})
 	}
 
+	gatewayTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.GatewayInvoke.CAFile,
+		SkipVerify: cfg.GatewayInvoke.TLSSkipVerify,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build transport for gateway_invoke: %w", err)
+	}
+	gatewayInvoke := &http.Client{
+		Transport: gatewayTransport,
+		Timeout:   graphqlInvokeTimeout,
+		// The target was resolved from the caller's own Platform API records; a
+		// redirect would let the gateway (or anything answering on its address)
+		// steer this server-side request somewhere else. Relay it instead.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
 	s := &Server{
-		cfg:          cfg,
-		claims:       claims,
-		proxies:      proxies,
-		upstream:     upstream,
-		refreshLocks: make(map[string]*refreshLock),
+		cfg:           cfg,
+		claims:        claims,
+		proxies:       proxies,
+		upstream:      upstream,
+		gatewayInvoke: gatewayInvoke,
+		refreshLocks:  make(map[string]*refreshLock),
 	}
 
 	// Construct exactly the authenticator the configured mode selects — never

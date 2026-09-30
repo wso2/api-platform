@@ -86,6 +86,21 @@ const messages = defineMessages({
     id: 'api.create.graphql.schemaExplorer.type.fieldCount',
     defaultMessage: '{count, plural, one {# field} other {# fields}}',
   },
+  valueCount: {
+    id: 'api.create.graphql.schemaExplorer.type.valueCount',
+    defaultMessage: '{count, plural, one {# value} other {# values}}',
+    description: 'Number of values an ENUM type declares.',
+  },
+  memberCount: {
+    id: 'api.create.graphql.schemaExplorer.type.memberCount',
+    defaultMessage: '{count, plural, one {# member} other {# members}}',
+    description: 'Number of member types a UNION type declares.',
+  },
+  noMatches: {
+    id: 'api.create.graphql.schemaExplorer.search.noMatches',
+    defaultMessage: 'Nothing in this schema matches "{query}".',
+    description: 'Shown when the schema search box matches no operation, type, field, enum value or union member.',
+  },
   invalidSdl: {
     id: 'api.create.graphql.schemaExplorer.invalidSdl',
     defaultMessage: 'This schema could not be parsed: {reason}',
@@ -273,12 +288,32 @@ const SCHEMA_PLACEHOLDER_ROWS: PlaceholderRow[] = [
   { ghost: true, label: 'SUBSCRIPTION', tone: (theme) => paletteTone(theme, OPERATION_COLOR.subscription) },
 ];
 
-const TypeRow = ({ type }: { type: GraphQLTypeSummary }) => {
+/**
+ * The type's member rows (fields, enum values or union members) and the
+ * matching count label — only one of the three is ever present on a type.
+ */
+const typeCountLabel = (type: GraphQLTypeSummary) => {
+  if (type.enumValues) return { count: type.enumValues.length, message: messages.valueCount };
+  if (type.unionMembers) return { count: type.unionMembers.length, message: messages.memberCount };
+  return { count: type.fields?.length ?? 0, message: messages.fieldCount };
+};
+
+const typeMemberNames = (type: GraphQLTypeSummary): string[] => [
+  ...(type.fields?.map((field) => field.name) ?? []),
+  ...(type.enumValues ?? []),
+  ...(type.unionMembers ?? []),
+];
+
+const TypeRow = ({ defaultExpanded, type }: { defaultExpanded: boolean; type: GraphQLTypeSummary }) => {
   const intl = useIntl();
-  const fieldCount = type.fields?.length ?? type.enumValues?.length ?? type.unionMembers?.length ?? 0;
+  const { count, message } = typeCountLabel(type);
 
   return (
-    <Accordion disableGutters sx={(theme) => ({ border: hairline(theme), borderColor: 'divider' })}>
+    <Accordion
+      defaultExpanded={defaultExpanded}
+      disableGutters
+      sx={(theme) => ({ border: hairline(theme), borderColor: 'divider' })}
+    >
       <AccordionSummary expandIcon={<ChevronDown size={18} />}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
           {/* No chip here — only the root Query/Mutation/Subscription
@@ -296,7 +331,7 @@ const TypeRow = ({ type }: { type: GraphQLTypeSummary }) => {
             {type.name}
           </Typography>
           <Typography color="text.secondary" variant="caption">
-            {intl.formatMessage(messages.fieldCount, { count: fieldCount })}
+            {intl.formatMessage(message, { count })}
           </Typography>
         </Stack>
       </AccordionSummary>
@@ -354,22 +389,33 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
   const query = search.trim().toLowerCase();
   const matches = (name: string) => query === '' || name.toLowerCase().includes(query);
 
-  // A type surfaces if its own name matches, or any of its enum values / union
-  // members does — the search box's placeholder promises "types and fields",
-  // and an enum's values (ACTIVE, INACTIVE, ...) or a union's members are the
-  // content a reader actually searches for, not just the enum/union's own
-  // name. Field names are matched separately, inside each type's accordion
-  // (see TypeRow), so a field-name match doesn't need to be repeated here.
+  // A type surfaces if its own name matches, or any of its fields, enum values
+  // or union members does — the search box's placeholder promises "types and
+  // fields", and a field of a non-root type (Book.isbn), an enum's values
+  // (ACTIVE, INACTIVE, ...) or a union's members are what a reader actually
+  // searches for, not just the containing type's own name. A type surfaced
+  // only by one of its members is rendered expanded, so the match is visible.
   const filteredTypes = useMemo(() => {
     if (!summary) return [];
-    return summary.types.filter(
-      (type) =>
-        (kindFilter === 'all' || type.kind === kindFilter) &&
-        (matches(type.name) ||
-          Boolean(type.enumValues?.some(matches)) ||
-          Boolean(type.unionMembers?.some(matches))),
-    );
+    return summary.types
+      .filter((type) => kindFilter === 'all' || type.kind === kindFilter)
+      .map((type) => ({
+        type,
+        nameMatch: matches(type.name),
+        memberMatch: query !== '' && typeMemberNames(type).some(matches),
+      }))
+      .filter(({ memberMatch, nameMatch }) => nameMatch || memberMatch);
   }, [kindFilter, query, summary]);
+
+  const queryFields = summary?.queryFields.filter((field) => matches(field.name)) ?? [];
+  const mutationFields = summary?.mutationFields.filter((field) => matches(field.name)) ?? [];
+  const subscriptionFields = summary?.subscriptionFields.filter((field) => matches(field.name)) ?? [];
+  const nothingMatches =
+    query !== '' &&
+    filteredTypes.length === 0 &&
+    queryFields.length === 0 &&
+    mutationFields.length === 0 &&
+    subscriptionFields.length === 0;
 
   const downloadSdl = () => {
     if (sdl === undefined) return;
@@ -541,19 +587,19 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
 
             <OperationSection
               color={OPERATION_COLOR.query}
-              fields={summary?.queryFields.filter((field) => matches(field.name)) ?? []}
+              fields={queryFields}
               hint={<FormattedMessage {...messages.queryHint} />}
               title="QUERY"
             />
             <OperationSection
               color={OPERATION_COLOR.mutation}
-              fields={summary?.mutationFields.filter((field) => matches(field.name)) ?? []}
+              fields={mutationFields}
               hint={<FormattedMessage {...messages.mutationHint} />}
               title="MUTATION"
             />
             <OperationSection
               color={OPERATION_COLOR.subscription}
-              fields={summary?.subscriptionFields.filter((field) => matches(field.name)) ?? []}
+              fields={subscriptionFields}
               hint={<FormattedMessage {...messages.subscriptionHint} />}
               title="SUBSCRIPTION"
             />
@@ -565,10 +611,20 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
                     <FormattedMessage {...messages.typesInSchema} values={{ count: filteredTypes.length }} />
                   </Typography>
                 </Stack>
-                {filteredTypes.map((type) => (
-                  <TypeRow key={type.name} type={type} />
-                ))}
+                {filteredTypes.map(({ memberMatch, nameMatch, type }) => {
+                  const autoExpand = memberMatch && !nameMatch;
+                  // Keyed on autoExpand so a row remounts (and picks up the new
+                  // defaultExpanded) when a search starts or stops matching
+                  // only inside it; the reader can still toggle it freely.
+                  return <TypeRow defaultExpanded={autoExpand} key={`${type.name}:${autoExpand}`} type={type} />;
+                })}
               </Stack>
+            ) : null}
+
+            {nothingMatches ? (
+              <Typography color="text.secondary" variant="body2">
+                <FormattedMessage {...messages.noMatches} values={{ query: search.trim() }} />
+              </Typography>
             ) : null}
           </Stack>
         )}

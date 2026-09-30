@@ -627,6 +627,10 @@
     "defaultMessage": "Line {line}, column {column}: {message}",
     "description": "{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser's own error text."
   },
+  "api.create.graphql.schemaExplorer.search.noMatches": {
+    "defaultMessage": "Nothing in this schema matches \"{query}\".",
+    "description": "Shown when the schema search box matches no operation, type, field, enum value or union member."
+  },
   "api.create.graphql.schemaExplorer.search.placeholder": {
     "defaultMessage": "Search types and fields"
   },
@@ -647,6 +651,14 @@
   },
   "api.create.graphql.schemaExplorer.type.fieldCount": {
     "defaultMessage": "{count, plural, one {# field} other {# fields}}"
+  },
+  "api.create.graphql.schemaExplorer.type.memberCount": {
+    "defaultMessage": "{count, plural, one {# member} other {# members}}",
+    "description": "Number of member types a UNION type declares."
+  },
+  "api.create.graphql.schemaExplorer.type.valueCount": {
+    "defaultMessage": "{count, plural, one {# value} other {# values}}",
+    "description": "Number of values an ENUM type declares."
   },
   "api.create.graphql.schemaExplorer.view.explorer": {
     "defaultMessage": "Explorer"
@@ -1006,7 +1018,7 @@
     "description": "Confirmation shown after the API details are saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.subtitle": {
-    "defaultMessage": "Change the name, description, context, version and endpoint of this API."
+    "defaultMessage": "Change the name, description, context and version of this API."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.title": {
     "defaultMessage": "Edit API"
@@ -2068,6 +2080,10 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty": {
+    "defaultMessage": "Drag a policy here, or select one from Available policies.",
+    "description": "\"Available policies\" is the heading of the policy catalog panel beside this list."
+  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.globalDescription": {
     "defaultMessage": "These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has."
   },
@@ -2090,6 +2106,9 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.notFound": {
     "defaultMessage": "GraphQL API not found",
     "description": "Shown when the API to edit could not be loaded."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle": {
+    "defaultMessage": "Change the name, description, context, version and endpoint of this API."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"
