@@ -250,61 +250,66 @@ export default function AgentPolicyMapper({
 
   const handleEditPolicyItem = async (item: SelectedPolicy) => {
     setEditingInstanceId(item.instanceId);
+    setSelectedDrawerPolicy(item.policyName);
+    setPolicySettings(item.params ?? {});
+    setIsDetailView(true);
+    setPolicyDefinition(null);
+    setDefinitionError(null);
     setIsDrawerOpen(true);
     setIsFetchingPolicies(true);
     setFetchPoliciesError(null);
 
+    let policies: DrawerGuardrailItem[] = [];
     try {
-      const policies = await fetchAllPolicies(selectedCategories);
+      policies = await fetchAllPolicies(selectedCategories);
       setFetchedPolicies(policies);
-
-      const matchedPolicy = policies.find((p) => p.name === item.policyName);
-      if (!matchedPolicy) {
-        setIsFetchingPolicies(false);
-        return;
-      }
-
-      setSelectedDrawerPolicy(matchedPolicy.name);
-      setPolicySettings(item.params ?? {});
-      setIsDetailView(true);
-      setPolicyDefinition(null);
-      setDefinitionError(null);
-
-      if (matchedPolicy.isCustomPolicy) {
-        setIsFetchingPolicies(false);
-        if (!matchedPolicy.customPolicyDefinition) {
-          setDefinitionError('No definition available for this custom policy.');
-          return;
-        }
-        setPolicyDefinition(
-          buildPolicyDefinitionFromCustomPolicy({
-            name: matchedPolicy.name,
-            version: matchedPolicy.version,
-            description: matchedPolicy.description,
-            policyDefinition: matchedPolicy.customPolicyDefinition,
-          })
-        );
-        return;
-      }
-
-      if (!matchedPolicy.version) {
-        setDefinitionError('No version available for this policy.');
-        setIsFetchingPolicies(false);
-        return;
-      }
-
-      setDefinitionLoading(true);
+    } catch {
+      setFetchPoliciesError('Failed to fetch policies.');
+    } finally {
       setIsFetchingPolicies(false);
+    }
+
+    // Custom policies carry their definition inline — no policy-hub lookup.
+    const customPolicy = policies.find(
+      (p) => p.name === item.policyName && p.isCustomPolicy
+    );
+    if (customPolicy) {
+      if (!customPolicy.customPolicyDefinition) {
+        setDefinitionError('No definition available for this custom policy.');
+        return;
+      }
+      setPolicyDefinition(
+        buildPolicyDefinitionFromCustomPolicy({
+          name: customPolicy.name,
+          version: customPolicy.version,
+          description: customPolicy.description,
+          policyDefinition: customPolicy.customPolicyDefinition,
+        })
+      );
+      return;
+    }
+
+    // Prefer the hub's version, falling back to the applied policy's own
+    // version. The definition endpoint resolves any policy by name and version,
+    // so a policy outside the selected categories still loads.
+    const hubMeta = policies.find((p) => p.name === item.policyName);
+    const definitionVersion = hubMeta?.version ?? item.version;
+    if (!definitionVersion) {
+      setDefinitionError('No version available for this policy.');
+      return;
+    }
+
+    setDefinitionLoading(true);
+    try {
       const defResponse = await fetchPolicyDefinitionYaml(
-        matchedPolicy.name,
-        matchedPolicy.version
+        item.policyName,
+        definitionVersion
       );
       setPolicyDefinition(parsePolicyYaml(defResponse));
     } catch (e) {
       logger.error('Failed to load policy definition:', e);
       setDefinitionError('Failed to load policy definition.');
     } finally {
-      setIsFetchingPolicies(false);
       setDefinitionLoading(false);
     }
   };
@@ -362,12 +367,13 @@ export default function AgentPolicyMapper({
 
   const handlePolicySubmit = async (params: ParameterValues) => {
     if (readOnly) return;
-    const policy = fetchedPolicies.find((p) => p.name === selectedDrawerPolicy);
-    if (!policy) return;
 
     if (editingInstanceId) {
+      // Editing reuses the stored policy, so no catalog entry is required.
       onUpdatePolicy(editingInstanceId, params);
     } else {
+      const policy = fetchedPolicies.find((p) => p.name === selectedDrawerPolicy);
+      if (!policy) return;
       onAddPolicy({
         policyId: policy.name,
         policyName: policy.name,
@@ -497,17 +503,10 @@ export default function AgentPolicyMapper({
         anchor="right"
         open={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        slotProps={{
-          paper: {
-            sx: {
-              width: isDetailView ? '80vw' : 600,
-              maxWidth: isDetailView ? 1400 : 600,
-              transition: 'width 0.3s ease',
-            },
-          },
-        }}
       >
-        <Box sx={{ p: 2 }}>
+        <Box
+          sx={{ width: { xs: '100vw', sm: 450, md: 600 }, maxWidth: '100vw', p: 2 }}
+        >
           <Box
             sx={{
               display: 'flex',
@@ -708,7 +707,8 @@ export default function AgentPolicyMapper({
                                 policyDefinition={policyDefinition}
                                 policyDisplayName={
                                   selectedDrawerPolicyData?.displayName ||
-                                  selectedDrawerPolicyData?.name
+                                  selectedDrawerPolicyData?.name ||
+                                  (selectedDrawerPolicy ?? undefined)
                                 }
                                 existingValues={editingInstanceId ? policySettings : undefined}
                                 onCancel={() => setIsDetailView(false)}
