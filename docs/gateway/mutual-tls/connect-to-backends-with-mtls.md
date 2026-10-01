@@ -45,7 +45,7 @@ The `tls` block takes three fields:
 
 | Field | Type | Default | What it does |
 |---|---|---|---|
-| `identity` | string | — | Name of a `usage: identity` entry to present on the connection. Omit it to verify the backend without presenting a certificate, or to present the [default identity](#present-a-default-identity) when that is turned on. |
+| `identity` | string | — | Name of a `usage: identity` entry to present on the connection. Omit it to present the [default identity](#present-a-default-identity), or to verify the backend without presenting a certificate when that is turned off. |
 | `trustedCAs` | array of strings | The gateway trust bundle | Names of `usage: upstream` entries to trust for this backend, in place of the gateway trust bundle. |
 | `verifyHostName` | boolean | `true` | Checks that the backend certificate's name matches the target host. |
 
@@ -91,12 +91,14 @@ Upload the new certificate before the old one expires, and make sure the backend
 
 ## Present a default identity
 
-A gateway can present one certificate to every HTTPS backend whose definition names no `tls.identity`, so a fleet of backends that all require mutual TLS doesn't need an identity named in each API. This is off by default. Turn it on in the gateway configuration:
+A gateway can present one certificate to every HTTPS backend whose definition names no `tls.identity`, so a fleet of backends that all require mutual TLS doesn't need an identity named in each API. This is on by default. To turn it off, set it to `false` in the gateway configuration:
 
 ```toml
 [router.upstream.tls]
-present_default_identity = true
+present_default_identity = false
 ```
+
+With it off, the gateway presents no certificate to a backend whose definition names no `tls.identity`. Turn it off when a backend asks for a client certificate but doesn't require one, and would refuse a connection that presents a certificate it doesn't trust, such as the listener certificate.
 
 With it on, the gateway picks the certificate for each backend in this order:
 

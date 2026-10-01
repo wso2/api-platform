@@ -104,7 +104,7 @@ data:
               verify_host_name: true
               disable_ssl_verification: false
               # Present the role: default gateway identity (else the HTTPS listener certificate) to HTTPS backends whose upstream definition names no tls identity
-              present_default_identity: false
+              present_default_identity: true
             timeouts:
               route_timeout_ms: 60000
               route_idle_timeout_ms: 300000

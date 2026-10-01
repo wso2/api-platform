@@ -247,7 +247,7 @@ data:
     custom_certs_path = {{ $router.upstream.tls.custom_certs_path | quote }}
     verify_host_name = {{ $router.upstream.tls.verify_host_name }}
     disable_ssl_verification = {{ $router.upstream.tls.disable_ssl_verification }}
-    present_default_identity = {{ $router.upstream.tls.present_default_identity | default false }}
+    present_default_identity = {{ if hasKey $router.upstream.tls "present_default_identity" }}{{ $router.upstream.tls.present_default_identity }}{{ else }}true{{ end }}
 
     [router.upstream.timeouts]
     route_timeout_ms = {{ $router.upstream.timeouts.route_timeout_ms }}

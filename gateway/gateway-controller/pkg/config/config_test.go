@@ -1080,9 +1080,9 @@ func TestDefaultConfig_AdminServerDefaults(t *testing.T) {
 	assert.Equal(t, []string{"*"}, cfg.Controller.AdminServer.AllowedIPs)
 }
 
-func TestDefaultConfig_PresentDefaultIdentityOff(t *testing.T) {
+func TestDefaultConfig_PresentDefaultIdentityOn(t *testing.T) {
 	cfg := defaultConfig()
-	assert.False(t, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
+	assert.True(t, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
 }
 
 func TestLoadConfig_PresentDefaultIdentity(t *testing.T) {
@@ -1091,7 +1091,7 @@ func TestLoadConfig_PresentDefaultIdentity(t *testing.T) {
 		contents string
 		want     bool
 	}{
-		{name: "omitted", contents: "[router.upstream.tls]\nverify_host_name = true\n", want: false},
+		{name: "omitted", contents: "[router.upstream.tls]\nverify_host_name = true\n", want: true},
 		{name: "on", contents: "[router.upstream.tls]\npresent_default_identity = true\n", want: true},
 		{name: "off", contents: "[router.upstream.tls]\npresent_default_identity = false\n", want: false},
 	}

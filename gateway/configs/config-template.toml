@@ -464,8 +464,8 @@ disable_ssl_verification = false
 # names no tls identity: the gateway identity uploaded with role "default",
 # or, when there is none, the HTTPS listener certificate. A tls.identity on
 # the definition always wins. Envoy sends the certificate only to a backend
-# that requests one. Off by default: no client certificate is presented.
-present_default_identity = false
+# that requests one. On by default; set it to false to present no client certificate.
+present_default_identity = true
 
 [router.upstream.timeouts]
 route_timeout_ms = 60000

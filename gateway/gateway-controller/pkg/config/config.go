@@ -1397,7 +1397,7 @@ func defaultConfig() *Config {
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,
 					DisableSslVerification: false,
-					PresentDefaultIdentity: false,
+					PresentDefaultIdentity: true,
 				},
 				Timeouts: UpstreamTimeouts{
 					RouteTimeoutMs:     60000,
