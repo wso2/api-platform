@@ -1,4 +1,0 @@
-# Configuration merged over config.toml for the controller that feeds the runtime over xDS.
-# Its admin API listens on its own port so both controllers of one gateway are addressable.
-[controller.admin_server]
-port = 9094

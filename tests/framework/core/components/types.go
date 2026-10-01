@@ -336,11 +336,6 @@ type Definition struct {
 	// Wiring decodes and validates component-specific block configuration.
 	Wiring WiringSpec
 
-	// ApplyWiring returns the definition a block's decoded wiring selects, for wiring that
-	// changes what the component runs. It must not modify def. Nil leaves the definition
-	// as registered.
-	ApplyWiring func(def *Definition, wiring any) (*Definition, error)
-
 	// Env is static environment applied to every instance, before DSN and wiring.
 	Env map[string]string
 

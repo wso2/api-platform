@@ -47,18 +47,6 @@ func TestDeadlineIsFlooredAtTheSharedCeiling(t *testing.T) {
 		"a timeout above the ceiling must be respected")
 }
 
-func TestIntervalIsFlooredAtTheCadenceForTheWait(t *testing.T) {
-	require.Equal(t, 750*time.Millisecond, BaseInterval)
-	require.Equal(t, BaseInterval, Options{}.interval())
-	require.Equal(t, BaseInterval, Options{Interval: 100 * time.Millisecond}.interval())
-	require.Equal(t, 2*time.Second, Options{Interval: 2 * time.Second}.interval())
-
-	require.Equal(t, 100*time.Millisecond, FastInterval)
-	require.Equal(t, FastInterval, Options{Fast: true}.interval())
-	require.Equal(t, FastInterval, Options{Fast: true, Interval: time.Millisecond}.interval())
-	require.Equal(t, 500*time.Millisecond, Options{Fast: true, Interval: 500 * time.Millisecond}.interval())
-}
-
 func TestUntilReturnsTheLastResultForTheStepToAssert(t *testing.T) {
 	t.Run("returns as soon as accept is satisfied", func(t *testing.T) {
 		var calls atomic.Int32

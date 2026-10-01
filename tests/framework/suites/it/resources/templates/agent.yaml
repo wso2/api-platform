@@ -1,5 +1,0 @@
-apiVersion: ${VALUE:apiVersion}
-kind: Agent
-metadata:
-  name: ${VALUE:name}
-spec: {}

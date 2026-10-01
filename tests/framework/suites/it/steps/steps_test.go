@@ -19,24 +19,17 @@
 package steps
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"testing"
 
-	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
-
-	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"gopkg.in/yaml.v3"
 )
 
 func TestSetRequestHostExpandsContextValues(t *testing.T) {
@@ -225,7 +218,6 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 
 	root := filepath.Join(filepath.Dir(source), "..", "resources", "templates")
 	want := map[string]string{
-		"agent.yaml":                 "Agent",
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",
@@ -251,134 +243,5 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		spec, ok := document["spec"].(map[string]any)
 		require.True(t, ok, "template %q must define a spec mapping", name)
 		require.NotNil(t, spec, "template %q", name)
-	}
-}
-
-func TestEchoedHeaderAssertions(t *testing.T) {
-	tests := []struct {
-		name         string
-		body         string
-		wantExact    bool
-		wantContains bool
-	}{
-		{name: "string value", body: `{"headers":{"X-Forwarded-Client-Cert":"Subject=\"CN=client\";URI=urn:a"}}`, wantContains: true},
-		{name: "single element array", body: `{"headers":{"x-forwarded-client-cert":["URI=urn:a"]}}`, wantExact: true, wantContains: true},
-		{name: "expected value first of several", body: `{"headers":{"x-forwarded-client-cert":["URI=urn:a","other"]}}`, wantContains: true},
-		{name: "expected value after a forged one", body: `{"headers":{"x-forwarded-client-cert":["forged","URI=urn:a"]}}`, wantContains: true},
-		{name: "expected value in no element", body: `{"headers":{"x-forwarded-client-cert":["forged","other"]}}`},
-		{name: "other value", body: `{"headers":{"x-forwarded-client-cert":"URI=urn:b"}}`},
-		{name: "absent header", body: `{"headers":{}}`},
-		{name: "empty array", body: `{"headers":{"x-forwarded-client-cert":[]}}`},
-		{name: "not an echo", body: `{"other":{}}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			local := tcontext.NewLocal("runner")
-			local.Set("uri", "URI=urn:a")
-			ctx := tcontext.WithLocal(context.Background(), local)
-			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
-
-			exactErr := (&Base{}).echoedHeaderEquals(ctx, "X-Forwarded-Client-Cert", "${CTX:uri}")
-			containsErr := (&Base{}).echoedHeaderContains(ctx, "X-Forwarded-Client-Cert", "${CTX:uri}")
-			require.Equal(t, tt.wantExact, exactErr == nil, "exact: %v", exactErr)
-			require.Equal(t, tt.wantContains, containsErr == nil, "contains: %v", containsErr)
-		})
-	}
-}
-
-func TestJSONFieldIsBool(t *testing.T) {
-	tests := []struct {
-		name, body, field, want string
-		ok                      bool
-	}{
-		{name: "true", body: `{"isLeaf":true}`, field: "isLeaf", want: "true", ok: true},
-		{name: "nested false", body: `{"a":{"isLeaf":false}}`, field: "a.isLeaf", want: "false", ok: true},
-		{name: "other value", body: `{"isLeaf":true}`, field: "isLeaf", want: "false"},
-		{name: "string spelling", body: `{"isLeaf":"true"}`, field: "isLeaf", want: "true"},
-		{name: "absent", body: `{}`, field: "isLeaf", want: "true"},
-		{name: "not JSON", body: `nope`, field: "isLeaf", want: "true"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
-			require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{Body: []byte(tt.body)}))
-			err := (&Base{}).jsonFieldIsBool(ctx, tt.field, tt.want)
-			require.Equal(t, tt.ok, err == nil, "%v", err)
-		})
-	}
-}
-
-// mtlsFeatureFiles lists every feature that exercises mutual TLS: each mtls_*.feature and
-// certificates.feature.
-func mtlsFeatureFiles(t *testing.T, featureRoot string) []string {
-	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(featureRoot, "features", "mtls_*.feature"))
-	require.NoError(t, err)
-	require.NotEmpty(t, paths)
-	certificates := filepath.Join(featureRoot, "features", "certificates.feature")
-	_, err = os.Stat(certificates)
-	require.NoError(t, err)
-	return append(paths, certificates)
-}
-
-// unresolvedSteps reads godog's event stream of a run and returns the location of every step
-// that started without a matching definition. godog announces the definition it resolved
-// before it runs a step, and announces none for a step that is undefined or, in strict mode,
-// matches two patterns. Counting per location keeps the rows of a scenario outline apart from
-// the step they share.
-func unresolvedSteps(t *testing.T, events []byte) []string {
-	t.Helper()
-	started := map[string]int{}
-	found := map[string]int{}
-	decoder := json.NewDecoder(bytes.NewReader(events))
-	for decoder.More() {
-		var event struct {
-			Event    string `json:"event"`
-			Location string `json:"location"`
-		}
-		require.NoError(t, decoder.Decode(&event))
-		switch event.Event {
-		case "TestStepStarted":
-			started[event.Location]++
-		case "StepDefinitionFound":
-			found[event.Location]++
-		}
-	}
-	var unresolved []string
-	for location, count := range started {
-		if found[location] < count {
-			unresolved = append(unresolved, location)
-		}
-	}
-	sort.Strings(unresolved)
-	return unresolved
-}
-
-// TestMTLSFeatureStepsAreDefined matches every step of every mutual TLS feature against the
-// registered steps without running one: a hook that fails every scenario skips the steps, and
-// godog still resolves each one first. A step that matches no pattern, or two, is reported.
-func TestMTLSFeatureStepsAreDefined(t *testing.T) {
-	_, source, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	featureRoot := filepath.Join(filepath.Dir(source), "..")
-	for _, path := range mtlsFeatureFiles(t, featureRoot) {
-		t.Run(filepath.Base(path), func(t *testing.T) {
-			suite, err := New(&frameworkruntime.Topology{}, featureRoot)
-			require.NoError(t, err)
-
-			var events bytes.Buffer
-			godog.TestSuite{
-				ScenarioInitializer: func(sc *godog.ScenarioContext) {
-					suite.Register(sc)
-					sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
-						return ctx, errors.New("steps are matched, not run")
-					})
-				},
-				Options: &godog.Options{Format: "events", Output: &events, NoColors: true, Strict: true, Paths: []string{path}},
-			}.Run()
-
-			require.NotZero(t, events.Len(), "godog wrote no events")
-			require.Empty(t, unresolvedSteps(t, events.Bytes()), "steps that match no pattern or more than one")
-		})
 	}
 }

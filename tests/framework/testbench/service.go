@@ -20,7 +20,6 @@
 package testbench
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -59,13 +58,6 @@ type Service interface {
 	Stateful() bool
 }
 
-// TLSService is a service that serves HTTPS. Its listener completes the TLS handshake with
-// the returned configuration before any request reaches the handler.
-type TLSService interface {
-	// TLSConfig returns the server TLS configuration. It must not be nil.
-	TLSConfig() *tls.Config
-}
-
 // PartitionByBlock identifies the framework-guaranteed block partition.
 const PartitionByBlock = "block"
 
@@ -96,9 +88,6 @@ func (r *Registry) Register(s Service) error {
 	}
 	if isNil(s.Handler()) {
 		return fmt.Errorf("testbench: service %q has no handler", name)
-	}
-	if tlsSvc, ok := s.(TLSService); ok && tlsSvc.TLSConfig() == nil {
-		return fmt.Errorf("testbench: service %q serves TLS without a configuration", name)
 	}
 
 	r.mu.Lock()

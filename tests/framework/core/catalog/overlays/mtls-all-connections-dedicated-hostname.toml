@@ -1,9 +1,0 @@
-# Ask every HTTPS connection for a client certificate and require a dedicated hostname,
-# which has no effect while every connection is asked.
-[router.downstream_tls]
-client_certificate_request = "all_connections"
-mtls_requires_dedicated_hostname = true
-
-# The controller propagates a change to the runtime when it next polls the event hub.
-[controller.event_hub]
-poll_interval = "200ms"

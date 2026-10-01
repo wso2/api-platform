@@ -53,7 +53,8 @@ Feature: Certificate management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the JSON response field "message" should contain "certificate upload is invalid"
-    And the response should list a validation error for field "certificate" with message "the value is not a PEM-encoded certificate"
+    And the JSON response field "errors[0].field" should be "certificate"
+    And the JSON response field "errors[0].message" should be "the value is not a PEM-encoded certificate"
 
   @certificate-refusal-1.2.0
   Scenario: Upload certificate with invalid PEM format is rejected by a 1.2.0 gateway
