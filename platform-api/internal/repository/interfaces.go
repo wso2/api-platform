@@ -517,9 +517,11 @@ type CustomPolicyRepository interface {
 // DocumentRepository defines the interface for document persistence.
 type DocumentRepository interface {
 	CreateDocument(doc *model.Document) error
-	GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error)
+	GetDocument(artifactUUID, handle, orgUUID, docType string) (*model.Document, error)
 	GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error)
+	ListDocumentsByArtifact(artifactUUID, orgUUID, docType string, limit, offset int) ([]*model.Document, int, error)
 	UpsertDocument(doc *model.Document) error
+	UpdateDocument(doc *model.Document, updateContent bool) error
 	DeleteDocument(artifactUUID, handle, orgUUID string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
