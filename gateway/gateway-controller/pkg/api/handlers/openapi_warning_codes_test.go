@@ -88,6 +88,7 @@ func TestOpenAPI_WarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
 		config.WarningCodeMTLSAcceptNamesRelayAuthority,
 		config.WarningCodeMTLSThumbprintNormalised,
 		config.WarningCodeHeaderCertBypassActive,
+		config.WarningCodeMTLSHostnameNotScoped,
 		config.WarningCodeTLSVerifyHostNameDisabled,
 		config.WarningCodeTLSIdentityExpired,
 	}

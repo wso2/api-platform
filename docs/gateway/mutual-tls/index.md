@@ -11,7 +11,7 @@ Mutual TLS works independently in the two directions, and you can use either one
 - **Client to gateway.** A caller authenticates with the client certificate it presents on the TLS connection, instead of or as well as an API key or a token. You attach the `mtls-auth` policy to an API, and the gateway accepts only certificates issued by the authorities that API names. You can narrow an authority further to certificates with a given subject alternative name (SAN) or a given thumbprint.
 - **Gateway to backend.** When a backend requires its callers to present a certificate, the gateway presents one of its own. You upload the certificate and its private key once, then name it in the upstream definition of each API that calls that backend. The same definition can also say which certificates the gateway trusts for that backend.
 
-Client certificates work on the gateway's HTTPS listener, on port 8443 by default. The gateway asks callers for a certificate only while at least one deployed API attaches `mtls-auth`, so callers of other APIs aren't affected.
+Client certificates work on the gateway's HTTPS listener, on port 8443 by default. The gateway asks callers for a certificate only while at least one deployed API attaches `mtls-auth`. By default, when each of those APIs has its own hostname, only connections to those hostnames are asked, so callers of other APIs aren't affected. Otherwise, or when you set the gateway to ask every connection, every connection is asked. See [Hostnames and the certificate request](authenticate-clients-with-certificates.md#hostnames-and-the-certificate-request).
 
 ## The two roles
 

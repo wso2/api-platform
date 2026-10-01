@@ -535,6 +535,7 @@ func main() {
 	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
 		slog.Int("configs_loaded", loadedCount))
+	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, &cfg.Router, log)
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -586,7 +587,10 @@ func main() {
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
 	mtlsAuthValidator := config.NewMtlsAuthValidator(db, cfg.Router.HTTPSEnabled,
-		cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny, config.MtlsAuthParameterSchema(policyDefinitions))
+		cfg.Router.DownstreamTLS.ClientCertificateHeader.TrustAny, config.MtlsAuthParameterSchema(policyDefinitions)).
+		WithVHosts(cfg.Router.VHosts).
+		WithDedicatedHostnameRequired(cfg.Router.DownstreamTLS.MtlsRequiresDedicatedHostname).
+		WithAllConnectionsAsked(cfg.Router.DownstreamTLS.AsksAllConnections())
 	policyValidator := config.NewPolicyValidator(policyDefinitions, mtlsAuthValidator)
 	validator.SetPolicyValidator(policyValidator)
 	upstreamTLSValidator := config.NewUpstreamTLSValidator(db, cfg.Router.Upstream.TLS.DisableSslVerification)

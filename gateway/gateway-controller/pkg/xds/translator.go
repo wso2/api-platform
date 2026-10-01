@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,6 +70,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"google.golang.org/protobuf/proto"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -114,6 +116,10 @@ type Translator struct {
 	// TranslateConfigs call, so SDS builds exactly the secrets its clusters
 	// reference.
 	tlsSecretRefs []UpstreamTLSSecretRef
+
+	// lastClientCertRequest is the HTTPS listener's certificate request of
+	// the previous translation, so a change of mode is logged once.
+	lastClientCertRequest clientCertRequest
 }
 
 // GetUpstreamTLSSecretRefs returns the per-cluster mTLS wiring collected by
@@ -786,9 +792,6 @@ func (t *Translator) TranslateConfigs(
 	allRoutes := make([]*route.Route, 0)
 	clusterMap := make(map[string]*cluster.Cluster)
 
-	// Whether some deployed API attaches mtls-auth; see requestClientCertificate.
-	anyMTLSAuth := false
-
 	for _, cfg := range configs {
 		// Skip undeployed APIs - they should not appear in xDS routes
 		if cfg.DesiredState == models.StateUndeployed {
@@ -796,10 +799,6 @@ func (t *Translator) TranslateConfigs(
 				slog.String("id", cfg.UUID),
 				slog.String("displayName", cfg.DisplayName))
 			continue
-		}
-
-		if configAttachesMTLSAuth(cfg) {
-			anyMTLSAuth = true
 		}
 
 		// Include all non-undeployed configs (both deployed and pending) in the snapshot.
@@ -968,10 +967,11 @@ func (t *Translator) TranslateConfigs(
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
-	requestClientCert, err := t.requestClientCertificate(anyMTLSAuth)
+	certRequest, err := t.clientCertificateRequest(configs)
 	if err != nil {
 		return nil, err
 	}
+	requestClientCert := certRequest.mode != clientCertOff
 
 	// Variable to hold the shared route configuration (created once, used by both listeners)
 	var sharedRouteConfig *route.RouteConfiguration
@@ -989,13 +989,14 @@ func (t *Translator) TranslateConfigs(
 		log.Info("HTTPS is enabled, creating HTTPS listener",
 			slog.Int("https_port", t.routerConfig.HTTPSPort),
 			slog.Bool("requires_client_cert_validation", requestClientCert))
-		httpsListener, _, err := t.createListener(virtualHosts, true, requestClientCert)
+		httpsListener, _, err := t.createListenerWithCertRequest(virtualHosts, true, certRequest)
 		if err != nil {
 			log.Error("Failed to create HTTPS listener", slog.Any("error", err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
 		}
 		log.Info("HTTPS listener created successfully",
 			slog.String("listener_name", httpsListener.GetName()))
+		t.logClientCertRequestChange(log, certRequest)
 		listeners = append(listeners, httpsListener)
 	} else {
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
@@ -1098,22 +1099,7 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 		return expanded
 	}
 
-	mainVHost := t.config.Router.VHosts.Main
-	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
-		if expanded := expand(mainVHost.Domains); len(expanded) > 0 {
-			return expanded
-		}
-	}
-
-	sandboxVHost := t.config.Router.VHosts.Sandbox
-	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
-		if expanded := expand(sandboxVHost.Domains); len(expanded) > 0 {
-			return expanded
-		}
-	}
-
-	out := make([]string, 0, 2)
-	return appendDomainPatterns(out, effectiveVHost)
+	return expand(t.config.Router.VHosts.Domains(effectiveVHost))
 }
 
 // translateAPIConfig translates a single API configuration
@@ -1395,6 +1381,19 @@ func convertPathWithEscapedSlashesAction(action string) hcm.HttpConnectionManage
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
 // Uses RDS (Route Discovery Service) to share route configuration between listeners
 func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool, requireDownstreamClientCA bool) (*listener.Listener, *route.RouteConfiguration, error) {
+	req := clientCertRequest{mode: clientCertOff}
+	if requireDownstreamClientCA {
+		req.mode = clientCertEverywhere
+	}
+	return t.createListenerWithCertRequest(virtualHosts, isHTTPS, req)
+}
+
+// createListenerWithCertRequest creates the HTTP or HTTPS listener. On HTTPS,
+// certRequest decides which connections are asked for a client certificate:
+// none, all, or only those whose SNI is one of its server names. Every filter
+// chain carries the same network filters, so routing and policy do not depend
+// on the chain a connection lands on.
+func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.VirtualHost, isHTTPS bool, certRequest clientCertRequest) (*listener.Listener, *route.RouteConfiguration, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
@@ -1524,28 +1523,38 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		}},
 	}
 
+	filterChains := []*listener.FilterChain{filterChain}
+
 	// Add TLS configuration if HTTPS
 	var listenerFilters []*listener.ListenerFilter
 	if isHTTPS {
-		tlsContext, err := t.createDownstreamTLSContext(requireDownstreamClientCA)
+		transportSocket, err := t.downstreamTransportSocket(certRequest.mode != clientCertOff)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+			return nil, nil, err
+		}
+		filterChain.TransportSocket = transportSocket
+
+		if certRequest.mode == clientCertScoped {
+			// The asking chain matches the SNI of mtls-auth hostnames; every
+			// other connection, including one without SNI, lands on the
+			// default chain, which never asks and keeps session resumption.
+			filterChain.Name = askingFilterChainName
+			filterChain.FilterChainMatch = &listener.FilterChainMatch{
+				ServerNames: certRequest.serverNames,
+			}
+			defaultSocket, err := t.downstreamTransportSocket(false)
+			if err != nil {
+				return nil, nil, err
+			}
+			filterChains = append(filterChains, &listener.FilterChain{
+				Name:            defaultFilterChainName,
+				Filters:         cloneFilters(filterChain.Filters),
+				TransportSocket: defaultSocket,
+			})
 		}
 
-		tlsContextAny, err := anypb.New(tlsContext)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
-		}
-
-		filterChain.TransportSocket = &core.TransportSocket{
-			Name: "envoy.transport_sockets.tls",
-			ConfigType: &core.TransportSocket_TypedConfig{
-				TypedConfig: tlsContextAny,
-			},
-		}
-
-		// Without the TLS Inspector, Envoy never populates
-		// connection.requested_server_name. It is not used for routing here.
+		// The TLS Inspector reads the SNI, which selects the filter chain and
+		// populates connection.requested_server_name.
 		tlsInspectorAny, err := anypb.New(&tlsinspectorv3.TlsInspector{})
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal TLS inspector listener filter: %w", err)
@@ -1572,7 +1581,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		ListenerFilters:               listenerFilters,
-		FilterChains:                  []*listener.FilterChain{filterChain},
+		FilterChains:                  filterChains,
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }
@@ -2665,22 +2674,173 @@ func (t *Translator) createDownstreamTLSContext(requireDownstreamClientCA bool) 
 	return downstreamTLSContext, nil
 }
 
-// requestClientCertificate reports whether the HTTPS listener requests a
-// client certificate: only when some deployed API attaches mtls-auth and the
+// downstreamTransportSocket wraps createDownstreamTLSContext in the TLS
+// transport socket of an HTTPS filter chain.
+func (t *Translator) downstreamTransportSocket(requestClientCertificate bool) (*core.TransportSocket, error) {
+	tlsContext, err := t.createDownstreamTLSContext(requestClientCertificate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+	}
+	tlsContextAny, err := anypb.New(tlsContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+	}
+	return &core.TransportSocket{
+		Name: "envoy.transport_sockets.tls",
+		ConfigType: &core.TransportSocket_TypedConfig{
+			TypedConfig: tlsContextAny,
+		},
+	}, nil
+}
+
+func cloneFilters(filters []*listener.Filter) []*listener.Filter {
+	out := make([]*listener.Filter, 0, len(filters))
+	for _, f := range filters {
+		out = append(out, proto.Clone(f).(*listener.Filter))
+	}
+	return out
+}
+
+// Filter chain names of an HTTPS listener that asks only some hostnames for a
+// client certificate.
+const (
+	askingFilterChainName  = "client_certificate_requested"
+	defaultFilterChainName = "default"
+)
+
+// clientCertMode is which HTTPS connections are asked for a client
+// certificate.
+type clientCertMode int
+
+const (
+	// clientCertOff asks no connection.
+	clientCertOff clientCertMode = iota
+	// clientCertScoped asks only connections whose SNI is a hostname of an
+	// API that attaches mtls-auth.
+	clientCertScoped
+	// clientCertEverywhere asks every connection.
+	clientCertEverywhere
+)
+
+func (m clientCertMode) String() string {
+	switch m {
+	case clientCertScoped:
+		return "SCOPED"
+	case clientCertEverywhere:
+		return "EVERYWHERE"
+	default:
+		return "OFF"
+	}
+}
+
+// clientCertRequest is the HTTPS listener's client certificate request.
+// serverNames is sorted and set only in clientCertScoped mode.
+type clientCertRequest struct {
+	mode        clientCertMode
+	serverNames []string
+}
+
+func (r clientCertRequest) equal(o clientCertRequest) bool {
+	return r.mode == o.mode && slices.Equal(r.serverNames, o.serverNames)
+}
+
+// clientCertificateRequest decides which HTTPS connections are asked for a
+// client certificate.
+//
+// No connection is asked unless some deployed API attaches mtls-auth and the
 // client-CA pool holds at least one certificate. With an empty pool the
 // listener names no downstream_client_ca secret, so it never waits on a
 // secret that is not served, and mtls-auth denies for lack of a certificate.
+//
+// With client_certificate_request all_connections, every connection is
+// asked. With mtls_hostnames, asking is scoped to the SNI of the hostnames of
+// those APIs; every connection is asked instead when one of those APIs is
+// served on a default hostname or on one that cannot be matched on SNI, or
+// when the pool holds a relay entry, whose front proxy connects on any
+// hostname.
+//
 // A pool that cannot be read fails the translation, as it fails the SDS
 // secrets.
-func (t *Translator) requestClientCertificate(anyMTLSAuth bool) (bool, error) {
-	if !anyMTLSAuth || t.certStore == nil {
-		return false, nil
+func (t *Translator) clientCertificateRequest(configs []*models.StoredConfig) (clientCertRequest, error) {
+	off := clientCertRequest{mode: clientCertOff}
+	if t.certStore == nil {
+		return off, nil
 	}
-	bundle, err := t.certStore.GetClientCABundle()
+
+	anyMTLSAuth := false
+	scopable := true
+	nameSet := make(map[string]struct{})
+	for _, cfg := range configs {
+		if cfg.DesiredState == models.StateUndeployed || !configAttachesMTLSAuth(cfg) {
+			continue
+		}
+		anyMTLSAuth = true
+		names, ok := t.mtlsAuthServerNames(cfg)
+		if !ok {
+			scopable = false
+			continue
+		}
+		for _, n := range names {
+			nameSet[n] = struct{}{}
+		}
+	}
+	if !anyMTLSAuth {
+		return off, nil
+	}
+
+	bundle, hasRelay, err := t.certStore.GetClientCAPool()
 	if err != nil {
-		return false, fmt.Errorf("failed to load client-CA pool: %w", err)
+		return off, fmt.Errorf("failed to load client-CA pool: %w", err)
 	}
-	return len(bundle) > 0, nil
+	if len(bundle) == 0 {
+		return off, nil
+	}
+	if hasRelay || !scopable || t.routerConfig.DownstreamTLS.AsksAllConnections() {
+		return clientCertRequest{mode: clientCertEverywhere}, nil
+	}
+
+	names := make([]string, 0, len(nameSet))
+	for n := range nameSet {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return clientCertRequest{mode: clientCertScoped, serverNames: names}, nil
+}
+
+// mtlsAuthServerNames returns the SNI server names of every vhost an API
+// attaching mtls-auth is served on. ok is false when some vhost cannot be
+// matched on SNI.
+func (t *Translator) mtlsAuthServerNames(cfg *models.StoredConfig) (names []string, ok bool) {
+	restCfg, isRest := cfg.Configuration.(api.RestAPI)
+	if !isRest {
+		return nil, false
+	}
+	vhosts := t.config.Router.VHosts
+	mainVhosts, sandbox, hasSandbox := config.RestAPIVhosts(restCfg.Spec, vhosts)
+	if hasSandbox {
+		mainVhosts = append(mainVhosts, sandbox)
+	}
+	for _, vh := range mainVhosts {
+		n, ok := vhosts.ServerName(vh)
+		if !ok {
+			return nil, false
+		}
+		names = append(names, n)
+	}
+	return names, true
+}
+
+// logClientCertRequestChange logs the client certificate request of a built
+// HTTPS listener when it differs from the previous one.
+func (t *Translator) logClientCertRequestChange(log *slog.Logger, req clientCertRequest) {
+	if req.equal(t.lastClientCertRequest) {
+		return
+	}
+	t.lastClientCertRequest = req
+	log.Info("HTTPS listener client certificate request changed",
+		slog.String("mode", req.mode.String()),
+		slog.Int("hostname_count", len(req.serverNames)),
+		slog.String("client_certificate_request", t.routerConfig.DownstreamTLS.ClientCertificateRequest))
 }
 
 // configAttachesMTLSAuth reports whether cfg's RestAPI representation

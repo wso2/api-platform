@@ -220,6 +220,17 @@ func (s *RestAPIService) ResolveMtlsAuthForResponse(cfg api.RestAPI) (api.RestAP
 	return v.ResolveMtlsAuthForResponse(cfg)
 }
 
+// ResolveHostnameScopeWarnings computes the MTLS_HOSTNAME_NOT_SCOPED warnings
+// of a successful deploy from rendered, the configuration the translator
+// builds the HTTPS listener from.
+func (s *RestAPIService) ResolveHostnameScopeWarnings(rendered api.RestAPI) []clientca.Warning {
+	v := config.NewMtlsAuthValidator(s.db, s.routerConfig.HTTPSEnabled,
+		s.routerConfig.DownstreamTLS.ClientCertificateHeader.TrustAny, nil).WithVHosts(s.routerConfig.VHosts).
+		WithDedicatedHostnameRequired(s.routerConfig.DownstreamTLS.MtlsRequiresDedicatedHostname).
+		WithAllConnectionsAsked(s.routerConfig.DownstreamTLS.AsksAllConnections())
+	return v.HostnameScopeWarnings(rendered)
+}
+
 // ResolveUpstreamTLSWarnings computes the tls-block warnings of a successful
 // deploy.
 func (s *RestAPIService) ResolveUpstreamTLSWarnings(cfg api.RestAPI) []clientca.Warning {

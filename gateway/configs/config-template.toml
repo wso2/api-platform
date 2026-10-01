@@ -419,6 +419,19 @@ ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA
 # hybrid group. An unsupported curve name is rejected by Envoy when it
 # applies the resulting config, not by this file.
 ecdh_curves = "X25519MLKEM768,X25519,P-256"
+# Refuse to deploy an API attaching mtls-auth unless it has its own hostname
+# (vhosts.main, and vhosts.sandbox when it has a sandbox upstream) set to an
+# exact name or a leading *. wildcard. Such a deploy fails with HTTP 400.
+# Stored APIs that break this keep being served, with a warning at startup.
+# mtls_requires_dedicated_hostname = false
+# Which connections the HTTPS listener asks for a client certificate.
+# In both modes nothing is asked while no deployed API attaches mtls-auth or
+# the client-CA pool is empty.
+# mtls_hostnames: ask only connections for the hostnames of mtls-auth APIs (default)
+# all_connections: ask every connection
+# The MTLS_HOSTNAME_NOT_SCOPED warning and mtls_requires_dedicated_hostname
+# apply only with mtls_hostnames.
+client_certificate_request = "mtls_hostnames"
 
 [router.downstream_tls.client_certificate_header]
 # HTTP header carrying a client certificate relayed by a front proxy that

@@ -73,6 +73,81 @@ Content-Type: application/json
 
 The reason is recorded in the gateway's logs and traces instead. The policy's `onFailureStatusCode`, `errorMessageFormat`, and `errorMessage` parameters change the response.
 
+## Hostnames and the certificate request
+
+The HTTPS listener decides whether to ask a connection for a client certificate during the TLS handshake, before any request arrives. It decides from the hostname the caller sends in the handshake, its server name indication (SNI).
+
+The `client_certificate_request` setting in `config.toml` chooses which connections are asked:
+
+```toml
+[router.downstream_tls]
+client_certificate_request = "mtls_hostnames"
+```
+
+- **`mtls_hostnames`** asks only connections to the hostnames of `mtls-auth` APIs. It's the default.
+- **`all_connections`** asks every connection, whatever its hostname.
+
+With either value, no connection is asked while no deployed API attaches `mtls-auth` or the pool holds no authority. The setting is read at startup, so restart the gateway after changing it.
+
+Choose `all_connections` when callers of `mtls-auth` APIs send no SNI or a hostname other than the API's, or connect by IP address. It also keeps the listener unchanged when an `mtls-auth` API is added with a new hostname or changes its hostname, so Envoy applies fewer listener updates. In exchange, callers of every API are asked for a certificate, and no connection keeps TLS session resumption.
+
+With `mtls_hostnames`, give each API that attaches `mtls-auth` its own hostname in `vhosts.main`. Use an exact name such as `orders.example.com`, or a single leading `*.` label such as `*.orders.example.com`. When the API has a sandbox upstream, give `vhosts.sandbox` its own hostname as well:
+
+```yaml
+spec:
+  vhosts:
+    main: orders.example.com
+    sandbox: orders-sandbox.example.com
+```
+
+When every `mtls-auth` API has its own hostname, the gateway asks for a certificate only on connections to those hostnames. Connections to any other hostname are never asked and keep TLS session resumption.
+
+The gateway asks every connection instead, whatever its hostname, in these cases:
+
+- An `mtls-auth` API has no `vhosts.main`, or is served on the gateway's default hostname.
+- A hostname is an IP address, ends with a dot, or is a pattern other than an exact name or a leading `*.`, such as `*` or `orders-*`.
+- The pool holds a relay entry, because a load balancer can connect on any hostname.
+
+When an API's own hostname is the cause, its deploy response carries an `MTLS_HOSTNAME_NOT_SCOPED` warning on `spec.vhosts.main` or `spec.vhosts.sandbox`. The warning is raised only with `mtls_hostnames`.
+
+To refuse such APIs instead, turn on `mtls_requires_dedicated_hostname` in `config.toml`. It's off by default, and it applies only with `mtls_hostnames`:
+
+```toml
+[router.downstream_tls]
+mtls_requires_dedicated_hostname = true
+```
+
+With it on, deploying or updating an `mtls-auth` API whose own hostname is the cause fails with `400`, on `spec.vhosts.main` or `spec.vhosts.sandbox`:
+
+```text
+this gateway requires every mtls-auth API to have its own hostname (an exact name or a leading *.); set vhosts.main
+```
+
+A relay entry in the pool is never a reason to refuse a deploy. APIs already stored when you turn the setting on keep being served, and the listener still asks every connection. The gateway logs a warning for each of them at startup; update each one to give it its own hostname. The setting is read at startup, so restart the gateway after changing it.
+
+With `all_connections`, `mtls_requires_dedicated_hostname` has no effect: no deploy is refused and no API is named at startup. If both are set, the gateway logs one warning at startup saying so.
+
+Callers must send the API's hostname as SNI. While the gateway asks only on the hostnames of `mtls-auth` APIs, a connection that isn't asked presents no certificate, so its requests get the policy's `401`. That happens when a connection:
+
+- sends no SNI,
+- connects by IP address,
+- sends a hostname other than the API's, or
+- is reused for a request to another hostname, as HTTP/2 clients do when they coalesce connections to hostnames that share an address and a certificate.
+
+To serve such callers, set `client_certificate_request` to `all_connections`.
+
+To send the hostname as SNI when testing locally, resolve it to the gateway:
+
+```bash
+curl https://orders.example.com:8443/orders/v1.0/orders \
+  --resolve orders.example.com:8443:127.0.0.1 \
+  --cert partner-a-client.pem \
+  --key partner-a-client.key \
+  --cacert gateway-ca.pem
+```
+
+Hostnames are compared without regard to case. A port in `vhosts` plays no part in the match: `orders.example.com:8443` asks every connection to `orders.example.com`, so an API without `mtls-auth` on that bare hostname is asked too.
+
 ## Choose which authorities to accept
 
 `accept` decides which pooled authorities an API trusts:

@@ -199,25 +199,45 @@ func (h *RestAPIHandler) UpdateRestAPI(w http.ResponseWriter, r *http.Request, i
 }
 
 // buildDeployResponse builds the create/update response body, adding the
-// accept-list echo and warnings for a RestAPI.
+// accept-list echo and warnings for a RestAPI. The hostname warnings come
+// from the rendered configuration the translator uses.
 func (h *RestAPIHandler) buildDeployResponse(sourceConfig any, stored *models.StoredConfig) any {
+	var source api.RestAPI
 	switch cfg := sourceConfig.(type) {
 	case api.RestAPI:
-		resolved, warnings := h.service.ResolveMtlsAuthForResponse(cfg)
-		warnings = append(warnings, h.service.ResolveUpstreamTLSWarnings(resolved)...)
-		h.logDeployWarnings(stored, warnings)
-		return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+		source = cfg
 	case *api.RestAPI:
 		if cfg == nil {
 			return buildResourceResponseFromStored(sourceConfig, stored)
 		}
-		resolved, warnings := h.service.ResolveMtlsAuthForResponse(*cfg)
-		warnings = append(warnings, h.service.ResolveUpstreamTLSWarnings(resolved)...)
-		h.logDeployWarnings(stored, warnings)
-		return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+		source = *cfg
 	default:
 		return buildResourceResponseFromStored(sourceConfig, stored)
 	}
+
+	resolved, warnings := h.service.ResolveMtlsAuthForResponse(source)
+	if rendered, ok := renderedRestAPI(stored); ok {
+		warnings = append(warnings, h.service.ResolveHostnameScopeWarnings(rendered)...)
+	}
+	warnings = append(warnings, h.service.ResolveUpstreamTLSWarnings(resolved)...)
+	h.logDeployWarnings(stored, warnings)
+	return buildRestAPIResourceResponseWithWarnings(resolved, stored, warnings)
+}
+
+// renderedRestAPI returns the rendered RestAPI configuration of stored.
+func renderedRestAPI(stored *models.StoredConfig) (api.RestAPI, bool) {
+	if stored == nil {
+		return api.RestAPI{}, false
+	}
+	switch cfg := stored.Configuration.(type) {
+	case api.RestAPI:
+		return cfg, true
+	case *api.RestAPI:
+		if cfg != nil {
+			return *cfg, true
+		}
+	}
+	return api.RestAPI{}, false
 }
 
 // DeleteRestAPI implements ServerInterface.DeleteRestAPI

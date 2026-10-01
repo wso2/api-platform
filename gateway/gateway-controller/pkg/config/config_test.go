@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -80,6 +81,9 @@ func validConfig() *Config {
 		Router: RouterConfig{
 			ListenerPort: 9090,
 			HTTPSEnabled: false,
+			DownstreamTLS: DownstreamTLS{
+				ClientCertificateRequest: ClientCertificateRequestMtlsHostnames,
+			},
 			AccessLogs: AccessLogsConfig{
 				Enabled:    true,
 				Format:     "json",
@@ -2440,6 +2444,57 @@ func TestConfig_Validate_MaxCertificateUploadBytes(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestLoadConfig_MtlsRequiresDedicatedHostname(t *testing.T) {
+	load := func(t *testing.T, toml string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("defaults to false", func(t *testing.T) {
+		assert.False(t, load(t, "").Router.DownstreamTLS.MtlsRequiresDedicatedHostname)
+	})
+	t.Run("parses true from toml", func(t *testing.T) {
+		cfg := load(t, "[router.downstream_tls]\nmtls_requires_dedicated_hostname = true\n")
+		assert.True(t, cfg.Router.DownstreamTLS.MtlsRequiresDedicatedHostname)
+	})
+}
+
+func TestLoadConfig_ClientCertificateRequest(t *testing.T) {
+	load := func(t *testing.T, toml string) (*Config, error) {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		return LoadConfig(configPath)
+	}
+
+	t.Run("defaults to mtls_hostnames", func(t *testing.T) {
+		cfg, err := load(t, "")
+		require.NoError(t, err)
+		assert.Equal(t, ClientCertificateRequestMtlsHostnames, cfg.Router.DownstreamTLS.ClientCertificateRequest)
+		assert.False(t, cfg.Router.DownstreamTLS.AsksAllConnections())
+	})
+	for _, value := range []string{ClientCertificateRequestMtlsHostnames, ClientCertificateRequestAllConnections} {
+		t.Run("parses "+value, func(t *testing.T) {
+			cfg, err := load(t, "[router.downstream_tls]\nclient_certificate_request = \""+value+"\"\n")
+			require.NoError(t, err)
+			assert.Equal(t, value, cfg.Router.DownstreamTLS.ClientCertificateRequest)
+			assert.Equal(t, value == ClientCertificateRequestAllConnections, cfg.Router.DownstreamTLS.AsksAllConnections())
+		})
+	}
+	for _, value := range []string{"sni", "", "ALL_CONNECTIONS"} {
+		t.Run("refuses "+strconv.Quote(value), func(t *testing.T) {
+			_, err := load(t, "[router.downstream_tls]\nclient_certificate_request = \""+value+"\"\n")
+			require.Error(t, err)
+			assert.Equal(t, "invalid configuration: router.downstream_tls.client_certificate_request must be one of: "+
+				"mtls_hostnames, all_connections, got: "+value, err.Error())
 		})
 	}
 }

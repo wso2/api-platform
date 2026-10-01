@@ -236,6 +236,8 @@ data:
     minimum_protocol_version = {{ $router.downstream_tls.minimum_protocol_version | quote }}
     maximum_protocol_version = {{ $router.downstream_tls.maximum_protocol_version | quote }}
     ciphers = {{ $router.downstream_tls.ciphers | quote }}
+    mtls_requires_dedicated_hostname = {{ $router.downstream_tls.mtls_requires_dedicated_hostname | default false }}
+    client_certificate_request = {{ $router.downstream_tls.client_certificate_request | default "mtls_hostnames" | quote }}
 
     [router.upstream.tls]
     minimum_protocol_version = {{ $router.upstream.tls.minimum_protocol_version | quote }}

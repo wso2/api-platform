@@ -124,17 +124,9 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
-	// default applies. Sandbox is always a single hostname.
-	effectiveSandboxVHost := t.routerConfig.VHosts.Sandbox.Default
-	mainVhosts := []string{t.routerConfig.VHosts.Main.Default}
-	if apiData.Vhosts != nil {
-		if parsed := splitVhosts(apiData.Vhosts.Main); len(parsed) > 0 {
-			mainVhosts = parsed
-		}
-		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
-			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
-		}
-	}
+	// default applies. Sandbox is always a single hostname, active when a sandbox upstream is
+	// configured via either url or ref.
+	mainVhosts, effectiveSandboxVHost, hasSandbox := config.RestAPIVhosts(apiData, t.routerConfig.VHosts)
 
 	// Build main upstream cluster
 	mainUpstream, err := addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
@@ -142,12 +134,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
 	mainUpstreamInfo := mainUpstream.UpstreamInfo()
-
-	// Determine vhosts to create routes for.
-	// Sandbox is active when a sandbox upstream is configured via either url or ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
-			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
 
 	// Check if dynamic cluster selection should be used. Enabled whenever the API has named
 	// upstream definitions (so a policy can select one) OR a sandbox upstream (so a policy can
@@ -357,26 +343,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	return rdc, nil
 }
 
-// splitVhosts parses a vhosts.main value into its individual production hostnames. Multiple
-// hostnames may be provided separated by ";" (each serves the main upstream); surrounding
-// whitespace is trimmed, empty entries are dropped, and duplicates are removed while preserving
-// order. A single hostname (the common case) returns a one-element slice.
+// splitVhosts parses a vhosts.main value into its individual hostnames; see
+// config.SplitVhosts.
 func splitVhosts(raw string) []string {
-	parts := strings.Split(raw, ";")
-	out := make([]string, 0, len(parts))
-	seen := make(map[string]struct{}, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if _, ok := seen[p]; ok {
-			continue
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
-	}
-	return out
+	return config.SplitVhosts(raw)
 }
 
 // routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form

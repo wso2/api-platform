@@ -48,6 +48,11 @@ const (
 	// response while client_certificate_header.trust_any is true, because the
 	// relayed-certificate header is then believed from any connection.
 	WarningCodeHeaderCertBypassActive = "HEADER_CERT_BYPASS_ACTIVE"
+
+	// WarningCodeMTLSHostnameNotScoped is raised when an mtls-auth API is
+	// served on a hostname the HTTPS listener cannot tell apart on SNI, so
+	// every connection is asked for a client certificate.
+	WarningCodeMTLSHostnameNotScoped = "MTLS_HOSTNAME_NOT_SCOPED"
 )
 
 // mtlsAuthPrecedingAuthPolicies lists other authentication-policy names
@@ -80,6 +85,15 @@ type MtlsAuthValidator struct {
 	httpsEnabled   bool
 	headerTrustAny bool
 	keys           mtlsAuthParamKeys
+	vhosts         *VHostsConfig
+
+	// requireDedicatedHostname is
+	// router.downstream_tls.mtls_requires_dedicated_hostname.
+	requireDedicatedHostname bool
+
+	// asksAllConnections is true when
+	// router.downstream_tls.client_certificate_request is all_connections.
+	asksAllConnections bool
 }
 
 // NewMtlsAuthValidator creates a validator bound to the certificate store.
@@ -95,6 +109,31 @@ func NewMtlsAuthValidator(store MtlsAuthCertificateStore, httpsEnabled, headerTr
 		headerTrustAny: headerTrustAny,
 		keys:           mtlsAuthParamKeysFromSchema(paramSchema),
 	}
+}
+
+// WithVHosts sets router.vhosts, which an API's hostnames are resolved
+// against. Without it no hostname warning or refusal is raised.
+func (v *MtlsAuthValidator) WithVHosts(vhosts VHostsConfig) *MtlsAuthValidator {
+	v.vhosts = &vhosts
+	return v
+}
+
+// WithDedicatedHostnameRequired sets
+// router.downstream_tls.mtls_requires_dedicated_hostname. When true,
+// ValidateRestAPI refuses an API that HostnameScopeWarnings would warn about,
+// and HostnameScopeWarnings reports nothing.
+func (v *MtlsAuthValidator) WithDedicatedHostnameRequired(required bool) *MtlsAuthValidator {
+	v.requireDedicatedHostname = required
+	return v
+}
+
+// WithAllConnectionsAsked records that
+// router.downstream_tls.client_certificate_request is all_connections. The
+// HTTPS listener then asks every connection whatever an API's hostname, so
+// no hostname warning or refusal is raised.
+func (v *MtlsAuthValidator) WithAllConnectionsAsked(all bool) *MtlsAuthValidator {
+	v.asksAllConnections = all
+	return v
 }
 
 // MtlsAuthParameterSchema returns the parameter schema of the latest loaded
@@ -332,6 +371,16 @@ func (v *MtlsAuthValidator) ValidateRestAPI(apiConfig *api.RestAPI) []Validation
 		}
 
 		errs = append(errs, v.validateParams(occ.fieldPath, occ.params)...)
+	}
+
+	if v.requireDedicatedHostname && !v.asksAllConnections && v.httpsEnabled && v.vhosts != nil {
+		for _, h := range UndedicatedHostnames(*apiConfig, *v.vhosts) {
+			errs = append(errs, ValidationError{
+				Field: h.Field,
+				Message: "this gateway requires every mtls-auth API to have its own hostname " +
+					"(an exact name or a leading *.); set " + h.Setting,
+			})
+		}
 	}
 
 	return errs
@@ -674,6 +723,64 @@ func (v *MtlsAuthValidator) ResolveMtlsAuthForResponse(apiConfig api.RestAPI) (a
 	}
 
 	return apiConfig, warnings
+}
+
+// HostnameScopeWarnings reports MTLS_HOSTNAME_NOT_SCOPED for each hostname
+// UndedicatedHostnames finds on apiConfig. Pass the rendered configuration
+// the translator uses. It reports nothing when a dedicated hostname is
+// required, since ValidateRestAPI refuses such an API, or when every
+// connection is asked.
+func (v *MtlsAuthValidator) HostnameScopeWarnings(apiConfig api.RestAPI) []clientca.Warning {
+	if !v.httpsEnabled || v.vhosts == nil || v.requireDedicatedHostname || v.asksAllConnections {
+		return nil
+	}
+	var warnings []clientca.Warning
+	for _, h := range UndedicatedHostnames(apiConfig, *v.vhosts) {
+		warnings = append(warnings, hostnameNotScopedWarning(h.Field, h.Setting))
+	}
+	return warnings
+}
+
+// UndedicatedHostname names a vhosts setting of an mtls-auth API that
+// resolves to a hostname the HTTPS listener cannot scope its client
+// certificate request to.
+type UndedicatedHostname struct {
+	Field   string // "spec.vhosts.main" or "spec.vhosts.sandbox"
+	Setting string // "vhosts.main" or "vhosts.sandbox"
+}
+
+// UndedicatedHostnames reports vhosts.main when any of its entries, and
+// vhosts.sandbox when the API has a sandbox upstream, resolves to a hostname
+// the HTTPS listener cannot scope its client certificate request to. An API
+// not attaching mtls-auth reports nothing. Relay entries play no part.
+func UndedicatedHostnames(apiConfig api.RestAPI, vhosts VHostsConfig) []UndedicatedHostname {
+	if collectMTLSAuthOccurrences(&apiConfig) == nil {
+		return nil
+	}
+	mainVhosts, sandbox, hasSandbox := RestAPIVhosts(apiConfig.Spec, vhosts)
+	var found []UndedicatedHostname
+	for _, vh := range mainVhosts {
+		if _, ok := vhosts.ServerName(vh); !ok {
+			found = append(found, UndedicatedHostname{Field: "spec.vhosts.main", Setting: "vhosts.main"})
+			break
+		}
+	}
+	if hasSandbox {
+		if _, ok := vhosts.ServerName(sandbox); !ok {
+			found = append(found, UndedicatedHostname{Field: "spec.vhosts.sandbox", Setting: "vhosts.sandbox"})
+		}
+	}
+	return found
+}
+
+func hostnameNotScopedWarning(field, setting string) clientca.Warning {
+	return clientca.Warning{
+		Code:  WarningCodeMTLSHostnameNotScoped,
+		Field: field,
+		Message: "this API is served on a hostname the HTTPS listener cannot match (a gateway default, an IP address, " +
+			"or a pattern other than an exact name or a leading *.), so the listener asks every connection for a " +
+			"client certificate; give it its own " + setting + " to limit that to its hostname",
+	}
 }
 
 // resolvePolicyList resolves every mtls-auth entry in one policy chain and

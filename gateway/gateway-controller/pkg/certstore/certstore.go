@@ -343,22 +343,32 @@ func (cs *CertStore) GetCombinedCertificates() []byte {
 // pool or a store with no database; deploy-time validation keeps mtls-auth
 // off an empty pool.
 func (cs *CertStore) GetClientCABundle() ([]byte, error) {
+	bundle, _, err := cs.GetClientCAPool()
+	return bundle, err
+}
+
+// GetClientCAPool returns the client-CA pool bundle, as GetClientCABundle
+// does, and whether any entry has role: relay.
+func (cs *CertStore) GetClientCAPool() (bundle []byte, hasRelay bool, err error) {
 	if cs.db == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 	certs, err := cs.db.ListCertificatesByUsage(models.CertificateUsageDownstream)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list client-CA pool: %w", err)
+		return nil, false, fmt.Errorf("failed to list client-CA pool: %w", err)
 	}
 
 	var buf bytes.Buffer
 	for _, cert := range certs {
+		if cert.EffectiveRole() == models.CertificateRoleRelay {
+			hasRelay = true
+		}
 		buf.Write(cert.Certificate)
 		if !bytes.HasSuffix(cert.Certificate, []byte("\n")) {
 			buf.WriteString("\n")
 		}
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), hasRelay, nil
 }
 
 // GetGatewayIdentityMaterial resolves a usage: identity row by name to its
