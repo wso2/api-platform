@@ -27,7 +27,6 @@ import {
   FileText,
   Gauge,
   Home,
-  Layers,
   Megaphone,
   Network,
   Rocket,
@@ -35,6 +34,7 @@ import {
   Settings,
   ShieldCheck,
   FlaskConical,
+  Box,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -260,7 +260,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Projects',
     group: CLUSTER.place,
     order: 20,
-    icon: <Layers />,
+    icon: <Box />,
     // Inside a project this is redundant with Overview, and switching projects
     // is the header switcher's job.
     isVisible: ({ isProjectScope }) => !isProjectScope,
