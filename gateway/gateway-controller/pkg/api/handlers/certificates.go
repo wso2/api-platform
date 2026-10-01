@@ -889,7 +889,7 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 
 	// The SDS update rebuilds this identity's gateway_identity:<name> secret.
 	// Reload does nothing for identity rows but keeps parity with upload.
-	if translator := s.snapshotManager.GetTranslator(); translator != nil {
+	if translator := s.snapshotManager.GetTranslator(); translator != nil && translator.GetCertStore() != nil {
 		if err := translator.GetCertStore().Reload(); err != nil {
 			log.Warn("Failed to reload certificate store after identity rotation", slog.Any("error", err))
 		}
