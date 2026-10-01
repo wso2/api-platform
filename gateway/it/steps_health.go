@@ -52,7 +52,6 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with host "([^"]*)"$`, h.iWaitForEndpointToBeReadyWithHost)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
-	ctx.Step(`^I wait for the endpoint "([^"]*)" to respond with status (\d+)$`, h.iWaitForEndpointToReturnStatus)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to return 403$`, h.iWaitForEndpointToReturn403)
 }
 
@@ -172,7 +171,7 @@ func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
 		resp, err := h.state.HTTPClient.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
-			return h.settleAfterEndpointResponds()
+			return h.waitForPolicySnapshotSync()
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -205,7 +204,7 @@ func (h *HealthSteps) iWaitForEndpointToBeReadyWithHost(url, host string) error 
 		resp, err := h.state.HTTPClient.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
-			return h.settleAfterEndpointResponds()
+			return h.waitForPolicySnapshotSync()
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -219,31 +218,6 @@ func (h *HealthSteps) iWaitForEndpointToBeReadyWithHost(url, host string) error 
 	return fmt.Errorf("endpoint %s with host %s did not become ready after %d attempts", url, trimmedHost, maxAttempts)
 }
 
-// iWaitForEndpointToReturnStatus polls an endpoint until it returns the given status
-// (e.g. a route protected by an authentication policy answering 401 to an anonymous
-// request), then waits for the policy snapshot to be in sync.
-func (h *HealthSteps) iWaitForEndpointToReturnStatus(url string, status int) error {
-	maxAttempts := 30
-	attemptInterval := 300 * time.Millisecond
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, err := h.state.HTTPClient.Get(url)
-		if err == nil && resp.StatusCode == status {
-			resp.Body.Close()
-			return h.settleAfterEndpointResponds()
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-
-		if attempt < maxAttempts {
-			time.Sleep(attemptInterval)
-		}
-	}
-
-	return fmt.Errorf("endpoint %s did not respond with status %d after %d attempts", url, status, maxAttempts)
-}
-
 // iWaitForEndpointToReturn403 polls an endpoint until it returns 403 (e.g. subscription-protected route blocking unauthenticated requests)
 func (h *HealthSteps) iWaitForEndpointToReturn403(url string) error {
 	maxAttempts := 30
@@ -253,7 +227,7 @@ func (h *HealthSteps) iWaitForEndpointToReturn403(url string) error {
 		resp, err := h.state.HTTPClient.Get(url)
 		if err == nil && resp.StatusCode == http.StatusForbidden {
 			resp.Body.Close()
-			return h.settleAfterEndpointResponds()
+			return h.waitForPolicySnapshotSync()
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -283,7 +257,7 @@ func (h *HealthSteps) iWaitForEndpointToBeReadyWithMethodAndBody(url, method, bo
 		resp, err := h.state.HTTPClient.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
-			return h.settleAfterEndpointResponds()
+			return h.waitForPolicySnapshotSync()
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -297,84 +271,36 @@ func (h *HealthSteps) iWaitForEndpointToBeReadyWithMethodAndBody(url, method, bo
 	return fmt.Errorf("endpoint %s did not become ready with %s method after %d attempts", url, method, maxAttempts)
 }
 
-// settleAfterEndpointResponds runs once a polled endpoint has answered as
-// expected. It waits for the policy snapshot to sync and, when this scenario
-// changed the client authority pool, for the gateway to apply the pool. In an
-// @mtls scenario it then waits for Envoy to settle. The
-// pending propagation the endpoint just observed is then released, so the
-// next gateway request does not wait for it again.
-func (h *HealthSteps) settleAfterEndpointResponds() error {
-	if err := h.waitForPolicySnapshotSync(); err != nil {
-		return err
-	}
-	if clientAuthorityPoolChanged(h.state) {
-		if err := waitForClientAuthorityPool(h.state); err != nil {
-			return err
-		}
-	}
-	if isMTLSScenario(h.state) {
-		if err := waitForEnvoySettled(h.state); err != nil {
-			return err
-		}
-	}
-	releaseObservedPropagation(h.state)
-	return nil
-}
-
 func (h *HealthSteps) waitForPolicySnapshotSync() error {
-	return waitForPolicySnapshotSync(h.state)
-}
-
-// snapshotControllerAdminURL is the admin API of the controller that feeds
-// xDS to gateway-runtime, whose policy-chain version the policy engine
-// echoes. In the two-controller Postgres topology the suite sets
-// PolicySnapshotControllerAdminURL to gateway-controller-xds (port 9093);
-// otherwise (single-controller topologies, unit tests) it is the management
-// controller.
-func snapshotControllerAdminURL(state *TestState) string {
-	if state.Config.PolicySnapshotControllerAdminURL != "" {
-		return state.Config.PolicySnapshotControllerAdminURL
-	}
-	return state.Config.GatewayControllerAdminURL
-}
-
-// snapshotControllerPolicyVersion reads the snapshot controller's current
-// policy chain version.
-func snapshotControllerPolicyVersion(state *TestState) (string, error) {
-	return getControllerPolicyVersion(state, snapshotControllerAdminURL(state)+"/xds_sync_status")
-}
-
-// waitForPolicySnapshotSync waits until the policy engine echoes the snapshot
-// controller's policy chain version. While an API mutation is pending with a
-// recorded pre-mutation version, the controller's version must also have
-// moved past it, so a mutation the controller has not yet published cannot
-// pass as synced.
-func waitForPolicySnapshotSync(state *TestState) error {
 	maxAttempts := 50
 	attemptInterval := 300 * time.Millisecond
 
-	baseline := ""
-	if pending, ok := currentPendingPropagation(state); ok {
-		baseline = pending.policyBaseline
+	// Probe the controller that actually feeds xDS to gateway-runtime, whose
+	// policy-chain version the policy engine echoes. In the two-controller
+	// Postgres topology the suite sets PolicySnapshotControllerAdminURL to
+	// gateway-controller-xds (port 9093); otherwise (single-controller
+	// topologies, unit tests) we fall back to the management controller.
+	adminBase := h.state.Config.PolicySnapshotControllerAdminURL
+	if adminBase == "" {
+		adminBase = h.state.Config.GatewayControllerAdminURL
 	}
-	controllerURL := snapshotControllerAdminURL(state) + "/xds_sync_status"
-	policyEngineURL := fmt.Sprintf("%s/xds_sync_status", state.Config.PolicyEngineURL)
+	controllerURL := fmt.Sprintf("%s/xds_sync_status", adminBase)
+	policyEngineURL := fmt.Sprintf("%s/xds_sync_status", h.state.Config.PolicyEngineURL)
 	lastControllerVersion := ""
 	lastRuntimeVersion := ""
 	var lastControllerErr error
 	var lastRuntimeErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		controllerVersion, controllerErr := getControllerPolicyVersion(state, controllerURL)
-		runtimeVersion, runtimeErr := getPolicyEnginePolicyVersion(state, policyEngineURL)
+		controllerVersion, controllerErr := h.getControllerPolicyVersion(controllerURL)
+		runtimeVersion, runtimeErr := h.getPolicyEnginePolicyVersion(policyEngineURL)
 		lastControllerVersion = controllerVersion
 		lastRuntimeVersion = runtimeVersion
 		lastControllerErr = controllerErr
 		lastRuntimeErr = runtimeErr
 
 		if controllerErr == nil && runtimeErr == nil &&
-			controllerVersion == runtimeVersion && controllerVersion != "" &&
-			(baseline == "" || controllerVersion != baseline) {
+			controllerVersion == runtimeVersion && controllerVersion != "" {
 			return nil
 		}
 
@@ -383,21 +309,21 @@ func waitForPolicySnapshotSync(state *TestState) error {
 		}
 	}
 
-	return fmt.Errorf("policy snapshot versions did not sync in time between controller and policy engine: controller_version=%q runtime_version=%q pre_mutation_version=%q controller_err=%v runtime_err=%v",
-		lastControllerVersion, lastRuntimeVersion, baseline, lastControllerErr, lastRuntimeErr)
+	return fmt.Errorf("policy snapshot versions did not sync in time between controller and policy engine: controller_version=%q runtime_version=%q controller_err=%v runtime_err=%v",
+		lastControllerVersion, lastRuntimeVersion, lastControllerErr, lastRuntimeErr)
 }
 
-func getControllerPolicyVersion(state *TestState, url string) (string, error) {
+func (h *HealthSteps) getControllerPolicyVersion(url string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
 
-	if admin, ok := state.Config.Users["admin"]; ok {
+	if admin, ok := h.state.Config.Users["admin"]; ok {
 		req.SetBasicAuth(admin.Username, admin.Password)
 	}
 
-	resp, err := state.HTTPClient.Do(req)
+	resp, err := h.state.HTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -417,8 +343,8 @@ func getControllerPolicyVersion(state *TestState, url string) (string, error) {
 	return *payload.PolicyChainVersion, nil
 }
 
-func getPolicyEnginePolicyVersion(state *TestState, url string) (string, error) {
-	resp, err := state.HTTPClient.Get(url)
+func (h *HealthSteps) getPolicyEnginePolicyVersion(url string) (string, error) {
+	resp, err := h.state.HTTPClient.Get(url)
 	if err != nil {
 		return "", err
 	}

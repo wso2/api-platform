@@ -3,6 +3,7 @@ package testbench
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -11,10 +12,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/wso2/api-platform/tests/framework/core/util/testpki"
 )
 
 type fakeService struct {
@@ -346,4 +350,72 @@ func TestFailLogsStructuredDetailAlongsideTheResponse(t *testing.T) {
 	require.Contains(t, out, `"client_id":"test-client"`)
 	require.Contains(t, out, `"auth_style":"basic"`)
 	require.Contains(t, out, `"message":"invalid client credentials"`)
+}
+
+type tlsFakeService struct {
+	fakeService
+	config *tls.Config
+}
+
+func (s *tlsFakeService) TLSConfig() *tls.Config { return s.config }
+
+func TestRegistryRejectsATLSServiceWithoutConfiguration(t *testing.T) {
+	err := (&Registry{}).Register(&tlsFakeService{
+		fakeService: fakeService{name: "tls", port: 1, handler: http.NotFoundHandler()},
+	})
+	if !containsError(err, "serves TLS without a configuration") {
+		t.Fatalf("Register() error = %v, want a missing TLS configuration error", err)
+	}
+}
+
+func TestServeTerminatesTLSForATLSService(t *testing.T) {
+	set, err := testpki.Generate(time.Now())
+	require.NoError(t, err)
+	server, err := set.Get("backend-server-a")
+	require.NoError(t, err)
+	cert, err := server.TLSCertificate(false)
+	require.NoError(t, err)
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := probe.Addr().(*net.TCPAddr).Port
+	require.NoError(t, probe.Close())
+
+	registry := &Registry{}
+	require.NoError(t, registry.Register(&tlsFakeService{
+		fakeService: fakeService{name: "tls", port: port, handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.TLS == nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusTeapot)
+		})},
+		config: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, registry, slog.New(slog.NewTextHandler(io.Discard, nil))) }()
+	defer func() {
+		cancel()
+		require.NoError(t, <-done)
+	}()
+
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, //nolint:gosec // self-signed test listener
+	}}
+	url := "https://127.0.0.1:" + strconv.Itoa(port) + "/"
+	require.Eventually(t, func() bool {
+		resp, err := client.Get(url)
+		if err != nil {
+			return false
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode == http.StatusTeapot
+	}, 5*time.Second, 50*time.Millisecond)
+
+	plain, err := (&http.Client{Timeout: 5 * time.Second}).Get("http://127.0.0.1:" + strconv.Itoa(port) + "/")
+	if err == nil {
+		_ = plain.Body.Close()
+		require.Equal(t, http.StatusBadRequest, plain.StatusCode, "a plaintext request reached the handler")
+	}
 }

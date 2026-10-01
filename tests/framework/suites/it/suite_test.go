@@ -23,10 +23,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,6 +44,7 @@ import (
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformgateway"
 )
@@ -397,7 +400,8 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProxy, "/llm-proxies")
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProviderTemplate, "/llm-provider-templates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindMCPProxy, "/mcp-proxies")
-	registerControllerDeleter(reg, topo, client, cleanup.KindCertificate, "/certificates")
+	registerControllerDeleter(reg, topo, client, cleanup.KindAgent, "/agents")
+	registerCertificateDeleter(reg, topo, client)
 	registerControllerDeleter(reg, topo, client, cleanup.KindSecret, "/secrets")
 }
 
@@ -434,6 +438,44 @@ func registerControllerDeleter(
 	})
 }
 
+// registerCertificateDeleter deletes a certificate, waiting out 409 Conflict: the controller
+// refuses to delete a certificate while it still counts an API that was just removed as a
+// reference, and a certificate left behind changes the pool the next scenario sees.
+func registerCertificateDeleter(reg *cleanup.Registry, topo *frameworkruntime.Topology, client *httpx.Client) {
+	reg.RegisterDeleter(cleanup.KindCertificate, func(ctx context.Context, res cleanup.Resource) error {
+		base, err := topo.URL("platform-gateway", "rest")
+		if err != nil {
+			return err
+		}
+		version, err := topo.ComponentVersion("platform-gateway")
+		if err != nil {
+			return err
+		}
+		url := base + platformgateway.ManagementBasePathForVersion(version) + "/certificates/" + res.ID
+		return deleteWaitingOutConflicts(ctx, client, url, basicAuthFor(topo))
+	})
+}
+
+// deleteWaitingOutConflicts deletes url, repeating the request while it answers 409. A 2xx or
+// 404 is success; any other answer, or a conflict that outlasts the propagation ceiling, is
+// an error.
+func deleteWaitingOutConflicts(ctx context.Context, client *httpx.Client, url, authorization string) error {
+	resp, err := retry.Until(ctx, retry.Options{},
+		func(ctx context.Context) (*httpx.Response, error) {
+			return client.Do(ctx, httpx.Request{
+				Method: http.MethodDelete, URL: url, Headers: map[string]string{"Authorization": authorization},
+			}, 1, 0)
+		},
+		func(r *httpx.Response) bool { return r != nil && r.StatusCode != http.StatusConflict })
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
+		return nil
+	}
+	return errFromResponse(resp)
+}
+
 func basicAuthFor(topo *frameworkruntime.Topology) string {
 	return steps.BasicAuthHeader(topo.Admin.Username, topo.Admin.Password)
 }
@@ -451,14 +493,37 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, variants)
+	for source, engine := range singleEngineBlocks {
+		require.Contains(t, variants, source, "single-engine block %q is not in the suite", source)
+		require.Equal(t, []components.DBType{engine}, variants[source], "single-engine block %q", source)
+	}
 	for source, got := range variants {
-		if source == "devportal-webhook" || source == "multigateway" {
-			require.Len(t, got, 1, "single-engine block %q", source)
+		if _, single := singleEngineBlocks[source]; single {
 			continue
 		}
 		sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
 		require.Equal(t, coverageEngines, got, "block %q database coverage", source)
 	}
+}
+
+// singleEngineBlocks are the gateway blocks that run one engine by design, with that engine.
+// The webhook block follows its control plane's PostgreSQL store, the multigateway block
+// runs two gateway stacks rather than an engine matrix, and the two-controller block needs
+// a database server both controllers share. The hostname blocks that set their own
+// downstream_tls settings run one engine: the settings do not depend on the database, and the
+// default block of the feature repeats on every engine. So do the trust-any, observability and
+// default identity blocks, whose subjects are the data plane's behaviour, not the store.
+var singleEngineBlocks = map[string]components.DBType{
+	"devportal-webhook":                               components.Postgres,
+	"multigateway":                                    components.SQLite,
+	"gateway-mtls-ha":                                 components.Postgres,
+	"gateway-mtls-hostnames-required":                 components.SQLite,
+	"gateway-mtls-hostnames-all-connections":          components.SQLite,
+	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
+	"gateway-mtls-trust-any":                          components.SQLite,
+	"gateway-mtls-observability":                      components.SQLite,
+	"gateway-mtls-default-identity-off":               components.SQLite,
+	"gateway-mtls-default-identity-on":                components.SQLite,
 }
 
 const coverageSubject = "platform-gateway"
@@ -483,3 +548,35 @@ func errFromResponse(resp *httpx.Response) error {
 type deleteError struct{ resp *httpx.Response }
 
 func (e *deleteError) Error() string { return e.resp.Describe() }
+
+func TestCertificateDeleteWaitsOutConflicts(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "Basic token", r.Header.Get("Authorization"))
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := httpx.NewClient(httpx.Options{})
+	require.NoError(t, deleteWaitingOutConflicts(context.Background(), client, server.URL, "Basic token"))
+	require.Equal(t, int32(3), calls.Load())
+}
+
+func TestCertificateDeleteTreatsNotFoundAsDoneAndReportsOtherFailures(t *testing.T) {
+	for status, wantErr := range map[int]bool{http.StatusNotFound: false, http.StatusOK: false, http.StatusBadRequest: true, http.StatusForbidden: true, http.StatusInternalServerError: true} {
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(status)
+		}))
+		err := deleteWaitingOutConflicts(context.Background(), httpx.NewClient(httpx.Options{}), server.URL, "Basic token")
+		server.Close()
+		require.Equal(t, wantErr, err != nil, "status %d: %v", status, err)
+		require.Equal(t, int32(1), calls.Load(), "status %d", status)
+	}
+}

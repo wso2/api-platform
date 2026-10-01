@@ -20,12 +20,7 @@ package it
 
 import (
 	"fmt"
-	"io"
-	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
@@ -51,115 +46,7 @@ func RegisterMetricsSteps(ctx *godog.ScenarioContext, state *TestState, httpStep
 	ctx.Step(`^I send a GET request to the gateway controller metrics endpoint$`, m.iSendGETRequestToGatewayControllerMetrics)
 	ctx.Step(`^I send a GET request to the policy engine metrics endpoint$`, m.iSendGETRequestToPolicyEngineMetrics)
 	ctx.Step(`^the response should contain Prometheus metrics$`, m.theResponseShouldContainPrometheusMetrics)
-	// (.*) because a metric argument can carry an escaped quoted label value
-	// (e.g. `cert_name=\"obs-expiring\"`), which [^"]* would stop at.
-	ctx.Step(`^the response should contain metric "(.*)"$`, m.theResponseShouldContainMetric)
-	ctx.Step(`^the response should not contain metric "(.*)"$`, m.theResponseShouldNotContainMetric)
-	ctx.Step(`^I note the policy engine counter "([^"]*)" for series labelled "(.*)"$`, m.iNotePolicyEngineCounter)
-	ctx.Step(`^the policy engine counter "([^"]*)" for series labelled "(.*)" should have grown by at least (\d+) within (\d+) seconds$`, m.policyEngineCounterShouldHaveGrown)
-}
-
-// notedCounterContextKeyPrefix prefixes the context key under which a noted
-// counter total is kept, per counter name and label selector.
-const notedCounterContextKeyPrefix = "notedCounter:"
-
-// metricLabelPattern matches one name="value" pair of a Prometheus label set
-// or of a step's label selector.
-var metricLabelPattern = regexp.MustCompile(`(\w+)="((?:[^"\\]|\\.)*)"`)
-
-// iNotePolicyEngineCounter records the current total of the policy engine
-// counter over the series carrying every selected label, for a later step to
-// compare against.
-func (m *MetricsSteps) iNotePolicyEngineCounter(name, selector string) error {
-	total, err := policyEngineCounterTotal(name, unescapeGherkinQuotes(selector))
-	if err != nil {
-		return err
-	}
-	m.state.SetContextValue(notedCounterContextKeyPrefix+name+"|"+selector, total)
-	return nil
-}
-
-// policyEngineCounterShouldHaveGrown polls the counter's total until it has
-// grown by at least minGrowth since it was noted.
-func (m *MetricsSteps) policyEngineCounterShouldHaveGrown(name, selector string, minGrowth, seconds int) error {
-	raw, ok := m.state.GetContextValue(notedCounterContextKeyPrefix + name + "|" + selector)
-	if !ok {
-		return fmt.Errorf("the policy engine counter %q for series labelled %s was not noted before", name, selector)
-	}
-	before := raw.(float64)
-	deadline := time.Now().Add(time.Duration(seconds) * time.Second)
-	for {
-		total, err := policyEngineCounterTotal(name, unescapeGherkinQuotes(selector))
-		if err == nil && total-before >= float64(minGrowth) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			if err != nil {
-				return err
-			}
-			return fmt.Errorf("the policy engine counter %q for series labelled %s grew by %g within %ds, expected at least %d", name, selector, total-before, seconds, minGrowth)
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-}
-
-// policyEngineCounterTotal sums the counter over the policy engine's series
-// whose name is name or ends in "_"+name and whose labels include every pair
-// in selector.
-func policyEngineCounterTotal(name, selector string) (float64, error) {
-	want := map[string]string{}
-	for _, pair := range metricLabelPattern.FindAllStringSubmatch(selector, -1) {
-		want[pair[1]] = pair[2]
-	}
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%s/metrics", PolicyEngineMetricsPort))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read policy engine metrics: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("policy engine metrics returned status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read policy engine metrics: %w", err)
-	}
-	total := 0.0
-	for _, line := range strings.Split(string(body), "\n") {
-		open := strings.IndexByte(line, '{')
-		closing := strings.LastIndexByte(line, '}')
-		if strings.HasPrefix(line, "#") || open < 0 || closing < open {
-			continue
-		}
-		series := line[:open]
-		if series != name && !strings.HasSuffix(series, "_"+name) {
-			continue
-		}
-		labels := map[string]string{}
-		for _, pair := range metricLabelPattern.FindAllStringSubmatch(line[open+1:closing], -1) {
-			labels[pair[1]] = pair[2]
-		}
-		matches := true
-		for k, v := range want {
-			if labels[k] != v {
-				matches = false
-				break
-			}
-		}
-		if !matches {
-			continue
-		}
-		fields := strings.Fields(line[closing+1:])
-		if len(fields) == 0 {
-			continue
-		}
-		value, err := strconv.ParseFloat(fields[0], 64)
-		if err != nil {
-			return 0, fmt.Errorf("unreadable value on metric line %q: %w", line, err)
-		}
-		total += value
-	}
-	return total, nil
+	ctx.Step(`^the response should contain metric "([^"]*)"$`, m.theResponseShouldContainMetric)
 }
 
 // iSendGETRequestToGatewayControllerMetrics sends a GET request to the gateway controller metrics endpoint
@@ -211,35 +98,13 @@ func (m *MetricsSteps) theResponseShouldContainPrometheusMetrics() error {
 	return nil
 }
 
-// unescapeGherkinQuotes turns `\"` in a captured step argument back into a
-// bare quote. Godog keeps step text verbatim, so an escaped quote inside a
-// quoted argument (e.g. a Prometheus label value) arrives with its backslash.
-func unescapeGherkinQuotes(s string) string {
-	return strings.ReplaceAll(s, `\"`, `"`)
-}
-
 // theResponseShouldContainMetric verifies the response contains a specific metric
 func (m *MetricsSteps) theResponseShouldContainMetric(metricName string) error {
-	metricName = unescapeGherkinQuotes(metricName)
 	body := m.httpSteps.LastBody()
 	bodyStr := string(body)
 
 	if !strings.Contains(bodyStr, metricName) {
 		return fmt.Errorf("response does not contain metric '%s'", metricName)
-	}
-
-	return nil
-}
-
-// theResponseShouldNotContainMetric verifies the response does not contain a
-// specific metric or metric series.
-func (m *MetricsSteps) theResponseShouldNotContainMetric(metricName string) error {
-	metricName = unescapeGherkinQuotes(metricName)
-	body := m.httpSteps.LastBody()
-	bodyStr := string(body)
-
-	if strings.Contains(bodyStr, metricName) {
-		return fmt.Errorf("response unexpectedly contains metric '%s'", metricName)
 	}
 
 	return nil

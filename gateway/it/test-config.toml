@@ -82,12 +82,6 @@ password = "admin"
 password_hashed = false
 roles = ["admin"]
 
-[[controller.auth.basic.users]]
-username = "developer"
-password = "developer"
-password_hashed = false
-roles = ["developer"]
-
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 
@@ -105,7 +99,7 @@ enabled = true
 
 [router.access_logs]
 enabled = true
-format = "json"
+format = "text"
 
 [router.http_listener.timeouts]
 # This is the only HCM timeout set to a small, testable value here.

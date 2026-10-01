@@ -696,7 +696,7 @@ func (c *ComposeStack) Logs(ctx context.Context) string {
 			fmt.Fprintf(&b, "(could not read logs: %v)\n", err)
 			continue
 		}
-		text, readErr := readAllString(rc)
+		text, readErr := readLimitedString(rc, maxLogBytes)
 		_ = rc.Close()
 		if readErr != nil {
 			fmt.Fprintf(&b, "(log read failed: %v)\n", readErr)

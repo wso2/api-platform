@@ -91,9 +91,6 @@ func RegisterTimeoutSteps(ctx *godog.ScenarioContext, state *TestState) {
 	// request_headers_timeout to fire. The connection blocks until the gateway responds
 	// or closes it, and the raw response is stored for assertion.
 	ctx.Step(`^I open a raw connection to "([^"]*)" and send incomplete request headers for path "([^"]*)"$`, func(address, path string) error {
-		if err := settlePendingPropagation(state); err != nil {
-			return err
-		}
 		conn, err := net.DialTimeout("tcp", address, 10*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to connect to %s: %w", address, err)
