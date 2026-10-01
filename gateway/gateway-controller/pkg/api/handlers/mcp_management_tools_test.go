@@ -922,6 +922,23 @@ func TestKeyOpErrorNeverEchoesTheCause(t *testing.T) {
 	}
 }
 
+// stubCertStore and stubSnapshot stand in for the router-side collaborators the
+// certificate service reaches through its XDSResolver, so the MCP certificate
+// tool's success paths are reachable without a real *xds.SnapshotManager.
+type stubCertStore struct {
+	reloadErr error
+	combined  []byte
+}
+
+func (c *stubCertStore) Reload() error                   { return c.reloadErr }
+func (c *stubCertStore) GetCombinedCertificates() []byte { return c.combined }
+
+type stubSnapshot struct {
+	err error
+}
+
+func (s *stubSnapshot) UpdateSnapshot(_ context.Context, _ string) error { return s.err }
+
 func toolsCertService(db storage.Storage, store *stubCertStore, snapshot *stubSnapshot) *certificate.CertificateService {
 	return certificate.NewCertificateService(db, func() *certificate.XDSTargets {
 		return &certificate.XDSTargets{Store: store, Snapshot: snapshot}
