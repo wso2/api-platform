@@ -19,8 +19,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -30,8 +35,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -610,6 +617,245 @@ func TestAdminMCPToolRouteKeysAreAuthorized(t *testing.T) {
 
 	_, ok := roles["GET /health"]
 	assert.False(t, ok, "the public health probe must not appear in the admin role map")
+}
+
+// TestGenerateAuthConfig_MCPRoute fails if the management MCP endpoint loses its role entry, which would 403 every MCP message
+func TestGenerateAuthConfig_MCPRoute(t *testing.T) {
+	authConfig, err := generateAuthConfig(&config.Config{})
+	require.NoError(t, err)
+
+	want := []string{"admin", "developer", "consumer"}
+	assert.Equal(t, want, authConfig.ResourceRoles["POST "+managementAPIBasePath+"/mcp"])
+	assert.Equal(t, want, authConfig.ResourceRoles["POST /mcp"])
+}
+
+func TestResolveAdvertisedScopes(t *testing.T) {
+	baseline := []string{"admin", "consumer", "developer"}
+	mapping := map[string][]string{
+		"admin":     {"gw-admin"},
+		"consumer":  {"gw-consumer"},
+		"developer": {"gw-dev"},
+	}
+
+	tests := []struct {
+		name        string
+		entryRoles  []string
+		roleMapping map[string][]string
+		want        []string
+	}{
+		{
+			name:        "empty entries default to every baseline role",
+			entryRoles:  nil,
+			roleMapping: mapping,
+			want:        []string{"gw-admin", "gw-consumer", "gw-dev"},
+		},
+		{
+			name:        "configured entries narrow the advertised set",
+			entryRoles:  []string{"developer"},
+			roleMapping: mapping,
+			want:        []string{"gw-dev"},
+		},
+		{
+			name:        "role mapped to several scopes advertises all of them",
+			entryRoles:  []string{"admin"},
+			roleMapping: map[string][]string{"admin": {"gw-superuser", "gw-admin"}},
+			want:        []string{"gw-admin", "gw-superuser"},
+		},
+		{
+			name:        "roles sharing a scope advertise it once",
+			entryRoles:  []string{"admin", "developer"},
+			roleMapping: map[string][]string{"admin": {"gw-write"}, "developer": {"gw-write"}},
+			want:        []string{"gw-write"},
+		},
+		{
+			name:        "unmapped role is advertised under its local name",
+			entryRoles:  []string{"consumer"},
+			roleMapping: map[string][]string{"admin": {"gw-admin"}},
+			want:        []string{"consumer"},
+		},
+		{
+			name:        "wildcard-only mapping is not requestable, so the local name is advertised",
+			entryRoles:  []string{"admin"},
+			roleMapping: map[string][]string{"admin": {"*"}},
+			want:        []string{"admin"},
+		},
+		{
+			name:        "no role mapping advertises local role names",
+			entryRoles:  nil,
+			roleMapping: nil,
+			want:        []string{"admin", "consumer", "developer"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveAdvertisedScopes("management", "controller.server.mcp_server.advertised_scopes",
+				tt.entryRoles, baseline, tt.roleMapping, slog.New(slog.DiscardHandler))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("endpoint admitting no roles advertises nothing", func(t *testing.T) {
+		got := resolveAdvertisedScopes("management", "controller.server.mcp_server.advertised_scopes",
+			nil, nil, mapping, slog.New(slog.DiscardHandler))
+		assert.Empty(t, got)
+	})
+}
+
+func TestResolveAdvertisedScopes_LogsResolvedSet(t *testing.T) {
+	var buf bytes.Buffer
+	resolveAdvertisedScopes("admin", "controller.admin_server.mcp_server.advertised_scopes",
+		nil, []string{"admin"}, map[string][]string{"admin": {"gw-admin"}},
+		slog.New(slog.NewJSONHandler(&buf, nil)))
+
+	out := buf.String()
+	assert.Contains(t, out, `"msg":"MCP endpoint advertising scopes"`)
+	assert.Contains(t, out, `"endpoint":"admin"`)
+	assert.Contains(t, out, `"entry_roles":["admin"]`)
+	assert.Contains(t, out, `"advertised_scopes":["gw-admin"]`)
+}
+
+const resolveScopesExitEnv = "GO_TEST_RESOLVE_ADVERTISED_SCOPES_EXIT"
+
+// TestResolveAdvertisedScopes_UnknownEntryRefusesToStart re-runs itself in a child process, since the function calls os.Exit
+func TestResolveAdvertisedScopes_UnknownEntryRefusesToStart(t *testing.T) {
+	if os.Getenv(resolveScopesExitEnv) == "1" {
+		// An IdP scope name where a local role name belongs: the misconfiguration this check exists to catch.
+		resolveAdvertisedScopes("management", "controller.server.mcp_server.advertised_scopes",
+			[]string{"admin", "gw-admin"}, []string{"admin", "developer"},
+			map[string][]string{"admin": {"gw-admin"}},
+			slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		return // returning means no exit, so the parent sees exit code 0 and fails
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestResolveAdvertisedScopes_UnknownEntryRefusesToStart$")
+	cmd.Env = append(os.Environ(), resolveScopesExitEnv+"=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+
+	var exitErr *exec.ExitError
+	require.ErrorAsf(t, err, &exitErr, "an unknown advertised_scopes entry must stop startup; stderr:\n%s", stderr.String())
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Contains(t, stderr.String(), "controller.server.mcp_server.advertised_scopes")
+	assert.Contains(t, stderr.String(), "entry=gw-admin")
+}
+
+const (
+	testMCPPattern        = "POST " + managementAPIBasePath + "/mcp"
+	testMCPProxiesPattern = "POST " + managementAPIBasePath + "/mcp-proxies"
+	testRESTPostPattern   = "POST " + managementAPIBasePath + "/rest-apis"
+	testRESTGetPattern    = "GET " + managementAPIBasePath + "/rest-apis"
+)
+
+// newPatternTestMux wraps handler in mw per route, as api.HandlerWithOptions does, so r.Pattern is set before mw runs
+func newPatternTestMux(mw api.MiddlewareFunc, handler http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	for _, p := range []string{testMCPPattern, testMCPProxiesPattern, testRESTPostPattern, testRESTGetPattern} {
+		mux.Handle(p, mw(handler))
+	}
+	return mux
+}
+
+func serveTestRequest(h http.Handler, method, path string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	return rec
+}
+
+var testOKHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+})
+
+func markerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test-Middleware", "applied")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func TestOnlyForPatterns(t *testing.T) {
+	mcpOnly := map[string]bool{testMCPPattern: true}
+	mux := newPatternTestMux(onlyForPatterns(markerMiddleware, mcpOnly), testOKHandler)
+
+	t.Run("applies the middleware on a listed route", func(t *testing.T) {
+		rec := serveTestRequest(mux, http.MethodPost, managementAPIBasePath+"/mcp")
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "applied", rec.Header().Get("X-Test-Middleware"))
+	})
+
+	t.Run("passes every other route straight through", func(t *testing.T) {
+		for _, req := range []struct{ method, path string }{
+			{http.MethodPost, managementAPIBasePath + "/rest-apis"},
+			{http.MethodGet, managementAPIBasePath + "/rest-apis"},
+			// Matching is on the exact pattern, so a path sharing the /mcp prefix is not caught.
+			{http.MethodPost, managementAPIBasePath + "/mcp-proxies"},
+		} {
+			rec := serveTestRequest(mux, req.method, req.path)
+			assert.Equalf(t, http.StatusOK, rec.Code, "%s %s", req.method, req.path)
+			assert.Emptyf(t, rec.Header().Get("X-Test-Middleware"), "%s %s", req.method, req.path)
+		}
+	})
+
+	t.Run("a request with no matched pattern is passed through", func(t *testing.T) {
+		h := onlyForPatterns(markerMiddleware, mcpOnly)(testOKHandler)
+		rec := serveTestRequest(h, http.MethodPost, managementAPIBasePath+"/mcp")
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Empty(t, rec.Header().Get("X-Test-Middleware"))
+	})
+}
+
+// TestOnlyForPatterns_MCPChallengeStaysOffRESTRoutes checks the composition main() builds for the management endpoint
+func TestOnlyForPatterns_MCPChallengeStaysOffRESTRoutes(t *testing.T) {
+	const metadataURL = "https://gw.example.com/.well-known/oauth-protected-resource" + managementAPIBasePath + "/mcp"
+	challenge := onlyForPatterns(
+		handlers.MCPChallengeMiddleware(metadataURL, []string{"gw-admin", "gw-dev"}),
+		map[string]bool{testMCPPattern: true})
+	unauthorized := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	mux := newPatternTestMux(challenge, unauthorized)
+
+	rec := serveTestRequest(mux, http.MethodPost, managementAPIBasePath+"/mcp")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, `Bearer resource_metadata="`+metadataURL+`", scope="gw-admin gw-dev"`,
+		rec.Header().Get("WWW-Authenticate"))
+
+	rec = serveTestRequest(mux, http.MethodGet, managementAPIBasePath+"/rest-apis")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Empty(t, rec.Header().Get("WWW-Authenticate"), "REST 401s must not point clients at the MCP metadata")
+}
+
+// TestExceptPatterns_ImmutableMode uses the real immutable-mode middleware main() wraps with exceptPatterns
+func TestExceptPatterns_ImmutableMode(t *testing.T) {
+	// Middleware() reads only the config; NewImmutableGW just requires a non-nil service when enabled.
+	igw := immutable.NewImmutableGW(config.ImmutableGatewayConfig{Enabled: true},
+		&restapi.RestAPIService{}, nil, nil, nil)
+	mcpOnly := map[string]bool{testMCPPattern: true}
+	mux := newPatternTestMux(exceptPatterns(igw.Middleware(), mcpOnly), testOKHandler)
+
+	t.Run("MCP messages are still admitted", func(t *testing.T) {
+		rec := serveTestRequest(mux, http.MethodPost, managementAPIBasePath+"/mcp")
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("REST writes are still rejected", func(t *testing.T) {
+		for _, path := range []string{"/rest-apis", "/mcp-proxies"} {
+			rec := serveTestRequest(mux, http.MethodPost, managementAPIBasePath+path)
+			assert.Equalf(t, http.StatusMethodNotAllowed, rec.Code, "POST %s", path)
+		}
+	})
+
+	t.Run("REST reads are still admitted", func(t *testing.T) {
+		rec := serveTestRequest(mux, http.MethodGet, managementAPIBasePath+"/rest-apis")
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("a request with no matched pattern gets the middleware", func(t *testing.T) {
+		h := exceptPatterns(igw.Middleware(), mcpOnly)(testOKHandler)
+		rec := serveTestRequest(h, http.MethodPost, managementAPIBasePath+"/mcp")
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "an unrecognised request must fail closed")
+	})
 }
 
 func TestGenerateAuthConfig(t *testing.T) {
