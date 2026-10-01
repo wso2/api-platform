@@ -23,6 +23,7 @@ package certmetrics
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
@@ -31,6 +32,9 @@ import (
 )
 
 const sweepInterval = 24 * time.Hour
+
+// refreshMu serialises Refresh.
+var refreshMu sync.Mutex
 
 // Store is the subset of storage.Storage that Refresh and Sweep need.
 type Store interface {
@@ -41,6 +45,11 @@ type Store interface {
 // and returns them. Every series is replaced, so a deleted row stops being
 // reported.
 func Refresh(store Store) ([]*models.StoredCertificate, error) {
+	// Handlers, replica-sync events and the sweep refresh concurrently; one at a
+	// time, so a stale list never overwrites a fresher one.
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+
 	certs, err := store.ListCertificates()
 	if err != nil {
 		return nil, err
