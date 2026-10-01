@@ -999,6 +999,53 @@ gateway does not guess.
 
 ---
 
+## What analytics records about a failure
+
+When analytics or traffic logging is enabled, the collector runs as the last entry of every
+API's fault chain and adds the resolved failure to the request's analytics event. It changes
+none of the fields the event already had — `errorType`, `error.errorCode` (the HTTP status) and
+`error.errorMessage` keep their meaning — and adds these to the `error` object:
+
+| Field | Carries |
+|---|---|
+| `wso2ErrorCode` | The fault code, e.g. `900902`. Absent when the failure had none, such as a router failure. |
+| `type` | The failure class (`authentication`, `guardrail`, `upstream`, …). |
+| `direction` | `Request` or `Response` — which side was rejected. |
+| `summary` | The client-facing message. |
+| `policy`, `policyPhase` | The policy that failed and its phase. Absent when no policy did. |
+| `source` | `gateway`, `backend`, `router` or `noRoute`. |
+| `originalStatus` | The backend's status before a policy changed it. |
+| `guardrail` | `{name, action, reason}` for a guardrail rejection. |
+| `jsonRpcCode` | The JSON-RPC error code, for MCP and A2A. |
+
+A word-count guardrail rejecting a backend response:
+
+```json
+"errorType": "OTHER",
+"error": {
+  "errorCode": 422,
+  "errorMessage": "UNCLASSIFIED",
+  "wso2ErrorCode": 906201,
+  "type": "guardrail",
+  "direction": "Response",
+  "summary": "Violation of applied word count constraints detected",
+  "policy": "word-count-guardrail",
+  "policyPhase": "response_body",
+  "source": "gateway",
+  "originalStatus": 200,
+  "guardrail": {
+    "name": "word-count-guardrail",
+    "action": "GUARDRAIL_INTERVENED",
+    "reason": "Violation of applied word count constraints detected"
+  }
+}
+```
+
+The fault's `Description` and a guardrail's `Assessments` are never recorded: for a guardrail
+they hold the content it blocked, and analytics events leave the gateway. A failure declared on a
+status below 400 gets an `error` object too, with `errorCode` set to that status and
+`errorMessage` `UNCLASSIFIED`.
+
 ## Operational guidance
 
 Fault policies run exactly when things are already going wrong, so treat them as part of your
