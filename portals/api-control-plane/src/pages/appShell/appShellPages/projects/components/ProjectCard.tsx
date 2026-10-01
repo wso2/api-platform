@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Clock, Layers, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { BoxIcon, Clock, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
@@ -133,7 +133,7 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
               width: 46,
             })}
           >
-            <Layers size={22} />
+            <BoxIcon size={22} />
           </Box>
           <Box sx={{ minWidth: 0 }}>
             <Stack alignItems="center" direction="row" spacing={1}>

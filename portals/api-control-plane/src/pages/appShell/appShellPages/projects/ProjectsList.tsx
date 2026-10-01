@@ -17,7 +17,7 @@
  */
 
 import { Avatar, Box, Card, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Clock, Layers, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { BoxIcon, Clock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
@@ -122,7 +122,7 @@ function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
           }}
           variant="rounded"
         >
-          <Layers size={AVATAR_ICON_SIZE} />
+          <BoxIcon size={AVATAR_ICON_SIZE} />
         </Avatar>
         <Box sx={{ minWidth: 0 }}>
           <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
