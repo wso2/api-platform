@@ -459,7 +459,7 @@ type FaultContext struct {
 	// failing to reach that backend are both 503, and they mean opposite things. One says the
 	// API is up and refusing, the other that the gateway never got there.
 	//
-	// Also the field an execution condition reads, as error.Source, which is how a chain that
+	// Also the field an execution condition reads, as fault.Source, which is how a chain that
 	// should only see the gateway's own failures says so.
 	Source string
 	// Fault is what the policy that produced the failure said about it — its code, class,

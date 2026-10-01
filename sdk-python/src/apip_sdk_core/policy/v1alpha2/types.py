@@ -347,26 +347,16 @@ class FaultContext:
 
     The fields below the response set describe WHY the fault flow is running.
 
-    ``source`` names which actor produced the failure. There is still deliberately no
-    "trigger": which phase noticed a failure is an engine routing concern and nothing a
-    handler should branch on.
+    ``source`` names which actor produced the failure, so a handler can tell a policy rejection
+    from an upstream failure. There is deliberately no "trigger": which phase noticed a failure
+    is an engine routing concern and nothing a handler should branch on.
 
-    ``source`` was withheld for the same reason until the engine stopped using it as a gate.
-    While provenance decided whether this chain ran at all, a handler could learn nothing from
-    it that its own invocation had not already told it — being called meant the gateway had
-    produced the error, because nothing else got this far. Now that every source reaches the
-    chain, the opposite holds: a handler cannot tell a policy rejection from an upstream
-    failure without being told, and those call for opposite responses.
-
-    Note what it is NOT for. ``source`` says who produced the response, never what went
-    wrong: read ``error.type`` for the class of failure, ``error.code`` for exactly what went
-    wrong, an empty ``policy`` for "no policy caused this". Expect ``error`` to be None
-    precisely when ``source`` is ``backend`` — another service's 500 is not the gateway's to
-    classify.
+    Note what ``source`` is NOT for. It says who produced the response, never what went wrong:
+    read ``fault.type`` for the class of failure, ``fault.code`` for exactly what went wrong, an
+    empty ``policy`` for "no policy caused this". Expect ``fault`` to be None precisely when
+    ``source`` is ``backend`` — another service's 500 is not the gateway's to classify.
     """
 
-    #: The status before a policy changed it, and 0 when nothing did. Not otherwise
-    #: recoverable — once a guardrail turns a 200 into a 422 the upstream's own status is gone.
     shared: SharedContext
     #: The originating request (read-only, from the request phase).
     request_headers: Headers = field(default_factory=Headers)
@@ -393,6 +383,8 @@ class FaultContext:
     #: backend a rejected request was bound for.
     upstream: UpstreamResponseContext | None = None
 
+    #: The status before a policy changed it, and 0 when nothing did. Not otherwise
+    #: recoverable — once a guardrail turns a 200 into a 422 the upstream's own status is gone.
     original_status: int = 0
     #: The policy that caused the failure. EMPTY means no policy did (a router failure),
     #: never "unknown".

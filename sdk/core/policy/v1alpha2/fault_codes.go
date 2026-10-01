@@ -28,8 +28,8 @@ import "strconv"
 //   - Codes the GATEWAY sets, for failures no policy produced. A policy must not emit one, but
 //     a fault policy may branch on one.
 //
-// A code's numeric range decides its analytics category — see the range constants at the
-// bottom of this file, and docs/gateway/error-codes.md.
+// A code's numeric range is its category — see the range constants at the bottom of this file,
+// and docs/gateway/error-codes.md.
 
 // ─── Type: the failure class ─────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ const (
 
 // FaultSource values for FaultContext.Source: which actor produced the error response.
 //
-// These also reach an execution condition as error.Source, so a value here is configuration
+// These also reach an execution condition as fault.Source, so a value here is configuration
 // surface: renaming one breaks every deployment whose conditions test for it.
 //
 // Unlike FaultType, this set IS closed. Type describes what went wrong, which no vocabulary
@@ -121,8 +121,8 @@ const (
 //
 // Reused rather than reinvented: a client that has keyed off 900902 for years should not have
 // to learn a second number because the gateway was rewritten. All of them fall inside the
-// auth-failure range, so they classify as authentication failures in
-// analytics — which is the reason an auth policy must not reach for a code from another group.
+// auth-failure range, so they categorise as authentication failures — which is the reason an
+// auth policy must not reach for a code from another group.
 const (
 	// FaultCodeAuthGeneral is an authentication failure with no more specific cause.
 	FaultCodeAuthGeneral = "900900"
@@ -178,7 +178,7 @@ const (
 // telling "the backend was unreachable" from "the backend answered slowly" is exactly the
 // distinction an on-call notifier needs, and it is only available through the code.
 //
-// Every value sits inside the target-failure range so it classifies as an upstream failure —
+// Every value sits inside the target-failure range so it categorises as an upstream failure —
 // see the range note at the bottom of this file for why that is load-bearing.
 const (
 	// FaultCodeUpstreamUnreachable is a connection that could not be established.
@@ -198,9 +198,9 @@ const (
 // Engine codes, for conditions no reserved block covers.
 //
 // Allocated in 905xxx, above the 904015 frontier, so they collide with
-// nothing. They classify as "other" in analytics, which is the honest outcome:
-// there is no existing category to claim, and squatting inside a reserved range to borrow
-// a label would mis-report them as target or auth failures.
+// nothing. They fall in no category range, which is the honest outcome: there is no existing
+// category to claim, and squatting inside a reserved range to borrow a label would mis-report
+// them as target or auth failures.
 //
 // A policy must not emit these either — every one of them describes a failure of the engine
 // itself, which a policy is in no position to observe.
@@ -232,13 +232,13 @@ const (
 // The 906xxx block sits above the engine's 905xxx codes and below the 96xxxx policy space,
 // grouped so related rejections are adjacent:
 //
-//	906000-906099  what the content was judged to BE — a model or moderation service's verdict
+//	906001-906099  what the content was judged to BE — a model or moderation service's verdict
 //	906100-906199  what the content CONTAINED — sensitive data found in it
 //	906200-906299  what SHAPE the content had — size, structure, pattern
 //	906300-906399  what the content MEANT — intent matched against a configured policy
 //
 // The grouping is the contract, not decoration: a caller that wants "any content-safety
-// rejection" tests 906000 <= code < 906100 rather than enumerating categories, and that only
+// rejection" tests 906001 <= code < 906100 rather than enumerating categories, and that only
 // works if a new category lands inside its own group. Allocate within a group; do not append
 // to the end of the block.
 const (
@@ -246,7 +246,7 @@ const (
 	// unless a caller needs to distinguish this rejection from another one.
 	GuardrailCodeIntervened = "906000"
 
-	// 906000-906099 — what the content was judged to be.
+	// 906001-906099 — what the content was judged to be.
 	//
 	// The first four are the categories every major moderation service reports, and are the
 	// reason this block exists: a caller handling a self-harm rejection and one handling a
@@ -283,7 +283,7 @@ const (
 	GuardrailCodeSemanticMatch = "906301"
 )
 
-// Guardrail code group boundaries, half-open, matching the classification ranges.
+// Guardrail code group boundaries, half-open.
 //
 // Declared here and nowhere else. The engine reads these from the SDK rather than keeping a
 // second copy, so there is no pair of numbers that could drift apart — a check the block would
@@ -322,13 +322,12 @@ func IsGuardrailCode(code string) bool {
 
 // ─── Where a new code may go ─────────────────────────────────────────────────
 
-// Classification ranges used by the fault-code classifier.
+// Category ranges.
 //
-// The classifier assigns a fault CATEGORY by testing which range a code falls in — `start <= code <
-// end` — so a code outside every range is categorised as "other" however specific its
-// meaning. That makes range membership part of the contract rather than a convention: a new
-// code for an upstream failure has to land inside the target range, or analytics stops
-// seeing it as one.
+// A code's CATEGORY is the range it falls in — `start <= code < end` — so a code outside every
+// range is categorised as "other" however specific its meaning. That makes range membership
+// part of the contract rather than a convention: a new code for an upstream failure has to land
+// inside the target range, or anything grouping failures by code stops seeing it as one.
 //
 // Exported so a policy allocating a code can check its own arithmetic, and so a consumer can
 // ask "was this any auth failure?" without enumerating codes.
@@ -379,9 +378,9 @@ const (
 	// UserDefinedRangeStart..End is reserved for a deployment's own policies. WSO2 never
 	// allocates inside it, so a custom policy's code cannot later collide with a product one.
 	//
-	// Both blocks sit outside every classification range above, on purpose: a condition with
-	// no reserved code has no place in that taxonomy, so it classifies as "other" rather
-	// than borrowing a label that would mis-report it.
+	// Both blocks sit outside every category range above, on purpose: a condition with no
+	// reserved code has no place in that taxonomy, so it categorises as "other" rather than
+	// borrowing a label that would mis-report it.
 	UserDefinedRangeStart = 965000
 	UserDefinedRangeEnd   = 970000
 )

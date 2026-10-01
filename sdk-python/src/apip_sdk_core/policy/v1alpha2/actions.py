@@ -140,12 +140,11 @@ class FaultType:
 
 
 class FaultCode:
-    """Values for :attr:`FaultDetails.code`: the APIM error codes, gathered so a policy reuses
-    one instead of re-typing the digits.
+    """Values for :attr:`FaultDetails.code`: the gateway's error codes, gathered so a policy
+    reuses one instead of re-typing the digits.
 
-    The Go SDK declares the same set in ``sdk/core/policy/v1alpha2/error_codes.go``, and the
-    gateway keeps the integer form in ``internal/analytics`` for analytics events. All three are
-    pinned against each other by tests, because none of them can import the others.
+    The Go SDK declares the same set in ``sdk/core/policy/v1alpha2/fault_codes.go``. The two are
+    pinned against each other by tests, because neither can import the other.
 
     **Read versus write.** Two groups, and the distinction matters:
 
@@ -153,10 +152,10 @@ class FaultCode:
     - Codes the **gateway** sets, for failures no policy produced. A policy must not emit one —
       claiming an upstream timeout it did not observe misreports the failure to everything
       downstream. They are here because a **fault** policy has the opposite need: branching on
-      ``err.code == FaultCode.UPSTREAM_TIMEOUT`` otherwise means hard-coding ``"101504"``.
+      ``ctx.fault.code == FaultCode.UPSTREAM_TIMEOUT`` otherwise means hard-coding ``"101504"``.
 
-    **Allocating a new one.** A code's numeric range decides its analytics *category*, so a
-    code outside every range is filed as "other" however specific its meaning. Allocate in
+    **Allocating a new one.** A code's numeric range is its *category*, so a code outside every
+    range is categorised as "other" however specific its meaning. Allocate in
     ``USER_DEFINED_RANGE_*`` and read
     ``docs/gateway/error-codes.md`` first.
 
@@ -165,8 +164,8 @@ class FaultCode:
 
     # ── Codes a policy sets ──────────────────────────────────────────────────
     #
-    # Authentication and authorization, from APIM's APISecurityConstants. All inside the
-    # auth-failure range, so they classify as authentication failures.
+    # Authentication and authorization. All inside the auth-failure range, so they categorise
+    # as authentication failures.
     AUTH_GENERAL: Final[str] = "900900"
     AUTH_INVALID_CREDENTIALS: Final[str] = "900901"
     #: No credential presented at all. Distinct from invalid on purpose: one is a caller who
@@ -196,8 +195,8 @@ class FaultCode:
     UPSTREAM_UNREACHABLE: Final[str] = "101503"
     UPSTREAM_TIMEOUT: Final[str] = "101504"
     UPSTREAM_GENERIC: Final[str] = "101599"
-    #: No healthy host. APIM classifies this by an explicit case rather than by range, giving
-    #: it its own sub-category, which is why it sits outside the target-failure range.
+    #: No healthy host. It has its own sub-category rather than a place in the target-failure
+    #: range, which is why it sits outside that range.
     UPSTREAM_UNAVAILABLE: Final[str] = "303001"
     NO_ROUTE: Final[str] = "900906"
     ENGINE_INTERNAL: Final[str] = "905003"
@@ -208,8 +207,8 @@ class FaultCode:
 
     # ── Where a new code may go ──────────────────────────────────────────────
     #
-    # APIM assigns a fault category by testing `start <= code < end`, so membership is part of
-    # the contract rather than a convention.
+    # A code's category is the range it falls in, `start <= code < end`, so membership is part
+    # of the contract rather than a convention.
     AUTH_FAILURE_RANGE_START: Final[int] = 900900
     AUTH_FAILURE_RANGE_END: Final[int] = 901000
     THROTTLED_FAILURE_RANGE_START: Final[int] = 900800
@@ -306,7 +305,7 @@ class GuardrailCode:
 class FaultSource:
     """Values for :attr:`FaultContext.source`: which actor produced the error response.
 
-    These also reach an execution condition as ``error.Source``, so a value here is
+    These also reach an execution condition as ``fault.Source``, so a value here is
     configuration surface — renaming one breaks every deployment whose conditions test for it.
 
     Unlike :class:`FaultType`, this set **is** closed. ``type`` describes what went wrong,
@@ -358,7 +357,7 @@ class FaultDetails:
     direction: str = ""
     message: str = ""
     description: str = ""
-    # JSON-RPC wire detail, for a policy on an MCP (or, later, A2A) API. None for every other
+    # JSON-RPC wire detail, for a policy on an MCP or A2A API. None for every other
     # caller, and consumed only by the gateway's JSON-RPC renderer — the JSON and XML
     # renderers ignore it, having nowhere to put a JSON-RPC code.
     jsonrpc: JSONRPCError | None = None
@@ -371,19 +370,15 @@ class FaultDetails:
 class ImmediateResponse:
     """Ends the chain and answers the client directly.
 
-    **Whether this is a fault**: ``is_fault``, and nothing else. Not the status, and not a
-    described ``fault``. A policy written before this field stays out of the fault flow, which
-    is what makes the field safe to add to a shipped catalogue.
+    **Whether this is a fault**: a response enters the fault flow when its status is 400 or
+    above **or** ``is_fault`` is True. So a 4xx or 5xx rejection is a fault without setting
+    anything, and ``is_fault`` left False does NOT hold an error status out of the flow — a
+    configured 404 or an auth challenge still reaches the fault policies; narrow that with an
+    ``executionCondition`` on the fault entry.
 
-    The cost of that default is real and is accepted: an unmigrated policy's genuine rejection
-    does not reach the fault flow either. The gateway logs the one shape most likely to be a
-    mistake — a ``fault`` described with ``is_fault`` left False — so it can be diagnosed
-    rather than guessed at.
-
-    One path cannot use the field: a response the gateway merely forwarded. A backend's own 500
-    arrives as no action at all, so it is classified by its status instead. The field answers
-    "does the policy that built this response call it a failure", which only has an answer
-    where there is an author.
+    Set ``is_fault`` for a failure the status does not reveal: a 200 carrying the failure in
+    its body, which only the policy knows about. A described ``fault`` does not imply it:
+    ``fault`` says what failed, not whether anything did.
     """
 
     status_code: int = 500

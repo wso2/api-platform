@@ -63,10 +63,10 @@ class PublicAPITests(unittest.TestCase):
         self.assertEqual(err.type, "guardrail")
 
     def test_error_source_values_match_the_go_sdk(self) -> None:
-        # Also read by execution conditions as error.Source, so these strings are
+        # Also read by execution conditions as fault.Source, so these strings are
         # configuration surface as well as wire surface: a value that differs between the two
         # SDKs means a deployment's condition matches Go policies and not Python ones.
-        # Declared in sdk/core/policy/v1alpha2/context.go.
+        # Declared in sdk/core/policy/v1alpha2/fault_codes.go.
         self.assertIs(apip_sdk_core.FaultSource, v1alpha2.FaultSource)
         self.assertIn("FaultSource", apip_sdk_core.__all__)
 
@@ -84,8 +84,8 @@ class PublicAPITests(unittest.TestCase):
         self.assertEqual(len(set(values)), len(values))
 
     def test_error_codes_match_the_go_sdk(self) -> None:
-        # Declared in sdk/core/policy/v1alpha2/error_codes.go, with the integer form in the
-        # gateway's internal/analytics. Spelled out literally on every side on purpose: these
+        # Declared in sdk/core/policy/v1alpha2/fault_codes.go. Spelled out literally on both
+        # sides on purpose: these
         # are numbers a customer's error handler matches on, and a code that differs between
         # the two SDKs reports the same failure under two identifiers depending on which
         # language the policy happens to be written in.
@@ -152,8 +152,8 @@ class PublicAPITests(unittest.TestCase):
                 < code.TARGET_FAILURE_RANGE_END,
                 name,
             )
-        # The exception, and it has to be: APIM classifies 303001 by an explicit case, not by
-        # range. Asserting it is OUTSIDE stops someone "fixing" it in and losing the
+        # The exception, and it has to be: 303001 has its own sub-category rather than a place
+        # in the range. Asserting it is OUTSIDE stops someone "fixing" it in and losing the
         # CONNECTION_SUSPENDED sub-category.
         self.assertFalse(
             code.TARGET_FAILURE_RANGE_START
