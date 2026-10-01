@@ -54,7 +54,7 @@ function renderPage() {
     <ApiScopeProvider orgId={ORG}>
       <Routes>
         <Route element={<ApiPortalPublicationsList />} path={routes.apiPortals()} />
-        {/* Stands in for the per-portal publish flow, so "Go To Publish" is observable. */}
+        {/* Stands in for the per-portal publish flow, so "Go to publish" is observable. */}
         <Route element={<div>publish flow</div>} path={routes.apiPortalPublish()} />
       </Routes>
     </ApiScopeProvider>,
@@ -100,31 +100,42 @@ describe('ApiPortalPublicationsList', () => {
 
     expect(await screen.findByText('Published')).toBeInTheDocument();
     // Published, so there's a live listing to link to.
-    expect(screen.getByText('View in Portal')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View in portal' })).toBeInTheDocument();
   });
 
-  it('shows Draft instead of Published when a draft is pending, even once live', async () => {
+  it('keeps a pending draft off the card, whatever the status', async () => {
     servePublications([
       aPublicationSummary({ status: 'PUBLISHED', draftUpdatedAt: '2026-02-01T00:00:00Z' }),
     ]);
 
     renderPage();
 
-    expect(await screen.findByText('Draft')).toBeInTheDocument();
-    expect(screen.queryByText('Published')).not.toBeInTheDocument();
+    expect(await screen.findByText('Published')).toBeInTheDocument();
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unpublished changes')).not.toBeInTheDocument();
   });
 
-  it('shows no status mark for an untouched portal', async () => {
+  it('shows Not published for an untouched portal', async () => {
     servePublications([aPublicationSummary({ status: 'NOT_PUBLISHED', draftUpdatedAt: null })]);
 
     renderPage();
 
-    await screen.findByText('API Portal 1');
-    expect(screen.queryByText('Published')).not.toBeInTheDocument();
-    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
-    expect(screen.queryByText('Deprecated')).not.toBeInTheDocument();
+    expect(await screen.findByText('Not published')).toBeInTheDocument();
     // Never published, so there's no listing on the portal to link to yet.
-    expect(screen.queryByText('View in Portal')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View in portal' })).not.toBeInTheDocument();
+    expect(screen.getByText('View in portal').closest('a')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('summarises how many portals the API is published to', async () => {
+    servePublications([
+      aPublicationSummary({ apiPortalId: 'one', status: 'PUBLISHED' }),
+      aPublicationSummary({ apiPortalId: 'two', status: 'DEPRECATED' }),
+      aPublicationSummary({ apiPortalId: 'three', status: 'NOT_PUBLISHED' }),
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('Published to 1 of 3 portals')).toBeInTheDocument();
   });
 
   it('shows the shared empty state when the organization has no portals', async () => {
@@ -144,7 +155,9 @@ describe('ApiPortalPublicationsList', () => {
     ]);
     const { user } = renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Go To Publish' }));
+    const link = await screen.findByRole('link', { name: 'Go to publish' });
+    expect(link).toHaveAttribute('href', expect.stringContaining('acme-portal'));
+    await user.click(link);
 
     expect(await screen.findByText('publish flow')).toBeInTheDocument();
   });
@@ -158,7 +171,7 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     await screen.findByText('API Portal 1');
-    const buttons = screen.getAllByRole('button', { name: 'Go To Publish' });
+    const buttons = screen.getAllByRole('link', { name: 'Go to publish' });
     expect(buttons.map((button) => button.getAttribute('aria-describedby'))).toHaveLength(2);
     expect(buttons[0]).toHaveAccessibleDescription('API Portal 1');
     expect(buttons[1]).toHaveAccessibleDescription('API Portal 2');
@@ -171,7 +184,7 @@ describe('ApiPortalPublicationsList', () => {
 
     expect(await screen.findByText('Deprecated')).toBeInTheDocument();
     // Deprecated listings are still live on the portal, so the link stays.
-    expect(screen.getByText('View in Portal')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View in portal' })).toHaveAttribute('href');
   });
 
   it('titles the page with the API handle until its display name is known', async () => {
