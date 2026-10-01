@@ -125,8 +125,9 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
-    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
-    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Shared-key S2S auth for platform-api publishing + self-registration calls.
+    // Portal compares sha256(raw) against `hash`; a match grants only the
+    // platform-api-system role's dp:*:manage scopes (see role-to-scope-mapping.yaml).
     // Empty disables shared-key auth entirely; OAuth / session paths keep working.
     internalAuth: {
         hash: '',

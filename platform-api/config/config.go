@@ -368,6 +368,21 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
+	// AutoSeedSubscribers makes CreateAPIPortal auto-register platform-api as
+	// a webhook subscriber on the new portal (POST /webhook-subscribers)
+	// instead of leaving the operator to run curl afterwards. OSS Create fails
+	// closed with row rollback on seed failure. The cloud managed-portal path
+	// does the same seed asynchronously via its provisioning poller. Default
+	// off to preserve the current OSS behavior where operators own the
+	// subscriber configuration.
+	AutoSeedSubscribers bool `koanf:"auto_seed_subscribers"`
+	// ReceiverURL is the full URL the portal POSTs webhook deliveries to -
+	// usually "<platform-api-public-base>/api/internal/v0.9/webhook/events".
+	// Only consulted when AutoSeedSubscribers is true. Deliberately explicit
+	// instead of derived from server.base_url: platform-api's inbound
+	// listener may sit behind a reverse proxy / gateway whose outside-world
+	// hostname is not knowable from the listener config.
+	ReceiverURL string `koanf:"receiver_url"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -1241,6 +1256,13 @@ func validateWebhookConfig(w *Webhook) error {
 	}
 	if w.SignatureHeader == "" {
 		w.SignatureHeader = "X-Api-Portal-Signature"
+	}
+	// AutoSeedSubscribers needs a reachable receiver URL for the portal to
+	// POST deliveries to; without it the seeded subscriber row would be a
+	// no-op. Fail-closed at boot rather than silently seeding an unusable
+	// row at every Create.
+	if w.AutoSeedSubscribers && w.ReceiverURL == "" {
+		return fmt.Errorf("webhook.auto_seed_subscribers=true requires webhook.receiver_url to be configured")
 	}
 	return nil
 }
