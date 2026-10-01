@@ -278,6 +278,7 @@ Status Code **200**
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |»»»» tools|[[MCPTool](schemas.md#schemamcptool)]|false|none|none|
 |»»»»» name|string|true|none|Unique identifier for the tool|
 |»»»»» title|string|false|none|Optional human-readable name of the tool for display purposes.|

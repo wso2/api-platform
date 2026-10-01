@@ -37,6 +37,7 @@ type CELEvaluator interface {
 	EvaluateRequestBodyCondition(expression string, ctx *policy.RequestContext) (bool, error)
 	EvaluateResponseHeaderCondition(expression string, ctx *policy.ResponseHeaderContext) (bool, error)
 	EvaluateResponseBodyCondition(expression string, ctx *policy.ResponseContext) (bool, error)
+	EvaluateFaultCondition(expression string, ctx *policy.FaultContext) (bool, error)
 	EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error)
 	EvaluateStreamingResponseCondition(expression string, ctx *policy.ResponseStreamContext) (bool, error)
 }
@@ -95,7 +96,96 @@ func createCELEnv() (*cel.Env, error) {
 		cel.Variable("response.ResponseStatus", cel.IntType),
 		cel.Variable("response.RequestID", cel.StringType),
 		cel.Variable("response.Metadata", cel.MapType(cel.StringType, cel.DynType)),
+		// FaultContext variables — the failure itself, for a fault policy's
+		// executionCondition. See faultEvalVars for why these are declared for every phase
+		// rather than only the fault one.
+		cel.Variable("fault", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("fault.Source", cel.StringType),
+		cel.Variable("fault.Code", cel.StringType),
+		cel.Variable("fault.Type", cel.StringType),
+		cel.Variable("fault.Direction", cel.StringType),
+		cel.Variable("fault.Message", cel.StringType),
+		cel.Variable("fault.Policy", cel.StringType),
+		cel.Variable("fault.PolicyVersion", cel.StringType),
+		cel.Variable("fault.PolicyPhase", cel.StringType),
+		cel.Variable("fault.RouteKey", cel.StringType),
+		cel.Variable("fault.Status", cel.IntType),
+		cel.Variable("fault.OriginalStatus", cel.IntType),
+		cel.Variable("fault.ResponseCommitted", cel.BoolType),
+		cel.Variable("fault.Guardrail", cel.MapType(cel.StringType, cel.DynType)),
 	)
+}
+
+// faultEvalVars flattens the failure into the activation keys the error.* variables read.
+//
+// Every activation gets these, not just the fault one: a variable declared in the environment
+// but absent from the activation is an EVALUATION error rather than a false, so a condition
+// mentioning fault.Type on a response policy would fail at request time. Zero values make it
+// read false, which is what it means.
+//
+// Fault.Description is deliberately absent: it carries the content a guardrail blocked. A
+// condition that needs to know WHICH guardrail acted reads fault.Guardrail.InterveningGuardrail.
+func faultEvalVars(ctx *policy.FaultContext) map[string]interface{} {
+	var (
+		src, code, faultType, direction, message string
+		policyName, policyVersion, policyPhase   string
+		routeKey                                 string
+		status, originalStatus                   int
+		committed                                bool
+		guardrail                                map[string]interface{}
+	)
+	if ctx != nil {
+		src, routeKey = ctx.Source, ctx.RouteKey
+		policyName, policyVersion, policyPhase = ctx.Policy, ctx.PolicyVersion, ctx.PolicyPhase
+		status, originalStatus, committed = ctx.ResponseStatus, ctx.OriginalStatus, ctx.ResponseCommitted
+		if e := ctx.Fault; e != nil {
+			code, faultType, direction, message = e.Code, e.Type, e.Direction, e.Message
+			if g := e.Guardrail; g != nil {
+				guardrail = map[string]interface{}{
+					"InterveningGuardrail": g.InterveningGuardrail,
+					"Action":               g.Action,
+					"ActionReason":         g.ActionReason,
+				}
+			}
+		}
+	}
+	// Always a map, never nil: a nil would make fault.Guardrail.InterveningGuardrail an
+	// evaluation error on every non-guardrail failure, and the natural way to write that
+	// condition is to test the field directly.
+	if guardrail == nil {
+		guardrail = map[string]interface{}{
+			"InterveningGuardrail": "", "Action": "", "ActionReason": "",
+		}
+	}
+
+	flat := map[string]interface{}{
+		"Source":            src,
+		"Code":              code,
+		"Type":              faultType,
+		"Direction":         direction,
+		"Message":           message,
+		"Policy":            policyName,
+		"PolicyVersion":     policyVersion,
+		"PolicyPhase":       policyPhase,
+		"RouteKey":          routeKey,
+		"Status":            status,
+		"OriginalStatus":    originalStatus,
+		"ResponseCommitted": committed,
+		"Guardrail":         guardrail,
+	}
+	vars := map[string]interface{}{"fault": flat}
+	for k, v := range flat {
+		vars["fault."+k] = v
+	}
+	return vars
+}
+
+// withFaultVars merges the fault.* activation keys into an existing activation.
+func withFaultVars(activation map[string]interface{}, ctx *policy.FaultContext) map[string]interface{} {
+	for k, v := range faultEvalVars(ctx) {
+		activation[k] = v
+	}
+	return activation
 }
 
 // EvaluateRequestHeaderCondition evaluates a CEL expression against a RequestHeaderContext
@@ -134,6 +224,23 @@ func (e *celEvaluator) EvaluateResponseBodyCondition(expression string, ctx *pol
 	return e.eval(program, buildResponseBodyEvalCtx(ctx, "response_body"))
 }
 
+// EvaluateFaultCondition evaluates a CEL expression against an FaultContext, for a fault
+// policy's executionCondition.
+//
+// The request/response half of the activation is identical to the response-body one, phase
+// included, so a condition means the same thing on a response policy or a fault policy.
+//
+// On top of that it supplies the fault.* variables, which let a condition narrow on the
+// failure itself — `fault.Source == "gateway"` to skip the backend's own errors. Every other
+// phase supplies the same variables with zero values; see faultEvalVars.
+func (e *celEvaluator) EvaluateFaultCondition(expression string, ctx *policy.FaultContext) (bool, error) {
+	program, err := e.getOrCompileProgram(expression)
+	if err != nil {
+		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
+	}
+	return e.eval(program, buildErrorEvalCtx(ctx))
+}
+
 // EvaluateStreamingRequestCondition evaluates a CEL expression against a RequestStreamContext.
 // The phase is set to "request_body" so conditions are consistent with buffered request body processing.
 func (e *celEvaluator) EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error) {
@@ -170,7 +277,7 @@ func bodyToCEL(body *policy.Body) interface{} {
 // buildRequestHeaderEvalCtx builds a CEL evaluation context from a RequestHeaderContext
 func buildRequestHeaderEvalCtx(ctx *policy.RequestHeaderContext, phase string) map[string]interface{} {
 	headers := ctx.Headers.GetAll()
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": phase,
 		"request": map[string]interface{}{
 			"Headers":   headers,
@@ -206,14 +313,14 @@ func buildRequestHeaderEvalCtx(ctx *policy.RequestHeaderContext, phase string) m
 		"response.ResponseStatus":  0,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-	}
+	}, nil)
 }
 
 // buildRequestBodyEvalCtx builds a CEL evaluation context from a RequestContext
 func buildRequestBodyEvalCtx(ctx *policy.RequestContext, phase string) map[string]interface{} {
 	headers := ctx.Headers.GetAll()
 	body := bodyToCEL(ctx.Body)
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": phase,
 		"request": map[string]interface{}{
 			"Headers":   headers,
@@ -249,7 +356,7 @@ func buildRequestBodyEvalCtx(ctx *policy.RequestContext, phase string) map[strin
 		"response.ResponseStatus":  0,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-	}
+	}, nil)
 }
 
 // buildResponseHeaderEvalCtx builds a CEL evaluation context from a ResponseHeaderContext
@@ -257,7 +364,7 @@ func buildResponseHeaderEvalCtx(ctx *policy.ResponseHeaderContext, phase string)
 	requestHeaders := ctx.RequestHeaders.GetAll()
 	requestBody := bodyToCEL(ctx.RequestBody)
 	responseHeaders := ctx.ResponseHeaders.GetAll()
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": phase,
 		"request": map[string]interface{}{
 			"Headers":   requestHeaders,
@@ -293,7 +400,7 @@ func buildResponseHeaderEvalCtx(ctx *policy.ResponseHeaderContext, phase string)
 		"response.ResponseStatus":  ctx.ResponseStatus,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-	}
+	}, nil)
 }
 
 // buildResponseBodyEvalCtx builds a CEL evaluation context from a ResponseContext
@@ -302,7 +409,7 @@ func buildResponseBodyEvalCtx(ctx *policy.ResponseContext, phase string) map[str
 	requestBody := bodyToCEL(ctx.RequestBody)
 	responseHeaders := ctx.ResponseHeaders.GetAll()
 	responseBody := bodyToCEL(ctx.ResponseBody)
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": phase,
 		"request": map[string]interface{}{
 			"Headers":   requestHeaders,
@@ -338,14 +445,83 @@ func buildResponseBodyEvalCtx(ctx *policy.ResponseContext, phase string) map[str
 		"response.ResponseStatus":  ctx.ResponseStatus,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
+	}, nil)
+}
+
+// buildErrorEvalCtx builds a CEL evaluation context from an FaultContext.
+//
+// Emits every key buildResponseBodyEvalCtx does, from the same-named fields, so a condition
+// written for a response policy means the same thing here. Kept as its own function rather
+// than a conversion into ResponseContext: converting would allocate a throwaway view on every
+// conditional fault entry, which is the cost this whole change removes.
+//
+// It additionally emits the error.* keys with the failure's real values — this is the one
+// activation where they are not zero.
+func buildErrorEvalCtx(ctx *policy.FaultContext) map[string]interface{} {
+	requestHeaders := ctx.RequestHeaders.GetAll()
+	requestBody := bodyToCEL(ctx.RequestBody)
+	responseHeaders := ctx.ResponseHeaders.GetAll()
+	responseBody := bodyToCEL(ctx.ResponseBody)
+
+	// Metadata and RequestID live on the EMBEDDED *SharedContext, so reading them through
+	// ctx dereferences a pointer the type system lets be nil — and the kernel treats it as
+	// nil-able too (executeFaultPolicies guards ec.sharedCtx before reading APIName).
+	//
+	// Guarded rather than assumed non-nil because of where this runs: a panic here is a
+	// panic inside the fault flow, on a request that is ALREADY failing. The one thing the
+	// fault flow must never do is turn a served error into a dropped one, and a nil
+	// dereference in a condition evaluation would do exactly that — for every request on
+	// the route, since the condition is attached to the entry rather than to the failure.
+	var metadata map[string]interface{}
+	var requestID string
+	if ctx.SharedContext != nil {
+		metadata = ctx.Metadata
+		requestID = ctx.RequestID
 	}
+	return withFaultVars(map[string]interface{}{
+		"processing.phase": "response_body",
+		"request": map[string]interface{}{
+			"Headers":   requestHeaders,
+			"Body":      requestBody,
+			"Path":      ctx.RequestPath,
+			"Method":    ctx.RequestMethod,
+			"RequestID": requestID,
+			"Metadata":  metadata,
+		},
+		"request.Headers":   requestHeaders,
+		"request.Body":      requestBody,
+		"request.Path":      ctx.RequestPath,
+		"request.Method":    ctx.RequestMethod,
+		"request.RequestID": requestID,
+		"request.Metadata":  metadata,
+		"response": map[string]interface{}{
+			"RequestHeaders":  requestHeaders,
+			"RequestBody":     requestBody,
+			"RequestPath":     ctx.RequestPath,
+			"RequestMethod":   ctx.RequestMethod,
+			"ResponseHeaders": responseHeaders,
+			"ResponseBody":    responseBody,
+			"ResponseStatus":  ctx.ResponseStatus,
+			"RequestID":       requestID,
+			"Metadata":        metadata,
+		},
+		"response.RequestHeaders":  requestHeaders,
+		"response.RequestBody":     requestBody,
+		"response.RequestPath":     ctx.RequestPath,
+		"response.RequestMethod":   ctx.RequestMethod,
+		"response.ResponseHeaders": responseHeaders,
+		"response.ResponseBody":    responseBody,
+		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestID":       requestID,
+		"response.Metadata":        metadata,
+	}, ctx)
 }
 
 // buildStreamingRequestEvalCtx builds a CEL evaluation context from a RequestStreamContext.
 // Uses phase "request_body" — consistent with buffered request body processing.
 func buildStreamingRequestEvalCtx(ctx *policy.RequestStreamContext) map[string]interface{} {
 	headers := ctx.Headers.GetAll()
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": "request_body",
 		"request": map[string]interface{}{
 			"Headers":   headers,
@@ -381,7 +557,7 @@ func buildStreamingRequestEvalCtx(ctx *policy.RequestStreamContext) map[string]i
 		"response.ResponseStatus":  0,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-	}
+	}, nil)
 }
 
 // buildStreamingResponseEvalCtx builds a CEL evaluation context from a ResponseStreamContext.
@@ -390,7 +566,7 @@ func buildStreamingResponseEvalCtx(ctx *policy.ResponseStreamContext) map[string
 	requestHeaders := ctx.RequestHeaders.GetAll()
 	requestBody := bodyToCEL(ctx.RequestBody)
 	responseHeaders := ctx.ResponseHeaders.GetAll()
-	return map[string]interface{}{
+	return withFaultVars(map[string]interface{}{
 		"processing.phase": "response_body",
 		"request": map[string]interface{}{
 			"Headers":   requestHeaders,
@@ -426,7 +602,7 @@ func buildStreamingResponseEvalCtx(ctx *policy.ResponseStreamContext) map[string
 		"response.ResponseStatus":  ctx.ResponseStatus,
 		"response.RequestID":       ctx.RequestID,
 		"response.Metadata":        ctx.Metadata,
-	}
+	}, nil)
 }
 
 // eval evaluates a compiled program against an evaluation context

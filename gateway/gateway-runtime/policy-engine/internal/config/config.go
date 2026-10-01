@@ -509,6 +509,7 @@ type PolicyEngine struct {
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
+	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
 	// HTTPClient configures the single shared outbound *http.Client built once at
 	// startup (see cmd/policy-engine/main.go) and injected into every policy
 	// instance via PolicyMetadata.SharedHTTPClient — see HTTPClientConfig's doc
@@ -526,6 +527,35 @@ type PolicyEngine struct {
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// FaultPoliciesConfig tunes which failures reach an API's fault policies
+// ([policy_engine.fault_policies]).
+//
+// A policy's OWN rejection always reaches them and is not configurable here — that is the
+// contract a policy opts into by declaring the fault, and nothing reached the fault flow
+// before the feature existed, so there is no prior behaviour to preserve.
+type FaultPoliciesConfig struct {
+	// HandleUpstreamFaults routes a failure the UPSTREAM or the ROUTER produced through the
+	// fault flow instead of the ordinary response policies.
+	//
+	// Off by default, and that default is the whole point. Every previous generation of
+	// this gateway ran an upstream error through the response policies, so switching them
+	// to the fault flow silently changes where an operator's existing mediation runs — a
+	// backend 503 that used to reach a response transformer or a response guardrail would
+	// stop reaching it. That is a behavioural change on a GA product, so it is opt-in.
+	//
+	// Disabled: an upstream or router error is an ordinary response. The response
+	// policies run over it exactly as before, including the analytics collector, and the
+	// fault policies do not run.
+	//
+	// Enabled: the fault policies handle it INSTEAD of the response policies, none of which
+	// run over that response. The collector runs at the end of the fault chain, where the
+	// fault's code and class are resolved. A streamed error is buffered so the fault
+	// policies see the whole body.
+	//
+	// A failure is recognised by its status alone (>= 400).
+	HandleUpstreamFaults bool `koanf:"handle_upstream_faults"`
 }
 
 // BodyConfig holds body-processing limits for one direction

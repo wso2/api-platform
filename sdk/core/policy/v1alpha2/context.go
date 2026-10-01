@@ -341,3 +341,162 @@ type ResponseStreamContext struct {
 	// mutation.
 	Upstream *UpstreamResponseContext
 }
+
+// FaultContext is what a fault policy receives through OnFault.
+//
+// Its response fields are spelled out rather than embedding ResponseContext, because a fault
+// entry reads a response that has already failed and cannot forward it. The names mirror the
+// response phase, so a handler moving between the two reads the same values by the same names.
+//
+// The fields below the response set describe WHY the fault flow is running.
+//
+// Source says who produced the response; it never says what went wrong:
+//
+//	Fault.Type    the class of failure — a guardrail, an auth class, "upstream", "routing"
+//	Fault.Code    the stable identifier for exactly what went wrong
+//	Policy        empty means no policy caused this
+//	Source        which actor produced the response
+//
+// A backend error has a Source and frequently no Fault at all, since the gateway has no
+// account of what another service's 500 means. Expect Fault to be nil precisely when Source
+// says "backend".
+//
+// There is deliberately no "trigger" field: which internal phase noticed a failure is an
+// engine concern, not something a handler should branch on.
+type FaultContext struct {
+	*SharedContext
+
+	// Original request data (read-only, from request phase)
+	RequestHeaders *Headers
+	RequestBody    *Body
+	RequestPath    string
+	RequestMethod  string
+
+	// RequestAuthority, RequestScheme and RequestVhost complete the request identity.
+	//
+	// They exist on the two REQUEST-phase contexts and on neither response-phase one, so
+	// before they were restated here a fault handler could not see them at all — not even
+	// for a failure raised in the request header phase, where the phase context sitting
+	// three frames up the stack had all three. The gateway keeps every phase context for
+	// the life of the request, so it can supply them whatever phase failed.
+	//
+	// Empty when the request never reached the phase that knows them, which in practice
+	// means an engine failure before the header phase ran.
+	RequestAuthority string
+	RequestScheme    string
+	RequestVhost     string
+
+	// Current response headers (read-only for policies)
+	// Policies use Get(), Has(), Iterate() methods for read-only access
+	// Kernel updates via UnsafeInternalValues()
+	ResponseHeaders *Headers
+
+	// Current response body (mutable)
+	// nil if no body or body not required
+	ResponseBody *Body
+
+	// Current response status code
+	ResponseStatus int
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	//
+	// Populated for a REQUEST-phase failure too, where the route resolved a target the
+	// request never reached. UpstreamResponseContext is a superset of the request-phase
+	// UpstreamRequestContext — same Name, URL and BasePath, plus Response — so the target
+	// is reported through the same field on every path, and Response stays nil to say
+	// truthfully that no upstream response ever existed. Reading Name/URL/BasePath is what
+	// tells a handler which backend a rejected request was bound for.
+	Upstream *UpstreamResponseContext
+
+	// OriginalStatus is the status before a policy changed it, and 0 when nothing did.
+	// It is not otherwise recoverable — once a guardrail turns a 200 into a 422, the
+	// upstream's own status is gone from every downstream view.
+	OriginalStatus int
+	// Policy names the policy that caused the failure, and is EMPTY when no policy did —
+	// a router failure, for instance. Empty means "not caused by a policy", never
+	// "unknown": naming a policy for an infrastructure failure would be actively wrong.
+	Policy string
+	// PolicyVersion is the version of Policy, empty when Policy is.
+	PolicyVersion string
+	// PolicyPhase names the phase the failing policy was executing in — one of the
+	// PolicyPhase constants below. It completes the attribution the two fields above
+	// start: which policy, which version, doing what.
+	//
+	// EMPTY exactly when Policy is empty, and for the same reason. A router failure or an
+	// engine error names no policy, so there is no policy phase to name either; filling
+	// one in from whatever phase the engine happened to be in would answer a different
+	// question — "where did the gateway notice this?" — which is deliberately not on offer
+	// (see "Where provenance lives" below).
+	//
+	// Also empty for a failure raised mid-STREAM, which attributes no policy: once chunks
+	// are flowing the engine no longer knows which entry produced the interruption.
+	PolicyPhase string
+	// ResponseCommitted reports that the status, headers and at least one body chunk have
+	// ALREADY reached the client, so nothing this handler returns can change what they see.
+	//
+	// True only for a failure raised mid-STREAM. It exists because the alternative is a silent
+	// trap: a handler that returns modifications or an ImmediateResponse looks correct, compiles,
+	// and does nothing — Envoy discards both once a streamed response is in flight. Reading this
+	// lets a handler do the part that still works (notify, record, publish) and skip the part
+	// that cannot.
+	//
+	// The gateway logs a warning if a handler tries to change the response while this is true,
+	// rather than discarding the attempt quietly.
+	ResponseCommitted bool
+
+	// RouteKey is the matched route, for correlating a fault with deployed configuration.
+	RouteKey string
+	// Source names the actor that produced this error response — one of the FaultSource
+	// constants in fault_codes.go. Never empty on the fault path.
+	//
+	// It is the distinction no status can express: a backend answering 503 and the router
+	// failing to reach that backend are both 503, and they mean opposite things. One says the
+	// API is up and refusing, the other that the gateway never got there.
+	//
+	// Also the field an execution condition reads, as error.Source, which is how a chain that
+	// should only see the gateway's own failures says so.
+	Source string
+	// Fault is what the policy that produced the failure said about it — its code, class,
+	// direction, summary and detail.
+	//
+	// Also populated for a ROUTER failure, where there was no policy to say anything: the
+	// gateway describes those itself from the proxy's own account (unreachable upstream,
+	// timeout, no healthy host), so a handler can report a code and class rather than only a
+	// status. Such an error has an empty Policy, per the rule below.
+	//
+	// nil when nothing described the failure: a policy that has not adopted the type yet, or
+	// a BACKEND error, where the gateway deliberately says nothing. Another service's 500 is
+	// not the gateway's to classify, and a synthesized code would claim knowledge it does not
+	// have — Source reports whose failure it is, and the status and body are what there is.
+	//
+	// This is the producing policy's own account of the failure, and for a router failure
+	// the gateway's. A formatter building the client's body reads it.
+	//
+	// Its Policy field is gateway-populated and therefore agrees with the Policy field
+	// above; it is repeated inside the error so a formatter handed only an FaultDetails
+	// still knows what failed.
+	Fault *FaultDetails
+}
+
+// PolicyPhase values for FaultContext.PolicyPhase: the phase a failing policy was executing
+// in when it produced the failure.
+//
+// These are the existing phase names, not a new vocabulary — the same strings the Python
+// SDK's ExecutionPhase carries and the ext_proc Phase enum mirrors, so one failure is
+// described the same way whichever side reads it.
+//
+// Only the phases a policy can be ATTRIBUTED in are listed. A policy rejects from one of
+// these four; the remaining phases in that wider enum (needs-more-data, cancel, fault) are
+// engine states no policy produces a rejection from, so they can never appear here.
+const (
+	PolicyPhaseRequestHeaders  = "request_headers"
+	PolicyPhaseRequestBody     = "request_body"
+	PolicyPhaseResponseHeaders = "response_headers"
+	PolicyPhaseResponseBody    = "response_body"
+)
