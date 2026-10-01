@@ -19,6 +19,10 @@ enabled = true
 [policy_engine.metrics]
 enabled = true
 
+# The outbound scenarios assert what a backend sees from an API that names no identity: nothing.
+[router.upstream.tls]
+present_default_identity = false
+
 # The controller propagates a change to the runtime when it next polls the event hub.
 [controller.event_hub]
 poll_interval = "200ms"

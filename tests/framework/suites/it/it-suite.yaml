@@ -368,13 +368,14 @@ blocks:
         features:
           - features/mtls_outbound.feature
 
-  # The default client certificate to backends. The switch is gateway configuration and the
-  # default identity is gateway-wide state, so each block runs its scenarios one at a time.
+  # The default client certificate to backends. The switch is gateway configuration (on by
+  # default; the off block sets it false) and the default identity is gateway-wide state, so
+  # each block runs its scenarios one at a time.
   - name: gateway-mtls-default-identity-off
     parallel: 1
     components:
       - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity-off.toml
         db: sqlite
       - name: testbench
       - name: tls-backend

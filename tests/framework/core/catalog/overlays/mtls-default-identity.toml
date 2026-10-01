@@ -1,7 +1,6 @@
-# Present a default client certificate to HTTPS backends whose upstream definition names no
-# identity: the gateway identity with role default, else the HTTPS listener certificate.
-[router.upstream.tls]
-present_default_identity = true
+# The gateway presents a default client certificate to HTTPS backends whose upstream definition
+# names no identity, by default: the gateway identity with role default, else the HTTPS
+# listener certificate. This block leaves present_default_identity unset to test that default.
 
 # JSON access logs carry the TLS fields of each request.
 [router.access_logs]
