@@ -169,6 +169,19 @@ type CorrelationStoreConfig struct {
 	// shards proceed without contending on each other. Rounded up to the next
 	// power of two if it is not one already.
 	Shards int `koanf:"shards"`
+	// MaxPayloadBytes is the largest captured request/response body carried
+	// in-process through the store; a larger body stays in Envoy dynamic metadata
+	// (the old path), so it is never lost. Bodies in metadata are re-serialized on
+	// every later ext_proc message and again in the access-log entry, so keeping
+	// them in-process matters most for exactly the large bodies body logging is
+	// configured for. 0 disables body storage.
+	MaxPayloadBytes int `koanf:"max_payload_bytes"`
+	// MaxBodyBytes bounds the body bytes held across all shards combined. Bodies are
+	// removed as soon as their access-log entry is processed; this budget only
+	// matters for entries that are never read back (e.g. paths filtered by
+	// collector.ignore_path_prefixes), where the oldest are evicted first. 0
+	// disables body storage.
+	MaxBodyBytes int64 `koanf:"max_body_bytes"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -1205,9 +1218,11 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 // tuning. See CorrelationStoreConfig for the reasoning behind each default.
 func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 	return CorrelationStoreConfig{
-		Capacity: 20000,
-		TTL:      4 * time.Second,
-		Shards:   32,
+		Capacity:        20000,
+		TTL:             4 * time.Second,
+		Shards:          32,
+		MaxPayloadBytes: 256 << 10,
+		MaxBodyBytes:    16 << 20,
 	}
 }
 
@@ -1901,6 +1916,12 @@ func (c *Config) validateCorrelationStoreConfig() error {
 	}
 	if corr.Shards <= 0 {
 		return fmt.Errorf("analytics.correlation.shards must be positive, got %d", corr.Shards)
+	}
+	if corr.MaxPayloadBytes < 0 {
+		return fmt.Errorf("analytics.correlation.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)
+	}
+	if corr.MaxBodyBytes < 0 {
+		return fmt.Errorf("analytics.correlation.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
 	}
 	return nil
 }
