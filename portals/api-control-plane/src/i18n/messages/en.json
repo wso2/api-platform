@@ -3715,6 +3715,9 @@
   "project.card.delete": {
     "defaultMessage": "Delete"
   },
+  "project.card.deleteNamed": {
+    "defaultMessage": "Delete {name}"
+  },
   "project.card.deployedCount": {
     "defaultMessage": "{count} deployed"
   },
