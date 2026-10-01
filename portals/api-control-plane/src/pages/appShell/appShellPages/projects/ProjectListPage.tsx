@@ -32,7 +32,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
 import { AppPage } from '@/components/AppPage';
-import { useDeleteProject, useProjects, type ProjectListFilters } from '@/api/resources/projects';
+import { useDeleteProject, useProjects } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
