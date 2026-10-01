@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -1013,6 +1014,25 @@ func TestRestAPITransformer_NoFaultPoliciesLeavesChainEmpty(t *testing.T) {
 
 	for _, chain := range rdc.PolicyChains {
 		assert.Empty(t, chain.FaultPolicies)
+	}
+}
+
+// With analytics enabled, the collector is in every route's fault chain even when the API
+// declares no fault policies of its own — so a failure on any API is recorded with its fault
+// detail. It is the only entry, and it does not leak into the normal chain's tail.
+func TestRestAPITransformer_NoFaultPoliciesStillGetsTheCollectorWhenAnalyticsIsOn(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"}}
+	sysCfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	transformer := NewRestAPITransformer(testRouterCfg(), sysCfg, defs)
+
+	cfg := makeRestAPIStoredConfig([]api.Policy{{Name: "header-mutate", Version: "v1"}}, nil)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, rdc.PolicyChains)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		assert.Equal(t, []string{constants.ANALYTICS_SYSTEM_POLICY_NAME}, faultNames(chain),
+			"route %s must record its failures even with no fault policies declared", routeKey)
 	}
 }
 
