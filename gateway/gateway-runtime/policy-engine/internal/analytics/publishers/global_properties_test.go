@@ -301,3 +301,74 @@ func TestGlobalPropertyEvaluator_NoPropertiesReturnsNilNotEmptyMap(t *testing.T)
 	e := newGlobalPropertyEvaluator(map[string]string{}, nil)
 	assert.Nil(t, e.resolve(createBaseEvent()))
 }
+
+// Task 2 (CEL variable binding): a config that references no request.header/response.header
+// expression must never pay for header parsing/lowercasing/masking at all -- not just "not use
+// the result". referencedVars is what buildGlobalPropertyEvalCtx consults to decide this, so
+// asserting it directly (and that the eval context omits the header keys entirely) locks in the
+// optimization rather than merely its externally-observable output.
+func TestGlobalPropertyEvaluator_NoHeaderReference_HeadersNeverParsed(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"apiName": "$ctx:api.name",
+		"status":  "$ctx:response.status",
+	}, nil)
+
+	assert.False(t, e.referencedVars["request.header"], "request.header must not be marked referenced")
+	assert.False(t, e.referencedVars["response.header"], "response.header must not be marked referenced")
+
+	event := createBaseEvent()
+	// Present in the event but must be ignored entirely since nothing references it.
+	event.Properties["requestHeaders"] = `{"x-tenant-id":"acme"}`
+	event.Properties["responseHeaders"] = `{"x-trace-id":"trace-abc"}`
+
+	resolved := e.resolve(event)
+	assert.Equal(t, "test-api", resolved["apiName"])
+	assert.Equal(t, float64(200), resolved["status"])
+
+	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, nil)
+	_, hasReqHeader := ctx["request.header"]
+	_, hasRespHeader := ctx["response.header"]
+	assert.False(t, hasReqHeader, "request.header key must be absent from the eval context, not just unused")
+	assert.False(t, hasRespHeader, "response.header key must be absent from the eval context, not just unused")
+}
+
+// The converse of the test above: when an expression DOES reference request.header, headers
+// are parsed, lower-cased and masked exactly as before -- referencedVars must include it.
+func TestGlobalPropertyEvaluator_HeaderReference_MarksReferencedAndParses(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"tenant": "$ctx:request.header['x-tenant-id']",
+	}, map[string]bool{"authorization": true})
+
+	assert.True(t, e.referencedVars["request.header"])
+	assert.False(t, e.referencedVars["response.header"], "response.header must stay unreferenced when only request.header is used")
+
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"X-Tenant-Id":"acme","Authorization":"Bearer secret"}`
+
+	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, map[string]bool{"authorization": true})
+	headers, ok := ctx["request.header"].(map[string]string)
+	if assert.True(t, ok, "request.header must be a map[string]string in the eval context") {
+		assert.Equal(t, "acme", headers["x-tenant-id"], "keys must be lower-cased")
+		assert.Equal(t, maskedHeaderValue, headers["authorization"], "masked_headers must still be redacted")
+	}
+}
+
+// A variable referenced by an expression whose backing event field is nil (never populated by
+// this event) must still resolve to its declared zero value rather than being omitted or
+// panicking on a nil pointer dereference.
+func TestGlobalPropertyEvaluator_ReferencedVariableWithNilEventField_ResolvesToZeroValue(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"targetStatus": "$ctx:target.statusCode",
+		"targetDest":   "$ctx:target.destination",
+		"appId":        "$ctx:application.id",
+	}, nil)
+	event := createBaseEvent()
+	event.Target = nil
+	event.Application = nil
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, float64(0), resolved["targetStatus"])
+	assert.Equal(t, "", resolved["targetDest"])
+	assert.Equal(t, "", resolved["appId"])
+}

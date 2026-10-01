@@ -39,6 +39,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -250,8 +251,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The ext_proc↔ALS correlation store (see internal/analytics/correlation) is
+	// only ever consulted while the collector is active -- when it's disabled,
+	// analytics.NewAnalytics never gets a store to read from either (see below),
+	// so building one here would just be a store nothing writes to and nothing
+	// reads from.
+	var corrStore *correlation.Store
+	if cfg.IsCollectorEnabled() {
+		corrStore = correlation.NewStoreFromConfig(cfg.Analytics.Correlation)
+	}
+
 	// Create and start ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, corrStore)
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener
@@ -335,7 +346,7 @@ func main() {
 	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
-		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg)
+		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg, corrStore)
 	}
 
 	// Setup graceful shutdown

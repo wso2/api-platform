@@ -42,6 +42,7 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -73,6 +74,14 @@ type ExternalProcessorServer struct {
 	// never decompressed without a ceiling.
 	maxRequestDecompressedBytes  int64
 	maxResponseDecompressedBytes int64
+
+	// correlationStore carries captured request/response headers from this
+	// stream's teardown to the ALS handler, keyed by x-request-id, instead of
+	// round-tripping them through Envoy dynamic metadata (see
+	// writeCorrelationEntry and internal/analytics/correlation's package doc).
+	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
+	// will ever read the store in that case, so nothing writes to it either.
+	correlationStore *correlation.Store
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer.
@@ -80,7 +89,9 @@ type ExternalProcessorServer struct {
 // It takes no resolver registry: resolvers are prepared per route at xDS ingest, so
 // nothing on the request path looks one up by name. A route that could not be prepared
 // never reaches the kernel.
-func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64) *ExternalProcessorServer {
+//
+// corrStore may be nil (collector disabled): writeCorrelationEntry is a no-op in that case.
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64, corrStore *correlation.Store) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
 	if serviceName == "" {
@@ -108,6 +119,7 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 		tracingEnabled:               tracingConfig.Enabled,
 		maxRequestDecompressedBytes:  maxRequestDecompressedBytes,
 		maxResponseDecompressedBytes: maxResponseDecompressedBytes,
+		correlationStore:             corrStore,
 	}
 }
 
@@ -198,6 +210,16 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// stamped when no phase ever resolved a status (execCtx nil, or the stream
 	// ended before the first message so span is nil); paths that terminate
 	// without an execCtx stamp parentSpan inline instead.
+	// Registered first (and so, by LIFO defer order, run LAST -- after the span
+	// has ended and the terminal outcome has been recorded) since it has nothing
+	// to do with tracing: it hands captured headers to the correlation store so
+	// the ALS handler can pick them up by request id instead of decoding them
+	// back out of Envoy's access-log echo. See writeCorrelationEntry.
+	defer func() {
+		if execCtx != nil {
+			s.writeCorrelationEntry(execCtx)
+		}
+	}()
 	defer func() {
 		if span != nil {
 			span.End()
@@ -270,6 +292,48 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
 	}
+}
+
+// writeCorrelationEntry hands execCtx's captured headers to the correlation store
+// at ext_proc stream teardown, so the ALS handler can look them up by request id
+// instead of decoding them back out of Envoy's access-log echo (see
+// internal/analytics/correlation's package doc for the full reasoning).
+//
+// Called from a defer registered before every other per-stream teardown defer in
+// Process, so it runs on EVERY terminal path out of that function: normal EOF,
+// a receive/send error, and a policy denial (which still leaves execCtx and its
+// accumulated analyticsMetadata intact -- TranslateRequestHeaderActions and its
+// siblings merge a short-circuiting policy's own AnalyticsMetadata into
+// execCtx.analyticsMetadata exactly like a pass-through policy's, see
+// translator.go). A stream that failed before the first message ever arrived
+// (execCtx still nil) has nothing to write, which the defer's own nil check
+// already skips.
+func (s *ExternalProcessorServer) writeCorrelationEntry(execCtx *PolicyExecutionContext) {
+	if s.correlationStore == nil {
+		// Collector disabled: nothing will ever read the store, so recording a
+		// metric here would just be noise on every single request.
+		return
+	}
+
+	if !execCtx.requestIDFromHeader {
+		// No x-request-id on the downstream request: execCtx.requestID is a
+		// locally generated uuid the ALS side can never look up (it keys on
+		// Envoy's Request.RequestId, which mirrors the same header -- see
+		// prepareAnalyticEvent). Writing it would only waste a store slot.
+		metrics.CorrelationStoreWritesTotal.WithLabelValues("skipped_no_request_id").Inc()
+		return
+	}
+
+	payload := snapshotHeaderPayload(execCtx.analyticsMetadata)
+	if payload.IsEmpty() {
+		// Header capture wasn't enabled (or no policy contributed anything) for
+		// this request -- nothing worth correlating.
+		metrics.CorrelationStoreWritesTotal.WithLabelValues("skipped_empty").Inc()
+		return
+	}
+
+	s.correlationStore.Put(execCtx.requestID, payload)
+	metrics.CorrelationStoreWritesTotal.WithLabelValues("stored").Inc()
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler

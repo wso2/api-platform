@@ -196,7 +196,16 @@ const (
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
-type AnalyticsPolicy struct{}
+// AnalyticsPolicy's body-processing modes are computed once at construction (see
+// computeBodyModes) rather than being a fixed constant, so a bodyless request only pays for
+// request/response body buffering when something actually needs the body -- see Mode().
+type AnalyticsPolicy struct {
+	// requestBodyMode/responseBodyMode are returned verbatim by Mode(). Set once in GetPolicy
+	// and never mutated afterward, so concurrent requests sharing this instance need no
+	// synchronization to read them.
+	requestBodyMode  policy.BodyProcessingMode
+	responseBodyMode policy.BodyProcessingMode
+}
 
 type McpRequestAnalyticsProperties struct {
 	JsonRpcMethod string `json:"jsonRpcMethod,omitempty"`
@@ -341,13 +350,21 @@ type LLMProviderAnalyticsInfo struct {
 	ResponseModel       *string // Model name from response
 }
 
-var ins = &AnalyticsPolicy{}
-
+// GetPolicy builds a fresh AnalyticsPolicy instance per policy-chain entry, capturing the
+// merged params (request_body/response_body/api_kind -- see computeBodyModes) into its body
+// modes. This intentionally does NOT return a shared package-level singleton: Mode() must be
+// config-aware per route/instance, and the registry's GetInstance contract explicitly allows a
+// factory to return either a new or a cached instance (see registry.go doc comment). A fresh
+// struct is cheap -- this only runs at policy-chain build time (config load / xDS update), never
+// per request -- and every other method already reads its parameters fresh from the params
+// argument passed at each request-time call, never from receiver state, so a per-chain instance
+// is safe with no synchronization.
 func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return ins, nil
+	reqMode, respMode := computeBodyModes(params)
+	return &AnalyticsPolicy{requestBodyMode: reqMode, responseBodyMode: respMode}, nil
 }
 
 // GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
@@ -359,16 +376,84 @@ func GetPolicyV2(
 	return GetPolicy(metadata, params)
 }
 
-// Mode returns the processing mode for this policy.
-// ResponseBodyMode is BodyModeStream so the kernel keeps streaming enabled when
+// computeBodyModes derives the request/response body processing modes from the params injected
+// at policy-chain build time: system_policies.go (gateway-controller) stamps request_body/
+// response_body from cfg.Collector whenever this policy is enabled, and transform/restapi.go
+// stamps api_kind from the StoredConfig's Kind field via the same additionalProps/"_shared"
+// mechanism (see utils.InjectSystemPolicies) -- both unconditionally, so both are present on
+// every request that goes through the real controller injection path.
+//
+// Safety rules, in order:
+//  1. MCP (mcp_session_id, JSON-RPC method/capability -- OnRequestBody/OnResponseBody) and LLM
+//     Provider/Proxy (token usage -- OnResponseBody) analytics are extracted from the body
+//     UNCONDITIONALLY, regardless of request_body/response_body, and so is Agent analytics
+//     (OnRequestBody/OnResponseBody). Those kinds therefore always need the body
+//     buffered/streamed -- skipping it would silently drop that analytics.
+//  2. When request_body/response_body/api_kind are absent (a caller that doesn't go through the
+//     standard controller injection path -- e.g. a policy constructed directly in a test) this
+//     falls back to needing the body, matching today's unconditional Buffer/Stream behavior,
+//     rather than risk silently dropping body-derived analytics for a route Mode() can't
+//     identify. Slower-but-correct beats faster-but-wrong.
+//  3. Otherwise (RestApi, WebSubApi, or any other kind not listed in rule 1) the body is
+//     genuinely optional: buffered/streamed only when request_body/response_body is explicitly
+//     true.
+func computeBodyModes(params map[string]interface{}) (requestMode, responseMode policy.BodyProcessingMode) {
+	_, hasReqBody := params["request_body"]
+	_, hasRespBody := params["response_body"]
+	if !hasReqBody || !hasRespBody || needsBodyRegardlessOfCaptureConfig(params) {
+		return policy.BodyModeBuffer, policy.BodyModeStream
+	}
+
+	sendReqBody, sendRespBody := getPayloadFlags(params)
+	requestMode = policy.BodyModeSkip
+	if sendReqBody {
+		requestMode = policy.BodyModeBuffer
+	}
+	responseMode = policy.BodyModeSkip
+	if sendRespBody {
+		responseMode = policy.BodyModeStream
+	}
+	return requestMode, responseMode
+}
+
+// needsBodyRegardlessOfCaptureConfig reports whether this policy instance's route needs the
+// body irrespective of the request_body/response_body capture flags -- true for MCP and LLM
+// Provider/Proxy routes (see computeBodyModes), and true (fail-safe) when api_kind is missing or
+// unrecognized.
+func needsBodyRegardlessOfCaptureConfig(params map[string]interface{}) bool {
+	kind, ok := params["api_kind"].(string)
+	if !ok || kind == "" {
+		return true
+	}
+	switch kind {
+	case "Mcp", "LlmProvider", "LlmProxy", "Agent":
+		return true
+	default:
+		return false
+	}
+}
+
+// Mode returns the processing mode for this policy instance, computed once at construction (see
+// computeBodyModes). A zero-value AnalyticsPolicy (e.g. constructed directly, bypassing
+// GetPolicy -- as some existing tests do for the header-phase methods) falls back to today's
+// unconditional Buffer/Stream rather than an invalid empty BodyProcessingMode.
+// ResponseBodyMode is BodyModeStream (never Buffer) so the kernel keeps streaming enabled when
 // all other policies in the chain also support streaming. The buffered fallback
 // (OnResponseBody) is still called when the chain cannot stream.
 func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
+	reqMode := a.requestBodyMode
+	if reqMode == "" {
+		reqMode = policy.BodyModeBuffer
+	}
+	respMode := a.responseBodyMode
+	if respMode == "" {
+		respMode = policy.BodyModeStream
+	}
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
-		RequestBodyMode:    policy.BodyModeBuffer,
+		RequestBodyMode:    reqMode,
 		ResponseHeaderMode: policy.HeaderModeProcess,
-		ResponseBodyMode:   policy.BodyModeStream,
+		ResponseBodyMode:   respMode,
 	}
 }
 
@@ -428,7 +513,7 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 	// Capture all request headers when enabled, so they flow into analytics events
 	// (and the stdout/log publisher) without attaching a per-API header policy.
 	if sendReqHeaders, _ := getHeaderFlags(params); sendReqHeaders && reqCtx.Headers != nil {
-		if headers := serializeHeaders(reqCtx.Headers); headers != "" {
+		if headers := flattenHeaders(reqCtx.Headers); len(headers) > 0 {
 			analyticsMetadata["request_headers"] = headers
 		}
 	}
@@ -601,7 +686,7 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 
 	// Capture all response headers when enabled.
 	if _, sendRespHeaders := getHeaderFlags(params); sendRespHeaders && respCtx.ResponseHeaders != nil {
-		if headers := serializeHeaders(respCtx.ResponseHeaders); headers != "" {
+		if headers := flattenHeaders(respCtx.ResponseHeaders); len(headers) > 0 {
 			analyticsMetadata["response_headers"] = headers
 		}
 	}
@@ -2233,25 +2318,28 @@ func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResp
 	return sendRequestHeaders, sendResponseHeaders
 }
 
-// serializeHeaders renders all headers as a JSON object string ({"name":"v1, v2"}),
-// matching the request_headers/response_headers format the analytics engine reads.
-// Returns "" when there are no headers. Sensitive values are not masked here; the
+// flattenHeaders renders all headers as a flat map[string]string ({"name": "v1, v2"}),
+// joining repeated header values with ", ". Returns nil when there are no headers.
+//
+// This used to JSON-encode that map into a string (serializeHeaders, removed) so it
+// could be carried inside a structpb.Value across the ext_proc -> Envoy -> ALS round
+// trip. That round trip is gone for captured headers specifically: the policy engine
+// now hands this map straight to its in-process ext_proc<->ALS correlation store,
+// keyed by request id (see the policy engine's internal/analytics/correlation and
+// internal/kernel's buildAnalyticsStruct, which deliberately excludes the
+// request_headers/response_headers keys this policy stamps into AnalyticsMetadata
+// from what gets sent to Envoy). Sensitive values are not masked here; the
 // stdout/log publisher applies masked_headers on output.
-func serializeHeaders(headers *policy.Headers) string {
+func flattenHeaders(headers *policy.Headers) map[string]string {
 	all := headers.GetAll()
 	if len(all) == 0 {
-		return ""
+		return nil
 	}
 	flat := make(map[string]string, len(all))
 	for name, values := range all {
 		flat[name] = strings.Join(values, ", ")
 	}
-	data, err := json.Marshal(flat)
-	if err != nil {
-		slog.Error("Failed to marshal headers for analytics", "error", err)
-		return ""
-	}
-	return string(data)
+	return flat
 }
 
 // Helper to extract string values via JSONPath

@@ -205,6 +205,31 @@ func (l *Log) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// headersFromEventProperty extracts a header map attached to an analytics
+// event's Properties (dto.PropKeyRequestHeaders / dto.PropKeyResponseHeaders),
+// regardless of which of the two shapes it arrived in:
+//
+//   - map[string]string -- the steady-state path: a correlation-store hit handed
+//     the policy engine's ALS handler an already-typed header map (see
+//     internal/analytics/correlation and internal/analytics's prepareAnalyticEvent),
+//     so there is nothing to decode.
+//   - string -- the fallback path: no store hit (collector disabled in this test/
+//     caller, the request never had an ext_proc stream, or a genuine store miss),
+//     so the value is the JSON string decoded from the access-log entry's own
+//     metadata, exactly as it always has been. Decoded via parseHeadersFromString.
+//
+// Returns nil when the property is absent or neither shape.
+func headersFromEventProperty(v interface{}) map[string]string {
+	switch headers := v.(type) {
+	case map[string]string:
+		return headers
+	case string:
+		return parseHeadersFromString(headers)
+	default:
+		return nil
+	}
+}
+
 // parseHeadersFromString converts the JSON-encoded header value stored in
 // event.Properties (a map[string]string or map[string][]string serialized by the
 // ext_proc layer) into a map[string]string so it embeds as a plain JSON object
