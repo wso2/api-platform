@@ -67,7 +67,7 @@ func NewAPIDocumentHandler(apiDocumentService *service.APIDocumentService, ident
 	}
 }
 
-// RegisterRoutes registers the five docs operations under a single
+// RegisterRoutes registers the six docs operations under a single
 // {apiType} path parameter. Scope requirements are declared under the one
 // matching OpenAPI path and apply to every artifact kind resolved through
 // {apiType}; the artifact repository rejects an unknown kind as 404 so a
@@ -78,6 +78,7 @@ func (h *APIDocumentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListDocuments))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateDocument))
 	mux.HandleFunc("GET "+base+"/{docId}", middleware.MapErrors(h.slogger, h.GetDocument))
+	mux.HandleFunc("GET "+base+"/{docId}/content", middleware.MapErrors(h.slogger, h.GetDocumentContent))
 	mux.HandleFunc("PUT "+base+"/{docId}", middleware.MapErrors(h.slogger, h.UpdateDocument))
 	mux.HandleFunc("DELETE "+base+"/{docId}", middleware.MapErrors(h.slogger, h.DeleteDocument))
 }
@@ -139,10 +140,7 @@ func (h *APIDocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Reques
 }
 
 // GetDocument handles GET /apis/{apiType}/{apiId}/docs/{docId}.
-// Returns metadata + the UTF-8 content string in a single JSON response.
-// Content is a string because today the endpoint only accepts markdown;
-// extending to binary formats later requires either base64-encoding this
-// field or splitting content into its own subroute.
+// Returns document metadata only
 func (h *APIDocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) error {
 	orgID, artifactUUID, err := h.resolveArtifactUUID(r)
 	if err != nil {
@@ -158,7 +156,45 @@ func (h *APIDocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request)
 		return serviceError(err, "failed to get document")
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, documentToAPIDocument(doc))
+	httputil.WriteJSON(w, http.StatusOK, documentToAPIMetadata(doc))
+	return nil
+}
+
+// GetDocumentContent handles GET /apis/{apiType}/{apiId}/docs/{docId}/content.
+// Streams the stored document bytes with the document's stored Content-Type
+// header so the caller can handle the body correctly for the current format
+// (text/markdown) and any future format (PDF, DOCX, images) without any
+// schema changes — the stored content-type drives interpretation.
+func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.Request) error {
+	orgID, artifactUUID, err := h.resolveArtifactUUID(r)
+	if err != nil {
+		return err
+	}
+	docID := r.PathValue("docId")
+	if docID == "" {
+		return apperror.ValidationFailed.New("document ID is required")
+	}
+
+	doc, err := h.service.GetDocument(artifactUUID, docID, orgID, "")
+	if err != nil {
+		return serviceError(err, "failed to get document content")
+	}
+
+	if len(doc.Content) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return nil
+	}
+
+	ct := doc.ContentType
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ct)
+	if doc.FileName != "" {
+		fn := strings.NewReplacer(`"`, `\"`, `\`, `\\`).Replace(doc.FileName)
+		w.Header().Set("Content-Disposition", `inline; filename="`+fn+`"`)
+	}
+	_, _ = w.Write(doc.Content)
 	return nil
 }
 
@@ -413,23 +449,6 @@ func documentToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
 		CreatedAt:   optionalTime(d.CreatedAt),
 		UpdatedBy:   optionalString(d.UpdatedBy),
 		UpdatedAt:   optionalTime(d.UpdatedAt),
-	}
-}
-
-// documentToAPIDocument is documentToAPIMetadata plus the UTF-8 content
-// payload — the response shape for the single-doc GET.
-func documentToAPIDocument(d *model.Document) api.APIDocument {
-	return api.APIDocument{
-		Id:          d.Handle,
-		Type:        api.APIDocumentType(d.Type),
-		DisplayName: d.DisplayName,
-		FileName:    optionalString(d.FileName),
-		ContentType: optionalString(d.ContentType),
-		CreatedBy:   optionalString(d.CreatedBy),
-		CreatedAt:   optionalTime(d.CreatedAt),
-		UpdatedBy:   optionalString(d.UpdatedBy),
-		UpdatedAt:   optionalTime(d.UpdatedAt),
-		Content:     string(d.Content),
 	}
 }
 

@@ -415,6 +415,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
+  CreateAPIDocument: ['ap:rest_api:create', 'ap:rest_api:manage'],
   CreateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:create',
@@ -472,6 +473,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
+  DeleteAPIDocument: ['ap:rest_api:delete', 'ap:rest_api:manage'],
   DeleteApiPortal: ['ap:api_portal:delete', 'ap:api_portal:manage'],
   DeleteApplication: ['ap:application:delete', 'ap:application:manage'],
   DeleteBuild: ['ap:rest_api:build:delete', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
@@ -570,6 +572,8 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
+  GetAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:read'],
+  GetAPIDocumentContent: ['ap:rest_api:manage', 'ap:rest_api:read'],
   GetApiPortal: ['ap:api_portal:manage', 'ap:api_portal:read'],
   getApiPublication: ['ap:api_portal:publication:read'],
   getApiPublicationDefinition: ['ap:api_portal:publication:read'],
@@ -684,6 +688,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
+  ListAPIDocuments: ['ap:rest_api:manage', 'ap:rest_api:read'],
   ListApiPortals: ['ap:api_portal:manage', 'ap:api_portal:read'],
   listApiPublications: ['ap:api_publication:read'],
   ListApplicationAPIKeys: [
@@ -830,6 +835,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:manage',
     'ap:api_key:all:manage',
   ],
+  UpdateAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:manage',

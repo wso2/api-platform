@@ -2040,37 +2040,6 @@ type A2ATransport struct {
 // A2ATransportProtocolBinding A2A protocol binding served on this transport.
 type A2ATransportProtocolBinding string
 
-// APIDocument Full document response — metadata plus the UTF-8 content string.
-// Content is a `string` because only text/markdown is currently accepted;
-// extending to PDF/DOCX later would require either base64-encoding this
-// field or splitting content into a `/content` subroute.
-type APIDocument struct {
-	// Content The document body as a UTF-8 string.
-	Content string `json:"content" yaml:"content"`
-
-	// ContentType Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
-	ContentType *string    `json:"contentType,omitempty" yaml:"contentType,omitempty"`
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-
-	// CreatedBy User who created the docuement.
-	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	DisplayName string  `json:"displayName" yaml:"displayName"`
-
-	// FileName Original file name supplied when a `file` was uploaded.
-	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
-
-	// Id URL-safe handle used in the `{docId}` path segment.
-	Id string `json:"id" yaml:"id"`
-
-	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
-	// are managed via separate dedicated endpoints.
-	Type      APIDocumentType `json:"type" yaml:"type"`
-	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-
-	// UpdatedBy User who updated the docuement.
-	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
-}
-
 // APIDocumentCreateRequest Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
 // `displayName` are required; exactly one of `file` or `inlineContent`
 // must carry the body. `handle` is optional — the server generates one

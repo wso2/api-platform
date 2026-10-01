@@ -2010,8 +2010,10 @@ paths:
       - $ref: '#/components/parameters/apiHandle'
       - $ref: '#/components/parameters/docId'
     get:
-      summary: Get a specifc API document
-      description: Returns metadata and the document's UTF-8 content.
+      summary: Get API document metadata
+      description: |
+        Returns document metadata only. Use `GET …/{docId}/content` to retrieve
+        the raw document bytes.
       operationId: GetAPIDocument
       security:
         - OAuth2Security:
@@ -2021,11 +2023,11 @@ paths:
         - API Documents
       responses:
         '200':
-          description: Document retrieved successfully
+          description: Document metadata retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIDocument'
+                $ref: '#/components/schemas/APIDocumentMetadata'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2084,6 +2086,46 @@ paths:
       responses:
         '204':
           description: Document deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiType}/{apiId}/docs/{docId}/content:
+    parameters:
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+      - $ref: '#/components/parameters/docId'
+    get:
+      summary: Get API document content
+      description: |
+        Returns the raw document bytes with the stored `Content-Type` header
+        (e.g. `text/markdown; charset=utf-8` for markdown documents).
+        Extensible to any future content format without schema changes — the
+        stored content-type drives how the client interprets the response body.
+        A `Content-Disposition: inline; filename="…"` header is included when
+        a filename is stored.
+      operationId: GetAPIDocumentContent
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
+      tags:
+        - API Documents
+      responses:
+        '200':
+          description: Document content retrieved successfully
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: Document exists but has no content stored.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -9201,22 +9243,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-
-    APIDocument:
-      description: |
-        Full document response — metadata plus the UTF-8 content string.
-        Content is a `string` because only text/markdown is currently accepted;
-        extending to PDF/DOCX later would require either base64-encoding this
-        field or splitting content into a `/content` subroute.
-      allOf:
-        - $ref: '#/components/schemas/APIDocumentMetadata'
-        - type: object
-          required:
-            - content
-          properties:
-            content:
-              type: string
-              description: The document body as a UTF-8 string.
 
     APIDocumentListResponse:
       type: object
