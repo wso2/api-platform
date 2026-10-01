@@ -19,152 +19,31 @@
 package analytics
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
-	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// Classifying a failure for analytics.
+// Adding the fault flow's account of a failure to an analytics event.
 //
 // Analytics is built from Envoy's access log, which carries a status and code_details and
 // knows nothing about which policy rejected the request or why. The collector's OnFault runs
 // as the last entry of every API's fault chain and stamps the resolved failure into analytics
 // metadata, which arrives here as the PropKeyFault* keys.
 //
-// Categories come from dto.FaultCategory and are assigned by RANGE (start <= code < end),
-// not by reading a label, so a dashboard already keyed on the existing categories keeps
-// working. A code outside every range is reported as OTHER.
+// The established error fields — errorCode, errorMessage and the event's errorType — are
+// classifyFault's, from the status and Envoy's response flags, and this file never changes
+// them: a dashboard built on them must read the same values with or without the fault flow.
+// Everything the fault flow knows goes into fields that did not exist before, the code
+// included (wso2ErrorCode).
 
-// Codes are strings in the SDK, because a string is what a policy puts in
-// FaultDetails.Code and what a client parses out of an error body. Range comparison needs
-// them as integers, so they are parsed exactly once, here.
+// applyFaultDetails adds what the collector's OnFault stamped to the event's error object.
 //
-// Parsed rather than re-declared as integer literals: a second copy of a number can only
-// agree with the first by being tested into agreement, and this package had 23 such copies
-// before this block replaced them. The SDK is where a policy author looks, so the SDK is the
-// source.
-var (
-	codeAuthGeneral          = mustFaultCode(policy.FaultCodeAuthGeneral)
-	codeAuthInvalidCreds     = mustFaultCode(policy.FaultCodeAuthInvalidCredentials)
-	codeAuthMissingCreds     = mustFaultCode(policy.FaultCodeAuthMissingCredentials)
-	codeAuthTokenExpired     = mustFaultCode(policy.FaultCodeAuthTokenExpired)
-	codeAuthTokenInactive    = mustFaultCode(policy.FaultCodeAuthTokenInactive)
-	codeAuthWrongTokenType   = mustFaultCode(policy.FaultCodeAuthIncorrectTokenType)
-	codeAuthBlocked          = mustFaultCode(policy.FaultCodeAuthBlocked)
-	codeAuthForbidden        = mustFaultCode(policy.FaultCodeAuthForbidden)
-	codeSubscriptionInactive = mustFaultCode(policy.FaultCodeSubscriptionInactive)
-	codeInvalidScope         = mustFaultCode(policy.FaultCodeInvalidScope)
-	codeEndpointSuspended    = mustFaultCode(policy.FaultCodeUpstreamUnavailable)
-	codeNoRoute              = mustFaultCode(policy.FaultCodeNoRoute)
-)
-
-// mustFaultCode parses an SDK fault code, panicking on a non-numeric one.
-//
-// A panic at package init rather than an error at classification time, because the only way
-// to reach it is to edit an SDK constant to something that is not a six-digit number — a
-// build-time mistake. Returning zero instead would silently misclassify every event that
-// code appears on, which is far harder to notice than a failed start.
-func mustFaultCode(code string) int {
-	n, err := strconv.Atoi(code)
-	if err != nil {
-		panic(fmt.Sprintf("analytics: SDK fault code %q is not numeric: %v", code, err))
-	}
-	return n
-}
-
-// faultCategoryForCode maps a fault code onto the fault category.
-//
-// Half-open ranges (start <= code < end) matching the classifier's comparison, with the bounds
-// read from the SDK. A code in no range is OTHER — including every 906xxx guardrail sub-code
-// and every 96xxxx policy code, both of which sit outside the ranges deliberately (see
-// docs/gateway/error-codes.md).
-func faultCategoryForCode(code int) dto.FaultCategory {
-	switch {
-	case code >= policy.AuthFailureRangeStart && code < policy.AuthFailureRangeEnd:
-		return dto.FaultCategoryAuth
-	case code >= policy.ThrottledFailureRangeStart && code < policy.ThrottledFailureRangeEnd:
-		return dto.FaultCategoryThrottled
-	case code >= policy.TargetFailureRangeStart && code < policy.TargetFailureRangeEnd:
-		return dto.FaultCategoryTargetConnectivity
-	case code == codeEndpointSuspended:
-		// 303001 is outside the target range but IS a target failure — the classifier treats
-		// endpoint suspension as connectivity, and it is the one code that has to be
-		// named rather than ranged.
-		return dto.FaultCategoryTargetConnectivity
-	default:
-		return dto.FaultCategoryOther
-	}
-}
-
-// faultSubCategoryForCode maps a code onto the specific subcategory within its category.
-//
-// Every value returned is an existing dto.FaultSubCategory constant; none is invented here.
-// A code with no specific subcategory falls back to its category's "other" member rather
-// than to UNCLASSIFIED, so a throttling code nobody enumerated still reports as throttling.
-//
-// The throttling and NHTTP cases read this package's own constants rather than the SDK's:
-// those numbers predate the SDK's fault vocabulary or are Synapse transport codes no policy
-// emits, so the SDK does not own them. Everything the SDK does own comes from the SDK.
-func faultSubCategoryForCode(code int) dto.FaultSubCategory {
-	switch code {
-	// Authentication and authorization — SDK-owned.
-	case codeAuthForbidden, codeInvalidScope:
-		return dto.AuthenticationAuthorizationFailure
-	case codeSubscriptionInactive:
-		return dto.AuthenticationSubscriptionValidationFailure
-	case codeAuthGeneral, codeAuthInvalidCreds, codeAuthMissingCreds, codeAuthTokenExpired,
-		codeAuthTokenInactive, codeAuthWrongTokenType, codeAuthBlocked:
-		return dto.AuthenticationFailure
-
-	// Throttling — this package's own, predating the SDK vocabulary.
-	case APIThrottleOutErrorCode:
-		return dto.ThrottlingAPILimitExceeded
-	case HardLimitExceededErrorCode:
-		return dto.ThrottlingHardLimitExceeded
-	case ResourceThrottleOutErrorCode:
-		return dto.ThrottlingResourceLimitExceeded
-	case ApplicationThrottleOutErrorCode:
-		return dto.ThrottlingApplicationLimitExceeded
-	case SubscriptionThrottleOutErrorCode:
-		return dto.ThrottlingSubscriptionLimitExceeded
-	case BlockedErrorCode:
-		return dto.ThrottlingBlocked
-	case CustomPolicyThrottleOutErrorCode:
-		return dto.ThrottlingCustomPolicyLimitExceeded
-
-	// Target connectivity. The timeout is a Synapse transport code; suspension is SDK-owned.
-	case NhttpConnectionTimeout:
-		return dto.TargetConnectivityConnectionTimeout
-	case codeEndpointSuspended:
-		return dto.TargetConnectivityConnectionSuspended
-
-	// Other, where a specific member exists.
-	case codeNoRoute:
-		return dto.OtherResourceNotFound
-	}
-
-	// No specific member: answer with the category's own catch-all, so the subcategory
-	// never contradicts the category beside it.
-	switch faultCategoryForCode(code) {
-	case dto.FaultCategoryAuth:
-		return dto.AuthenticationOther
-	case dto.FaultCategoryThrottled:
-		return dto.ThrottlingOther
-	case dto.FaultCategoryTargetConnectivity:
-		return dto.TargetConnectivityOther
-	default:
-		return dto.OtherUnclassified
-	}
-}
-
-// applyFaultDetails populates the event's error object from the metadata the collector's
-// OnFault stamped.
+// Runs AFTER classifyFault, so it adds to the object that one built rather than replacing it.
 //
 // The PropKeyFault* keys are TRANSPORT between two Go modules: the collector reaches the
-// engine over Envoy's dynamic metadata, which is a flat map. They are turned into the typed
-// dto.Error here and deliberately NOT copied into Event.Properties.
+// engine over Envoy's dynamic metadata, which is a flat map. They become typed dto.Error
+// fields here and are deliberately NOT copied into Event.Properties.
 //
 // Absent metadata means the request did not go through the fault flow, so the event is left
 // as it was — a successful request must not acquire an empty error object.
@@ -184,54 +63,52 @@ func applyFaultDetails(
 		return
 	}
 
-	faultErr := &dto.Error{
-		Type:        faultType,
-		Direction:   str(dto.PropKeyFaultDirection),
-		Summary:     str(dto.PropKeyFaultMessage),
-		Policy:      str(dto.PropKeyFaultPolicy),
-		PolicyPhase: str(dto.PropKeyFaultPolicyPhase),
-		Source:      str(dto.PropKeyFaultSource),
+	// classifyFault builds the error object for every status of 400 or above. The one fault
+	// it cannot see is a policy declaring a failure on a lower status — a GraphQL-style 200
+	// with the failure in the body. That gets the established fields in the same form an
+	// unclassified failure has always had: the status, UNCLASSIFIED, OTHER.
+	if event.Error == nil {
+		event.Error = &dto.Error{
+			ErrorCode:    event.ProxyResponseCode,
+			ErrorMessage: dto.OtherUnclassified,
+		}
+		if event.ErrorType == "" {
+			event.ErrorType = string(dto.FaultCategoryOther)
+		}
 	}
+
+	e := event.Error
+	e.Type = faultType
+	e.Direction = str(dto.PropKeyFaultDirection)
+	e.Summary = str(dto.PropKeyFaultMessage)
+	e.Policy = str(dto.PropKeyFaultPolicy)
+	e.PolicyPhase = str(dto.PropKeyFaultPolicyPhase)
+	e.Source = str(dto.PropKeyFaultSource)
 
 	// Numbers arrive through structpb as float64, so they are read from the typed map
 	// rather than parsed back out of the stringified one.
 	if v, ok := typedValuePairs[dto.PropKeyFaultOriginalStatus].(float64); ok {
-		faultErr.OriginalStatus = int(v)
+		e.OriginalStatus = int(v)
 	}
 	if v, ok := typedValuePairs[dto.PropKeyFaultJSONRPCCode].(float64); ok {
-		faultErr.JSONRPCCode = int(v)
+		e.JSONRPCCode = int(v)
 	}
 
 	if name := str(dto.PropKeyFaultGuardrail); name != "" ||
 		str(dto.PropKeyFaultGuardrailAction) != "" || str(dto.PropKeyFaultGuardrailReason) != "" {
-		faultErr.Guardrail = &dto.ErrorGuardrail{
+		e.Guardrail = &dto.ErrorGuardrail{
 			Name:   name,
 			Action: str(dto.PropKeyFaultGuardrailAction),
 			Reason: str(dto.PropKeyFaultGuardrailReason),
 		}
 	}
 
-	// Classification needs the code as an integer. A failure the gateway described without
-	// classifying — a router error carrying no code — still reports everything above;
-	// it simply has no category to claim, and OTHER/UNCLASSIFIED is the honest answer.
-	switch code, err := strconv.Atoi(codeStr); {
-	case codeStr == "":
-		event.ErrorType = string(dto.FaultCategoryOther)
-		faultErr.ErrorMessage = dto.OtherUnclassified
-	case err != nil:
-		// A non-numeric code is a policy bug. Keep it visible rather than swallowing it:
-		// Summary is client-facing text, so the malformed code goes where a reader of the
-		// error will actually see it.
-		event.ErrorType = string(dto.FaultCategoryOther)
-		faultErr.ErrorMessage = dto.OtherUnclassified
-		if faultErr.Summary == "" {
-			faultErr.Summary = "unclassified fault code " + codeStr
-		}
-	default:
-		event.ErrorType = string(faultCategoryForCode(code))
-		faultErr.ErrorCode = code
-		faultErr.ErrorMessage = faultSubCategoryForCode(code)
+	// A router failure the engine described without a code reports everything above and no
+	// wso2ErrorCode. A non-numeric code is a policy bug: kept visible in Summary, where a
+	// reader of the error will see it, rather than swallowed.
+	if code, err := strconv.Atoi(codeStr); err == nil {
+		e.Wso2ErrorCode = code
+	} else if codeStr != "" && e.Summary == "" {
+		e.Summary = "unclassified fault code " + codeStr
 	}
-
-	event.Error = faultErr
 }
