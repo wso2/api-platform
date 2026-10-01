@@ -297,3 +297,87 @@ Feature: GraphQL API key management
     And the JSON response field "status" should be "success"
     When I delete the GraphQL API "${CTX:graphqlApiKeyName15_1}"
     Then the response should be successful
+
+  # The scenarios above only exercise key management on gateway-controller. This
+  # one pins that api-key-auth on a GraphQL API is actually enforced by the
+  # router, and that regenerate and revoke take effect on the data path.
+  Scenario: api-key-auth on a GraphQL API enforces generated, regenerated, and revoked keys
+    Given I generate a unique value from "graphql-apikey-enforce-api" and store it as "graphqlApiKeyName16_1"
+    Given I generate a unique API context from "/graphql-apikey-enforce" and store it as "graphqlApiKeyContext16_1"
+    When I create GraphQL API from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}       |
+      | name                   | ${CTX:graphqlApiKeyName16_1}    |
+      | spec.displayName       | GraphQL-APIKey-Enforce-API      |
+      | spec.version           | v1.0                             |
+      | spec.context           | ${CTX:graphqlApiKeyContext16_1} |
+      | spec.upstream.main.url | http://testbench:3000/graphql   |
+      | spec.policies          | [{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}] |
+    Then the response should be successful
+
+    # No key: rejected once the route and policy chain are live.
+    When I clear all headers
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" until status 401 with body:
+      """
+      {"query":"{ ping }"}
+      """
+
+    # A generated key authenticates.
+    Given I authenticate using basic auth as "admin"
+    When I send a "POST" request to the "gateway-controller" service at "/graphql-apis/${CTX:graphqlApiKeyName16_1}/api-keys" with body:
+      """
+      {"name":"enforce-key"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "originalKey"
+    When I clear all headers
+    And I set header "API-Key" to "${CTX:originalKey}"
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" until status 200 with body:
+      """
+      {"query":"{ ping }"}
+      """
+
+    # An unknown key is rejected.
+    When I clear all headers
+    And I set header "API-Key" to "not-a-real-key"
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" with body:
+      """
+      {"query":"{ ping }"}
+      """
+    Then the response status code should be 401
+
+    # Regenerating issues a working key and retires the old one.
+    Given I authenticate using basic auth as "admin"
+    When I send a "POST" request to the "gateway-controller" service at "/graphql-apis/${CTX:graphqlApiKeyName16_1}/api-keys/enforce-key/regenerate" with body:
+      """
+      {}
+      """
+    Then the response status should be 200
+    And I store the JSON response field "apiKey.apiKey" as "regeneratedKey"
+    When I clear all headers
+    And I set header "API-Key" to "${CTX:regeneratedKey}"
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" until status 200 with body:
+      """
+      {"query":"{ ping }"}
+      """
+    When I clear all headers
+    And I set header "API-Key" to "${CTX:originalKey}"
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" until status 401 with body:
+      """
+      {"query":"{ ping }"}
+      """
+
+    # Revoking the key rejects it.
+    Given I authenticate using basic auth as "admin"
+    When I send a "DELETE" request to the "gateway-controller" service at "/graphql-apis/${CTX:graphqlApiKeyName16_1}/api-keys/enforce-key"
+    Then the response status should be 200
+    When I clear all headers
+    And I set header "API-Key" to "${CTX:regeneratedKey}"
+    And I send a "POST" request to "${CTX:graphqlApiKeyContext16_1}" until status 401 with body:
+      """
+      {"query":"{ ping }"}
+      """
+
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the GraphQL API "${CTX:graphqlApiKeyName16_1}"
+    Then the response should be successful
