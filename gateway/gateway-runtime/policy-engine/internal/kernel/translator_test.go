@@ -418,7 +418,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -445,7 +445,7 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -479,7 +479,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -521,7 +521,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 func TestTranslateRequestActionsCore_BodyPreservesHeaderPhaseUpstream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -573,7 +573,7 @@ func TestTranslateRequestActionsCore_BodyPreservesHeaderPhaseUpstream(t *testing
 func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -607,7 +607,7 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalyticsMetadata(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -664,14 +664,19 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 // covers the request-header phase short-circuit path: an earlier policy (e.g. the
 // collector system policy capturing request headers) stamps request-header-phase
 // analytics metadata, then an auth policy rejects the request with 401 and
-// short-circuits the chain. The prior policy's metadata must survive onto the
-// immediate response's dynamic metadata, otherwise the ALS access-log entry is
-// missing it and the global traffic-logging publisher's line for that denied
-// request would be incomplete.
+// short-circuits the chain. The prior policy's non-header metadata must survive
+// onto the immediate response's dynamic metadata, otherwise the ALS access-log
+// entry is missing it and the global traffic-logging publisher's line for that
+// denied request would be incomplete. Captured headers are the one exception
+// (see buildAnalyticsStruct's doc comment): they are deliberately excluded from
+// what is sent to Envoy and instead travel through the in-process correlation
+// store, keyed by request id and written at ext_proc stream teardown -- so this
+// test also asserts request_headers stays out of the wire struct while still
+// being readable from execCtx.analyticsMetadata (the store's source).
 func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -721,16 +726,23 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
 	require.NotNil(t, analyticsData)
 
-	// The metadata stamped by the earlier policy survives the short-circuit...
-	assert.Equal(t, `{"x-request-id":"req-1"}`, analyticsData.GetFields()["request_headers"].GetStringValue())
-	// ...and the immediate response's own analytics metadata is still present.
+	// request_headers never reaches the wire struct sent to Envoy -- it travels
+	// in-process via the correlation store instead (see buildAnalyticsStruct).
+	_, sentToEnvoy := analyticsData.GetFields()["request_headers"]
+	assert.False(t, sentToEnvoy, "request_headers must not be sent to Envoy")
+	// ...but it is still readable from execCtx.analyticsMetadata, which is what
+	// writeCorrelationEntry snapshots into the correlation store at stream
+	// teardown -- see snapshotHeaderPayload in analytics.go.
+	assert.Equal(t, `{"x-request-id":"req-1"}`, execCtx.analyticsMetadata["request_headers"])
+	// The immediate response's own (non-header) analytics metadata survives the
+	// short-circuit and IS still sent to Envoy, exactly as before.
 	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }
 
 func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -763,7 +775,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -796,7 +808,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -832,7 +844,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -872,7 +884,7 @@ func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
 func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -1109,7 +1121,7 @@ func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
 	newExecCtx := func() *PolicyExecutionContext {
 		kernel := NewKernel()
 		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 		execCtx.sharedCtx = &policy.SharedContext{APIKind: "API", APIId: "api-123"}
 		execCtx.requestBodyCtx = &policy.RequestContext{
@@ -1184,7 +1196,7 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 	newExecCtx := func() *PolicyExecutionContext {
 		kernel := NewKernel()
 		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 		execCtx.sharedCtx = &policy.SharedContext{APIKind: "API", APIId: "api-123"}
 		execCtx.requestBodyCtx = &policy.RequestContext{

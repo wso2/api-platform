@@ -94,6 +94,10 @@ var (
 	// value here means part of a deployment is not being served, which no
 	// request-time metric shows.
 	RouteResolutionIngestFailuresTotal CounterVec
+
+	CorrelationStoreWritesTotal    CounterVec
+	CorrelationStoreReadsTotal     CounterVec
+	CorrelationStoreEvictionsTotal Counter
 )
 
 // initMetrics initializes all metric variables.
@@ -459,6 +463,38 @@ func initMetrics() {
 		},
 		[]string{"reason"},
 	)
+
+	// Correlation-store metrics (internal/analytics/correlation): the in-process
+	// ext_proc->ALS handoff for captured headers, keyed by request id, that replaces
+	// the previous Envoy dynamic-metadata round trip. A miss never drops a log line
+	// (the ALS handler falls back to whatever the access-log entry itself carries),
+	// so these exist to make that degraded path visible rather than silent.
+	CorrelationStoreWritesTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "correlation_store_writes_total",
+			Help: "Total number of ext_proc correlation-store write attempts, by result " +
+				"(stored, skipped_no_request_id, skipped_disabled, skipped_empty)",
+		},
+		[]string{"result"},
+	)
+
+	CorrelationStoreReadsTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "correlation_store_reads_total",
+			Help:      "Total number of ALS correlation-store lookups, by result (hit, miss)",
+		},
+		[]string{"result"},
+	)
+
+	CorrelationStoreEvictionsTotal = newCounter(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "correlation_store_evictions_total",
+			Help:      "Total number of correlation-store entries evicted to make room for a new write before their TTL expired",
+		},
+	)
 }
 
 func registerCounterVec(v CounterVec) {
@@ -572,6 +608,9 @@ func initRegistry() {
 	registerGaugeVec(AnalyticsQueueCapacity)
 	registerHistogramVec(AnalyticsExportDurationSeconds)
 	registerCounterVec(AnalyticsExportErrorsTotal)
+	registerCounterVec(CorrelationStoreWritesTotal)
+	registerCounterVec(CorrelationStoreReadsTotal)
+	registerCounter(CorrelationStoreEvictionsTotal)
 
 	registerCounterVec(ResolutionFailuresTotal)
 	registerCounterVec(RouteResolutionIngestFailuresTotal)

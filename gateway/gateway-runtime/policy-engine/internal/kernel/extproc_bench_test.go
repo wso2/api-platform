@@ -199,6 +199,7 @@ func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorS
 		"bench-policy-engine",
 		testMaxDecompressedBytes,
 		testMaxDecompressedBytes,
+		nil,
 	)
 }
 

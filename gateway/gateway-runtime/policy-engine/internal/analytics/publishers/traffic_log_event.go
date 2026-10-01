@@ -185,8 +185,8 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	// enabled set, never an independent "log everything except X" switch. Setting
 	// exclude_fields alone, with every request_*/response_* toggle left at its
 	// false default, still logs no headers/bodies.
-	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok && dir.Request != nil && dir.Request.Headers {
-		if headers := parseHeadersFromString(raw); headers != nil {
+	if dir.Request != nil && dir.Request.Headers {
+		if headers := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
 			tl.RequestHeaders = maskHeaders(headers, l.maskedHeaders)
 		}
 	}
@@ -195,8 +195,8 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	}
 
 	// Response flow
-	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok && dir.Response != nil && dir.Response.Headers {
-		if headers := parseHeadersFromString(raw); headers != nil {
+	if dir.Response != nil && dir.Response.Headers {
+		if headers := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
 			tl.ResponseHeaders = maskHeaders(headers, l.maskedHeaders)
 		}
 	}

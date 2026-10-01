@@ -129,6 +129,46 @@ type AnalyticsConfig struct {
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+	// Correlation tunes the in-process ext_proc→ALS correlation store (see
+	// internal/analytics/correlation) that carries captured request/response headers
+	// directly from the ext_proc handler to the ALS handler, keyed by Envoy's
+	// x-request-id, instead of round-tripping them through Envoy dynamic metadata and
+	// the ALS filter_metadata echo. Only consulted while the collector is active
+	// (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
+	Correlation CorrelationStoreConfig `koanf:"correlation"`
+}
+
+// CorrelationStoreConfig tunes the in-process, sharded, TTL-evicting store the
+// ext_proc handler writes captured headers into at stream teardown, and the ALS
+// handler reads at access-log-entry time -- the "Step 4" fix for the round trip
+// previously required to carry headers through Envoy: JSON-encode in the analytics
+// system policy -> structpb -> ext_proc dynamic metadata -> Envoy filter_metadata
+// echo -> protobuf decode -> JSON-decode again on the ALS side. A miss (never
+// written, evicted, or TTL-expired) is not an error: the ALS handler falls back to
+// whatever the access-log entry itself carries, so a log line is never dropped —
+// only headers are potentially degraded to "unavailable" on that one line.
+type CorrelationStoreConfig struct {
+	// Capacity bounds the number of in-flight entries held across all shards
+	// combined. Size it comfortably above the number of requests that can be
+	// in-flight between ext_proc stream teardown and their ALS entry being
+	// processed (see TTL) -- once a shard is full, its oldest entry is evicted to
+	// make room (FIFO), never blocked or grown unbounded.
+	Capacity int `koanf:"capacity"`
+	// TTL bounds how long a written entry is honored before being treated as
+	// expired (a miss), independent of capacity-driven eviction. Envoy flushes
+	// access logs to the policy-engine's ALS receiver on a 1s/16KiB buffer
+	// (collector.server's Envoy-sender-only buffer_flush_interval/
+	// buffer_size_bytes), so the read normally follows the write by about a
+	// second; the default here is 4x that flush interval to comfortably absorb
+	// scheduling jitter and batching without holding entries indefinitely.
+	TTL time.Duration `koanf:"ttl"`
+	// Shards is the number of independently-locked partitions the store is split
+	// into, selected by hashing the request id. A single mutex would itself become
+	// a bottleneck at the request rates this store targets (several thousand
+	// req/s); splitting the lock lets concurrent writers/readers on different
+	// shards proceed without contending on each other. Rounded up to the next
+	// power of two if it is not one already.
+	Shards int `koanf:"shards"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -1161,6 +1201,16 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 	}
 }
 
+// defaultCorrelationStoreConfig returns the default ext_proc→ALS correlation-store
+// tuning. See CorrelationStoreConfig for the reasoning behind each default.
+func defaultCorrelationStoreConfig() CorrelationStoreConfig {
+	return CorrelationStoreConfig{
+		Capacity: 20000,
+		TTL:      4 * time.Second,
+		Shards:   32,
+	}
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -1326,6 +1376,7 @@ func defaultConfig() *Config {
 			AllowPayloads:        false,
 			SendRequestBody:      false,
 			SendResponseBody:     false,
+			Correlation:          defaultCorrelationStoreConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
@@ -1534,6 +1585,14 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateTrafficLoggingConfig(); err != nil {
 		return err
+	}
+	// The correlation store is only ever consulted while the collector is active
+	// (see CorrelationStoreConfig doc comment) -- validating it unconditionally
+	// would force every deployment to size a knob that does nothing for them.
+	if c.IsCollectorEnabled() {
+		if err := c.validateCorrelationStoreConfig(); err != nil {
+			return err
+		}
 	}
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
@@ -1828,6 +1887,22 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 		&c.Collector.RequestBody,
 		&c.Collector.ResponseBody,
 	)
+}
+
+// validateCorrelationStoreConfig validates the ext_proc→ALS correlation-store
+// tuning. Only called while the collector is active (see call site in Validate).
+func (c *Config) validateCorrelationStoreConfig() error {
+	corr := c.Analytics.Correlation
+	if corr.Capacity <= 0 {
+		return fmt.Errorf("analytics.correlation.capacity must be positive, got %d", corr.Capacity)
+	}
+	if corr.TTL <= 0 {
+		return fmt.Errorf("analytics.correlation.ttl must be positive, got %s", corr.TTL)
+	}
+	if corr.Shards <= 0 {
+		return fmt.Errorf("analytics.correlation.shards must be positive, got %d", corr.Shards)
+	}
+	return nil
 }
 
 // validateAnalyticsConfig validates the analytics consumer configuration (publishers).
