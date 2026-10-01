@@ -211,7 +211,8 @@ export default function AgentProxiesNew(): React.JSX.Element {
       setTransportPaths((prev) => ({ ...prev, ...advertisedPaths(card) }));
     } catch {
       setFetchError(
-        'Could not reach the upstream agent to retrieve its Agent Card.'
+        'Could not reach the upstream agent to retrieve its Agent Card. ' +
+          'You can continue and create the agent proxy anyway.'
       );
       setSelectedTransports(SUPPORTED_BINDINGS);
     } finally {
@@ -436,7 +437,9 @@ export default function AgentProxiesNew(): React.JSX.Element {
                 </FormControl>
 
                 {fetchError || urlError ? (
-                  <Alert severity="error">{fetchError ?? urlError}</Alert>
+                  <Alert severity={urlError ? 'error' : 'warning'}>
+                    {fetchError ?? urlError}
+                  </Alert>
                 ) : null}
               </Stack>
             </Card>
