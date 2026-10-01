@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -213,7 +214,7 @@ func newTestAPIPortalService(t *testing.T,
 	orgRepo repository.OrganizationRepository,
 	auditRepo repository.AuditRepository,
 ) *APIPortalService {
-	return NewAPIPortalService(portalRepo, orgRepo, auditRepo, newTestVault(t), nil, nil, nil)
+	return NewAPIPortalService(portalRepo, orgRepo, auditRepo, newTestVault(t), nil, nil, config.Webhook{}, nil, nil)
 }
 
 func apiPortalStrPtr(s string) *string { return &s }

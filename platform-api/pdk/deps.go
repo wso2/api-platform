@@ -18,6 +18,7 @@
 package pdk
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -91,6 +92,14 @@ type Projects interface {
 // consumed by cloud-plugin callers that own the pending -> active/failed
 // provisioning workflow; OSS-native REST handlers do not use them and always
 // route through the plain CreateAPIPortal path, which writes status=active.
+//
+// EnsureWebhookSubscriberOnPortal is an internal Go-only method used by the
+// webhook-subscriber auto-seed path: platform-api registers itself as a
+// webhook subscriber on each portal so apikey / subscription events reach it.
+// Not exposed on the REST DTO. Consumed by (a) OSS Service.CreateAPIPortal
+// when platform_api.webhook.auto_seed_subscribers is true (synchronous call,
+// fail-closed with row rollback) and (b) the cloud plugin's provisioning
+// poller when a portal transitions to active (asynchronous call, best-effort).
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
 	CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error)
@@ -103,6 +112,18 @@ type APIPortals interface {
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
+	// EnsureWebhookSubscriberOnPortal POSTs (or PUTs on 409) a webhook
+	// subscriber row to the portal at handle, pointing it at platform-api's
+	// own receiver (platform_api.webhook.receiver_url) with the shared secret
+	// (platform_api.webhook.secret). Authenticates via the shared-key the
+	// portal already carries on its api_portals row (decrypted internally via
+	// AuthProvider registry, never surfaces). The subscriber id is fixed
+	// ("platform-api") so repeat calls across replicas / Create retries
+	// converge on the same row via the portal's uniqueness constraint on
+	// (org, handle). Fails with a wrapped error on transport problems or
+	// non-2xx responses (surfaced to the caller which decides whether to fail
+	// Create or just log).
+	EnsureWebhookSubscriberOnPortal(ctx context.Context, handle, orgID string) error
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.

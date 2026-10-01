@@ -353,7 +353,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, cfg.Webhook, nil, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
