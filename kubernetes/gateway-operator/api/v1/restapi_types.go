@@ -151,6 +151,31 @@ type Operation struct {
 	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
 	Resilience *Resilience `json:"resilience,omitempty"`
+
+	// Upstream Per-operation upstream override. When set, this operation routes through the
+	// referenced upstreamDefinitions entry instead of the API-level upstream.
+	// +optional
+	Upstream *OperationUpstream `json:"upstream,omitempty"`
+}
+
+// OperationUpstream is a per-operation upstream override. Each sub-field references a named entry
+// in the API's upstreamDefinitions pool; a missing sub-field falls back to the API-level upstream.
+// At least one of main or sandbox must be set.
+// +kubebuilder:validation:XValidation:rule="has(self.main) || has(self.sandbox)",message="at least one of main or sandbox must be set"
+type OperationUpstream struct {
+	// Main Per-operation production upstream (references an upstreamDefinitions entry).
+	// +optional
+	Main *OperationUpstreamRef `json:"main,omitempty"`
+
+	// Sandbox Per-operation sandbox upstream (references an upstreamDefinitions entry).
+	// +optional
+	Sandbox *OperationUpstreamRef `json:"sandbox,omitempty"`
+}
+
+// OperationUpstreamRef references a named entry in the API's upstreamDefinitions pool.
+type OperationUpstreamRef struct {
+	// Ref Name of an upstreamDefinitions entry to route this operation through.
+	Ref string `json:"ref"`
 }
 
 // OperationMatch is the request matching criteria for an operation.
