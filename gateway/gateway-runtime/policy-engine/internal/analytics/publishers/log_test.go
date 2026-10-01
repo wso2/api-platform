@@ -427,6 +427,54 @@ func TestLog_Publish_UnparseableHeadersDropped(t *testing.T) {
 	assert.False(t, hasHeaders, "unparseable header value must be silently dropped")
 }
 
+// TestLog_Publish_GoldenLine_HeaderSourceIndependent is the "Step 4" safety net:
+// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] can now
+// arrive as EITHER an already-typed map[string]string (a correlation-store hit —
+// see internal/analytics/correlation) or a JSON string (the metadata-decode
+// fallback path, used exactly as it always has been on a store miss). Both must
+// produce byte-identical output for the same logical header content: this locks
+// that in so the store-hit fast path can never silently diverge from the
+// fallback path's behavior.
+func TestLog_Publish_GoldenLine_HeaderSourceIndependent(t *testing.T) {
+	cfg := bothFlowsConfig()
+	cfg.MaskedHeaders = []string{"authorization"}
+
+	stringEvent := createBaseEvent()
+	// Both events must share one fixed timestamp: createBaseEvent stamps
+	// RequestTimestamp from time.Now() independently per call, and the two
+	// Publish calls below are otherwise close enough together to usually land in
+	// the same millisecond -- but "usually" isn't good enough for a byte-equality
+	// assertion, and this did flake under -race's slower scheduling.
+	fixedTimestamp := stringEvent.RequestTimestamp
+	stringEvent.Properties[dto.PropKeyRequestHeaders] = `{"Authorization":"Bearer secret","X-Foo":"bar"}`
+	stringEvent.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":"application/json"}`
+
+	typedEvent := createBaseEvent()
+	typedEvent.RequestTimestamp = fixedTimestamp
+	typedEvent.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Authorization": "Bearer secret", "X-Foo": "bar"}
+	typedEvent.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Content-Type": "application/json"}
+
+	lString, readString := newLogToFile(t, cfg)
+	lString.Publish(stringEvent)
+
+	lTyped, readTyped := newLogToFile(t, cfg)
+	lTyped.Publish(typedEvent)
+
+	stringOut := readString()
+	typedOut := readTyped()
+	require.NotEmpty(t, stringOut)
+	assert.Equal(t, stringOut, typedOut, "store-hit (typed) and fallback (string) header sources must produce byte-identical log lines")
+
+	// Sanity-check the golden line actually captured masking and both headers,
+	// so an empty/degenerate line couldn't trivially satisfy the equality above.
+	decoded := decodeLine(t, stringOut)
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "****", reqH["Authorization"])
+	assert.Equal(t, "bar", reqH["X-Foo"])
+	resH := headerMap(t, decoded["responseHeaders"])
+	assert.Equal(t, "application/json", resH["Content-Type"])
+}
+
 // A non-nil Target/API/Operation whose fields are all zero must not surface as
 // an empty "{}" object in the log line — it should be omitted entirely, same as
 // if the pointer itself were nil.

@@ -31,6 +31,7 @@ import (
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	analytics_publisher "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/publishers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
@@ -111,6 +112,22 @@ type Analytics struct {
 	// missingDirectPeerWarn limits the "direct remote address unavailable" warning to one
 	// line per process which otherwise repeating it once per request would flood the logs
 	missingDirectPeerWarn sync.Once
+	// correlationStore looks up captured request/response headers by request id,
+	// written by the ext_proc handler at stream teardown (see
+	// internal/analytics/correlation and internal/kernel's writeCorrelationEntry).
+	// Nil when the collector is disabled, or in any test/caller that never calls
+	// SetCorrelationStore -- prepareAnalyticEvent treats a nil store exactly like
+	// a miss, falling back to decoding headers from the access-log entry's own
+	// metadata, so every existing caller keeps working unchanged.
+	correlationStore *correlation.Store
+}
+
+// SetCorrelationStore wires the ext_proc↔ALS correlation store into this
+// Analytics instance. Called once at startup from
+// internal/utils.newAccessLogServiceServer when the collector is enabled; left
+// unset (nil) otherwise, and in every test that constructs Analytics directly.
+func (c *Analytics) SetCorrelationStore(store *correlation.Store) {
+	c.correlationStore = store
 }
 
 // NewAnalytics creates a new instance of Analytics. Publishers are assembled from
@@ -289,15 +306,57 @@ func (c *Analytics) GetFaultType() FaultCategory {
 	return FaultCategoryOther
 }
 
+// lookupCorrelationPayload consults the ext_proc↔ALS correlation store for
+// captured headers, keyed by Envoy's Request.RequestId -- deliberately NOT
+// CommonProperties.StreamId, which the envoy proto documents as "optional, could
+// be any format string", unlike RequestId's documented x-request-id meaning (see
+// this same distinction preserved, unchanged, in this function's
+// MetaInfo.CorrelationID derivation below: the join key and the reported
+// correlation id are separate concerns, and only the former changes here).
+//
+// Returns ok=false -- meaning "fall back to the access-log entry's own metadata"
+// -- when: the store was never wired in (collector disabled, or any caller,
+// including every existing test, that never called SetCorrelationStore); the
+// access-log entry carries no request id; or the store has no live entry for it
+// (never written -- e.g. this request never had an ext_proc stream at all, such
+// as a no-route 404 -- TTL-expired, or evicted under capacity pressure). None of
+// these are errors: a miss only ever degrades headers to "unavailable" on this
+// one line, and prepareAnalyticEvent never drops the line itself.
+func (c *Analytics) lookupCorrelationPayload(logEntry *v3.HTTPAccessLogEntry) (correlation.Payload, bool) {
+	if c.correlationStore == nil {
+		return correlation.Payload{}, false
+	}
+	reqID := logEntry.GetRequest().GetRequestId()
+	if reqID == "" {
+		return correlation.Payload{}, false
+	}
+	return c.correlationStore.Get(reqID)
+}
+
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
 	keyValuePairsFromMetadata := make(map[string]string)
 	typedValuePairsFromMetadata := make(map[string]interface{})
-	slog.Debug("Log entry: ", "logEntry", logEntry)
+
+	// Hoisted once per call so every debug log below that pre-formats its arguments
+	// (fmt.Sprintf) is guarded, instead of paying the formatting cost on every request
+	// regardless of whether debug logging is enabled. sv below is a *structpb.Struct;
+	// formatting it with "%+v" invokes its String() method, which runs a full prototext
+	// marshal of every metadata field -- alone this was 7.65% of profiled CPU with debug
+	// logging OFF. slog itself already defers formatting for calls that pass raw args
+	// (e.g. slog.Debug("msg", "key", val)), so only the fmt.Sprintf(...) call sites
+	// below strictly need this guard, but it's applied to the plain one too for
+	// consistency.
+	debugEnabled := slog.Default().Enabled(context.Background(), slog.LevelDebug)
+	if debugEnabled {
+		slog.Debug("Log entry: ", "logEntry", logEntry)
+	}
 	if logEntry.CommonProperties != nil && logEntry.CommonProperties.Metadata != nil && logEntry.CommonProperties.Metadata.FilterMetadata != nil {
 		slog.Debug("Proceeding to filtering metadata")
 		if sv, exists := logEntry.CommonProperties.Metadata.FilterMetadata[constants.ExtProcFilterName]; exists {
 			if sv.Fields != nil {
-				slog.Debug(fmt.Sprintf("Filter metadata: %+v", sv))
+				if debugEnabled {
+					slog.Debug(fmt.Sprintf("Filter metadata: %+v", sv))
+				}
 				for key, value := range sv.Fields {
 					if value != nil {
 						if key == "analytics_data" {
@@ -331,9 +390,16 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		}
 	}
 
+	// Consulted once here and used below where request/response headers are
+	// attached to the event; every other field in this function is unaffected
+	// and continues to come from the ALS-decoded metadata above.
+	storedPayload, storeHit := c.lookupCorrelationPayload(logEntry)
+
 	event := &dto.Event{}
-	for key, value := range keyValuePairsFromMetadata {
-		slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
+	if debugEnabled {
+		for key, value := range keyValuePairsFromMetadata {
+			slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
+		}
 	}
 
 	// Prepare extended API
@@ -646,11 +712,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		}
 	}
 
-	//Adding request and response headers for the analytics event
-	if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
+	// Adding request and response headers for the analytics event. The
+	// correlation-store hit is the steady-state path (see lookupCorrelationPayload
+	// above): headers arrive already typed as map[string]string, so no
+	// JSON-decode is needed here at all. Each direction falls back independently
+	// to the ALS-decoded metadata (kept for requests the store never had -- e.g.
+	// no ext_proc stream at all -- or a genuine store miss), which is always a
+	// JSON string; downstream consumers (log.go, global_properties.go, moesif.go)
+	// accept both shapes.
+	if storeHit && len(storedPayload.RequestHeaders) > 0 {
+		event.Properties[dto.PropKeyRequestHeaders] = storedPayload.RequestHeaders
+	} else if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
 		event.Properties[dto.PropKeyRequestHeaders] = requestHeaders
 	}
-	if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
+	if storeHit && len(storedPayload.ResponseHeaders) > 0 {
+		event.Properties[dto.PropKeyResponseHeaders] = storedPayload.ResponseHeaders
+	} else if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
 		event.Properties[dto.PropKeyResponseHeaders] = responseHeaders
 	}
 

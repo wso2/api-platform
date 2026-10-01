@@ -85,6 +85,7 @@ func validConfig() *Config {
 		Analytics: AnalyticsConfig{
 			Enabled:              false,
 			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
+			Correlation:          defaultCorrelationStoreConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled: false,
@@ -1777,6 +1778,48 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 	err := cfg.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "traffic_logging.max_payload_size")
+}
+
+func TestValidate_CorrelationStoreConfig(t *testing.T) {
+	t.Run("not validated when collector disabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Analytics.Correlation.Capacity = 0
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("capacity must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Analytics.Correlation.Capacity = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "analytics.correlation.capacity")
+	})
+
+	t.Run("ttl must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Analytics.Correlation.TTL = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "analytics.correlation.ttl")
+	})
+
+	t.Run("shards must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Analytics.Correlation.Shards = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "analytics.correlation.shards")
+	})
+
+	t.Run("valid correlation config with collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.EnabledPublishers = []string{}
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 func TestValidate_TrafficLogging(t *testing.T) {

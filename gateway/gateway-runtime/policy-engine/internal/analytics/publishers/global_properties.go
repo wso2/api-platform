@@ -67,6 +67,14 @@ type globalPropertyEvaluator struct {
 	// property expression cannot re-expose a header (e.g. authorization) that the
 	// emitted requestHeaders/responseHeaders map already redacts.
 	maskedHeaders map[string]bool
+	// referencedVars is the union, across every compiled expression, of the declared
+	// variable names (see globalPropertyVariables) actually referenced. Computed once at
+	// construction (the expression set is static config) and consulted by
+	// buildGlobalPropertyEvalCtx on every request so it only does the work needed to
+	// populate the variables at least one expression can see — most importantly,
+	// skipping the request.header/response.header parse+lowercase+mask entirely when no
+	// expression references either. Never nil (see newGlobalPropertyEvaluator).
+	referencedVars map[string]bool
 }
 
 // newGlobalPropertyEvaluator compiles every "$ctx:" expression once. A
@@ -79,9 +87,10 @@ type globalPropertyEvaluator struct {
 // request to request.
 func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool) *globalPropertyEvaluator {
 	e := &globalPropertyEvaluator{
-		literals:      make(map[string]string),
-		compiled:      make(map[string]cel.Program),
-		maskedHeaders: maskedHeaders,
+		literals:       make(map[string]string),
+		compiled:       make(map[string]cel.Program),
+		maskedHeaders:  maskedHeaders,
+		referencedVars: make(map[string]bool),
 	}
 	if len(properties) == 0 {
 		return e
@@ -112,68 +121,122 @@ func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[
 			continue
 		}
 		e.compiled[name] = program
+		// Record which declared variables this expression actually touches, so
+		// buildGlobalPropertyEvalCtx can skip populating (and, for headers, parsing)
+		// everything else. Err on the side of over-binding: referencedGlobalPropertyVariables
+		// reads cel-go's own checked reference map, so it can only under-report if cel-go's
+		// checker itself failed to resolve a reference — and an unresolved reference means
+		// Compile would already have failed above, so this expression wouldn't be here.
+		for varName := range referencedGlobalPropertyVariables(ast) {
+			e.referencedVars[varName] = true
+		}
 	}
 	return e
 }
 
-// createGlobalPropertyEnv declares every "$ctx:" variable resolvable for global
-// traffic-log properties. auth.* names deliberately match the log-message policy's
-// own $ctx:auth.* variable names (auth.credential_id, auth.token_id, auth.property,
-// not camelCase) so an expression can move between per-API and global properties
-// unchanged; application.* has no policy equivalent, so it instead matches the
-// emitted TrafficLogApplication JSON field names (application.keyType).
+// referencedGlobalPropertyVariables returns the set of declared variable names (see
+// globalPropertyVariables) that a compiled expression's AST actually references, using
+// cel-go's own checked reference map (populated by env.Compile, which parses AND
+// type-checks — see cel.Ast.NativeRep().ReferenceMap()). Only identifier references carry
+// a Name; a function-overload reference (e.g. the index/"in" operators CEL resolves for
+// "request.header['x']" or "'x' in request.header") has an empty Name and is skipped, since
+// it doesn't correspond to one of our declared variables.
+func referencedGlobalPropertyVariables(compiledAst *cel.Ast) map[string]bool {
+	refs := compiledAst.NativeRep().ReferenceMap()
+	out := make(map[string]bool, len(refs))
+	for _, r := range refs {
+		if r.Name != "" {
+			out[r.Name] = true
+		}
+	}
+	return out
+}
+
+// globalPropertyVariable declares one "$ctx:" variable resolvable for global traffic-log
+// properties: its CEL type (for env construction) and its Go zero value (for
+// buildGlobalPropertyEvalCtx, when the corresponding event field is absent or the variable
+// is otherwise unreferenced-but-needed). Declaring name/type/zero together in one slice —
+// rather than inline cel.Variable(...) env options plus a separate map literal of zero
+// values — is what lets referencedGlobalPropertyVariables and buildGlobalPropertyEvalCtx
+// stay in lock-step with the declared variable set with no risk of the lists drifting apart.
+type globalPropertyVariable struct {
+	name string
+	typ  *cel.Type
+	zero interface{}
+}
+
+// globalPropertyVariables is every "$ctx:" variable resolvable for global traffic-log
+// properties. auth.* names deliberately match the log-message policy's own $ctx:auth.*
+// variable names (auth.credential_id, auth.token_id, auth.property, not camelCase) so an
+// expression can move between per-API and global properties unchanged; application.* has no
+// policy equivalent, so it instead matches the emitted TrafficLogApplication JSON field
+// names (application.keyType).
+//
+// Zero values that are slices/maps (auth.audience, auth.property, metadata, the two header
+// maps, ...) are never mutated in place anywhere in this file — every assignment in
+// buildGlobalPropertyEvalCtx replaces the ctx entry wholesale rather than appending/writing
+// into the existing value — so the same empty instance declared here is safely reused
+// (read-only) across every request and goroutine instead of allocating a fresh empty
+// collection per call.
+var globalPropertyVariables = []globalPropertyVariable{
+	{"request.path", cel.StringType, ""},
+	{"request.method", cel.StringType, ""},
+	{"request.id", cel.StringType, ""},
+	{"request.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
+
+	{"response.status", cel.IntType, 0},
+	{"response.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
+
+	{"api.id", cel.StringType, ""},
+	{"api.name", cel.StringType, ""},
+	{"api.version", cel.StringType, ""},
+	{"api.context", cel.StringType, ""},
+	{"api.kind", cel.StringType, ""},
+
+	{"project.id", cel.StringType, ""},
+
+	{"target.statusCode", cel.IntType, 0},
+	{"target.destination", cel.StringType, ""},
+
+	{"application.id", cel.StringType, ""},
+	{"application.name", cel.StringType, ""},
+	{"application.owner", cel.StringType, ""},
+	{"application.keyType", cel.StringType, ""},
+
+	// Backed by analytics metadata the collector system policy stamps generically
+	// for any authenticated request (see globalPropertyEvaluator doc comment).
+	// Always bound (to a zero value when the request wasn't authenticated), so
+	// referencing auth.* never errors.
+	{"auth.subject", cel.StringType, ""},
+	{"auth.type", cel.StringType, ""},
+	{"auth.issuer", cel.StringType, ""},
+	{"auth.credential_id", cel.StringType, ""},
+	{"auth.token_id", cel.StringType, ""},
+	{"auth.audience", cel.ListType(cel.StringType), []string{}},
+	{"auth.scopes", cel.ListType(cel.StringType), []string{}},
+	{"auth.property", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
+	{"auth.authenticated", cel.BoolType, false},
+	{"auth.authorized", cel.BoolType, false},
+
+	// Backed by SharedContext.Metadata — a generic bag ANY policy (including
+	// third-party/Python policies) can write to, unlike the strongly-typed auth.*
+	// namespace above. There is no fixed schema, so values are cel.DynType rather
+	// than StringType; a policy author writing to SharedContext.Metadata should
+	// assume its value is visible here, since (unlike headers) there is no masking
+	// config for this path. Always bound to an empty map when absent, so
+	// referencing metadata never errors — same zero-value guarantee as auth.*.
+	{"metadata", cel.MapType(cel.StringType, cel.DynType), map[string]interface{}{}},
+}
+
+// createGlobalPropertyEnv declares every variable in globalPropertyVariables in the CEL
+// environment used to compile "$ctx:" expressions.
 func createGlobalPropertyEnv() (*cel.Env, error) {
-	return cel.NewEnv(
-		ext.Strings(),
-
-		cel.Variable("request.path", cel.StringType),
-		cel.Variable("request.method", cel.StringType),
-		cel.Variable("request.id", cel.StringType),
-		cel.Variable("request.header", cel.MapType(cel.StringType, cel.StringType)),
-
-		cel.Variable("response.status", cel.IntType),
-		cel.Variable("response.header", cel.MapType(cel.StringType, cel.StringType)),
-
-		cel.Variable("api.id", cel.StringType),
-		cel.Variable("api.name", cel.StringType),
-		cel.Variable("api.version", cel.StringType),
-		cel.Variable("api.context", cel.StringType),
-		cel.Variable("api.kind", cel.StringType),
-
-		cel.Variable("project.id", cel.StringType),
-
-		cel.Variable("target.statusCode", cel.IntType),
-		cel.Variable("target.destination", cel.StringType),
-
-		cel.Variable("application.id", cel.StringType),
-		cel.Variable("application.name", cel.StringType),
-		cel.Variable("application.owner", cel.StringType),
-		cel.Variable("application.keyType", cel.StringType),
-
-		// Backed by analytics metadata the collector system policy stamps generically
-		// for any authenticated request (see globalPropertyEvaluator doc comment).
-		// Always bound (to a zero value when the request wasn't authenticated), so
-		// referencing auth.* never errors.
-		cel.Variable("auth.subject", cel.StringType),
-		cel.Variable("auth.type", cel.StringType),
-		cel.Variable("auth.issuer", cel.StringType),
-		cel.Variable("auth.credential_id", cel.StringType),
-		cel.Variable("auth.token_id", cel.StringType),
-		cel.Variable("auth.audience", cel.ListType(cel.StringType)),
-		cel.Variable("auth.scopes", cel.ListType(cel.StringType)),
-		cel.Variable("auth.property", cel.MapType(cel.StringType, cel.StringType)),
-		cel.Variable("auth.authenticated", cel.BoolType),
-		cel.Variable("auth.authorized", cel.BoolType),
-
-		// Backed by SharedContext.Metadata — a generic bag ANY policy (including
-		// third-party/Python policies) can write to, unlike the strongly-typed auth.*
-		// namespace above. There is no fixed schema, so values are cel.DynType rather
-		// than StringType; a policy author writing to SharedContext.Metadata should
-		// assume its value is visible here, since (unlike headers) there is no masking
-		// config for this path. Always bound to an empty map when absent, so
-		// referencing metadata never errors — same zero-value guarantee as auth.*.
-		cel.Variable("metadata", cel.MapType(cel.StringType, cel.DynType)),
-	)
+	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+1)
+	opts = append(opts, ext.Strings())
+	for _, v := range globalPropertyVariables {
+		opts = append(opts, cel.Variable(v.name, v.typ))
+	}
+	return cel.NewEnv(opts...)
 }
 
 // resolve evaluates every configured property against event, returning nil
@@ -197,7 +260,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 		return result
 	}
 
-	evalCtx := buildGlobalPropertyEvalCtx(event, e.maskedHeaders)
+	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -214,45 +277,24 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 	return result
 }
 
-// buildGlobalPropertyEvalCtx builds the CEL evaluation context from a
-// dto.Event. Every declared variable is always bound (to a zero value when
-// the corresponding event field is absent) so evaluation never fails merely
-// because a nested pointer was nil. request.header/response.header are masked
-// with the same maskedHeaders config applied to the emitted requestHeaders/
-// responseHeaders maps (see maskHeaders in log.go), so a property expression
-// like "$ctx:request.header['authorization']" cannot bypass masking and leak a
-// credential the operator explicitly asked to redact.
-func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool) map[string]interface{} {
-	ctx := map[string]interface{}{
-		"request.path":        "",
-		"request.method":      "",
-		"request.id":          "",
-		"request.header":      map[string]string{},
-		"response.status":     0,
-		"response.header":     map[string]string{},
-		"api.id":              "",
-		"api.name":            "",
-		"api.version":         "",
-		"api.context":         "",
-		"api.kind":            "",
-		"project.id":          "",
-		"target.statusCode":   0,
-		"target.destination":  "",
-		"application.id":      "",
-		"application.name":    "",
-		"application.owner":   "",
-		"application.keyType": "",
-		"auth.subject":        "",
-		"auth.type":           "",
-		"auth.issuer":         "",
-		"auth.credential_id":  "",
-		"auth.token_id":       "",
-		"auth.audience":       []string{},
-		"auth.scopes":         []string{},
-		"auth.property":       map[string]string{},
-		"auth.authenticated":  false,
-		"auth.authorized":     false,
-		"metadata":            map[string]interface{}{},
+// buildGlobalPropertyEvalCtx builds the CEL evaluation context from a dto.Event, populating
+// only the variables in referenced — the union, across every compiled expression, of the
+// variables actually used (see globalPropertyEvaluator.referencedVars) — rather than the
+// full declared set. Every populated variable is always bound (to its zero value when the
+// corresponding event field is absent) so evaluation never fails merely because a nested
+// pointer was nil. request.header/response.header are masked with the same maskedHeaders
+// config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
+// log.go), so a property expression like "$ctx:request.header['authorization']" cannot
+// bypass masking and leak a credential the operator explicitly asked to redact — that
+// parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
+// itself skipped whenever the corresponding variable isn't referenced by any configured
+// expression, which is the whole point of this function taking referenced at all.
+func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool) map[string]interface{} {
+	ctx := make(map[string]interface{}, len(referenced))
+	for _, v := range globalPropertyVariables {
+		if referenced[v.name] {
+			ctx[v.name] = v.zero
+		}
 	}
 
 	if event == nil {
@@ -260,44 +302,74 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool)
 	}
 
 	if event.Operation != nil {
-		ctx["request.path"] = event.Operation.APIResourceTemplate
-		ctx["request.method"] = event.Operation.APIMethod
+		if referenced["request.path"] {
+			ctx["request.path"] = event.Operation.APIResourceTemplate
+		}
+		if referenced["request.method"] {
+			ctx["request.method"] = event.Operation.APIMethod
+		}
 	}
-	if event.MetaInfo != nil {
+	if referenced["request.id"] && event.MetaInfo != nil {
 		ctx["request.id"] = event.MetaInfo.CorrelationID
 	}
-	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
-		if headers := parseHeadersFromString(raw); headers != nil {
+	if referenced["request.header"] {
+		if headers := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
 			ctx["request.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
 
-	ctx["response.status"] = event.ProxyResponseCode
-	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok {
-		if headers := parseHeadersFromString(raw); headers != nil {
+	if referenced["response.status"] {
+		ctx["response.status"] = event.ProxyResponseCode
+	}
+	if referenced["response.header"] {
+		if headers := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
 			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
 
 	if event.API != nil {
-		ctx["api.id"] = event.API.APIID
-		ctx["api.name"] = event.API.APIName
-		ctx["api.version"] = event.API.APIVersion
-		ctx["api.context"] = event.API.APIContext
-		ctx["api.kind"] = event.API.APIType
-		ctx["project.id"] = event.API.ProjectID
+		if referenced["api.id"] {
+			ctx["api.id"] = event.API.APIID
+		}
+		if referenced["api.name"] {
+			ctx["api.name"] = event.API.APIName
+		}
+		if referenced["api.version"] {
+			ctx["api.version"] = event.API.APIVersion
+		}
+		if referenced["api.context"] {
+			ctx["api.context"] = event.API.APIContext
+		}
+		if referenced["api.kind"] {
+			ctx["api.kind"] = event.API.APIType
+		}
+		if referenced["project.id"] {
+			ctx["project.id"] = event.API.ProjectID
+		}
 	}
 
 	if event.Target != nil {
-		ctx["target.statusCode"] = event.Target.TargetResponseCode
-		ctx["target.destination"] = event.Target.Destination
+		if referenced["target.statusCode"] {
+			ctx["target.statusCode"] = event.Target.TargetResponseCode
+		}
+		if referenced["target.destination"] {
+			ctx["target.destination"] = event.Target.Destination
+		}
 	}
 
 	if a := event.Application; a != nil {
-		ctx["application.id"] = a.ApplicationID
-		ctx["application.name"] = a.ApplicationName
-		ctx["application.owner"] = a.ApplicationOwner
-		ctx["application.keyType"] = a.KeyType
+		if referenced["application.id"] {
+			ctx["application.id"] = a.ApplicationID
+		}
+		if referenced["application.name"] {
+			ctx["application.name"] = a.ApplicationName
+		}
+		if referenced["application.owner"] {
+			ctx["application.owner"] = a.ApplicationOwner
+		}
+		if referenced["application.keyType"] {
+			ctx["application.keyType"] = a.KeyType
+		}
 	}
 
 	// Auth-context, backed by analytics metadata the collector system policy stamps
@@ -305,52 +377,77 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool)
 	// comment). auth.subject presence is what auth.authenticated derives from, rather
 	// than a separately stamped flag, since the collector only ever stamps these keys
 	// together, gated on Authenticated && Subject != "" (see populateAuthAnalyticsMetadata
-	// in gateway/system-policies/analytics/analytics.go).
-	if subject, ok := event.Properties[dto.PropKeyAuthUserID].(string); ok && subject != "" {
-		ctx["auth.subject"] = subject
-		ctx["auth.authenticated"] = true
-	}
-	if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok {
-		ctx["auth.type"] = authType
-	}
-	if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok {
-		ctx["auth.issuer"] = issuer
-	}
-	if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok {
-		ctx["auth.credential_id"] = credentialID
-	}
-	if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok {
-		ctx["auth.token_id"] = tokenID
-	}
-	if audience, ok := event.Properties[dto.PropKeyAuthAudience].(string); ok && audience != "" {
-		ctx["auth.audience"] = strings.Split(audience, ",")
-	}
-	if scopes, ok := event.Properties[dto.PropKeyAuthScopes].(string); ok && scopes != "" {
-		ctx["auth.scopes"] = strings.Split(scopes, " ")
-	}
-	if raw, ok := event.Properties[dto.PropKeyAuthProperties].(string); ok && raw != "" {
-		var props map[string]string
-		if err := json.Unmarshal([]byte(raw), &props); err == nil {
-			ctx["auth.property"] = props
-		} else {
-			slog.Debug("traffic_logging.properties: failed to parse auth properties metadata", "error", err)
+	// in gateway/system-policies/analytics/analytics.go). Both are derived from the same
+	// lookup, so it's guarded by either being referenced.
+	if referenced["auth.subject"] || referenced["auth.authenticated"] {
+		if subject, ok := event.Properties[dto.PropKeyAuthUserID].(string); ok && subject != "" {
+			if referenced["auth.subject"] {
+				ctx["auth.subject"] = subject
+			}
+			if referenced["auth.authenticated"] {
+				ctx["auth.authenticated"] = true
+			}
 		}
 	}
-	if authorized, ok := event.Properties[dto.PropKeyAuthAuthorized].(string); ok {
-		if parsed, err := strconv.ParseBool(authorized); err == nil {
-			ctx["auth.authorized"] = parsed
+	if referenced["auth.type"] {
+		if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok {
+			ctx["auth.type"] = authType
+		}
+	}
+	if referenced["auth.issuer"] {
+		if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok {
+			ctx["auth.issuer"] = issuer
+		}
+	}
+	if referenced["auth.credential_id"] {
+		if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok {
+			ctx["auth.credential_id"] = credentialID
+		}
+	}
+	if referenced["auth.token_id"] {
+		if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok {
+			ctx["auth.token_id"] = tokenID
+		}
+	}
+	if referenced["auth.audience"] {
+		if audience, ok := event.Properties[dto.PropKeyAuthAudience].(string); ok && audience != "" {
+			ctx["auth.audience"] = strings.Split(audience, ",")
+		}
+	}
+	if referenced["auth.scopes"] {
+		if scopes, ok := event.Properties[dto.PropKeyAuthScopes].(string); ok && scopes != "" {
+			ctx["auth.scopes"] = strings.Split(scopes, " ")
+		}
+	}
+	if referenced["auth.property"] {
+		if raw, ok := event.Properties[dto.PropKeyAuthProperties].(string); ok && raw != "" {
+			var props map[string]string
+			if err := json.Unmarshal([]byte(raw), &props); err == nil {
+				ctx["auth.property"] = props
+			} else {
+				slog.Debug("traffic_logging.properties: failed to parse auth properties metadata", "error", err)
+			}
+		}
+	}
+	if referenced["auth.authorized"] {
+		if authorized, ok := event.Properties[dto.PropKeyAuthAuthorized].(string); ok {
+			if parsed, err := strconv.ParseBool(authorized); err == nil {
+				ctx["auth.authorized"] = parsed
+			}
 		}
 	}
 
 	// SharedContext.Metadata, JSON-encoded by populateGenericMetadata in
 	// gateway/system-policies/analytics/analytics.go. Raw and unfiltered: any policy
 	// author writing to SharedContext.Metadata should assume its value reaches here.
-	if raw, ok := event.Properties[dto.PropKeyMetadata].(string); ok && raw != "" {
-		var meta map[string]interface{}
-		if err := json.Unmarshal([]byte(raw), &meta); err == nil {
-			ctx["metadata"] = meta
-		} else {
-			slog.Debug("traffic_logging.properties: failed to parse generic metadata", "error", err)
+	if referenced["metadata"] {
+		if raw, ok := event.Properties[dto.PropKeyMetadata].(string); ok && raw != "" {
+			var meta map[string]interface{}
+			if err := json.Unmarshal([]byte(raw), &meta); err == nil {
+				ctx["metadata"] = meta
+			} else {
+				slog.Debug("traffic_logging.properties: failed to parse generic metadata", "error", err)
+			}
 		}
 	}
 

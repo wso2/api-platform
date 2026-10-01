@@ -229,18 +229,28 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				if mods.AnalyticsMetadata != nil {
 					for key, value := range mods.AnalyticsMetadata {
 						shortCircuitAnalyticsData[key] = value
+						// Mirrored into execCtx.analyticsMetadata (not just the local,
+						// wire-bound map above) so the correlation-store snapshot at
+						// ext_proc stream teardown (snapshotHeaderPayload) sees a
+						// short-circuited request's captured headers exactly like a
+						// pass-through request's -- see the non-short-circuit path
+						// below, which has always done this.
+						execCtx.analyticsMetadata[key] = value
 					}
 				}
 
 				dropAction := mods.AnalyticsHeaderFilter
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
 					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
-					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					shortCircuitAnalyticsData["request_headers"] = finalizedHeaders
+					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
 			}
 			if immResp.AnalyticsMetadata != nil {
 				for key, value := range immResp.AnalyticsMetadata {
 					shortCircuitAnalyticsData[key] = value
+					execCtx.analyticsMetadata[key] = value
 				}
 			}
 
@@ -524,6 +534,17 @@ func collectShortCircuitAnalytics(
 
 	// The rejecting policy wins on any key it also sets.
 	maps.Copy(out, immResp.AnalyticsMetadata)
+
+	// Captured headers and bodies reach the ALS handler through the correlation
+	// store, which snapshots execCtx.analyticsMetadata at ext_proc stream teardown
+	// (see snapshotCorrelationPayload). An ImmediateResponse ends the stream, so
+	// mirror them there or a denied request's traffic-log line would lose them.
+	for _, key := range []string{analyticsRequestHeadersKey, analyticsResponseHeadersKey,
+		analyticsRequestPayloadKey, analyticsResponsePayloadKey} {
+		if v, ok := out[key]; ok {
+			execCtx.analyticsMetadata[key] = v
+		}
+	}
 
 	// Attribute the outcome to the policy layer. This is the one place where being
 	// short-circuited by a policy is known as a fact rather than inferred from a
