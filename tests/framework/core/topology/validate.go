@@ -97,7 +97,8 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	}
 
 	for feature, owners := range featureOwners {
-		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) && !allowGatewayVersionSeparatedFeatureOwners(owners) {
+		if len(owners) > 1 && !allowDatabaseVariantFeatureOwners(owners) &&
+			!allowGatewayVersionSeparatedFeatureOwners(owners) && !allowTopologyVariantFeatureOwners(owners) {
 			names := make([]string, 0, len(owners))
 			for owner := range owners {
 				names = append(names, owner)
@@ -116,6 +117,8 @@ type featureOwner struct {
 	constraint *gatewayVersionConstraint
 	// Every matrix variant of the source block, not just the last one resolved.
 	databases map[components.DBType]bool
+	// topologies holds the topologySignature of every variant of the source block.
+	topologies map[string]bool
 }
 
 // allowGatewayVersionSeparatedFeatureOwners permits the same feature to be bound to
@@ -181,6 +184,58 @@ func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 		}
 	}
 	return true
+}
+
+// allowTopologyVariantFeatureOwners permits a feature to be intentionally repeated by
+// same-named runners whose blocks run different topologies, such as a one- and a
+// two-controller gateway. Blocks that differ only in overlays, versions or engines run the
+// same topology and stay refused.
+func allowTopologyVariantFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
+	var runnerName string
+	seen := map[string]bool{}
+	for _, owner := range owners {
+		if runnerName == "" {
+			runnerName = owner.runner
+		} else if runnerName != owner.runner {
+			return false
+		}
+		if len(owner.topologies) != 1 {
+			return false
+		}
+		for signature := range owner.topologies {
+			if seen[signature] {
+				return false
+			}
+			seen[signature] = true
+		}
+	}
+	return true
+}
+
+// topologySignature names what a block runs: each component and the compose services
+// behind it, in order.
+func topologySignature(b *ResolvedBlock) string {
+	parts := make([]string, 0, len(b.Components))
+	for _, c := range b.Components {
+		if c.Def == nil {
+			continue
+		}
+		part := c.Def.Name
+		if c.Def.Compose != nil {
+			services := append([]string(nil), c.Def.Compose.Services...)
+			sort.Strings(services)
+			part += "[" + strings.Join(services, ",") + "]"
+		}
+		if c.Replicas > 1 {
+			part += fmt.Sprintf("x%d", c.Replicas)
+		}
+		parts = append(parts, part)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
 }
 
 func validateBlockComponents(b *ResolvedBlock) error {
@@ -296,13 +351,14 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			}
 			entry, ok := featureOwners[f][owner]
 			if !ok {
-				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}}
+				entry = featureOwner{runner: run.Name, databases: map[components.DBType]bool{}, topologies: map[string]bool{}}
 				if run.GatewayVersion != nil {
 					constraint := *run.GatewayVersion
 					entry.constraint = &constraint
 				}
 			}
 			entry.databases[platformAPIDatabase(b)] = true
+			entry.topologies[topologySignature(b)] = true
 			featureOwners[f][owner] = entry
 		}
 	}

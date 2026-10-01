@@ -59,7 +59,10 @@ var (
 	KindAPI          = Kind{Name: "api", Order: 50}
 	// gateway-controller's own Mcp resource (the "/mcp-proxies" collection), distinct from
 	// KindMCPServer below (platform-api's separate MCP server registration).
-	KindMCPProxy    = Kind{Name: "mcp-proxy", Order: 52}
+	KindMCPProxy = Kind{Name: "mcp-proxy", Order: 52}
+	// gateway-controller's Agent resource (the "/agents" collection). Like an API it can name
+	// certificates, so it deletes before them.
+	KindAgent       = Kind{Name: "agent", Order: 53}
 	KindMCPServer   = Kind{Name: "mcp-server", Order: 55}
 	KindPolicy      = Kind{Name: "policy", Order: 60}
 	KindSharedScope = Kind{Name: "shared-scope", Order: 70}

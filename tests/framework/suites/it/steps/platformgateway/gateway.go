@@ -947,6 +947,15 @@ type resourceMetadata struct {
 // register wires gateway, health, and timeout steps.
 func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerRawHTTPSteps(sc)
+	g.registerMTLSSteps(sc)
+	g.registerMTLSPoolSteps(sc)
+	g.registerOutboundMTLSSteps(sc)
+	g.registerMTLSHostnameSteps(sc)
+	g.registerWaitSteps(sc)
+	g.registerMTLSListenerSteps(sc)
+	g.registerMTLSHeaderBypassSteps(sc)
+	g.registerMTLSRelaySteps(sc)
+	g.registerMTLSObservabilitySteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
 		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
@@ -1007,6 +1016,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsRequestMethod)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have response status (\d+)$`,
 		g.analyticsResponseStatus)
+	sc.Step(`^the latest analytics event for API context "([^"]*)" should have response status (\d+)$`,
+		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
@@ -1295,6 +1306,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM provider template": {"LlmProviderTemplate", collLLMTemplates},
 	"MCP proxy":             {"Mcp", collMCPProxies},
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
+	"Agent":                 {"Agent", collAgents},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -1322,6 +1334,9 @@ func (g *Gateway) createAPI(ctx context.Context, body *godog.DocString, contentT
 
 	url, err := g.managementURL("/rest-apis")
 	if err != nil {
+		return err
+	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
 		return err
 	}
 
@@ -1408,6 +1423,9 @@ func (g *Gateway) deleteAPI(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
+		return err
+	}
 	resp, err := g.funnel.Delete(ctx, url, g.scenarioHeaders(ctx))
 	if err != nil {
 		return err
@@ -1446,15 +1464,19 @@ var serviceEndpoints = map[string]struct {
 }{
 	"gateway-controller":       {component: "platform-gateway", endpoint: "rest", basePath: ManagementBasePath},
 	"gateway-controller-admin": {component: "platform-gateway", endpoint: "admin", basePath: adminBasePath},
-	"policy-engine":            {component: "platform-gateway", endpoint: "policy-admin"},
-	"analytics":                {component: "testbench", endpoint: "analytics", partitioned: true},
-	"capture":                  {component: "testbench", endpoint: "capture", partitioned: true},
-	"oauth2":                   {component: "testbench", endpoint: "oauth2", partitioned: true},
+	// The admin API of the controller that feeds the runtime over xDS, on a gateway that
+	// runs it apart from the management controller.
+	"gateway-controller-xds-admin": {component: "platform-gateway", endpoint: "xds-admin", basePath: adminBasePath},
+	"policy-engine":                {component: "platform-gateway", endpoint: "policy-admin"},
+	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
+	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
+	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
 	"controller-metrics":    {component: "platform-gateway", endpoint: "metrics"},
 	"policy-engine-metrics": {component: "platform-gateway", endpoint: "pe-metrics"},
+	"envoy-admin":           {component: "platform-gateway", endpoint: "envoy-admin"},
 }
 
 // serviceURL resolves a feature's service name and path to a URL on the running topology.
@@ -1519,7 +1541,7 @@ func (g *Gateway) serviceBasePath(service, defaultPath string) string {
 	switch service {
 	case "gateway-controller":
 		return gatewayManagementBasePath(g.topo)
-	case "gateway-controller-admin":
+	case "gateway-controller-admin", "gateway-controller-xds-admin":
 		return gatewayAdminBasePath(g.topo)
 	default:
 		return defaultPath
@@ -1615,8 +1637,9 @@ func (g *Gateway) serviceRequestWithBody(
 	}
 
 	// The config dump lags the deploy by one event-hub poll and nothing else exposes that, so
-	// the framework waits here rather than making every scenario encode the timing.
-	if method == http.MethodGet && strings.HasPrefix(strings.TrimPrefix(path, "/"), "config_dump") {
+	// the framework waits here rather than making every scenario encode the timing. Envoy's own
+	// dump names no API handles, so it is read as it is.
+	if method == http.MethodGet && service != "envoy-admin" && strings.HasPrefix(strings.TrimPrefix(path, "/"), "config_dump") {
 		if err := g.awaitDumpConsistent(ctx, url); err != nil {
 			return err
 		}
@@ -1850,6 +1873,7 @@ type analyticsEvent struct {
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
 	Metadata map[string]any `json:"metadata"`
+	UserID   string         `json:"user_id"`
 }
 
 func (g *Gateway) analyticsHeader(
@@ -1891,14 +1915,30 @@ func (g *Gateway) analyticsHeader(
 }
 
 func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analyticsEvent, error) {
+	return g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q", path), func(event *analyticsEvent) bool {
+		return analyticsEventMatchesPath(event.Request.URI, path)
+	})
+}
+
+// latestAnalyticsEventForAPIContext selects the event by the API context the gateway records
+// in the metadata of every event, which a request answered before routing still carries.
+func (g *Gateway) latestAnalyticsEventForAPIContext(ctx context.Context, apiContext string) (*analyticsEvent, error) {
+	return g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("API context %q", apiContext), func(event *analyticsEvent) bool {
+		return event.Metadata["apiContext"] == apiContext
+	})
+}
+
+// latestMatchingAnalyticsEvent polls the collector until an event satisfies match and returns
+// the latest such event; what names the selection in errors.
+func (g *Gateway) latestMatchingAnalyticsEvent(
+	ctx context.Context, what string, match func(*analyticsEvent) bool,
+) (*analyticsEvent, error) {
 	url, err := g.serviceURL(ctx, "analytics", "/test/events")
 	if err != nil {
 		return nil, err
 	}
 	var observed []string
-	accept := func(event *analyticsEvent) bool {
-		return event != nil && analyticsEventMatchesPath(event.Request.URI, path)
-	}
+	accept := func(event *analyticsEvent) bool { return event != nil && match(event) }
 	pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	last, err := retry.Until(pollCtx, retry.Options{Interval: time.Second},
@@ -1927,11 +1967,10 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 			return nil, nil
 		}, accept)
 	if err != nil {
-		return nil, fmt.Errorf("reading analytics event for path %q (observed URIs: %v): %w",
-			path, observed, err)
+		return nil, fmt.Errorf("reading analytics event for %s (observed URIs: %v): %w", what, observed, err)
 	}
 	if last == nil {
-		return nil, fmt.Errorf("no analytics event found for request path %q (observed URIs: %v)", path, observed)
+		return nil, fmt.Errorf("no analytics event found for %s (observed URIs: %v)", what, observed)
 	}
 	return last, nil
 }
@@ -1999,13 +2038,24 @@ func (g *Gateway) analyticsEventCountAtLeast(ctx context.Context, want int) erro
 	return nil
 }
 
+// analyticsQuietWindow is how long the collector's count must stay unchanged for the events
+// to count as settled.
+const analyticsQuietWindow = 3 * time.Second
+
+// mtlsAnalyticsQuietWindow is the quiet window for mutual TLS scenarios.
+const mtlsAnalyticsQuietWindow = 2 * time.Second
+
 // settleAnalyticsEventCount waits for the collector's count to stop changing for a quiet
 // period. A bare threshold poll would return the instant the count first reaches a target and
 // could miss a late-arriving duplicate event landing just after - this is what actually
 // verifies "no more are coming", used both to check an exact count and to drain a prior
 // request's own publish delay before a scenario resets the collector for its real assertion.
 func (g *Gateway) settleAnalyticsEventCount(ctx context.Context) (retry.Settled, error) {
-	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, 3*time.Second,
+	quiet := analyticsQuietWindow
+	if isMTLSScenario(ctx) {
+		quiet = mtlsAnalyticsQuietWindow
+	}
+	settled, err := retry.SettledCount(ctx, retry.Options{Timeout: 12 * time.Second}, quiet,
 		func(ctx context.Context) (int, error) { return g.analyticsEventCount(ctx) })
 	if err != nil {
 		return settled, err
@@ -2071,6 +2121,21 @@ func (g *Gateway) analyticsResponseStatus(ctx context.Context, path string, want
 	return nil
 }
 
+func (g *Gateway) analyticsResponseStatusForAPIContext(ctx context.Context, contextExpr string, want int) error {
+	apiContext, err := stepscommon.Expand(ctx, contextExpr)
+	if err != nil {
+		return err
+	}
+	event, err := g.latestAnalyticsEventForAPIContext(ctx, apiContext)
+	if err != nil {
+		return err
+	}
+	if event.Response.Status != want {
+		return fmt.Errorf("analytics event for API context %q has response status %d, want %d", apiContext, event.Response.Status, want)
+	}
+	return nil
+}
+
 func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want string) error {
 	event, err := g.analyticsEventForPath(ctx, path)
 	if err != nil {
@@ -2129,6 +2194,9 @@ func (g *Gateway) updateAPI(ctx context.Context, name string, body *godog.DocStr
 	if err != nil {
 		return err
 	}
+	if err := g.beforeAPIMutation(ctx); err != nil {
+		return err
+	}
 	headers := g.headerWith(ctx, "Content-Type", "application/yaml")
 	return g.invokeWith(ctx, http.MethodPut, url, headers, []byte(definition))
 }
@@ -2145,6 +2213,7 @@ const (
 	collLLMTemplates = "/llm-provider-templates"
 	collMCPProxies   = "/mcp-proxies"
 	collLLMProxies   = "/llm-proxies"
+	collAgents       = "/agents"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2161,6 +2230,7 @@ const (
 func (g *Gateway) mutateResource(
 	ctx context.Context, method, collection, id string, body *godog.DocString,
 ) error {
+	markGatewayChanged(ctx)
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
 		return err
@@ -2307,6 +2377,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindLLMProviderTemplate, true
 	case collMCPProxies:
 		return cleanup.KindMCPProxy, true
+	case collAgents:
+		return cleanup.KindAgent, true
 	default:
 		return cleanup.Kind{}, false
 	}

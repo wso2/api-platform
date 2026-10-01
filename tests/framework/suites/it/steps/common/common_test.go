@@ -274,6 +274,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 
 	root := filepath.Join(filepath.Dir(source), "..", "..", "resources", "templates")
 	want := map[string]string{
+		"agent.yaml":                 "Agent",
 		"llm-provider-template.yaml": "LlmProviderTemplate",
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",

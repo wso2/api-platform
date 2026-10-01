@@ -230,20 +230,23 @@ func parseGatewayVersionConstraint(raw string) (gatewayVersionConstraint, error)
 	return gatewayVersionConstraint{}, fmt.Errorf("%s comparison requires one of >, >=, <, <=, =, or ==", gatewayVersionPrefix)
 }
 
+// parseGatewayReleaseVersion parses a release version: major.minor.patch, or
+// a four-part released tag such as 1.2.0.6, which compares on its first
+// three parts.
 func parseGatewayReleaseVersion(raw string) (gatewayReleaseVersion, error) {
 	raw = strings.TrimPrefix(raw, "v")
 	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
-		return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+	if len(parts) != 3 && len(parts) != 4 {
+		return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch) or a four-part released tag", raw)
 	}
-	values := [3]uint64{}
+	values := [4]uint64{}
 	for i, part := range parts {
 		if part == "" || (len(part) > 1 && part[0] == '0') {
-			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch) or a four-part released tag", raw)
 		}
 		value, err := strconv.ParseUint(part, 10, 64)
 		if err != nil {
-			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch)", raw)
+			return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch) or a four-part released tag", raw)
 		}
 		values[i] = value
 	}

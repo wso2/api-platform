@@ -20,6 +20,7 @@ package testbench
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -119,6 +120,9 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 				"service", svc.Name(), "port", svc.Port(), "error", err)
 			return fmt.Errorf("testbench: service %q: listening on port %d: %w",
 				svc.Name(), svc.Port(), err)
+		}
+		if tlsSvc, ok := svc.(TLSService); ok {
+			listener = tls.NewListener(listener, tlsSvc.TLSConfig())
 		}
 		listeners = append(listeners, listener)
 

@@ -46,7 +46,8 @@ services:
 
   gateway-runtime${INSTANCE:-}:
     image: ${PG_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT}
-    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    # Access log lines are flushed every 500 ms, so a scenario reads its request's line promptly.
+    command: ["--pol.config", "/etc/policy-engine/config.toml", "--rtr.file-flush-interval-msec", "500"]
     stop_grace_period: 30s
     env_file:
       - api-platform.env

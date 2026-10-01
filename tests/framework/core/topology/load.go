@@ -540,15 +540,20 @@ func resolveBlock(
 			def = versionedDef
 		}
 
-		dbType, err := def.ResolveDBType(engineFor(c, v, defaults, block, registry), "")
-		if err != nil {
-			errs.addf("block %q: %v", name, err)
-			continue
-		}
-
 		wiring, err := resolveWiring(block, name, c.Name, def)
 		if err != nil {
 			errs.add(err)
+			continue
+		}
+		def, err = applyWiring(name, c.Name, def, wiring)
+		if err != nil {
+			errs.add(err)
+			continue
+		}
+
+		dbType, err := def.ResolveDBType(engineFor(c, v, defaults, block, registry), "")
+		if err != nil {
+			errs.addf("block %q: %v", name, err)
 			continue
 		}
 		if len(c.StagedFiles) > 0 {
@@ -609,6 +614,30 @@ func resolveWiring(
 		return nil, fmt.Errorf("block %q: wiring for %q: %w", blockName, component, err)
 	}
 	return value, nil
+}
+
+// applyWiring returns the validated definition a component's wiring selects. A component
+// without wiring, or without an ApplyWiring hook, keeps its definition.
+func applyWiring(
+	blockName, component string, def *components.Definition, wiring any,
+) (*components.Definition, error) {
+	if wiring == nil || def.ApplyWiring == nil {
+		return def, nil
+	}
+	wired, err := def.ApplyWiring(def, wiring)
+	if err != nil {
+		return nil, fmt.Errorf("block %q: wiring for %q: %w", blockName, component, err)
+	}
+	if wired == nil {
+		return nil, fmt.Errorf("block %q: wiring for %q selected no definition", blockName, component)
+	}
+	if wired.Name != def.Name {
+		return nil, fmt.Errorf("block %q: wiring for %q renamed the component to %q", blockName, component, wired.Name)
+	}
+	if err := wired.Validate(); err != nil {
+		return nil, fmt.Errorf("block %q: wiring for %q: %w", blockName, component, err)
+	}
+	return wired, nil
 }
 
 // Block returns a resolved block by name.
