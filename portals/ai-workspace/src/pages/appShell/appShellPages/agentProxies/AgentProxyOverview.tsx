@@ -1388,7 +1388,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
                         {!hasApiKeyAuthPolicy && (
                           <Alert severity="info">
                             Keys are not enforced until the{' '}
-                            <strong>api-key-auth</strong> policy is attached.
+                            <strong>API Key Auth</strong> policy is attached.
                             Add it from the{' '}
                             <Link
                               component="button"

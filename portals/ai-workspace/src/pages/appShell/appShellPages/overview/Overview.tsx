@@ -33,6 +33,15 @@ import {
   AgentProxiesProvider,
   useAgentProxies,
 } from '../../../../contexts/agentProxy';
+import {
+  ProviderTemplatesProvider,
+  useProviderTemplates,
+} from '../../../../contexts/llmProvider/providerTemplate';
+import {
+  resolveTemplateDisplayName,
+  resolveTemplateLogo,
+} from '../../../../utils/providerTemplateDisplay';
+import { getProviderLogoForTemplate } from '../quickStartWizard/providerTemplateVisuals';
 import { MCPServersProvider, useMCPServers } from '../../../../contexts/MCP';
 import {
   ApplicationsProvider,
@@ -66,15 +75,17 @@ export default function Overview(): React.JSX.Element {
 
   return (
     <LLMProvidersProvider>
-      <ProxiesProvider>
-        <MCPServersProvider>
-          <ApplicationsProvider>
-            <AgentProxiesProvider>
-              <OverviewContent />
-            </AgentProxiesProvider>
-          </ApplicationsProvider>
-        </MCPServersProvider>
-      </ProxiesProvider>
+      <ProviderTemplatesProvider>
+        <ProxiesProvider>
+          <MCPServersProvider>
+            <ApplicationsProvider>
+              <AgentProxiesProvider>
+                <OverviewContent />
+              </AgentProxiesProvider>
+            </ApplicationsProvider>
+          </MCPServersProvider>
+        </ProxiesProvider>
+      </ProviderTemplatesProvider>
     </LLMProvidersProvider>
   );
 }
@@ -91,6 +102,8 @@ function OverviewContent(): React.JSX.Element {
   const mcpServers = useMCPServers();
   const applications = useApplications();
   const agentProxies = useAgentProxies();
+  const { templatesResponse } = useProviderTemplates();
+
 
 
   useEffect(() => {
@@ -165,6 +178,7 @@ function OverviewContent(): React.JSX.Element {
             id: proxy.id ?? proxy.displayName,
             displayName: proxy.displayName,
             subtitle: proxy.description,
+            readOnly: proxy.readOnly,
             updatedAt: proxy.updatedAt ?? proxy.createdAt,
           })),
           isLoading: proxies.isLoading,
@@ -174,6 +188,9 @@ function OverviewContent(): React.JSX.Element {
           createPath: path('/proxies/create'),
           createLabel: 'Add LLM proxy',
           canCreate: hasPermission(SCOPES.LLM_PROXY_CREATE),
+          itemLabel: 'App LLM Proxy',
+          canDelete: hasPermission(SCOPES.LLM_PROXY_DELETE),
+          onItemDelete: proxies.deleteProxy,
           emptyImage: NoProxies,
           emptyTitle: 'Create your first App LLM Proxy',
           emptyDescription:
@@ -191,6 +208,7 @@ function OverviewContent(): React.JSX.Element {
               id: server.id,
               displayName: server.displayName,
               subtitle: server.description,
+              readOnly: server.readOnly,
               updatedAt: server.updatedAt ?? server.createdAt,
             })
           ),
@@ -201,6 +219,9 @@ function OverviewContent(): React.JSX.Element {
           createPath: path('/mcp-proxy/create'),
           createLabel: 'Add MCP proxy',
           canCreate: hasPermission(SCOPES.MCP_PROXY_CREATE),
+          itemLabel: 'MCP Proxy',
+          canDelete: hasPermission(SCOPES.MCP_PROXY_DELETE),
+          onItemDelete: mcpServers.deleteMCPServer,
           emptyImage: NoMCPServers,
           emptyTitle: 'Create your first MCP Proxy',
           emptyDescription:
@@ -217,6 +238,7 @@ function OverviewContent(): React.JSX.Element {
               id: agentProxy.id,
               displayName: agentProxy.displayName,
               subtitle: agentProxy.description,
+              readOnly: agentProxy.readOnly,
               updatedAt: agentProxy.updatedAt ?? agentProxy.createdAt,
             })
           ),
@@ -227,6 +249,9 @@ function OverviewContent(): React.JSX.Element {
           createPath: path('/agent-proxy/create'),
           createLabel: 'Add Agent proxy',
           canCreate: hasPermission(SCOPES.AGENT_PROXY_CREATE),
+          itemLabel: 'Agent Proxy',
+          canDelete: hasPermission(SCOPES.AGENT_PROXY_DELETE),
+          onItemDelete: agentProxies.deleteAgentProxy,
           emptyImage: NoAgents,
           emptyTitle: 'Create your first Agent Proxy',
           emptyDescription:
@@ -253,6 +278,9 @@ function OverviewContent(): React.JSX.Element {
           createPath: path('/applications/create'),
           createLabel: 'Add application',
           canCreate: hasPermission(SCOPES.APPLICATION_CREATE),
+          itemLabel: 'Application',
+          canDelete: hasPermission(SCOPES.APPLICATION_DELETE),
+          onItemDelete: applications.deleteApplication,
           emptyImage: NoApplications,
           emptyTitle: 'Create your first GenAI Application',
           emptyDescription:
@@ -269,9 +297,15 @@ function OverviewContent(): React.JSX.Element {
             (provider) => ({
               id: provider.id ?? provider.displayName,
               displayName: provider.displayName,
-              subtitle: provider.template
-                ? `Template: ${provider.template}`
-                : provider.description,
+              subtitle: provider.description,
+              chipLabel: resolveTemplateDisplayName(
+                provider.template,
+                templatesResponse.list
+              ),
+              chipLogo:
+                resolveTemplateLogo(provider.template, templatesResponse.list) ??
+                getProviderLogoForTemplate(provider.template ?? '') ??
+                undefined,
               updatedAt:
                 provider.lastUpdated ??
                 provider.updatedAt ??
@@ -285,6 +319,9 @@ function OverviewContent(): React.JSX.Element {
           createPath: path('/service-provider/create'),
           createLabel: 'Add LLM provider',
           canCreate: hasPermission(SCOPES.LLM_PROVIDER_CREATE),
+          itemLabel: 'LLM Provider',
+          canDelete: hasPermission(SCOPES.LLM_PROVIDER_DELETE),
+          onItemDelete: providers.deleteProvider,
           emptyImage: NoProviders,
           emptyTitle: 'Create your first LLM Provider',
           emptyDescription:
@@ -299,6 +336,7 @@ function OverviewContent(): React.JSX.Element {
     mcpServers,
     applications,
     agentProxies,
+    templatesResponse,
   ]);
 
   return (
@@ -317,7 +355,10 @@ function OverviewContent(): React.JSX.Element {
 
         <Grid container spacing={2}>
           {kinds.map((kind) => (
-            <Grid key={kind.id} size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+            <Grid
+              key={kind.id}
+              size={{ xs: 12, sm: 6, md: 4, lg: 12 / kinds.length }}
+            >
               <KindSummaryCard
                 label={kind.label}
                 icon={kind.icon}

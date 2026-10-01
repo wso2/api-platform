@@ -18,19 +18,28 @@
 
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import { useState } from 'react';
 import {
   Avatar,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
+  IconButton,
   Skeleton,
   Stack,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Clock, Plus } from '@wso2/oxygen-ui-icons-react';
+import { Clock, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { formatRelativeTime } from '../../../../contexts/ApplicationsContext';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import {
@@ -40,6 +49,14 @@ import {
 
 /** Rows shown inline before the panel defers to the full listing page. */
 const ITEM_PREVIEW_COUNT = 5;
+
+/** A row is the name over its subtitle; the gap is the stack spacing either
+ * side of the divider. The list area holds a full preview's worth of rows so
+ * the panel keeps one height however many a kind actually has. */
+const ITEM_ROW_HEIGHT = 40;
+const ITEM_ROW_GAP = 25;
+const LIST_MIN_HEIGHT =
+  ITEM_PREVIEW_COUNT * ITEM_ROW_HEIGHT + (ITEM_PREVIEW_COUNT - 1) * ITEM_ROW_GAP;
 
 function truncateWords(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/);
@@ -60,6 +77,11 @@ export type KindDetailItem = {
   displayName: string;
   /** Secondary line shown under the name. */
   subtitle?: string;
+  /** Chip shown beside the name, e.g. the provider template a resource uses. */
+  chipLabel?: string;
+  chipLogo?: string;
+  /** Gateway-created resources warn before deletion. */
+  readOnly?: boolean;
   updatedAt?: string;
 };
 
@@ -81,6 +103,10 @@ type KindDetailPanelProps = {
   emptyTitle: string;
   emptyDescription: string;
   onItemClick: (id: string) => void;
+  /** Singular, user-facing name of the kind, used in the delete dialog. */
+  itemLabel: string;
+  canDelete: boolean;
+  onItemDelete: (id: string) => Promise<void>;
 };
 
 export default function KindDetailPanel({
@@ -99,7 +125,24 @@ export default function KindDetailPanel({
   emptyTitle,
   emptyDescription,
   onItemClick,
+  itemLabel,
+  canDelete,
+  onItemDelete,
 }: KindDetailPanelProps): React.JSX.Element {
+  const [deleteTarget, setDeleteTarget] = useState<KindDetailItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await onItemDelete(deleteTarget.id);
+      setDeleteTarget(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const visibleItems = items.slice(0, ITEM_PREVIEW_COUNT);
   const hasMore = totalCount > ITEM_PREVIEW_COUNT;
   const hasItems = items.length > 0;
@@ -149,118 +192,214 @@ export default function KindDetailPanel({
 
         <Divider sx={{ mb: 1.5 }} />
 
-        {error ? (
-          <ErrorAlert error={error} onRetry={onRetry} />
-        ) : isLoading ? (
-          <Stack spacing={1.5}>
-            <Skeleton variant="rectangular" height={52} />
-            <Skeleton variant="rectangular" height={52} />
-            <Skeleton variant="rectangular" height={52} />
-          </Stack>
-        ) : items.length === 0 ? (
-          <Stack alignItems="center" spacing={2} sx={{ py: 5, textAlign: 'center' }}>
-            <Box
-              component="img"
-              src={emptyImage}
-              alt=""
-              sx={{ width: 140, maxWidth: '80%' }}
-            />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {emptyTitle}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ maxWidth: 420 }}
-            >
-              {emptyDescription}
-            </Typography>
-            {createPath ? (
-              <Tooltip title={canCreate ? '' : NO_PERMISSION_TOOLTIP}>
-                <Box component="span">
-                  <Button
-                    variant="contained"
-                    component={RouterLink}
-                    to={createPath}
-                    startIcon={<Plus size={20} />}
-                    disabled={!canCreate}
-                    sx={DISABLED_ACTION_SX}
-                  >
-                    {createLabel}
-                  </Button>
-                </Box>
-              </Tooltip>
-            ) : null}
-          </Stack>
-        ) : (
-          <Stack divider={<Divider />} spacing={1.5}>
-            {visibleItems.map((item) => (
+        <Box sx={{ minHeight: LIST_MIN_HEIGHT }}>
+          {error ? (
+            <ErrorAlert error={error} onRetry={onRetry} />
+          ) : isLoading ? (
+            <Stack spacing={1.5}>
+              <Skeleton variant="rectangular" height={52} />
+              <Skeleton variant="rectangular" height={52} />
+              <Skeleton variant="rectangular" height={52} />
+            </Stack>
+          ) : items.length === 0 ? (
+            <Stack alignItems="center" spacing={2} sx={{ py: 5, textAlign: 'center' }}>
               <Box
-                key={item.id}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1.5,
-                  width: '100%',
-                }}
+                component="img"
+                src={emptyImage}
+                alt=""
+                sx={{ width: 140, maxWidth: '80%' }}
+              />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {emptyTitle}
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ maxWidth: 420 }}
               >
+                {emptyDescription}
+              </Typography>
+              {createPath ? (
+                <Tooltip title={canCreate ? '' : NO_PERMISSION_TOOLTIP}>
+                  <Box component="span">
+                    <Button
+                      variant="contained"
+                      component={RouterLink}
+                      to={createPath}
+                      startIcon={<Plus size={20} />}
+                      disabled={!canCreate}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      {createLabel}
+                    </Button>
+                  </Box>
+                </Tooltip>
+              ) : null}
+            </Stack>
+          ) : (
+            <Stack divider={<Divider />} spacing={1.5}>
+              {visibleItems.map((item) => (
                 <Box
+                  key={item.id}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 1.25,
-                    minWidth: 0,
-                    cursor: 'pointer',
+                    justifyContent: 'space-between',
+                    gap: 1.5,
+                    width: '100%',
                   }}
-                  onClick={() => onItemClick(item.id)}
                 >
-                  <Avatar
+                  <Box
                     sx={{
-                      width: 36,
-                      height: 36,
-                      fontSize: 16,
-                      bgcolor: 'primary.light',
-                      color: 'primary.contrastText',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.25,
+                      minWidth: 0,
+                      cursor: 'pointer',
                     }}
+                    onClick={() => onItemClick(item.id)}
                   >
-                    {getInitials(item.displayName || '')}
-                  </Avatar>
-                  <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-                      {truncateWords(item.displayName || 'No Name', 12)}
-                    </Typography>
-                    {item.subtitle ? (
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        fontSize="0.7rem"
-                        noWrap
+                    <Avatar
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        fontSize: 16,
+                        bgcolor: 'primary.light',
+                        color: 'primary.contrastText',
+                      }}
+                    >
+                      {getInitials(item.displayName || '')}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        flexWrap="wrap"
                       >
-                        {truncateWords(item.subtitle, 12)}
-                      </Typography>
-                    ) : null}
+                        <Typography
+                          variant="body1"
+                          sx={{ fontWeight: 600 }}
+                          noWrap
+                        >
+                          {truncateWords(item.displayName || 'No Name', 12)}
+                        </Typography>
+                        {item.chipLabel ? (
+                          <Chip
+                            label={` ${item.chipLabel}`}
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            sx={{ borderRadius: 0.5 }}
+                            icon={
+                              item.chipLogo ? (
+                                <Box
+                                  component="img"
+                                  src={item.chipLogo}
+                                  alt=""
+                                  sx={{
+                                    width: 16,
+                                    height: 16,
+                                    objectFit: 'contain',
+                                  }}
+                                />
+                              ) : undefined
+                            }
+                          />
+                        ) : null}
+                      </Stack>
+                      {item.subtitle ? (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          fontSize="0.7rem"
+                          noWrap
+                        >
+                          {truncateWords(item.subtitle, 12)}
+                        </Typography>
+                      ) : null}
+                    </Box>
                   </Box>
-                </Box>
 
-                {item.updatedAt ? (
                   <Stack
                     direction="row"
-                    spacing={0.75}
+                    spacing={1}
                     alignItems="center"
                     sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
-                    <Clock size={14} />
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {formatRelativeTime(item.updatedAt)}
-                    </Typography>
+                    {item.updatedAt ? (
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <Clock size={14} />
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                        >
+                          {formatRelativeTime(item.updatedAt)}
+                        </Typography>
+                      </Stack>
+                    ) : null}
+                    <Tooltip title={canDelete ? '' : NO_PERMISSION_TOOLTIP}>
+                      <Box component="span">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={!canDelete}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteTarget(item);
+                          }}
+                          aria-label={`Delete ${item.displayName}`}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </Box>
+                    </Tooltip>
                   </Stack>
-                ) : null}
-              </Box>
-            ))}
-          </Stack>
-        )}
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </Box>
       </CardContent>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+        }}
+      >
+        <DialogTitle>Delete {itemLabel}</DialogTitle>
+        <DialogContent>
+          {deleteTarget?.readOnly ? (
+            <GatewayArtifactDeleteWarning
+              artifactType={itemLabel}
+              artifactName={deleteTarget.displayName}
+            />
+          ) : null}
+          <DialogContentText>
+            Are you sure you want to delete {deleteTarget?.displayName}?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            disabled={isDeleting}
+            onClick={() => setDeleteTarget(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            disabled={isDeleting}
+            onClick={() => void handleDeleteConfirm()}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }
