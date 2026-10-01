@@ -460,6 +460,12 @@ trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
 custom_certs_path = "./certificates"
 verify_host_name = true
 disable_ssl_verification = false
+# Present a client certificate to HTTPS backends whose upstream definition
+# names no tls identity: the gateway identity uploaded with role "default",
+# or, when there is none, the HTTPS listener certificate. A tls.identity on
+# the definition always wins. Envoy sends the certificate only to a backend
+# that requests one. Off by default: no client certificate is presented.
+present_default_identity = false
 
 [router.upstream.timeouts]
 route_timeout_ms = 60000

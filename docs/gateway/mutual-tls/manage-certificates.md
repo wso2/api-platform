@@ -71,6 +71,27 @@ The gateway checks the upload before it stores anything:
 
 The gateway encrypts the private key at rest. No response ever returns it, including the upload response and the list. The response reports the identity's `subject`, `issuer`, `notAfter`, `keyAlgorithm`, and `chainLength` instead.
 
+### Make an identity the default
+
+Give an identity `role: default` to make it the one the gateway presents to backends whose upstream definition names no `tls.identity`, when `router.upstream.tls.present_default_identity` is on. See [Present a default identity](connect-to-backends-with-mtls.md#present-a-default-identity).
+
+```bash
+jq -n --arg name gateway-default \
+  --rawfile certificate gateway-default-chain.pem \
+  --rawfile privateKey gateway-default.key \
+  '{name: $name, usage: "identity", role: "default", certificate: $certificate, privateKey: $privateKey}' |
+curl -s -X POST http://localhost:9090/api/management/v1/certificates \
+  -u admin:<password> \
+  -H "Content-Type: application/json" \
+  --data-binary @-
+```
+
+Issue this certificate for client authentication. A backend that checks the extended key usage refuses one that leaves it out.
+
+Only one identity can have `role: default`. Uploading a second returns `409` with `gateway identity gateway-default already has role: default; delete it before uploading another default identity`. The role is fixed at upload: rotating the identity keeps it. To make another identity the default, delete this one and upload the other with `role: default`.
+
+`role` pairs with a usage. `client` and `relay` apply only to `usage: downstream`, and `default` applies only to `usage: identity`. Any other pairing returns `400`, for example `role default applies only to usage: identity certificates`.
+
 ## Add an upstream trust certificate
 
 An upstream trust certificate is one the gateway trusts when it verifies a backend's certificate. Upload the authority that issued the backend's certificate with `usage: upstream`, which is also the default:
@@ -95,7 +116,7 @@ curl -s "http://localhost:9090/api/management/v1/certificates?usage=downstream" 
   -u admin:<password>
 ```
 
-`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it.
+`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority, and `role: default` on the default identity. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it.
 
 ## Rotate a gateway identity
 
@@ -134,7 +155,7 @@ The gateway refuses to delete an entry that a deployed API still depends on, and
 - an identity named in an upstream definition's `tls.identity`, or
 - an upstream trust certificate named in an upstream definition's `tls.trustedCAs`.
 
-A relay entry can always be deleted. Once the last relay entry is gone, relayed headers are no longer believed, unless `trust_any` is on.
+`role: default` doesn't block a delete, because no API refers to an identity by its role. Once the default identity is gone, backends are presented the HTTPS listener certificate instead. A relay entry can always be deleted. Once the last relay entry is gone, relayed headers are no longer believed, unless `trust_any` is on.
 
 ## Configure the client certificate header
 

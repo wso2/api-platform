@@ -53,7 +53,7 @@ type UploadCertificateRequest struct {
 	Certificate string                   `json:"certificate" binding:"required"` // PEM-encoded certificate
 	Name        string                   `json:"name" binding:"required"`        // Unique certificate name
 	Usage       string                   `json:"usage"`                          // "upstream" (default), "downstream" or "identity"
-	Role        string                   `json:"role"`                           // "client" (default) or "relay"; usage: downstream only
+	Role        string                   `json:"role"`                           // "client" (default) or "relay" for usage: downstream; "default" for usage: identity
 	Match       *models.CertificateMatch `json:"match,omitempty"`                // Only valid for role: relay
 	PrivateKey  string                   `json:"privateKey,omitempty"`           // Required (and only valid) for usage: identity
 }
@@ -217,6 +217,32 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Client certificate authority warning", fields...)
 	}
 
+	// At most one gateway identity has role: default. The lock covers this
+	// replica only; should two replicas each store one, every replica
+	// presents the first by name. The role conflict is checked before the
+	// name conflict, so it is the one reported when both apply.
+	if effectiveRole == models.CertificateRoleDefault {
+		s.defaultIdentityMu.Lock()
+		defer s.defaultIdentityMu.Unlock()
+		existingDefault, err := s.defaultGatewayIdentity()
+		if err != nil {
+			log.Error("Failed to look up the default gateway identity", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
+				"status":  "error",
+				"message": "Failed to save certificate",
+			})
+			return
+		}
+		if existingDefault != nil {
+			httputil.WriteJSON(w, http.StatusConflict, map[string]any{
+				"status": "error",
+				"message": fmt.Sprintf("gateway identity %s already has role: default; delete it before uploading another default identity",
+					existingDefault.Name),
+			})
+			return
+		}
+	}
+
 	// Generate unique ID (UUID v7)
 	certID, err := utils.GenerateUUID()
 	if err != nil {
@@ -351,6 +377,7 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if effectiveUsage == models.CertificateUsageIdentity {
+		resp.Role = effectiveRole
 		resp.KeyAlgorithm = keyAlgorithm
 		resp.ChainLength = count
 	}
@@ -446,6 +473,9 @@ func (s *APIServer) ListCertificates(w http.ResponseWriter, r *http.Request, par
 				item.Warnings = []clientca.Warning{*warning}
 			}
 		} else if usage == models.CertificateUsageIdentity {
+			if cert.IsDefaultIdentity() {
+				item.Role = models.CertificateRoleDefault
+			}
 			item.KeyAlgorithm = cert.KeyAlgorithm
 
 			if chain, err := gatewayidentity.ParseChain(cert.Certificate); err == nil {
@@ -845,6 +875,7 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 		NotAfter:             ib.Leaf.NotAfter,
 		CertCount:            len(ib.Chain),
 		Usage:                models.CertificateUsageIdentity,
+		Role:                 existing.Role,
 		PrivateKeyCiphertext: ciphertext,
 		KeyAlgorithm:         ib.KeyAlgorithm,
 		UpdatedAt:            time.Now(),
@@ -904,7 +935,25 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 		Message:      "Certificate updated and SDS updated successfully",
 		Status:       "success",
 	}
+	if existing.IsDefaultIdentity() {
+		resp.Role = models.CertificateRoleDefault
+	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// defaultGatewayIdentity returns the role: default gateway identity, or nil
+// when there is none.
+func (s *APIServer) defaultGatewayIdentity() (*models.StoredCertificate, error) {
+	identities, err := s.db.ListCertificatesByUsage(models.CertificateUsageIdentity)
+	if err != nil {
+		return nil, err
+	}
+	for _, cert := range identities {
+		if cert.IsDefaultIdentity() {
+			return cert, nil
+		}
+	}
+	return nil, nil
 }
 
 // publishCertificateEvent tells every replica sharing the event hub that the
@@ -1414,11 +1463,16 @@ func (s *APIServer) validateCertificateUpload(req *UploadCertificateRequest) (*c
 		effectiveRole = models.CertificateRoleClient
 	}
 	if roleProvided {
-		if req.Role != models.CertificateRoleClient && req.Role != models.CertificateRoleRelay {
-			v.addFieldError("role", "role must be client or relay")
-		} else if usageValid && effectiveUsage != models.CertificateUsageDownstream {
-			v.addFieldError("role", "role applies only to usage: downstream certificates")
-		} else if usageValid {
+		switch {
+		case req.Role != models.CertificateRoleClient && req.Role != models.CertificateRoleRelay && req.Role != models.CertificateRoleDefault:
+			v.addFieldError("role", "role must be client, relay or default")
+		case !usageValid:
+			// The usage error already reports the problem.
+		case req.Role == models.CertificateRoleDefault && effectiveUsage != models.CertificateUsageIdentity:
+			v.addFieldError("role", "role default applies only to usage: identity certificates")
+		case req.Role != models.CertificateRoleDefault && effectiveUsage != models.CertificateUsageDownstream:
+			v.addFieldError("role", fmt.Sprintf("role %s applies only to usage: downstream certificates", req.Role))
+		default:
 			effectiveRole = req.Role
 		}
 	}

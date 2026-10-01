@@ -70,6 +70,11 @@ type UpstreamTLSSecretRef struct {
 	// TrustedCANames lists the usage: upstream certificates trusted for this
 	// definition. Empty means the gateway-wide bundle applies.
 	TrustedCANames []string
+
+	// material, when set, is the identity's chain and key as the translator
+	// loaded them. SDS serves it without a second lookup, so the secret a
+	// cluster was pointed at is always the one served.
+	material *identityMaterial
 }
 
 // SDS secret-name prefixes for per-identity and per-definition secrets.
@@ -207,7 +212,8 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 
 	// One secret per distinct gateway identity. A failed lookup skips only
 	// that secret: its cluster still names it, so its connections fail
-	// rather than fall back to presenting no identity.
+	// rather than fall back to presenting no identity. The translator lists
+	// the default identity's ref, which carries its material, first.
 	seenIdentities := make(map[string]bool, len(upstreamTLSRefs))
 	for _, ref := range upstreamTLSRefs {
 		if ref.IdentityName == "" || seenIdentities[ref.IdentityName] {
@@ -215,11 +221,17 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 		}
 		seenIdentities[ref.IdentityName] = true
 
-		certChain, privateKey, err := sm.certStore.GetGatewayIdentityMaterial(ref.IdentityName)
-		if err != nil {
-			sm.logger.Error("Failed to load gateway identity material for SDS secret; skipping this secret only",
-				slog.String("identity", ref.IdentityName), slog.Any("error", err))
-			continue
+		var certChain, privateKey []byte
+		if ref.material != nil {
+			certChain, privateKey = ref.material.certChain, ref.material.privateKey
+		} else {
+			var err error
+			certChain, privateKey, err = sm.certStore.GetGatewayIdentityMaterial(ref.IdentityName)
+			if err != nil {
+				sm.logger.Error("Failed to load gateway identity material for SDS secret; skipping this secret only",
+					slog.String("identity", ref.IdentityName), slog.Any("error", err))
+				continue
+			}
 		}
 		secrets = append(secrets, &tlsv3.Secret{
 			Name: GatewayIdentitySecretName(ref.IdentityName),

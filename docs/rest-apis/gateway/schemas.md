@@ -4957,7 +4957,7 @@ and
 |name|string|true|none|Unique name for the certificate. Must be unique across all certificates, regardless of usage.|
 |certificate|string|true|none|PEM-encoded X.509 certificate(s). Can contain multiple certificates.|
 |usage|string|false|none|What the certificate is for: backend trust used to verify HTTPS<br>upstream connections (upstream, the default), a pooled client<br>certificate authority that authenticates mutual-TLS callers<br>(downstream), or a gateway identity (identity): a certificate chain,<br>leaf first, plus its private key, presented to backends that<br>require mutual TLS.|
-|role|string|false|none|Only meaningful when usage is downstream. "client" (the default)<br>means the authority validates a client certificate presented<br>directly on the mTLS connection; "relay" means it validates a<br>client certificate relayed via a header (e.g. from a<br>terminating load balancer) instead.|
+|role|string|false|none|How the gateway uses the certificate. With usage downstream,<br>"client" (the default) means the authority validates a client<br>certificate presented directly on the mTLS connection; "relay"<br>means it validates a client certificate relayed via a header<br>(e.g. from a terminating load balancer) instead. With usage<br>identity, "default" makes this the identity presented to HTTPS<br>backends whose upstream definition names no tls identity, when<br>router.upstream.tls.present_default_identity is on; at most one<br>identity has it. Any other combination of role and usage is<br>rejected. The role cannot be changed after upload.|
 |match|[CertificateMatch](#schemacertificatematch)|false|none|Only valid for role: relay. Narrows which connections<br>authenticated as this relay entry can make a relayed header<br>believed. Omit to accept any connection presenting a certificate<br>from this authority, with no further narrowing.|
 |privateKey|string|false|write-only|Required (and only valid) when usage is identity: a PEM-encoded, unencrypted private key matching the leaf certificate (RSA/ECDSA/Ed25519, PKCS#8/PKCS#1/SEC1). Encrypted at rest by the gateway; never returned by any response.|
 
@@ -4970,6 +4970,7 @@ and
 |usage|identity|
 |role|client|
 |role|relay|
+|role|default|
 
 ## CertificateMatch
 
@@ -5036,7 +5037,7 @@ Each list, when present, must name at least one non-empty SAN.
 |notAfter|string(date-time)|false|none|Certificate expiration date (identity certificate, for a client-CA bundle)|
 |count|integer|false|none|Number of certificates in the file|
 |usage|string|false|none|Whether this is upstream/backend trust, a pooled client certificate authority, or a gateway identity.|
-|role|string|false|none|Only present for usage downstream. Whether the authority validates a directly-presented or header-relayed client certificate.|
+|role|string|false|none|Present for usage downstream: whether the authority validates a<br>directly-presented (client) or header-relayed (relay) client<br>certificate. Present for usage identity only as "default", on<br>the identity presented to backends whose upstream definition<br>names no tls identity.|
 |match|[CertificateMatch](#schemacertificatematch)|false|none|Only present for role relay entries that were stored with a narrowing match.|
 |isLeaf|boolean|false|none|True when the identity certificate is not itself a certificate authority (pooled as a one-member authority).|
 |keyAlgorithm|string|false|none|Only present for usage identity. The leaf private key's algorithm (RSA, ECDSA or Ed25519).|
@@ -5055,6 +5056,7 @@ Each list, when present, must name at least one non-empty SAN.
 |usage|identity|
 |role|client|
 |role|relay|
+|role|default|
 |status|success|
 |status|error|
 

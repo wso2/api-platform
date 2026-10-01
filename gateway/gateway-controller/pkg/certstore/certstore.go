@@ -27,6 +27,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +71,11 @@ type CertStore struct {
 	// encryptionManager decrypts gateway identity private keys. It is set
 	// after construction; while nil, GetGatewayIdentityMaterial fails.
 	encryptionManager *encryption.ProviderManager
+
+	// loggedDefaultIdentities names the default identities the last
+	// duplicate warning listed, so it is logged once per change.
+	loggedDefaultIdentities string
+	defaultIdentitiesLogMu  sync.Mutex
 }
 
 // SetEncryptionManager wires the encryption provider manager used to
@@ -400,6 +406,55 @@ func (cs *CertStore) GetGatewayIdentityMaterial(name string) (certChainPEM []byt
 	}
 
 	return cert.Certificate, plaintext, nil
+}
+
+// GetDefaultGatewayIdentity returns the role: default gateway identity, or
+// nil when there is none or the store has no database. Should two replicas
+// each have stored one, the first by name is returned.
+func (cs *CertStore) GetDefaultGatewayIdentity() (*models.StoredCertificate, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	identities, err := cs.db.ListCertificatesByUsage(models.CertificateUsageIdentity)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list gateway identities: %w", err)
+	}
+	var found []*models.StoredCertificate
+	for _, cert := range identities {
+		if cert.IsDefaultIdentity() {
+			found = append(found, cert)
+		}
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
+	cs.logDuplicateDefaultIdentities(found)
+	if len(found) == 0 {
+		return nil, nil
+	}
+	return found[0], nil
+}
+
+// logDuplicateDefaultIdentities warns when more than one gateway identity
+// has role: default, once each time that set of identities changes.
+func (cs *CertStore) logDuplicateDefaultIdentities(sorted []*models.StoredCertificate) {
+	names := make([]string, len(sorted))
+	for i, cert := range sorted {
+		names[i] = cert.Name
+	}
+	key := ""
+	if len(names) > 1 {
+		key = strings.Join(names, "\x00")
+	}
+
+	cs.defaultIdentitiesLogMu.Lock()
+	defer cs.defaultIdentitiesLogMu.Unlock()
+	if cs.loggedDefaultIdentities == key {
+		return
+	}
+	cs.loggedDefaultIdentities = key
+	if key != "" {
+		cs.logger.Warn("More than one gateway identity has role: default; presenting the first by name",
+			slog.String("presented", names[0]), slog.Int("count", len(names)))
+	}
 }
 
 // GetUpstreamTrustBundle concatenates the PEM certificates of the named

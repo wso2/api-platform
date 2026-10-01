@@ -934,7 +934,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: A certificate with this name already exists (names are one namespace across usages)
+          description: A certificate with this name already exists (names are one namespace across usages), or a role default identity is uploaded while another identity already has role default
           content:
             application/json:
               schema:
@@ -6490,12 +6490,17 @@ components:
         role:
           type: string
           description: |
-            Only meaningful when usage is downstream. "client" (the default)
-            means the authority validates a client certificate presented
-            directly on the mTLS connection; "relay" means it validates a
-            client certificate relayed via a header (e.g. from a
-            terminating load balancer) instead.
-          enum: [ client, relay ]
+            How the gateway uses the certificate. With usage downstream,
+            "client" (the default) means the authority validates a client
+            certificate presented directly on the mTLS connection; "relay"
+            means it validates a client certificate relayed via a header
+            (e.g. from a terminating load balancer) instead. With usage
+            identity, "default" makes this the identity presented to HTTPS
+            backends whose upstream definition names no tls identity, when
+            router.upstream.tls.present_default_identity is on; at most one
+            identity has it. Any other combination of role and usage is
+            rejected. The role cannot be changed after upload.
+          enum: [ client, relay, default ]
           example: client
         match:
           allOf:
@@ -6583,8 +6588,13 @@ components:
           example: upstream
         role:
           type: string
-          description: Only present for usage downstream. Whether the authority validates a directly-presented or header-relayed client certificate.
-          enum: [ client, relay ]
+          description: |
+            Present for usage downstream: whether the authority validates a
+            directly-presented (client) or header-relayed (relay) client
+            certificate. Present for usage identity only as "default", on
+            the identity presented to backends whose upstream definition
+            names no tls identity.
+          enum: [ client, relay, default ]
           example: client
         match:
           allOf:

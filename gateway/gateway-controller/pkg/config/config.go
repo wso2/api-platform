@@ -657,6 +657,11 @@ type UpstreamTLS struct {
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
+	// PresentDefaultIdentity makes the gateway present a client certificate
+	// to an HTTPS backend whose upstream definition names no tls identity:
+	// the role: default gateway identity, else the HTTPS listener
+	// certificate. Envoy sends it only when the backend requests one.
+	PresentDefaultIdentity bool `koanf:"present_default_identity"`
 }
 
 // UpstreamTimeouts holds upstream timeout configurations (values in milliseconds).
@@ -1392,6 +1397,7 @@ func defaultConfig() *Config {
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,
 					DisableSslVerification: false,
+					PresentDefaultIdentity: false,
 				},
 				Timeouts: UpstreamTimeouts{
 					RouteTimeoutMs:     60000,

@@ -105,9 +105,10 @@ CREATE TABLE IF NOT EXISTS certificates (
     -- authority (mTLS), and (usage: identity) a gateway identity — a
     -- certificate chain plus its encrypted private key presented to a
     -- backend requiring mutual TLS on outbound connections; the three
-    -- purposes never share a trust bundle. role only applies to usage:
-    -- downstream. private_key_ciphertext/key_algorithm only apply to usage:
-    -- identity and stay NULL for every other usage.
+    -- purposes never share a trust bundle. role client and relay apply to
+    -- usage: downstream, and role default to usage: identity.
+    -- private_key_ciphertext/key_algorithm only apply to usage: identity and
+    -- stay NULL for every other usage.
     usage TEXT NOT NULL DEFAULT 'upstream',
     role TEXT NOT NULL DEFAULT 'client',
     -- match_json narrows a role: relay entry to the connections it vouches

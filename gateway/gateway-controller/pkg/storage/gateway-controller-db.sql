@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS certificates (
     -- (usage: identity) a gateway identity — a certificate chain plus its
     -- encrypted private key the gateway presents to a backend requiring
     -- mutual TLS on outbound connections. The three purposes never share a
-    -- trust bundle. Role only applies to usage: downstream. match_json narrows a
+    -- trust bundle. Role client and relay apply to usage: downstream, and
+    -- role default to usage: identity. match_json narrows a
     -- role: relay entry to the connections it vouches for (JSON-encoded
     -- {"dnsSANs": [...], "uriSANs": [...]}); NULL means unnarrowed, and it is
     -- only meaningful for role: relay. private_key_ciphertext (the

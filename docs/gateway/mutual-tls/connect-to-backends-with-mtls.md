@@ -45,7 +45,7 @@ The `tls` block takes three fields:
 
 | Field | Type | Default | What it does |
 |---|---|---|---|
-| `identity` | string | — | Name of a `usage: identity` entry to present on the connection. Omit it to verify the backend without presenting a certificate. |
+| `identity` | string | — | Name of a `usage: identity` entry to present on the connection. Omit it to verify the backend without presenting a certificate, or to present the [default identity](#present-a-default-identity) when that is turned on. |
 | `trustedCAs` | array of strings | The gateway trust bundle | Names of `usage: upstream` entries to trust for this backend, in place of the gateway trust bundle. |
 | `verifyHostName` | boolean | `true` | Checks that the backend certificate's name matches the target host. |
 
@@ -89,6 +89,32 @@ Replace the identity's certificate and key in place with `PUT /certificates/{id}
 
 Upload the new certificate before the old one expires, and make sure the backend already trusts its issuer.
 
+## Present a default identity
+
+A gateway can present one certificate to every HTTPS backend whose definition names no `tls.identity`, so a fleet of backends that all require mutual TLS doesn't need an identity named in each API. This is off by default. Turn it on in the gateway configuration:
+
+```toml
+[router.upstream.tls]
+present_default_identity = true
+```
+
+With it on, the gateway picks the certificate for each backend in this order:
+
+1. **The definition's `tls.identity`,** when it names one. It always wins.
+2. **The gateway identity uploaded with `role: default`.** See [Make an identity the default](manage-certificates.md#make-an-identity-the-default).
+3. **The HTTPS listener certificate,** when no identity has `role: default`.
+4. **None,** when the HTTPS listener is disabled and no identity has `role: default`.
+
+This covers inline `upstream.main` and `upstream.sandbox` URLs, definitions with no `tls` block, and `tls` blocks that set only `trustedCAs` or `verifyHostName`. It applies to every API kind that routes to a backend, including Agents, LLM providers and proxies, and MCP proxies. WebSub APIs never present it, because their only upstream is the gateway's internal hub. It never applies to the gateway's own internal connections, such as those to the policy engine, the telemetry collectors, and the WebSub hub. An API whose configuration the gateway could not translate normally is served without a client certificate, and the controller logs an error for it.
+
+The gateway sends the certificate only to a backend that asks for one during the handshake. A backend that doesn't request a client certificate sees no change.
+
+Uploading, rotating, or deleting the default identity takes effect without a redeploy. Deleting it falls back to the HTTPS listener certificate, or to none when the HTTPS listener is disabled. If the controller can't load the default identity's private key, it logs an error naming the identity and presents the next choice in the same way.
+
+At startup, and whenever the choice changes, the controller logs which certificate it presents. It logs a warning when it presents none.
+
+A listener certificate is usually issued for server authentication only. A backend that checks the extended key usage refuses a certificate that doesn't allow client authentication. The controller logs a warning at startup, and whenever the presented certificate changes, if its extended key usage leaves out client authentication. For that reason, upload a dedicated identity issued for client authentication and give it `role: default`, rather than relying on the listener certificate.
+
 ## Choose what to trust
 
 Without `trustedCAs`, the gateway verifies the backend against its trust bundle: the system certificate authorities plus every `usage: upstream` certificate in the pool.
@@ -103,7 +129,7 @@ By default the gateway checks that the backend certificate's SAN matches the hos
 
 ## Connections to the backend
 
-A definition with a `tls` block gets its own connection pool. Connections that present one identity are never reused for a definition that presents another, or none, so each backend sees only the identity its definition names. That holds even when two APIs call the same backend with different identities.
+A definition with a `tls` block gets its own connection pool. Connections that present one identity are never reused for a definition that presents another, or none, so each backend sees only the identity its definition names. That holds even when two APIs call the same backend with different identities. Definitions without a `tls` block share a pool per backend, since they all present the same default identity, or none.
 
 ## When the connection fails
 

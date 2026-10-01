@@ -1080,6 +1080,33 @@ func TestDefaultConfig_AdminServerDefaults(t *testing.T) {
 	assert.Equal(t, []string{"*"}, cfg.Controller.AdminServer.AllowedIPs)
 }
 
+func TestDefaultConfig_PresentDefaultIdentityOff(t *testing.T) {
+	cfg := defaultConfig()
+	assert.False(t, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
+}
+
+func TestLoadConfig_PresentDefaultIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     bool
+	}{
+		{name: "omitted", contents: "[router.upstream.tls]\nverify_host_name = true\n", want: false},
+		{name: "on", contents: "[router.upstream.tls]\npresent_default_identity = true\n", want: true},
+		{name: "off", contents: "[router.upstream.tls]\npresent_default_identity = false\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(configPath, []byte(tt.contents), 0o644))
+
+			cfg, err := LoadConfig(configPath)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
+		})
+	}
+}
+
 // Header names must be RFC 7230 tokens that carry no proxy or framing
 // semantics, whatever https_enabled says.
 func TestConfig_ValidateClientCertificateHeaderName(t *testing.T) {

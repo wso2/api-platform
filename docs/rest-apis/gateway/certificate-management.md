@@ -162,7 +162,7 @@ Required roles: `admin`
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Certificate uploaded successfully|[CertificateResponse](schemas.md#schemacertificateresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid certificate format|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|A certificate with this name already exists (names are one namespace across usages)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|A certificate with this name already exists (names are one namespace across usages), or a role default identity is uploaded while another identity already has role default|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Request body exceeds the maximum allowed size|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 

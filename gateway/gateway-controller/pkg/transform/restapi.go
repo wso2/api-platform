@@ -663,16 +663,17 @@ func ResolvePort(u *url.URL) int {
 	return 80
 }
 
-// upstreamTLSFromParams builds the runtime TLS model for one upstream
-// cluster. tls is the validated tls block, or nil; enabled is whether the
-// target uses https.
+// upstreamTLSFromParams builds the runtime TLS model for one API-traffic
+// upstream cluster. tls is the validated tls block, or nil; enabled is
+// whether the target uses https.
 func upstreamTLSFromParams(tls *map[string]interface{}, enabled bool) *models.UpstreamTLS {
 	if tls == nil {
-		return &models.UpstreamTLS{Enabled: enabled}
+		return &models.UpstreamTLS{Enabled: enabled, APITraffic: true}
 	}
 	identity, trustedCAs, verifyHostName := config.ResolveUpstreamTLSFromParams(*tls)
 	return &models.UpstreamTLS{
 		Enabled:        enabled,
+		APITraffic:     true,
 		HasTLSBlock:    true,
 		IdentityName:   identity,
 		TrustedCANames: trustedCAs,

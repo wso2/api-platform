@@ -281,6 +281,8 @@ gateway:
               custom_certs_path: ./certificates  # Directory containing custom trusted certificates (e.g., self-signed certs)
               verify_host_name: true
               disable_ssl_verification: false
+              # Present the role: default gateway identity (else the HTTPS listener certificate) to HTTPS backends whose upstream definition names no tls identity
+              present_default_identity: false
 
             # Timeout configurations for upstream connections (milliseconds)
             timeouts:

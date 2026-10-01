@@ -36,8 +36,9 @@ const (
 	CertificateUsageIdentity = "identity"
 )
 
-// Certificate role values. Role only applies to usage: downstream certificates
-// and describes how the gateway is expected to use the authority.
+// Certificate role values. client and relay apply to usage: downstream
+// certificates and describe how the gateway uses the authority; default
+// applies to usage: identity certificates.
 const (
 	// CertificateRoleClient is the default role: the authority validates a
 	// client certificate presented on the connection.
@@ -46,6 +47,11 @@ const (
 	// CertificateRoleRelay marks an entry as a front proxy whose connection
 	// vouches for a client certificate relayed in a header.
 	CertificateRoleRelay = "relay"
+
+	// CertificateRoleDefault marks the one gateway identity presented to an
+	// HTTPS backend whose upstream definition names no tls identity, when
+	// router.upstream.tls.present_default_identity is on.
+	CertificateRoleDefault = "default"
 )
 
 // CertificateMatch narrows a relay entry to connections whose certificate
@@ -66,7 +72,7 @@ type StoredCertificate struct {
 	NotAfter    time.Time         `json:"notAfter"`        // Certificate validity end
 	CertCount   int               `json:"certCount"`       // Number of certs in bundle
 	Usage       string            `json:"usage"`           // "upstream" (default), "downstream" or "identity"
-	Role        string            `json:"role"`            // "client" (default) or "relay"; meaningful only for usage: downstream
+	Role        string            `json:"role"`            // "client" (default) or "relay" for usage: downstream; "default" for the default usage: identity
 	Match       *CertificateMatch `json:"match,omitempty"` // Only meaningful for role: relay; nil means unnarrowed
 
 	// PrivateKeyCiphertext is a usage: identity row's encrypted private key.
@@ -87,6 +93,12 @@ func (c *StoredCertificate) EffectiveUsage() string {
 		return CertificateUsageUpstream
 	}
 	return c.Usage
+}
+
+// IsDefaultIdentity reports whether the certificate is the role: default
+// gateway identity.
+func (c *StoredCertificate) IsDefaultIdentity() bool {
+	return c.Usage == CertificateUsageIdentity && c.Role == CertificateRoleDefault
 }
 
 // EffectiveRole returns the certificate's role, or client when none is set.

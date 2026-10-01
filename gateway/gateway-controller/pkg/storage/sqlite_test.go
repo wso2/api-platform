@@ -736,6 +736,46 @@ func TestSQLiteStorage_ListCertificatesByUsage(t *testing.T) {
 	assert.Equal(t, upstreamResults[0].UUID, upstreamCert.UUID)
 }
 
+// An identity stores its role: default, keeps it across a rotation, and an
+// identity uploaded without a role reads back as today.
+func TestSQLiteStorage_DefaultIdentityRoleSurvivesRotation(t *testing.T) {
+	store := setupTestStorage(t)
+	defer store.db.Close()
+
+	defaultIdentity := createTestStoredCertificate()
+	defaultIdentity.UUID = "default-identity"
+	defaultIdentity.Name = "default-identity"
+	defaultIdentity.Usage = models.CertificateUsageIdentity
+	defaultIdentity.Role = models.CertificateRoleDefault
+	defaultIdentity.PrivateKeyCiphertext = "ciphertext-1"
+	assert.NilError(t, store.SaveCertificate(defaultIdentity))
+
+	namedIdentity := createTestStoredCertificate()
+	namedIdentity.UUID = "named-identity"
+	namedIdentity.Name = "named-identity"
+	namedIdentity.Usage = models.CertificateUsageIdentity
+	namedIdentity.PrivateKeyCiphertext = "ciphertext-2"
+	assert.NilError(t, store.SaveCertificate(namedIdentity))
+
+	rotated := createTestStoredCertificate()
+	rotated.UUID = defaultIdentity.UUID
+	rotated.Name = defaultIdentity.Name
+	rotated.Usage = models.CertificateUsageIdentity
+	rotated.PrivateKeyCiphertext = "ciphertext-rotated"
+	assert.NilError(t, store.UpdateCertificate(rotated))
+
+	got, err := store.GetCertificate(defaultIdentity.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, got.Role, models.CertificateRoleDefault)
+	assert.Equal(t, got.PrivateKeyCiphertext, "ciphertext-rotated")
+	assert.Assert(t, got.IsDefaultIdentity())
+
+	got, err = store.GetCertificate(namedIdentity.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, got.Role, models.CertificateRoleClient)
+	assert.Assert(t, !got.IsDefaultIdentity())
+}
+
 // A database at the previous schema version is migrated in place: its row
 // reads back with the column defaults and a new row saves with explicit usage
 // and role.

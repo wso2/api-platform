@@ -91,6 +91,10 @@ type APIServer struct {
 	// encryptionManager encrypts gateway identity private keys at rest.
 	// While nil, identity uploads are refused so no key is stored in clear.
 	encryptionManager *encryption.ProviderManager
+
+	// defaultIdentityMu serialises the role: default check with the save,
+	// so one replica never stores two default identities.
+	defaultIdentityMu sync.Mutex
 }
 
 // SetEncryptionManager wires the encryption provider manager used to

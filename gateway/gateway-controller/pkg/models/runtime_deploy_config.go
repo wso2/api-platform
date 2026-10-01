@@ -201,6 +201,11 @@ type UpstreamTLS struct {
 	// Enabled is true when the target URL scheme is https.
 	Enabled bool
 
+	// APITraffic is true for a cluster that carries an API's traffic to its
+	// backend. Only such a cluster presents the default client certificate;
+	// internal clusters leave it false.
+	APITraffic bool
+
 	// HasTLSBlock is true when the definition carried a tls block, possibly
 	// empty. The fields below are consulted only when it is true.
 	HasTLSBlock bool
