@@ -979,7 +979,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CertificateUploadRequest"
+              allOf:
+                - $ref: "#/components/schemas/CertificateUploadRequest"
+              example:
+                certificate: |
+                  -----BEGIN CERTIFICATE-----
+                  ...
+                  -----END CERTIFICATE-----
+                  -----BEGIN CERTIFICATE-----
+                  ...
+                  -----END CERTIFICATE-----
+                privateKey: |
+                  -----BEGIN PRIVATE KEY-----
+                  ...
+                  -----END PRIVATE KEY-----
       responses:
         "200":
           description: Certificate rotated successfully
@@ -987,6 +1000,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CertificateResponse"
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                name: gateway-billing
+                subject: CN=gateway-billing,O=Example
+                issuer: CN=Example Issuing CA,O=Example
+                notAfter: "2027-11-26 06:07:26"
+                count: 2
+                usage: identity
+                isLeaf: true
+                keyAlgorithm: ECDSA
+                chainLength: 2
+                status: success
+                message: Certificate updated and SDS updated successfully
         "400":
           description: Invalid update (bad certificate/key, or the certificate is not usage identity)
           content:
@@ -1045,7 +1071,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: |
+          description: >-
             The certificate is still referenced by a deployed API and cannot
             be removed: a client authority named in an mtls-auth accept list
             (or the pool's last non-relay authority while a deployed API still

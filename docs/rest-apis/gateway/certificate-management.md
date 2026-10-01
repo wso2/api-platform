@@ -190,9 +190,8 @@ Replace a usage: identity certificate's chain and private key in place, keeping 
 
 ```json
 {
-  "name": "partner-a-root",
-  "usage": "downstream",
-  "certificate": "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n...\n-----END CERTIFICATE-----\n"
+  "certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
+  "privateKey": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 }
 ```
 
@@ -210,7 +209,7 @@ Required roles: `admin`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|ID of the certificate to replace|
-|body|body|[CertificateUploadRequest](schemas.md#schemacertificateuploadrequest)|true|none|
+|body|body|any|true|none|
 
 > Example responses
 >
@@ -219,17 +218,32 @@ Required roles: `admin`
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "partner-a-root",
-  "subject": "CN=Partner A Root,O=Partner A,C=US",
-  "issuer": "CN=Partner A Root,O=Partner A,C=US",
-  "notAfter": "2026-11-26 06:07:26",
-  "count": 1,
-  "usage": "downstream",
-  "role": "client",
-  "isLeaf": false,
-  "referencedByApis": 0,
-  "message": "Certificate uploaded and SDS updated successfully",
-  "status": "success"
+  "name": "gateway-billing",
+  "subject": "CN=gateway-billing,O=Example",
+  "issuer": "CN=Example Issuing CA,O=Example",
+  "notAfter": "2027-11-26 06:07:26",
+  "count": 2,
+  "usage": "identity",
+  "isLeaf": true,
+  "keyAlgorithm": "ECDSA",
+  "chainLength": 2,
+  "status": "success",
+  "message": "Certificate updated and SDS updated successfully"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "message": "Configuration validation failed",
+  "errors": [
+    {
+      "field": "spec.context",
+      "message": "Context must start with / and cannot end with /"
+    }
+  ]
 }
 ```
 
@@ -293,12 +307,7 @@ Required roles: `admin`
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Certificate deleted successfully|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Certificate not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The certificate is still referenced by a deployed API and cannot
-be removed: a client authority named in an mtls-auth accept list
-(or the pool's last non-relay authority while a deployed API still
-attaches mtls-auth), an upstream certificate named in an upstream
-definition's tls.trustedCAs, or a gateway identity named in an
-upstream definition's tls.identity.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The certificate is still referenced by a deployed API and cannot be removed: a client authority named in an mtls-auth accept list (or the pool's last non-relay authority while a deployed API still attaches mtls-auth), an upstream certificate named in an upstream definition's tls.trustedCAs, or a gateway identity named in an upstream definition's tls.identity.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-a-certificate-responseschema">Response Schema</h3>
