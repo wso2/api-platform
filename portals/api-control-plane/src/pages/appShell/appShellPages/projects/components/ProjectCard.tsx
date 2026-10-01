@@ -16,21 +16,8 @@
  * under the License.
  */
 
-import { useState, type MouseEvent } from 'react';
-import {
-  Box,
-  Card,
-  Divider,
-  IconButton,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { Clock, Layers, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Box, Card, Divider, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Clock, Layers, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
@@ -46,11 +33,6 @@ type ProjectCardProps = {
 };
 
 const messages = defineMessages({
-  actionsLabel: {
-    id: 'project.card.actionsLabel',
-    defaultMessage: 'Project actions',
-    description: 'Accessible label for the button opening the card overflow menu.',
-  },
   apiCount: {
     id: 'project.card.apiCount',
     defaultMessage: '{count, plural, one {# API} other {# APIs}}',
@@ -66,8 +48,8 @@ const messages = defineMessages({
     description: 'Badge marking the organization’s default project.',
   },
   delete: {
-    id: 'project.card.delete',
-    defaultMessage: 'Delete',
+    id: 'project.card.deleteNamed',
+    defaultMessage: 'Delete {name}',
   },
   deployedCount: {
     id: 'project.card.deployedCount',
@@ -97,14 +79,6 @@ const messages = defineMessages({
 export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
   const intl = useIntl();
   const canDelete = useCan('DeleteProject');
-  const stopCardClick = (event: MouseEvent) => event.stopPropagation();
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-
-  const closeMenu = (event?: MouseEvent) => {
-    event?.stopPropagation();
-    setMenuAnchor(null);
-  };
-
   return (
     <Card
       // elevation={0}
@@ -116,6 +90,7 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
         flexDirection: 'column',
         height: '100%',
         overflow: 'hidden',
+        '&:hover .project-delete-action, &:focus-within .project-delete-action': { opacity: 1 },
       })}
     >
       <Box sx={{ flexGrow: 1, p: 2.5 }}>
@@ -178,41 +153,25 @@ export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
         </Typography>
         <Box sx={{ flex: 1 }} />
         {onDelete && canDelete && (
-          <>
-            <Tooltip title={intl.formatMessage(messages.actionsLabel)}>
-              <IconButton
-                aria-label={intl.formatMessage(messages.actionsLabel)}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setMenuAnchor(event.currentTarget);
-                }}
-                size="small"
-              >
-                <MoreVertical size={16} />
-              </IconButton>
-            </Tooltip>
-            <Menu
-              anchorEl={menuAnchor}
-              onClick={stopCardClick}
-              onClose={() => closeMenu()}
-              open={Boolean(menuAnchor)}
+          <Tooltip title={intl.formatMessage(messages.delete, { name: project.displayName })}>
+            <IconButton
+              className="project-delete-action"
+              aria-label={intl.formatMessage(messages.delete, { name: project.displayName })}
+              color="error"
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(project);
+              }}
+              sx={{
+                opacity: 0,
+                transition: 'opacity .15s ease',
+                '@media (hover: none)': { opacity: 1 },
+              }}
             >
-              <MenuItem
-                onClick={(event) => {
-                  closeMenu(event);
-                  onDelete(project);
-                }}
-                sx={{ color: 'error.main' }}
-              >
-                <ListItemIcon sx={{ color: 'inherit' }}>
-                  <Trash2 size={16} />
-                </ListItemIcon>
-                <ListItemText>
-                  <FormattedMessage {...messages.delete} />
-                </ListItemText>
-              </MenuItem>
-            </Menu>
-          </>
+              <Trash2 size={16} />
+            </IconButton>
+          </Tooltip>
         )}
       </Box>
     </Card>

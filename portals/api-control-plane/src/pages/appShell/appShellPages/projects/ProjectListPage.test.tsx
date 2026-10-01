@@ -163,32 +163,19 @@ describe('ProjectListPage', () => {
     expect(await screen.findByText('Project 13')).toBeInTheDocument();
   });
 
-  it('switches to the table view and deletes from a row', async () => {
-    server.use(
-      collection('/projects', projectFixtures),
-      noContent('delete', '/projects/:projectId', { record: requests }),
-    );
-    const { user } = renderPage();
-
+  it('shows only cards without a heading count, sorting, or view controls', async () => {
+    server.use(collection('/projects', projectFixtures));
+    renderPage();
     await screen.findByText('Retail APIs');
-    await user.click(screen.getByRole('button', { name: 'List view' }));
-
-    const rows = await screen.findByTestId('project-list-view');
-    expect(within(rows).getByText('Retail APIs')).toBeInTheDocument();
-
-    // The row's own delete button, in place of the settings action the card
-    // used to carry.
-    await user.click(within(rows).getByRole('button', { name: 'Delete Retail APIs' }));
-
-    const dialog = screen.getByRole('dialog');
-    await user.type(within(dialog).getByRole('textbox'), 'Retail APIs');
-    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
+    expect(screen.queryByLabelText('2 projects')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'List view' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Grid view' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Sort by')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Project actions' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Projects per page')).not.toBeInTheDocument();
   });
 
-  it('opens a project from the keyboard in both views', async () => {
+  it('opens a project from the keyboard', async () => {
     // Pointer users get the whole card/row as the target; without an explicit
     // focusable role, keyboard users had no way in at all — the delete button
     // was the only thing in a row they could reach.
@@ -203,32 +190,26 @@ describe('ProjectListPage', () => {
     expect(await screen.findByText('project home')).toBeInTheDocument();
   });
 
-  it('opens a project from a table row with Space', async () => {
+  it('opens a project from a card with Space', async () => {
     server.use(collection('/projects', projectFixtures));
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    await user.click(screen.getByRole('button', { name: 'List view' }));
-
-    const rows = await screen.findByTestId('project-list-view');
-    const row = within(rows).getByRole('button', { name: 'Open Retail APIs' });
+    const row = screen.getByRole('button', { name: 'Open Retail APIs' });
     row.focus();
     await user.keyboard(' ');
 
     expect(await screen.findByText('project home')).toBeInTheDocument();
   });
 
-  it('leaves the row alone when the delete button takes the keypress', async () => {
+  it('leaves the card alone when the delete button takes the keypress', async () => {
     // The delete button's key events bubble through the row, so Enter on it
     // must open the confirm dialog and not also navigate into the project.
     server.use(collection('/projects', projectFixtures));
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    await user.click(screen.getByRole('button', { name: 'List view' }));
-
-    const rows = await screen.findByTestId('project-list-view');
-    within(rows).getByRole('button', { name: 'Delete Retail APIs' }).focus();
+    screen.getByRole('button', { name: 'Delete Retail APIs' }).focus();
     await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
@@ -243,10 +224,7 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    // The card keeps its overflow menu; the row view exposes delete directly.
-    const cards = screen.getAllByRole('button', { name: 'Project actions' });
-    await user.click(cards[0]);
-    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Delete Retail APIs' }));
 
     // Type-to-confirm guards the irreversible delete.
     const dialog = screen.getByRole('dialog');
