@@ -188,10 +188,10 @@ To admit specific certificates and nothing else from an authority, list their SH
         accept:
           - ca: partner-a
             thumbprints:
-              - "sha256:5b0d9c2f7e4a1b8c3d6e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c"
+              - "5b0d9c2f7e4a1b8c3d6e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c"
 ```
 
-A thumbprint is 64 hex characters, with or without colons and a `sha256:` prefix. When a pinned caller renews its certificate, list the new thumbprint alongside the old one, let the caller switch, then remove the old one.
+A thumbprint is 64 hex characters, with or without colons and a `sha256:` prefix. The gateway stores it as 64 lowercase hex characters, the form `openssl x509 -in client.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d : | tr A-F a-f` prints; one given in another form is converted, and the deploy response carries an `MTLS_THUMBPRINT_NORMALISED` warning. When a pinned caller renews its certificate, list the new thumbprint alongside the old one, let the caller switch, then remove the old one.
 
 ## Run behind a load balancer
 
