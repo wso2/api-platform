@@ -29,10 +29,11 @@ import {
 import { defineMessages, useIntl } from 'react-intl';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { routes } from '../../../../routes/paths';
-import { useSettingsTabs } from '../../../../navigation/useSettingsTabs';
-import type { NavigationLevel } from '../../../../navigation/navigationTypes';
+import { AppPage } from '@/components/AppPage';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { routes } from '@/routes/paths';
+import { useSettingsTabs } from '@/navigation/useSettingsTabs';
+import type { NavigationLevel } from '@/navigation/navigationTypes';
 
 const messages = defineMessages({
   title: {
@@ -63,7 +64,15 @@ export type SettingsLayoutProps = {
  * the project's once one is selected, and a project card's gear deep-links the
  * same page — so it renders at whatever scope it is reached in.
  */
-export function SettingsLayout({ level }: SettingsLayoutProps) {
+export function SettingsLayout(props: SettingsLayoutProps) {
+  return (
+    <AppPage>
+      <SettingsLayoutContent {...props} />
+    </AppPage>
+  );
+}
+
+function SettingsLayoutContent({ level }: SettingsLayoutProps) {
   const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
@@ -75,24 +84,18 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
   // handle, which the route always carries, so the heading still says what it is
   // about while the display name is still loading.
   const subject =
-    project?.displayName ??
-    organization?.displayName ??
-    params.projectHandler ??
-    params.orgHandle;
+    project?.displayName ?? organization?.displayName ?? params.projectHandler ?? params.orgHandle;
 
   // The index route carries no tab segment, and renders the first tab's
   // content — so it highlights the first tab rather than nothing at all.
   const selectedId =
-    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ??
-    tabs[0]?.id;
+    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ?? tabs[0]?.id;
 
   const goToTab = (path: string) => {
     if (!params.orgHandle) return;
     if (level === 'project') {
       if (!params.projectHandler) return;
-      navigate(
-        routes.projectSettingsTab(path, params.orgHandle, params.projectHandler)
-      );
+      navigate(routes.projectSettingsTab(path, params.orgHandle, params.projectHandler));
       return;
     }
     navigate(routes.settingsTab(path, params.orgHandle));
@@ -110,9 +113,7 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
       <Box sx={{ flexShrink: 0, pr: 3, width: { md: 280, xs: 200 } }}>
         <Stack spacing={2}>
           <PageTitle>
-            <PageTitle.Header>
-              {intl.formatMessage(messages.title)}
-            </PageTitle.Header>
+            <PageTitle.Header>{intl.formatMessage(messages.title)}</PageTitle.Header>
             <PageTitle.SubHeader>
               {intl.formatMessage(messages.subtitle, { subject })}
             </PageTitle.SubHeader>
@@ -131,10 +132,7 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
                 }}
               >
                 <ListItemIcon sx={{ minWidth: 32 }}>{tab.icon}</ListItemIcon>
-                <ListItemText
-                  primary={tab.label}
-                  slotProps={{ primary: { noWrap: true } }}
-                />
+                <ListItemText primary={tab.label} slotProps={{ primary: { noWrap: true } }} />
               </ListItemButton>
             ))}
           </List>

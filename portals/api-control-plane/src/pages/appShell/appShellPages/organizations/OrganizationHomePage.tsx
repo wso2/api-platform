@@ -50,6 +50,7 @@ import {
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
 import { useGateways } from '@/api/resources/gateways';
@@ -285,6 +286,14 @@ function OverviewCard({
 }
 
 export function OrganizationHomePage() {
+  return (
+    <AppPage>
+      <OrganizationHomePageContent />
+    </AppPage>
+  );
+}
+
+function OrganizationHomePageContent() {
   const intl = useIntl();
   const navigate = useNavigate();
   const { notify } = useNotifications();

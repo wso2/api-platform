@@ -29,6 +29,7 @@ import { isTestKeyExpired, testKeyRemainingMs } from './utils/testApiKey';
 import { useTestApiKey } from './utils/useTestApiKey';
 import type { Gateway } from '@/api/resources/gateways';
 import { isApiError } from '@/api/core/errors';
+import { AppPage } from '@/components/AppPage';
 import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -138,9 +139,15 @@ export function TestPage() {
   const { params } = useConsoleScope();
 
   return (
-    <ScopeGate prompt={intl.formatMessage(messages.scopePrompt)} requires="api" to={routes.apiTest}>
-      <TestConsole key={params.apiHandler ?? ''} />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt={intl.formatMessage(messages.scopePrompt)}
+        requires="api"
+        to={routes.apiTest}
+      >
+        <TestConsole key={params.apiHandler ?? ''} />
+      </ScopeGate>
+    </AppPage>
   );
 }
 
