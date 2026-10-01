@@ -90,7 +90,7 @@ func TestVHostsConfig_ServerName_ConcreteDefaults(t *testing.T) {
 		Main:    VHostEntry{Default: "api.example.com"},
 		Sandbox: VHostEntry{Default: "sandbox.example.com"},
 	}
-	for _, vh := range []string{"api.example.com", "sandbox.example.com"} {
+	for _, vh := range []string{"api.example.com", "sandbox.example.com", "API.example.com", "Sandbox.Example.COM"} {
 		if _, ok := vhosts.ServerName(vh); ok {
 			t.Errorf("ServerName(%q) is scoped, want not scoped", vh)
 		}

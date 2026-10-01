@@ -109,9 +109,12 @@ func (v VHostsConfig) Domains(vhost string) []string {
 // in any case.
 func (v VHostsConfig) ServerName(vhost string) (name string, ok bool) {
 	vhost = strings.TrimSpace(vhost)
-	switch vhost {
-	case constants.VHostGatewayDefault, strings.TrimSpace(v.Main.Default), strings.TrimSpace(v.Sandbox.Default):
-		return "", false
+	// Hostnames match without regard to case, as in Envoy, so API.example.com
+	// is the default api.example.com.
+	for _, d := range []string{constants.VHostGatewayDefault, strings.TrimSpace(v.Main.Default), strings.TrimSpace(v.Sandbox.Default)} {
+		if strings.EqualFold(vhost, d) {
+			return "", false
+		}
 	}
 	return sniName(vhost)
 }
