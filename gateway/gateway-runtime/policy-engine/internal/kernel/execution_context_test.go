@@ -836,7 +836,7 @@ func newEncodingTestContext(t *testing.T, streaming bool) (*PolicyExecutionConte
 	}
 
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	chain := &registry.PolicyChain{
 		RequiresRequestBody:       true,
 		RequiresResponseBody:      true,
@@ -966,7 +966,7 @@ func TestProcessResponseHeaders_UnsupportedEncodingRejected(t *testing.T) {
 // Rejecting here would break routes that never inspect bodies at all.
 func TestProcessHeaders_UnsupportedEncodingAllowedWithoutBodyPolicies(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 
 	execCtx.buildRequestContexts(postRequestHeaders("snappy"), RouteMetadata{})
@@ -1035,7 +1035,7 @@ func TestProcessRequestBody_DecompressesEverySupportedEncoding(t *testing.T) {
 			}
 
 			kernel := NewKernel()
-			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 			execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
 				RequiresRequestBody: true,
 				Policies:            []policy.Policy{mockPolicy},
@@ -1063,7 +1063,7 @@ func TestProcessRequestBody_PreservesRawDeflateVariant(t *testing.T) {
 	plaintext := []byte(`{"prompt":"raw deflate body"}`)
 
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
 		RequiresRequestBody: true,
 		Policies: []policy.Policy{&testutils.ConfigurableMockPolicy{
@@ -1127,7 +1127,7 @@ func TestProcessStreamingRequestBody_RoundTripsAsSingleStream(t *testing.T) {
 			mockPolicy := &chunkRecordingRequestPolicy{seen: &seenByPolicies}
 
 			kernel := NewKernel()
-			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 			execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
 				RequiresRequestBody:      true,
 				SupportsRequestStreaming: true,
@@ -1635,7 +1635,7 @@ func TestProcessStreamingRequestBody_RawDeflateWithOneByteFirstChunk(t *testing.
 
 	var seenByPolicies strings.Builder
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
 		RequiresRequestBody:      true,
 		SupportsRequestStreaming: true,
@@ -1682,7 +1682,7 @@ func TestProcessStreamingBody_EmptyEncodedStreamMatchesBufferedVerdict(t *testin
 			_, bufferedErr := decompressBody(nil, encoding, testMaxDecompressedBytes)
 
 			kernel := NewKernel()
-			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 			chain := &registry.PolicyChain{
 				RequiresRequestBody:       true,
 				RequiresResponseBody:      true,
@@ -1754,7 +1754,7 @@ func TestStreamingResponse_ChunkIndexAdvancesPerDelivery(t *testing.T) {
 	rec := &indexRecordingPolicy{}
 
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	chain := &registry.PolicyChain{
 		RequiresResponseBody:      true,
 		SupportsResponseStreaming: true,
