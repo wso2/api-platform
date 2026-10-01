@@ -116,7 +116,7 @@ curl -s "http://localhost:9090/api/management/v1/certificates?usage=downstream" 
   -u admin:<password>
 ```
 
-`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority, and `role: default` on the default identity. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it. An entry that expires within thirty days carries a `CERT_EXPIRES_SOON` warning in the list, whatever its usage.
+`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority, and `role: default` on the default identity. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it. An upstream trust certificate has no `referencedByApis`: it joins the gateway-wide trust bundle, so it can be in use for backends without any API naming it. Deleting one is still refused while an API names it in `trustedCAs`. An entry that expires within thirty days carries a `CERT_EXPIRES_SOON` warning in the list, whatever its usage.
 
 ## Rotate a gateway identity
 
