@@ -27,6 +27,8 @@ import (
 	"github.com/wso2/api-platform/common/chainkey"
 	"github.com/wso2/api-platform/gateway/common/agentproto"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -94,6 +96,26 @@ func TestAgentTransformer_NoFaultPoliciesLeavesTheChainEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, faultNames(agentChain(t, rdc, agentproto.SendMessage)))
+}
+
+// With analytics enabled, every Agent chain — each A2A operation and the public card (and the
+// CORS preflight, where one is configured) — carries the collector in its fault list even when
+// the Agent declares no fault policies, so a failure on any of them is recorded with its fault
+// detail.
+func TestAgentTransformer_NoFaultPoliciesStillGetsTheCollectorWhenAnalyticsIsOn(t *testing.T) {
+	definitions := map[string]models.PolicyDefinition{
+		constants.A2A_SYSTEM_POLICY_NAME + "_v1.0.0": {Name: constants.A2A_SYSTEM_POLICY_NAME, Version: "v1.0.0"},
+	}
+	sysCfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+
+	rdc, err := NewAgentTransformer(testRouterCfg(), sysCfg, definitions).Transform(testAgent())
+	require.NoError(t, err)
+	require.NotEmpty(t, rdc.PolicyChains)
+
+	for key, chain := range rdc.PolicyChains {
+		assert.Equal(t, []string{constants.ANALYTICS_SYSTEM_POLICY_NAME}, faultNames(chain),
+			"chain %s must record its failures even with no fault policies declared", key)
+	}
 }
 
 // The card's list is its own. Discovery is reachable before any operation is invoked, so an
