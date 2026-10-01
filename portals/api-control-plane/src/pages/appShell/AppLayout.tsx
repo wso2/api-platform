@@ -16,61 +16,35 @@
  * under the License.
  */
 
-import {
-  AppBreadcrumbs,
-  AppShell,
-  Box,
-  Footer,
-  NotificationPanel,
-  PageContent,
-  Stack,
-} from '@wso2/oxygen-ui';
-import type { BreadcrumbItem } from '@wso2/oxygen-ui';
+import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Suspense } from 'react';
-import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
+import { AppPage } from '../../components/AppPage';
 import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { usePageTitle } from '../../navigation/usePageTitle';
-import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
 import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
-import { FormattedMessage, useIntl } from 'react-intl';
-
-/**
- * Full-page flows, which the shell renders without a breadcrumb trail.
- *
- * A creation wizard is building the very scope a trail would describe, and the
- * API publication page has its own back button to the list it came from, so the
- * crumbs can only repeat where the user came from — noise beside a form that
- * owns the whole page. Built from the route builders rather than written out,
- * so a path change cannot silently stop matching (`routes.*` is the single
- * source).
- */
-const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway(), routes.apiPortalPublish()];
+import { FormattedMessage } from 'react-intl';
 
 export default function AppLayout() {
-  const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { project, component, params } = useConsoleScope();
+  const { params } = useConsoleScope();
   const { notify } = useNotifications();
 
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
   useDocumentTitle(usePageTitle());
-
-  const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
-    (path) => matchPath(path, location.pathname) !== null,
-  );
 
   // Built once per render from this portal's own hooks, then handed down as
   // a plain value to every extension's `render(port)` — see `hostPort.tsx`
@@ -84,37 +58,6 @@ export default function AppLayout() {
     notify,
     apiFetch: extensionApiFetch,
   };
-
-  const crumbs: BreadcrumbItem[] = [];
-  if (params.orgHandle) {
-    crumbs.push({
-      key: 'org',
-      label: intl.formatMessage({
-        id: 'appLayout.breadcrumb.home',
-        defaultMessage: 'Home',
-      }),
-      onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler) {
-    crumbs.push({
-      key: 'project',
-      label: project?.displayName || params.projectHandler,
-      onClick: () => navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler && params.apiHandler) {
-    crumbs.push({
-      key: 'api',
-      label: component?.displayName || params.apiHandler,
-      onClick: () =>
-        navigate(routes.api(params.orgHandle!, params.projectHandler!, params.apiHandler!)),
-    });
-  }
-  // The final crumb is the current page — render it as plain text (no nav).
-  const breadcrumbItems = crumbs.map((crumb, index) =>
-    index === crumbs.length - 1 ? { ...crumb, onClick: undefined } : crumb,
-  );
 
   return (
     <PortProvider value={port}>
@@ -131,41 +74,26 @@ export default function AppLayout() {
         </AppShell.Sidebar>
 
         <AppShell.Main>
+          {/* Pages render their own container (`AppPage`, or `PageContent`
+            directly), so the shell adds none and a page owns its width and
+            padding. The fallbacks stand in for a page, so they bring one of
+            their own. */}
           <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-            <PageContent fullWidth sx={{ py: 5 }}>
-              <Stack spacing={1}>
-                {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
-                  <Box sx={{ pb: 1 }}>
-                    <AppBreadcrumbs
-                      items={breadcrumbItems}
-                      sx={(theme) => ({
-                        '& .MuiBreadcrumbs-li .MuiTypography-root': {
-                          fontSize: theme.typography.body2.fontSize,
-                          opacity: 0.55,
-                        },
-                        '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
-                          color: 'text.primary',
-                          fontWeight: theme.typography.fontWeightMedium,
-                          opacity: 1,
-                        },
-                        '& .MuiBreadcrumbs-separator': {
-                          opacity: 0.45,
-                        },
-                      })}
-                    />
-                  </Box>
-                )}
-                {/* Error boundary scoped to routed page only; resets on pathname change */}
-                <ErrorBoundary
-                  fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
-                  resetKeys={[location.pathname]}
-                >
-                  <Suspense fallback={<LoadingState label="Loading" />}>
-                    <Outlet />
-                  </Suspense>
-                </ErrorBoundary>
-              </Stack>
-            </PageContent>
+            {/* Error boundary scoped to routed page only; resets on pathname change */}
+            <ErrorBoundary
+              fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
+              resetKeys={[location.pathname]}
+            >
+              <Suspense
+                fallback={
+                  <AppPage hideBreadcrumbs>
+                    <LoadingState label="Loading" />
+                  </AppPage>
+                }
+              >
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </Box>
         </AppShell.Main>
 

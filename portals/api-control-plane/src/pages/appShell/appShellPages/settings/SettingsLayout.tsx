@@ -28,10 +28,11 @@ import {
 import { defineMessages, useIntl } from 'react-intl';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { routes } from '../../../../routes/paths';
-import { useSettingsTabs } from '../../../../navigation/useSettingsTabs';
-import type { NavigationLevel } from '../../../../navigation/navigationTypes';
+import { AppPage } from '@/components/AppPage';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { routes } from '@/routes/paths';
+import { useSettingsTabs } from '@/navigation/useSettingsTabs';
+import type { NavigationLevel } from '@/navigation/navigationTypes';
 
 const messages = defineMessages({
   title: {
@@ -56,7 +57,15 @@ export type SettingsLayoutProps = {
  * the project's once one is selected, and a project card's gear deep-links the
  * same page — so it renders at whatever scope it is reached in.
  */
-export function SettingsLayout({ level }: SettingsLayoutProps) {
+export function SettingsLayout(props: SettingsLayoutProps) {
+  return (
+    <AppPage>
+      <SettingsLayoutContent {...props} />
+    </AppPage>
+  );
+}
+
+function SettingsLayoutContent({ level }: SettingsLayoutProps) {
   const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
