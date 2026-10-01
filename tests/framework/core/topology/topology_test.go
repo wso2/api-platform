@@ -19,6 +19,7 @@
 package topology
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -1333,6 +1334,7 @@ func TestGatewayVersionSelectionFiltersRunnersAndReportsSkips(t *testing.T) {
 	}{
 		{name: "legacy release", version: "1.2.0", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
 		{name: "newer release", version: "1.3.0", wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0"},
+		{name: "four-part released tag", version: "1.2.0.6", wantRunner: []string{"always", "legacy"}, wantSkip: "modern", wantReason: "Gateway version 1.2.0 does not satisfy gateway-version>1.2.0"},
 		{name: "source build", source: true, wantRunner: []string{"always", "modern"}, wantSkip: "legacy", wantReason: "Gateway version current source build does not satisfy gateway-version<=1.2.0"},
 	}
 	for _, tc := range cases {
@@ -1830,4 +1832,163 @@ func TestAllowDatabaseVariantFeatureOwners(t *testing.T) {
 			require.Equal(t, tc.want, allowDatabaseVariantFeatureOwners(tc.owners))
 		})
 	}
+}
+
+// shapedWiring selects a second service for the shaped test component.
+type shapedWiring struct {
+	Second bool   `yaml:"second"`
+	Fail   string `yaml:"fail"`
+}
+
+// shapedRegistry registers a compose-backed component whose wiring can add a service that
+// needs a PostgreSQL store, and replace the definition in malformed ways.
+func shapedRegistry(t *testing.T) *components.Registry {
+	t.Helper()
+	def := &components.Definition{
+		Name: "shaped", Alias: "shaped",
+		Compose: &components.ComposeSpec{
+			ComposeFile: "shaped.yaml", PrimaryService: "first", Services: []string{"first"},
+		},
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		DB: &components.DBContract{
+			Supported:    []components.DBType{components.SQLite, components.Postgres},
+			SelfMigrates: []components.DBType{components.SQLite, components.Postgres},
+			Env:          func(components.DSN) map[string]string { return nil },
+		},
+		Wiring: components.TypedWiring[shapedWiring](),
+	}
+	def.ApplyWiring = func(in *components.Definition, wiring any) (*components.Definition, error) {
+		w := wiring.(*shapedWiring)
+		out := *in
+		switch w.Fail {
+		case "error":
+			return nil, errors.New("refused")
+		case "nil":
+			return nil, nil
+		case "rename":
+			out.Name = "other"
+			return &out, nil
+		case "invalid":
+			out.Endpoints = nil
+			return &out, nil
+		}
+		if !w.Second {
+			return in, nil
+		}
+		compose := *in.Compose
+		compose.Services = append(append([]string(nil), in.Compose.Services...), "second")
+		out.Compose = &compose
+		db := *in.DB
+		db.Supported = []components.DBType{components.Postgres}
+		db.SelfMigrates = []components.DBType{components.Postgres}
+		out.DB = &db
+		return &out, nil
+	}
+	r := components.NewRegistry()
+	require.NoError(t, r.Register(def))
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "mock-jwks", Image: components.ImageRef{Ref: "j:test"}, Alias: "mock-jwks",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+	}))
+	require.NoError(t, r.Validate())
+	return r
+}
+
+func TestApplyWiringSelectsTheDefinition(t *testing.T) {
+	block := func(db, wiring string) string {
+		return `
+suite: s
+blocks:
+  - name: b
+    components: [{name: shaped, db: ` + db + `}]
+` + wiring + `
+    runners: [{name: r, features: [f.feature]}]
+`
+	}
+	registered, ok := shapedRegistry(t).Lookup("shaped")
+	require.True(t, ok)
+
+	t.Run("wiring that changes the definition reaches the resolved component", func(t *testing.T) {
+		r, err := Load([]byte(block("postgres", "    wiring: {shaped: {second: true}}")), shapedRegistry(t))
+		require.NoError(t, err)
+		got := r.Blocks[0].Components[0]
+		require.Equal(t, []string{"first", "second"}, got.Def.Compose.Services)
+		require.Equal(t, components.Postgres, got.DB)
+		require.Equal(t, []string{"first"}, registered.Compose.Services, "the registered definition must not change")
+	})
+
+	t.Run("no wiring and wiring that keeps the definition leave it as registered", func(t *testing.T) {
+		for _, wiring := range []string{"", "    wiring: {shaped: {second: false}}"} {
+			r, err := Load([]byte(block("sqlite", wiring)), shapedRegistry(t))
+			require.NoError(t, err, wiring)
+			require.Equal(t, []string{"first"}, r.Blocks[0].Components[0].Def.Compose.Services, wiring)
+		}
+	})
+
+	t.Run("the selected definition decides the supported engines", func(t *testing.T) {
+		_, err := Load([]byte(block("sqlite", "    wiring: {shaped: {second: true}}")), shapedRegistry(t))
+		require.ErrorContains(t, err, `does not support db "sqlite"`)
+	})
+
+	for fail, want := range map[string]string{
+		"error":   "wiring for \"shaped\": refused",
+		"nil":     "selected no definition",
+		"rename":  `renamed the component to "other"`,
+		"invalid": "endpoints",
+	} {
+		t.Run("a hook that answers "+fail+" is rejected", func(t *testing.T) {
+			_, err := Load([]byte(block("postgres", "    wiring: {shaped: {fail: "+fail+"}}")), shapedRegistry(t))
+			require.ErrorContains(t, err, want)
+		})
+	}
+}
+
+func TestTopologyVariantsPermitRepeatedFeatureBindings(t *testing.T) {
+	suite := func(firstRunner, secondRunner, secondWiring string) string {
+		return `
+suite: s
+blocks:
+  - name: one
+    components: [{name: shaped, db: {matrix: [sqlite, postgres]}}]
+    runners: [{name: ` + firstRunner + `, features: [features/shared.feature]}]
+  - name: two
+    components: [{name: shaped, db: postgres}]
+` + secondWiring + `
+    runners: [{name: ` + secondRunner + `, features: [features/shared.feature]}]
+`
+	}
+
+	r, err := Load([]byte(suite("r", "r", "    wiring: {shaped: {second: true}}")), shapedRegistry(t))
+	require.NoError(t, err)
+	require.Len(t, r.Blocks, 3)
+
+	for name, src := range map[string]string{
+		"same topology":                         suite("r", "r", ""),
+		"same topology, wiring changes nothing": suite("r", "r", "    wiring: {shaped: {second: false}}"),
+		"different runner names":                suite("r", "other", "    wiring: {shaped: {second: true}}"),
+	} {
+		_, err := Load([]byte(src), shapedRegistry(t))
+		require.ErrorContains(t, err, `feature "features/shared.feature" is bound to 2 runners`, name)
+	}
+}
+
+func TestTopologySignature(t *testing.T) {
+	compose := func(services ...string) *components.Definition {
+		return &components.Definition{Name: "c", Compose: &components.ComposeSpec{Services: services}}
+	}
+	block := func(cs ...ResolvedComponent) *ResolvedBlock { return &ResolvedBlock{Components: cs} }
+	plain := &components.Definition{Name: "p"}
+
+	require.Equal(t, "c[a,b] p", topologySignature(block(ResolvedComponent{Def: plain}, ResolvedComponent{Def: compose("b", "a")})))
+	require.Equal(t, "px2", topologySignature(block(ResolvedComponent{Def: plain, Replicas: 2})))
+	require.Equal(t, "", topologySignature(block(ResolvedComponent{})))
+	require.Equal(t, "", topologySignature(block()))
+	require.NotEqual(t, topologySignature(block(ResolvedComponent{Def: compose("a")})),
+		topologySignature(block(ResolvedComponent{Def: compose("a", "b")})))
+	require.False(t, allowTopologyVariantFeatureOwners(nil))
+	require.False(t, allowTopologyVariantFeatureOwners(map[string]featureOwner{"b/r": {runner: "r", topologies: map[string]bool{"x": true}}}))
+	require.False(t, allowTopologyVariantFeatureOwners(map[string]featureOwner{
+		"a/r": {runner: "r", topologies: map[string]bool{"x": true, "y": true}},
+		"b/r": {runner: "r", topologies: map[string]bool{"z": true}},
+	}))
 }

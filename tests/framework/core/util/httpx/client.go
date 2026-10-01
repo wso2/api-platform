@@ -41,6 +41,9 @@ type Response struct {
 
 	// Elapsed is the duration of the request and body read.
 	Elapsed time.Duration
+
+	// TLS is the negotiated handshake of a request that carried ClientTLS, else nil.
+	TLS *TLSState
 }
 
 const maxResponseBodyBytes int64 = 10 << 20
@@ -97,8 +100,9 @@ func (r *Response) RequireSuccessWithBody(what string) error {
 
 // Client is the shared HTTP transport layer.
 type Client struct {
-	http    *http.Client
-	retryOn []TransientMatcher
+	http      *http.Client
+	tlsConfig *tls.Config
+	retryOn   []TransientMatcher
 }
 
 // TransientMatcher identifies responses that may be retried by Client.
@@ -166,8 +170,9 @@ func NewClient(opts Options) *Client {
 		}
 	}
 	return &Client{
-		http:    httpClient,
-		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
+		http:      httpClient,
+		tlsConfig: tlsConfig,
+		retryOn:   append([]TransientMatcher(nil), opts.RetryOn...),
 	}
 }
 
@@ -212,6 +217,9 @@ type Request struct {
 
 	// Host overrides the HTTP Host header. Empty uses the URL host.
 	Host string
+
+	// TLS, when set, runs the request on its own connection with this client TLS.
+	TLS *ClientTLS
 }
 
 // Do issues a request and retries only responses recognized as transient.
@@ -275,7 +283,13 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 
 	started := time.Now()
 
-	resp, err := c.http.Do(httpReq)
+	client := c.http
+	var exchange *clientTLSExchange
+	if req.TLS != nil {
+		exchange = c.newClientTLSExchange(req.TLS)
+		client = exchange.client
+	}
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("httpx: %s %s: %w", req.Method, req.URL, err)
 	}
@@ -290,14 +304,18 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 			req.Method, req.URL, maxResponseBodyBytes)
 	}
 
-	return &Response{
+	out := &Response{
 		StatusCode: resp.StatusCode,
 		Body:       raw,
 		Headers:    resp.Header.Clone(),
 		Method:     req.Method,
 		URL:        req.URL,
 		Elapsed:    time.Since(started),
-	}, nil
+	}
+	if exchange != nil {
+		out.TLS = exchange.state(resp.TLS)
+	}
+	return out, nil
 }
 
 func (c *Client) isTransient(resp *Response) bool {

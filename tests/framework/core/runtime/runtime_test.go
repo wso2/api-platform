@@ -882,6 +882,13 @@ func TestReadAllString(t *testing.T) {
 	})
 }
 
+func TestReadLimitedStringKeepsAWholeLogOverTheOutputLimit(t *testing.T) {
+	input := bytes.Repeat([]byte{'x'}, int(maxOutputBytes)*2)
+	got, err := readLimitedString(bytes.NewReader(input), maxLogBytes)
+	require.NoError(t, err)
+	require.Len(t, got, len(input))
+}
+
 func TestCopyFileFromContainerEnforcesFileSizeLimit(t *testing.T) {
 	oldLimit := maxComponentDBFileBytes
 	maxComponentDBFileBytes = 4

@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/core/util/testpki"
 )
 
 // scoped returns a context containing test scope values.
@@ -461,4 +463,286 @@ func TestExplicitCurvesAreAppendedAfterTheDefaults(t *testing.T) {
 	got := c.http.Transport.(*http.Transport).TLSClientConfig
 	require.Equal(t, tls.X25519MLKEM768, got.CurvePreferences[0])
 	require.Subset(t, got.CurvePreferences, defaultCurvePreferences())
+}
+
+// newClientAuthServer serves the subject of the client certificate that arrived, or "none",
+// and records the SNI of every handshake.
+func newClientAuthServer(t *testing.T, auth tls.ClientAuthType, resumable bool) (*httptest.Server, *atomic.Value) {
+	t.Helper()
+	var sni atomic.Value
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		subject := "none"
+		if len(r.TLS.PeerCertificates) > 0 {
+			subject = r.TLS.PeerCertificates[0].Subject.CommonName
+		}
+		_, _ = w.Write([]byte(subject + " " + r.Host))
+	}))
+	server.TLS = &tls.Config{
+		ClientAuth:             auth,
+		SessionTicketsDisabled: !resumable,
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			sni.Store(hello.ServerName)
+			return nil, nil
+		},
+	}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return server, &sni
+}
+
+func clientCertificate(t *testing.T, name string) *tls.Certificate {
+	t.Helper()
+	set, err := testpki.Default()
+	require.NoError(t, err)
+	fixture, err := set.Get(name)
+	require.NoError(t, err)
+	cert, err := fixture.TLSCertificate(false)
+	require.NoError(t, err)
+	return &cert
+}
+
+func TestClientTLSPresentsTheCertificateEvenWhenTheServerNamesNoIssuer(t *testing.T) {
+	server, _ := newClientAuthServer(t, tls.RequestClientCert, false)
+	client := NewClient(Options{Timeout: 5 * time.Second})
+
+	resp, err := client.Do(context.Background(), Request{URL: server.URL, TLS: &ClientTLS{
+		Certificate: clientCertificate(t, "client-wrong-ca"), InsecureSkipVerify: true,
+	}}, 0, 0)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(resp.Text(), "client-wrong-ca "), resp.Text())
+	require.NotNil(t, resp.TLS)
+	require.True(t, resp.TLS.ClientCertificateRequested)
+	require.False(t, resp.TLS.DidResume)
+	require.NotEmpty(t, resp.TLS.PeerCertificates)
+}
+
+func TestClientTLSWithoutACertificateAnswersTheRequestEmpty(t *testing.T) {
+	server, _ := newClientAuthServer(t, tls.RequestClientCert, false)
+	resp, err := NewClient(Options{Timeout: 5 * time.Second}).Do(context.Background(),
+		Request{URL: server.URL, TLS: &ClientTLS{InsecureSkipVerify: true}}, 0, 0)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(resp.Text(), "none "), resp.Text())
+	require.True(t, resp.TLS.ClientCertificateRequested)
+}
+
+func TestClientTLSReportsAServerThatDoesNotAskForACertificate(t *testing.T) {
+	server, _ := newClientAuthServer(t, tls.NoClientCert, false)
+	resp, err := NewClient(Options{Timeout: 5 * time.Second}).Do(context.Background(), Request{
+		URL: server.URL, TLS: &ClientTLS{Certificate: clientCertificate(t, "client-valid"), InsecureSkipVerify: true},
+	}, 0, 0)
+	require.NoError(t, err)
+	require.False(t, resp.TLS.ClientCertificateRequested)
+	require.True(t, strings.HasPrefix(resp.Text(), "none "), resp.Text())
+}
+
+func TestClientTLSSendsTheChosenServerNameAndHost(t *testing.T) {
+	server, sni := newClientAuthServer(t, tls.NoClientCert, false)
+	resp, err := NewClient(Options{Timeout: 5 * time.Second}).Do(context.Background(), Request{
+		URL: server.URL, Host: "api.example.test",
+		TLS: &ClientTLS{ServerName: "localhost", InsecureSkipVerify: true},
+	}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, "localhost", sni.Load())
+	require.Equal(t, "localhost", resp.TLS.ServerName)
+	require.True(t, strings.HasSuffix(resp.Text(), " api.example.test"), resp.Text())
+}
+
+func TestClientTLSCanSendNoServerNameEvenToAHostnameURL(t *testing.T) {
+	server, sni := newClientAuthServer(t, tls.NoClientCert, false)
+	url := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+	client := NewClient(Options{Timeout: 5 * time.Second})
+
+	resp, err := client.Do(context.Background(), Request{
+		URL: url, TLS: &ClientTLS{ServerName: "ignored.example", OmitServerName: true, InsecureSkipVerify: true},
+	}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, "", sni.Load())
+	require.Equal(t, "", resp.TLS.ServerName)
+	require.False(t, resp.TLS.ClientCertificateRequested)
+
+	resp, err = client.Do(context.Background(), Request{URL: url, TLS: &ClientTLS{InsecureSkipVerify: true}}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, "localhost", sni.Load())
+	require.Equal(t, "localhost", resp.TLS.ServerName)
+}
+
+func TestClientTLSVerifiesTheServerUnlessToldNotTo(t *testing.T) {
+	server, _ := newClientAuthServer(t, tls.NoClientCert, false)
+	_, err := NewClient(Options{Timeout: 5 * time.Second}).Do(context.Background(),
+		Request{URL: server.URL, TLS: &ClientTLS{}}, 0, 0)
+	require.Error(t, err)
+}
+
+func TestClientTLSResumesOnlyThroughASharedCacheTheServerHonours(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		resumable bool
+		want      bool
+	}{
+		{name: "server issues tickets", resumable: true, want: true},
+		{name: "server refuses resumption", resumable: false, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, _ := newClientAuthServer(t, tls.NoClientCert, tc.resumable)
+			client := NewClient(Options{Timeout: 5 * time.Second})
+			opts := &ClientTLS{InsecureSkipVerify: true, Sessions: tls.NewLRUClientSessionCache(1)}
+			first, err := client.Do(context.Background(), Request{URL: server.URL, TLS: opts}, 0, 0)
+			require.NoError(t, err)
+			require.False(t, first.TLS.DidResume)
+			second, err := client.Do(context.Background(), Request{URL: server.URL, TLS: opts}, 0, 0)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, second.TLS.DidResume)
+		})
+	}
+}
+
+func TestClientTLSKeepsTheSharedCurveOrderingAndLeavesTheSharedConfigAlone(t *testing.T) {
+	client := NewClient(Options{Timeout: 5 * time.Second, TLSClientConfig: &tls.Config{ServerName: "platform-api"}})
+	exchange := client.newClientTLSExchange(&ClientTLS{ServerName: "localhost", InsecureSkipVerify: true})
+	config := exchange.client.Transport.(*http.Transport).TLSClientConfig
+	require.Equal(t, defaultCurvePreferences(), config.CurvePreferences)
+	require.Equal(t, "localhost", config.ServerName)
+	require.True(t, exchange.client.Transport.(*http.Transport).DisableKeepAlives)
+	require.Equal(t, "platform-api", client.tlsConfig.ServerName)
+	require.False(t, client.tlsConfig.InsecureSkipVerify)
+	require.Nil(t, client.tlsConfig.GetClientCertificate)
+}
+
+func TestPlainRequestsCarryNoTLSState(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer server.Close()
+	resp, err := NewClient(Options{Timeout: 5 * time.Second, InsecureSkipVerify: true}).Do(
+		context.Background(), Request{URL: server.URL}, 0, 0)
+	require.NoError(t, err)
+	require.Nil(t, resp.TLS)
+	require.Nil(t, (&clientTLSExchange{}).state(nil))
+}
+
+func TestFunnelPublishesAClientTLSResponse(t *testing.T) {
+	server, _ := newClientAuthServer(t, tls.RequestClientCert, false)
+	ctx := scoped()
+	funnel := NewFunnel(NewClient(Options{Timeout: 5 * time.Second}), 0, time.Millisecond)
+	_, err := funnel.Send(ctx, Request{URL: server.URL, TLS: &ClientTLS{
+		Certificate: clientCertificate(t, "client-valid"), InsecureSkipVerify: true,
+	}})
+	require.NoError(t, err)
+	published, err := Published(ctx)
+	require.NoError(t, err)
+	require.True(t, published.TLS.ClientCertificateRequested)
+	require.True(t, strings.HasPrefix(published.Text(), "client-valid "), published.Text())
+}
+
+// handshakeListener accepts one TLS connection, records the client certificate it saw, and
+// reports whether any bytes followed the handshake.
+func handshakeListener(t *testing.T, auth tls.ClientAuthType) (string, *tls.Certificate, <-chan string, <-chan int) {
+	t.Helper()
+	serverCert := clientCertificate(t, "ca-a")
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		Certificates: []tls.Certificate{*serverCert},
+		ClientAuth:   auth,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	subjects := make(chan string, 1)
+	bytesRead := make(chan int, 1)
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		tlsConn := conn.(*tls.Conn)
+		if handshakeErr := tlsConn.Handshake(); handshakeErr != nil {
+			return
+		}
+		state := tlsConn.ConnectionState()
+		subject := "none"
+		if len(state.PeerCertificates) > 0 {
+			subject = state.PeerCertificates[0].Subject.CommonName
+		}
+		subjects <- subject
+		_ = tlsConn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+		n, _ := tlsConn.Read(make([]byte, 8))
+		bytesRead <- n
+	}()
+	return ln.Addr().String(), serverCert, subjects, bytesRead
+}
+
+func TestHandshakeReportsTheRequestWithoutAnHTTPRequest(t *testing.T) {
+	client := NewClient(Options{Timeout: 5 * time.Second})
+	address, serverCert, subjects, bytesRead := handshakeListener(t, tls.RequestClientCert)
+	state, err := client.Handshake(context.Background(), address, &ClientTLS{
+		Certificate: clientCertificate(t, "client-valid"), ServerName: "localhost", InsecureSkipVerify: true,
+	})
+	require.NoError(t, err)
+	require.True(t, state.ClientCertificateRequested)
+	require.Equal(t, "localhost", state.ServerName)
+	require.Equal(t, serverCert.Certificate[0], state.PeerCertificates[0].Raw)
+	require.Equal(t, "client-valid", <-subjects)
+	require.Zero(t, <-bytesRead)
+
+	quietAddress, _, _, quietBytes := handshakeListener(t, tls.NoClientCert)
+	state, err = client.Handshake(context.Background(), quietAddress, &ClientTLS{
+		InsecureSkipVerify: true, ServerName: "localhost",
+	})
+	require.NoError(t, err)
+	require.False(t, state.ClientCertificateRequested)
+	require.NotEmpty(t, state.PeerCertificates)
+	require.Zero(t, <-quietBytes)
+}
+
+func TestHandshakeRejectsAMissingConfigAndAClosedPort(t *testing.T) {
+	_, err := NewClient(Options{}).Handshake(context.Background(), "127.0.0.1:1", nil)
+	require.ErrorContains(t, err, "no client TLS")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	address := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	_, err = NewClient(Options{Timeout: time.Second}).Handshake(context.Background(), address, &ClientTLS{InsecureSkipVerify: true})
+	require.Error(t, err)
+}
+
+func TestHandshakeKeepsAShortTimeoutAndCapsALongOne(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	var mu sync.Mutex
+	var held []net.Conn
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+			mu.Lock()
+			held = append(held, conn)
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, conn := range held {
+			_ = conn.Close()
+		}
+	})
+	address := ln.Addr().String()
+
+	t.Run("shorter client timeout is kept", func(t *testing.T) {
+		started := time.Now()
+		_, err := NewClient(Options{Timeout: 200 * time.Millisecond}).Handshake(context.Background(), address,
+			&ClientTLS{InsecureSkipVerify: true})
+		require.Error(t, err)
+		require.Less(t, time.Since(started), time.Second)
+	})
+	t.Run("longer client timeout is capped", func(t *testing.T) {
+		started := time.Now()
+		_, err := NewClient(Options{Timeout: 30 * time.Second}).Handshake(context.Background(), address,
+			&ClientTLS{InsecureSkipVerify: true})
+		elapsed := time.Since(started)
+		require.Error(t, err)
+		require.Greater(t, elapsed, time.Second)
+		require.Less(t, elapsed, defaultHandshakeTimeout+3*time.Second)
+	})
 }

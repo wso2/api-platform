@@ -1,0 +1,28 @@
+# Mutual TLS on a gateway with two controllers. The key manager lets a scenario require a
+# client certificate and a token on the same API. JSON access logs carry the TLS fields of
+# each request, and the controller and policy engine publish the certificate gauges and
+# policy counters the observability scenarios read.
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[router.access_logs]
+enabled = true
+format = "json"
+
+[controller.metrics]
+enabled = true
+
+[policy_engine.metrics]
+enabled = true
+
+# The outbound scenarios assert what a backend sees from an API that names no identity: nothing.
+[router.upstream.tls]
+present_default_identity = false
+
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"
