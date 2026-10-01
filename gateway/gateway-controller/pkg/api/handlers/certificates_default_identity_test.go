@@ -342,10 +342,29 @@ func TestUploadCertificate_SecondDefaultIdentityWithTakenName_ReportsRoleConflic
 		return resp
 	}
 
-	assert.Equal(t, "a gateway identity named "+takenName+" already exists", upload("")["message"],
+	assert.Equal(t, "a certificate named "+takenName+" already exists", upload("")["message"],
 		"without role: default the name conflict is reported")
 	assert.Equal(t,
 		"gateway identity gateway-default already has role: default; delete it before uploading another default identity",
 		upload(models.CertificateRoleDefault)["message"])
 	assert.Len(t, mockDB.certs, 3, "the refused identities must not be stored")
+}
+
+// Names are one namespace across usages: a client authority named like an
+// existing gateway identity is refused, and the message names only the clash.
+func TestUploadCertificate_NameTakenByOtherUsage_ReportsNeutralConflict(t *testing.T) {
+	mockDB := NewMockStorage()
+	mockDB.certs = []*models.StoredCertificate{seedUpstreamCert(t), identityRowForUpdate(t, "named-1")}
+	server := createTestAPIServerWithIdentitySupport(t, &lockedCertificateStorage{MockStorage: mockDB})
+	takenName := storedCertificateByName(t, mockDB, "out-identity-a").Name
+
+	w := uploadCertificateBody(t, server, UploadCertificateRequest{
+		Name: takenName, Usage: models.CertificateUsageDownstream,
+		Certificate: string(pki.NewRootCA(t, "Clashing CA").PEM()),
+	})
+	require.Equal(t, http.StatusConflict, w.Code, "body: %s", w.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "a certificate named "+takenName+" already exists", resp["message"])
+	assert.Len(t, mockDB.certs, 2, "the refused authority must not be stored")
 }

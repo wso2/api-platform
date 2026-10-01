@@ -276,13 +276,9 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 	// Save to database
 	if err := s.db.SaveCertificate(cert); err != nil {
 		if storage.IsConflictError(err) {
+			// Names are one namespace across usages, so the existing entry may have
+			// any usage; name only the clash.
 			message := fmt.Sprintf("a certificate named %s already exists", req.Name)
-			switch effectiveUsage {
-			case models.CertificateUsageDownstream:
-				message = fmt.Sprintf("a client-CA authority named %s already exists", req.Name)
-			case models.CertificateUsageIdentity:
-				message = fmt.Sprintf("a gateway identity named %s already exists", req.Name)
-			}
 			httputil.WriteJSON(w, http.StatusConflict, map[string]any{
 				"status":  "error",
 				"message": message,
