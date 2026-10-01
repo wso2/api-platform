@@ -368,10 +368,8 @@ type LLMProxyRepository interface {
 	GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error)
 	ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error)
-	ListByProvider(orgUUID, providerID string, limit, offset int) ([]*model.LLMProxy, error)
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
-	CountByProvider(orgUUID, providerID string) (int, error)
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)

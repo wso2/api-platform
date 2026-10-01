@@ -140,14 +140,59 @@ func (d *restAPIDefinition) Decode(content []byte) (any, error) {
 	return definition, nil
 }
 
-// llmProxyDefinition renders LLM proxies.
+// llmProxyDefinition renders LLM proxies. It holds the provider and template
+// repositories as well as the proxy's own: the artifact's provider shape
+// depends on the primary provider's template, which the proxy row records only
+// by provider id and the provider row only by template uuid.
 type llmProxyDefinition struct {
-	proxyRepo repository.LLMProxyRepository
+	proxyRepo    repository.LLMProxyRepository
+	providerRepo repository.LLMProviderRepository
+	templateRepo repository.LLMProviderTemplateRepository
 }
 
 // NewLLMProxyDefinition returns the ArtifactDefinition for LLM proxies.
-func NewLLMProxyDefinition(proxyRepo repository.LLMProxyRepository) ArtifactDefinition {
-	return &llmProxyDefinition{proxyRepo: proxyRepo}
+func NewLLMProxyDefinition(
+	proxyRepo repository.LLMProxyRepository,
+	providerRepo repository.LLMProviderRepository,
+	templateRepo repository.LLMProviderTemplateRepository,
+) ArtifactDefinition {
+	return &llmProxyDefinition{
+		proxyRepo:    proxyRepo,
+		providerRepo: providerRepo,
+		templateRepo: templateRepo,
+	}
+}
+
+// primaryProviderTemplate is the template handle the proxy's primary provider
+// was created from, and it decides one thing: whether a declared inbound
+// interface merely restates that format. When it does, the artifact can omit
+// the interface and stay readable by a gateway released before the field
+// existed. Returning "" — no repository, no primary, an unresolvable provider —
+// makes any declared interface count as differing, so the artifact keeps it and
+// the canonical shape is emitted. That is the safe direction: a proxy that
+// needs a newer gateway fails loudly on an older one rather than deploying
+// there with a field silently dropped.
+func (d *llmProxyDefinition) primaryProviderTemplate(proxy *model.LLMProxy) string {
+	if d.providerRepo == nil || d.templateRepo == nil || proxy == nil {
+		return ""
+	}
+	primaryID := model.PrimaryLLMProxyProviderID(proxy.Configuration)
+	if primaryID == "" {
+		return ""
+	}
+	provider, err := d.providerRepo.GetByID(primaryID, proxy.OrganizationUUID)
+	if err != nil || provider == nil || provider.TemplateUUID == "" {
+		return ""
+	}
+	// The template is resolved through the provider's templateUuid, the only
+	// place a provider created here records it: the configuration's template
+	// field is filled in by an imported spec alone, so reading it would leave
+	// every provider created through the API looking template-less.
+	template, err := d.templateRepo.GetByUUID(provider.TemplateUUID, proxy.OrganizationUUID)
+	if err != nil || template == nil {
+		return ""
+	}
+	return template.ID
 }
 
 func (d *llmProxyDefinition) Kind() string { return constants.LLMProxy }
@@ -160,7 +205,7 @@ func (d *llmProxyDefinition) Current(artifact *model.Artifact) (*ArtifactSnapsho
 	if proxy == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	definition, err := generateLLMProxyDeploymentYAML(proxy)
+	definition, err := generateLLMProxyDeploymentYAML(proxy, d.primaryProviderTemplate(proxy))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 	}

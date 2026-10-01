@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -42,9 +42,18 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, Copy } from '@wso2/oxygen-ui-icons-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Plus,
+} from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { createLLMProviderAPIKey } from '../../../../apis/llmProviderApis';
+import {
+  createLLMProviderAPIKey,
+  getLLMProvider,
+} from '../../../../apis/llmProviderApis';
 import {
   createSecret,
   deleteSecret,
@@ -58,6 +67,20 @@ import {
   useLLMProvider,
   useLLMProviders,
 } from '../../../../contexts/llmProvider';
+import {
+  ProviderTemplatesProvider,
+  useProviderTemplates,
+} from '../../../../contexts/llmProvider/providerTemplate';
+import InboundInterfaceSelect from '../../../../Components/InboundInterface/InboundInterfaceSelect';
+import TransformerStatusCard from '../../../../Components/Transformer/TransformerStatusCard';
+import TransformerDrawer from '../../../../Components/Transformer/TransformerDrawer';
+import ProviderTable from '../../../../Components/Transformer/ProviderTable';
+import useTransformerPolicies from '../../../../hooks/useTransformerPolicies';
+import { resolveTransformer } from '../../../../utils/transformerResolution';
+import {
+  inboundTemplateToPersist,
+  resolvedTransformerFor,
+} from '../../../../utils/proxyProviders';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
   buildOrgPath,
@@ -66,7 +89,12 @@ import {
 } from '../../../../utils/projectRouting';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import { resolveApiKeyAuthDisplay } from '../../../../utils/apiKeyAuthDisplay';
-import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
+import type {
+  CreateProxyRequest,
+  LLMProvider,
+  ProxyProviderEntry,
+  ProxyProviderTransformer,
+} from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
@@ -79,6 +107,60 @@ type FormState = {
   providerId: string;
   version: string;
   description: string;
+};
+
+/**
+ * One extra provider being entered on this page.
+ *
+ * Held here rather than persisted as it is entered: a proxy is created once,
+ * with every provider it has, so nothing reaches the server until Create. That
+ * is also what lets a failed create leave the page exactly as the user left it.
+ *
+ * `apiKeyValue` is whatever the user typed and `generatedApiKeyValue` whatever
+ * was minted for this provider. They are held apart so the field a user typed
+ * into is never filled in behind them, and either is exchanged for a stored
+ * secret during create, so neither leaves this page as plain text.
+ */
+type AdditionalProviderDraft = {
+  /** Stable across re-orders and removals, so React keys survive editing. */
+  key: string;
+  providerId: string;
+  apiKeyValue: string;
+  generatedApiKeyValue: string;
+  /**
+   * The header this provider expects its key in, taken from the provider's own
+   * record. Carried on the draft because the provider list does not describe
+   * how a provider authenticates — only the provider itself does.
+   */
+  apiKeyHeader: string;
+  transformer: ProxyProviderTransformer | null;
+  /**
+   * Whether the translator was taken off deliberately.
+   *
+   * Absence alone cannot say that: a provider with none attached is also the
+   * state a provider starts in, which is when the match between the two formats
+   * should be offered and recorded. Without this, a removed translator is found
+   * again on the next render and written back on save, so the remove control
+   * looks inert.
+   */
+  transformerCleared: boolean;
+};
+
+/** Identifies the primary when the transformer drawer acts on it. */
+const PRIMARY_TARGET = '__primary__';
+
+let additionalProviderKeySeq = 0;
+const newAdditionalProviderDraft = (): AdditionalProviderDraft => {
+  additionalProviderKeySeq += 1;
+  return {
+    key: `provider-${additionalProviderKeySeq}`,
+    providerId: '',
+    apiKeyValue: '',
+    generatedApiKeyValue: '',
+    apiKeyHeader: '',
+    transformer: null,
+    transformerCleared: false,
+  };
 };
 
 // Backend field names (from CreateProxyRequest) mapped onto this form's state keys.
@@ -141,6 +223,12 @@ function LLMProxyNewContent({
   );
   const { providersResponse, isLoading: isProvidersLoading } =
     useLLMProviders();
+  const {
+    templatesResponse,
+    isLoading: isTemplatesLoading,
+    error: templatesError,
+  } = useProviderTemplates();
+
   const { provider: selectedProvider, isLoading: isSelectedProviderLoading } =
     useLLMProvider();
   const {
@@ -181,6 +269,90 @@ function LLMProxyNewContent({
   const [generatedKeyForDisplay, setGeneratedKeyForDisplay] = useState<
     string | null
   >(null);
+  // Providers beyond the first. The page opens with none, so creating a
+  // single-provider proxy involves exactly the decisions it always did.
+  const [additionalProviders, setAdditionalProviders] = useState<
+    AdditionalProviderDraft[]
+  >([]);
+  /**
+   * Where the primary appears among the rows.
+   *
+   * Which provider is primary and where its row sits are separate things here.
+   * The contract puts the primary at the head of the list it is sent as, but
+   * applying that to the rows means the one just marked jumps to the top and
+   * the one it replaced drops to the bottom — two rows moving in answer to one
+   * click, under the pointer that made it. The rows stay where they are
+   * instead, and the list is ordered as the request is built.
+   */
+  const [primaryRowIndex, setPrimaryRowIndex] = useState(0);
+  // Whether the user has chosen an interface themselves. Once they have, the
+  // default below stops moving under them.
+  const [hasChosenInterface, setHasChosenInterface] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  /**
+   * The provider currently being filled in, if any. Held apart from the list so
+   * an abandoned form leaves what is already attached untouched.
+   */
+  const [stagedProvider, setStagedProvider] =
+    useState<AdditionalProviderDraft | null>(null);
+  /**
+   * Which attached provider is open for editing: the primary, or a draft key.
+   *
+   * Editing reopens the same form the provider was added with, against a working
+   * copy — so abandoning it leaves the attached provider exactly as it was,
+   * rather than removing it.
+   */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  /** The working copy of an attached extra provider while it is being edited. */
+  const [editDraft, setEditDraft] = useState<AdditionalProviderDraft | null>(
+    null
+  );
+  /** What the primary was before its edit began, so cancelling restores it. */
+  const [primarySnapshot, setPrimarySnapshot] = useState<{
+    providerId: string;
+    manualApiKeyValue: string;
+    generatedApiKeyValue: string | null;
+    transformer: ProxyProviderTransformer | null;
+    transformerCleared: boolean;
+  } | null>(null);
+  /**
+   * Credentials to put back once a cancelled provider change has settled.
+   *
+   * Changing the primary provider clears its credential, which is right while
+   * editing and wrong while undoing an edit. The restore is handed to that same
+   * effect rather than racing it.
+   */
+  const pendingPrimaryRestore = useRef<{
+    manualApiKeyValue: string;
+    generatedApiKeyValue: string | null;
+    providerId: string;
+  } | null>(null);
+  /**
+   * The provider whose form is open, read in full.
+   *
+   * Whether a provider needs a key, and which header it goes in, is declared on
+   * the provider itself — the list this page selects from carries neither — so
+   * an extra provider's form cannot be drawn correctly without reading it.
+   */
+  const [openProviderDetail, setOpenProviderDetail] =
+    useState<LLMProvider | null>(null);
+  const [isOpenProviderLoading, setIsOpenProviderLoading] = useState(false);
+  /** Which provider a generated key is being minted for. */
+  const [apiKeyTarget, setApiKeyTarget] = useState<string>(PRIMARY_TARGET);
+  /** Which provider the transformer drawer is acting on: the primary, or a draft key. */
+  const [transformerTarget, setTransformerTarget] = useState<string | null>(
+    null
+  );
+  /** The primary's own translator, when the interface differs from its format. */
+  const [primaryTransformer, setPrimaryTransformer] =
+    useState<ProxyProviderTransformer | null>(null);
+  /** The same deliberate-removal record as a draft carries, for the primary. */
+  const [primaryTransformerCleared, setPrimaryTransformerCleared] =
+    useState(false);
+  // The format this proxy accepts from clients. Empty means "take it from the
+  // primary provider", which is what a single-provider proxy wants.
+  const [inboundTemplate, setInboundTemplate] = useState<string>('');
+
   const [selectedProviderApiKeyValue, setSelectedProviderApiKeyValue] =
     useState<string | null>(null);
   const [
@@ -288,9 +460,425 @@ function LLMProxyNewContent({
     return null;
   }, [formState.providerId, preselectedProvider, selectedProvider]);
 
+  /**
+   * The format this proxy should accept by default.
+   *
+   * With one provider it is that provider's own format, so nothing needs
+   * translating and the form reads as it always did. With several it is
+   * OpenAI's, which has the widest translator coverage and so leaves the most
+   * providers matching automatically — falling back to the primary's own format
+   * when the catalogue does not carry OpenAI's.
+   */
+  const defaultInboundTemplate = useMemo(() => {
+    if (additionalProviders.length === 0) {
+      return providerDetail?.template ?? '';
+    }
+    const openAiTemplate = templatesResponse.list.find(
+      (template) => template.id === 'openai' && template.enabled !== false
+    );
+    return openAiTemplate?.id ?? providerDetail?.template ?? '';
+  }, [additionalProviders.length, templatesResponse.list, providerDetail]);
+
+  // Derivation runs only while the user has not chosen for themselves. Once
+  // they have, it stops permanently rather than moving under their choice.
+  useEffect(() => {
+    if (hasChosenInterface) {
+      return;
+    }
+    setInboundTemplate(defaultInboundTemplate);
+  }, [defaultInboundTemplate, hasChosenInterface]);
+
+  const {
+    policies: transformerPolicies,
+    isLoaded: transformerPoliciesLoaded,
+    isLoading: transformerPoliciesLoading,
+    error: transformerPoliciesError,
+    reload: reloadTransformerPolicies,
+  } = useTransformerPolicies();
+
+  /** The interface's display name, for wording that names it. */
+  const inboundInterfaceLabel = useMemo(
+    () =>
+      templatesResponse.list.find((template) => template.id === inboundTemplate)
+        ?.displayName ?? inboundTemplate,
+    [templatesResponse.list, inboundTemplate]
+  );
+
+  /**
+   * What translates for a provider on this form, decided by the same rules the
+   * detail page uses so a proxy reads the same before and after it is created.
+   */
+  const resolutionForProvider = (
+    providerId: string,
+    chosenTransformer?: ProxyProviderTransformer | null,
+    // Only a removal the user made. A provider that simply has none yet is
+    // still shown — and recorded with — the match its format calls for.
+    wasCleared = false
+  ) => {
+    const provider = providerOptions.find((option) => option.id === providerId);
+    return resolveTransformer({
+      inboundTemplate,
+      providerTemplate: provider?.template,
+      chosenTransformer,
+      hasNoTransformer: wasCleared,
+      policies: transformerPolicies,
+      policiesLoaded: transformerPoliciesLoaded,
+      interfaceLabel: inboundInterfaceLabel,
+      providerLabel: provider?.displayName,
+    });
+  };
+
+  /** Attaches or detaches a translator on whichever provider opened the drawer. */
+  /** Sets or clears the translator on one provider, named outright. */
+  const setTransformerFor = (
+    target: string,
+    transformer: ProxyProviderTransformer | null
+  ) => {
+    // Choosing one settles the question either way, so the record of a past
+    // removal goes with it: the provider now has what the user asked for.
+    const cleared = transformer === null;
+    if (target === PRIMARY_TARGET) {
+      setPrimaryTransformer(transformer);
+      setPrimaryTransformerCleared(cleared);
+      return;
+    }
+    if (openDraft?.key === target) {
+      updateOpenDraft((prev) => ({
+        ...prev,
+        transformer,
+        transformerCleared: cleared,
+      }));
+      return;
+    }
+    setAdditionalProviders((prev) =>
+      prev.map((entry) =>
+        entry.key === target
+          ? { ...entry, transformer, transformerCleared: cleared }
+          : entry
+      )
+    );
+  };
+
+  const applyTransformerToTarget = (
+    transformer: ProxyProviderTransformer | null
+  ) => {
+    if (transformerTarget) {
+      setTransformerFor(transformerTarget, transformer);
+    }
+  };
+
+  /** The translator a provider is saved with, by the rule every write shares. */
+  const transformerToPersist = (
+    providerId: string,
+    chosen: ProxyProviderTransformer | null,
+    wasCleared = false
+  ): ProxyProviderTransformer | undefined =>
+    resolvedTransformerFor(
+      chosen,
+      resolutionForProvider(providerId, chosen, wasCleared)
+    );
+
+  /**
+   * Providers not already attached, so the same one cannot be added twice —
+   * two rows resolving to the same request handle would make routing to either
+   * of them ambiguous.
+   */
+  /** Whether the proxy has more than one provider, or is about to. */
+  const hasSeveralProviders =
+    additionalProviders.length > 0 || stagedProvider !== null;
+  /**
+   * The extra provider currently being filled in — newly staged or an attached
+   * one being edited. Only ever one at a time, so one form's worth of supporting
+   * state serves both.
+   */
+  const openDraft = stagedProvider ?? editDraft;
+  /** Whether any provider form is open, which is what closes the others down. */
+  const isProviderFormOpen = stagedProvider !== null || editingKey !== null;
+  /** Edits whichever extra-provider form is open, staged or attached. */
+  const updateOpenDraft = (
+    change: (draft: AdditionalProviderDraft) => AdditionalProviderDraft
+  ) => {
+    if (stagedProvider) {
+      setStagedProvider((prev) => (prev ? change(prev) : prev));
+      return;
+    }
+    setEditDraft((prev) => (prev ? change(prev) : prev));
+  };
+  /** The primary shows its own fields when it is the only one, or while edited. */
+  const isPrimaryExpanded =
+    !hasSeveralProviders || editingKey === PRIMARY_TARGET;
+
+  // The rows either side of the primary's own slot. Clamped rather than
+  // trusted: a removal reduces the list, and a stale index would otherwise
+  // render the primary outside it.
+  const primarySlot = Math.min(primaryRowIndex, additionalProviders.length);
+  const draftsAbovePrimary = additionalProviders.slice(0, primarySlot);
+  const draftsBelowPrimary = additionalProviders.slice(primarySlot);
+
+  /**
+   * The settled providers as the shared table reads them, in display order.
+   *
+   * The page holds the primary in a slot of its own and the rest in a list, so
+   * the table's flat view is assembled here rather than stored — the primary
+   * keeps its place among the rows, and every callback comes back as a position
+   * in this same array.
+   */
+  const providerSlots: Array<{
+    key: string;
+    draft: AdditionalProviderDraft | null;
+  }> = [
+    ...draftsAbovePrimary.map((draft) => ({ key: draft.key, draft })),
+    { key: PRIMARY_TARGET, draft: null },
+    ...draftsBelowPrimary.map((draft) => ({ key: draft.key, draft })),
+  ];
+
+  const providerTableEntries: ProxyProviderEntry[] = providerSlots.map((slot) =>
+    slot.draft
+      ? {
+          id: slot.draft.providerId,
+          isPrimary: false,
+          ...(slot.draft.transformer
+            ? { transformer: slot.draft.transformer }
+            : {}),
+        }
+      : {
+          id: formState.providerId,
+          isPrimary: true,
+          ...(primaryTransformer ? { transformer: primaryTransformer } : {}),
+        }
+  );
+
+  /** The slot a table callback names, by the position it hands back. */
+  const slotAt = (index: number) => providerSlots[index] ?? null;
+
+  const slotForProvider = (providerId: string) =>
+    providerSlots.find((slot) => slot.draft?.providerId === providerId) ?? null;
+
+
+  const availableProviderOptions = (keepProviderId: string) =>
+    providerOptions.filter(
+      (provider) =>
+        provider.id === keepProviderId ||
+        (provider.id !== formState.providerId &&
+          !additionalProviders.some(
+            (entry) => entry.providerId === provider.id
+          ))
+    );
+
+  /**
+   * Makes an attached provider the primary, and demotes the current one into
+   * the list rather than dropping it.
+   *
+   * Promotion reorders and nothing else. The inbound interface is deliberately
+   * untouched: an existing proxy has clients depending on its request format,
+   * and swapping which provider is primary must not silently change it.
+   */
+  /**
+   * Takes a provider off the proxy, keeping the primary's row where it is.
+   *
+   * Removing a row above the primary shifts everything below it up by one, so
+   * the primary's recorded position has to come with it.
+   */
+  const removeAttachedProvider = (draftKey: string) => {
+    const removedIndex = additionalProviders.findIndex(
+      (entry) => entry.key === draftKey
+    );
+    if (removedIndex < 0) {
+      return;
+    }
+    setAdditionalProviders((prev) =>
+      prev.filter((entry) => entry.key !== draftKey)
+    );
+    if (removedIndex < primaryRowIndex) {
+      setPrimaryRowIndex((prev) => Math.max(0, prev - 1));
+    }
+  };
+
+  const promoteProvider = (draftKey: string) => {
+    const promoted = additionalProviders.find(
+      (entry) => entry.key === draftKey
+    );
+    if (!promoted) {
+      return;
+    }
+    const demotedPrimary: AdditionalProviderDraft = {
+      key: `provider-demoted-${Date.now()}`,
+      providerId: formState.providerId,
+      apiKeyValue: manualApiKeyValue,
+      generatedApiKeyValue:
+        selectedProviderApiKeyProviderId === formState.providerId
+          ? (selectedProviderApiKeyValue ?? '')
+          : '',
+      apiKeyHeader: selectedProviderApiKeyName,
+      transformer: primaryTransformer,
+      // A removal follows the provider it was made on, in either direction.
+      transformerCleared: primaryTransformerCleared,
+    };
+    // The two providers exchange roles without exchanging places: the primary
+    // slot takes the promoted row's position and the demoted provider takes the
+    // primary's, so both rows stay exactly where the reader last saw them.
+    const slots = additionalProviders.map((entry) => entry.key);
+    slots.splice(primaryRowIndex, 0, PRIMARY_TARGET);
+    const promotedSlot = slots.indexOf(draftKey);
+    const primarySlot = slots.indexOf(PRIMARY_TARGET);
+    slots[promotedSlot] = PRIMARY_TARGET;
+    slots[primarySlot] = demotedPrimary.key;
+
+    const byKey = new Map(
+      additionalProviders.map((entry) => [entry.key, entry])
+    );
+    byKey.set(demotedPrimary.key, demotedPrimary);
+    setAdditionalProviders(
+      slots
+        .filter((key) => key !== PRIMARY_TARGET)
+        .map((key) => byKey.get(key) as AdditionalProviderDraft)
+    );
+    setPrimaryRowIndex(slots.indexOf(PRIMARY_TARGET));
+    // Handed to the effect that clears credentials on a provider change rather
+    // than set alongside it. That effect runs after this batch, so a value set
+    // here would be wiped — and a generated key, shown once, would be gone.
+    pendingPrimaryRestore.current = {
+      providerId: promoted.providerId,
+      manualApiKeyValue: promoted.apiKeyValue,
+      generatedApiKeyValue: promoted.generatedApiKeyValue || null,
+    };
+    setFormState((prev) => ({ ...prev, providerId: promoted.providerId }));
+    onSelectedProviderIdChange(promoted.providerId);
+    setPrimaryTransformer(promoted.transformer);
+    setPrimaryTransformerCleared(promoted.transformerCleared);
+    setHasChosenInterface(true);
+  };
+
+  useEffect(() => {
+    const openProviderId = openDraft?.providerId;
+    if (!openProviderId || !currentOrganization?.uuid) {
+      setOpenProviderDetail(null);
+      return undefined;
+    }
+    let abandoned = false;
+    // Dropped before the fetch, for the same reason the panel does: a detail
+    // held over from the previous provider answers for the wrong one.
+    setOpenProviderDetail(null);
+    setIsOpenProviderLoading(true);
+    getLLMProvider(
+      openProviderId,
+      currentOrganization.uuid,
+      PLATFORM_API_BASE_URL
+    )
+      .then((detail) => {
+        if (!abandoned) {
+          setOpenProviderDetail(detail);
+        }
+      })
+      .catch((error) => {
+        if (abandoned) {
+          return;
+        }
+        logger.error('Failed to load the selected provider:', error);
+        setOpenProviderDetail(null);
+      })
+      .finally(() => {
+        if (!abandoned) {
+          setIsOpenProviderLoading(false);
+        }
+      });
+    return () => {
+      abandoned = true;
+    };
+  }, [openDraft?.providerId, currentOrganization?.uuid]);
+
+  /**
+   * Opens the primary for editing, remembering what it was.
+   *
+   * Everything it edits is page state that other things read, so it is changed
+   * in place and undone from this record rather than held in a copy.
+   */
+  const beginPrimaryEdit = () => {
+    setPrimarySnapshot({
+      providerId: formState.providerId,
+      manualApiKeyValue,
+      generatedApiKeyValue:
+        selectedProviderApiKeyProviderId === formState.providerId
+          ? selectedProviderApiKeyValue
+          : null,
+      transformer: primaryTransformer,
+      transformerCleared: primaryTransformerCleared,
+    });
+    setEditingKey(PRIMARY_TARGET);
+  };
+
+  const cancelPrimaryEdit = () => {
+    const snapshot = primarySnapshot;
+    setEditingKey(null);
+    setPrimarySnapshot(null);
+    if (!snapshot) {
+      return;
+    }
+    setPrimaryTransformer(snapshot.transformer);
+    setPrimaryTransformerCleared(snapshot.transformerCleared);
+    if (snapshot.providerId === formState.providerId) {
+      setManualApiKeyValue(snapshot.manualApiKeyValue);
+      setSelectedProviderApiKeyValue(snapshot.generatedApiKeyValue);
+      setSelectedProviderApiKeyProviderId(
+        snapshot.generatedApiKeyValue ? snapshot.providerId : ''
+      );
+      return;
+    }
+    pendingPrimaryRestore.current = {
+      providerId: snapshot.providerId,
+      manualApiKeyValue: snapshot.manualApiKeyValue,
+      generatedApiKeyValue: snapshot.generatedApiKeyValue,
+    };
+    setFormState((prev) => ({ ...prev, providerId: snapshot.providerId }));
+    onSelectedProviderIdChange(snapshot.providerId);
+  };
+
+  /** Edits an attached provider through a copy, so cancelling changes nothing. */
+  const beginProviderEdit = (draft: AdditionalProviderDraft) => {
+    setEditDraft({ ...draft });
+    setEditingKey(draft.key);
+  };
+
+  const cancelProviderEdit = () => {
+    setEditDraft(null);
+    setEditingKey(null);
+  };
+
+  const commitProviderEdit = () => {
+    if (!editDraft) {
+      return;
+    }
+    const edited: AdditionalProviderDraft = {
+      ...editDraft,
+      apiKeyHeader: openProviderRequiresApiKey ? openProviderApiKeyName : '',
+      apiKeyValue: openProviderRequiresApiKey ? editDraft.apiKeyValue : '',
+      generatedApiKeyValue: openProviderRequiresApiKey
+        ? editDraft.generatedApiKeyValue
+        : '',
+    };
+    setAdditionalProviders((prev) =>
+      prev.map((entry) => (entry.key === edited.key ? edited : entry))
+    );
+    setEditDraft(null);
+    setEditingKey(null);
+  };
+
   const selectedProviderRequiresApiKey = Boolean(
     providerDetail?.security?.enabled && providerDetail.security.apiKey?.enabled
   );
+  /**
+   * Whether the provider whose form is open authenticates with a key at all. A
+   * provider that does not gets no key field: an input nothing is done with
+   * reads as a required step and makes the form look incomplete.
+   */
+  const openProviderRequiresApiKey = Boolean(
+    openProviderDetail?.security?.enabled &&
+    openProviderDetail.security.apiKey?.enabled
+  );
+  const openProviderApiKeyName = resolveApiKeyAuthDisplay(
+    openProviderDetail?.security,
+    openProviderDetail?.globalPolicies
+  ).headerName;
   const selectedProviderApiKeyName = resolveApiKeyAuthDisplay(
     providerDetail?.security,
     providerDetail?.globalPolicies
@@ -311,6 +899,10 @@ function LLMProxyNewContent({
     !selectedProviderRequiresApiKey || isGeneratedKeyReady || isManualKeyReady;
 
   const isCreateProxyDisabled =
+    // A provider described but not yet added is not on the list Create reads.
+    // Creating anyway would quietly make a proxy without it, and without
+    // saying so — the entered credential and translator simply gone.
+    isProviderFormOpen ||
     !formState.name.trim() ||
     !formState.providerId ||
     !effectiveProject?.id ||
@@ -323,6 +915,11 @@ function LLMProxyNewContent({
   // blocker instead.
   const createProxyBlockedReason = (() => {
     if (!isCreateProxyDisabled || isCreating) return '';
+    if (isProviderFormOpen) {
+      return stagedProvider
+        ? 'Add the provider you are describing, or cancel it, before creating.'
+        : 'Finish editing the open provider before creating.';
+    }
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
@@ -336,13 +933,31 @@ function LLMProxyNewContent({
   })();
 
   useEffect(() => {
+    // A credential belongs to the provider it was entered for, so changing the
+    // provider clears it. The one exception is undoing a change: the credential
+    // being put back is the one this provider already had.
+    const restore = pendingPrimaryRestore.current;
+    pendingPrimaryRestore.current = null;
+    const restores = restore?.providerId === formState.providerId;
     setApiKeyError(null);
     setGeneratedKeyForDisplay(null);
-    setSelectedProviderApiKeyValue(null);
-    setSelectedProviderApiKeyProviderId('');
-    setManualApiKeyValue('');
+    setSelectedProviderApiKeyValue(
+      restores ? restore.generatedApiKeyValue : null
+    );
+    setSelectedProviderApiKeyProviderId(restores ? formState.providerId : '');
+    setManualApiKeyValue(restores ? restore.manualApiKeyValue : '');
     setApiKeyDisplayName('');
     setIsApiKeyModalOpen(false);
+    // A translator belongs to the pair of formats it was chosen for, and a
+    // removal to the provider it was made on. A different provider starts fresh
+    // on both counts — otherwise the translator picked for the last one is
+    // carried across and written on Create, and the proxy's own upstream fails
+    // at invocation. The exception is an undo, which puts back the state it is
+    // undoing; promotion and cancel both arrive that way.
+    if (!restores) {
+      setPrimaryTransformer(null);
+      setPrimaryTransformerCleared(false);
+    }
   }, [formState.providerId]);
 
   const lockedProviderDisplayName = useMemo(() => {
@@ -382,6 +997,8 @@ function LLMProxyNewContent({
     }
 
     let createdSecretHandle: string | null = null;
+    // Every provider can mint one, so a failed create has several to undo.
+    const createdSecretHandles: string[] = [];
     try {
       setIsCreating(true);
       setFieldErrors({});
@@ -428,6 +1045,68 @@ function LLMProxyNewContent({
         }
       }
 
+      // Each extra provider's credential is stored the same way the first one's
+      // is, so every provider on the proxy authenticates on the same terms. A
+      // provider left without one is carried without an auth block rather than
+      // with an empty one, which is how the server tells "no credential" from
+      // "a credential I could not read".
+      const additionalProviderEntries: ProxyProviderEntry[] = [];
+      for (const draft of additionalProviders) {
+        if (!draft.providerId) {
+          continue;
+        }
+        const draftTransformer = transformerToPersist(
+          draft.providerId,
+          draft.transformer,
+          draft.transformerCleared
+        );
+        // A typed key wins over a minted one: it is the later of the two the
+        // user can have supplied, since minting clears nothing they typed.
+        const providerKey =
+          draft.apiKeyValue.trim() || draft.generatedApiKeyValue;
+        if (!providerKey) {
+          additionalProviderEntries.push({
+            id: draft.providerId,
+            isPrimary: false,
+            ...(draftTransformer ? { transformer: draftTransformer } : {}),
+          });
+          continue;
+        }
+        const secretHandle = generateSecretHandle();
+        const secretResponse = await createSecret({
+          id: secretHandle,
+          displayName: `${generatedId} ${draft.providerId} API Key`,
+          description: `Auto-generated secret for LLM proxy ${generatedId}, provider ${draft.providerId}`,
+          value: providerKey,
+          type: 'GENERIC',
+        });
+        createdSecretHandles.push(secretResponse.id);
+        additionalProviderEntries.push({
+          id: draft.providerId,
+          isPrimary: false,
+          auth: {
+            type: 'api-key',
+            // The header the provider itself declares. Sending every provider's
+            // key in the same one would authenticate against whichever provider
+            // happened to agree with that guess.
+            header: draft.apiKeyHeader || 'Authorization',
+            value: buildSecretPlaceholder(secretResponse.id),
+          },
+          ...(draftTransformer ? { transformer: draftTransformer } : {}),
+        });
+      }
+
+      const persistedInboundTemplate = inboundTemplateToPersist(
+        inboundTemplate,
+        providerDetail?.template
+      );
+
+      const primaryPersistedTransformer = transformerToPersist(
+        formState.providerId,
+        primaryTransformer,
+        primaryTransformerCleared
+      );
+
       const payload: CreateProxyRequest = {
         id: generatedId,
         displayName: trimmedName,
@@ -440,14 +1119,27 @@ function LLMProxyNewContent({
         version: formState.version.trim() || 'v1.0',
         projectId: payloadProjectId,
         context: effectiveContext,
-        provider: {
-          id: formState.providerId,
-          auth: {
-            type: providerAuthType,
-            header: providerAuthHeader,
-            value: providerAuthValue,
+        providers: [
+          {
+            id: formState.providerId,
+            isPrimary: true,
+            auth: {
+              type: providerAuthType,
+              header: providerAuthHeader,
+              value: providerAuthValue,
+            },
+            ...(primaryPersistedTransformer
+              ? { transformer: primaryPersistedTransformer }
+              : {}),
           },
-        },
+          ...additionalProviderEntries,
+        ],
+        // Recorded only when it differs from the primary provider's own
+        // format — see inboundTemplateToPersist for why a redundant one is
+        // worse than none.
+        ...(persistedInboundTemplate
+          ? { inboundTemplate: persistedInboundTemplate }
+          : {}),
         openapi: providerDetail?.openapi ?? '',
         policies: [],
         security: {
@@ -475,15 +1167,24 @@ function LLMProxyNewContent({
         }
       );
     } catch (error) {
-      // Compensate: delete the orphaned secret if proxy creation failed.
-      if (createdSecretHandle) {
-        deleteSecret(createdSecretHandle).catch((err) => {
-          logger.warn('Could not delete orphaned secret after proxy creation failure', {
-            secretHandle: createdSecretHandle,
-            err,
-          });
+      // Compensate: delete every orphaned secret if proxy creation failed. The
+      // entered configuration is deliberately left untouched — a failed create
+      // must not cost the user the list they just built.
+      const orphanedSecretHandles = [
+        ...(createdSecretHandle ? [createdSecretHandle] : []),
+        ...createdSecretHandles,
+      ];
+      orphanedSecretHandles.forEach((secretHandle) => {
+        deleteSecret(secretHandle).catch((err) => {
+          logger.warn(
+            'Could not delete orphaned secret after proxy creation failure',
+            {
+              secretHandle,
+              err,
+            }
+          );
         });
-      }
+      });
       const backendFieldErrors = getFieldErrors(error);
       const mappedErrors: Partial<Record<keyof FormState, string>> = {};
       let hasUnmapped = false;
@@ -513,7 +1214,8 @@ function LLMProxyNewContent({
     }
   };
 
-  const handleOpenApiKeyModal = () => {
+  const handleOpenApiKeyModal = (target: string) => {
+    setApiKeyTarget(target);
     setApiKeyError(null);
     setGeneratedKeyForDisplay(null);
     setApiKeyDisplayName('');
@@ -529,7 +1231,11 @@ function LLMProxyNewContent({
   };
 
   const handleGenerateApiKey = async () => {
-    if (!currentOrganization?.uuid || !formState.providerId) {
+    const isForPrimary = apiKeyTarget === PRIMARY_TARGET;
+    const targetProviderId = isForPrimary
+      ? formState.providerId
+      : (openDraft?.providerId ?? '');
+    if (!currentOrganization?.uuid || !targetProviderId) {
       return;
     }
 
@@ -547,7 +1253,7 @@ function LLMProxyNewContent({
       expiresAt.setDate(expiresAt.getDate() + 90);
 
       const response = await createLLMProviderAPIKey(
-        formState.providerId,
+        targetProviderId,
         currentOrganization.uuid,
         {
           id: buildApiKeyResourceName(trimmedDisplayName),
@@ -559,8 +1265,18 @@ function LLMProxyNewContent({
       );
 
       setGeneratedKeyForDisplay(response.apiKey);
-      setSelectedProviderApiKeyValue(response.apiKey);
-      setSelectedProviderApiKeyProviderId(formState.providerId);
+      if (isForPrimary) {
+        setSelectedProviderApiKeyValue(response.apiKey);
+        setSelectedProviderApiKeyProviderId(targetProviderId);
+      } else {
+        // Held on the draft like a typed one: both are exchanged for a stored
+        // secret at create time, so the rest of the page need not tell them
+        // apart.
+        updateOpenDraft((prev) => ({
+          ...prev,
+          generatedApiKeyValue: response.apiKey,
+        }));
+      }
       showSnackbar('API key generated successfully.', 'success');
     } catch (error) {
       logger.error('Failed to generate provider API key:', error);
@@ -588,6 +1304,519 @@ function LLMProxyNewContent({
       document.body.removeChild(textarea);
     }
   };
+
+  /**
+   * The form one extra provider is described in — the same one whether it is
+   * being added or changed afterwards.
+   *
+   * Editing works on a copy, so the attached provider is untouched until the
+   * form is committed, and abandoning the form removes nothing. Adding has
+   * nothing to keep, so cancelling simply discards it.
+   */
+  const renderProviderForm = (
+    draft: AdditionalProviderDraft,
+    mode: 'add' | 'edit'
+  ) => {
+    const isAdding = mode === 'add';
+    const cyPrefix = isAdding ? 'staged' : 'edit';
+    const typedKeyReady = Boolean(draft.apiKeyValue.trim());
+    const generatedKeyReady = Boolean(draft.generatedApiKeyValue);
+    return (
+      <Card
+        variant="outlined"
+        sx={{ p: 2, borderColor: 'primary.main' }}
+        data-cyid={`${cyPrefix}-provider-form`}
+      >
+        <Stack spacing={2}>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              {isAdding ? (
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.new.provider"
+                  defaultMessage="New provider"
+                />
+              ) : (
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.edit.provider"
+                  defaultMessage="Edit provider"
+                />
+              )}
+            </Typography>
+            {/*
+              Stated, not editable here: it governs every provider,
+              so it belongs with the proxy rather than inside one
+              provider's form.
+            */}
+            <Typography variant="caption" color="text.secondary">
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.inbound.interface.context"
+                defaultMessage="Inbound interface: {interfaceName}"
+                values={{ interfaceName: inboundInterfaceLabel || '—' }}
+              />
+            </Typography>
+          </Box>
+
+          <FormControl fullWidth>
+            <FormLabel sx={{ mb: 0.5 }}>
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
+                defaultMessage="LLM Provider"
+              />
+            </FormLabel>
+            <Select
+              value={draft.providerId}
+              onChange={(event) =>
+                // A credential belongs to the provider it was entered or
+                // minted for, and a translator to the pair of formats, so
+                // neither survives a change of provider — nor does a decision
+                // to go without one.
+                updateOpenDraft((prev) => ({
+                  ...prev,
+                  providerId: String(event.target.value),
+                  apiKeyValue: '',
+                  generatedApiKeyValue: '',
+                  transformer: null,
+                  transformerCleared: false,
+                }))
+              }
+              displayEmpty
+              disabled={isProvidersLoading}
+              data-cyid={`${cyPrefix}-provider-select`}
+            >
+              {availableProviderOptions(draft.providerId).map((provider) => (
+                <MenuItem key={provider.id} value={provider.id}>
+                  {truncateProviderDisplayName(provider.displayName)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TransformerStatusCard
+            resolution={resolutionForProvider(
+              draft.providerId,
+              draft.transformer,
+              draft.transformerCleared
+            )}
+            transformer={draft.transformer}
+            onConfigure={() => setTransformerTarget(draft.key)}
+            onRemove={() =>
+              updateOpenDraft((prev) => ({
+                ...prev,
+                transformer: null,
+                transformerCleared: true,
+              }))
+            }
+            // Building a proxy, not reviewing one: a provider that needs no
+            // translator has nothing to decide here, so the section is left
+            // out rather than stating an absence.
+            hideWhenNotNeeded
+            data-cyid={`${cyPrefix}-provider-transformer-status`}
+          />
+
+          {/*
+            Only for a provider that authenticates with a key. One
+            that does not gets no field at all, rather than an input
+            that reads as a step still to be completed.
+          */}
+          {openProviderRequiresApiKey && (
+            <>
+              <Divider />
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.key"
+                  defaultMessage="API Key"
+                />
+              </Typography>
+
+              <Stack spacing={0.5}>
+                <Typography variant="caption" color="text.secondary">
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.enter.api.key.manually.label"
+                    defaultMessage="Enter API Key Manually"
+                  />
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="password"
+                  placeholder={intl.formatMessage({
+                    id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.key.placeholder',
+                    defaultMessage: 'Enter API key',
+                  })}
+                  value={draft.apiKeyValue}
+                  onChange={(event) =>
+                    updateOpenDraft((prev) => ({
+                      ...prev,
+                      apiKeyValue: event.target.value,
+                    }))
+                  }
+                  data-cyid={`${cyPrefix}-provider-api-key`}
+                />
+                {typedKeyReady && (
+                  <Alert severity="success">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
+                      defaultMessage="API key will be attached when the proxy is created."
+                    />
+                  </Alert>
+                )}
+              </Stack>
+
+              <Divider>
+                <Typography variant="caption" color="text.secondary">
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.or.divider"
+                    defaultMessage="or"
+                  />
+                </Typography>
+              </Divider>
+
+              {/*
+                Generating is offered here on the same terms as for
+                the first provider — minting a key is a separate
+                grant, so the manual field above stays the way in
+                for somebody who does not hold it.
+              */}
+              <Stack spacing={0.5}>
+                <Typography variant="caption" color="text.secondary">
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key.label"
+                    defaultMessage="Generate API Key"
+                  />
+                </Typography>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2}
+                  alignItems={{ xs: 'flex-start', sm: 'center' }}
+                  sx={{
+                    px: 1.5,
+                    py: 1.5,
+                    bgcolor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: generatedKeyReady ? 'success.main' : 'divider',
+                    borderRadius: 1,
+                  }}
+                >
+                  <Box sx={{ flex: 1 }}>
+                    {generatedKeyReady ? (
+                      <Alert severity="success">
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
+                          defaultMessage="API key will be attached when the proxy is created."
+                        />
+                      </Alert>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.provider.api.key.description"
+                          defaultMessage="Generate an API key for the selected LLM provider."
+                        />
+                      </Typography>
+                    )}
+                  </Box>
+                  <Tooltip
+                    title={
+                      !canGenerateProviderApiKey
+                        ? NO_PERMISSION_TOOLTIP
+                        : isOpenProviderLoading
+                          ? 'Loading selected provider details.'
+                          : ''
+                    }
+                    placement="top"
+                  >
+                    <span>
+                      <Button
+                        variant="contained"
+                        size="medium"
+                        onClick={() => handleOpenApiKeyModal(draft.key)}
+                        disabled={
+                          isOpenProviderLoading || !canGenerateProviderApiKey
+                        }
+                        data-cyid={`${cyPrefix}-provider-generate-api-key`}
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key"
+                          defaultMessage="Generate API Key"
+                        />
+                      </Button>
+                    </span>
+                  </Tooltip>
+                </Stack>
+              </Stack>
+            </>
+          )}
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={
+                isAdding ? () => setStagedProvider(null) : cancelProviderEdit
+              }
+              data-cyid={`${cyPrefix}-provider-cancel`}
+            >
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.cancel"
+                defaultMessage="Cancel"
+              />
+            </Button>
+            <Button
+              variant="contained"
+              // Not while the provider is still being read: whether it takes a
+              // key, and which header the key goes in, are unknown until then.
+              disabled={!draft.providerId || isOpenProviderLoading}
+              onClick={
+                isAdding
+                  ? () => {
+                      setAdditionalProviders((prev) => [
+                        ...prev,
+                        {
+                          ...draft,
+                          apiKeyHeader: openProviderRequiresApiKey
+                            ? openProviderApiKeyName
+                            : '',
+                          apiKeyValue: openProviderRequiresApiKey
+                            ? draft.apiKeyValue
+                            : '',
+                          generatedApiKeyValue: openProviderRequiresApiKey
+                            ? draft.generatedApiKeyValue
+                            : '',
+                        },
+                      ]);
+                      setStagedProvider(null);
+                    }
+                  : commitProviderEdit
+              }
+              data-cyid={`${cyPrefix}-provider-${isAdding ? 'add' : 'update'}`}
+            >
+              {isAdding ? (
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.add.provider.commit"
+                  defaultMessage="Add provider"
+                />
+              ) : (
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.update.provider"
+                  defaultMessage="Update provider"
+                />
+              )}
+            </Button>
+          </Box>
+        </Stack>
+      </Card>
+    );
+  };
+
+  /**
+   * The primary's own fields: which provider it is, what translates for it, and
+   * how it authenticates.
+   *
+   * Rendered bare while it is the only provider, and inside its edit form once
+   * it has collapsed to a row — the same fields either way, so the primary's
+   * credential lives with the primary rather than floating between the rows of
+   * providers it does not belong to.
+   */
+  const renderPrimaryFields = () => (
+    <>
+      <FormControl fullWidth>
+        <FormLabel sx={{ mb: 0.5 }}>
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
+            defaultMessage="LLM Provider"
+          />
+        </FormLabel>
+        <Select
+          value={formState.providerId}
+          onChange={(event) =>
+            setFormState((prev) => ({
+              ...prev,
+              providerId: event.target.value,
+            }))
+          }
+          displayEmpty
+          disabled={isProvidersLoading || isProviderSelectionLocked}
+          data-cyid="proxy-provider-select"
+        >
+          {isProviderSelectionLocked && lockedProviderId ? (
+            <MenuItem value={lockedProviderId}>
+              {lockedProviderDisplayName}
+            </MenuItem>
+          ) : isProvidersLoading ? (
+            <MenuItem value="" disabled>
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.loading.providers"
+                defaultMessage="Loading providers..."
+              />
+            </MenuItem>
+          ) : providerOptions.length === 0 ? (
+            <MenuItem value="" disabled>
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.no.providers.available"
+                defaultMessage="No providers available"
+              />
+            </MenuItem>
+          ) : (
+            // A provider already attached is not offered again: two entries for
+            // the same provider resolve to the same request handle, so routing
+            // to either of them would be ambiguous.
+            availableProviderOptions(formState.providerId).map((provider) => (
+              <MenuItem key={provider.id} value={provider.id}>
+                {truncateProviderDisplayName(provider.displayName)}
+              </MenuItem>
+            ))
+          )}
+        </Select>
+      </FormControl>
+
+      <TransformerStatusCard
+        resolution={resolutionForProvider(
+          formState.providerId,
+          primaryTransformer,
+          primaryTransformerCleared
+        )}
+        transformer={primaryTransformer}
+        onConfigure={() => setTransformerTarget(PRIMARY_TARGET)}
+        onRemove={() => {
+          setPrimaryTransformer(null);
+          setPrimaryTransformerCleared(true);
+        }}
+        hideWhenNotNeeded
+        data-cyid="primary-transformer-status"
+      />
+
+      {selectedProviderRequiresApiKey && (
+        <Stack spacing={1}>
+          <Typography variant="body2" sx={{ fontWeight: '600' }}>
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.keys"
+              defaultMessage="API Keys"
+            />
+          </Typography>
+
+          <Stack spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.enter.api.key.manually.label"
+                defaultMessage="Enter API Key Manually"
+              />
+            </Typography>
+            <Stack
+              sx={{
+                gap: 1,
+              }}
+            >
+              <TextField
+                fullWidth
+                size="small"
+                type="password"
+                placeholder={intl.formatMessage({
+                  id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.key.placeholder',
+                  defaultMessage: 'Enter API key',
+                })}
+                value={manualApiKeyValue}
+                onChange={(event) => setManualApiKeyValue(event.target.value)}
+                data-cyid="proxy-api-key-input"
+              />
+              {isManualKeyReady && (
+                <Alert severity="success">
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
+                    defaultMessage="API key will be attached when the proxy is created."
+                  />
+                </Alert>
+              )}
+            </Stack>
+          </Stack>
+
+          <Divider>
+            <Typography variant="caption" color="text.secondary">
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.or.divider"
+                defaultMessage="or"
+              />
+            </Typography>
+          </Divider>
+
+          <Stack spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key.label"
+                defaultMessage="Generate API Key"
+              />
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              alignItems={{ xs: 'flex-start', sm: 'center' }}
+              sx={{
+                px: 1.5,
+                py: 1.5,
+                bgcolor: 'background.paper',
+                border: '1px solid',
+                borderColor: isGeneratedKeyReady ? 'success.main' : 'divider',
+                borderRadius: 1,
+              }}
+            >
+              <Box sx={{ flex: 1 }}>
+                {isGeneratedKeyReady ? (
+                  <Alert severity="success">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
+                      defaultMessage="API key will be attached when the proxy is created."
+                    />
+                  </Alert>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.provider.api.key.description"
+                      defaultMessage="Generate an API key for the selected LLM provider."
+                    />
+                  </Typography>
+                )}
+              </Box>
+              <Tooltip
+                title={
+                  !canGenerateProviderApiKey
+                    ? NO_PERMISSION_TOOLTIP
+                    : isSelectedProviderLoading
+                      ? 'Loading selected provider details.'
+                      : ''
+                }
+                placement="top"
+              >
+                <span>
+                  <Button
+                    variant="contained"
+                    size="medium"
+                    onClick={() => handleOpenApiKeyModal(PRIMARY_TARGET)}
+                    disabled={
+                      isSelectedProviderLoading || !canGenerateProviderApiKey
+                    }
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key"
+                      defaultMessage="Generate API Key"
+                    />
+                  </Button>
+                </span>
+              </Tooltip>
+            </Stack>
+          </Stack>
+
+          {apiKeyError && (
+            <Alert severity="error" onClose={() => setApiKeyError(null)}>
+              {apiKeyError}
+            </Alert>
+          )}
+        </Stack>
+      )}
+    </>
+  );
 
   if (!canCreateProxy) {
     return (
@@ -729,201 +1958,6 @@ function LLMProxyNewContent({
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Card sx={{ p: 2 }}>
-              <Stack spacing={2}>
-                <Typography variant="h6">
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.configuration"
-                    defaultMessage="Provider Configuration"
-                  />
-                </Typography>
-
-                <FormControl fullWidth>
-                  <FormLabel sx={{ mb: 0.5 }}>
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
-                      defaultMessage="LLM Provider"
-                    />
-                  </FormLabel>
-                  <Select
-                    value={formState.providerId}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        providerId: event.target.value,
-                      }))
-                    }
-                    displayEmpty
-                    disabled={isProvidersLoading || isProviderSelectionLocked}
-                    data-cyid="proxy-provider-select"
-                  >
-                    {isProviderSelectionLocked && lockedProviderId ? (
-                      <MenuItem value={lockedProviderId}>
-                        {lockedProviderDisplayName}
-                      </MenuItem>
-                    ) : isProvidersLoading ? (
-                      <MenuItem value="" disabled>
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.loading.providers"
-                          defaultMessage="Loading providers..."
-                        />
-                      </MenuItem>
-                    ) : providerOptions.length === 0 ? (
-                      <MenuItem value="" disabled>
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.no.providers.available"
-                          defaultMessage="No providers available"
-                        />
-                      </MenuItem>
-                    ) : (
-                      providerOptions.map((provider) => (
-                        <MenuItem key={provider.id} value={provider.id}>
-                          {truncateProviderDisplayName(provider.displayName)}
-                        </MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-
-                {selectedProviderRequiresApiKey && (
-                  <Stack spacing={1}>
-                    <Typography variant="body2" sx={{fontWeight: '600'}}>
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.keys"
-                        defaultMessage="API Keys"
-                      />
-                    </Typography>
-
-                    <Stack spacing={0.5}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.enter.api.key.manually.label"
-                          defaultMessage="Enter API Key Manually"
-                        />
-                      </Typography>
-                      <Stack
-                        sx={{
-                          gap: 1,
-                        }}
-                      >
-                        <TextField
-                          fullWidth
-                          size="small"
-                          type="password"
-                          placeholder={intl.formatMessage({
-                            id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.key.placeholder',
-                            defaultMessage: 'Enter API key',
-                          })}
-                          value={manualApiKeyValue}
-                          onChange={(event) =>
-                            setManualApiKeyValue(event.target.value)
-                          }
-                          data-cyid="proxy-api-key-input"
-                        />
-                        {isManualKeyReady && (
-                          <Alert severity="success">
-                            <FormattedMessage
-                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
-                              defaultMessage="API key will be attached when the proxy is created."
-                            />
-                          </Alert>
-                        )}
-                      </Stack>
-                    </Stack>
-
-                    <Divider>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.or.divider"
-                          defaultMessage="or"
-                        />
-                      </Typography>
-                    </Divider>
-
-                    <Stack spacing={0.5}>
-                      <Typography variant="caption" color="text.secondary">
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key.label"
-                          defaultMessage="Generate API Key"
-                        />
-                      </Typography>
-                      <Stack
-                        direction={{ xs: 'column', sm: 'row' }}
-                        spacing={2}
-                        alignItems={{ xs: 'flex-start', sm: 'center' }}
-                        sx={{
-                          px: 1.5,
-                          py: 1.5,
-                          bgcolor: 'background.paper',
-                          border: '1px solid',
-                          borderColor: isGeneratedKeyReady
-                            ? 'success.main'
-                            : 'divider',
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Box sx={{ flex: 1 }}>
-                          {isGeneratedKeyReady ? (
-                            <Alert severity="success">
-                              <FormattedMessage
-                                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.api.key.ready"
-                                defaultMessage="API key will be attached when the proxy is created."
-                              />
-                            </Alert>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              <FormattedMessage
-                                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.provider.api.key.description"
-                                defaultMessage="Generate an API key for the selected LLM provider."
-                              />
-                            </Typography>
-                          )}
-                        </Box>
-                        <Tooltip
-                          title={
-                            !canGenerateProviderApiKey
-                              ? NO_PERMISSION_TOOLTIP
-                              : isSelectedProviderLoading
-                                ? 'Loading selected provider details.'
-                                : ''
-                          }
-                          placement="top"
-                        >
-                          <span>
-                            <Button
-                              variant="contained"
-                              size="medium"
-                              onClick={handleOpenApiKeyModal}
-                              disabled={
-                                isSelectedProviderLoading ||
-                                !canGenerateProviderApiKey
-                              }
-                            >
-                              <FormattedMessage
-                                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key"
-                                defaultMessage="Generate API Key"
-                              />
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      </Stack>
-                    </Stack>
-
-                    {apiKeyError && (
-                      <Alert
-                        severity="error"
-                        onClose={() => setApiKeyError(null)}
-                      >
-                        {apiKeyError}
-                      </Alert>
-                    )}
-                  </Stack>
-                )}
-              </Stack>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12 }}>
             <FormControl fullWidth>
               <FormLabel>
                 <FormattedMessage
@@ -938,6 +1972,245 @@ function LLMProxyNewContent({
                 data-cyid="proxy-context-input"
               />
             </FormControl>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Card sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Typography variant="h6">
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.provider.configuration"
+                    defaultMessage="Provider Configuration"
+                  />
+                </Typography>
+
+                {/*
+                  Once a proxy serves more than one provider the settled ones
+                  become a table — the same one the proxy's own Providers tab
+                  shows, so what a reader learns building a proxy still reads
+                  the same when they come back to it. Whatever is being filled
+                  in stays a form, below.
+                */}
+                {hasSeveralProviders && (
+                  <ProviderTable
+                    entries={providerTableEntries}
+                    displayNameFor={(entry) =>
+                      providerOptions.find(
+                        (provider) => provider.id === entry.id
+                      )?.displayName ?? entry.id
+                    }
+                    handleFor={(entry) => entry.id}
+                    resolutionFor={(entry) => {
+                      const slot = slotAt(providerTableEntries.indexOf(entry));
+                      return slot?.draft
+                        ? resolutionForProvider(
+                            slot.draft.providerId,
+                            slot.draft.transformer,
+                            slot.draft.transformerCleared
+                          )
+                        : resolutionForProvider(
+                            formState.providerId,
+                            primaryTransformer,
+                            primaryTransformerCleared
+                          );
+                    }}
+                    onMakePrimary={(providerId) => {
+                      const slot = slotForProvider(providerId);
+                      if (slot?.draft) {
+                        promoteProvider(slot.draft.key);
+                      }
+                    }}
+                    onEdit={(index) => {
+                      const slot = slotAt(index);
+                      if (slot?.draft) {
+                        beginProviderEdit(slot.draft);
+                      } else {
+                        beginPrimaryEdit();
+                      }
+                    }}
+                    onRemove={(providerId) => {
+                      const slot = slotForProvider(providerId);
+                      if (slot?.draft) {
+                        removeAttachedProvider(slot.draft.key);
+                      }
+                    }}
+                    // The primary is a field on this page rather than a row in
+                    // a list, so there is no such thing as removing it here —
+                    // another provider is made primary instead.
+                    canRemove={(_entry, index) => Boolean(slotAt(index)?.draft)}
+                    onConfigureTransformer={(index) => {
+                      const slot = slotAt(index);
+                      if (slot) setTransformerTarget(slot.key);
+                    }}
+                    onRemoveTransformer={(index) => {
+                      const slot = slotAt(index);
+                      if (slot) setTransformerFor(slot.key, null);
+                    }}
+                    // One form at a time: acting on a row while one is open
+                    // would leave changes nobody committed.
+                    disabled={isProviderFormOpen}
+                  />
+                )}
+
+                {/*
+                  The primary's own fields, while it is the only provider or
+                  while it is being edited. With several attached it is a row in
+                  the table above, and only what is being edited is a form.
+                */}
+                {isPrimaryExpanded ? (
+                  editingKey === PRIMARY_TARGET ? (
+                    <Card
+                      variant="outlined"
+                      sx={{ p: 2, borderColor: 'primary.main' }}
+                      data-cyid="primary-provider-form"
+                    >
+                      <Stack spacing={2}>
+                        <Box
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="space-between"
+                        >
+                          <Typography
+                            variant="subtitle2"
+                            sx={{ fontWeight: 600 }}
+                          >
+                            <FormattedMessage
+                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.edit.primary.provider"
+                              defaultMessage="Primary provider"
+                            />
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            <FormattedMessage
+                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.inbound.interface.context"
+                              defaultMessage="Inbound interface: {interfaceName}"
+                              values={{
+                                interfaceName: inboundInterfaceLabel || '—',
+                              }}
+                            />
+                          </Typography>
+                        </Box>
+
+                        {renderPrimaryFields()}
+
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                            gap: 1,
+                          }}
+                        >
+                          <Button
+                            variant="outlined"
+                            color="secondary"
+                            onClick={cancelPrimaryEdit}
+                            data-cyid="primary-provider-cancel"
+                          >
+                            <FormattedMessage
+                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.cancel"
+                              defaultMessage="Cancel"
+                            />
+                          </Button>
+                          <Button
+                            variant="contained"
+                            disabled={!formState.providerId}
+                            onClick={() => {
+                              setEditingKey(null);
+                              setPrimarySnapshot(null);
+                            }}
+                            data-cyid="primary-provider-update"
+                          >
+                            <FormattedMessage
+                              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.update.provider"
+                              defaultMessage="Update provider"
+                            />
+                          </Button>
+                        </Box>
+                      </Stack>
+                    </Card>
+                  ) : (
+                    renderPrimaryFields()
+                  )
+                ) : null}
+
+                {/* The attached provider being edited, if any. */}
+                {editingKey !== null &&
+                  editingKey !== PRIMARY_TARGET &&
+                  editDraft &&
+                  renderProviderForm(editDraft, 'edit')}
+
+                {/* The form being filled in, staged until it is added. */}
+                {stagedProvider && renderProviderForm(stagedProvider, 'add')}
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Plus size={16} />}
+                    onClick={() => {
+                      // Opens a form to fill in, rather than committing an
+                      // empty provider to the list. Nothing joins the list
+                      // until it is actually described.
+                      const draft = newAdditionalProviderDraft();
+                      const firstAvailable = availableProviderOptions('')[0];
+                      setStagedProvider({
+                        ...draft,
+                        providerId: firstAvailable?.id ?? '',
+                      });
+                    }}
+                    disabled={isProvidersLoading || isProviderFormOpen}
+                    data-cyid="add-provider-button"
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.add.additional.provider"
+                      defaultMessage="Add Additional LLM Provider"
+                    />
+                  </Button>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+
+          {/*
+            Collapsed by default. Attaching several providers and choosing the
+            request format are both uncommon next to creating an ordinary
+            single-provider proxy, so they are reachable without being in the
+            way of the path nearly everyone takes.
+          */}
+          <Grid size={{ xs: 12 }}>
+            <Button
+              size="small"
+              startIcon={
+                advancedOpen ? (
+                  <ChevronDown size={18} />
+                ) : (
+                  <ChevronRight size={18} />
+                )
+              }
+              onClick={() => setAdvancedOpen((open) => !open)}
+              data-cyid="advanced-configurations-toggle"
+            >
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.advanced.configurations"
+                defaultMessage="Advanced Configurations"
+              />
+            </Button>
+            {advancedOpen && (
+              <>
+                <Divider sx={{ mt: 1, mb: 2 }} />
+                <InboundInterfaceSelect
+                  value={inboundTemplate}
+                  onChange={(templateHandle) => {
+                    // Once chosen deliberately, the derived default stops
+                    // moving underneath the choice.
+                    setHasChosenInterface(true);
+                    setInboundTemplate(templateHandle);
+                  }}
+                  templates={templatesResponse.list}
+                  isLoading={isTemplatesLoading}
+                  error={templatesError}
+                />
+              </>
+            )}
           </Grid>
         </Grid>
 
@@ -1024,7 +2297,11 @@ function LLMProxyNewContent({
                   <TextField
                     size="small"
                     fullWidth
-                    value={selectedProviderApiKeyName}
+                    value={
+                      apiKeyTarget === PRIMARY_TARGET
+                        ? selectedProviderApiKeyName
+                        : openProviderApiKeyName
+                    }
                     slotProps={{
                       input: {
                         readOnly: true,
@@ -1132,6 +2409,32 @@ function LLMProxyNewContent({
           )}
         </DialogActions>
       </Dialog>
+
+      {/*
+        One drawer for the whole page: whichever provider asked for it supplies
+        the policy currently attached, and receives the choice back.
+      */}
+      <TransformerDrawer
+        open={transformerTarget !== null}
+        onClose={() => setTransformerTarget(null)}
+        policies={transformerPolicies}
+        // The read's own state, not "has it ever succeeded": a catalogue that
+        // failed is never loaded, and spinning on that forever hides the
+        // gateway policies that did arrive.
+        isLoading={transformerPoliciesLoading}
+        error={transformerPoliciesError}
+        onReload={reloadTransformerPolicies}
+        current={
+          transformerTarget === PRIMARY_TARGET
+            ? primaryTransformer
+            : ((openDraft?.key === transformerTarget
+                ? openDraft.transformer
+                : additionalProviders.find(
+                    (entry) => entry.key === transformerTarget
+                  )?.transformer) ?? null)
+        }
+        onApply={(transformer) => applyTransformerToTarget(transformer)}
+      />
     </PageContent>
   );
 }
@@ -1161,14 +2464,21 @@ export default function LLMProxyNew() {
 
   return (
     <LLMProviderProvider providerId={selectedProviderId}>
-      <LLMProxyNewContent
-        selectedProviderId={selectedProviderId}
-        onSelectedProviderIdChange={setSelectedProviderId}
-        lockedProviderId={lockedProviderId}
-        isProviderSelectionLocked={Boolean(lockedProviderId)}
-        preselectedProvider={preselectedProvider}
-        preselectedProjectId={preselectedProjectId}
-      />
+      {/*
+        The template catalogue backs the inbound interface choice. Mounted here
+        rather than fetched on the page so it uses the same reader, and the same
+        cache, as everywhere else templates are listed.
+      */}
+      <ProviderTemplatesProvider>
+        <LLMProxyNewContent
+          selectedProviderId={selectedProviderId}
+          onSelectedProviderIdChange={setSelectedProviderId}
+          lockedProviderId={lockedProviderId}
+          isProviderSelectionLocked={Boolean(lockedProviderId)}
+          preselectedProvider={preselectedProvider}
+          preselectedProjectId={preselectedProjectId}
+        />
+      </ProviderTemplatesProvider>
     </LLMProviderProvider>
   );
 }

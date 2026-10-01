@@ -1,13 +1,20 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -1015,6 +1022,12 @@ type mockLLMProviderRepo struct {
 	createCalled bool
 	created      *model.LLMProvider
 	updated      *model.LLMProvider
+	deleted      string
+}
+
+func (m *mockLLMProviderRepo) Delete(providerID, orgUUID string) error {
+	m.deleted = providerID
+	return nil
 }
 
 func (m *mockLLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
@@ -1055,6 +1068,14 @@ type mockLLMTemplateRepo struct {
 	repository.LLMProviderTemplateRepository
 	getByIDFunc   func(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
 	getByUUIDFunc func(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
+	// known answers the existence question the inbound-interface check asks.
+	// Like the real Exists, it ignores the enabled flag, which is
+	// what makes a disabled template acceptable.
+	known map[string]bool
+}
+
+func (m *mockLLMTemplateRepo) Exists(templateID, orgUUID string) (bool, error) {
+	return m.known[templateID], nil
 }
 
 func (m *mockLLMTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
@@ -1085,11 +1106,23 @@ type mockLLMProxyRepo struct {
 	existsResult         bool
 	countResult          int
 	countByProviderValue int
+	listItems            []*model.LLMProxy
 	listByProviderItems  []*model.LLMProxy
 	lastListProviderUUID string
 	getByIDFunc          func(proxyID, orgUUID string) (*model.LLMProxy, error)
 	created              *model.LLMProxy
 	updated              *model.LLMProxy
+}
+
+func (m *mockLLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	if offset >= len(m.listItems) {
+		return nil, nil
+	}
+	items := m.listItems[offset:]
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+	return items, nil
 }
 
 func (m *mockLLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {
@@ -1483,23 +1516,42 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	}
 }
 
-func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
+// TestLLMProxyServiceListByProviderReportsEitherRole: the
+// provider-proxies listing must report a proxy that references the provider as
+// an **additional** provider, not only as its primary. This query previously ran
+// on the provider_uuid column, which sees the primary alone — so the listing
+// disagreed with what a deletion guard would need to enforce.
+func TestLLMProxyServiceListByProviderReportsEitherRole(t *testing.T) {
 	now := time.Now()
 	proxyRepo := &mockLLMProxyRepo{
-		listByProviderItems: []*model.LLMProxy{{
-			UUID:        "proxy-uuid",
-			ID:          "proxy-1",
-			Name:        "Proxy One",
-			Version:     "v1.0",
-			ProjectUUID: "project-1",
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			Configuration: model.LLMProxyConfig{
-				Provider: "provider-1",
-				Context:  stringPtr("/assistant"),
+		listItems: []*model.LLMProxy{
+			{
+				UUID: "proxy-uuid", ID: "proxy-1", Name: "Proxy One", Version: "v1.0",
+				ProjectUUID: "project-1", CreatedAt: now, UpdatedAt: now,
+				Configuration: model.LLMProxyConfig{
+					Providers: []model.LLMProxyAttachment{{ID: "provider-1", IsPrimary: true}},
+					Context:   stringPtr("/assistant"),
+				},
 			},
-		}},
-		countByProviderValue: 1,
+			{
+				UUID: "proxy-uuid-2", ID: "proxy-2", Name: "Proxy Two", Version: "v1.0",
+				ProjectUUID: "project-1", CreatedAt: now, UpdatedAt: now,
+				Configuration: model.LLMProxyConfig{
+					Providers: []model.LLMProxyAttachment{
+						{ID: "other-provider", IsPrimary: true},
+						{ID: "provider-1"},
+					},
+					Context: stringPtr("/secondary"),
+				},
+			},
+			{
+				UUID: "proxy-uuid-3", ID: "proxy-3", Name: "Unrelated", Version: "v1.0",
+				ProjectUUID: "project-1", CreatedAt: now, UpdatedAt: now,
+				Configuration: model.LLMProxyConfig{
+					Providers: []model.LLMProxyAttachment{{ID: "other-provider", IsPrimary: true}},
+				},
+			},
+		},
 	}
 	providerRepo := &mockLLMProviderRepo{
 		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
@@ -1513,11 +1565,11 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if proxyRepo.lastListProviderUUID != "provider-uuid" {
-		t.Fatalf("expected list by provider to use provider UUID, got: %q", proxyRepo.lastListProviderUUID)
+	if resp == nil || resp.Count != 2 || len(resp.List) != 2 {
+		t.Fatalf("expected both the primary and additional references, got: %#v", resp)
 	}
-	if resp == nil || resp.Count != 1 || len(resp.List) != 1 {
-		t.Fatalf("expected one proxy in response, got: %#v", resp)
+	if *resp.List[1].Id != "proxy-2" {
+		t.Fatalf("expected the additional-provider reference to be listed, got: %q", *resp.List[1].Id)
 	}
 	// projectId must be the project handle, not the stored UUID: clients route
 	// on handles and cannot resolve a project UUID back to one.
@@ -1571,11 +1623,21 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if proxyRepo.updated == nil || proxyRepo.updated.Configuration.UpstreamAuth == nil {
+	if proxyRepo.updated == nil {
+		t.Fatalf("expected the proxy to reach the repository")
+	}
+	// Preservation now works per attachment: reads redact every
+	// credential, so a client writing back what it read sends an empty value for
+	// each, and each must be carried forward from the stored attachment.
+	primary, err := model.PrimaryLLMProxyAttachment(proxyRepo.updated.Configuration)
+	if err != nil {
+		t.Fatalf("normalise updated proxy: %v", err)
+	}
+	if primary.Auth == nil {
 		t.Fatalf("expected updated proxy auth to be set")
 	}
-	if proxyRepo.updated.Configuration.UpstreamAuth.Value != "Bearer old-secret" {
-		t.Fatalf("expected proxy auth value to be preserved, got %q", proxyRepo.updated.Configuration.UpstreamAuth.Value)
+	if primary.Auth.Value != "Bearer old-secret" {
+		t.Fatalf("expected proxy auth value to be preserved, got %q", primary.Auth.Value)
 	}
 }
 
@@ -1866,7 +1928,7 @@ func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 		DisplayName: "Test Proxy",
 		Version:     "v1.0",
 		ProjectId:   projectID,
-		Provider: api.LLMProxyProvider{
+		Provider: &api.LLMProxyProvider{
 			Id: providerID,
 		},
 	}
@@ -2033,5 +2095,870 @@ func TestValidateUpstreamValidatesSandbox(t *testing.T) {
 	}
 	if err := validateUpstream(api.Upstream{Main: main, Sandbox: &api.UpstreamDefinition{}}); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ValidationFailed for a sandbox with neither url nor ref, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Multi-provider proxy support
+//
+// The layered rule these tests hold the service to: either shape in, both
+// shapes out, canonical in storage.
+// ---------------------------------------------------------------------------
+
+// newProxyServiceForShapeTest builds the proxy service over in-memory repositories
+// that echo a created or updated proxy back on read, which is what lets one test
+// cover the whole write-then-read path.
+func newProxyServiceForShapeTest(t *testing.T, stored *model.LLMProxy) (*LLMProxyService, *mockLLMProxyRepo) {
+	t.Helper()
+
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		switch {
+		case proxyRepo.updated != nil:
+			return proxyRepo.updated, nil
+		case proxyRepo.created != nil:
+			return proxyRepo.created, nil
+		default:
+			return stored, nil
+		}
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: providerID + "-uuid", ID: providerID}, nil
+		},
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{
+		ID: "project-1", Handle: "project-1", OrganizationID: "org-1",
+	}}
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil,
+		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	return service, proxyRepo
+}
+
+// legacyShapedProxyRequest and canonicalShapedProxyRequest describe the *same*
+// three-provider proxy in each shape.
+func legacyShapedProxyRequest() *api.LLMProxy {
+	return &api.LLMProxy{
+		Id:          strPointer("shape-proxy"),
+		DisplayName: "Shape Proxy",
+		Version:     "v1.0",
+		ProjectId:   "project-1",
+		Provider: &api.LLMProxyProvider{
+			Id:   "openai-provider",
+			Auth: &api.UpstreamAuth{Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("Authorization"), Value: stringPtr("{{ secret \"openai\" }}")},
+		},
+		AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+			{
+				Id:          "anthropic-provider",
+				As:          stringPtr("claude"),
+				Auth:        &api.UpstreamAuth{Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("x-api-key"), Value: stringPtr("{{ secret \"anthropic\" }}")},
+				Transformer: &api.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v0"},
+			},
+			{Id: "gemini-provider"},
+		},
+	}
+}
+
+func canonicalShapedProxyRequest() *api.LLMProxy {
+	return &api.LLMProxy{
+		Id:          strPointer("shape-proxy"),
+		DisplayName: "Shape Proxy",
+		Version:     "v1.0",
+		ProjectId:   "project-1",
+		Providers: &[]api.LLMProxyProviderEntry{
+			{
+				Id:        "openai-provider",
+				IsPrimary: true,
+				Auth:      &api.UpstreamAuth{Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("Authorization"), Value: stringPtr("{{ secret \"openai\" }}")},
+			},
+			{
+				Id:          "anthropic-provider",
+				Alias:       stringPtr("claude"),
+				Auth:        &api.UpstreamAuth{Type: upstreamAuthTypePtr("api-key"), Header: stringPtr("x-api-key"), Value: stringPtr("{{ secret \"anthropic\" }}")},
+				Transformer: &api.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v0"},
+			},
+			{Id: "gemini-provider"},
+		},
+	}
+}
+
+// TestLLMProxyBothShapesStoreIdenticalRows is the equivalence property at the
+// storage layer: the same proxy described either way must
+// produce a byte-identical stored configuration, so nothing downstream — the
+// response, the artefact, the deletion guard — can tell which shape was used.
+func TestLLMProxyBothShapesStoreIdenticalRows(t *testing.T) {
+	legacyService, legacyRepo := newProxyServiceForShapeTest(t, nil)
+	if _, err := legacyService.Create("org-1", "alice", legacyShapedProxyRequest()); err != nil {
+		t.Fatalf("legacy create failed: %v", err)
+	}
+	canonicalService, canonicalRepo := newProxyServiceForShapeTest(t, nil)
+	if _, err := canonicalService.Create("org-1", "alice", canonicalShapedProxyRequest()); err != nil {
+		t.Fatalf("canonical create failed: %v", err)
+	}
+
+	fromLegacy, err := json.Marshal(legacyRepo.created.Configuration)
+	if err != nil {
+		t.Fatalf("marshal legacy configuration: %v", err)
+	}
+	fromCanonical, err := json.Marshal(canonicalRepo.created.Configuration)
+	if err != nil {
+		t.Fatalf("marshal canonical configuration: %v", err)
+	}
+	if !bytes.Equal(fromLegacy, fromCanonical) {
+		t.Fatalf("the two shapes stored different rows:\nlegacy:    %s\ncanonical: %s", fromLegacy, fromCanonical)
+	}
+}
+
+// TestLLMProxyStoresCanonicalShapeOnly: whatever arrived, the
+// database receives the canonical list and none of the legacy fields.
+func TestLLMProxyStoresCanonicalShapeOnly(t *testing.T) {
+	service, repo := newProxyServiceForShapeTest(t, nil)
+	if _, err := service.Create("org-1", "alice", legacyShapedProxyRequest()); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	stored := repo.created.Configuration
+	if len(stored.Providers) != 3 {
+		t.Fatalf("expected the canonical list to be stored, got %d entries", len(stored.Providers))
+	}
+	if stored.Provider != "" || stored.UpstreamAuth != nil || stored.AdditionalProviders != nil {
+		t.Fatalf("expected no legacy field to be persisted, got provider=%q upstreamAuth=%+v additional=%+v",
+			stored.Provider, stored.UpstreamAuth, stored.AdditionalProviders)
+	}
+	if !stored.Providers[0].IsPrimary {
+		t.Fatal("expected the primary to lead the stored list")
+	}
+}
+
+// TestLLMProxyReadReturnsBothRepresentations covers a row
+// stored in **each** shape: both views are present and they agree.
+func TestLLMProxyReadReturnsBothRepresentations(t *testing.T) {
+	cases := []struct {
+		name   string
+		stored model.LLMProxyConfig
+	}{
+		{
+			name: "canonical row",
+			stored: model.LLMProxyConfig{
+				Providers: []model.LLMProxyAttachment{
+					{ID: "openai-provider", IsPrimary: true, Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "secret"}},
+					{ID: "anthropic-provider", Alias: "claude", Transformer: &model.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v0"}},
+				},
+			},
+		},
+		{
+			// An older row normalises on read, so it is
+			// indistinguishable from a canonical one at the API surface.
+			name: "legacy row",
+			stored: model.LLMProxyConfig{
+				Provider:     "openai-provider",
+				UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "secret"},
+				AdditionalProviders: []model.LLMProxyAdditionalProvider{
+					{ID: "anthropic-provider", As: "claude", Transformer: &model.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v0"}},
+				},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := mapProxyModelToAPI(&model.LLMProxy{ID: "p", Name: "P", Version: "v1.0", Configuration: tc.stored})
+
+			if out.Provider == nil {
+				t.Fatal("expected the legacy provider field to be populated on read")
+			}
+			if out.Providers == nil {
+				t.Fatal("expected the canonical providers list to be populated on read")
+			}
+			providers := *out.Providers
+			if len(providers) != 2 {
+				t.Fatalf("expected two attachments, got %d", len(providers))
+			}
+			// The two views must name the same primary...
+			if providers[0].Id != out.Provider.Id || !providers[0].IsPrimary {
+				t.Fatalf("representations disagree on the primary: %q vs %q", providers[0].Id, out.Provider.Id)
+			}
+			// ...and the same additional providers, under either field name.
+			if out.AdditionalProviders == nil || len(*out.AdditionalProviders) != 1 {
+				t.Fatalf("expected one additional provider, got %+v", out.AdditionalProviders)
+			}
+			additional := (*out.AdditionalProviders)[0]
+			if additional.Id != providers[1].Id {
+				t.Fatalf("representations disagree on the additional provider: %q vs %q", additional.Id, providers[1].Id)
+			}
+			if *additional.As != *providers[1].Alias {
+				t.Fatalf("`as` and `alias` disagree: %q vs %q", *additional.As, *providers[1].Alias)
+			}
+			if providers[1].IsPrimary {
+				t.Fatal("expected a non-primary entry to carry isPrimary false explicitly")
+			}
+		})
+	}
+}
+
+// TestLLMProxyResponseNeverDisclosesCredential scans
+// the **whole** serialised response for a "value" key rather than checking each
+// field, so a future shape that carries a credential cannot slip past by being
+// somewhere this test did not think to look.
+func TestLLMProxyResponseNeverDisclosesCredential(t *testing.T) {
+	const credential = "super-secret-credential"
+	stored := model.LLMProxyConfig{
+		Providers: []model.LLMProxyAttachment{
+			{ID: "openai-provider", IsPrimary: true, Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: credential}},
+			{ID: "anthropic-provider", Alias: "claude", Auth: &model.UpstreamAuth{Type: "api-key", Header: "x-api-key", Value: credential}},
+			{ID: "gemini-provider", Auth: &model.UpstreamAuth{Type: "api-key", Header: "x-goog-api-key", Value: credential}},
+		},
+	}
+
+	out := mapProxyModelToAPI(&model.LLMProxy{ID: "p", Name: "P", Version: "v1.0", Configuration: stored})
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if bytes.Contains(encoded, []byte(credential)) {
+		t.Fatalf("a credential value survived into the response: %s", encoded)
+	}
+
+	var decoded any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if path := findAuthValueKey("$", decoded); path != "" {
+		t.Fatalf("an auth object carried a value field at %s: %s", path, encoded)
+	}
+}
+
+// findAuthValueKey walks a decoded response and reports the path of the first
+// auth object carrying a "value", or "" when none does.
+func findAuthValueKey(path string, node any) string {
+	switch typed := node.(type) {
+	case map[string]any:
+		if auth, ok := typed["auth"].(map[string]any); ok {
+			if _, present := auth["value"]; present {
+				return path + ".auth.value"
+			}
+		}
+		for key, value := range typed {
+			if found := findAuthValueKey(path+"."+key, value); found != "" {
+				return found
+			}
+		}
+	case []any:
+		for i, value := range typed {
+			if found := findAuthValueKey(fmt.Sprintf("%s[%d]", path, i), value); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
+}
+
+// TestLLMProxyLegacyRowAutoMigratesOnFirstWrite runs against a genuine older
+// stored payload: a legacy row updated in **either** shape is stored
+// canonically afterwards, with no migration job and without the client knowing.
+func TestLLMProxyLegacyRowAutoMigratesOnFirstWrite(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "compat", "legacy-stored-proxy.json"))
+	if err != nil {
+		t.Fatalf("read the legacy seed: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		request func() *api.LLMProxy
+	}{
+		{name: "legacy-shaped write", request: legacyShapedProxyRequest},
+		{name: "canonical-shaped write", request: canonicalShapedProxyRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var config model.LLMProxyConfig
+			if err := json.Unmarshal(raw, &config); err != nil {
+				t.Fatalf("parse the legacy seed: %v", err)
+			}
+			// The seed really is in the older shape.
+			if config.Provider == "" || len(config.Providers) != 0 {
+				t.Fatalf("expected a legacy seed, got %+v", config)
+			}
+
+			service, repo := newProxyServiceForShapeTest(t, &model.LLMProxy{
+				UUID: "proxy-uuid", ID: "shape-proxy", Name: "Legacy Stored Proxy",
+				Version: "v1.0", ProviderUUID: "openai-provider-uuid", Configuration: config,
+			})
+
+			// A legacy-shaped write is only permitted here because the seed is a
+			// single-provider... it is not, so the guard must refuse it.
+			request := tc.request()
+			_, err := service.Update("org-1", "shape-proxy", "alice", request)
+			if requestUsesLegacyProviderShape(request) {
+				// The seed has two providers, which the legacy shape cannot
+				// express, so the guard refuses the write outright.
+				if !apperror.ValidationFailed.Is(err) {
+					t.Fatalf("expected the full-replace guard to refuse this write, got: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("canonical update failed: %v", err)
+			}
+			stored := repo.updated.Configuration
+			if len(stored.Providers) == 0 {
+				t.Fatal("expected the row to migrate to the canonical shape")
+			}
+			if stored.Provider != "" || stored.UpstreamAuth != nil || stored.AdditionalProviders != nil {
+				t.Fatalf("expected the legacy fields to be gone after the write, got %+v", stored)
+			}
+		})
+	}
+}
+
+// TestLLMProxyLegacyRowMigratesOnSingleProviderWrite is the case a deployed
+// console actually hits: a single-provider legacy row, saved by a client that
+// still speaks the old shape, migrates without the client knowing — and the
+// guard does not get in the way.
+func TestLLMProxyLegacyRowMigratesOnSingleProviderWrite(t *testing.T) {
+	service, repo := newProxyServiceForShapeTest(t, &model.LLMProxy{
+		UUID: "proxy-uuid", ID: "single", Name: "Single", Version: "v1.0",
+		ProviderUUID: "openai-provider-uuid",
+		Configuration: model.LLMProxyConfig{
+			Provider:     "openai-provider",
+			UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "stored"},
+		},
+	})
+
+	request := &api.LLMProxy{
+		DisplayName: "Single Renamed",
+		Version:     "v1.0",
+		ProjectId:   "project-1",
+		Provider:    &api.LLMProxyProvider{Id: "openai-provider"},
+	}
+	if _, err := service.Update("org-1", "single", "alice", request); err != nil {
+		t.Fatalf("expected a legacy single-provider update to be accepted, got: %v", err)
+	}
+	stored := repo.updated.Configuration
+	if len(stored.Providers) != 1 || stored.Provider != "" {
+		t.Fatalf("expected the row to migrate to the canonical shape, got %+v", stored)
+	}
+}
+
+// TestLLMProxyUpdateRejectsLegacyWriteItCannotExpress covers the guard in both
+// directions. Too strict would block an ordinary single-provider edit; too loose
+// would let PUT's full replace silently destroy a multi-provider proxy.
+func TestLLMProxyUpdateRejectsLegacyWriteItCannotExpress(t *testing.T) {
+	cases := []struct {
+		name       string
+		stored     model.LLMProxyConfig
+		request    func() *api.LLMProxy
+		wantReject bool
+	}{
+		{
+			name: "legacy write against a multi-provider proxy is refused",
+			stored: model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "openai-provider", IsPrimary: true},
+				{ID: "anthropic-provider"},
+			}},
+			request:    func() *api.LLMProxy { r := legacyShapedProxyRequest(); return r },
+			wantReject: true,
+		},
+		{
+			name: "legacy write against a proxy with an inbound interface is refused",
+			stored: model.LLMProxyConfig{
+				Providers:       []model.LLMProxyAttachment{{ID: "openai-provider", IsPrimary: true}},
+				InboundTemplate: "openai",
+			},
+			request:    func() *api.LLMProxy { r := legacyShapedProxyRequest(); return r },
+			wantReject: true,
+		},
+		{
+			name: "legacy write against a single-provider proxy is accepted",
+			stored: model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "openai-provider", IsPrimary: true},
+			}},
+			request: func() *api.LLMProxy {
+				return &api.LLMProxy{
+					DisplayName: "Renamed", Version: "v1.0", ProjectId: "project-1",
+					Provider: &api.LLMProxyProvider{Id: "openai-provider"},
+				}
+			},
+			wantReject: false,
+		},
+		{
+			name: "canonical write against a multi-provider proxy is accepted",
+			stored: model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "openai-provider", IsPrimary: true},
+				{ID: "anthropic-provider"},
+			}},
+			request:    canonicalShapedProxyRequest,
+			wantReject: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, repo := newProxyServiceForShapeTest(t, &model.LLMProxy{
+				UUID: "proxy-uuid", ID: "guarded", Name: "Guarded", Version: "v1.0",
+				ProviderUUID: "openai-provider-uuid", Configuration: tc.stored,
+			})
+
+			_, err := service.Update("org-1", "guarded", "alice", tc.request())
+			if tc.wantReject {
+				if !apperror.ValidationFailed.Is(err) {
+					t.Fatalf("expected the write to be refused, got: %v", err)
+				}
+				if !strings.Contains(err.Error(), "providers") {
+					t.Fatalf("expected the refusal to name what the client should send, got: %v", err)
+				}
+				// A refused write must change nothing. The guard runs before the
+				// replacement configuration is built, so the stored proxy keeps
+				// every provider and its interface.
+				if repo.updated != nil {
+					t.Fatalf("a refused write reached the repository: %+v", repo.updated.Configuration)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected the write to be accepted, got: %v", err)
+			}
+		})
+	}
+}
+
+// TestLLMProxyRejectsMalformedProviderList: a
+// canonical list with no primary, several primaries, or no entries at all, and a
+// request declaring no provider in either shape.
+func TestLLMProxyRejectsMalformedProviderList(t *testing.T) {
+	cases := []struct {
+		name     string
+		mutate   func(*api.LLMProxy)
+		wantPart string
+	}{
+		{
+			name: "no primary marked",
+			mutate: func(r *api.LLMProxy) {
+				entries := *r.Providers
+				entries[0].IsPrimary = false
+				r.Providers = &entries
+			},
+			wantPart: "none does",
+		},
+		{
+			name: "two primaries marked",
+			mutate: func(r *api.LLMProxy) {
+				entries := *r.Providers
+				entries[1].IsPrimary = true
+				r.Providers = &entries
+			},
+			wantPart: "2 do",
+		},
+		{
+			name:     "empty list",
+			mutate:   func(r *api.LLMProxy) { r.Providers = &[]api.LLMProxyProviderEntry{} },
+			wantPart: "must not be empty",
+		},
+		{
+			name:     "no provider in either shape",
+			mutate:   func(r *api.LLMProxy) { r.Providers = nil; r.Provider = nil },
+			wantPart: "must declare at least one provider",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, _ := newProxyServiceForShapeTest(t, nil)
+			request := canonicalShapedProxyRequest()
+			tc.mutate(request)
+
+			_, err := service.Create("org-1", "alice", request)
+			if !apperror.ValidationFailed.Is(err) {
+				t.Fatalf("expected a validation failure, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantPart) {
+				t.Fatalf("expected the error to name the problem (%q), got: %v", tc.wantPart, err)
+			}
+		})
+	}
+}
+
+// TestLLMProxyProvidersWinsWhenBothShapesSupplied. Rejecting would
+// break the read-modify-write round trip, since every read returns both.
+func TestLLMProxyProvidersWinsWhenBothShapesSupplied(t *testing.T) {
+	service, repo := newProxyServiceForShapeTest(t, nil)
+
+	request := canonicalShapedProxyRequest()
+	// Stale legacy fields, as a client echoing an earlier read would send.
+	request.Provider = &api.LLMProxyProvider{Id: "stale-provider"}
+	request.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "stale-additional"}}
+
+	if _, err := service.Create("org-1", "alice", request); err != nil {
+		t.Fatalf("expected both shapes to be accepted, got: %v", err)
+	}
+	stored := repo.created.Configuration
+	if stored.Providers[0].ID != "openai-provider" {
+		t.Fatalf("expected providers to win, got primary %q", stored.Providers[0].ID)
+	}
+	for _, attachment := range stored.Providers {
+		if strings.HasPrefix(attachment.ID, "stale-") {
+			t.Fatalf("a legacy field leaked into storage: %q", attachment.ID)
+		}
+	}
+}
+
+// TestLLMProxyPrimaryCarriesTransformerAndAlias: the primary is now
+// structurally equal to any other attachment.
+func TestLLMProxyPrimaryCarriesTransformerAndAlias(t *testing.T) {
+	service, repo := newProxyServiceForShapeTest(t, nil)
+
+	request := legacyShapedProxyRequest()
+	request.Provider.As = stringPtr("openai-upstream")
+	request.Provider.Transformer = &api.LLMProxyTransformer{Type: "openai-to-openai", Version: "v0"}
+
+	created, err := service.Create("org-1", "alice", request)
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	primary := repo.created.Configuration.Providers[0]
+	if primary.Alias != "openai-upstream" {
+		t.Fatalf("expected the primary's alias to persist, got %q", primary.Alias)
+	}
+	if primary.Transformer == nil || primary.Transformer.Type != "openai-to-openai" {
+		t.Fatalf("expected the primary's transformer to persist, got %+v", primary.Transformer)
+	}
+	if created.Provider == nil || created.Provider.As == nil || *created.Provider.As != "openai-upstream" {
+		t.Fatalf("expected the alias to be returned on read, got %+v", created.Provider)
+	}
+	if created.Provider.Transformer == nil {
+		t.Fatal("expected the transformer to be returned on read")
+	}
+}
+
+// TestLLMProxyRejectsAliasCollisionWithPrimary: uniqueness now spans every
+// attachment. Previously the primary had no alias to collide with,
+// so this collision was unreachable.
+func TestLLMProxyRejectsAliasCollisionWithPrimary(t *testing.T) {
+	service, _ := newProxyServiceForShapeTest(t, nil)
+
+	request := legacyShapedProxyRequest()
+	request.Provider.As = stringPtr("claude") // already used by an additional provider
+
+	_, err := service.Create("org-1", "alice", request)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected the collision to be rejected, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "claude") {
+		t.Fatalf("expected the error to name the colliding name, got: %v", err)
+	}
+}
+
+// TestLLMProxyRejectsMalformedAlias: validation here must not be
+// looser than the gateway's, or an accepted proxy fails at deployment.
+func TestLLMProxyRejectsMalformedAlias(t *testing.T) {
+	for _, alias := range []string{"has spaces", "has/slash", strings.Repeat("a", 101)} {
+		service, _ := newProxyServiceForShapeTest(t, nil)
+		request := legacyShapedProxyRequest()
+		request.Provider.As = stringPtr(alias)
+
+		if _, err := service.Create("org-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+			t.Fatalf("expected alias %q to be rejected, got: %v", alias, err)
+		}
+	}
+}
+
+// TestLLMProxyInboundTemplate covers US4.
+func TestLLMProxyInboundTemplate(t *testing.T) {
+	t.Run("round-trips and reaches storage", func(t *testing.T) {
+		service, repo := newProxyServiceForShapeTest(t, nil)
+		service.SetTemplateRepository(&mockLLMTemplateRepo{known: map[string]bool{"openai": true}})
+
+		request := canonicalShapedProxyRequest()
+		request.InboundTemplate = stringPtr("openai")
+
+		created, err := service.Create("org-1", "alice", request)
+		if err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+		if repo.created.Configuration.InboundTemplate != "openai" {
+			t.Fatalf("expected the inbound template to persist, got %q", repo.created.Configuration.InboundTemplate)
+		}
+		if created.InboundTemplate == nil || *created.InboundTemplate != "openai" {
+			t.Fatalf("expected the inbound template to be returned on read, got %v", created.InboundTemplate)
+		}
+	})
+
+	t.Run("a disabled template is accepted", func(t *testing.T) {
+		service, _ := newProxyServiceForShapeTest(t, nil)
+		// Exists reports the template regardless of its enabled flag.
+		service.SetTemplateRepository(&mockLLMTemplateRepo{known: map[string]bool{"disabled-template": true}})
+
+		request := canonicalShapedProxyRequest()
+		request.InboundTemplate = stringPtr("disabled-template")
+
+		if _, err := service.Create("org-1", "alice", request); err != nil {
+			t.Fatalf("expected a disabled template to be accepted, got: %v", err)
+		}
+	})
+
+	t.Run("an unresolvable template is rejected, naming it", func(t *testing.T) {
+		service, _ := newProxyServiceForShapeTest(t, nil)
+		service.SetTemplateRepository(&mockLLMTemplateRepo{known: map[string]bool{"openai": true}})
+
+		request := canonicalShapedProxyRequest()
+		request.InboundTemplate = stringPtr("no-such-template")
+
+		_, err := service.Create("org-1", "alice", request)
+		if !apperror.ValidationFailed.Is(err) {
+			t.Fatalf("expected the template to be rejected, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "no-such-template") {
+			t.Fatalf("expected the error to name the template, got: %v", err)
+		}
+	})
+
+	t.Run("a proxy stored without one has none invented for it", func(t *testing.T) {
+		service, repo := newProxyServiceForShapeTest(t, nil)
+		if _, err := service.Create("org-1", "alice", canonicalShapedProxyRequest()); err != nil {
+			t.Fatalf("create failed: %v", err)
+		}
+		if repo.created.Configuration.InboundTemplate != "" {
+			t.Fatalf("expected no inbound template to be invented, got %q", repo.created.Configuration.InboundTemplate)
+		}
+		out := mapProxyModelToAPI(repo.created)
+		if out.InboundTemplate != nil {
+			t.Fatalf("expected no inbound template in the response, got %v", *out.InboundTemplate)
+		}
+	})
+
+	t.Run("it is updatable", func(t *testing.T) {
+		service, repo := newProxyServiceForShapeTest(t, &model.LLMProxy{
+			UUID: "proxy-uuid", ID: "shape-proxy", Name: "Shape Proxy", Version: "v1.0",
+			ProviderUUID: "openai-provider-uuid",
+			Configuration: model.LLMProxyConfig{
+				Providers:       []model.LLMProxyAttachment{{ID: "openai-provider", IsPrimary: true}},
+				InboundTemplate: "openai",
+			},
+		})
+		service.SetTemplateRepository(&mockLLMTemplateRepo{known: map[string]bool{"openai": true, "anthropic": true}})
+
+		request := canonicalShapedProxyRequest()
+		request.InboundTemplate = stringPtr("anthropic")
+
+		if _, err := service.Update("org-1", "shape-proxy", "alice", request); err != nil {
+			t.Fatalf("update failed: %v", err)
+		}
+		if repo.updated.Configuration.InboundTemplate != "anthropic" {
+			t.Fatalf("expected the inbound template to be updated, got %q", repo.updated.Configuration.InboundTemplate)
+		}
+	})
+}
+
+// TestLLMProviderDeleteRefusesWhileReferenced covers US2.
+// The additional-provider case is the live defect: those references live inside
+// the proxy's configuration payload, where no database constraint can see them.
+func TestLLMProviderDeleteRefusesWhileReferenced(t *testing.T) {
+	proxiesIn := func(configs ...model.LLMProxyConfig) []*model.LLMProxy {
+		proxies := make([]*model.LLMProxy, 0, len(configs))
+		for i, config := range configs {
+			proxies = append(proxies, &model.LLMProxy{
+				UUID: fmt.Sprintf("uuid-%d", i), ID: fmt.Sprintf("proxy-%d", i), Configuration: config,
+			})
+		}
+		return proxies
+	}
+
+	cases := []struct {
+		name       string
+		proxies    []*model.LLMProxy
+		wantRefuse bool
+		wantNames  []string
+	}{
+		{
+			name: "referenced as an additional provider only",
+			proxies: proxiesIn(model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "other-provider", IsPrimary: true},
+				{ID: "target-provider"},
+			}}),
+			wantRefuse: true,
+			wantNames:  []string{"proxy-0"},
+		},
+		{
+			name: "referenced as the primary only",
+			proxies: proxiesIn(model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "target-provider", IsPrimary: true},
+			}}),
+			wantRefuse: true,
+			wantNames:  []string{"proxy-0"},
+		},
+		{
+			name: "referenced in both roles across several proxies",
+			proxies: proxiesIn(
+				model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{{ID: "target-provider", IsPrimary: true}}},
+				model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+					{ID: "other-provider", IsPrimary: true},
+					{ID: "target-provider"},
+				}},
+			),
+			wantRefuse: true,
+			wantNames:  []string{"proxy-0", "proxy-1"},
+		},
+		{
+			name: "referenced by a legacy row",
+			proxies: proxiesIn(model.LLMProxyConfig{
+				Provider:            "other-provider",
+				AdditionalProviders: []model.LLMProxyAdditionalProvider{{ID: "target-provider"}},
+			}),
+			wantRefuse: true,
+			wantNames:  []string{"proxy-0"},
+		},
+		{
+			name: "unreferenced",
+			proxies: proxiesIn(model.LLMProxyConfig{Providers: []model.LLMProxyAttachment{
+				{ID: "other-provider", IsPrimary: true},
+			}}),
+			wantRefuse: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			providerRepo := &mockLLMProviderRepo{
+				getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+					return &model.LLMProvider{UUID: "target-uuid", ID: providerID}, nil
+				},
+			}
+			service := NewLLMProviderService(providerRepo, nil, nil, nil, nil, nil, nil,
+				slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+			service.SetProxyRepository(&mockLLMProxyRepo{listItems: tc.proxies})
+
+			err := service.Delete("org-1", "target-provider", "alice")
+			if !tc.wantRefuse {
+				if err != nil {
+					t.Fatalf("expected an unreferenced provider to be deletable, got: %v", err)
+				}
+				return
+			}
+			if !apperror.ValidationFailed.Is(err) {
+				t.Fatalf("expected the deletion to be refused, got: %v", err)
+			}
+			for _, name := range tc.wantNames {
+				if !strings.Contains(err.Error(), name) {
+					t.Fatalf("expected the refusal to name %q, got: %v", name, err)
+				}
+			}
+		})
+	}
+}
+
+// TestLLMProviderDeleteRespectsOrganizationScoping: the scan
+// inherits the repository's org filter and never widens visibility.
+func TestLLMProviderDeleteRespectsOrganizationScoping(t *testing.T) {
+	var scannedOrg string
+	proxyRepo := &scopeRecordingProxyRepo{onList: func(orgUUID string) { scannedOrg = orgUUID }}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "target-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, nil, nil, nil, nil, nil, nil,
+		slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetProxyRepository(proxyRepo)
+
+	if err := service.Delete("org-1", "target-provider", "alice"); err != nil {
+		t.Fatalf("expected the delete to succeed, got: %v", err)
+	}
+	if scannedOrg != "org-1" {
+		t.Fatalf("expected the scan to be scoped to org-1, got %q", scannedOrg)
+	}
+}
+
+type scopeRecordingProxyRepo struct {
+	repository.LLMProxyRepository
+	onList func(orgUUID string)
+}
+
+func (r *scopeRecordingProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error) {
+	r.onList(orgUUID)
+	return nil, nil
+}
+
+// TestLLMProxyUpdateOfGatewayOriginatedLegacyRow is the regression guard for a
+// panic: updating a gateway-originated proxy whose stored row predates the
+// canonical provider list.
+//
+// That branch adopts the stored configuration verbatim, so before the fix it was
+// the one path that reached the primary-auth default without having been through
+// normalisation — and a stored row with no `providers` entry made it index an
+// empty slice. Nothing migrates stored rows, so every gateway-originated proxy in
+// an existing installation is in exactly that shape.
+func TestLLMProxyUpdateOfGatewayOriginatedLegacyRow(t *testing.T) {
+	stored := &model.LLMProxy{
+		UUID: "proxy-uuid", ID: "dp-proxy", Name: "DP Proxy", Version: "v1.0",
+		ProviderUUID: "openai-provider-uuid",
+		Origin:       constants.OriginDP,
+		Configuration: model.LLMProxyConfig{
+			Provider:     "openai-provider",
+			UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: "stored-credential"},
+			AdditionalProviders: []model.LLMProxyAdditionalProvider{
+				{ID: "anthropic-provider", As: "claude"},
+			},
+		},
+	}
+	service, repo := newProxyServiceForShapeTest(t, stored)
+
+	request := &api.LLMProxy{
+		DisplayName: "Renamed By Client",
+		Version:     "v9.9",
+		ProjectId:   "project-1",
+		Description: stringPtr("control-plane metadata the client may change"),
+		Provider:    &api.LLMProxyProvider{Id: "someone-elses-provider"},
+	}
+
+	if _, err := service.Update("org-1", "dp-proxy", "alice", request); err != nil {
+		t.Fatalf("expected the update to succeed, got: %v", err)
+	}
+	if repo.updated == nil {
+		t.Fatal("expected the proxy to reach the repository")
+	}
+
+	// The gateway still owns the runtime configuration: the request's provider,
+	// name and version are all ignored.
+	if repo.updated.Name != "DP Proxy" || repo.updated.Version != "v1.0" {
+		t.Fatalf("expected gateway-owned metadata to be preserved, got name=%q version=%q",
+			repo.updated.Name, repo.updated.Version)
+	}
+
+	// The row is stored canonically afterwards, like any other write, and it
+	// describes exactly what the gateway had.
+	stored2 := repo.updated.Configuration
+	if len(stored2.Providers) != 2 {
+		t.Fatalf("expected the stored row to normalise to two attachments, got %d", len(stored2.Providers))
+	}
+	if stored2.Provider != "" || stored2.UpstreamAuth != nil || stored2.AdditionalProviders != nil {
+		t.Fatalf("expected the pre-canonical fields to be gone after the write, got %+v", stored2)
+	}
+	primary := stored2.Providers[0]
+	if primary.ID != "openai-provider" || !primary.IsPrimary {
+		t.Fatalf("expected the gateway's own primary to survive, got %+v", primary)
+	}
+	if primary.Auth == nil || primary.Auth.Value != "stored-credential" {
+		t.Fatalf("expected the gateway's credential to survive, got %+v", primary.Auth)
+	}
+	if stored2.Providers[1].ID != "anthropic-provider" || stored2.Providers[1].EffectiveName() != "claude" {
+		t.Fatalf("expected the additional provider to survive with its alias, got %+v", stored2.Providers[1])
+	}
+}
+
+// TestLLMProxyUpdateOfGatewayOriginatedRowWithoutAnyProvider covers the residual
+// case the guard exists for: a stored row that names no provider at all cannot be
+// normalised, and must still be reported rather than panicking.
+func TestLLMProxyUpdateOfGatewayOriginatedRowWithoutAnyProvider(t *testing.T) {
+	stored := &model.LLMProxy{
+		UUID: "proxy-uuid", ID: "dp-proxy", Name: "DP Proxy", Version: "v1.0",
+		Origin:        constants.OriginDP,
+		Configuration: model.LLMProxyConfig{},
+	}
+	service, _ := newProxyServiceForShapeTest(t, stored)
+
+	request := &api.LLMProxy{
+		DisplayName: "DP Proxy", Version: "v1.0", ProjectId: "project-1",
+		Provider: &api.LLMProxyProvider{Id: "openai-provider"},
+	}
+
+	// No panic, whatever else happens.
+	if _, err := service.Update("org-1", "dp-proxy", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
 	}
 }

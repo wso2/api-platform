@@ -1,0 +1,41 @@
+{
+  "additionalProviders": [
+    {
+      "as": "claude",
+      "id": "anthropic-provider",
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v0"
+      }
+    },
+    {
+      "as": "mistral-eu",
+      "id": "mistral-provider",
+      "transformer": {
+        "type": "openai-to-mistral",
+        "version": "v0"
+      }
+    }
+  ],
+  "context": "/aliased",
+  "createdAt": "0001-01-01T00:00:00Z",
+  "createdBy": "compat-user",
+  "description": "A multi-provider proxy whose additional providers are selected by alias rather than by id.",
+  "displayName": "Compat Provider Aliases",
+  "globalPolicies": [],
+  "id": "compat-aliases",
+  "openapi": "openapi: 3.0.3\ninfo:\n  title: Compat\n  version: v1.0\npaths: {}\n",
+  "operationPolicies": [],
+  "projectId": "project-1",
+  "provider": {
+    "auth": {
+      "type": "none"
+    },
+    "id": "openai-provider"
+  },
+  "readOnly": false,
+  "updatedAt": "0001-01-01T00:00:00Z",
+  "updatedBy": "compat-user",
+  "version": "v1.0",
+  "vhost": "api.example.com"
+}

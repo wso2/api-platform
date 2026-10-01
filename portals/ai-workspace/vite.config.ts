@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
@@ -151,6 +151,16 @@ if (process.env.VITE_COVERAGE === 'true') {
 export default defineConfig({
   plugins,
   base: basePath,
+  // Unit tests, for the modules that are plain logic rather than screens: what
+  // translates for a provider, what a proxy stores, what a key is named. These
+  // are the decisions a defect in can be silent — a wrong verdict renders
+  // perfectly well — so they are the ones worth testing away from a browser.
+  // Everything React is covered end to end instead, under cypress/.
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+    coverage: { provider: 'v8', include: ['src/utils/**'] },
+  },
   // Expose only the allowlisted APIP_AIW_ variables to client code via
   // import.meta.env, instead of Vite's default VITE_ prefix. The whole platform
   // namespaces its configuration this way (APIP_AIW_ here, APIP_CP_ for the Platform

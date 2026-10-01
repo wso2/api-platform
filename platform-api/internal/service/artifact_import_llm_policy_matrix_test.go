@@ -355,7 +355,7 @@ func TestImportPolicyMatrix_Proxy(t *testing.T) {
 				DisplayName:       "I3110 Proxy " + tc.name,
 				Version:           "v1.0",
 				Context:           "/i3110-proxy-" + tc.name,
-				Provider:          dto.LLMProxyDeploymentProvider{ID: "i3110-prov-none"},
+				Provider:          &dto.LLMProxyDeploymentProvider{ID: "i3110-prov-none"},
 				GlobalPolicies:    tc.global,
 				OperationPolicies: tc.operation,
 				Policies:          tc.legacy,

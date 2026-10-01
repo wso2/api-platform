@@ -58,6 +58,7 @@ type LLMProviderService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	customPolicyRepo     repository.CustomPolicyRepository
+	proxyRepo            repository.LLMProxyRepository
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
@@ -68,6 +69,7 @@ type LLMProviderService struct {
 type LLMProxyService struct {
 	repo                 repository.LLMProxyRepository
 	providerRepo         repository.LLMProviderRepository
+	templateRepo         repository.LLMProviderTemplateRepository
 	projectRepo          repository.ProjectRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
@@ -133,6 +135,15 @@ func (s *LLMProviderService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
 }
 
+// SetProxyRepository injects the repository the deletion guard scans for
+// proxies still referencing a provider. Required: the guard fails closed when
+// it is unset, because "no repository" is not the same answer as "nothing
+// depends on this provider" — so a missed wiring step refuses the delete
+// rather than allowing it.
+func (s *LLMProviderService) SetProxyRepository(repo repository.LLMProxyRepository) {
+	s.proxyRepo = repo
+}
+
 // SetCustomPolicyRepository injects the repository used to track custom-policy
 // references made by LLM providers.
 func (s *LLMProviderService) SetCustomPolicyRepository(repo repository.CustomPolicyRepository) {
@@ -144,6 +155,15 @@ func (s *LLMProviderService) SetCustomPolicyRepository(repo repository.CustomPol
 // avoid circular dependency.
 func (s *LLMProxyService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
+}
+
+// SetTemplateRepository injects the repository used to resolve a proxy's
+// declared inbound interface against the organization's template catalogue.
+// Required wherever a request declares one: validation fails closed when it is
+// unset, because accepting a handle nothing can resolve stores a proxy that
+// cannot deploy. A request that declares no interface is unaffected.
+func (s *LLMProxyService) SetTemplateRepository(repo repository.LLMProviderTemplateRepository) {
+	s.templateRepo = repo
 }
 
 // toProviderAPI converts m via mapProviderModelToAPI and resolves its
@@ -1293,6 +1313,77 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	return s.toProviderAPI(updated, tpl.ID)
 }
 
+// proxiesReferencingProvider lists the proxies in an organization that depend on
+// a provider in **either** role — as the primary or as an additional provider.
+//
+// The scan runs in Go rather than in SQL because only the primary is a column:
+// every other attachment lives inside the proxy's serialised configuration, which
+// no database constraint can see. That is exactly why a provider attached to five
+// proxies can be deleted today.
+//
+// Organization scoping is inherited from the repository query, so the guard never
+// widens visibility.
+func listProxiesReferencingProvider(repo repository.LLMProxyRepository, orgUUID, providerID string) ([]*model.LLMProxy, error) {
+	if repo == nil {
+		// Fail closed. "No repository" is not the same answer as "no proxy
+		// depends on this provider", and treating it as such would let a
+		// referenced provider be deleted because a wiring step was missed.
+		return nil, fmt.Errorf("cannot determine which proxies reference a provider: proxy repository unavailable")
+	}
+
+	var referencing []*model.LLMProxy
+	const pageSize = 200
+	for offset := 0; ; offset += pageSize {
+		proxies, err := repo.List(orgUUID, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list proxies for provider reference check: %w", err)
+		}
+		for _, proxy := range proxies {
+			for _, referenced := range model.ReferencedLLMProviderIDs(proxy.Configuration) {
+				if referenced == providerID {
+					referencing = append(referencing, proxy)
+					break
+				}
+			}
+		}
+		if len(proxies) < pageSize {
+			break
+		}
+	}
+	return referencing, nil
+}
+
+func (s *LLMProviderService) proxiesReferencingProvider(orgUUID, providerID string) ([]string, error) {
+	proxies, err := listProxiesReferencingProvider(s.proxyRepo, orgUUID, providerID)
+	if err != nil {
+		return nil, err
+	}
+	dependants := make([]string, 0, len(proxies))
+	for _, proxy := range proxies {
+		dependants = append(dependants, proxy.ID)
+	}
+	return dependants, nil
+}
+
+func pluralise(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// describeProviderDependants renders the refusal message. It names the dependent
+// proxies rather than surfacing a raw constraint error, and stays
+// readable when a provider is attached to many of them rather than enumerating an
+// unbounded list.
+func describeProviderDependants(dependants []string) string {
+	const maxNamed = 5
+	if len(dependants) <= maxNamed {
+		return strings.Join(dependants, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(dependants[:maxNamed], ", "), len(dependants)-maxNamed)
+}
+
 func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The LLM provider id is required.")
@@ -1310,6 +1401,20 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
 	if err := ensureOriginDeletable(s.deploymentRepo, provider.Origin, provider.UUID, orgUUID); err != nil {
 		return err
+	}
+
+	// Refuse while any proxy still depends on this provider, in either role.
+	// Checked before the broadcast list is built, so a refused
+	// delete touches nothing.
+	dependants, err := s.proxiesReferencingProvider(orgUUID, handle)
+	if err != nil {
+		return err
+	}
+	if len(dependants) > 0 {
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"This provider cannot be deleted because %d LLM %s still reference it: %s. "+
+				"Detach it from them first.",
+			len(dependants), pluralise(len(dependants), "proxy", "proxies"), describeProviderDependants(dependants)))
 	}
 
 	// Get all gateways in the organization to broadcast deletion event.
@@ -1401,33 +1506,207 @@ func (s *LLMProviderService) resolveCustomPolicyUUIDs(orgUUID string, config *mo
 	return policyUUIDs, nil
 }
 
-// validateAdditionalProviders eagerly validates a proxy's additional providers
-// so Create/Update surface an immediate, actionable API error instead of a
-// confusing deployment-time failure. It mirrors the checks the gateway performs
-// at transform time (see llm_transformer.go): every referenced provider must
-// exist, and each upstream name (the `as` alias, or the provider id when no
-// alias is set) must be unique within the proxy and must not collide with the
-// primary provider id.
-func (s *LLMProxyService) validateAdditionalProviders(orgUUID, primaryProviderID string, additionalProviders *[]api.LLMProxyAdditionalProvider) error {
-	if additionalProviders == nil {
+// llmProxyAliasPattern mirrors the frozen gateway's own bound on an alias.
+// Validation here must never be looser than the gateway's, or a
+// proxy Platform API accepts fails at deployment instead of at save time.
+var llmProxyAliasPattern = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+const (
+	llmProxyAliasMaxLength           = 100
+	llmProxyInboundTemplateMaxLength = 253
+)
+
+// normaliseProxyRequestAttachments collapses whichever shape a request used into
+// one attachment list, primary first. Everything
+// downstream — validation, persistence, the response and the deployment
+// artefact — reads this list and never the raw request, so no behaviour can
+// depend on which shape a client sent.
+//
+// Precedence when a request carries both shapes is `providers` wins and the
+// legacy fields are ignored, not rejected. Every read returns both
+// representations, so rejecting would break the ordinary
+// read-modify-write round trip for any client that writes back what it read.
+// This is the one place Platform API deliberately differs from the gateway,
+// which rejects a hand-authored artefact carrying both shapes at once.
+func normaliseProxyRequestAttachments(req *api.LLMProxy) ([]model.LLMProxyAttachment, error) {
+	if req.Providers != nil {
+		entries := *req.Providers
+		if len(entries) == 0 {
+			return nil, apperror.ValidationFailed.New(
+				"The providers list must not be empty: a proxy always has at least one provider.")
+		}
+
+		primaryCount := 0
+		for _, entry := range entries {
+			if entry.IsPrimary {
+				primaryCount++
+			}
+		}
+		if primaryCount == 0 {
+			return nil, apperror.ValidationFailed.New(
+				"Exactly one entry in providers must set isPrimary to true, but none does.")
+		}
+		if primaryCount > 1 {
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf(
+				"Exactly one entry in providers must set isPrimary to true, but %d do.", primaryCount))
+		}
+
+		attachments := make([]model.LLMProxyAttachment, 0, len(entries))
+		for _, entry := range entries {
+			if entry.IsPrimary {
+				attachments = append(attachments, attachmentFromProviderEntry(entry))
+			}
+		}
+		for _, entry := range entries {
+			if !entry.IsPrimary {
+				attachments = append(attachments, attachmentFromProviderEntry(entry))
+			}
+		}
+		return attachments, nil
+	}
+
+	if req.Provider == nil || strings.TrimSpace(req.Provider.Id) == "" {
+		return nil, apperror.ValidationFailed.New(
+			"A proxy must declare at least one provider: supply providers, or the provider field.")
+	}
+
+	attachments := []model.LLMProxyAttachment{{
+		ID:          req.Provider.Id,
+		Alias:       strings.TrimSpace(utils.ValueOrEmpty(req.Provider.As)),
+		IsPrimary:   true,
+		Auth:        mapUpstreamAuthAPIToModel(req.Provider.Auth),
+		Transformer: mapTransformerAPIToModel(req.Provider.Transformer),
+	}}
+	if req.AdditionalProviders != nil {
+		for _, additional := range *req.AdditionalProviders {
+			attachments = append(attachments, model.LLMProxyAttachment{
+				ID:          additional.Id,
+				Alias:       strings.TrimSpace(utils.ValueOrEmpty(additional.As)),
+				Auth:        mapUpstreamAuthAPIToModel(additional.Auth),
+				Transformer: mapTransformerAPIToModel(additional.Transformer),
+			})
+		}
+	}
+	return attachments, nil
+}
+
+func attachmentFromProviderEntry(entry api.LLMProxyProviderEntry) model.LLMProxyAttachment {
+	return model.LLMProxyAttachment{
+		ID:          entry.Id,
+		Alias:       strings.TrimSpace(utils.ValueOrEmpty(entry.Alias)),
+		IsPrimary:   entry.IsPrimary,
+		Auth:        mapUpstreamAuthAPIToModel(entry.Auth),
+		Transformer: mapTransformerAPIToModel(entry.Transformer),
+	}
+}
+
+// requestUsesLegacyProviderShape reports whether a request expressed its
+// providers the old way. It is the trigger for the full-replace guard below, so
+// it must agree exactly with the precedence rule in
+// normaliseProxyRequestAttachments: a request supplying both shapes counts as
+// canonical, because `providers` is what will actually be read.
+func requestUsesLegacyProviderShape(req *api.LLMProxy) bool {
+	return req != nil && req.Providers == nil
+}
+
+// ensureLegacyWriteCanExpressProxy refuses a legacy-shaped write against a proxy
+// the legacy shape cannot describe.
+//
+// Update is a full replace: it rebuilds Configuration from the request. An old
+// console saving one unrelated field on a three-provider proxy would therefore
+// collapse it to a single provider and discard its inbound interface, silently
+// and irreversibly. Refusing costs nothing today — the legacy shape fully
+// describes every proxy that currently exists, so only a proxy created by an
+// updated client can reach this.
+func ensureLegacyWriteCanExpressProxy(req *api.LLMProxy, existing *model.LLMProxy) error {
+	if existing == nil || !requestUsesLegacyProviderShape(req) {
 		return nil
 	}
-	seen := map[string]bool{primaryProviderID: true}
-	for _, ap := range *additionalProviders {
-		prov, err := s.providerRepo.GetByID(ap.Id, orgUUID)
-		if err != nil {
-			return fmt.Errorf("failed to validate additional provider %q: %w", ap.Id, err)
+
+	// A gateway-owned proxy is not at risk from the full replace: its stored
+	// configuration is preserved verbatim and the request's provider fields never
+	// reach it. Refusing here would block the one thing that path exists to allow
+	// — an edit to control-plane metadata such as the description — on any
+	// gateway-owned proxy with more than one provider.
+	if existing.Origin == constants.OriginDP {
+		return nil
+	}
+
+	stored, err := model.NormaliseLLMProxyAttachments(existing.Configuration)
+	if err != nil {
+		// A row that will not normalise is not one we can reason about. Leave it
+		// to the write path rather than refusing on a guess.
+		return nil
+	}
+
+	var reasons []string
+	if len(stored) > 1 {
+		reasons = append(reasons, fmt.Sprintf("it has %d providers attached", len(stored)))
+	}
+	if strings.TrimSpace(existing.Configuration.InboundTemplate) != "" {
+		reasons = append(reasons, "it declares an inbound interface")
+	}
+	// A single-provider proxy is not automatically safe. The primary carries an
+	// alias and a transformer of its own, and a client that predates those
+	// fields omits them — so the full replace would drop them silently, which
+	// for a transformer means the provider quietly stops translating. Refuse
+	// unless the request carries them back.
+	if len(stored) == 1 && req.Provider != nil {
+		primary := stored[0]
+		if primary.Alias != "" && strings.TrimSpace(utils.ValueOrEmpty(req.Provider.As)) == "" {
+			reasons = append(reasons, "its provider has an upstream name")
 		}
-		if prov == nil {
-			// The provider is referenced from the request body, not targeted by
-			// the URL, so this is a 400 REF_NOT_FOUND rather than a 404.
-			return apperror.LLMProviderRefNotFound.New().
-				WithLogMessage(fmt.Sprintf("additional provider %q not found in org %s", ap.Id, orgUUID))
+		if primary.Transformer != nil && req.Provider.Transformer == nil {
+			reasons = append(reasons, "its provider has a transformer")
 		}
-		name := ap.Id
-		if ap.As != nil && *ap.As != "" {
-			name = *ap.As
+	}
+	if len(reasons) == 0 {
+		return nil
+	}
+
+	return apperror.ValidationFailed.New(fmt.Sprintf(
+		"This proxy cannot be updated through the provider and additionalProviders fields because %s. "+
+			"Send the full provider list in the providers field instead; a client that cannot do so needs updating.",
+		strings.Join(reasons, " and ")))
+}
+
+// validateProxyAttachments checks every attachment, in whichever shape it
+// arrived, against the rules the gateway applies at deployment time: each
+// referenced provider exists, each alias is well formed, and each effective
+// upstream name is unique within the proxy.
+//
+// Uniqueness now covers the primary, which the earlier check could not: the
+// primary had no alias of its own to collide with.
+//
+// The primary's own existence is checked by the caller, which needs the provider
+// row anyway — and needs a plain not-found rather than the reference-not-found
+// this returns for a provider named in the request body.
+func (s *LLMProxyService) validateProxyAttachments(orgUUID string, attachments []model.LLMProxyAttachment) error {
+	seen := make(map[string]bool, len(attachments))
+	for _, attachment := range attachments {
+		if strings.TrimSpace(attachment.ID) == "" {
+			return apperror.ValidationFailed.New("Every attached provider must name a provider id.")
 		}
+		if attachment.Alias != "" {
+			if len(attachment.Alias) > llmProxyAliasMaxLength || !llmProxyAliasPattern.MatchString(attachment.Alias) {
+				return apperror.ValidationFailed.New(fmt.Sprintf(
+					"The upstream name %q is not valid: use 1-%d characters matching %s.",
+					attachment.Alias, llmProxyAliasMaxLength, llmProxyAliasPattern.String()))
+			}
+		}
+		if !attachment.IsPrimary {
+			prov, err := s.providerRepo.GetByID(attachment.ID, orgUUID)
+			if err != nil {
+				return fmt.Errorf("failed to validate additional provider %q: %w", attachment.ID, err)
+			}
+			if prov == nil {
+				// The provider is referenced from the request body, not targeted
+				// by the URL, so this is a 400 REF_NOT_FOUND rather than a 404.
+				return apperror.LLMProviderRefNotFound.New().
+					WithLogMessage(fmt.Sprintf("additional provider %q not found in org %s", attachment.ID, orgUUID))
+			}
+		}
+		name := attachment.EffectiveName()
 		if seen[name] {
 			return apperror.ValidationFailed.New(
 				fmt.Sprintf("The upstream name %q is used by more than one provider in this proxy.", name))
@@ -1437,13 +1716,85 @@ func (s *LLMProxyService) validateAdditionalProviders(orgUUID, primaryProviderID
 	return nil
 }
 
+// validateInboundTemplate checks that the declared inbound interface resolves to
+// a template in this organization. A template that exists but is
+// disabled is accepted, which Exists gives for free by not consulting
+// the enabled flag — consistent with the gateway and the console, which both
+// decline to gate on it.
+func (s *LLMProxyService) validateInboundTemplate(orgUUID string, inboundTemplate *string) error {
+	if inboundTemplate == nil {
+		return nil
+	}
+	handle := strings.TrimSpace(*inboundTemplate)
+	if handle == "" {
+		// An explicitly empty value means "no inbound interface", which is the
+		// earlier behaviour: derive it from the primary provider.
+		return nil
+	}
+	if len(handle) > llmProxyInboundTemplateMaxLength {
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"The inboundTemplate must be at most %d characters.", llmProxyInboundTemplateMaxLength))
+	}
+	if s.templateRepo == nil {
+		// Fail closed, for the same reason as the deletion guard: accepting a
+		// handle nothing can resolve would store a proxy that cannot deploy.
+		return fmt.Errorf("cannot validate the inboundTemplate: template repository unavailable")
+	}
+	exists, err := s.templateRepo.Exists(handle, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to validate inbound template %q: %w", handle, err)
+	}
+	if !exists {
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"The inboundTemplate %q does not match any provider template in this organization.", handle))
+	}
+	return nil
+}
+
+// preserveAttachmentCredentials carries a stored credential forward when the
+// incoming attachment supplies an auth object with an empty value, matching
+// attachments by provider id.
+//
+// This generalises what preserveUpstreamAuthCredential has always done for the
+// primary, and every attachment now needs it for the same reason: reads redact
+// the credential value, so a client that reads a proxy and writes it
+// back sends auth objects with no value in them. Without this, that round trip
+// would wipe the credential of every provider it touched.
+func preserveAttachmentCredentials(existing, updated []model.LLMProxyAttachment) []model.LLMProxyAttachment {
+	if len(existing) == 0 {
+		return updated
+	}
+	// Keyed by the provider and the routing name together, because neither
+	// alone identifies an attachment. The same provider may be attached twice
+	// under two names — one vendor, two accounts — so an id alone would give
+	// both whichever credential came last; and a name may outlive a change of
+	// the provider behind it, so a name alone would carry one vendor's secret
+	// onto another's upstream. This is the same key the gateway push uses.
+	stored := make(map[string]*model.UpstreamAuth, len(existing))
+	for _, attachment := range existing {
+		stored[attachmentAuthKey(attachment)] = attachment.Auth
+	}
+	for i := range updated {
+		updated[i].Auth = preserveUpstreamAuthCredential(
+			stored[attachmentAuthKey(updated[i])], updated[i].Auth)
+	}
+	return updated
+}
+
 func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
-		return nil, apperror.ValidationFailed.New("The displayName, version, provider id and projectId fields are required.")
+	if req.DisplayName == "" || req.Version == "" || req.ProjectId == "" {
+		return nil, apperror.ValidationFailed.New("The displayName, version and projectId fields are required.")
 	}
+	// Normalise before anything else reads the request, so validation,
+	// persistence and deployment never see which shape arrived.
+	attachments, err := normaliseProxyRequestAttachments(req)
+	if err != nil {
+		return nil, err
+	}
+	primary := attachments[0]
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
 	}
@@ -1470,8 +1821,8 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		projectUUID = project.ID
 	}
 
-	// Validate provider exists
-	prov, err := s.providerRepo.GetByID(req.Provider.Id, orgUUID)
+	// Validate the primary provider exists
+	prov, err := s.providerRepo.GetByID(primary.ID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate provider: %w", err)
 	}
@@ -1479,8 +1830,12 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, apperror.LLMProviderNotFound.New()
 	}
 
-	// Validate additional providers exist and have unique upstream names
-	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+	// Validate every attachment exists and has a unique, well-formed upstream name
+	if err := s.validateProxyAttachments(orgUUID, attachments); err != nil {
+		return nil, err
+	}
+
+	if err := s.validateInboundTemplate(orgUUID, req.InboundTemplate); err != nil {
 		return nil, err
 	}
 
@@ -1496,7 +1851,6 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 			return nil, apperror.LLMProxyExists.New()
 		}
 	} else {
-		var err error
 		handle, err = utils.GenerateHandle(req.DisplayName, func(h string) bool {
 			exists, _ := s.repo.Exists(h, orgUUID)
 			return exists
@@ -1546,22 +1900,26 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      openapiSpec,
 		Configuration: model.LLMProxyConfig{
-			Context:             &contextValue,
-			Vhost:               req.Vhost,
-			Provider:            req.Provider.Id,
-			UpstreamAuth:        mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			AdditionalProviders: mapAdditionalProvidersAPIToModel(req.AdditionalProviders),
-			GlobalPolicies:      mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
-			OperationPolicies:   mapOperationPoliciesAPIToModel(req.OperationPolicies),
-			Policies:            mapPoliciesAPIToModel(req.Policies),
-			Security:            mapSecurityAPIToModel(req.Security),
+			Context: &contextValue,
+			Vhost:   req.Vhost,
+			// Canonical only: the legacy fields are never written again, so a
+			// row ends up in one shape regardless of which shape created it.
+			Providers:         attachments,
+			InboundTemplate:   strings.TrimSpace(utils.ValueOrEmpty(req.InboundTemplate)),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
-	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
+	// The primary's auth defaults to an explicit "none", exactly as before. An
+	// additional provider without a credential stays credential-less and is
+	// emitted without one, so the default applies to the primary alone.
+	m.Configuration.Providers[0].Auth = defaultUpstreamAuthToNone(m.Configuration.Providers[0].Auth)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -1642,7 +2000,7 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 		if err != nil {
 			return nil, err
 		}
-		provider := p.Configuration.Provider
+		provider := model.PrimaryLLMProxyProviderID(p.Configuration)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			DisplayName: name,
@@ -1664,6 +2022,22 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	return resp, nil
 }
 
+// pageLLMProxies applies limit/offset to an in-memory result set, matching the
+// semantics the repository's own pagination clause provides.
+func pageLLMProxies(proxies []*model.LLMProxy, limit, offset int) []*model.LLMProxy {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(proxies) {
+		return nil
+	}
+	remaining := proxies[offset:]
+	if limit > 0 && limit < len(remaining) {
+		remaining = remaining[:limit]
+	}
+	return remaining
+}
+
 func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offset int) (*api.LLMProxyListResponse, error) {
 	if providerID == "" {
 		return nil, apperror.ValidationFailed.New("The LLM provider id is required.")
@@ -1679,14 +2053,20 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		return nil, apperror.LLMProviderNotFound.New()
 	}
 
-	items, err := s.repo.ListByProvider(orgUUID, prov.UUID, limit, offset)
+	// Report proxies referencing this provider in **either** role, so this
+	// listing agrees with what the deletion guard enforces. The
+	// repository's provider_uuid query sees only the primary — a disagreement
+	// there would be the same defect returning in a different place.
+	//
+	// Additional-provider references live inside the configuration payload, so
+	// the match runs in Go and the page is cut from the result rather than in
+	// SQL.
+	matching, err := listProxiesReferencingProvider(s.repo, orgUUID, providerID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list proxies by provider: %w", err)
+		return nil, err
 	}
-	totalCount, err := s.repo.CountByProvider(orgUUID, prov.UUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count proxies by provider: %w", err)
-	}
+	totalCount := len(matching)
+	items := pageLLMProxies(matching, limit, offset)
 	resp := &api.LLMProxyListResponse{
 		Count: len(items),
 		Pagination: api.Pagination{
@@ -1713,7 +2093,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		if err != nil {
 			return nil, err
 		}
-		provider := p.Configuration.Provider
+		provider := model.PrimaryLLMProxyProviderID(p.Configuration)
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
 			DisplayName: name,
@@ -1753,9 +2133,18 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if handle == "" || req == nil {
 		return nil, apperror.ValidationFailed.New("The LLM proxy id and a request body are required.")
 	}
-	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
-		return nil, apperror.ValidationFailed.New("The displayName, version and provider id fields are required.")
+	if req.DisplayName == "" || req.Version == "" {
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
+	// Normalise first: the earlier check read req.Provider.Id directly, which a
+	// canonical request legitimately omits. The provider requirement
+	// itself is not dropped — normalisation rejects a request that declares no
+	// provider in either shape, naming what is missing.
+	attachments, err := normaliseProxyRequestAttachments(req)
+	if err != nil {
+		return nil, err
+	}
+	primary := attachments[0]
 	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
 		return nil, err
 	}
@@ -1777,8 +2166,14 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, apperror.LLMProxyNotFound.New()
 	}
 
-	// Validate provider exists
-	prov, err := s.providerRepo.GetByID(req.Provider.Id, orgUUID)
+	// Refuse a legacy-shaped write the stored proxy cannot survive.
+	// Checked before anything is built, so a rejected request changes nothing.
+	if err := ensureLegacyWriteCanExpressProxy(req, existing); err != nil {
+		return nil, err
+	}
+
+	// Validate the primary provider exists
+	prov, err := s.providerRepo.GetByID(primary.ID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate provider: %w", err)
 	}
@@ -1802,8 +2197,12 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		}
 	}
 
-	// Validate additional providers exist and have unique upstream names
-	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+	// Validate every attachment exists and has a unique, well-formed upstream name
+	if err := s.validateProxyAttachments(orgUUID, attachments); err != nil {
+		return nil, err
+	}
+
+	if err := s.validateInboundTemplate(orgUUID, req.InboundTemplate); err != nil {
 		return nil, err
 	}
 
@@ -1818,23 +2217,30 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Configuration: model.LLMProxyConfig{
-			Context:             &contextValue,
-			Vhost:               req.Vhost,
-			Provider:            req.Provider.Id,
-			UpstreamAuth:        mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			AdditionalProviders: mapAdditionalProvidersAPIToModel(req.AdditionalProviders),
-			GlobalPolicies:      mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
-			OperationPolicies:   mapOperationPoliciesAPIToModel(req.OperationPolicies),
-			Policies:            mapPoliciesAPIToModel(req.Policies),
-			Security:            mapSecurityAPIToModel(req.Security),
+			Context: &contextValue,
+			Vhost:   req.Vhost,
+			// Canonical only, whichever shape arrived. This is what migrates a
+			// older row on its first write, with no migration job
+			// and without the client knowing.
+			Providers:         attachments,
+			InboundTemplate:   strings.TrimSpace(utils.ValueOrEmpty(req.InboundTemplate)),
+			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:          mapPoliciesAPIToModel(req.Policies),
+			Security:          mapSecurityAPIToModel(req.Security),
 		},
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
-	// Preserve stored upstream auth credential only when the update provides an auth
-	// object with an empty value. If the auth object is omitted, treat it as explicit
-	// removal and clear stored auth (defaulted to "none" below).
-	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
+	// Preserve each stored upstream auth credential only when the update provides
+	// an auth object with an empty value. If the auth object is omitted, treat it
+	// as explicit removal and clear stored auth (the primary is defaulted to
+	// "none" below). Matched by provider id across whichever shape either side
+	// used, since reads redact the value and clients write back what they read.
+	storedAttachments, storedErr := model.NormaliseLLMProxyAttachments(existing.Configuration)
+	if storedErr == nil {
+		m.Configuration.Providers = preserveAttachmentCredentials(storedAttachments, m.Configuration.Providers)
+	}
 
 	// The gateway owns the runtime configuration of a DP-originated (gateway_api) proxy,
 	// so preserve it verbatim from the stored copy and let ONLY the control-plane
@@ -1846,9 +2252,29 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		m.Version = existing.Version
 		m.ProviderUUID = existing.ProviderUUID
 		m.Configuration = existing.Configuration
+		// The stored copy carries whichever shape it was written in, and a proxy
+		// written before the canonical list has no `providers` entry at all.
+		// Normalise it the way every other path does, so this branch cannot be
+		// the one place downstream code meets a configuration that has not been
+		// through the transform — and so the write persists the canonical shape
+		// like any other write. The attachments are copied into a fresh slice
+		// rather than aliased, so defaulting the primary's auth below cannot
+		// reach back into the stored copy.
+		if storedErr == nil {
+			m.Configuration.Providers = append([]model.LLMProxyAttachment(nil), storedAttachments...)
+			m.Configuration.Provider = ""
+			m.Configuration.UpstreamAuth = nil
+			m.Configuration.AdditionalProviders = nil
+		}
 	}
 
-	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
+	// Guarded rather than indexed directly: every other path reaches here with a
+	// normalised, non-empty list, but a stored row that declares no provider at
+	// all cannot be normalised, and a panic is the wrong way to report it. Such a
+	// row is already rejected at deployment, which is where it is diagnosable.
+	if len(m.Configuration.Providers) > 0 {
+		m.Configuration.Providers[0].Auth = defaultUpstreamAuthToNone(m.Configuration.Providers[0].Auth)
+	}
 
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
@@ -1876,14 +2302,50 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	//
 	// Skip when switching to a credential-less type ("none"/"other"): the credential
 	// is dropped from this artifact.
-	if s.secretService != nil && !isCredentialLessUpstreamAuthType(upstreamAuthType(m.Configuration.UpstreamAuth)) {
-		s.secretService.cleanupRotatedSecret(
-			orgUUID,
-			upstreamAuthValue(existing.Configuration.UpstreamAuth),
-			upstreamAuthValue(m.Configuration.UpstreamAuth),
-			updatedBy,
-			s.slogger,
-		)
+	if s.secretService != nil && storedErr == nil {
+		// Keyed the same way as the credential preservation above, and for the
+		// same reasons: two attachments of one provider must not be treated as
+		// one, and one name over two providers must not be either.
+		previous := make(map[string]*model.UpstreamAuth, len(storedAttachments))
+		for _, attachment := range storedAttachments {
+			previous[attachmentAuthKey(attachment)] = attachment.Auth
+		}
+		retained := make(map[string]bool, len(m.Configuration.Providers))
+		for _, attachment := range m.Configuration.Providers {
+			retained[attachmentAuthKey(attachment)] = true
+			if isCredentialLessUpstreamAuthType(upstreamAuthType(attachment.Auth)) {
+				continue
+			}
+			s.secretService.cleanupRotatedSecret(
+				orgUUID,
+				upstreamAuthValue(previous[attachmentAuthKey(attachment)]),
+				upstreamAuthValue(attachment.Auth),
+				updatedBy,
+				s.slogger,
+			)
+		}
+		// A provider detached from the proxy takes its credential out of use as
+		// surely as one whose credential was replaced, so release it on the same
+		// terms. Passing no replacement is what marks it rotated away entirely.
+		// Before every attachment could carry a credential this case barely
+		// existed, since only the primary had one and the primary cannot be
+		// detached without another taking its place.
+		for _, attachment := range storedAttachments {
+			// Read with the key it was written with. An aliased attachment read
+			// by id alone looks detached when it is still in use, and one whose
+			// id happens to match another's routing name looks retained when it
+			// is gone — releasing a live secret, or leaking a dead one.
+			if retained[attachmentAuthKey(attachment)] {
+				continue
+			}
+			s.secretService.cleanupRotatedSecret(
+				orgUUID,
+				upstreamAuthValue(attachment.Auth),
+				"",
+				updatedBy,
+				s.slogger,
+			)
+		}
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)
@@ -2344,54 +2806,53 @@ func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 	}
 }
 
-func mapAdditionalProvidersAPIToModel(in *[]api.LLMProxyAdditionalProvider) []model.LLMProxyAdditionalProvider {
-	if in == nil || len(*in) == 0 {
+// mapTransformerAPIToModel and mapTransformerModelToAPI are shared by every
+// attachment shape, so a transformer means the same thing on the primary, on an
+// additional provider and on a canonical entry.
+func mapTransformerAPIToModel(in *api.LLMProxyTransformer) *model.LLMProxyTransformer {
+	if in == nil {
 		return nil
 	}
-	out := make([]model.LLMProxyAdditionalProvider, 0, len(*in))
-	for _, p := range *in {
-		entry := model.LLMProxyAdditionalProvider{
-			ID: p.Id,
-			As: utils.ValueOrEmpty(p.As),
-		}
-		if p.Transformer != nil {
-			entry.Transformer = &model.LLMProxyTransformer{
-				Type:    p.Transformer.Type,
-				Version: p.Transformer.Version,
-			}
-			if p.Transformer.Params != nil {
-				entry.Transformer.Params = *p.Transformer.Params
-			}
-		}
-		out = append(out, entry)
+	out := &model.LLMProxyTransformer{Type: in.Type, Version: in.Version}
+	if in.Params != nil {
+		out.Params = *in.Params
 	}
 	return out
 }
 
-func mapAdditionalProvidersModelToAPI(in []model.LLMProxyAdditionalProvider) *[]api.LLMProxyAdditionalProvider {
-	if len(in) == 0 {
+func mapTransformerModelToAPI(in *model.LLMProxyTransformer) *api.LLMProxyTransformer {
+	if in == nil {
 		return nil
 	}
-	out := make([]api.LLMProxyAdditionalProvider, 0, len(in))
-	for _, p := range in {
-		entry := api.LLMProxyAdditionalProvider{Id: p.ID}
-		if p.As != "" {
-			as := p.As
-			entry.As = &as
-		}
-		if p.Transformer != nil {
-			entry.Transformer = &api.LLMProxyTransformer{
-				Type:    p.Transformer.Type,
-				Version: p.Transformer.Version,
-			}
-			if len(p.Transformer.Params) > 0 {
-				params := p.Transformer.Params
-				entry.Transformer.Params = &params
-			}
-		}
-		out = append(out, entry)
+	out := &api.LLMProxyTransformer{Type: in.Type, Version: in.Version}
+	if len(in.Params) > 0 {
+		params := in.Params
+		out.Params = &params
 	}
-	return &out
+	return out
+}
+
+// redactedAuthModelToAPI maps a stored credential into its response form with
+// the value removed.
+//
+// Redaction is by construction, not a pass over the finished payload: every
+// auth-bearing field in a response must be built through this, or that one field
+// discloses the credential while every other is safe. That is exactly the defect
+// the gateway hit on its own side of the wire.
+func redactedAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
+	if in == nil {
+		return nil
+	}
+	var authType *api.UpstreamAuthType
+	if in.Type != "" {
+		t := api.UpstreamAuthType(in.Type)
+		authType = &t
+	}
+	return &api.UpstreamAuth{
+		Type:   authType,
+		Header: utils.StringPtrIfNotEmpty(in.Header),
+		Value:  nil, // Redact auth credential value
+	}
 }
 
 func normalizeUpstreamAuthType(authType string) string {
@@ -3286,10 +3747,7 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		ProjectId:   m.ProjectUUID,
 		Context:     contextValue,
 		Vhost:       vhostValue,
-		Provider: api.LLMProxyProvider{
-			Id:   m.Configuration.Provider,
-			Auth: nil,
-		},
+
 		Openapi:   utils.StringPtrIfNotEmpty(m.OpenAPISpec),
 		Security:  mapSecurityModelToAPI(m.Configuration.Security),
 		ReadOnly:  utils.BoolPtr(m.Origin == constants.OriginDP),
@@ -3297,21 +3755,48 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 		UpdatedAt: updatedAt,
 		UpdatedBy: utils.StringPtrIfNotEmpty(m.UpdatedBy),
 	}
-	if m.Configuration.UpstreamAuth != nil {
-		authType := (*api.UpstreamAuthType)(nil)
-		if m.Configuration.UpstreamAuth.Type != "" {
-			t := api.UpstreamAuthType(m.Configuration.UpstreamAuth.Type)
-			authType = &t
+	// Both representations, always, derived from the one normalised list so they
+	// cannot disagree — including for a row stored before
+	// this feature, which normalises on read.
+	//
+	// Every auth object below is built through redactedAuthModelToAPI, so no
+	// credential value reaches a response in any shape.
+	attachments, err := model.NormaliseLLMProxyAttachments(m.Configuration)
+	if err == nil {
+		primary := attachments[0]
+		out.Provider = &api.LLMProxyProvider{
+			Id:          primary.ID,
+			As:          utils.StringPtrIfNotEmpty(primary.Alias),
+			Auth:        redactedAuthModelToAPI(primary.Auth),
+			Transformer: mapTransformerModelToAPI(primary.Transformer),
 		}
-		out.Provider.Auth = &api.UpstreamAuth{
-			Type:   authType,
-			Header: utils.StringPtrIfNotEmpty(m.Configuration.UpstreamAuth.Header),
-			Value:  nil, // Redact auth credential value
+
+		providers := make([]api.LLMProxyProviderEntry, 0, len(attachments))
+		var additional []api.LLMProxyAdditionalProvider
+		for _, attachment := range attachments {
+			providers = append(providers, api.LLMProxyProviderEntry{
+				Id:          attachment.ID,
+				Alias:       utils.StringPtrIfNotEmpty(attachment.Alias),
+				IsPrimary:   attachment.IsPrimary,
+				Auth:        redactedAuthModelToAPI(attachment.Auth),
+				Transformer: mapTransformerModelToAPI(attachment.Transformer),
+			})
+			if attachment.IsPrimary {
+				continue
+			}
+			additional = append(additional, api.LLMProxyAdditionalProvider{
+				Id:          attachment.ID,
+				As:          utils.StringPtrIfNotEmpty(attachment.Alias),
+				Auth:        redactedAuthModelToAPI(attachment.Auth),
+				Transformer: mapTransformerModelToAPI(attachment.Transformer),
+			})
+		}
+		out.Providers = &providers
+		if len(additional) > 0 {
+			out.AdditionalProviders = &additional
 		}
 	}
-	if extra := mapAdditionalProvidersModelToAPI(m.Configuration.AdditionalProviders); extra != nil {
-		out.AdditionalProviders = extra
-	}
+	out.InboundTemplate = utils.StringPtrIfNotEmpty(m.Configuration.InboundTemplate)
 	out.GlobalPolicies = globalPoliciesProxy
 	out.OperationPolicies = operationPoliciesProxy
 	out.Policies = nil
