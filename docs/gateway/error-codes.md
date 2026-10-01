@@ -13,9 +13,11 @@ wherever one already covers the condition.** They are not a new namespace.
 This is the part that is easy to miss, and the reason a code cannot simply be allocated at
 will.
 
-Analytics assigns a fault **category** by testing which range a code falls in
-(`start <= code < end`). A code outside every range is categorised as `other`, however specific
-its meaning.
+A code's **category** is the range it falls in (`start <= code < end`). A code outside every
+range is categorised as `other`, however specific its meaning. Anything that groups failures by
+code relies on this — a dashboard reading the analytics event's `wso2ErrorCode`, or a client
+reading the `code` in an error body. (The analytics event's own `errorType` is unaffected: it
+comes from the HTTP status, as it did before fault codes existed.)
 
 | Category | Range |
 |---|---|
@@ -24,8 +26,8 @@ its meaning.
 | Target (upstream) connectivity | `101500` – `101600` |
 | WebSocket target | `1002` – `1015` |
 
-So a new code for an upstream failure has to land **inside** `101500`–`101600`, or analytics
-stops seeing it as an upstream failure at all. Picking a number outside the range does not just
+So a new code for an upstream failure has to land **inside** `101500`–`101600`, or anything
+grouping by range stops seeing it as an upstream failure at all. Picking a number outside the range does not just
 lose a label — it silently reclassifies the event.
 
 ## Who owns which block

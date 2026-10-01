@@ -14,17 +14,19 @@
  *  limitations under the License.
  *
  */
- 
+
 package dto
 
 // Error represents the error attributes in an analytics event.
 //
-// The first two fields are the established shape and keep their names and JSON keys. Note
-// ErrorMessage is not a message: it holds the classification enum (AUTHENTICATION_FAILURE,
-// API_LEVEL_LIMIT_EXCEEDED, ...). The human-readable text is Summary, below.
+// The first two fields are the established shape and keep their names, JSON keys and
+// meaning: ErrorCode is the HTTP status the client received, and ErrorMessage the
+// classification enum (AUTHENTICATION_FAILURE, API_LEVEL_LIMIT_EXCEEDED, ...) derived from it.
+// The fault flow never changes either — its code is Wso2ErrorCode, and its human-readable
+// text is Summary.
 //
-// Every added field is omitempty, so a failure that could not be classified still serialises
-// as the two-field object the established shape expects.
+// Every added field is omitempty, so a failure the fault flow did not describe still
+// serialises as the two-field object the established shape expects.
 //
 // Deliberately no Status field: Event.ProxyResponseCode already carries the status the client
 // received. OriginalStatus IS here, because once a guardrail turns a 200 into a 446 the
@@ -37,10 +39,15 @@ type Error struct {
 	ErrorCode    int              `json:"errorCode"`
 	ErrorMessage FaultSubCategory `json:"errorMessage"`
 
+	// Wso2ErrorCode is the fault code the failing policy or the engine declared — 900902,
+	// 906201, ... (sdk/core/policy/v1alpha2 fault_codes.go). Absent when the failure carried
+	// no numeric code, such as a router failure the engine described without one.
+	Wso2ErrorCode int `json:"wso2ErrorCode,omitempty"`
+
 	// Type is the failing policy's own class — "authentication", "guardrail", "upstream".
 	// It sits alongside Event.ErrorType rather than replacing it: that one is the
-	// category derived from the code's range, this one is what the policy said it was, and
-	// a guardrail shows why both are wanted — it categorises as OTHER while its type is
+	// category derived from the status, this one is what the policy said it was, and a
+	// guardrail shows why both are wanted — it categorises as OTHER while its type is
 	// precisely "guardrail".
 	Type string `json:"type,omitempty"`
 	// Direction states which side was rejected: the content the caller sent, or the content

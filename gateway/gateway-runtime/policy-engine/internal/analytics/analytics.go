@@ -282,9 +282,9 @@ func (c *Analytics) isInvalid(logEntry *v3.HTTPAccessLogEntry) bool {
 //
 // Deprecated: this has always returned FaultCategoryOther unconditionally and has no
 // production caller — it cannot do better, because its receiver carries no failure and its
-// signature takes no code. The real classification is faultCategoryForCode in
-// fault_classification.go, which is what populates Event.ErrorType. Kept only so an
-// external caller does not break; use the classifier instead.
+// signature takes no code. The real classification is classifyFault in fault.go, which is
+// what populates Event.ErrorType. Kept only so an external caller does not break; use the
+// classifier instead.
 func (c *Analytics) GetFaultType() FaultCategory {
 	return FaultCategoryOther
 }
@@ -515,10 +515,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		}
 	}
 
-	// The resolved failure, stamped by the collector's OnFault as the last entry of the
-	// fault chain. A no-op for a successful request, which stamps none of these keys.
-	applyFaultDetails(event, keyValuePairsFromMetadata, typedValuePairsFromMetadata)
-
 	// Prepare Subscription
 	subscription := &dto.Subscription{}
 	subscription.BillingCustomerID = keyValuePairsFromMetadata[BillingCustomerIDKey]
@@ -731,6 +727,12 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			ErrorMessage: fault.SubCategory,
 		}
 	}
+
+	// The resolved failure, stamped by the collector's OnFault as the last entry of the fault
+	// chain. After the classification above, because it ADDS to the error object that built
+	// rather than replacing it. A no-op for a successful request, which stamps none of these
+	// keys.
+	applyFaultDetails(event, keyValuePairsFromMetadata, typedValuePairsFromMetadata)
 
 	return event
 }
