@@ -974,7 +974,8 @@ paths:
         Called by the gateway controller immediately after connecting to the platform API.
         Stores the full list of policies installed on the gateway. All policies are recorded
         with name, version, and isCustomPolicy. Custom policies additionally include their
-        full policy definition schema (parameters and systemParameters).
+        full policy definition schema (parameters and systemParameters, and x-wso2-policy-ui
+        when the policy declares an optional form for the AI Workspace).
 
         **Authentication**: Requires `api-key` header with a valid gateway token. The gateway
         ID in the path must match the gateway associated with the token.
@@ -1036,6 +1037,13 @@ paths:
                         type: object
                         description: JSON Schema for the policy's system-level parameters. Present for custom policies.
                         maxProperties: 200
+                        additionalProperties: true
+                      x-wso2-policy-ui:
+                        type: object
+                        description: |
+                          Optional form for the AI Workspace: a `formSchema` (JSON Schema with the same
+                          data shape as `parameters`) and an optional `uiSchema`. Present only for custom
+                          policies that declare one.
                         additionalProperties: true
       responses:
         '204':

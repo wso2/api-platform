@@ -62,9 +62,9 @@ import {
   reorderItemsWithinIndexes,
 } from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
-import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
+import PolicyEditor from '../../PolicyParameterEditor/PolicyEditor';
+import { buildPolicyDefinitionFromCustomPolicy } from '../../PolicyParameterEditor/policyDefinitionSource';
 import type {
-  ParameterSchema,
   PolicyDefinition,
   ParameterValues,
 } from '../../PolicyParameterEditor/types';
@@ -177,28 +177,6 @@ const toDrawerItem = (policy: GatewayCustomPolicy): DrawerGuardrailItem => ({
   customPolicyUuid: policy.uuid,
   customPolicyDefinition: policy.policyDefinition,
 });
-
-/** Custom policies already carry their full definition inline (no policy-hub
- * YAML fetch needed) — just reshape it into a PolicyDefinition. */
-const buildPolicyDefinitionFromCustomPolicy = (item: {
-  name: string;
-  version: string;
-  description?: string;
-  policyDefinition?: Record<string, unknown>;
-}): PolicyDefinition => {
-  const def = (item.policyDefinition ?? {}) as {
-    description?: string;
-    parameters?: ParameterSchema;
-    systemParameters?: ParameterSchema;
-  };
-  return {
-    name: item.name,
-    version: item.version,
-    description: item.description || def.description || '',
-    parameters: def.parameters ?? { type: 'object', properties: {} },
-    systemParameters: def.systemParameters,
-  };
-};
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -1582,7 +1560,7 @@ export default function LLMProxyGuardrailsTab() {
                               onRetry={handleRetryDefinition}
                             />
                           ) : policyDefinition ? (
-                            <PolicyParameterEditor
+                            <PolicyEditor
                               policyDefinition={policyDefinition}
                               policyDisplayName={
                                 selectedGuardrailPolicy?.displayName ||

@@ -253,6 +253,38 @@ func TestPushGatewayManifestOnConnect_ParamsOnlyForOrganizationPolicies(t *testi
 	}
 }
 
+// TestPushGatewayManifestOnConnect_IncludesPolicyUI verifies that a custom policy's
+// optional x-wso2-policy-ui block is sent with its definition.
+func TestPushGatewayManifestOnConnect_IncludesPolicyUI(t *testing.T) {
+	var capturedBody []byte
+	client := newManifestTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	def := makePolicyDef("custom-policy", "v1.0.0", "organization")
+	def.UI = map[string]interface{}{
+		"formSchema": map[string]interface{}{"type": "object"},
+		"uiSchema":   map[string]interface{}{"ui:order": []interface{}{"*"}},
+	}
+	client.policyDefinitions = map[string]models.PolicyDefinition{"custom-policy": def}
+
+	client.pushGatewayManifestOnConnect(testGatewayID)
+
+	var body struct {
+		Policies []map[string]interface{} `json:"policies"`
+	}
+	if err := json.Unmarshal(capturedBody, &body); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+	if len(body.Policies) != 1 {
+		t.Fatalf("expected 1 policy, got %d", len(body.Policies))
+	}
+	ui, _ := body.Policies[0]["x-wso2-policy-ui"].(map[string]interface{})
+	if form, _ := ui["formSchema"].(map[string]interface{}); form["type"] != "object" {
+		t.Errorf("x-wso2-policy-ui not sent: %v", body.Policies[0])
+	}
+}
+
 // TestPushGatewayManifestOnConnect_SuccessFirstAttempt verifies that the manifest is
 // sent exactly once when the control plane responds successfully on the first attempt.
 func TestPushGatewayManifestOnConnect_SuccessFirstAttempt(t *testing.T) {
