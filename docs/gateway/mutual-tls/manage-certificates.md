@@ -25,7 +25,7 @@ curl -s -X POST http://localhost:9090/api/management/v1/certificates \
   --data-binary @-
 ```
 
-`role` defaults to `client`, so you can leave it out. The file can hold a root authority, an issuing intermediate, or the intermediate followed by its root. The response can carry non-fatal `warnings`, for example when the certificate isn't itself an authority and is pooled as a one-member authority that trusts exactly that certificate, or when it isn't valid yet or expires within thirty days. An expired certificate is refused.
+`role` defaults to `client`, so you can leave it out. The file can hold a root authority, an issuing intermediate, or the intermediate followed by its root. The response can carry non-fatal `warnings`: `CLIENT_CA_IS_LEAF` when the certificate isn't itself an authority and is pooled as a one-member authority that trusts exactly that certificate, `CLIENT_CA_NOT_YET_VALID` when it isn't valid yet, and `CERT_EXPIRES_SOON` when it expires within thirty days. An expired certificate is refused.
 
 A new authority grants no access on its own. An API accepts it only if the API's `mtls-auth` policy names it, or omits `accept` and so accepts every client authority in the pool. See [Authenticate clients with certificates](authenticate-clients-with-certificates.md).
 
@@ -67,7 +67,7 @@ The gateway checks the upload before it stores anything:
 - **The key must be strong enough.** It must be an RSA key of 2048 bits or larger, an ECDSA key on P-256, P-384, or P-521, or an Ed25519 key.
 - **The key must match the leaf certificate,** and the chain must be ordered leaf first.
 - **The key must be unencrypted.** A passphrase-protected key is refused, because the gateway never stores a passphrase.
-- **The certificate must not be expired.** A certificate whose extended key usage excludes client authentication is accepted with an `IDENTITY_NO_CLIENTAUTH_EKU` warning.
+- **The certificate must not be expired.** One that expires within thirty days is accepted with a `CERT_EXPIRES_SOON` warning, and one whose extended key usage excludes client authentication with an `IDENTITY_NO_CLIENTAUTH_EKU` warning.
 
 The gateway encrypts the private key at rest. No response ever returns it, including the upload response and the list. The response reports the identity's `subject`, `issuer`, `notAfter`, `keyAlgorithm`, and `chainLength` instead.
 
@@ -116,7 +116,7 @@ curl -s "http://localhost:9090/api/management/v1/certificates?usage=downstream" 
   -u admin:<password>
 ```
 
-`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority, and `role: default` on the default identity. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it.
+`usage` takes `downstream`, `identity`, or `upstream`. Each entry carries its `id`, `name`, `usage`, `subject`, `issuer`, and `notAfter`, plus `role` and `match` for a client authority, and `role: default` on the default identity. For a client authority or an identity, `referencedByApis` counts the deployed APIs that name it. An API that omits `accept` and inherits the whole pool doesn't count toward it. An entry that expires within thirty days carries a `CERT_EXPIRES_SOON` warning in the list, whatever its usage.
 
 ## Rotate a gateway identity
 
