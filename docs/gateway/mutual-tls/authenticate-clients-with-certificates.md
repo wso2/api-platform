@@ -15,7 +15,7 @@ Callers must connect to the gateway's HTTPS listener, on port 8443 by default. T
 
 ## Require a client certificate
 
-Attach `mtls-auth` to the API's policies and name the authority it accepts:
+Attach `mtls-auth` to the API's policies and name the authority it accepts. Every parameter is described in the [Mutual TLS Authentication policy](https://wso2.com/api-platform/policy-hub/policies/mtls-auth) documentation:
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -231,3 +231,4 @@ This page covers the tasks. The exact order the policy checks the connection cer
 - [Manage certificates](manage-certificates.md) — add the authorities and relay entries this page names.
 - [Connect to backends with mutual TLS](connect-to-backends-with-mtls.md) — the certificate the gateway presents to a backend, which is a separate concern.
 - [Mutual TLS](index.md) — how the certificate pool and the two roles fit together.
+- [Mutual TLS Authentication policy](https://wso2.com/api-platform/policy-hub/policies/mtls-auth) — every `mtls-auth` parameter and the order the policy decides in.
