@@ -36,6 +36,7 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import { useAgentProxies } from '../../../../contexts/agentProxy';
 import {
   buildProjectPath,
   getProjectSlug,
@@ -120,6 +121,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
   const { projectSlug } = useParams<{ projectSlug: string }>();
   const { currentProject, currentOrganization, projectsForCurrentOrganization } =
     useAppShell();
+  const { createAgentProxy } = useAgentProxies();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
   const canCreateAgentProxy = hasPermission(SCOPES.AGENT_PROXY_CREATE);
@@ -279,10 +281,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
 
     try {
       setIsCreating(true);
-      const created = await agentProxiesApis.createAgentProxy(
-        payload,
-        apimBaseUrl
-      );
+      const created = await createAgentProxy(payload);
       showSnackbar('Agent Proxy created successfully.', 'success');
       navigate(
         buildProjectPath(

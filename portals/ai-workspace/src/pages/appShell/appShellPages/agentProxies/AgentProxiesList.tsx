@@ -52,14 +52,13 @@ import {
 import { Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import { useAgentProxies } from '../../../../contexts/agentProxy';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { formatRelativeTime } from '../proxies/LLMProxyLayout';
 import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { agentProxiesApis } from '../../../../apis/agent/agentProxiesApis';
 import type { AgentProxyListItem } from '../../../../utils/types';
 import NoAgents from '../../../../assets/images/NoAgents.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
@@ -104,43 +103,15 @@ export default function AgentProxiesList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [agentProxies, setAgentProxies] = useState<AgentProxyListItem[]>([]);
-  const [isAgentProxiesLoading, setIsAgentProxiesLoading] = useState(false);
-  const [hasFetchedAgentProxies, setHasFetchedAgentProxies] = useState(false);
+  const {
+    agentProxiesResponse,
+    isLoading: isAgentProxiesLoading,
+    deleteAgentProxy,
+  } = useAgentProxies();
+  const agentProxies = agentProxiesResponse.list;
   const [deleteTarget, setDeleteTarget] = useState<AgentProxyListItem | null>(null);
 
   const organizationId = currentOrganization?.uuid ?? '';
-  const projectId = effectiveProject?.id ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
-
-  useEffect(() => {
-    if (!organizationId || !projectId) return;
-    let cancelled = false;
-    const fetchAgentProxies = async () => {
-      try {
-        setIsAgentProxiesLoading(true);
-        setHasFetchedAgentProxies(false);
-        const response = await agentProxiesApis.getAgentProxies(
-          projectId,
-          apimBaseUrl
-        );
-        if (!cancelled) {
-          setAgentProxies(response.list ?? []);
-        }
-      } catch {
-        // silently fail on load
-      } finally {
-        if (!cancelled) {
-          setIsAgentProxiesLoading(false);
-          setHasFetchedAgentProxies(true);
-        }
-      }
-    };
-    fetchAgentProxies();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, projectId, apimBaseUrl]);
 
   useEffect(() => {
     setSelectedProjectId('');
@@ -184,8 +155,7 @@ export default function AgentProxiesList(): React.JSX.Element {
     if (!deleteTarget || !organizationId) return;
     const agentProxyId = deleteTarget.id;
     try {
-      await agentProxiesApis.deleteAgentProxy(agentProxyId, apimBaseUrl);
-      setAgentProxies((prev) => prev.filter((a) => a.id !== agentProxyId));
+      await deleteAgentProxy(agentProxyId);
       showSnackbar('Agent Proxy deleted successfully.', 'success');
     } catch (error) {
       showSnackbar(
@@ -344,7 +314,7 @@ export default function AgentProxiesList(): React.JSX.Element {
         </Box>
       </Grid>
 
-      {isAgentProxiesLoading || !hasFetchedAgentProxies ? (
+      {isAgentProxiesLoading ? (
         <Grid size={{ xs: 12 }}>
           <Card>
             <TableContainer>
@@ -392,7 +362,7 @@ export default function AgentProxiesList(): React.JSX.Element {
             </TableContainer>
           </Card>
         </Grid>
-      ) : hasFetchedAgentProxies && agentProxies.length === 0 ? (
+      ) : agentProxies.length === 0 ? (
         <Grid size={{ xs: 12 }}>
           <Box
             sx={{

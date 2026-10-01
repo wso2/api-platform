@@ -29,20 +29,21 @@ import {
   useLLMProviders,
 } from '../../../../contexts/llmProvider';
 import { ProxiesProvider, useProxies } from '../../../../contexts/proxy';
+import {
+  AgentProxiesProvider,
+  useAgentProxies,
+} from '../../../../contexts/agentProxy';
 import { MCPServersProvider, useMCPServers } from '../../../../contexts/MCP';
 import {
   ApplicationsProvider,
   useApplications,
 } from '../../../../contexts/ApplicationsContext';
-import { getAgentProxies } from '../../../../apis/agent/agentProxiesApis';
 import NoProviders from '../../../../assets/images/NoProviders.svg';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import NoAgents from '../../../../assets/images/NoAgents.svg';
 import NoApplications from '../../../../assets/images/NoApplications.svg';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { buildProjectPath } from '../../../../utils/projectRouting';
-import type { AgentProxyListItem } from '../../../../utils/types';
 import ProjectsList from '../projects/ProjectsList';
 import ProxyQuickStartBanner from '../projects/ProxyQuickStartBanner';
 import KindSummaryCard from './KindSummaryCard';
@@ -68,7 +69,9 @@ export default function Overview(): React.JSX.Element {
       <ProxiesProvider>
         <MCPServersProvider>
           <ApplicationsProvider>
-            <OverviewContent />
+            <AgentProxiesProvider>
+              <OverviewContent />
+            </AgentProxiesProvider>
           </ApplicationsProvider>
         </MCPServersProvider>
       </ProxiesProvider>
@@ -87,33 +90,8 @@ function OverviewContent(): React.JSX.Element {
   const proxies = useProxies();
   const mcpServers = useMCPServers();
   const applications = useApplications();
+  const agentProxies = useAgentProxies();
 
-  // Agent proxies have no shared context, so the list is fetched here.
-  const [agentProxies, setAgentProxies] = useState<AgentProxyListItem[]>([]);
-  const [agentCount, setAgentCount] = useState(0);
-  const [isAgentLoading, setIsAgentLoading] = useState(true);
-  const [agentError, setAgentError] = useState<Error | null>(null);
-
-  const projectId = currentProject?.id ?? '';
-
-  const loadAgentProxies = React.useCallback(async () => {
-    if (!projectId) return;
-    setIsAgentLoading(true);
-    setAgentError(null);
-    try {
-      const response = await getAgentProxies(projectId, PLATFORM_API_BASE_URL);
-      setAgentProxies(response.list ?? []);
-      setAgentCount(response.count ?? response.list?.length ?? 0);
-    } catch (error) {
-      setAgentError(error as Error);
-    } finally {
-      setIsAgentLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    void loadAgentProxies();
-  }, [loadAgentProxies]);
 
   useEffect(() => {
     if (user?.email) {
@@ -151,8 +129,8 @@ function OverviewContent(): React.JSX.Element {
         id: 'agent-proxies' as const,
         label: 'Agent Proxies',
         icon: <Bot size={26} />,
-        count: agentCount,
-        isLoading: isAgentLoading,
+        count: agentProxies.agentProxiesResponse.count,
+        isLoading: agentProxies.isLoading,
       },
       {
         id: 'applications' as const,
@@ -169,8 +147,8 @@ function OverviewContent(): React.JSX.Element {
       proxies.isLoading,
       mcpServers.mcpServersResponse.count,
       mcpServers.isLoading,
-      agentCount,
-      isAgentLoading,
+      agentProxies.agentProxiesResponse.count,
+      agentProxies.isLoading,
       applications.applicationsResponse.count,
       applications.isLoading,
     ]
@@ -233,16 +211,18 @@ function OverviewContent(): React.JSX.Element {
         return {
           title: 'Agent Proxies',
           description: 'Front an A2A agent with policies, keys and a gateway.',
-          totalCount: agentCount,
-          items: agentProxies.map<KindDetailItem>((agentProxy) => ({
-            id: agentProxy.id,
-            displayName: agentProxy.displayName,
-            subtitle: agentProxy.description,
-            updatedAt: agentProxy.updatedAt ?? agentProxy.createdAt,
-          })),
-          isLoading: isAgentLoading,
-          error: agentError,
-          onRetry: () => void loadAgentProxies(),
+          totalCount: agentProxies.agentProxiesResponse.count,
+          items: agentProxies.agentProxiesResponse.list.map<KindDetailItem>(
+            (agentProxy) => ({
+              id: agentProxy.id,
+              displayName: agentProxy.displayName,
+              subtitle: agentProxy.description,
+              updatedAt: agentProxy.updatedAt ?? agentProxy.createdAt,
+            })
+          ),
+          isLoading: agentProxies.isLoading,
+          error: agentProxies.error,
+          onRetry: () => void agentProxies.refreshAgentProxies(),
           viewAllPath: path('/agent-proxy'),
           createPath: path('/agent-proxy/create'),
           createLabel: 'Add Agent proxy',
@@ -319,9 +299,6 @@ function OverviewContent(): React.JSX.Element {
     mcpServers,
     applications,
     agentProxies,
-    agentCount,
-    isAgentLoading,
-    agentError,
   ]);
 
   return (

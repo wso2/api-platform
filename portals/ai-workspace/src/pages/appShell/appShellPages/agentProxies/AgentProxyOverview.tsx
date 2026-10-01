@@ -63,6 +63,11 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import {
+  AgentProxyProvider,
+  useAgentProxies,
+  useAgentProxy,
+} from '../../../../contexts/agentProxy';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { formatRelativeTime } from '../proxies/LLMProxyLayout';
 import {
@@ -252,7 +257,7 @@ function buildApiKeyResourceName(displayName: string): string {
   return normalizedDisplayName || 'api-key';
 }
 
-export default function AgentProxyOverview(): React.JSX.Element {
+function AgentProxyOverviewContent(): React.JSX.Element {
   const navigate = useNavigate();
   const { projectSlug, agentProxyId } = useParams<{
     projectSlug: string;
@@ -284,8 +289,16 @@ export default function AgentProxyOverview(): React.JSX.Element {
   const organizationId = currentOrganization?.uuid ?? '';
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
-  const [agentProxy, setAgentProxy] = useState<AgentProxy | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    agentProxy,
+    isLoading,
+    updateAgentProxy,
+    deleteAgentProxy,
+    getAgentProxyAPIKeys,
+    createAgentProxyAPIKey,
+    revokeAgentProxyAPIKey,
+  } = useAgentProxy();
+  const { refreshAgentProxies } = useAgentProxies();
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
   const [selectedTransports, setSelectedTransports] = useState<string[]>([]);
@@ -332,18 +345,14 @@ export default function AgentProxyOverview(): React.JSX.Element {
   const isReadOnlyAgentProxy = Boolean(agentProxy?.readOnly);
   const isConnectionDisabled = isReadOnlyAgentProxy || !canUpdateAgentProxy;
 
+  // The provider owns the fetch; this seeds the editable copies of everything
+  // the tabs stage locally whenever the resolved Agent proxy changes.
   useEffect(() => {
-    if (!agentProxyId) return;
+    if (!agentProxy) return;
+    const loaded = agentProxy;
     let cancelled = false;
-    const load = async () => {
+    const seed = async () => {
       try {
-        setIsLoading(true);
-        const loaded = await agentProxiesApis.getAgentProxy(
-          agentProxyId,
-          apimBaseUrl
-        );
-        if (cancelled) return;
-        setAgentProxy(loaded);
         const bindings = (loaded.a2a?.operationConfigs?.transports ?? []).map(
           (transport) => transport.protocolBinding
         );
@@ -395,15 +404,13 @@ export default function AgentProxyOverview(): React.JSX.Element {
         setInitialPolicyState(policies);
       } catch {
         // silently fail
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
     };
-    void load();
+    void seed();
     return () => {
       cancelled = true;
     };
-  }, [agentProxyId, apimBaseUrl]);
+  }, [agentProxy]);
 
   useEffect(() => {
     if (!agentProxyId) return;
@@ -445,10 +452,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
     const loadKeys = async () => {
       try {
         setIsApiKeysLoading(true);
-        const response = await agentProxiesApis.getAgentProxyAPIKeys(
-          agentProxyId,
-          apimBaseUrl
-        );
+        const response = await getAgentProxyAPIKeys();
         if (!cancelled) setApiKeys(response.list ?? []);
       } catch {
         // silently fail on load
@@ -460,7 +464,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [agentProxyId, apimBaseUrl, canReadApiKeys]);
+  }, [agentProxyId, canReadApiKeys, getAgentProxyAPIKeys]);
 
   // Managed content is what the gateway serves, so it is rendered from the
   // resource. Only passthrough, which stores nothing, goes to the upstream.
@@ -614,12 +618,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
       agentProxy;
     try {
       setIsSavingChanges(true);
-      const updated = await agentProxiesApis.updateAgentProxy(
-        agentProxy.id,
-        { ...rest, ...overrides },
-        apimBaseUrl
-      );
-      setAgentProxy(updated);
+      const updated = await updateAgentProxy({ ...rest, ...overrides });
       const bindings = (updated.a2a?.operationConfigs?.transports ?? []).map(
         (transport) => transport.protocolBinding
       );
@@ -857,7 +856,15 @@ export default function AgentProxyOverview(): React.JSX.Element {
     if (!agentProxy?.id) return;
     try {
       setIsDeleting(true);
-      await agentProxiesApis.deleteAgentProxy(agentProxy.id, apimBaseUrl);
+      await deleteAgentProxy();
+      try {
+        await refreshAgentProxies();
+      } catch (refreshError) {
+        console.error(
+          'Failed to refresh Agent proxies after deleting one:',
+          refreshError
+        );
+      }
       showSnackbar('Agent Proxy deleted successfully.', 'success');
       navigate(listPath);
     } catch (error) {
@@ -879,21 +886,14 @@ export default function AgentProxyOverview(): React.JSX.Element {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 90);
 
-      const created = await agentProxiesApis.createAgentProxyAPIKey(
-        agentProxy.id,
-        {
-          id: buildApiKeyResourceName(trimmedKeyName),
-          displayName: trimmedKeyName,
-          expiresAt: expiresAt.toISOString(),
-          issuer: 'api-platform-ai-workspace',
-        },
-        apimBaseUrl
-      );
+      const created = await createAgentProxyAPIKey({
+        id: buildApiKeyResourceName(trimmedKeyName),
+        displayName: trimmedKeyName,
+        expiresAt: expiresAt.toISOString(),
+        issuer: 'api-platform-ai-workspace',
+      });
       setCreatedKeyValue(created.apiKey);
-      const response = await agentProxiesApis.getAgentProxyAPIKeys(
-        agentProxy.id,
-        apimBaseUrl
-      );
+      const response = await getAgentProxyAPIKeys();
       setApiKeys(response.list ?? []);
     } catch (error) {
       showSnackbar(
@@ -910,11 +910,7 @@ export default function AgentProxyOverview(): React.JSX.Element {
     if (!agentProxy?.id || !apiKey?.id) return;
     setIsDeletingApiKey(true);
     try {
-      await agentProxiesApis.revokeAgentProxyAPIKey(
-        agentProxy.id,
-        apiKey.id,
-        apimBaseUrl
-      );
+      await revokeAgentProxyAPIKey(apiKey.id);
       setApiKeys((prev) => prev.filter((key) => key.id !== apiKey.id));
       showSnackbar('API key deleted.', 'success');
       setApiKeyPendingDelete(null);
@@ -1878,5 +1874,23 @@ export default function AgentProxyOverview(): React.JSX.Element {
         </DialogActions>
       </Dialog>
     </PageContent>
+  );
+}
+
+export default function AgentProxyOverview(): React.JSX.Element {
+  const { agentProxyId } = useParams<{ agentProxyId: string }>();
+
+  if (!agentProxyId) {
+    return (
+      <PageContent fullWidth>
+        <Alert severity="error">Agent Proxy ID is missing</Alert>
+      </PageContent>
+    );
+  }
+
+  return (
+    <AgentProxyProvider agentProxyId={agentProxyId}>
+      <AgentProxyOverviewContent />
+    </AgentProxyProvider>
   );
 }

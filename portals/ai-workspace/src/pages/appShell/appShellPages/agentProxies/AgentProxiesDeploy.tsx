@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -33,9 +32,10 @@ import {
   useGatewayDeploy,
 } from '../../../../contexts/GatewayDeployContext';
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
-import { agentProxiesApis } from '../../../../apis/agent/agentProxiesApis';
-import { useAppShell } from '../../../../contexts/AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import {
+  AgentProxyProvider,
+  useAgentProxy,
+} from '../../../../contexts/agentProxy';
 import type { AgentProxy } from '../../../../utils/types';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
@@ -107,41 +107,12 @@ function AgentProxiesDeployLayout({ agentProxy }: AgentProxiesDeployLayoutProps)
   );
 }
 
-export default function AgentProxiesDeploy() {
-  const { agentProxyId } = useParams<{ agentProxyId: string }>();
-  const { currentOrganization } = useAppShell();
-  const organizationId = currentOrganization?.uuid ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
-
-  const [agentProxy, setAgentProxy] = useState<AgentProxy | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!agentProxyId || !organizationId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    agentProxiesApis
-      .getAgentProxy(agentProxyId, PLATFORM_API_BASE_URL)
-      .then((res) => { if (!cancelled) setAgentProxy(res); })
-      .catch(() => { if (!cancelled) setError(true); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [agentProxyId, organizationId, apimBaseUrl]);
-
-  if (!agentProxyId) {
-    return (
-      <PageContent fullWidth>
-        <Typography variant="h6">
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.appShellPages.agentProxies.deploy.agent.proxy.id.is.required"
-            defaultMessage="Agent proxy ID is required"
-          />
-        </Typography>
-      </PageContent>
-    );
-  }
+function AgentProxiesDeployContent({
+  agentProxyId,
+}: {
+  agentProxyId: string;
+}) {
+  const { agentProxy, isLoading: loading, error } = useAgentProxy();
 
   if (loading) {
     return (
@@ -179,5 +150,28 @@ export default function AgentProxiesDeploy() {
     >
       <AgentProxiesDeployLayout agentProxy={agentProxy} />
     </GatewayDeployProvider>
+  );
+}
+
+export default function AgentProxiesDeploy() {
+  const { agentProxyId } = useParams<{ agentProxyId: string }>();
+
+  if (!agentProxyId) {
+    return (
+      <PageContent fullWidth>
+        <Typography variant="h6">
+          <FormattedMessage
+            id="aiWorkspace.pages.appShell.appShellPages.agentProxies.deploy.agent.proxy.id.is.required"
+            defaultMessage="Agent proxy ID is required"
+          />
+        </Typography>
+      </PageContent>
+    );
+  }
+
+  return (
+    <AgentProxyProvider agentProxyId={agentProxyId}>
+      <AgentProxiesDeployContent agentProxyId={agentProxyId} />
+    </AgentProxyProvider>
   );
 }

@@ -33,13 +33,14 @@ import {
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
+  AgentProxyProvider,
+  useAgentProxy,
+} from '../../../../contexts/agentProxy';
+import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { agentProxiesApis } from '../../../../apis/agent/agentProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
-import type { AgentProxy } from '../../../../utils/types';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 
 const MAX_NAME_LENGTH = 128;
@@ -60,7 +61,7 @@ const FIELD_NAME_MAP: Record<
   context: 'context',
 };
 
-export default function EditAgentProxy() {
+function EditAgentProxyForm() {
   const navigate = useNavigate();
   const { agentProxyId, projectSlug } = useParams<{
     agentProxyId: string;
@@ -76,8 +77,6 @@ export default function EditAgentProxy() {
     [projectSlug, projectsForCurrentOrganization]
   );
   const effectiveProject = routeProject ?? currentProject;
-  const organizationId = currentOrganization?.uuid ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
   const listPath = buildProjectPath(
     currentOrganization,
     effectiveProject,
@@ -86,8 +85,7 @@ export default function EditAgentProxy() {
 
   const showSnackbar = useAIWorkspaceSnackbar();
 
-  const [agentProxy, setAgentProxy] = useState<AgentProxy | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { agentProxy, isLoading, updateAgentProxy } = useAgentProxy();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [context, setContext] = useState('');
@@ -96,34 +94,11 @@ export default function EditAgentProxy() {
   const isReadOnlyAgentProxy = Boolean(agentProxy?.readOnly);
 
   useEffect(() => {
-    if (!agentProxyId || !organizationId) return;
-    let cancelled = false;
-    const fetchAgentProxy = async () => {
-      try {
-        setIsLoading(true);
-        const response = await agentProxiesApis.getAgentProxy(
-          agentProxyId,
-          apimBaseUrl
-        );
-        if (!cancelled) {
-          setAgentProxy(response);
-          setName(response.displayName || '');
-          setDescription(response.description || '');
-          setContext(response.context || '');
-        }
-      } catch {
-        // handled by loading state
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-    fetchAgentProxy();
-    return () => {
-      cancelled = true;
-    };
-  }, [agentProxyId, organizationId, apimBaseUrl]);
+    if (!agentProxy) return;
+    setName(agentProxy.displayName || '');
+    setDescription(agentProxy.description || '');
+    setContext(agentProxy.context || '');
+  }, [agentProxy]);
 
   const isContextChanged =
     agentProxy !== null && context !== (agentProxy.context || '');
@@ -153,16 +128,12 @@ export default function EditAgentProxy() {
         ...rest
       } = agentProxy;
 
-      await agentProxiesApis.updateAgentProxy(
-        agentProxyId,
-        {
-          ...rest,
-          displayName: name,
-          description: description || undefined,
-          context: context || undefined,
-        },
-        apimBaseUrl
-      );
+      await updateAgentProxy({
+        ...rest,
+        displayName: name,
+        description: description || undefined,
+        context: context || undefined,
+      });
 
       showSnackbar('Agent Proxy updated successfully', 'success');
       navigate(`${listPath}/${agentProxyId}`);
@@ -357,5 +328,23 @@ export default function EditAgentProxy() {
         </Box>
       </Box>
     </PageContent>
+  );
+}
+
+export default function EditAgentProxy() {
+  const { agentProxyId } = useParams<{ agentProxyId: string }>();
+
+  if (!agentProxyId) {
+    return (
+      <PageContent fullWidth>
+        <Alert severity="error">Agent Proxy ID is missing</Alert>
+      </PageContent>
+    );
+  }
+
+  return (
+    <AgentProxyProvider agentProxyId={agentProxyId}>
+      <EditAgentProxyForm />
+    </AgentProxyProvider>
   );
 }
