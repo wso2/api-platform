@@ -37,8 +37,10 @@ type PutAPIDocumentRequest struct {
 	Content 		[]byte
 }
 
-// APIDocumentContent is returned by GetDocument — the raw spec bytes ready to serve.
-type APIDocumentContent struct {
+type UpdateAPIDocumentRequest struct {
+	Type        *string
+	DisplayName *string
+	FileName    *string
 	Content     []byte
-	ContentType string
+	ContentType *string
 }

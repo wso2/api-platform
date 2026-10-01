@@ -45,6 +45,7 @@ func registerAllRoutes(mux *http.ServeMux) {
 	handler.NewProjectHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewApplicationHandler(nil, nil, "scope", logger).RegisterRoutes(mux)
 	handler.NewAPIHandler(nil, nil, nil, logger, nil).RegisterRoutes(mux)
+	handler.NewAPIDocumentHandler(nil, nil, logger, nil).RegisterRoutes(mux)
 	handler.NewGatewayHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewSubscriptionHandler(nil, nil, nil, logger).RegisterRoutes(mux)
 	handler.NewSubscriptionPlanHandler(nil, nil, logger).RegisterRoutes(mux)

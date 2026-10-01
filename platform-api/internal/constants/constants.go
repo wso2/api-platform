@@ -292,10 +292,36 @@ const DefaultOpenAPISpecJSONFileName = "openapi.json"
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type
 const (
-	DocumentTypeDefinition   = "DEFINITION"
-	DocumentHandleDefinition = "api-definition"
+	DocumentTypeDefinition        = "DEFINITION"
+	DocumentHandleDefinition      = "api-definition"
 	DocumentDisplayNameDefinition = "OpenAPI Definition"
 )
+
+const (
+	DocumentTypeThumbnail        = "THUMBNAIL"
+	DocumentHandleThumbnail      = "api-thumbnail"
+)
+
+const (
+	DocumentTypeHowTo        = "HOW_TO"
+	DocumentTypeSampleAndSdk = "SAMPLE_SDK"
+	DocumentTypeSupportForum = "SUPPORT_FORUM"
+	DocumentTypePublicForum  = "PUBLIC_FORUM"
+	DocumentTypeOther        = "OTHER"
+)
+
+var ValidAPIDocumentUserTypes = map[string]bool{
+	DocumentTypeHowTo:        true,
+	DocumentTypeSampleAndSdk: true,
+	DocumentTypeSupportForum: true,
+	DocumentTypePublicForum:  true,
+	DocumentTypeOther:        true,
+}
+
+var ReservedAPIDocumentTypes = []string{
+	DocumentTypeDefinition,
+	DocumentTypeThumbnail,
+}
 
 // Metadata key constants for deployment metadata
 const (

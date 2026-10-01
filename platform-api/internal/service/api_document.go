@@ -18,7 +18,10 @@
 package service
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"strings"
 
@@ -36,20 +39,45 @@ import (
 // It manages document CRUD operations and OpenAPI spec validation.
 type APIDocumentService struct {
 	documentRepo repository.DocumentRepository
+	artifactRepo repository.ArtifactRepository
 	auditRepo    repository.AuditRepository
 	slogger      *slog.Logger
 }
 
-// NewAPIDocumentService creates a new API document service
-func NewAPIDocumentService(documentRepo repository.DocumentRepository, auditRepo repository.AuditRepository, slogger *slog.Logger) *APIDocumentService {
+// NewAPIDocumentService creates a new API document service. artifactRepo is
+// required for the /apis/{apiType}/{apiId}/docs endpoints to resolve a
+// kind-aware handle to an artifact UUID; nil is acceptable only in tests that
+// never call ResolveArtifactUUID.
+func NewAPIDocumentService(documentRepo repository.DocumentRepository, artifactRepo repository.ArtifactRepository, auditRepo repository.AuditRepository, slogger *slog.Logger) *APIDocumentService {
 	return &APIDocumentService{
 		documentRepo: documentRepo,
+		artifactRepo: artifactRepo,
 		auditRepo:    auditRepo,
 		slogger:      slogger,
 	}
 }
 
-// CreateDocument creates a new OpenAPI spec document for an artifact.
+// ResolveArtifactUUID resolves (apiType, apiId) to the artifact's internal UUID, scoped to orgID.
+// An unrecognised apiType and an unknown apiId both collapse to the same NotFound.
+func (s *APIDocumentService) ResolveArtifactUUID(apiType, apiID, orgID string) (string, error) {
+	if apiType == "" || apiID == "" {
+		return "", apperror.NotFound.New()
+	}
+	metadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiID, apiType, orgID)
+	if errors.Is(err, repository.ErrUnknownArtifactKind) {
+		return "", apperror.NotFound.New()
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve artifact by handle and kind: %w", err)
+	}
+	if metadata == nil {
+		return "", apperror.NotFound.New()
+	}
+	return metadata.ID, nil
+}
+
+// CreateDocument creates a document for a reserved type
+// (DEFINITION / THUMBNAIL) that is managed via its own dedicated endpoints.
 func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) (string, error) {
 	if req == nil {
 		return "", apperror.ValidationFailed.New("document request is required")
@@ -65,7 +93,7 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 		Handle:           req.Handle,
 		DisplayName:      req.DisplayName,
 		FileName:         req.FileName,
-		ContentType:      s.GetSpecContentType(req.Content),
+		ContentType:      s.contentTypeForDocType(req.Type, req.Content),
 		Content:          req.Content,
 		CreatedBy:        userId,
 	}
@@ -96,32 +124,40 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 	return doc.Handle, nil
 }
 
-// GetDocument retrieves an OpenAPI spec document by artifact UUID and org.
-func (s *APIDocumentService) GetDocument(artifactUUID, orgId string) (*dto.APIDocumentContent, error) {
+// CreateApiDocument creates a user-authored document attached to an artifact.
+// Validates the caller-supplied type against ValidAPIDocumentUserTypes
+// (so reserved types cannot be reached through this path entry)
+func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest, orgID, userID, artifactUUID string) (string, error) {
+	if req == nil {
+		return "", apperror.ValidationFailed.New("document request is required")
+	}
 	if artifactUUID == "" {
-		return nil, apperror.ValidationFailed.New("artifact UUID is required")
+		return "", apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	if !constants.ValidAPIDocumentUserTypes[req.Type] {
+		return "", apperror.ValidationFailed.New("invalid document type")
+	}
+	if strings.TrimSpace(req.DisplayName) == "" {
+		return "", apperror.ValidationFailed.New("displayName is required")
+	}
+	if req.Handle != "" {
+		exists, existsErr := s.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, req.Handle)
+		if existsErr != nil {
+			s.slogger.Error("Failed to check document handle existence", "artifactUUID", artifactUUID, "handle", req.Handle, "error", existsErr)
+			return "", apperror.Internal.Wrap(existsErr).WithLogMessage("failed to validate document handle")
+		}
+		if exists {
+			return "", apperror.Conflict.New().WithLogMessage("document handle already exists for artifact")
+		}
 	}
 
-	doc, err := s.documentRepo.GetDocumentByArtifactAndType(artifactUUID, constants.DocumentTypeDefinition, orgId)
-	if err != nil {
-		s.slogger.Error("Failed to get document", "artifactUUID", artifactUUID, "error", err)
-		return nil, err
-	}
-
-	if doc == nil {
-		return nil, apperror.NotFound.New()
-	}
-
-	return &dto.APIDocumentContent{
-		Content:     doc.Content,
-		ContentType: doc.ContentType,
-	}, nil
+	return s.CreateDocument(req, orgID, userID, artifactUUID)
 }
 
-// PutDocument updates or creates an OpenAPI spec document for an artifact.
+// UpsertDocument updates or creates a document for an artifact.
 // If a document of the same type already exists, it is updated in-place.
 // If no document exists, a new one is created.
-func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
+func (s *APIDocumentService) UpsertDocument(req *dto.PutAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("document request is required")
 	}
@@ -136,7 +172,7 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId s
 		Handle:           req.Handle,
 		DisplayName:      req.DisplayName,
 		FileName:         req.FileName,
-		ContentType:      s.GetSpecContentType(req.Content),
+		ContentType:      s.contentTypeForDocType(req.Type, req.Content),
 		Content:          req.Content,
 		UpdatedBy:        userId,
 	}
@@ -183,8 +219,9 @@ func (s *APIDocumentService) PutDocument(req *dto.PutAPIDocumentRequest, orgId s
 	return nil
 }
 
-// DeleteDocument deletes a document for an artifact identified by its handle.
-func (s *APIDocumentService) DeleteDocument(artifactUUID, handle, orgId string) error {
+// DeleteUserDocument deletes a user-authored document identified by handle.
+// Refuses to delete a DEFINITION/THUMBNAIL document
+func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, userID string) error {
 	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -192,9 +229,138 @@ func (s *APIDocumentService) DeleteDocument(artifactUUID, handle, orgId string) 
 		return apperror.ValidationFailed.New("document handle is required")
 	}
 
-	if err := s.documentRepo.DeleteDocument(artifactUUID, handle, orgId); err != nil {
+	// docType="" excludes reserved types at the repo layer, so a DELETE of
+	// the DEFINITION/THUMBNAIL handle via this surface finds no row and 404s.
+	existing, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, "")
+	if err != nil {
+		s.slogger.Error("Failed to load document for delete", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return err
+	}
+	if existing == nil {
+		return apperror.NotFound.New()
+	}
+
+	if err := s.documentRepo.DeleteDocument(artifactUUID, handle, orgID); err != nil {
 		s.slogger.Error("Failed to delete document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return err
+	}
+	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_definition", orgID, userID); err != nil {
+		s.slogger.Error("Failed to record audit entry for document delete", "artifactUUID", artifactUUID, "error", err)
+	}
+	return nil
+}
+
+// GetAllApiDocuments returns a page of user-facing documents attached to
+// artifactUUID, optionally filtered by docType. Reserved types (DEFINITION,
+// THUMBNAIL) are excluded by the repository at the SQL layer.
+func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType string, limit, offset int) ([]*model.Document, int, error) {
+	if artifactUUID == "" {
+		return nil, 0, apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	// if docType is supplied, it must be a valid non reserved doc type
+	if docType != "" {
+		if !constants.ValidAPIDocumentUserTypes[docType] {
+			return []*model.Document{}, 0, nil
+		}
+	}
+
+	docs, total, err := s.documentRepo.ListDocumentsByArtifact(artifactUUID, orgID, docType, limit, offset)
+	if err != nil {
+		s.slogger.Error("Failed to list documents", "artifactUUID", artifactUUID, "error", err)
+		return nil, 0, err
+	}
+	return docs, total, nil
+}
+
+// GetDocument retrieves a document (metadata + content) by handle, scoped
+// to artifactUUID + orgID. docType is optional:
+//
+//   - docType != "": strict match on type too. Pass the reserved type
+//     (e.g. constants.DocumentTypeDefinition) when fetching the OpenAPI spec
+//     or thumbnail.
+//   - docType == "": the request came from the user-facing /docs/{docId}
+//     path. The repository excludes reserved types at the SQL layer, so a
+//     caller cannot fetch the OpenAPI spec or thumbnail by guessing the
+//     handle on this endpoint.
+func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType string) (*model.Document, error) {
+	if artifactUUID == "" {
+		return nil, apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	if handle == "" {
+		return nil, apperror.ValidationFailed.New("document handle is required")
+	}
+
+	doc, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, docType)
+	if err != nil {
+		s.slogger.Error("Failed to get document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return nil, err
+	}
+	if doc == nil {
+		return nil, apperror.NotFound.New()
+	}
+	return doc, nil
+}
+
+// UpdateUserDocument applies a partial update to a user-authored document.
+// Each non-nil pointer field in req replaces the stored value; req.Content
+// (non-nil) replaces the stored bytes along with ContentType and FileName.
+// Type is validated against ValidAPIDocumentUserTypes so a PUT cannot morph
+// a user doc into the singleton DEFINITION type.
+func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest, orgID, userID, artifactUUID, handle string) error {
+	if req == nil {
+		return apperror.ValidationFailed.New("document request is required")
+	}
+	if artifactUUID == "" {
+		return apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	if handle == "" {
+		return apperror.ValidationFailed.New("document handle is required")
+	}
+
+	// docType="" excludes reserved types at the repo layer, so a PUT against
+	// the DEFINITION/THUMBNAIL handle via this surface finds no row
+	existing, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, "")
+	if err != nil {
+		s.slogger.Error("Failed to load document for update", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return err
+	}
+	if existing == nil {
+		return apperror.NotFound.New()
+	}
+
+	merged := *existing
+	merged.UpdatedBy = userID
+	if req.Type != nil {
+		if !constants.ValidAPIDocumentUserTypes[*req.Type] {
+			return apperror.ValidationFailed.New("invalid document type")
+		}
+		merged.Type = *req.Type
+	}
+	if req.DisplayName != nil {
+		trimmed := strings.TrimSpace(*req.DisplayName)
+		if trimmed == "" {
+			return apperror.ValidationFailed.New("displayName must not be empty")
+		}
+		merged.DisplayName = trimmed
+	}
+	if req.FileName != nil {
+		merged.FileName = *req.FileName
+	}
+	updateContent := req.Content != nil
+	if updateContent {
+		merged.Content = req.Content
+		if req.ContentType != nil {
+			merged.ContentType = *req.ContentType
+		}
+	}
+
+	if err := s.documentRepo.UpdateDocument(&merged, updateContent); err != nil {
+		s.slogger.Error("Failed to update document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return err
+	}
+
+	if err := s.auditRepo.Record("UPDATE", artifactUUID, "api_definition", orgID, userID); err != nil {
+		s.slogger.Error("Failed to record audit entry for document update", "artifactUUID", artifactUUID, "error", err)
 	}
 	return nil
 }
@@ -292,6 +458,26 @@ func (s *APIDocumentService) GetSpecContentType(specContent []byte) string {
 		return "application/json"
 	}
 	return "application/yaml"
+}
+
+func (s *APIDocumentService) GetImageContentType(content []byte) string {
+	head := content
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	return http.DetectContentType(head)
+}
+
+// contentTypeForDocType chooses the stored MIME type for a document based on its type
+func (s *APIDocumentService) contentTypeForDocType(docType string, content []byte) string {
+	switch docType {
+	case constants.DocumentTypeDefinition:
+		return s.GetSpecContentType(content)
+	case constants.DocumentTypeThumbnail:
+		return s.GetImageContentType(content)
+	default:
+		return "text/markdown; charset=utf-8"
+	}
 }
 
 // extractOperations builds api.Operation entries from the OpenAPI 3.x spec's paths.
