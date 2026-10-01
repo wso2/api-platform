@@ -934,7 +934,7 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 func TestTranslateResponseHeaderActions_AnalyticsHeaderFilter(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 	execCtx.sharedCtx = &policy.SharedContext{}
@@ -975,7 +975,7 @@ func TestTranslateResponseHeaderActions_AnalyticsHeaderFilter(t *testing.T) {
 func TestTranslateResponseHeaderActions_AnalyticsHeaderFilterAllowMode(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 	execCtx.sharedCtx = &policy.SharedContext{}
@@ -1019,7 +1019,7 @@ func TestTranslateResponseHeaderActionsWithBodyMerge_AnalyticsHeaderFilter(t *te
 	newExecCtx := func() *PolicyExecutionContext {
 		kernel := NewKernel()
 		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 		execCtx.sharedCtx = &policy.SharedContext{}
 		execCtx.responseBodyCtx = &policy.ResponseContext{
@@ -1082,7 +1082,7 @@ func TestTranslateResponseHeaderActionsWithBodyMerge_AnalyticsHeaderFilter(t *te
 func TestTranslateResponseActionsCore_AnalyticsHeaderFilter(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 	execCtx.sharedCtx = &policy.SharedContext{}
