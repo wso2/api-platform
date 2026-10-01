@@ -1098,6 +1098,77 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 	return resp, nil
 }
 
+// ListByCustomPolicy lists LLM providers that reference the given custom policy UUID.
+func (s *LLMProviderService) ListByCustomPolicy(orgUUID, customPolicyUUID string, limit, offset int) (*api.LLMProviderListResponse, error) {
+	if customPolicyUUID == "" {
+		return nil, apperror.ValidationFailed.New("The custom policy uuid is required.")
+	}
+	if s.customPolicyRepo == nil {
+		return nil, fmt.Errorf("could not initialize custom policy repository")
+	}
+	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgUUID, customPolicyUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate custom policy: %w", err)
+	}
+	if policy == nil {
+		return nil, apperror.CustomPolicyNotFound.New()
+	}
+
+	items, err := s.repo.ListByCustomPolicy(orgUUID, customPolicyUUID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list providers by custom policy: %w", err)
+	}
+	totalCount, err := s.repo.CountByCustomPolicy(orgUUID, customPolicyUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count providers by custom policy: %w", err)
+	}
+	resp := &api.LLMProviderListResponse{
+		Count: len(items),
+		Pagination: api.Pagination{
+			Limit:  limit,
+			Offset: offset,
+			Total:  totalCount,
+		},
+	}
+	resp.List = make([]api.LLMProviderListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
+	for _, p := range items {
+		// Look up template handle from UUID
+		tplHandle := ""
+		if p.TemplateUUID != "" {
+			tpl, err := s.templateRepo.GetByUUID(p.TemplateUUID, orgUUID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve template for provider %s: %w", p.ID, err)
+			}
+			if tpl != nil {
+				tplHandle = tpl.ID
+			}
+		}
+		id := p.ID
+		name := p.Name
+		desc := utils.StringPtrIfNotEmpty(p.Description)
+		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
+		version := p.Version
+		template := utils.StringPtrIfNotEmpty(tplHandle)
+		resp.List = append(resp.List, api.LLMProviderListItem{
+			Id:          &id,
+			DisplayName: name,
+			Description: desc,
+			CreatedBy:   createdBy,
+			Version:     &version,
+			Template:    template,
+			ReadOnly:    utils.BoolPtr(p.Origin == constants.OriginDP),
+			CreatedAt:   utils.TimePtr(p.CreatedAt),
+			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
+		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 func (s *LLMProviderService) Get(orgUUID, handle string) (*api.LLMProvider, error) {
 	if handle == "" {
 		return nil, apperror.ValidationFailed.New("The LLM provider id is required.")
