@@ -187,7 +187,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	// false default, still logs no headers/bodies.
 	if dir.Request != nil && dir.Request.Headers {
 		if headers := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
-			tl.RequestHeaders = maskHeaders(headers, l.maskedHeaders)
+			tl.RequestHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedRequestHeaders())
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" && dir.Request != nil && dir.Request.Payload {
@@ -197,7 +197,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	// Response flow
 	if dir.Response != nil && dir.Response.Headers {
 		if headers := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
-			tl.ResponseHeaders = maskHeaders(headers, l.maskedHeaders)
+			tl.ResponseHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedResponseHeaders())
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" && dir.Response != nil && dir.Response.Payload {
