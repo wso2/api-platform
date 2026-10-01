@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -62,26 +63,44 @@ func (r *DocumentRepo) CreateDocument(doc *model.Document) error {
 	return nil
 }
 
-// GetDocumentByArtifactAndHandle retrieves a single document by artifact UUID and handle.
-func (r *DocumentRepo) GetDocumentByArtifactAndHandle(artifactUUID, handle, orgUUID string) (*model.Document, error) {
+// GetDocument retrieves a single document by (artifactUUID, handle, orgUUID)
+// Returns (nil, nil) when no matching row exists.
+func (r *DocumentRepo) GetDocument(artifactUUID, handle, orgUUID, docType string) (*model.Document, error) {
+	whereClause := `WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?`
+	args := []interface{}{artifactUUID, handle, orgUUID}
+	// docType is sent when the caller wants a strict match on type (reserved-type lookups)
+	if docType != "" {
+		whereClause += ` AND type = ?`
+		args = append(args, docType)
+	// docType is empty when the request came from the user-facing /docs/{docId} path, so exclude reserved types
+	} else if len(constants.ReservedAPIDocumentTypes) > 0 {
+		placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+		for i, t := range constants.ReservedAPIDocumentTypes {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
+	}
+
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
 		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
-		       COALESCE(created_by, ''), COALESCE(updated_by, '')
+		       COALESCE(created_by, ''), created_at,
+		       COALESCE(updated_by, ''), updated_at
 		FROM api_documents
-		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
-	`)
-	row := r.db.QueryRow(query, artifactUUID, handle, orgUUID)
+		` + whereClause)
+	row := r.db.QueryRow(query, args...)
 	doc := &model.Document{}
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.CreatedBy, &doc.UpdatedBy,
+		&doc.CreatedBy, &doc.CreatedAt,
+		&doc.UpdatedBy, &doc.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get document by artifact and handle: %w", err)
+		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
 	return doc, nil
 }
@@ -92,7 +111,8 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 	query := r.db.Rebind(`
 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
 		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
-		       COALESCE(created_by, ''), COALESCE(updated_by, '')
+		       COALESCE(created_by, ''), created_at,
+		       COALESCE(updated_by, ''), updated_at
 		FROM api_documents
 		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
 	`)
@@ -101,7 +121,8 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 	if err := row.Scan(
 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.CreatedBy, &doc.UpdatedBy,
+		&doc.CreatedBy, &doc.CreatedAt,
+		&doc.UpdatedBy, &doc.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -111,17 +132,85 @@ func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUU
 	return doc, nil
 }
 
-// UpsertDocument inserts or updates a document for the given (artifact_uuid, handle) pair.
+// ListDocumentsByArtifact returns user-facing documents for an artifact,
+// optionally filtered by type, as metadata-only rows (no content column).
+// 
+// Reserved types (constants.ReservedAPIDocumentTypes — DEFINITION, THUMBNAIL)
+// are excluded at the SQL layer so the returned `total` reflects the
+// user-visible row count rather than every row in the table, and pagination
+// stays correct even on artifacts with many reserved rows.
+func (r *DocumentRepo) ListDocumentsByArtifact(artifactUUID, orgUUID, docType string, limit, offset int) ([]*model.Document, int, error) {
+	whereClause := `WHERE artifact_uuid = ? AND organization_uuid = ?`
+	args := []interface{}{artifactUUID, orgUUID}
+	if docType != "" {
+		whereClause += ` AND type = ?`
+		args = append(args, docType)
+	}
+	if len(constants.ReservedAPIDocumentTypes) > 0 {
+		placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+		for i, t := range constants.ReservedAPIDocumentTypes {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
+	}
+
+	countQuery := r.db.Rebind(`SELECT COUNT(*) FROM api_documents ` + whereClause)
+	var total int
+	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count documents for artifact: %w", err)
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+
+	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	listQuery := r.db.Rebind(`
+		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
+		       COALESCE(file_name, ''), COALESCE(content_type, ''),
+		       COALESCE(created_by, ''), created_at,
+		       COALESCE(updated_by, ''), updated_at
+		FROM api_documents
+		` + whereClause + `
+		ORDER BY updated_at DESC, uuid DESC
+		` + pageClause)
+	listArgs := append(append([]interface{}{}, args...), pageArgs...)
+	rows, err := r.db.Query(listQuery, listArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list documents for artifact: %w", err)
+	}
+	defer rows.Close()
+
+	docs := make([]*model.Document, 0)
+	for rows.Next() {
+		doc := &model.Document{}
+		if err := rows.Scan(
+			&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
+			&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType,
+			&doc.CreatedBy, &doc.CreatedAt,
+			&doc.UpdatedBy, &doc.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan document row: %w", err)
+		}
+		docs = append(docs, doc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("failed to iterate document rows: %w", err)
+	}
+	return docs, total, nil
+}
+
+// UpsertDocument inserts or updates a document scoped by (artifact_uuid, handle, type)
 func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`
 		UPDATE api_documents
 		SET file_name = ?, content_type = ?, content = ?, updated_by = ?, updated_at = ?
-		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
+		WHERE artifact_uuid = ? AND handle = ? AND type = ? AND organization_uuid = ?
 	`)
 	result, err := r.db.Exec(updateQuery,
 		doc.FileName, doc.ContentType, doc.Content, doc.UpdatedBy, now,
-		doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
+		doc.ArtifactUUID, doc.Handle, doc.Type, doc.OrganizationUUID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert document (update): %w", err)
@@ -140,7 +229,7 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 			// A concurrent writer inserted between our UPDATE and INSERT; retry the UPDATE.
 			_, err = r.db.Exec(updateQuery,
 				doc.FileName, doc.ContentType, doc.Content, doc.UpdatedBy, now,
-				doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
+				doc.ArtifactUUID, doc.Handle, doc.Type, doc.OrganizationUUID,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to upsert document (retry update): %w", err)
@@ -148,6 +237,54 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 			return nil
 		}
 		return fmt.Errorf("failed to upsert document (insert): %w", err)
+	}
+	return nil
+}
+
+// UpdateDocument updates an existing document identified by artifact UUID + handle + org.
+// doc.Content is written only when updateContent is true, so a metadata-only PUT (no new file/inlineContent)
+// never overwrites the stored bytes with an empty payload.
+func (r *DocumentRepo) UpdateDocument(doc *model.Document, updateContent bool) error {
+	now := time.Now().UTC()
+	var (
+		query  string
+		result sql.Result
+		err    error
+	)
+	if updateContent {
+		query = r.db.Rebind(`
+			UPDATE api_documents
+			SET type = ?, display_name = ?, file_name = ?, content_type = ?, content = ?,
+			    updated_by = ?, updated_at = ?
+			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
+		`)
+		result, err = r.db.Exec(query,
+			doc.Type, doc.DisplayName, doc.FileName, doc.ContentType, doc.Content,
+			doc.UpdatedBy, now,
+			doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
+		)
+	} else {
+		query = r.db.Rebind(`
+			UPDATE api_documents
+			SET type = ?, display_name = ?, file_name = ?,
+			    updated_by = ?, updated_at = ?
+			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
+		`)
+		result, err = r.db.Exec(query,
+			doc.Type, doc.DisplayName, doc.FileName,
+			doc.UpdatedBy, now,
+			doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update document fields: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read update affected rows: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

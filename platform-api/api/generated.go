@@ -16,6 +16,15 @@ const (
 	OAuth2SecurityScopes = "OAuth2Security.Scopes"
 )
 
+// Defines values for APIDocumentType.
+const (
+	HOWTO        APIDocumentType = "HOW_TO"
+	OTHER        APIDocumentType = "OTHER"
+	PUBLICFORUM  APIDocumentType = "PUBLIC_FORUM"
+	SAMPLESDK    APIDocumentType = "SAMPLE_SDK"
+	SUPPORTFORUM APIDocumentType = "SUPPORT_FORUM"
+)
+
 // Defines values for APIKeyItemStatus.
 const (
 	APIKeyItemStatusActive  APIKeyItemStatus = "active"
@@ -515,6 +524,88 @@ const (
 	ListSubscriptionsParamsStatusINACTIVE ListSubscriptionsParamsStatus = "INACTIVE"
 	ListSubscriptionsParamsStatusREVOKED  ListSubscriptionsParamsStatus = "REVOKED"
 )
+
+// APIDocumentCreateRequest Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
+// `displayName` are required; exactly one of `file` or `inlineContent`
+// must carry the body. `handle` is optional — the server generates one
+// from `displayName` when omitted.
+type APIDocumentCreateRequest struct {
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// File Uploaded document bytes. Mutually exclusive with `inlineContent`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
+
+	// FileName Optional file name to associate with `inlineContent`. Ignored when `file` is present (the uploaded file's name is used instead).
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Handle Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
+	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
+
+	// InlineContent Inline UTF-8 content (markdown). Mutually exclusive with `file`.
+	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
+	// are managed via separate dedicated endpoints.
+	Type APIDocumentType `json:"type" yaml:"type"`
+}
+
+// APIDocumentListResponse defines model for APIDocumentListResponse.
+type APIDocumentListResponse struct {
+	// Count Number of items in the current page.
+	Count      int                   `binding:"required" json:"count" yaml:"count"`
+	List       []APIDocumentMetadata `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination            `json:"pagination" yaml:"pagination"`
+}
+
+// APIDocumentMetadata Metadata-only view of a document attached to an artifact.
+type APIDocumentMetadata struct {
+	// ContentType Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
+	ContentType *string    `json:"contentType,omitempty" yaml:"contentType,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User who created the docuement.
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// FileName Original file name supplied when a `file` was uploaded.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe handle used in the `{docId}` path segment.
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
+	// are managed via separate dedicated endpoints.
+	Type      APIDocumentType `json:"type" yaml:"type"`
+	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User who updated the docuement.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+}
+
+// APIDocumentType User-authored document type. DEFINITION/THUMBNAIL are reserved and
+// are managed via separate dedicated endpoints.
+type APIDocumentType string
+
+// APIDocumentUpdateRequest Multipart form for `PUT /apis/{apiType}/{apiId}/docs/{docId}`. Every
+// field is optional; omitted fields leave the stored value unchanged.
+// Supplying neither `file` nor `inlineContent` means a metadata-only
+// update — the stored bytes are not touched.
+type APIDocumentUpdateRequest struct {
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// File Replacement document bytes. Mutually exclusive with `inlineContent`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
+
+	// FileName Optional file name update. Applied alongside a new upload.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// InlineContent Replacement UTF-8 content. Mutually exclusive with `file`.
+	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
+	// are managed via separate dedicated endpoints.
+	Type *APIDocumentType `json:"type,omitempty" yaml:"type,omitempty"`
+}
 
 // APIKeyItem defines model for APIKeyItem.
 type APIKeyItem struct {
@@ -3191,6 +3282,13 @@ type DeploymentId = openapi_types.UUID
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
+// DocId defines model for docId.
+type DocId = string
+
+// DocTypeQ User-authored document type. DEFINITION/THUMBNAIL are reserved and
+// are managed via separate dedicated endpoints.
+type DocTypeQ = APIDocumentType
+
 // EntityIDQ defines model for entityID-Q.
 type EntityIDQ = string
 
@@ -3333,6 +3431,20 @@ type ListApiPublicationsParamsSortBy string
 
 // ListApiPublicationsParamsSortOrder defines parameters for ListApiPublications.
 type ListApiPublicationsParamsSortOrder string
+
+// ListAPIDocumentsParams defines parameters for ListAPIDocuments.
+type ListAPIDocumentsParams struct {
+	// Type Optional filter restricting the list to documents of a single type.
+	// An unrecognised value yields an empty page rather than an error, and
+	// the reserved `DEFINITION` type is never returned via this endpoint.
+	Type *DocTypeQ `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -3841,6 +3953,12 @@ type SaveApiPublicationDraftDefinitionJSONRequestBody = SaveApiPublicationDraftD
 
 // SaveApiPublicationDraftThumbnailMultipartRequestBody defines body for SaveApiPublicationDraftThumbnail for multipart/form-data ContentType.
 type SaveApiPublicationDraftThumbnailMultipartRequestBody SaveApiPublicationDraftThumbnailMultipartBody
+
+// CreateAPIDocumentMultipartRequestBody defines body for CreateAPIDocument for multipart/form-data ContentType.
+type CreateAPIDocumentMultipartRequestBody = APIDocumentCreateRequest
+
+// UpdateAPIDocumentMultipartRequestBody defines body for UpdateAPIDocument for multipart/form-data ContentType.
+type UpdateAPIDocumentMultipartRequestBody = APIDocumentUpdateRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

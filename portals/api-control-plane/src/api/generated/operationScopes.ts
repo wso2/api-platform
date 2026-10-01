@@ -358,6 +358,7 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:manage',
   ],
   copyLLMProviderTemplateVersion: ['ap:llm_template:create', 'ap:llm_template:manage'],
+  CreateAPIDocument: ['ap:rest_api:create', 'ap:rest_api:manage'],
   CreateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:create',
@@ -404,6 +405,7 @@ export const OPERATION_SCOPES = {
   createSecret: ['ap:secret:create', 'ap:secret:manage'],
   CreateSubscription: ['ap:subscription:create', 'ap:subscription:manage'],
   CreateSubscriptionPlan: ['ap:subscription_plan:create', 'ap:subscription_plan:manage'],
+  DeleteAPIDocument: ['ap:rest_api:delete', 'ap:rest_api:manage'],
   DeleteApiPortal: ['ap:api_portal:delete', 'ap:api_portal:manage'],
   DeleteApplication: ['ap:application:delete', 'ap:application:manage'],
   DeleteBuild: ['ap:rest_api:build:delete', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
@@ -490,6 +492,8 @@ export const OPERATION_SCOPES = {
     'ap:api_portal:rest_api:manage',
   ],
   fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
+  GetAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:read'],
+  GetAPIDocumentContent: ['ap:rest_api:manage', 'ap:rest_api:read'],
   GetApiPortal: ['ap:api_portal:manage', 'ap:api_portal:read'],
   getApiPublication: ['ap:api_portal:publication:read'],
   getApiPublicationDefinition: ['ap:api_portal:publication:read'],
@@ -587,6 +591,7 @@ export const OPERATION_SCOPES = {
   GetSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
+  ListAPIDocuments: ['ap:rest_api:manage', 'ap:rest_api:read'],
   ListApiPortals: ['ap:api_portal:manage', 'ap:api_portal:read'],
   listApiPublications: ['ap:api_publication:read'],
   ListApplicationAPIKeys: [
@@ -710,6 +715,7 @@ export const OPERATION_SCOPES = {
     'ap:api_portal:rest_api:manage',
     'ap:api_portal:rest_api:unpublish',
   ],
+  UpdateAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:manage',

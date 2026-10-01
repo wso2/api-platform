@@ -23,8 +23,8 @@ import type { RestApi } from '@/api/resources/restApis';
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { DeployedGatewaysPanel } from './DeployedGatewaysPanel';
+import { DocumentsPanel } from './DocumentsPanel';
 import { EndpointsPanel } from './EndpointsPanel';
-// import { DocumentsPanel } from './DocumentsPanel';
 import { InvokeUrlPanel } from './InvokeUrlPanel';
 import { ResourcesPanel } from './ResourcesPanel';
 
@@ -52,8 +52,7 @@ export function OverviewTab({
       <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
           <ResourcesPanel api={api} />
-          {/* Uncomment DocumentsPanel when documents should be shown on the overview. */}
-          {/* <DocumentsPanel /> */}
+          <DocumentsPanel />
         </Stack>
       </Grid>
       <Grid size={{ lg: 4, xs: 12 }}>
