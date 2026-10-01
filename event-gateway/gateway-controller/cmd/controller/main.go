@@ -630,6 +630,8 @@ func main() {
 		log.Error("Failed to create API server", slog.Any("error", err))
 		os.Exit(1)
 	}
+	// Without an encryption provider, gateway identity uploads are refused.
+	apiServer.SetEncryptionManager(encryptionProviderManager)
 
 	eventGatewayHandler := handler.NewWebSubServer(handler.Deps{
 		Store:                configStore,
