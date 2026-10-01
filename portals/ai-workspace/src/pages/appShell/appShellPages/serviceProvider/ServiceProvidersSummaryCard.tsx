@@ -41,6 +41,7 @@ import AzureLogo from '../../../../assets/brands/Azure.png';
 import GoogleVertexLogo from '../../../../assets/brands/GoogleVertex.png';
 import GoogleGeminiLogo from '../../../../assets/brands/googlegemini.png';
 import MistralAILogo from '../../../../assets/brands/mistralai.png';
+import TypeSafeLogo from '../../../../assets/brands/typesafe.png';
 import OpenAILogo from '../../../../assets/brands/openAI.png';
 import { FormattedMessage } from 'react-intl';
 import {
@@ -123,6 +124,7 @@ export default function ServiceProvidersSummaryCard({
     gemini: GoogleGeminiLogo,
     mistralai: MistralAILogo,
     mistral: MistralAILogo,
+    typesafe: TypeSafeLogo,
   };
 
   const truncateText = (text: string, maxLength: number) => {
