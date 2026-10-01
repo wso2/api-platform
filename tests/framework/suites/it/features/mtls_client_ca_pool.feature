@@ -291,7 +291,7 @@ Feature: Client certificate authority pool
     Given the certificate fixture "ca-a" is pooled as "${CTX:partnerA}" with usage "downstream"
     When I upload the certificate fixture "ca-b" as "${CTX:partnerA}" with usage "downstream"
     Then the response status should be 409
-    And the JSON response field "message" should be "a client-CA authority named ${CTX:partnerA} already exists"
+    And the JSON response field "message" should be "a certificate named ${CTX:partnerA} already exists"
 
   # ==================== REMOVING AN AUTHORITY ====================
 

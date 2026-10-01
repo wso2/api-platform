@@ -120,7 +120,7 @@ Feature: Presenting a gateway identity to backends that require a client certifi
     Given the gateway identity fixture "gw-identity-a" is stored as "${CTX:identityA}"
     When I upload the gateway identity fixture "gw-identity-b" as "${CTX:identityA}"
     Then the response status should be 409
-    And the JSON response field "message" should be "a gateway identity named ${CTX:identityA} already exists"
+    And the JSON response field "message" should be "a certificate named ${CTX:identityA} already exists"
 
   Scenario: A developer cannot create or remove identities
     Given the gateway identity fixture "gw-identity-a" is stored as "${CTX:identityA}"
