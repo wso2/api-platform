@@ -35,6 +35,7 @@ import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } fro
 import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
+import { AppPage } from '@/components/AppPage';
 import { useDeleteProject, useProjects, type ProjectListFilters } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
 import { ProjectsList } from './ProjectsList';
@@ -206,6 +207,14 @@ const SORT_OPTIONS = [
 type SortOption = (typeof SORT_OPTIONS)[number];
 
 export function ProjectListPage() {
+  return (
+    <AppPage>
+      <ProjectListPageContent />
+    </AppPage>
+  );
+}
+
+function ProjectListPageContent() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
@@ -302,13 +311,13 @@ export function ProjectListPage() {
           <PageTitle.Actions>
             <Can do="CreateProject" denied="hide">
               <Button
-              onClick={() => setCreateOpen(true)}
-              startIcon={<Plus />}
-              sx={{ borderRadius: 5 }}
-              variant="contained"
-            >
-              <FormattedMessage {...messages.createProject} />
-            </Button>
+                onClick={() => setCreateOpen(true)}
+                startIcon={<Plus />}
+                sx={{ borderRadius: 5 }}
+                variant="contained"
+              >
+                <FormattedMessage {...messages.createProject} />
+              </Button>
             </Can>
           </PageTitle.Actions>
         )}

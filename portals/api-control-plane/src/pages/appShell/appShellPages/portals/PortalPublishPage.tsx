@@ -34,6 +34,7 @@ import {
   useUnpublishRestApiFromApiPortal,
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
+import { AppPage } from '@/components/AppPage';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { isApiError, isErrorCode } from '@/api/core/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -143,7 +144,8 @@ const messages = defineMessages({
   confirmInputLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel',
     defaultMessage: 'Type "{name}" to confirm',
-    description: 'Label for the type-to-confirm field. {name} is the API name; do not translate it.',
+    description:
+      'Label for the type-to-confirm field. {name} is the API name; do not translate it.',
   },
   deprecated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated',
@@ -217,6 +219,14 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
  * which is already fully API-scoped.
  */
 export function PortalPublishPage() {
+  return (
+    <AppPage hideBreadcrumbs>
+      <PortalPublishPageContent />
+    </AppPage>
+  );
+}
+
+function PortalPublishPageContent() {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -244,8 +254,13 @@ export function PortalPublishPage() {
   // The Specification tab's three definition tiers only pre-fill that tab, so
   // each is fetched once the tier before it is confirmed absent. Passing
   // `undefined` for the API handle keeps a tier's query disabled.
-  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
-  const draftDefinitionAbsent = isApiError(draftDefinitionQuery.error) && draftDefinitionQuery.error.isNotFound;
+  const draftDefinitionQuery = useApiPublicationDraftDefinition(
+    apiPortalId,
+    REST_API_TYPE,
+    apiHandler,
+  );
+  const draftDefinitionAbsent =
+    isApiError(draftDefinitionQuery.error) && draftDefinitionQuery.error.isNotFound;
 
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
@@ -297,9 +312,15 @@ export function PortalPublishPage() {
 
     const stored =
       (draftDefinitionQuery.data &&
-        readStoredDefinition(draftDefinitionQuery.data.text, draftDefinitionQuery.data.contentType)) ??
+        readStoredDefinition(
+          draftDefinitionQuery.data.text,
+          draftDefinitionQuery.data.contentType,
+        )) ??
       (publicationDefinitionQuery.data &&
-        readStoredDefinition(publicationDefinitionQuery.data.text, publicationDefinitionQuery.data.contentType)) ??
+        readStoredDefinition(
+          publicationDefinitionQuery.data.text,
+          publicationDefinitionQuery.data.contentType,
+        )) ??
       (apiOpenApiQuery.data ? readStoredDefinition(apiOpenApiQuery.data.content) : undefined);
     setDefinitionText(stored?.text ?? '');
     setDefinitionFormat(stored?.format ?? 'json');
@@ -370,7 +391,9 @@ export function PortalPublishPage() {
     const result = parseSpecText(definitionText, definitionFormat);
     if (result.status !== 'parsed') {
       setDefinitionParseError(
-        result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+        result.status === 'malformed'
+          ? result.reason
+          : intl.formatMessage(messages.definitionNotAnObject),
       );
       setTab('specification');
       return undefined;
@@ -458,7 +481,8 @@ export function PortalPublishPage() {
   // Each terminal action leaves this one portal's page behind for the listing,
   // where the card now reflects the new status — there's nothing left to do
   // on this page once the action the user came here for has gone through.
-  const backToPortalsList = () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler));
+  const backToPortalsList = () =>
+    navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler));
 
   const handlePublish = () =>
     runAction('publishing', async () => {
@@ -499,7 +523,10 @@ export function PortalPublishPage() {
 
   return (
     <>
-      <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
+      <Box
+        ref={fill.ref}
+        sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}
+      >
         <PageTitle>
           <Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)}>
             <PageTitle.BackButton>
@@ -523,9 +550,21 @@ export function PortalPublishPage() {
               <Tabs onChange={(_event, next: PublishTab) => setTab(next)} value={tab}>
                 <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
                 <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-                <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
-                <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
-                <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
+                <Tab
+                  disabled
+                  label={intl.formatMessage(messages.tabSubscriptionPlans)}
+                  value="subscriptionPlans"
+                />
+                <Tab
+                  disabled
+                  label={intl.formatMessage(messages.tabDocumentations)}
+                  value="documentations"
+                />
+                <Tab
+                  disabled
+                  label={intl.formatMessage(messages.tabLandingPage)}
+                  value="landingPage"
+                />
               </Tabs>
             </Box>
 
@@ -575,12 +614,17 @@ export function PortalPublishPage() {
       </Box>
 
       <ConfirmDialog
-        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, {
+          name: api.displayName,
+        })}
         confirmLabel={intl.formatMessage(messages.confirmAction)}
         confirmPhrase={api.displayName}
         destructive
         loading={pendingAction === 'unpublishing'}
-        message={intl.formatMessage(messages.unpublishConfirmMessage, { name: api.displayName, portalName })}
+        message={intl.formatMessage(messages.unpublishConfirmMessage, {
+          name: api.displayName,
+          portalName,
+        })}
         onCancel={() => setConfirmingUnpublish(false)}
         onConfirm={confirmUnpublish}
         open={confirmingUnpublish}
@@ -589,11 +633,16 @@ export function PortalPublishPage() {
 
       <ConfirmDialog
         confirmColor="warning"
-        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, {
+          name: api.displayName,
+        })}
         confirmLabel={intl.formatMessage(messages.confirmAction)}
         confirmPhrase={api.displayName}
         loading={pendingAction === 'deprecating'}
-        message={intl.formatMessage(messages.deprecateConfirmMessage, { name: api.displayName, portalName })}
+        message={intl.formatMessage(messages.deprecateConfirmMessage, {
+          name: api.displayName,
+          portalName,
+        })}
         onCancel={() => setConfirmingDeprecate(false)}
         onConfirm={confirmDeprecate}
         open={confirmingDeprecate}
