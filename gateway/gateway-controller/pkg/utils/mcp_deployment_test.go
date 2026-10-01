@@ -563,6 +563,39 @@ spec:
 		assert.Equal(t, "1.0.0", mcpConfig.Spec.Version)
 	})
 
+	t.Run("Legacy header auth is normalized before validation and transformation", func(t *testing.T) {
+		yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Mcp
+metadata:
+  name: legacy-auth-mcp
+spec:
+  displayName: Legacy Auth MCP Proxy
+  version: "1.0.0"
+  context: "/legacy-auth"
+  upstream:
+    url: "http://localhost:8080"
+    auth:
+      type: header
+      header: X-API-Key
+      value: secret-key
+`
+		params := MCPDeploymentParams{
+			Data:          []byte(yamlData),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+		}
+
+		mcpConfig, apiConfig, err := service.parseValidateAndTransform(params)
+		require.NoError(t, err)
+		require.NotNil(t, mcpConfig.Spec.Upstream.Auth)
+		assert.Equal(t, api.MCPProxyConfigDataUpstreamAuthTypeApiKey, mcpConfig.Spec.Upstream.Auth.Type)
+		require.NotNil(t, apiConfig.Spec.Policies)
+		require.Len(t, *apiConfig.Spec.Policies, 1)
+		assert.Equal(t, constants.SET_HEADERS_POLICY_NAME, (*apiConfig.Spec.Policies)[0].Name)
+	})
+
 	t.Run("Invalid parse returns error", func(t *testing.T) {
 		params := MCPDeploymentParams{
 			Data:          []byte("invalid: [yaml"),
@@ -695,6 +728,45 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-mcp-undeploy", mockHub.publishedEvents[0].event.EventID)
+}
+
+func TestHydrateStoredMCPConfig_NormalizesLegacyHeaderAuthType(t *testing.T) {
+	url := "http://backend:8080"
+	header, value := "X-API-Key", "secret-key"
+
+	cfg := &models.StoredConfig{
+		UUID: "mcp-legacy",
+		SourceConfiguration: api.MCPProxyConfiguration{
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "legacy-mcp",
+				Version:     "1.0.0",
+				Context:     stringPtr("/legacy"),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &url,
+					Auth: &struct {
+						Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+						PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+						PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+						PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+						Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+						Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+					}{Type: "header", Header: &header, Value: &value},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, HydrateStoredMCPConfig(cfg, newTestPolicyVersionResolver()))
+
+	restAPI, ok := cfg.Configuration.(api.RestAPI)
+	require.True(t, ok)
+	require.NotNil(t, restAPI.Spec.Policies)
+	require.Len(t, *restAPI.Spec.Policies, 1)
+	assert.Equal(t, constants.SET_HEADERS_POLICY_NAME, (*restAPI.Spec.Policies)[0].Name)
+	expectedParams, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, header, value)
+	require.NoError(t, err)
+	require.NotNil(t, (*restAPI.Spec.Policies)[0].Params)
+	assert.Equal(t, expectedParams, *(*restAPI.Spec.Policies)[0].Params)
 }
 
 // A real resolver must resolve an unpinned oauth2 auth policy to this
