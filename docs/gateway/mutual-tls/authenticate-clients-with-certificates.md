@@ -26,6 +26,8 @@ spec:
   displayName: Orders API
   version: v1.0
   context: /orders/$version
+  vhosts:
+    main: orders.example.com
   upstream:
     main:
       url: http://orders-backend:9080/api/v1
@@ -49,14 +51,17 @@ curl -X POST http://localhost:9090/api/management/v1/rest-apis \
   --data-binary "@orders-api.yaml"
 ```
 
+The API has its own hostname in `vhosts.main`, so the gateway asks for a client certificate only on connections to `orders.example.com`, and callers of your other APIs aren't asked. Without `vhosts`, the API is served on the gateway's default hostname. It still works, but the deploy response carries an `MTLS_HOSTNAME_NOT_SCOPED` warning, and every connection to the gateway is asked for a certificate, including those of browsers calling other APIs. See [Hostnames and the certificate request](#hostnames-and-the-certificate-request).
+
 Attach the policy at API level to protect every operation, or to one operation's `policies` to protect only that operation. Use it once per scope, and at one level only. To require a token as well as a certificate, list `jwt-auth` after `mtls-auth` in the same chain.
 
 ## Call the API with a certificate
 
-A caller presents its certificate and key on the TLS connection:
+A caller presents its certificate and key on the TLS connection, and sends the API's hostname. When testing locally, `--resolve` sends it to the gateway on your machine:
 
 ```bash
-curl https://localhost:8443/orders/v1.0/orders \
+curl https://orders.example.com:8443/orders/v1.0/orders \
+  --resolve orders.example.com:8443:127.0.0.1 \
   --cert partner-a-client.pem \
   --key partner-a-client.key \
   --cacert gateway-ca.pem
