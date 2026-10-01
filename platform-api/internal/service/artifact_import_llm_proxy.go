@@ -64,6 +64,9 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := i.validateAdditionalProviderRefs(cfg.AdditionalProviders, ctx.OrgID); err != nil {
+			return nil, err
+		}
 		proxy := &model.LLMProxy{
 			UUID:             ctx.ID,
 			OrganizationUUID: ctx.OrgID,
@@ -103,6 +106,9 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := i.validateAdditionalProviderRefs(cfg.AdditionalProviders, ctx.OrgID); err != nil {
+			return nil, err
+		}
 		existing.ProviderUUID = providerUUID
 		existing.Configuration = cfg
 		if strings.TrimSpace(existing.OpenAPISpec) == "" {
@@ -111,6 +117,7 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: only update gateway-specific upstream auth.
 		existing.Configuration.UpstreamAuth = cfg.UpstreamAuth
+		existing.Configuration.AdditionalProviders = withGatewayAdditionalProviderAuth(existing.Configuration.AdditionalProviders, cfg.AdditionalProviders)
 	}
 	if err := i.proxyRepo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update LLM proxy from gateway import: %w", err)
@@ -134,6 +141,18 @@ func (i *llmProxyImporter) resolveProviderUUID(providerHandle, orgID string) (st
 		return "", apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider %q does not exist.", providerHandle))
 	}
 	return art.UUID, nil
+}
+
+// validateAdditionalProviderRefs rejects a pushed proxy whose additional providers
+// reference an LLM provider the control plane doesn't know, with the same clean
+// error as a missing primary provider.
+func (i *llmProxyImporter) validateAdditionalProviderRefs(providers []model.LLMProxyAdditionalProvider, orgID string) error {
+	for _, ap := range providers {
+		if _, err := i.resolveProviderUUID(ap.ID, orgID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // providerOpenAPISpec best-effort loads the fronted provider and returns its OpenAPI
@@ -172,6 +191,7 @@ func mapLLMProxySpecToConfig(spec dto.LLMProxyDeploymentSpec) model.LLMProxyConf
 		cfg.Vhost = &vhost
 	}
 	cfg.UpstreamAuth = defaultUpstreamAuthToNone(mapUpstreamAuthAPIToModel(spec.Provider.Auth))
+	cfg.AdditionalProviders = mapAdditionalProvidersSpecToModel(spec.AdditionalProviders)
 	// Security/rate-limiting are pushed as global (api-key-auth, api-level limits) and
 	// operation (resource-scoped limits) policies by the forward conversion; older gateways
 	// may still push legacy policies, so lift from all three.
@@ -181,4 +201,53 @@ func mapLLMProxySpecToConfig(spec dto.LLMProxyDeploymentSpec) model.LLMProxyConf
 	security, _, remaining := liftLLMPolicies(liftInput, false)
 	cfg.Security, cfg.Policies = security, remaining
 	return cfg
+}
+
+// mapAdditionalProvidersSpecToModel reverse-maps the gateway-pushed additional
+// providers — the inverse of the additionalProviders loop in
+// generateLLMProxyDeploymentYAML. Entries pushed without auth stay without auth.
+func mapAdditionalProvidersSpecToModel(in []dto.LLMProxyDeploymentAdditionalProvider) []model.LLMProxyAdditionalProvider {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMProxyAdditionalProvider, 0, len(in))
+	for _, ap := range in {
+		entry := model.LLMProxyAdditionalProvider{
+			ID:   ap.ID,
+			As:   ap.As,
+			Auth: mapUpstreamAuthAPIToModel(ap.Auth),
+		}
+		if ap.Transformer != nil {
+			entry.Transformer = &model.LLMProxyTransformer{
+				Type:    ap.Transformer.Type,
+				Version: ap.Transformer.Version,
+			}
+			if ap.Transformer.Params != nil {
+				entry.Transformer.Params = *ap.Transformer.Params
+			}
+		}
+		out = append(out, entry)
+	}
+	normalizeAdditionalProviderAuth(out)
+	return out
+}
+
+// withGatewayAdditionalProviderAuth returns the CP-owned additional providers with
+// each entry's auth replaced by the gateway-pushed auth for the same provider ID
+// (nil when the gateway has no matching entry). The CP-owned list itself — ids,
+// aliases, transformers — is left as it is.
+func withGatewayAdditionalProviderAuth(cpOwned, pushed []model.LLMProxyAdditionalProvider) []model.LLMProxyAdditionalProvider {
+	if len(cpOwned) == 0 {
+		return cpOwned
+	}
+	pushedAuth := make(map[string]*model.UpstreamAuth, len(pushed))
+	for _, ap := range pushed {
+		pushedAuth[ap.ID] = ap.Auth
+	}
+	out := make([]model.LLMProxyAdditionalProvider, len(cpOwned))
+	copy(out, cpOwned)
+	for i := range out {
+		out[i].Auth = pushedAuth[out[i].ID]
+	}
+	return out
 }
