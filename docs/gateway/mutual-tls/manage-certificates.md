@@ -159,7 +159,7 @@ The gateway refuses to delete an entry that a deployed API still depends on, and
 
 ## Configure the client certificate header
 
-Two gateway-wide settings in `config.toml` control how a relayed client certificate is read. They apply to every API and can't be set in an API definition:
+Two gateway-wide settings in [`config.toml`](index.md#gateway-settings) control how a relayed client certificate is read. They apply to every API and can't be set in an API definition:
 
 ```toml
 [router.downstream_tls.client_certificate_header]

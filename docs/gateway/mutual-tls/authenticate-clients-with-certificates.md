@@ -77,7 +77,7 @@ The reason is recorded in the gateway's logs and traces instead. The policy's `o
 
 The HTTPS listener decides whether to ask a connection for a client certificate during the TLS handshake, before any request arrives. It decides from the hostname the caller sends in the handshake, its server name indication (SNI).
 
-The `client_certificate_request` setting in `config.toml` chooses which connections are asked:
+The `client_certificate_request` setting in [`config.toml`](index.md#gateway-settings) chooses which connections are asked:
 
 ```toml
 [router.downstream_tls]
@@ -110,7 +110,7 @@ The gateway asks every connection instead, whatever its hostname, in these cases
 
 When an API's own hostname is the cause, its deploy response carries an `MTLS_HOSTNAME_NOT_SCOPED` warning on `spec.vhosts.main` or `spec.vhosts.sandbox`. The warning is raised only with `mtls_hostnames`.
 
-To refuse such APIs instead, turn on `mtls_requires_dedicated_hostname` in `config.toml`. It's off by default, and it applies only with `mtls_hostnames`:
+To refuse such APIs instead, turn on `mtls_requires_dedicated_hostname` in [`config.toml`](index.md#gateway-settings). It's off by default, and it applies only with `mtls_hostnames`:
 
 ```toml
 [router.downstream_tls]

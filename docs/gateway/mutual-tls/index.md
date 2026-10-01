@@ -58,6 +58,17 @@ Names are one namespace across all three usages, so an authority and an identity
 
 The policy and the `tls` block hold no certificates themselves. They refer to pool entries by name, and the gateway resolves those names against the current pool. That lets an administrator add an authority or rotate an identity without asking every developer to redeploy.
 
+## Gateway settings
+
+The gateway-wide settings these pages name live in `configs/config.toml` of the gateway distribution. The shipped file lists only the most common settings, so when a setting's section isn't there, add it. For example:
+
+```toml
+[router.downstream_tls]
+client_certificate_request = "all_connections"
+```
+
+A setting you don't add keeps its default. `configs/config-template.toml` lists every setting with its default. These settings are read at startup, so restart the gateway after changing them, for example with `docker compose restart`.
+
 ## In this section
 
 | Page | What it covers |

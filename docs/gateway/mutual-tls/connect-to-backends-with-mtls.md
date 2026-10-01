@@ -91,7 +91,7 @@ Upload the new certificate before the old one expires, and make sure the backend
 
 ## Present a default identity
 
-A gateway can present one certificate to every HTTPS backend whose definition names no `tls.identity`, so a fleet of backends that all require mutual TLS doesn't need an identity named in each API. This is on by default. To turn it off, set it to `false` in the gateway configuration:
+A gateway can present one certificate to every HTTPS backend whose definition names no `tls.identity`, so a fleet of backends that all require mutual TLS doesn't need an identity named in each API. This is on by default. To turn it off, set it to `false` in [`config.toml`](index.md#gateway-settings):
 
 ```toml
 [router.upstream.tls]
