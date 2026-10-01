@@ -135,7 +135,13 @@ A definition with a `tls` block gets its own connection pool. Connections that p
 
 ## When the connection fails
 
-If the TLS handshake with the backend fails, the caller receives an ordinary `503`, the same as for any backend that can't be reached. The response doesn't say why. Common causes are a backend that doesn't trust the gateway's identity, a backend certificate outside `trustedCAs`, and a host name mismatch.
+If the TLS handshake with the backend fails, the caller receives an ordinary `503`, the same as for any backend that can't be reached. The response doesn't say why. Its body is the same as for any unreachable backend:
+
+```
+upstream connect error or disconnect/reset before headers. reset reason: remote connection failure
+```
+
+Common causes are a backend that doesn't trust the gateway's identity, a backend certificate outside `trustedCAs`, and a host name mismatch.
 
 The router's access log records the reason. In the JSON access log format it's in the `upTlsFail` field.
 
