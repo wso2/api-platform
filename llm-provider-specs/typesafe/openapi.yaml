@@ -1,0 +1,367 @@
+openapi: 3.0.3
+info:
+  title: TypeSafe API
+  description: >-
+    TypeSafe's System One evaluation API. Evaluate a `state` against a map of
+    typed `questions` (Noul, Choice, Score) and get back one structured answer
+    per question, served by the Jev model family. Written from the public API
+    reference at [docs.typesafe.ai/api](https://docs.typesafe.ai/api) and the
+    [Models](https://docs.typesafe.ai/models) page; TypeSafe does not publish
+    an OpenAPI document of its own.
+  version: 1.0.0
+  x-marketplace-tags:
+    - name: AI
+      description: AI and LLM APIs
+servers:
+  - url: https://api.typesafe.ai
+security:
+  - bearerAuth: []
+paths:
+  /v1/systemone:
+    post:
+      summary: Evaluate questions against a state
+      description: >-
+        Evaluates the `state` against every question in `questions` in a single
+        call and returns one answer per question, keyed by the same ids.
+      operationId: evaluate
+      tags:
+        - evaluation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRequest'
+            example:
+              state: Help! My payouts have been failing for 3 days.
+              model: jev-latest
+              questions:
+                is_urgent:
+                  type: noul
+                  instructions: Does this convey urgency?
+      responses:
+        '200':
+          description: One answer per question.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+              example:
+                model: jev-1.13.0
+                answers:
+                  is_urgent:
+                    type: noul
+                    noul: 0.95
+                usage:
+                  input_tokens: 296
+                  output_tokens: 20
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '529':
+          $ref: '#/components/responses/Error'
+  /v1/models:
+    get:
+      summary: List models
+      description: >-
+        Returns the model names the account can send in the `model` field.
+        Versioned IDs such as `jev-1.13.0` are accepted whether or not they are
+        listed.
+      operationId: listModels
+      tags:
+        - models
+      responses:
+        '200':
+          description: The available models and aliases.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelList'
+        '401':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    RateLimited:
+      description: >-
+        The account exceeded its token-per-second or request-per-minute rate
+        limit. Retry with exponential backoff.
+      headers:
+        retry-after:
+          description: Seconds to wait before retrying, when TypeSafe sends it.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    Error:
+      description: >-
+        An error with a JSON body describing what went wrong. 401 is a missing
+        or invalid API key, 422 a request that failed validation, 429 a rate
+        limit, and 529 a temporarily overloaded service.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+  schemas:
+    StructuredValue:
+      description: A string, an object, or an array.
+      oneOf:
+        - type: string
+        - type: object
+          additionalProperties: true
+        - type: array
+          items: {}
+    NullableStructuredValue:
+      description: A string, an object, an array, or null.
+      oneOf:
+        - type: string
+          nullable: true
+        - type: object
+          additionalProperties: true
+        - type: array
+          items: {}
+    EvaluationRequest:
+      type: object
+      required:
+        - state
+        - model
+        - questions
+      properties:
+        state:
+          description: >-
+            The content to evaluate: a plain string, or structured data such as
+            a chat log or record.
+          allOf:
+            - $ref: '#/components/schemas/StructuredValue'
+        model:
+          type: string
+          description: >-
+            The model that handles the request, such as `jev-latest`,
+            `jev-preview`, or a pinned version like `jev-1.13.0`.
+          example: jev-latest
+        questions:
+          type: object
+          description: >-
+            A map of question ids you choose to typed questions. Answers come
+            back under the same ids.
+          additionalProperties:
+            $ref: '#/components/schemas/Question'
+    Question:
+      oneOf:
+        - $ref: '#/components/schemas/NoulQuestion'
+        - $ref: '#/components/schemas/ChoiceQuestion'
+        - $ref: '#/components/schemas/ScoreQuestion'
+      discriminator:
+        propertyName: type
+        mapping:
+          noul: '#/components/schemas/NoulQuestion'
+          choice: '#/components/schemas/ChoiceQuestion'
+          score: '#/components/schemas/ScoreQuestion'
+    NoulQuestion:
+      type: object
+      description: A yes/no question. Returns the probability the answer is yes.
+      required:
+        - type
+        - instructions
+      properties:
+        type:
+          type: string
+          enum:
+            - noul
+        instructions:
+          $ref: '#/components/schemas/StructuredValue'
+        criteria:
+          type: object
+          description: Optional descriptions of what a yes and a no mean.
+          properties:
+            'true':
+              description: What a yes (a value near 1) means.
+              allOf:
+                - $ref: '#/components/schemas/StructuredValue'
+            'false':
+              description: What a no (a value near 0) means.
+              allOf:
+                - $ref: '#/components/schemas/StructuredValue'
+    ChoiceQuestion:
+      type: object
+      description: Picks one option from a set you define.
+      required:
+        - type
+        - instructions
+        - criteria
+      properties:
+        type:
+          type: string
+          enum:
+            - choice
+        instructions:
+          $ref: '#/components/schemas/StructuredValue'
+        criteria:
+          type: object
+          description: >-
+            A map of option to rubric description, with at most 255 options.
+            Use null when an option needs no extra detail.
+          maxProperties: 255
+          additionalProperties:
+            $ref: '#/components/schemas/NullableStructuredValue'
+    ScoreQuestion:
+      type: object
+      description: Rates the state along an ordered rubric you define.
+      required:
+        - type
+        - instructions
+        - criteria
+      properties:
+        type:
+          type: string
+          enum:
+            - score
+        instructions:
+          $ref: '#/components/schemas/StructuredValue'
+        criteria:
+          type: array
+          description: >-
+            An ordered array of level descriptions. A Score should have at
+            least two levels; the API accepts up to 10.
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/StructuredValue'
+    EvaluationResponse:
+      type: object
+      required:
+        - model
+        - answers
+        - usage
+      properties:
+        model:
+          type: string
+          description: The versioned model ID that performed the evaluation.
+          example: jev-1.13.0
+        answers:
+          type: object
+          description: One answer per question, keyed by the question ids.
+          additionalProperties:
+            $ref: '#/components/schemas/Answer'
+        usage:
+          $ref: '#/components/schemas/Usage'
+    Answer:
+      oneOf:
+        - $ref: '#/components/schemas/NoulAnswer'
+        - $ref: '#/components/schemas/ChoiceAnswer'
+        - $ref: '#/components/schemas/ScoreAnswer'
+      discriminator:
+        propertyName: type
+        mapping:
+          noul: '#/components/schemas/NoulAnswer'
+          choice: '#/components/schemas/ChoiceAnswer'
+          score: '#/components/schemas/ScoreAnswer'
+    NoulAnswer:
+      type: object
+      required:
+        - type
+        - noul
+      properties:
+        type:
+          type: string
+          enum:
+            - noul
+        noul:
+          type: number
+          description: The answer on a scale from 0 (no) to 1 (yes).
+          minimum: 0
+          maximum: 1
+    ChoiceAnswer:
+      type: object
+      required:
+        - type
+        - choice
+        - probabilities
+        - confidence
+      properties:
+        type:
+          type: string
+          enum:
+            - choice
+        choice:
+          type: string
+          description: The highest-probability option.
+        probabilities:
+          type: object
+          description: Every option mapped to its probability; the values sum to 1.
+          additionalProperties:
+            type: number
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    ScoreAnswer:
+      type: object
+      required:
+        - type
+        - score
+        - legend
+        - probabilities
+        - confidence
+      properties:
+        type:
+          type: string
+          enum:
+            - score
+        score:
+          type: number
+          description: >-
+            The probability-weighted answer across the levels; it can land
+            between levels.
+        legend:
+          type: object
+          description: Each level number mapped back to its description.
+          additionalProperties:
+            type: string
+        probabilities:
+          type: object
+          description: Each level (string key) mapped to its probability.
+          additionalProperties:
+            type: number
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    Usage:
+      type: object
+      description: Token usage for the request.
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+    ModelList:
+      type: object
+      required:
+        - models
+      properties:
+        models:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - description
+              - release_date
+            properties:
+              name:
+                type: string
+                description: The model ID or alias, as accepted by the model field.
+              description:
+                type: string
+              release_date:
+                type: string
