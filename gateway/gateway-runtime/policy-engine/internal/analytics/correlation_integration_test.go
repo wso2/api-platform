@@ -25,11 +25,13 @@ import (
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
 
 // createLogEntryWithRequestID builds a minimal, valid HTTPAccessLogEntry carrying
@@ -182,4 +184,53 @@ func TestPrepareAnalyticEvent_NoExtProcStream(t *testing.T) {
 	assert.Equal(t, 200, event.ProxyResponseCode) // ALS-derived field always present
 	_, ok := event.Properties[dto.PropKeyRequestHeaders]
 	assert.False(t, ok, "no headers should be present when neither the store nor metadata has any")
+}
+
+// withAnalyticsData attaches an analytics_data struct to the entry's ext_proc
+// filter metadata, as Envoy echoes it back in the access-log entry.
+func withAnalyticsData(t *testing.T, entry *v3.HTTPAccessLogEntry, data map[string]any) *v3.HTTPAccessLogEntry {
+	t.Helper()
+	inner, err := structpb.NewStruct(data)
+	require.NoError(t, err)
+	entry.CommonProperties.Metadata = &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+		constants.ExtProcFilterName: {Fields: map[string]*structpb.Value{"analytics_data": structpb.NewStructValue(inner)}},
+	}}
+	return entry
+}
+
+// A stored body is preferred over metadata, and the hit consumes the entry so its
+// body is released as soon as the line is built.
+func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Collector.RequestBody = true
+	cfg.Collector.ResponseBody = true
+	a := NewAnalytics(cfg)
+	store := correlation.NewStoreWithBodyLimits(100, time.Minute, 1, 1024, 4096)
+	store.Put("req-body-1", correlation.Payload{RequestBody: "from-store"})
+	a.SetCorrelationStore(store)
+
+	entry := withAnalyticsData(t, createLogEntryWithRequestID("req-body-1"),
+		map[string]any{"response_payload": "large-from-metadata"})
+	event := a.prepareAnalyticEvent(entry)
+
+	assert.Equal(t, "from-store", event.Properties[dto.PropKeyRequestPayload])
+	assert.Equal(t, "large-from-metadata", event.Properties[dto.PropKeyResponsePayload], "metadata still serves bodies the store did not take")
+	_, stillThere := store.Get("req-body-1")
+	assert.False(t, stillThere, "entry consumed by the ALS read")
+}
+
+// The LLM proxy's internal loopback hop can share the outer call's request id;
+// it must only peek so the outer call's own line still finds the entry.
+func TestPrepareAnalyticEvent_LoopbackHopDoesNotConsumeEntry(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
+	store := correlation.NewStore(100, time.Minute, 1)
+	store.Put("req-shared", correlation.Payload{RequestHeaders: map[string]string{"h": "v"}})
+	a.SetCorrelationStore(store)
+
+	entry := withAnalyticsData(t, createLogEntryWithRequestID("req-shared"),
+		map[string]any{InternalLoopbackMetadataKey: "true"})
+	a.prepareAnalyticEvent(entry)
+
+	_, stillThere := store.Get("req-shared")
+	assert.True(t, stillThere)
 }

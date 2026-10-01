@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -676,10 +678,12 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes,
+		correlation.NewStore(100, time.Minute, 4))
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestIDFromHeader = true
 	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path: "/api/test",
 		SharedContext: &policy.SharedContext{
@@ -1249,4 +1253,64 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
 		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
+}
+
+// Without a correlation store (or without Envoy's x-request-id to key it by),
+// nothing would carry captured headers to the ALS side in-process, so they must
+// stay in the metadata sent to Envoy rather than be dropped from both paths.
+func TestBuildAnalyticsStruct_KeepsHeadersWhenNotCorrelatedInProcess(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	withStore := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes,
+		correlation.NewStore(100, time.Minute, 4))
+	withoutStore := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+
+	data := map[string]any{"request_headers": `{"a":"b"}`, "response_headers": `{"c":"d"}`}
+	for name, tc := range map[string]struct {
+		server         *ExternalProcessorServer
+		idFromHeader   bool
+		wantInMetadata bool
+	}{
+		"no store":             {withoutStore, true, true},
+		"generated request id": {withStore, false, true},
+		"correlated":           {withStore, true, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			execCtx := newPolicyExecutionContext(tc.server, "test-route", &registry.PolicyChain{})
+			execCtx.requestIDFromHeader = tc.idFromHeader
+			st, err := buildAnalyticsStruct(data, execCtx)
+			require.NoError(t, err)
+			_, req := st.GetFields()["request_headers"]
+			_, resp := st.GetFields()["response_headers"]
+			assert.Equal(t, tc.wantInMetadata, req)
+			assert.Equal(t, tc.wantInMetadata, resp)
+		})
+	}
+}
+
+// Bodies within the store's per-body limit leave Envoy metadata and are carried by
+// the correlation snapshot instead; larger ones stay in metadata. Every body must
+// take exactly one of the two paths.
+func TestBuildAnalyticsStruct_BodiesRoutedByStoreLimit(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes,
+		correlation.NewStoreWithBodyLimits(100, time.Minute, 1, 8, 1024))
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.requestIDFromHeader = true
+
+	data := map[string]any{"request_payload": "small", "response_payload": "this one is too large"}
+	for k, v := range data {
+		execCtx.analyticsMetadata[k] = v
+	}
+	st, err := buildAnalyticsStruct(data, execCtx)
+	require.NoError(t, err)
+
+	_, reqInMetadata := st.GetFields()["request_payload"]
+	assert.False(t, reqInMetadata, "small body goes in-process")
+	assert.Equal(t, "this one is too large", st.GetFields()["response_payload"].GetStringValue(), "large body stays in metadata")
+
+	snap := snapshotCorrelationPayload(execCtx)
+	assert.Equal(t, "small", snap.RequestBody)
+	assert.Empty(t, snap.ResponseBody, "a body left in metadata must not also be stored")
 }

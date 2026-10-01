@@ -324,7 +324,7 @@ func (s *ExternalProcessorServer) writeCorrelationEntry(execCtx *PolicyExecution
 		return
 	}
 
-	payload := snapshotHeaderPayload(execCtx.analyticsMetadata)
+	payload := snapshotCorrelationPayload(execCtx)
 	if payload.IsEmpty() {
 		// Header capture wasn't enabled (or no policy contributed anything) for
 		// this request -- nothing worth correlating.
