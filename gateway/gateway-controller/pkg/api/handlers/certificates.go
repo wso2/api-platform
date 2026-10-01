@@ -398,7 +398,7 @@ func (s *APIServer) ListCertificates(w http.ResponseWriter, r *http.Request, par
 		return
 	}
 
-	var certificates []CertificateResponse
+	certificates := []CertificateResponse{}
 	totalBytes := 0
 	now := time.Now()
 

@@ -290,6 +290,43 @@ func TestListCertificates_Success(t *testing.T) {
 	assert.Len(t, resp.Certificates, 2)
 }
 
+func TestListCertificates_NoMatchReturnsEmptyArray(t *testing.T) {
+	downstreamOnly := NewMockStorage()
+	downstreamOnly.certs = []*models.StoredCertificate{{
+		UUID:        "0000-cert-1-0000-000000000000",
+		Name:        "test-cert-1",
+		Certificate: []byte(validTestCert),
+		Usage:       models.CertificateUsageDownstream,
+		NotAfter:    time.Now().Add(365 * 24 * time.Hour),
+		CertCount:   1,
+	}}
+
+	tests := []struct {
+		name  string
+		store *MockStorage
+		query string
+	}{
+		{name: "empty store", store: NewMockStorage(), query: ""},
+		{name: "usage filter matching nothing", store: downstreamOnly, query: "?usage=identity"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			server := &APIServer{db: tt.store, logger: logger, systemConfig: certificateTestConfig(), clientAuthorities: testClientAuthorityPublisher(tt.store)}
+
+			req := httptest.NewRequest(http.MethodGet, "/certificates"+tt.query, nil)
+			w := httptest.NewRecorder()
+			newCertListHandler(server).ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			var raw map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+			assert.JSONEq(t, `[]`, string(raw["certificates"]))
+			assert.JSONEq(t, `0`, string(raw["totalCount"]))
+		})
+	}
+}
+
 func TestListCertificates_UnknownUsageFilter_Rejected(t *testing.T) {
 	for _, usage := range []string{"client", "backend"} {
 		t.Run(usage, func(t *testing.T) {
