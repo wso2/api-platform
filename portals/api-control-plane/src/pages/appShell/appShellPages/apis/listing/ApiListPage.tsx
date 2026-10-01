@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { AppPage } from '@/components/AppPage';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { ApiList } from './ApiList';
@@ -25,12 +26,14 @@ export function ApiListPage() {
   // stays disabled and `isPending` never clears, so the loading branch below
   // would sit there forever instead of the scope prompt showing.
   return (
-    <ScopeGate
-      prompt="APIs are created and managed at the project level."
-      requires="project"
-      to={routes.apis}
-    >
-      <ApiList />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="APIs are created and managed at the project level."
+        requires="project"
+        to={routes.apis}
+      >
+        <ApiList />
+      </ScopeGate>
+    </AppPage>
   );
 }

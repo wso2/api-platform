@@ -69,7 +69,9 @@ function renderPage() {
     </ApiScopeProvider>,
     {
       route: `/organizations/${ORG}/projects`,
-      scope: makeConsoleScope(),
+      // Org-level, like the route: no project handle, so the breadcrumb trail
+      // stays empty instead of naming a project the list is also showing.
+      scope: makeConsoleScope({ params: { orgHandle: ORG, projectHandler: undefined } }),
     },
   );
 }
