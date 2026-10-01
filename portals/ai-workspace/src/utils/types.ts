@@ -790,6 +790,15 @@ export interface MCPServer {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
+  /**
+   * MCP protocol versions this proxy declares it serves. The workspace never sets these
+   * — a proxy declaring none deploys on the gateway's own oldest supported version — but
+   * they must be declared here so an update round-trips them: the API's update is a full
+   * replace, so a PUT that omits them clears the stored list.
+   */
+  mcpSpecVersions?: string[];
+  /** What the upstream reported when it was last discovered. Informational: the API never sends it to a gateway. */
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
@@ -812,7 +821,12 @@ export interface CreateMCPServerRequest {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
-  mcpSpecVersion?: string;
+  /**
+   * What the upstream reported during the create wizard's discovery step. The deprecated
+   * singular mcpSpecVersion is deliberately absent: the API rejects a request carrying it
+   * alongside mcpSpecVersions, and leaving it undeclared makes that state unrepresentable.
+   */
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
@@ -959,6 +973,8 @@ export interface MCPServerInfoFetchResponse {
     name: string;
     version: string;
   };
+  /** MCP protocol versions the server reported. Absent when they could not be determined. */
+  supportedVersions?: string[];
   tools?: MCPServerTool[];
   resources?: MCPServerResource[];
   prompts?: MCPServerPrompt[];

@@ -19,19 +19,22 @@
 import { Card, CardContent, CodeBlock, PageTitle } from '@wso2/oxygen-ui';
 import { useParams } from 'react-router-dom';
 
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 import { FormattedMessage } from 'react-intl';
 
 export function RuntimeLogsPage() {
   return (
-    <ScopeGate
-      prompt="Runtime logs are streamed per API."
-      requires="api"
-      to={routes.apiObservabilityLogs}
-    >
-      <RuntimeLogs />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Runtime logs are streamed per API."
+        requires="api"
+        to={routes.apiObservabilityLogs}
+      >
+        <RuntimeLogs />
+      </ScopeGate>
+    </AppPage>
   );
 }
 

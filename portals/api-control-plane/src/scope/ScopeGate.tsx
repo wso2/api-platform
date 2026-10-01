@@ -26,7 +26,6 @@ import {
   FormControl,
   FormLabel,
   MenuItem,
-  PageContent,
   Select,
   Stack,
   Typography,
@@ -118,11 +117,7 @@ function ScopeSelection({
   const apis = apisQuery.data?.list ?? [];
 
   if (projectsError) {
-    return (
-      <PageContent>
-        <ErrorState message="Unable to load projects" />
-      </PageContent>
-    );
+    return <ErrorState message="Unable to load projects" />;
   }
   if (isLoading && projects.length === 0) {
     return <LoadingState label="Loading projects" />;

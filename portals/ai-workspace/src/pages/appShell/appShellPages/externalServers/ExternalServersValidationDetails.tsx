@@ -35,10 +35,13 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  CircleAlert,
   Copy,
   Eye,
   X,
 } from '@wso2/oxygen-ui-icons-react';
+import { alpha } from '@mui/material/styles';
+import type { Theme } from '@mui/material/styles';
 import Editor from '@monaco-editor/react';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 
@@ -47,7 +50,64 @@ type Props = {
   showHeader?: boolean;
   showInputSchema?: boolean;
   showSchemaInline?: boolean;
+  /**
+   * 'upstreamInfo' renders the server identity and supported MCP versions in a grouped
+   * block above a labelled capabilities section. It replaces the default header.
+   */
+  variant?: 'default' | 'upstreamInfo';
 };
+
+// Colours below are theme tokens rather than literals so the block reads correctly in
+// both palette modes. Fixed values picked against one surface disappear on the other.
+const overlineSx = {
+  fontSize: 12,
+  fontWeight: 500,
+  letterSpacing: '0.8px',
+  color: 'text.secondary',
+  textTransform: 'uppercase',
+} as const;
+
+const upstreamLabelSx = {
+  fontSize: 14,
+  fontWeight: 400,
+  color: 'text.secondary',
+} as const;
+
+const versionChipSx = {
+  fontSize: 13,
+  lineHeight: '20px',
+  borderColor: 'divider',
+  color: 'text.primary',
+} as const;
+
+const latestVersionChipSx = {
+  ...versionChipSx,
+  borderColor: 'primary.main',
+  color: 'primary.main',
+  bgcolor: (theme: Theme) => alpha(theme.palette.primary.main, 0.1),
+};
+
+// Warning-toned rather than neutral: a server naming no version is something to act on,
+// not a blank. Taken from the palette rather than the design's literal amber so it holds
+// up in both modes.
+const notDetectedChipSx = {
+  ...versionChipSx,
+  color: 'warning.main',
+  borderColor: (theme: Theme) => alpha(theme.palette.warning.main, 0.4),
+  bgcolor: (theme: Theme) => alpha(theme.palette.warning.main, 0.16),
+  '& .MuiChip-icon': { color: 'warning.main', ml: 0.25, mr: -0.25 },
+};
+
+
+// MCP revisions are ISO dates, so a plain string sort is chronological. Newest first,
+// and repeats are dropped — a server may name the same revision more than once.
+const sortVersionsNewestFirst = (versions: string[]): string[] =>
+  Array.from(new Set(versions)).sort((a, b) => b.localeCompare(a));
+
+// Some upstream servers already prefix their own version with "v"/"V" (e.g. "v1.0.0").
+// Strip any existing prefix before adding ours so the chip never doubles up ("V v1.0.0").
+const formatVersionLabel = (version: string): string =>
+  `v${version.trim().replace(/^v/i, '')}`;
 
 const truncateText = (value: string, maxLength = 35): string =>
   value.length > maxLength
@@ -96,6 +156,7 @@ export default function ExternalServersValidationDetails({
   showHeader = true,
   showInputSchema = false,
   showSchemaInline = false,
+  variant = 'default',
 }: Props): JSX.Element {
   const [openToolName, setOpenToolName] = useState<string | null>(null);
   const [openResourceUri, setOpenResourceUri] = useState<string | null>(null);
@@ -111,16 +172,108 @@ export default function ExternalServersValidationDetails({
   const hasResources = resources.length > 0;
   const hasPrompts = prompts.length > 0;
   const expandToolsByDefault = hasTools && !hasResources && !hasPrompts;
+  const isUpstreamInfo = variant === 'upstreamInfo';
+  // An empty list and an absent one mean different things: a probe ran and the server
+  // named no version, versus no probe ran at all. Only the first is worth reporting, and
+  // saying nothing in that case leaves the row looking broken rather than answered.
+  const versionsWereProbed = validationResult.supportedVersions !== undefined;
+  const supportedVersions = sortVersionsNewestFirst(
+    validationResult.supportedVersions ?? []
+  );
+  // A server may name itself, its version, both or neither, so each is rendered on its
+  // own terms. When it named nothing at all the card would claim an identity it never
+  // reported, so it is left out entirely.
+  const upstreamName = validationResult.serverInfo.name.trim();
+  const upstreamVersion = validationResult.serverInfo.version.trim();
+  const hasUpstreamIdentity = Boolean(upstreamName || upstreamVersion);
+  const hasUpstreamInfo = hasUpstreamIdentity || versionsWereProbed;
+  // Capability section titles (Tools/Resources/Prompts) match the left form's
+  // "Advanced Configurations" label style in the upstreamInfo variant only. The default
+  // variant keeps its heavier weight, and is what PolicyMapper and the overview's own
+  // capabilities panel still render.
+  const capabilityTitleSx = isUpstreamInfo
+    ? { fontSize: 15, fontWeight: 500, color: 'text.primary' }
+    : { fontWeight: 600 };
 
   const content = (
     <Stack spacing={2}>
-      {showHeader ? (
+      {isUpstreamInfo && hasUpstreamInfo ? (
+        <>
+          <Typography sx={overlineSx}>Upstream server info</Typography>
+          <Stack
+            spacing={1.5}
+            sx={(theme) => ({
+              p: 2,
+              borderRadius: 1.5,
+              border: '1px solid',
+              borderColor: alpha(theme.palette.primary.main, 0.25),
+              bgcolor: alpha(theme.palette.primary.main, 0.06),
+            })}
+          >
+            {hasUpstreamIdentity ? (
+              <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap">
+                {upstreamName ? (
+                  <Typography sx={{ fontSize: 15, fontWeight: 500 }}>
+                    {upstreamName}
+                  </Typography>
+                ) : null}
+                {upstreamVersion ? (
+                  <Chip
+                    label={formatVersionLabel(upstreamVersion)}
+                    size="small"
+                    variant="outlined"
+                    sx={versionChipSx}
+                  />
+                ) : null}
+              </Stack>
+            ) : null}
+            {versionsWereProbed ? (
+              <Stack spacing={1}>
+                <Typography sx={upstreamLabelSx}>
+                  Supported MCP versions
+                </Typography>
+                {supportedVersions.length > 0 ? (
+                  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                    {supportedVersions.map((version, index) => (
+                      <Chip
+                        key={version}
+                        label={index === 0 ? `${version} · Latest` : version}
+                        size="small"
+                        variant="outlined"
+                        sx={index === 0 ? latestVersionChipSx : versionChipSx}
+                      />
+                    ))}
+                  </Stack>
+                ) : (
+                  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                    <Chip
+                      icon={<CircleAlert size={14} />}
+                      label="Not detected"
+                      size="small"
+                      variant="outlined"
+                      sx={notDetectedChipSx}
+                    />
+                  </Stack>
+                )}
+              </Stack>
+            ) : null}
+          </Stack>
+        </>
+      ) : null}
+
+      {isUpstreamInfo && (hasTools || hasResources || hasPrompts) ? (
+        <Typography sx={{ ...overlineSx, ...(hasUpstreamInfo ? { mt: 0.5 } : {}) }}>
+          Capabilities
+        </Typography>
+      ) : null}
+
+      {showHeader && !isUpstreamInfo ? (
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             {validationResult.serverInfo.name}
           </Typography>
           <Chip
-            label={`V ${validationResult.serverInfo.version}`}
+            label={formatVersionLabel(validationResult.serverInfo.version)}
             size="small"
             variant="outlined"
           />
@@ -134,7 +287,7 @@ export default function ExternalServersValidationDetails({
         >
           <AccordionSummary expandIcon={<ChevronDown size={18} />}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontWeight: 600 }}>Tools</Typography>
+              <Typography sx={capabilityTitleSx}>Tools</Typography>
               <Chip
                 label={`Total: ${tools.length}`}
                 size="small"
@@ -262,7 +415,7 @@ export default function ExternalServersValidationDetails({
         <Accordion sx={{ borderRadius: 1, '&:before': { display: 'none' } }}>
           <AccordionSummary expandIcon={<ChevronDown size={18} />}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontWeight: 600 }}>Resources</Typography>
+              <Typography sx={capabilityTitleSx}>Resources</Typography>
               <Chip
                 label={`Total: ${resources.length}`}
                 size="small"
@@ -332,7 +485,7 @@ export default function ExternalServersValidationDetails({
         <Accordion sx={{ borderRadius: 1, '&:before': { display: 'none' } }}>
           <AccordionSummary expandIcon={<ChevronDown size={18} />}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography sx={{ fontWeight: 600 }}>Prompts</Typography>
+              <Typography sx={capabilityTitleSx}>Prompts</Typography>
               <Chip
                 label={`Total: ${prompts.length}`}
                 size="small"

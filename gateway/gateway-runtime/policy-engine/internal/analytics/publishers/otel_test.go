@@ -35,6 +35,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1579,6 +1580,32 @@ func TestBuildRecordHeaderAttributes(t *testing.T) {
 		}
 		if len(values) != len(want) || values[0] != want[0] {
 			t.Errorf("%s = %v, want %v", key, values, want)
+		}
+	}
+}
+
+// The policy engine produces headers in the multi-value format (e.g. when
+// analytics-header-filter is applied); each header must still map to one
+// attribute, keeping every value and skipping empty ones.
+func TestBuildRecordHeaderAttributesMultiValueFormat(t *testing.T) {
+	event := headerEventRaw(`{"X-Forwarded-For":["1.1.1.1","2.2.2.2"],"X-Tenant":["acme"],"X-Empty":[""],"X-None":[]}`)
+	event.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":["application/json"]}`
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string][]string{
+		"http.request.header.x-forwarded-for": {"1.1.1.1", "2.2.2.2"},
+		"http.request.header.x-tenant":        {"acme"},
+		"http.response.header.content-type":   {"application/json"},
+	} {
+		if values, ok := got[key].([]string); !ok || !slices.Equal(values, want) {
+			t.Errorf("%s = %#v, want %v", key, got[key], want)
+		}
+	}
+	for _, key := range []string{"http.request.header.x-empty", "http.request.header.x-none"} {
+		if _, present := got[key]; present {
+			t.Errorf("%s emitted for a header with no values", key)
 		}
 	}
 }

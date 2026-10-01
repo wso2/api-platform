@@ -38,13 +38,11 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 		return nil
 	}
 	id := p.Handle
-	handle := p.Handle
 	createdAt := p.CreatedAt
 	updatedAt := p.UpdatedAt
 
 	resp := &api.ApiPortalResponse{
 		Id:        &id,
-		Handle:    &handle,
 		Name:      p.Name,
 		Url:       p.URL,
 		CreatedAt: &createdAt,
@@ -61,11 +59,15 @@ func ModelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 	return resp
 }
 
-// modelToAPIPortalListItem projects a model.APIPortal onto the list-response item (metadata and shared key are excluded).
+// modelToAPIPortalListItem projects a model.APIPortal onto the list-response
+// item. The raw metadata blob and the shared key stay excluded; updatedAt is
+// surfaced so callers do not have to GET-per-row just to sort or render the
+// timestamp. Cloud-plugin-specific metadata fields (loginEnvironment) are not
+// projected here — see ListAPIPortalLoginEnvironments for the plugin-only
+// companion accessor that avoids leaking them onto the REST surface.
 func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	item := api.ApiPortalListItem{
 		Id:        p.Handle,
-		Handle:    p.Handle,
 		Name:      p.Name,
 		Url:       p.URL,
 		CreatedAt: p.CreatedAt,
@@ -73,6 +75,10 @@ func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	if p.Description != "" {
 		desc := p.Description
 		item.Description = &desc
+	}
+	if !p.UpdatedAt.IsZero() {
+		u := p.UpdatedAt
+		item.UpdatedAt = &u
 	}
 	return item
 }

@@ -19,6 +19,14 @@
 import { createContext, useContext } from 'react';
 import type { PlatformRole } from '../auth/permissions';
 
+/** Optional hints forwarded to the IDP on an OIDC login. */
+export type LoginOptions = {
+  /** Federated identity provider id, e.g. `google`. */
+  fidp?: string;
+  /** Account to prefill at the provider, typically an email address. */
+  loginHint?: string;
+};
+
 export interface AppOrg {
   id: string;
   name: string;
@@ -62,7 +70,15 @@ export interface AppAuthContextType {
   // need the raw token always get the live value.
   getAccessToken: () => Promise<string | null>;
   hasPermission: (scope: string) => boolean;
-  login: () => Promise<void>;
+  /**
+   * Starts a login. In OIDC mode this is a full-page redirect through the BFF.
+   *
+   * `fidp` names a federated identity provider and `loginHint` an account; both are
+   * forwarded to the IDP (allowlisted by the BFF) so a login page can offer its own
+   * provider buttons and skip the IDP's chooser. Omit them for the default flow,
+   * where the IDP asks.
+   */
+  login: (options?: LoginOptions) => Promise<void>;
   logout: () => Promise<void>;
 }
 

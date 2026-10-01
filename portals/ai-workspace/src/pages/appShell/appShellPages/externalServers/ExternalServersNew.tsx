@@ -190,6 +190,9 @@ export default function ExternalServersNew(): JSX.Element {
           name: response.serverInfo?.name ?? '',
           version: response.serverInfo?.version ?? '',
         },
+        // Coerced so the display can tell "the probe found none" from "no probe ran".
+        // The API omits the field in both cases; only this side knows one happened.
+        supportedVersions: response.supportedVersions ?? [],
         tools: (response.tools ?? []) as unknown as EndpointValidationResponse['tools'],
         resources: (response.resources ?? []) as unknown as EndpointValidationResponse['resources'],
         prompts: (response.prompts ?? []) as unknown as EndpointValidationResponse['prompts'],
@@ -262,6 +265,16 @@ export default function ExternalServersNew(): JSX.Element {
       }
     }
 
+    // Trimmed and de-duplicated because this is relayed verbatim from whatever the
+    // upstream reported, and the API stores it without validating anything.
+    const discoveredSpecVersions = Array.from(
+      new Set(
+        (validationResult?.supportedVersions ?? [])
+          .map((version) => version.trim())
+          .filter(Boolean)
+      )
+    );
+
     const payload: CreateMCPServerRequest = {
       id: generateServerId(serverName),
       displayName: serverName.trim(),
@@ -287,7 +300,12 @@ export default function ExternalServersNew(): JSX.Element {
             : {}),
         },
       },
-      mcpSpecVersion: '2025-06-18',
+      // Record what the upstream said it speaks, and declare nothing on the proxy's own
+      // behalf: a proxy that declares no version deploys on the gateway's oldest
+      // supported one, which is what the workspace pinned by hand until now.
+      ...(discoveredSpecVersions.length > 0
+        ? { upstreamMcpSpecVersions: discoveredSpecVersions }
+        : {}),
       kind: 'Mcp',
       policies: [],
       capabilities: {
@@ -653,6 +671,7 @@ export default function ExternalServersNew(): JSX.Element {
             <Grid size={{ xs: 12, md: 7 }}>
               <ExternalServersValidationDetails
                 validationResult={validationResult}
+                variant="upstreamInfo"
               />
             </Grid>
           ) : null}

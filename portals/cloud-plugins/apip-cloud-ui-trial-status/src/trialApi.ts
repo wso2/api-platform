@@ -19,12 +19,23 @@
 
 import type { BillingOrganization } from './types';
 
-const TRIAL_URL = '/proxy/billing/organization?product=api-platform';
+/**
+ * The BFF's same-origin billing route, resolved against the portal's Vite `base`.
+ *
+ * The path cannot be a fixed "/proxy/..." string: each portal mounts the BFF under its
+ * own base, so the console serves it at "/proxy/billing" while the AI Workspace serves
+ * it at "/ai-workspace/proxy/billing". A root-relative path is correct only in the
+ * console and 404s everywhere else.
+ */
+export function billingOrganizationUrl(viteBase = import.meta.env.BASE_URL): string {
+  const base = String(viteBase ?? '/').replace(/\/$/, '');
+  return `${base}/proxy/billing/organization?product=api-platform`;
+}
 
 export async function getBillingOrganization(
   signal?: AbortSignal
 ): Promise<BillingOrganization> {
-  const response = await fetch(TRIAL_URL, {
+  const response = await fetch(billingOrganizationUrl(), {
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
     signal,

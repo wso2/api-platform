@@ -20,6 +20,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -79,6 +80,33 @@ type mockAPIPortalRepository struct {
 
 	deleteCalledWith [2]string
 	deleteErr        error
+
+	// Status-family capture + canned returns.
+	updateStatusCalledWith updateStatusCall
+	updateStatusErr        error
+
+	getStatusCalledWith [2]string
+	getStatusResult     string
+	getStatusErr        error
+
+	listStatusesCalledWith string
+	listStatusesResult     map[string]string
+	listStatusesErr        error
+
+	listLoginEnvsCalledWith string
+	listLoginEnvsResult     map[string]string
+	listLoginEnvsErr        error
+
+	listByStatusCalledWith string
+	listByStatusResult     []*model.APIPortal
+	listByStatusErr        error
+}
+
+type updateStatusCall struct {
+	PortalID  string
+	OrgUUID   string
+	UpdatedBy string
+	Status    string
 }
 
 // canned unique-violation error — matches IsUniqueViolation's SQLite substring.
@@ -116,6 +144,35 @@ func (m *mockAPIPortalRepository) Update(portal *model.APIPortal) error {
 func (m *mockAPIPortalRepository) Delete(portalID, orgUUID string) error {
 	m.deleteCalledWith = [2]string{portalID, orgUUID}
 	return m.deleteErr
+}
+
+// Status-family stubs; each tests specific behaviour by populating the fields it
+// needs. Unset returns match the zero-value semantics real callers expect.
+func (m *mockAPIPortalRepository) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
+	m.updateStatusCalledWith = updateStatusCall{
+		PortalID: portalID, OrgUUID: orgUUID, UpdatedBy: updatedBy, Status: status,
+	}
+	return m.updateStatusErr
+}
+
+func (m *mockAPIPortalRepository) GetStatusByHandle(handle, orgUUID string) (string, error) {
+	m.getStatusCalledWith = [2]string{handle, orgUUID}
+	return m.getStatusResult, m.getStatusErr
+}
+
+func (m *mockAPIPortalRepository) ListStatusesByOrg(orgUUID string) (map[string]string, error) {
+	m.listStatusesCalledWith = orgUUID
+	return m.listStatusesResult, m.listStatusesErr
+}
+
+func (m *mockAPIPortalRepository) ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error) {
+	m.listLoginEnvsCalledWith = orgUUID
+	return m.listLoginEnvsResult, m.listLoginEnvsErr
+}
+
+func (m *mockAPIPortalRepository) ListByStatus(status string) ([]*model.APIPortal, error) {
+	m.listByStatusCalledWith = status
+	return m.listByStatusResult, m.listByStatusErr
 }
 
 type mockAPIPortalOrgRepository struct {
@@ -233,7 +290,7 @@ func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAPIPortal: %v", err)
 	}
-	if got == nil || derefStr(got.Handle) != "acme" || got.Name != "Acme Portal" {
+	if got == nil || derefStr(got.Id) != "acme" || got.Name != "Acme Portal" {
 		t.Errorf("returned portal wrong shape: %+v", got)
 	}
 	if portalRepo.createCapturedInput == nil {
@@ -466,7 +523,7 @@ func TestAPIPortalService_CreateAPIPortal_ResponseDoesNotEchoSharedKey(t *testin
 	// We also assert Handle / Url / metadata to catch a scenario where the
 	// entire response somehow gets replaced with a struct that DOES have a
 	// SharedKey field but leaks it via marshalling.
-	if derefStr(got.Handle) != "acme" || got.Url != "https://acme.example.com" {
+	if derefStr(got.Id) != "acme" || got.Url != "https://acme.example.com" {
 		t.Errorf("response shape wrong: %+v", got)
 	}
 }
@@ -484,7 +541,7 @@ func TestAPIPortalService_GetAPIPortal_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAPIPortal: %v", err)
 	}
-	if got == nil || derefStr(got.Handle) != portal.Handle {
+	if got == nil || derefStr(got.Id) != portal.Handle {
 		t.Errorf("returned portal wrong shape: %+v", got)
 	}
 }
@@ -569,8 +626,8 @@ func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 	if got.Name != "Renamed" || derefStr(got.Description) != "new description" {
 		t.Errorf("mutable fields not applied: %+v", got)
 	}
-	if derefStr(got.Handle) != "acme" || derefStr(got.Id) != "acme" {
-		t.Errorf("immutable fields changed: %+v", got)
+	if derefStr(got.Id) != "acme" {
+		t.Errorf("immutable id changed: %+v", got)
 	}
 	if portalRepo.updateCapturedInput == nil {
 		t.Fatal("repository Update not called")
@@ -785,5 +842,238 @@ func TestAPIPortalAuthRegistry_GetRetriesAfterConcurrentInvalidate(t *testing.T)
 	reg.mu.Unlock()
 	if !cached {
 		t.Error("Get did not cache the retried provider; every subsequent Get would refetch")
+	}
+}
+
+// --- Status-family service tests ------------------------------------------------
+
+func TestAPIPortalService_CreateAPIPortal_WritesActiveByDefault(t *testing.T) {
+	// The public CreateAPIPortal wraps CreateAPIPortalWithStatus with the
+	// default active status. Regressions here would either drop pending back
+	// into the OSS-native path or change the default the OSS REST path writes.
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortal(req, "org-1", "tester"); err != nil {
+		t.Fatalf("CreateAPIPortal: %v", err)
+	}
+	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusActive {
+		t.Errorf("CreateAPIPortal must persist status=active; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatus_HonoursCallerStatus(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	if _, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", constants.APIPortalStatusPending); err != nil {
+		t.Fatalf("CreateAPIPortalWithStatus: %v", err)
+	}
+	if got := portalRepo.createCapturedInput; got == nil || got.Status != constants.APIPortalStatusPending {
+		t.Errorf("caller-supplied status must land on the persisted row; got %+v", got)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortalWithStatus_RejectsUnknownStatus(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	orgRepo := &mockAPIPortalOrgRepository{result: &model.Organization{}}
+	svc := newTestAPIPortalService(t, portalRepo, orgRepo, &mockAPIPortalAuditRepository{})
+
+	req := testCreateReq{Handle: "acme", Name: "Acme", URL: "https://acme.example.com", SharedKey: testSharedKeyHex}.build()
+	_, err := svc.CreateAPIPortalWithStatus(req, "org-1", "tester", "bogus")
+	if err == nil {
+		t.Fatal("bogus status must be rejected before any repo call")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("want ValidationFailed error, got %T %v", err, err)
+	}
+	if portalRepo.createCapturedInput != nil {
+		t.Error("Create must not run when status validation fails")
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortalStatus_HappyPath(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		getResult: &model.APIPortal{ID: "portal-uuid", Handle: "acme"},
+	}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	if err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusActive); err != nil {
+		t.Fatalf("UpdateAPIPortalStatus: %v", err)
+	}
+	got := portalRepo.updateStatusCalledWith
+	if got.PortalID != "portal-uuid" || got.OrgUUID != "org-1" ||
+		got.UpdatedBy != "poller" || got.Status != constants.APIPortalStatusActive {
+		t.Errorf("wrong args threaded to repo: %+v", got)
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortalStatus_RejectsUnknownStatus(t *testing.T) {
+	// Guard must run before we bother reading the row; otherwise a bogus
+	// status turns into a repo call that then rejects it, wasting a round-trip
+	// and leaking the noise past the validation layer.
+	portalRepo := &mockAPIPortalRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", "bogus")
+	if err == nil {
+		t.Fatal("bogus status must be rejected")
+	}
+	if portalRepo.updateStatusCalledWith != (updateStatusCall{}) {
+		t.Error("repo must not be hit when status validation fails")
+	}
+}
+
+// UpdateAPIPortalStatus rejects a pending target so the docstring's
+// pending -> terminal contract is enforced. A no-op rewrite would leave the
+// row polling-eligible and record a misleading audit event; the repo must not
+// be hit at all when the guard trips.
+func TestAPIPortalService_UpdateAPIPortalStatus_RejectsPendingTarget(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusPending)
+	if err == nil {
+		t.Fatal("pending target must be rejected")
+	}
+	if portalRepo.updateStatusCalledWith != (updateStatusCall{}) {
+		t.Error("repo must not be hit when the pending-target guard trips")
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortalStatus_NotFound(t *testing.T) {
+	// GetByHandleAndOrgID returns nil, nil for missing rows (per repo contract);
+	// the service must surface this as APIPortalNotFound rather than a repo error
+	// or a silent no-op update.
+	portalRepo := &mockAPIPortalRepository{getResult: nil}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	err := svc.UpdateAPIPortalStatus("acme", "org-1", "poller", constants.APIPortalStatusActive)
+	if err == nil {
+		t.Fatal("want APIPortalNotFound when row is missing")
+	}
+	if !apperror.APIPortalNotFound.Is(err) {
+		t.Errorf("want APIPortalNotFound, got %T %v", err, err)
+	}
+}
+
+func TestAPIPortalService_GetAPIPortalStatus_HappyPath(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getStatusResult: constants.APIPortalStatusFailed}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	got, err := svc.GetAPIPortalStatus("acme", "org-1")
+	if err != nil {
+		t.Fatalf("GetAPIPortalStatus: %v", err)
+	}
+	if got != constants.APIPortalStatusFailed {
+		t.Errorf("want %q, got %q", constants.APIPortalStatusFailed, got)
+	}
+	if portalRepo.getStatusCalledWith != [2]string{"acme", "org-1"} {
+		t.Errorf("repo not called with (handle, orgUUID); got %+v", portalRepo.getStatusCalledWith)
+	}
+}
+
+func TestAPIPortalService_GetAPIPortalStatus_NotFound(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getStatusErr: sql.ErrNoRows}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	_, err := svc.GetAPIPortalStatus("acme", "org-1")
+	if !apperror.APIPortalNotFound.Is(err) {
+		t.Errorf("sql.ErrNoRows must be mapped to APIPortalNotFound; got %T %v", err, err)
+	}
+}
+
+func TestAPIPortalService_ListAPIPortalStatuses_PassthroughAndScope(t *testing.T) {
+	// One-DB-call projection: service is a thin wrapper around the repo, so
+	// the test asserts the repo is scoped to the caller's org and the map
+	// is returned unmodified.
+	portalRepo := &mockAPIPortalRepository{
+		listStatusesResult: map[string]string{
+			"alpha": constants.APIPortalStatusActive,
+			"beta":  constants.APIPortalStatusPending,
+		},
+	}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	got, err := svc.ListAPIPortalStatuses("org-1")
+	if err != nil {
+		t.Fatalf("ListAPIPortalStatuses: %v", err)
+	}
+	if portalRepo.listStatusesCalledWith != "org-1" {
+		t.Errorf("repo scope wrong: %q", portalRepo.listStatusesCalledWith)
+	}
+	if len(got) != 2 || got["alpha"] != constants.APIPortalStatusActive || got["beta"] != constants.APIPortalStatusPending {
+		t.Errorf("map contents wrong: %+v", got)
+	}
+}
+
+// ListAPIPortalLoginEnvironments is a thin wrapper over the repo; the test
+// pins that repo scope threads correctly and the returned map is unmodified.
+func TestAPIPortalService_ListAPIPortalLoginEnvironments_PassthroughAndScope(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{
+		listLoginEnvsResult: map[string]string{
+			"alpha": "production",
+			"beta":  "staging",
+		},
+	}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	got, err := svc.ListAPIPortalLoginEnvironments("org-1")
+	if err != nil {
+		t.Fatalf("ListAPIPortalLoginEnvironments: %v", err)
+	}
+	if portalRepo.listLoginEnvsCalledWith != "org-1" {
+		t.Errorf("repo scope wrong: %q", portalRepo.listLoginEnvsCalledWith)
+	}
+	if len(got) != 2 || got["alpha"] != "production" || got["beta"] != "staging" {
+		t.Errorf("map contents wrong: %+v", got)
+	}
+}
+
+func TestAPIPortalService_ListAPIPortalsByStatus_ProjectsIdentity(t *testing.T) {
+	// The service's job is to strip the internal *model.APIPortal down to the
+	// APIPortalIdentity shape the plugin needs. The test pins that projection:
+	// exactly the four fields, sourced from the right model attributes.
+	portalRepo := &mockAPIPortalRepository{
+		listByStatusResult: []*model.APIPortal{
+			{OrganizationID: "org-a", Handle: "p-1", URL: "https://p-1.example.com", Status: constants.APIPortalStatusPending},
+			{OrganizationID: "org-b", Handle: "p-2", URL: "https://p-2.example.com", Status: constants.APIPortalStatusPending},
+		},
+	}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	got, err := svc.ListAPIPortalsByStatus(constants.APIPortalStatusPending)
+	if err != nil {
+		t.Fatalf("ListAPIPortalsByStatus: %v", err)
+	}
+	if portalRepo.listByStatusCalledWith != constants.APIPortalStatusPending {
+		t.Errorf("wrong status forwarded to repo: %q", portalRepo.listByStatusCalledWith)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(got))
+	}
+	if got[0].OrgID != "org-a" || got[0].Handle != "p-1" ||
+		got[0].URL != "https://p-1.example.com" || got[0].Status != constants.APIPortalStatusPending {
+		t.Errorf("row 0 projection wrong: %+v", got[0])
+	}
+	if got[1].OrgID != "org-b" {
+		t.Errorf("row 1 org wrong: %+v", got[1])
+	}
+}
+
+func TestAPIPortalService_ListAPIPortalsByStatus_RejectsUnknownStatus(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+
+	_, err := svc.ListAPIPortalsByStatus("bogus")
+	if err == nil {
+		t.Fatal("bogus status must be rejected before the repo call")
+	}
+	if portalRepo.listByStatusCalledWith != "" {
+		t.Error("repo must not be hit when status validation fails")
 	}
 }
