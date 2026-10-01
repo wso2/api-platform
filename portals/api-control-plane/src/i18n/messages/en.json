@@ -2105,6 +2105,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
     "defaultMessage": "Deprecated on {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerTitle": {
+    "defaultMessage": "Deprecated version",
+    "description": "Banner over the read-only fields when the live listing is flagged as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
+    "defaultMessage": "v{version} · edited {time}",
+    "description": "Banner byline. {version} is user-supplied; {time} is a relative time such as \"5 minutes ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerTitle": {
+    "defaultMessage": "Draft version",
+    "description": "Banner over the fields being edited: this is the working copy, not what is live."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing": {
     "defaultMessage": "Unable to save the draft. Your changes are still on this page. Try again."
   },
@@ -2122,6 +2134,14 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published": {
     "defaultMessage": "Published to {portalName}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta": {
+    "defaultMessage": "v{version} · updated {time}",
+    "description": "Banner byline. {version} is user-supplied; {time} is a relative time such as \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerTitle": {
+    "defaultMessage": "Published version",
+    "description": "Banner over the read-only fields showing what is live on the portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
     "defaultMessage": "{apiName} · v{version}",
@@ -2191,6 +2211,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenTitle": {
     "defaultMessage": "You don’t have permission"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.draft": {
+    "defaultMessage": "Draft",
+    "description": "Button showing the editable working copy of the listing. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.groupLabel": {
+    "defaultMessage": "Version to show",
+    "description": "Accessible name for the Draft / Published buttons that choose which version of the listing is on screen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.published": {
+    "defaultMessage": "Published",
+    "description": "Button showing the live, read-only version of the listing. Adjective."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
   },
@@ -2208,6 +2240,12 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.error": {
+    "defaultMessage": "Unable to load the published specification."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
+    "defaultMessage": "Loading the published specification"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
     "defaultMessage": "Edit"

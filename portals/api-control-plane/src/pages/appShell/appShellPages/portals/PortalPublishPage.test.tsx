@@ -888,3 +888,73 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
 });
+
+describe('PortalPublishPage — viewing the published version', () => {
+  const published = aPublication({ displayName: 'Published Name', version: '2.0.0' });
+  const draft = aPublicationDraftDetails({ displayName: 'Draft Name', version: '3.0.0' });
+
+  it('cannot move to Published while nothing is live', async () => {
+    servePublicationState({ draft });
+
+    renderPage();
+
+    await screen.findByDisplayValue('Draft Name');
+    expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Draft version')).toBeInTheDocument();
+  });
+
+  it('shows the live details read-only from what is already loaded, and brings the draft back untouched', async () => {
+    const publicationRequests = recorder();
+    servePublicationState({ draft, publication: published });
+    server.use(resource(PUBLICATION_PATH, published, { record: publicationRequests }));
+
+    const { user } = renderPage();
+
+    const draftName = await screen.findByDisplayValue('Draft Name');
+    await user.type(draftName, ' edited');
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    expect(screen.getByRole('button', { name: 'Published' })).toHaveAttribute('aria-pressed', 'true');
+    const publishedName = screen.getByDisplayValue('Published Name');
+    expect(publishedName).toHaveAttribute('readonly');
+    expect(screen.getByText('Published version')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+
+    expect(screen.getByDisplayValue('Draft Name edited')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeInTheDocument();
+    // Neither flip asked the server for anything the page already held.
+    expect(publicationRequests.count()).toBe(1);
+  });
+
+  it('reads the published definition once, on first view, and reuses it on later flips', async () => {
+    const definitionRecorders = servePublicationState({ draft, publication: published });
+    server.use(
+      resource(DRAFT_DEFINITION_PATH, { openapi: '3.0.3', info: { title: 'Draft Name' }, paths: {} }),
+      resource(
+        PUBLICATION_DEFINITION_PATH,
+        { openapi: '3.0.3', info: { title: 'Published Name' }, paths: {} },
+        { record: definitionRecorders.publicationDefinition },
+      ),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Draft Name');
+    await user.click(screen.getByRole('tab', { name: 'Specification' }));
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    const editor = await screen.findByLabelText(/API definition/);
+    await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('Published Name'));
+    expect(editor).toHaveAttribute('readonly');
+    expect(definitionRecorders.publicationDefinition.count()).toBe(1);
+
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    expect(((await screen.findByLabelText(/API definition/)) as HTMLTextAreaElement).value).toContain('Published Name');
+    expect(definitionRecorders.publicationDefinition.count()).toBe(1);
+  });
+});
