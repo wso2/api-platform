@@ -85,7 +85,7 @@ export function PublicationVersionToggle({
         <Pencil size={16} />
         <FormattedMessage {...messages.draft} />
       </ToggleButton>
-      <ToggleButton disabled={!publishedAvailable} sx={{ gap: 1 }} value="published">
+      <ToggleButton disabled={disabled || !publishedAvailable} sx={{ gap: 1 }} value="published">
         <Eye size={16} />
         <FormattedMessage {...messages.published} />
       </ToggleButton>

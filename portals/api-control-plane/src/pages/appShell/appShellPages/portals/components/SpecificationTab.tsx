@@ -112,7 +112,7 @@ export function SpecificationTab({
     const parsed = parseSpecText(text, format);
     // A buffer that doesn't parse can't be re-printed; only the language
     // switches, and the error is reported when it is saved.
-    if (parsed.status === 'parsed') onChange?.(serializeSpec(parsed.spec, next));
+    if (parsed.status === 'parsed' && !readOnly) onChange?.(serializeSpec(parsed.spec, next));
     onFormatChange(next);
   };
 

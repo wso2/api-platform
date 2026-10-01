@@ -250,4 +250,39 @@ describe('ApiPortalPublicationsList', () => {
     expect(await screen.findByText('Unable to load portals')).toBeInTheDocument();
     expect(screen.queryByText('You don’t have permission')).not.toBeInTheDocument();
   });
+
+  it('shows when the publication last changed, beside its status', async () => {
+    servePublications([
+      aPublicationSummary({
+        status: 'PUBLISHED',
+        publicationUpdatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('2 days ago')).toBeInTheDocument();
+  });
+
+  it('names a portal by its handle when it has no display name', async () => {
+    servePublications([aPublicationSummary({ apiPortalId: 'fallback-handle', apiPortalName: '' })]);
+
+    renderPage();
+
+    expect(await screen.findByText('fallback-handle')).toBeInTheDocument();
+  });
+
+  it('marks each card with the developer portal logo', async () => {
+    servePublications([
+      aPublicationSummary({ apiPortalId: 'one' }),
+      aPublicationSummary({ apiPortalId: 'two' }),
+    ]);
+
+    const { container } = renderPage();
+
+    await screen.findAllByRole('link', { name: 'Go to publish' });
+    const logos = container.querySelectorAll('img');
+    expect(logos).toHaveLength(2);
+    logos.forEach((logo) => expect(logo.getAttribute('src')).toContain('devportal-logo'));
+  });
 });
