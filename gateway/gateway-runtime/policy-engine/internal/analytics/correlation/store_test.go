@@ -25,6 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
@@ -173,4 +176,83 @@ func TestStore_ConcurrentPutGet(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
+}
+
+func TestStore_Take_RemovesEntryAndFreesSlot(t *testing.T) {
+	s := NewStore(1, time.Minute, 1)
+	s.Put("a", Payload{RequestHeaders: map[string]string{"h": "1"}})
+
+	got, ok := s.Take("a")
+	require.True(t, ok)
+	assert.Equal(t, "1", got.RequestHeaders["h"])
+
+	_, ok = s.Get("a")
+	assert.False(t, ok, "taken entry must be gone")
+
+	// The single ring slot was freed by Take, so this write must not count as an
+	// eviction of "a" and must not disturb a different, live key.
+	s.Put("b", Payload{RequestHeaders: map[string]string{"h": "2"}})
+	got, ok = s.Get("b")
+	require.True(t, ok)
+	assert.Equal(t, "2", got.RequestHeaders["h"])
+}
+
+func TestStore_Get_DoesNotRemove(t *testing.T) {
+	s := NewStore(10, time.Minute, 1)
+	s.Put("a", Payload{RequestBody: "x"})
+	_, ok := s.Get("a")
+	require.True(t, ok)
+	_, ok = s.Get("a")
+	assert.True(t, ok, "Get only peeks")
+}
+
+func TestStore_BodyBudget_EvictsOldestBodies(t *testing.T) {
+	// One shard, room for 100 entries but only 10 body bytes.
+	s := NewStoreWithBodyLimits(100, time.Minute, 1, 10, 10)
+	s.Put("old", Payload{RequestBody: "123456"})
+	s.Put("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}})
+	s.Put("new", Payload{RequestBody: "abcdef"})
+
+	_, ok := s.Get("old")
+	assert.False(t, ok, "oldest body evicted to fit the budget")
+	got, ok := s.Get("new")
+	require.True(t, ok)
+	assert.Equal(t, "abcdef", got.RequestBody)
+	_, ok = s.Get("headers-only")
+	assert.True(t, ok, "entries without bodies are not charged and not evicted for bytes")
+
+	sh := s.shards[0]
+	assert.Equal(t, int64(6), sh.bodyBytes)
+}
+
+func TestStore_BodyBudget_TakeReleasesBytes(t *testing.T) {
+	s := NewStoreWithBodyLimits(100, time.Minute, 1, 10, 10)
+	s.Put("a", Payload{RequestBody: "123456"})
+	_, ok := s.Take("a")
+	require.True(t, ok)
+	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
+	s.Put("b", Payload{RequestBody: "abcdef"})
+	_, ok = s.Get("b")
+	assert.True(t, ok)
+}
+
+func TestStore_BodyBudget_UpdateInPlaceAndRingEvictionAccounting(t *testing.T) {
+	s := NewStoreWithBodyLimits(2, time.Minute, 1, 100, 100)
+	s.Put("a", Payload{RequestBody: "1234"})
+	s.Put("a", Payload{RequestBody: "12"}) // update in place
+	assert.Equal(t, int64(2), s.shards[0].bodyBytes)
+	s.Put("b", Payload{RequestBody: "123"})
+	s.Put("c", Payload{RequestBody: "1"}) // ring of 2 wraps and evicts "a"
+	assert.Equal(t, int64(4), s.shards[0].bodyBytes)
+	_, ok := s.Get("a")
+	assert.False(t, ok)
+}
+
+func TestStore_MaxPayloadBytes(t *testing.T) {
+	assert.Equal(t, 0, NewStore(10, time.Minute, 1).MaxPayloadBytes(), "plain store carries no bodies")
+	assert.Equal(t, 0, (*Store)(nil).MaxPayloadBytes())
+	assert.Equal(t, 0, NewStoreWithBodyLimits(10, time.Minute, 1, 100, 0).MaxPayloadBytes(), "no budget, no bodies")
+	assert.Equal(t, 100, NewStoreWithBodyLimits(10, time.Minute, 1, 100, 1000).MaxPayloadBytes())
+	// 4 shards x 50 bytes: a body larger than one shard's budget is capped.
+	assert.Equal(t, 50, NewStoreWithBodyLimits(10, time.Minute, 4, 100, 200).MaxPayloadBytes())
 }

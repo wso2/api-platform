@@ -322,7 +322,13 @@ func (c *Analytics) GetFaultType() FaultCategory {
 // as a no-route 404 -- TTL-expired, or evicted under capacity pressure). None of
 // these are errors: a miss only ever degrades headers to "unavailable" on this
 // one line, and prepareAnalyticEvent never drops the line itself.
-func (c *Analytics) lookupCorrelationPayload(logEntry *v3.HTTPAccessLogEntry) (correlation.Payload, bool) {
+//
+// A hit removes the entry (each request's access-log entry is processed once),
+// releasing any body it carries immediately. The exception is a hop carrying the
+// LLM proxy's internal-loopback marker: it may share the outer call's request id,
+// its own event is suppressed in Process, and consuming the entry there would
+// strip the outer call's line, so that hop only peeks.
+func (c *Analytics) lookupCorrelationPayload(logEntry *v3.HTTPAccessLogEntry, internalLoopbackHop bool) (correlation.Payload, bool) {
 	if c.correlationStore == nil {
 		return correlation.Payload{}, false
 	}
@@ -330,7 +336,10 @@ func (c *Analytics) lookupCorrelationPayload(logEntry *v3.HTTPAccessLogEntry) (c
 	if reqID == "" {
 		return correlation.Payload{}, false
 	}
-	return c.correlationStore.Get(reqID)
+	if internalLoopbackHop {
+		return c.correlationStore.Get(reqID)
+	}
+	return c.correlationStore.Take(reqID)
 }
 
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
@@ -393,7 +402,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// Consulted once here and used below where request/response headers are
 	// attached to the event; every other field in this function is unaffected
 	// and continues to come from the ALS-decoded metadata above.
-	storedPayload, storeHit := c.lookupCorrelationPayload(logEntry)
+	storedPayload, storeHit := c.lookupCorrelationPayload(logEntry,
+		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] != "")
 
 	event := &dto.Event{}
 	if debugEnabled {
@@ -732,14 +742,20 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Optionally attach request and response payloads when enabled via the collector.
+	// Bodies within the correlation store's limit arrive through it (see
+	// kernel.inProcessBody); larger ones are still in the access-log metadata.
 	if c.cfg.Collector.RequestBody {
-		if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
+		if storeHit && storedPayload.RequestBody != "" {
+			event.Properties[dto.PropKeyRequestPayload] = storedPayload.RequestBody
+		} else if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
 			event.Properties[dto.PropKeyRequestPayload] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
 	if c.cfg.Collector.ResponseBody {
-		if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
+		if storeHit && storedPayload.ResponseBody != "" {
+			event.Properties[dto.PropKeyResponsePayload] = storedPayload.ResponseBody
+		} else if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
 			event.Properties[dto.PropKeyResponsePayload] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))
 		}

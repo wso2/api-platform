@@ -78,7 +78,27 @@ const (
 const (
 	analyticsRequestHeadersKey  = "request_headers"
 	analyticsResponseHeadersKey = "response_headers"
+	// analyticsRequestPayloadKey / analyticsResponsePayloadKey carry captured bodies
+	// (collector.request_body / collector.response_body), by the same convention.
+	analyticsRequestPayloadKey  = "request_payload"
+	analyticsResponsePayloadKey = "response_payload"
 )
+
+// correlatesInProcess reports whether this request's captured data will reach the
+// ALS handler through the correlation store: the store exists and the request id
+// is Envoy's x-request-id, the key the ALS side looks up (see
+// writeCorrelationEntry). Only then may data be left out of Envoy metadata.
+func correlatesInProcess(execCtx *PolicyExecutionContext) bool {
+	return execCtx != nil && execCtx.server != nil && execCtx.server.correlationStore != nil &&
+		execCtx.requestIDFromHeader
+}
+
+// inProcessBody returns v as a body the correlation store accepts: a non-empty
+// string within the store's per-body limit. Larger bodies stay in Envoy metadata.
+func inProcessBody(execCtx *PolicyExecutionContext, v any) (string, bool) {
+	body, ok := v.(string)
+	return body, ok && body != "" && len(body) <= execCtx.server.correlationStore.MaxPayloadBytes()
+}
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
 func convertToStructValue(value any) (*structpb.Value, error) {
@@ -119,9 +139,17 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	fields := make(map[string]*structpb.Value)
 
 	// Add policy-provided analytics data
+	inProcess := correlatesInProcess(execCtx)
 	for key, value := range analyticsData {
-		if key == analyticsRequestHeadersKey || key == analyticsResponseHeadersKey {
-			continue
+		if inProcess {
+			switch key {
+			case analyticsRequestHeadersKey, analyticsResponseHeadersKey:
+				continue
+			case analyticsRequestPayloadKey, analyticsResponsePayloadKey:
+				if _, ok := inProcessBody(execCtx, value); ok {
+					continue
+				}
+			}
 		}
 		val, err := convertToStructValue(value)
 		if err != nil {
@@ -177,6 +205,20 @@ func snapshotHeaderPayload(analyticsMetadata map[string]interface{}) correlation
 		RequestHeaders:  normalizeAnalyticsHeaderValue(analyticsMetadata[analyticsRequestHeadersKey]),
 		ResponseHeaders: normalizeAnalyticsHeaderValue(analyticsMetadata[analyticsResponseHeadersKey]),
 	}
+}
+
+// snapshotCorrelationPayload is snapshotHeaderPayload plus the captured bodies that
+// buildAnalyticsStruct kept out of Envoy metadata (see inProcessBody) -- exactly
+// those, so every body reaches the ALS side by one path or the other.
+func snapshotCorrelationPayload(execCtx *PolicyExecutionContext) correlation.Payload {
+	payload := snapshotHeaderPayload(execCtx.analyticsMetadata)
+	if body, ok := inProcessBody(execCtx, execCtx.analyticsMetadata[analyticsRequestPayloadKey]); ok {
+		payload.RequestBody = body
+	}
+	if body, ok := inProcessBody(execCtx, execCtx.analyticsMetadata[analyticsResponsePayloadKey]); ok {
+		payload.ResponseBody = body
+	}
+	return payload
 }
 
 // normalizeAnalyticsHeaderValue converts a captured header value out of

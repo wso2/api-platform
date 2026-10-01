@@ -929,6 +929,14 @@ ttl = "4s"
 # Independently-locked partitions, selected by hashing the request id. Rounded
 # up to the next power of two if not one already.
 shards = 32
+# Largest captured request/response body (collector.request_body/response_body)
+# carried in-process instead of through Envoy dynamic metadata. Larger bodies use
+# the metadata path. 0 keeps every body in metadata.
+max_payload_bytes = 262144
+# Total body bytes the store may hold. Bodies are released as soon as their
+# access-log entry is processed; the oldest are evicted beyond this. 0 keeps every
+# body in metadata.
+max_body_bytes = 16777216
 
 # =============================================================================
 # TRAFFIC LOGGING (consumer — enabling it activates the collector)

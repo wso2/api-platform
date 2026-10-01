@@ -66,12 +66,26 @@ import (
 type Payload struct {
 	RequestHeaders  map[string]string
 	ResponseHeaders map[string]string
+	// RequestBody/ResponseBody are captured payloads (collector.request_body /
+	// collector.response_body). Unlike headers they can be large, and every byte
+	// left in Envoy dynamic metadata is re-serialized on each later ext_proc message
+	// and again in the access-log entry, so they are carried here whenever they fit
+	// under the store's per-payload limit (see Store.MaxPayloadBytes).
+	RequestBody  string
+	ResponseBody string
 }
 
 // IsEmpty reports whether payload carries nothing worth storing -- e.g. header
 // capture was not enabled for either direction on this request.
 func (p Payload) IsEmpty() bool {
-	return len(p.RequestHeaders) == 0 && len(p.ResponseHeaders) == 0
+	return len(p.RequestHeaders) == 0 && len(p.ResponseHeaders) == 0 &&
+		p.RequestBody == "" && p.ResponseBody == ""
+}
+
+// bodyBytes is what an entry is charged against its shard's byte budget. Headers
+// are small and already bounded by the entry count, so only bodies are counted.
+func (p Payload) bodyBytes() int64 {
+	return int64(len(p.RequestBody) + len(p.ResponseBody))
 }
 
 // entry is one stored record. Fields are only ever read or written while the
@@ -83,6 +97,8 @@ type entry struct {
 	key       string
 	payload   Payload
 	expiresAt time.Time
+	// slot is this entry's index in its shard's ring, so Take can free the slot.
+	slot int
 }
 
 // shard is one independently-locked partition of the store. entries is the
@@ -94,6 +110,10 @@ type shard struct {
 	entries map[string]*entry
 	ring    []*entry
 	next    int
+	// bodyBytes is the payload bytes currently held; kept at or under maxBodyBytes
+	// by evicting the oldest entries (see Put).
+	bodyBytes    int64
+	maxBodyBytes int64
 }
 
 // Store is a bounded, TTL-evicting, sharded key/value store from request id to
@@ -103,6 +123,9 @@ type Store struct {
 	mask   uint64
 	ttl    time.Duration
 	seed   maphash.Seed
+	// maxPayloadBytes is the largest single body the ext_proc side may hand to the
+	// store instead of Envoy metadata (0 = bodies are never stored).
+	maxPayloadBytes int
 }
 
 // NewStore builds a Store with capacity entries spread across numShards
@@ -113,6 +136,14 @@ type Store struct {
 // caller that skipped validation (a unit test, a future call site) still gets a
 // working store instead of a divide-by-zero or an unbounded one.
 func NewStore(capacity int, ttl time.Duration, numShards int) *Store {
+	return NewStoreWithBodyLimits(capacity, ttl, numShards, 0, 0)
+}
+
+// NewStoreWithBodyLimits is NewStore that can also carry request/response bodies:
+// at most maxPayloadBytes per body, and maxBodyBytes of bodies across the whole
+// store (split evenly across shards). Either limit <= 0 disables body storage, and
+// bodies then keep travelling through Envoy dynamic metadata as before.
+func NewStoreWithBodyLimits(capacity int, ttl time.Duration, numShards, maxPayloadBytes int, maxBodyBytes int64) *Store {
 	if capacity <= 0 {
 		capacity = 1
 	}
@@ -129,26 +160,47 @@ func NewStore(capacity int, ttl time.Duration, numShards int) *Store {
 		perShard = 1
 	}
 
+	perShardBodyBytes := maxBodyBytes / int64(numShards)
+	if maxPayloadBytes <= 0 || perShardBodyBytes <= 0 {
+		maxPayloadBytes, perShardBodyBytes = 0, 0
+	} else if int64(maxPayloadBytes) > perShardBodyBytes {
+		// A body larger than one shard's budget could never be held; cap it so the
+		// ext_proc side keeps such bodies in metadata instead of losing them.
+		maxPayloadBytes = int(perShardBodyBytes)
+	}
+
 	shards := make([]*shard, numShards)
 	for i := range shards {
 		shards[i] = &shard{
-			entries: make(map[string]*entry, perShard),
-			ring:    make([]*entry, perShard),
+			entries:      make(map[string]*entry, perShard),
+			ring:         make([]*entry, perShard),
+			maxBodyBytes: perShardBodyBytes,
 		}
 	}
 
 	return &Store{
-		shards: shards,
-		mask:   uint64(numShards - 1),
-		ttl:    ttl,
-		seed:   maphash.MakeSeed(),
+		shards:          shards,
+		mask:            uint64(numShards - 1),
+		ttl:             ttl,
+		seed:            maphash.MakeSeed(),
+		maxPayloadBytes: maxPayloadBytes,
 	}
+}
+
+// MaxPayloadBytes is the largest body the store accepts; the ext_proc side keeps a
+// larger body (or every body, when this is 0) in Envoy dynamic metadata. Safe to
+// call on a nil Store, which accepts no bodies.
+func (s *Store) MaxPayloadBytes() int {
+	if s == nil {
+		return 0
+	}
+	return s.maxPayloadBytes
 }
 
 // NewStoreFromConfig builds a Store from the operator-facing
 // [analytics.correlation] config (see config.CorrelationStoreConfig).
 func NewStoreFromConfig(cfg config.CorrelationStoreConfig) *Store {
-	return NewStore(cfg.Capacity, cfg.TTL, cfg.Shards)
+	return NewStoreWithBodyLimits(cfg.Capacity, cfg.TTL, cfg.Shards, cfg.MaxPayloadBytes, cfg.MaxBodyBytes)
 }
 
 // nextPowerOfTwo returns the smallest power of two >= n (n >= 1).
@@ -192,8 +244,10 @@ func (s *Store) Put(key string, payload Payload) {
 		// Same key written twice (should not happen in practice -- one ext_proc
 		// stream teardown per request -- but stay correct if it ever does):
 		// update in place so the entry's existing ring slot stays valid.
+		sh.bodyBytes += payload.bodyBytes() - existing.payload.bodyBytes()
 		existing.payload = payload
 		existing.expiresAt = now.Add(s.ttl)
+		sh.enforceBodyBudget(existing)
 		return
 	}
 
@@ -201,14 +255,45 @@ func (s *Store) Put(key string, payload Payload) {
 		// The slot this write lands in already holds an older entry: evict it to
 		// make room, regardless of its own remaining TTL. This is the
 		// capacity-pressure path -- bounded, O(1), and scoped to this shard only.
-		delete(sh.entries, occupant.key)
+		sh.remove(occupant)
 		metrics.CorrelationStoreEvictionsTotal.Inc()
 	}
 
-	e := &entry{key: key, payload: payload, expiresAt: now.Add(s.ttl)}
+	e := &entry{key: key, payload: payload, expiresAt: now.Add(s.ttl), slot: sh.next}
 	sh.ring[sh.next] = e
 	sh.entries[key] = e
+	sh.bodyBytes += payload.bodyBytes()
 	sh.next = (sh.next + 1) % len(sh.ring)
+	sh.enforceBodyBudget(e)
+}
+
+// remove drops e from the shard's index, ring and byte accounting. Caller holds mu.
+func (sh *shard) remove(e *entry) {
+	if sh.entries[e.key] == e {
+		delete(sh.entries, e.key)
+	}
+	if sh.ring[e.slot] == e {
+		sh.ring[e.slot] = nil
+	}
+	sh.bodyBytes -= e.payload.bodyBytes()
+}
+
+// enforceBodyBudget evicts the shard's oldest body-carrying entries, other than
+// keep, until its bodies fit in maxBodyBytes. Entries are visited oldest first
+// starting at next (the ring's FIFO head), so this is bounded by the ring size.
+// Without it, bodies that are never read back -- e.g. requests whose access-log
+// entry is filtered by collector.ignore_path_prefixes -- would be pinned until
+// the ring wraps, which for large bodies is far more memory than the entry count
+// suggests. Caller holds mu.
+func (sh *shard) enforceBodyBudget(keep *entry) {
+	for i := 0; sh.bodyBytes > sh.maxBodyBytes && i < len(sh.ring); i++ {
+		e := sh.ring[(sh.next+i)%len(sh.ring)]
+		if e == nil || e == keep || e.payload.bodyBytes() == 0 {
+			continue
+		}
+		sh.remove(e)
+		metrics.CorrelationStoreEvictionsTotal.Inc()
+	}
 }
 
 // Get looks up key and reports whether a live (non-expired) entry was found.
@@ -220,6 +305,18 @@ func (s *Store) Put(key string, payload Payload) {
 // deliberate: a background sweep would add a goroutine and a shutdown path for a
 // saving that does not matter at this scale.
 func (s *Store) Get(key string) (Payload, bool) {
+	return s.lookup(key, false)
+}
+
+// Take is Get that also removes the entry, releasing its slot and body bytes as
+// soon as the access-log entry it was waiting for has been processed. The ALS
+// handler reads each request's entry exactly once, so this keeps the store's
+// footprint at the in-flight window instead of the full capacity.
+func (s *Store) Take(key string) (Payload, bool) {
+	return s.lookup(key, true)
+}
+
+func (s *Store) lookup(key string, take bool) (Payload, bool) {
 	if key == "" {
 		metrics.CorrelationStoreReadsTotal.WithLabelValues("miss").Inc()
 		return Payload{}, false
@@ -234,6 +331,9 @@ func (s *Store) Get(key string) (Payload, bool) {
 	if ok {
 		payload = e.payload
 		live = time.Now().Before(e.expiresAt)
+		if take {
+			sh.remove(e)
+		}
 	}
 	sh.mu.Unlock()
 
