@@ -42,6 +42,7 @@ import azureLogo from '../../../../../assets/brands/Azure.png';
 import googleVertexLogo from '../../../../../assets/brands/GoogleVertex.png';
 import googleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import mistralAiLogo from '../../../../../assets/brands/mistralai.png';
+import typesafeLogo from '../../../../../assets/brands/typesafe.png';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
 import {
@@ -49,10 +50,22 @@ import {
   truncateProviderDisplayName,
 } from '../../../../../utils/providerTemplateDisplay';
 
-const getLogoForTemplate = (template: ProviderTemplate): string | null => {
+/**
+ * Logo candidates in preference order: the template's own `logoUrl`, then the
+ * bundled vendor logo matched by name. The remote URL can fail to load (not yet
+ * published, or unreachable from an air-gapped install), so the card falls back
+ * to the next candidate on an image error instead of showing a broken image.
+ */
+const getLogoCandidatesForTemplate = (template: ProviderTemplate): string[] => {
   const logoUrl =
     template.metadata?.logoUrl?.trim() || template.logoUrl?.trim();
-  if (logoUrl) return logoUrl;
+  const bundled = getBundledLogoForTemplate(template);
+  return [logoUrl, bundled].filter(
+    (src, i, all): src is string => !!src && all.indexOf(src) === i
+  );
+};
+
+const getBundledLogoForTemplate = (template: ProviderTemplate): string | null => {
   const lowerName = template.displayName.toLowerCase();
   if (lowerName.includes('bedrock') || lowerName.includes('aws'))
     return awsBedrockLogo;
@@ -61,12 +74,45 @@ const getLogoForTemplate = (template: ProviderTemplate): string | null => {
   if (lowerName.includes('anthropic') || lowerName.includes('claude'))
     return anthropicLogo;
   if (lowerName.includes('mistral')) return mistralAiLogo;
+  if (lowerName.includes('typesafe')) return typesafeLogo;
   if (lowerName.includes('azure')) return azureLogo;
   if (lowerName.includes('gemini')) return googleGeminiLogo;
   if (lowerName.includes('google') || lowerName.includes('vertex'))
     return googleVertexLogo;
   return null;
 };
+
+function TemplateLogo({
+  candidates,
+  alt,
+  shortName,
+}: {
+  candidates: string[];
+  alt: string;
+  shortName: string;
+}) {
+  const [index, setIndex] = React.useState(0);
+  const src = candidates[index];
+  if (!src) {
+    return (
+      <Avatar sx={{ width: 36, height: 36, fontSize: 14 }}>{shortName}</Avatar>
+    );
+  }
+  return (
+    <Box
+      component="img"
+      src={src}
+      alt={alt}
+      onError={() => setIndex((i) => i + 1)}
+      sx={{
+        width: '90%',
+        height: '90%',
+        borderRadius: 1,
+        objectFit: 'contain',
+      }}
+    />
+  );
+}
 
 const getShortNameForTemplate = (templateName: string): string => {
   const words = templateName.split(/[\s-_]+/);
@@ -166,7 +212,7 @@ export default function ProviderTemplateSelector({
                 familyHandle(templateId)
               );
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
-              const logo = getLogoForTemplate(template);
+              const logoCandidates = getLogoCandidatesForTemplate(template);
               const shortName = getShortNameForTemplate(template.displayName);
               return (
                 <Form.CardButton
@@ -211,23 +257,12 @@ export default function ProviderTemplateSelector({
                       overflow: 'hidden',
                     }}
                   >
-                    {logo ? (
-                      <Box
-                        component="img"
-                        src={logo}
-                        alt={`${template.displayName} logo`}
-                        sx={{
-                          width: '90%',
-                          height: '90%',
-                          borderRadius: 1,
-                          objectFit: 'contain',
-                        }}
-                      />
-                    ) : (
-                      <Avatar sx={{ width: 36, height: 36, fontSize: 14 }}>
-                        {shortName}
-                      </Avatar>
-                    )}
+                    <TemplateLogo
+                      key={logoCandidates.join('|')}
+                      candidates={logoCandidates}
+                      alt={`${template.displayName} logo`}
+                      shortName={shortName}
+                    />
                   </Box>
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Typography

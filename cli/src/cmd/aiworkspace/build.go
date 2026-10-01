@@ -529,6 +529,7 @@ var templateModelIDs = map[string][]string{
 		"mistral-small-latest",
 		"open-mixtral-8x22b",
 	},
+	"typesafe": {"jev-latest", "jev-preview", "jev-1.13.0"},
 }
 
 // modelProvidersForTemplate returns the modelProviders block for a provider
