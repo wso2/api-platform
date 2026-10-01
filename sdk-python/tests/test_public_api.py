@@ -119,6 +119,8 @@ class PublicAPITests(unittest.TestCase):
             "NO_POLICY_CHAIN": "905005",
             "RESOLUTION_BAD_REQUEST": "905006",
             "RESOLUTION_UNSUPPORTED_ENCODING": "905007",
+            "MEDIATION_FAILED": "960000",
+            "INVALID_REQUEST_BODY": "960001",
         }
         for name, wire in expected.items():
             self.assertEqual(getattr(v1alpha2.FaultCode, name), wire, name)

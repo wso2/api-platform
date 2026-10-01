@@ -191,6 +191,14 @@ class FaultCode:
     THROTTLED_BLOCKED: Final[str] = "900805"
     THROTTLED_CUSTOM_POLICY: Final[str] = "900806"
 
+    # The two conditions nearly every shipped policy can hit, shared rather than allocated per
+    # policy: FaultDetails already names the failing policy, so the code need not.
+    #: A policy failing to do its own job — a transformation it could not complete, a
+    #: credential it could not mint, a dependency it could not reach. The gateway's failure.
+    MEDIATION_FAILED: Final[str] = "960000"
+    #: A request payload a policy needed to read and could not. The caller's failure.
+    INVALID_REQUEST_BODY: Final[str] = "960001"
+
     # ── Codes the gateway sets — do not emit these ───────────────────────────
     UPSTREAM_UNREACHABLE: Final[str] = "101503"
     UPSTREAM_TIMEOUT: Final[str] = "101504"
