@@ -2468,3 +2468,216 @@ func TestValidateAdminMCPServerConfig(t *testing.T) {
 		assert.Contains(t, err.Error(), "advertised_scopes")
 	})
 }
+
+// managementMCPConfig builds a Config with the management MCP endpoint enabled
+// and every prerequisite satisfied, so each test below can invalidate exactly one thing.
+func managementMCPConfig() *Config {
+	c := &Config{}
+	c.Controller.Server.ExternalBaseURL = "http://localhost:9090"
+	c.Controller.Server.MCPServer.Enabled = true
+	c.Controller.Server.MCPServer.AdvertisedScopes = []string{"admin", "developer"}
+	return c
+}
+
+func TestValidateMCPServerConfig(t *testing.T) {
+	t.Run("disabled needs nothing", func(t *testing.T) {
+		c := &Config{}
+		// Nothing below is checked while the endpoint is off.
+		c.Controller.Server.ExternalBaseURL = "not a url"
+		c.Controller.Server.MCPServer.MaxRequestBytes = -1
+		c.Controller.Server.MCPServer.AdvertisedScopes = []string{""}
+
+		assert.NoError(t, c.validateMCPServerConfig())
+	})
+
+	t.Run("valid", func(t *testing.T) {
+		assert.NoError(t, managementMCPConfig().validateMCPServerConfig())
+	})
+
+	t.Run("does not depend on the admin server", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.AdminServer.Enabled = false
+
+		assert.NoError(t, c.validateMCPServerConfig())
+	})
+
+	t.Run("requires the external base URL", func(t *testing.T) {
+		for _, base := range []string{"", "   "} {
+			c := managementMCPConfig()
+			c.Controller.Server.ExternalBaseURL = base
+
+			err := c.validateMCPServerConfig()
+
+			require.Errorf(t, err, "base URL %q", base)
+			// The URL-shape check below would also reject "", but only this message tells
+			// the operator that enabling MCP is what makes the key mandatory.
+			assert.Contains(t, err.Error(), "mcp_server.enabled=true requires controller.server.external_base_url")
+		}
+	})
+
+	t.Run("rejects a base URL that is not absolute or has a fragment", func(t *testing.T) {
+		for _, base := range []string{
+			"/api/management/v1",            // relative
+			"gateway-controller:9090",       // scheme forgotten: parses with no host
+			"http://",                       // no host
+			"http://[::1",                   // malformed
+			"http://localhost:9090/#anchor", // fragment
+		} {
+			c := managementMCPConfig()
+			c.Controller.Server.ExternalBaseURL = base
+
+			err := c.validateMCPServerConfig()
+
+			require.Errorf(t, err, "base URL %q", base)
+			assert.Contains(t, err.Error(), "absolute URL")
+		}
+	})
+
+	t.Run("requires an audience when the IDP is enabled", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Auth.IDP.Enabled = true
+
+		err := c.validateMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "auth.idp.audience")
+	})
+
+	t.Run("accepts an audience when the IDP is enabled", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Auth.IDP.Enabled = true
+		c.Controller.Auth.IDP.Audience = []string{"gateway-controller"}
+
+		assert.NoError(t, c.validateMCPServerConfig())
+	})
+
+	t.Run("rejects a negative max_request_bytes", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Server.MCPServer.MaxRequestBytes = -1
+
+		err := c.validateMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "controller.server.mcp_server.max_request_bytes")
+	})
+
+	t.Run("accepts zero max_request_bytes, which selects the SDK default", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Server.MCPServer.MaxRequestBytes = 0
+
+		assert.NoError(t, c.validateMCPServerConfig())
+	})
+
+	t.Run("accepts empty advertised_scopes, which advertises every accepted role", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Server.MCPServer.AdvertisedScopes = nil
+
+		assert.NoError(t, c.validateMCPServerConfig())
+	})
+
+	t.Run("rejects an empty advertised scope entry", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Server.MCPServer.AdvertisedScopes = []string{"admin", "  "}
+
+		err := c.validateMCPServerConfig()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "controller.server.mcp_server.advertised_scopes")
+	})
+}
+
+// The two endpoints listen on different ports, so neither base URL may stand in for the other.
+func TestMCPExternalBaseURLsAreNotInterchangeable(t *testing.T) {
+	t.Run("management base URL does not satisfy the admin endpoint", func(t *testing.T) {
+		c := adminMCPConfig()
+		c.Controller.AdminServer.ExternalBaseURL = ""
+		c.Controller.Server.ExternalBaseURL = "http://localhost:9090"
+
+		assert.Error(t, c.validateAdminMCPServerConfig())
+	})
+
+	t.Run("admin base URL does not satisfy the management endpoint", func(t *testing.T) {
+		c := managementMCPConfig()
+		c.Controller.Server.ExternalBaseURL = ""
+		c.Controller.AdminServer.ExternalBaseURL = "http://localhost:9092"
+
+		assert.Error(t, c.validateMCPServerConfig())
+	})
+}
+
+func writeMCPTestConfig(t *testing.T, contents string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
+	return configPath
+}
+
+func TestLoadConfig_MCPServer(t *testing.T) {
+	t.Run("both endpoints are off by default", func(t *testing.T) {
+		cfg, err := LoadConfig(writeMCPTestConfig(t, ""))
+		require.NoError(t, err)
+
+		assert.Equal(t, MCPServerConfig{}, cfg.Controller.Server.MCPServer)
+		assert.Equal(t, MCPServerConfig{}, cfg.Controller.AdminServer.MCPServer)
+		assert.Empty(t, cfg.Controller.Server.ExternalBaseURL)
+		assert.Empty(t, cfg.Controller.AdminServer.ExternalBaseURL)
+	})
+
+	t.Run("every key parses from toml", func(t *testing.T) {
+		cfg, err := LoadConfig(writeMCPTestConfig(t, `
+[controller.server]
+external_base_url = "https://gw.example.com:9090"
+
+[controller.server.mcp_server]
+enabled = true
+max_request_bytes = 2097152
+advertised_scopes = ["admin", "developer"]
+
+[controller.admin_server]
+external_base_url = "https://gw.example.com:9094"
+
+[controller.admin_server.mcp_server]
+enabled = true
+max_request_bytes = 65536
+advertised_scopes = ["admin"]
+`))
+		require.NoError(t, err)
+
+		assert.Equal(t, "https://gw.example.com:9090", cfg.Controller.Server.ExternalBaseURL)
+		assert.Equal(t, MCPServerConfig{
+			Enabled:          true,
+			MaxRequestBytes:  2097152,
+			AdvertisedScopes: []string{"admin", "developer"},
+		}, cfg.Controller.Server.MCPServer)
+
+		assert.Equal(t, "https://gw.example.com:9094", cfg.Controller.AdminServer.ExternalBaseURL)
+		assert.Equal(t, MCPServerConfig{
+			Enabled:          true,
+			MaxRequestBytes:  65536,
+			AdvertisedScopes: []string{"admin"},
+		}, cfg.Controller.AdminServer.MCPServer)
+	})
+
+	t.Run("startup fails when the management endpoint has no base URL", func(t *testing.T) {
+		_, err := LoadConfig(writeMCPTestConfig(t, `
+[controller.server.mcp_server]
+enabled = true
+`))
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "controller.server.external_base_url")
+	})
+
+	t.Run("startup fails when the admin endpoint has no base URL", func(t *testing.T) {
+		_, err := LoadConfig(writeMCPTestConfig(t, `
+[controller.server]
+external_base_url = "http://localhost:9090"
+
+[controller.admin_server.mcp_server]
+enabled = true
+`))
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "controller.admin_server.external_base_url")
+	})
+}
