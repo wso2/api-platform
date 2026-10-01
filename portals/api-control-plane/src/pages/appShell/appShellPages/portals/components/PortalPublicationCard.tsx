@@ -17,12 +17,13 @@
  */
 
 import { Avatar, Box, Button, Card, Chip, chipClasses, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { Circle, ExternalLink, Globe } from '@wso2/oxygen-ui-icons-react';
+import { Circle, ExternalLink } from '@wso2/oxygen-ui-icons-react';
 import { useId, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link } from 'react-router-dom';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
+import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
 import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
 import { hairline } from '@/theme/receipes';
@@ -65,7 +66,10 @@ const chipSx = {
   [`& .${chipClasses.icon}`]: { ml: 1, mr: -0.5 },
 } as const;
 
-/** Square identity tile for a portal. */
+/** Share of the tile the logo fills, leaving the margin around it. */
+const LOGO_SIZE = '75%';
+
+/** Square identity tile for a portal, carrying the developer portal's mark. */
 function PortalAvatar() {
   return (
     <Avatar
@@ -73,14 +77,18 @@ function PortalAvatar() {
         bgcolor: 'action.hover',
         border: hairline(theme),
         borderColor: 'divider',
-        color: 'text.secondary',
         flexShrink: 0,
         height: AVATAR_SIZE,
         width: AVATAR_SIZE,
       })}
       variant="rounded"
     >
-      <Globe size={AVATAR_SIZE / 2} />
+      <Box
+        alt=""
+        component="img"
+        src={devportalLogoUrl}
+        sx={{ height: LOGO_SIZE, objectFit: 'contain', width: LOGO_SIZE }}
+      />
     </Avatar>
   );
 }
