@@ -69,6 +69,24 @@ client_certificate_request = "all_connections"
 
 A setting you don't add keeps its default. `configs/config-template.toml` lists every setting with its default. These settings are read at startup, so restart the gateway after changing them, for example with `docker compose restart`.
 
+## Logs
+
+Two gateway logs show what mutual TLS did with a request.
+
+**The router's access log** has a line for every request. It's text by default; set `format = "json"` under `[router.access_logs]` in [`config.toml`](#gateway-settings) for named fields. The JSON format includes:
+
+| Field | What it holds |
+|---|---|
+| `sni` | The hostname the caller sent in the TLS handshake |
+| `tlsVer` | The TLS version of the caller's connection |
+| `peerSubj` | The subject of the client certificate on the caller's connection, for a refused request too, and empty when there is none. Behind a load balancer it's the load balancer's certificate. |
+| `peerFp` | The SHA-256 fingerprint of that certificate |
+| `upTlsFail` | Why the TLS handshake with the backend failed |
+
+`host` is the hostname the caller sent for a request the policy refused, and the host the gateway sent to the backend for a request it forwarded. To follow one API, filter on `sni`.
+
+**The policy engine's debug log** records why `mtls-auth` refused a request, such as `no_certificate`, `expired`, `not_yet_valid`, `untrusted_chain`, `invalid_certificate`, `authority_not_accepted`, `san_mismatch`, or `thumbprint_mismatch`. Set `level = "debug"` under `[policy_engine.logging]` to see it. The same reason is the `mtls_auth.reason` attribute of the request's trace span.
+
 ## In this section
 
 | Page | What it covers |

@@ -76,7 +76,7 @@ Content-Type: application/json
 {"error":"Unauthorized","message":"Authentication failed"}
 ```
 
-The reason is recorded in the gateway's logs and traces instead. The policy's `onFailureStatusCode`, `errorMessageFormat`, and `errorMessage` parameters change the response.
+The reason is recorded in the gateway's [logs](index.md#logs) and traces instead. The policy's `onFailureStatusCode`, `errorMessageFormat`, and `errorMessage` parameters change the response.
 
 ## Hostnames and the certificate request
 

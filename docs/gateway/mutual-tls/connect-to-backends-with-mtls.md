@@ -143,7 +143,7 @@ upstream connect error or disconnect/reset before headers. reset reason: remote 
 
 Common causes are a backend that doesn't trust the gateway's identity, a backend certificate outside `trustedCAs`, and a host name mismatch.
 
-The router's access log records the reason. In the JSON access log format it's in the `upTlsFail` field.
+The router's access log records the reason. In the JSON access log format it's in the `upTlsFail` field. See [Logs](index.md#logs).
 
 ## Related topics
 

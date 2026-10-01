@@ -405,6 +405,12 @@ reqTxDur = "%REQUEST_TX_DURATION%"
 respTxDur = "%RESPONSE_TX_DURATION%"
 reqDur = "%REQUEST_DURATION%"
 respDur = "%RESPONSE_DURATION%"
+# TLS of the caller's connection and of the backend handshake
+sni = "%REQUESTED_SERVER_NAME%"
+tlsVer = "%DOWNSTREAM_TLS_VERSION%"
+peerSubj = "%DOWNSTREAM_PEER_SUBJECT%"
+peerFp = "%DOWNSTREAM_PEER_FINGERPRINT_256%"
+upTlsFail = "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
 
 [router.downstream_tls]
 cert_path = "./listener-certs/default-listener.crt"
