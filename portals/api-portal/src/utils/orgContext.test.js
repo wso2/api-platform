@@ -128,10 +128,10 @@ test('multi-organization mode: an idp_ref_id shared by two organizations is refu
 
 test('multi-organization mode: a page URL resolves by exact handle only', async () => {
     const ctx = loadOrgContext({ multiOrganization: true });
-    assert.strictEqual(await ctx.requireKnownOrgHandle('acme'), 'u-acme');
-    assert.strictEqual(await ctx.requireKnownOrgHandle('ACME'), 'u-acme');
-    await assert.rejects(ctx.requireKnownOrgHandle('acme-id'), NotFoundError); // idp_ref_id
-    await assert.rejects(ctx.requireKnownOrgHandle('Acme Corp'), NotFoundError);
+    assert.strictEqual((await ctx.requireKnownOrg('acme')).uuid, 'u-acme');
+    assert.strictEqual((await ctx.requireKnownOrg('ACME')).uuid, 'u-acme');
+    await assert.rejects(ctx.requireKnownOrg('acme-id'), NotFoundError); // idp_ref_id
+    await assert.rejects(ctx.requireKnownOrg('Acme Corp'), NotFoundError);
 });
 
 test('default mode: an {orgId} parameter must be the configured organization', async () => {

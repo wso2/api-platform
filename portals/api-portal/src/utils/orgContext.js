@@ -35,7 +35,7 @@
  * With multi_organization.enabled (IDP mode only, see isMultiOrganizationEnabled) one
  * instance serves every organization under its portal_id instead: the same call sites
  * ask the multi-organization-aware questions below (resolveClaimOrg,
- * requireKnownOrgHandle, requireCallerOrg, resolvePublicContentOrg) and get "any
+ * requireKnownOrg, requireCallerOrg, resolvePublicContentOrg) and get "any
  * organization that exists" where the default mode answers "only the pinned one". The
  * configured organization stays the default and fallback either way.
  *
@@ -607,22 +607,10 @@ async function provisionOrg(claim, orgNames, source) {
 }
 
 /**
- * Multi-organization mode: resolves the {orgHandle} segment of a page URL to the uuid
- * of the organization with exactly that handle — never a display name or idp_ref_id,
- * since a page has one canonical URL. A URL never creates an organization. (The
- * default mode never gets here: orgGuard compares against getHandle() without a
- * lookup.)
- *
- * @param {string} value the URL segment
- * @returns {Promise<string>} the organization's uuid
- * @throws {NotFoundError} when no organization has that handle
- */
-async function requireKnownOrgHandle(value) {
-    return (await requireKnownOrg(value)).uuid;
-}
-
-/**
- * requireKnownOrgHandle's row-returning form, for callers that need more than the uuid.
+ * Multi-organization mode: resolves the {orgHandle} segment of a page URL to the
+ * organization with exactly that handle — never a display name or idp_ref_id, since a
+ * page has one canonical URL. A URL never creates an organization. (The default mode
+ * never gets here: orgGuard compares against getHandle() without a lookup.)
  *
  * @param {string} value the URL's org segment
  * @returns {Promise<object>} the organization row
@@ -770,7 +758,6 @@ module.exports = {
     deriveHandle,
     resolveClaimOrg,
     requireKnownOrg,
-    requireKnownOrgHandle,
     requireCallerOrg,
     resolvePublicContentOrg,
     resetCache,
