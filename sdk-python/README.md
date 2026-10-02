@@ -22,6 +22,7 @@ A policy is a plain Python class that the gateway executor loads at runtime. It 
   - [ResponsePolicy](#responsepolicy)
   - [StreamingRequestPolicy](#streamingrequestpolicy)
   - [StreamingResponsePolicy](#streamingresponsepolicy)
+  - [FaultPolicy](#faultpolicy)
 - [Processing mode](#processing-mode)
 - [Actions reference](#actions-reference)
 - [Context types](#context-types)
@@ -193,6 +194,7 @@ All policy interfaces live in `apip_sdk_core` (re-exported from `apip_sdk_core.p
 | `ResponsePolicy` | `on_response_body` | Response body transformation |
 | `StreamingRequestPolicy` | `on_request_body_chunk` | Streaming body inspection |
 | `StreamingResponsePolicy` | `on_response_body_chunk` | Streaming response inspection / SSE |
+| `FaultPolicy` | `on_fault` | Fault handling: notify, record, reshape the error |
 
 Every interface extends the base `Policy` class:
 
@@ -314,6 +316,47 @@ class StreamingResponsePolicy(ResponsePolicy, ABC):
 
 **Returns** `ForwardResponseChunk | TerminateResponseChunk | None`
 
+### FaultPolicy
+
+Called when a request **fails**, over the error response the gateway produced. A policy that
+implements this is attached through `faultPolicies` (`globalFaultPolicies` on the LLM kinds) rather
+than the normal chain, and never runs on a successful response.
+
+```python
+class FaultPolicy(Policy, ABC):
+    @abstractmethod
+    def on_fault(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: FaultContext,
+        params: dict[str, Any],
+    ) -> FaultResponse | None: ...
+```
+
+**Returns** `FaultResponse | None`
+
+Independent of every other interface: a notifier may implement this alone, leaving `mode()`
+fully SKIP so the policy costs nothing on the normal path. `FaultContext` does not subclass
+`ResponseContext`, but it carries the same field names — `ctx.response_status`,
+`ctx.response_body` and the rest read exactly as they do in `on_response_body` — and adds the
+description of the failure:
+
+| Field | Meaning |
+|---|---|
+| `source` | Which actor produced the failure — a `FaultSource` value: `gateway` (a policy rejection or an engine failure), `backend` (the upstream's own error status), `router` (the upstream could not be reached), `noRoute`, or `unknown` |
+| `fault` | The failure's code, class, direction and message, as `FaultDetails`. `None` when nothing described it, which includes every `backend` error |
+| `original_status` | Status before a policy changed it, `0` when nothing did |
+| `policy` / `policy_version` / `policy_phase` | The policy that caused the failure and the phase it was in. **Empty means no policy did** — a router failure |
+| `response_committed` | `True` when the response already reached the client, so any change here is discarded |
+| `route_key` | The matched route |
+
+A `FaultResponse` merges over the error the client is receiving: `status_code`, `body`,
+`headers_to_set` / `headers_to_append` / `headers_to_remove`, and `final` to stop the rest of
+the fault chain.
+
+Returning `None` leaves the error exactly as it was, which is what a handler that only
+notifies or records should do.
+
 ---
 
 ## Processing mode
@@ -388,7 +431,11 @@ class ImmediateResponse:
     analytics_metadata: dict[str, Any] = field(default_factory=dict)
     dynamic_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     analytics_header_filter: DropHeaderAction = field(default_factory=DropHeaderAction)
+    is_fault: bool = False               # declare a failure the status does not reveal
+    fault: FaultDetails | None = None    # describe the failure: code, type, direction, message
 ```
+
+A response enters the fault flow when its status is 400 or above **or** `is_fault` is `True`.
 
 ---
 
