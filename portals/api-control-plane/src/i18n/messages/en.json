@@ -2133,6 +2133,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
     "defaultMessage": "Unable to load the publish details."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock": {
+    "defaultMessage": "Clear inactive plans to save or publish: {names}.",
+    "description": "Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading": {
     "defaultMessage": "Loading publish details"
   },
@@ -2196,6 +2200,20 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.active": {
+    "defaultMessage": "Active",
+    "description": "Status pill on a plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
+    "defaultMessage": "Inactive",
+    "description": "Status pill on a plan card."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveBlocked": {
+    "defaultMessage": "Inactive. Activate it in Settings."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactiveSelected": {
+    "defaultMessage": "Clear inactive plan to save or publish."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
     "defaultMessage": "Unlimited",
@@ -2277,16 +2295,31 @@
     "defaultMessage": "Clear all"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
-    "defaultMessage": "Create a subscription plan for your organization before offering it on this portal."
+    "defaultMessage": "Create subscription plans in Settings to choose from here."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
-    "defaultMessage": "No active subscription plans"
+    "defaultMessage": "No subscription plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
     "defaultMessage": "Unable to load subscription plans."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveBlockedToast": {
+    "defaultMessage": "\"{name}\" is inactive. Activate it in Settings.",
+    "description": "Warning shown when the user tries to select an inactive plan. {name} is the plan's display name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveSelectedSummary": {
+    "defaultMessage": "{count, plural, one {# inactive plan selected} other {# inactive plans selected}}",
+    "description": "Warning next to the selection summary: selected plans that are no longer active."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
     "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}",
+    "description": "<n> wraps the number, which is styled."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll": {
     "defaultMessage": "Select all"

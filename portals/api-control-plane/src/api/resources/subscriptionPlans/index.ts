@@ -37,7 +37,6 @@ export type { SubscriptionPlanListFilters } from './subscriptionPlans.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-  useActiveSubscriptionPlans,
   useCreateSubscriptionPlan,
   useDeleteSubscriptionPlan,
   useSubscriptionPlan,

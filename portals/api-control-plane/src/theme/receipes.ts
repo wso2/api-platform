@@ -134,7 +134,7 @@ export const focusRingSx = (theme: Theme) => ({
 export const selectableCardSx = (
   theme: Theme,
   state: { disabled?: boolean; selected?: boolean },
-  accent: 'primary' | 'success' = 'primary',
+  accent: 'primary' | 'success' | 'warning' = 'primary',
 ) =>
   ({
     borderColor: state.selected ? theme.palette[accent].main : 'divider',

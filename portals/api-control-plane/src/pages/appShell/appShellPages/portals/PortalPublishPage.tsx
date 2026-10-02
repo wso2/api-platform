@@ -37,6 +37,7 @@ import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
+import { useSubscriptionPlans } from '@/api/resources/subscriptionPlans';
 import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -149,6 +150,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly',
     defaultMessage: 'Details saved. The specification has an error and was not saved.',
   },
+  inactivePlansBlock: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.inactivePlansBlock',
+    defaultMessage: 'Clear inactive plans to save or publish: {names}.',
+    description: 'Warning when Save Draft or Publish is blocked because the selection still holds inactive plans. {names} is a comma-separated list of plan names.',
+  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -249,6 +255,8 @@ function PortalPublishPageContent() {
   const [tab, setTab] = useState<PublishTab>('details');
   const [viewingPublished, setViewingPublished] = useState(false);
   const data = usePublishPageData(apiPortalId, apiHandler, viewingPublished && tab === 'specification');
+
+  const plansQuery = useSubscriptionPlans();
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
@@ -394,8 +402,23 @@ function PortalPublishPageContent() {
     }
   };
 
+  // The server refuses a selection that holds an inactive plan; stop here and show the plans
+  // instead of failing the request. Skipped while the plan list is unavailable (the server still checks).
+  const blockedByInactivePlans = (): boolean => {
+    const selected = new Set(values.subscriptionPlanIds);
+    const inactive = (plansQuery.data?.list ?? []).filter(
+      (plan) => plan.id && selected.has(plan.id) && plan.status !== 'ACTIVE',
+    );
+    if (inactive.length === 0) return false;
+    setTab('subscriptionPlans');
+    const names = inactive.map((plan) => `"${plan.displayName}"`).join(', ');
+    notify(intl.formatMessage(messages.inactivePlansBlock, { names }), 'warning');
+    return true;
+  };
+
   const handleSaveDraft = () =>
     runAction('saving', async () => {
+      if (blockedByInactivePlans()) return;
       if (!(await saveDetails())) return;
       const definitionSaved = await saveDefinition();
       notify(
@@ -411,6 +434,7 @@ function PortalPublishPageContent() {
 
   const handlePublish = () =>
     runAction('publishing', async () => {
+      if (blockedByInactivePlans()) return;
       if (!(await saveDetails())) return;
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already

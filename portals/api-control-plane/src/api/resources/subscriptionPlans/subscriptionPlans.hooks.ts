@@ -196,23 +196,3 @@ export const useSubscriptionPlanOptions = (
       })),
   });
 };
-
-/**
- * Plans a publisher can offer to consumers right now. There is no server-side
- * status filter, so this selects client-side — the same shape of selector as
- * `useSubscriptionPlanOptions`, just keeping the full plan (displayName and
- * limits) instead of reducing to id/label.
- */
-export const useActiveSubscriptionPlans = (
-  filters: SubscriptionPlanListFilters = {},
-  overrides: { orgId?: string } = {}
-) => {
-  const { org } = useApiScope(overrides);
-
-  return useQuery({
-    ...subscriptionPlanQueries.list(org!, filters),
-    enabled: Boolean(org),
-    select: (data: SubscriptionPlanListResponse) =>
-      (data.list ?? []).filter((plan) => plan.status === 'ACTIVE'),
-  });
-};

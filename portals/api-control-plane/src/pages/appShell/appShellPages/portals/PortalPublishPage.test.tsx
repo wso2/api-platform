@@ -121,17 +121,20 @@ function definitionTierRecorders() {
   };
 }
 
-/** The five reads the page makes before it can render the form. */
+/** The reads the page makes before it can render the form; `plans` is the org's catalog. */
 function servePublicationState({
   draft,
   publication,
   definitionRecorders = definitionTierRecorders(),
+  plans = [],
 }: {
   draft?: PublicationDraftDetailsFixture;
   publication?: PublicationFixture;
   definitionRecorders?: ReturnType<typeof definitionTierRecorders>;
+  plans?: ReturnType<typeof aSubscriptionPlan>[];
 } = {}) {
   server.use(
+    collection('/subscription-plans', plans),
     resource('/rest-apis/:restApiId', api),
     draft ? resource(DRAFT_PATH, draft) : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
     failure('get', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', {
@@ -241,6 +244,90 @@ describe('PortalPublishPage', () => {
     const bronzeCard = await screen.findByRole('checkbox', { name: /Bronze/ });
     expect(bronzeCard).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
+  });
+
+  it('lists every plan in the draft, greyed out when inactive, and blocks Save Draft and Publish until an inactive selected plan is cleared', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
+    const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
+    const unused = aSubscriptionPlan({ displayName: 'Unused', id: 'unused', status: 'INACTIVE' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'retired'] }),
+      plans: [gold, retired, unused],
+    });
+    const draftRequests = recorder();
+    const publishRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+
+    // Nothing is dropped behind the user's back, and nothing inactive is hidden.
+    const retiredCard = await screen.findByRole('checkbox', { name: /Retired/ });
+    expect(retiredCard).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Unused/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('1 inactive plan selected')).toBeInTheDocument();
+
+    // Both actions stop at the plans, without a request.
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    expect(await screen.findByText('Clear inactive plans to save or publish: "Retired".')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(draftRequests.count()).toBe(0);
+    expect(publishRequests.count()).toBe(0);
+
+    await user.click(retiredCard);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+  });
+
+  it('names every inactive plan in the Save Draft warning, in one fixed sentence', async () => {
+    const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
+    const legacy = aSubscriptionPlan({ displayName: 'Legacy', id: 'legacy', status: 'INACTIVE' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['retired', 'legacy'] }),
+      plans: [retired, legacy],
+    });
+    const draftRequests = recorder();
+    server.use(accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(
+      await screen.findByText('Clear inactive plans to save or publish: "Retired", "Legacy".'),
+    ).toBeInTheDocument();
+    expect(draftRequests.count()).toBe(0);
+  });
+
+  it('shows exactly the plans the live listing holds in the published view, an inactive one badged', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
+    const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver', status: 'ACTIVE' });
+    const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
+    servePublicationState({
+      publication: aPublication({ subscriptionPlanIds: ['gold', 'retired'] }),
+      plans: [gold, silver, retired],
+    });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    const retiredCard = await screen.findByRole('checkbox', { name: /Retired/ });
+    expect(retiredCard).toHaveAttribute('aria-checked', 'true');
+    expect(retiredCard).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('checkbox', { name: /Silver/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
   });
 
   it('explains a missing draft once, without retrying, when the definition save 404s', async () => {

@@ -49,7 +49,7 @@ const values = (overrides: Partial<DraftFormValues> = {}): DraftFormValues => ({
 
 /** Matches text split across the summary row's nested count element. */
 const summaryText = (text: string) =>
-  screen.getByText((_content, element) => element?.textContent === text);
+  screen.getAllByText((_content, element) => element?.textContent === text)[0];
 
 function renderTab(props: Partial<SubscriptionPlansTabProps> = {}) {
   return renderWithProviders(
@@ -65,28 +65,44 @@ beforeEach(() => {
 });
 
 describe('SubscriptionPlansTab', () => {
-  it('lists only active plans with their limit display and the selected count', async () => {
-    server.use(collection(PLANS_PATH, plans));
+  it('lists active plans first, then inactive ones greyed out, each with a status pill, counting only the active plans', async () => {
+    server.use(collection(PLANS_PATH, [legacy, bronze, gold]));
 
     renderTab({ values: values({ subscriptionPlanIds: ['bronze'] }) });
 
-    expect(await screen.findByText('Bronze')).toBeInTheDocument();
-    expect(screen.getByText('Gold')).toBeInTheDocument();
-    expect(screen.queryByText('Legacy')).not.toBeInTheDocument();
+    await screen.findByText('Bronze');
+    const names = ['Bronze', 'Gold', 'Legacy'];
+    expect(
+      screen.getAllByRole('checkbox').map((card) => names.find((name) => card.textContent?.startsWith(name))),
+    ).toEqual(names);
     expect(screen.getByText('1,000')).toBeInTheDocument();
     expect(screen.getByText('requests / hour')).toBeInTheDocument();
-    expect(screen.getByText('Unlimited')).toBeInTheDocument();
-    expect(screen.getByText('no request cap')).toBeInTheDocument();
+    expect(screen.getAllByText('Unlimited')).toHaveLength(2);
+    expect(screen.getByRole('checkbox', { name: /Legacy/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).not.toHaveAttribute('aria-disabled', 'true');
+    // Every card carries a status pill: the active ones say so, the inactive one is flagged.
+    expect(screen.getAllByText('Active')).toHaveLength(2);
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
     expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
   });
 
-  it('shows an empty state and no Select all button when the org has no active plans', async () => {
+  it('shows an empty state and no Select all button only when the org has no plans at all', async () => {
+    server.use(collection(PLANS_PATH, []));
+
+    renderTab();
+
+    expect(await screen.findByText('No subscription plans')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /select all|clear all/i })).not.toBeInTheDocument();
+  });
+
+  it('still lists the plans when every one of them is inactive, and has nothing to select all of', async () => {
     server.use(collection(PLANS_PATH, [legacy]));
 
     renderTab();
 
-    expect(await screen.findByText('No active subscription plans')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /select all|clear all/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole('checkbox', { name: /Legacy/ })).toBeInTheDocument();
+    expect(screen.queryByText('No subscription plans')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select all' })).toBeDisabled();
   });
 
   it('shows an error state when the plans request fails', async () => {
@@ -97,7 +113,7 @@ describe('SubscriptionPlansTab', () => {
     expect(await screen.findByText('Unable to load subscription plans.')).toBeInTheDocument();
   });
 
-  it('toggles a plan on click, reporting the full updated selection', async () => {
+  it('toggles an active plan on click, reporting the full updated selection', async () => {
     server.use(collection(PLANS_PATH, plans));
     const onChange = vi.fn();
 
@@ -112,17 +128,48 @@ describe('SubscriptionPlansTab', () => {
     expect(onChange.mock.calls[0][0].subscriptionPlanIds).toHaveLength(2);
   });
 
-  it('Select all selects every active plan; the label becomes Clear all once all are selected', async () => {
+  it('refuses to select an inactive plan, and warns instead', async () => {
     server.use(collection(PLANS_PATH, plans));
     const onChange = vi.fn();
 
-    const { rerender, user } = renderTab({ onChange, values: values() });
+    const { user } = renderTab({ onChange });
+
+    await user.click(await screen.findByRole('checkbox', { name: /Legacy/ }));
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('"Legacy" is inactive. Activate it in Settings.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps a selected inactive plan at full strength, counts it separately, and lets it be cleared', async () => {
+    server.use(collection(PLANS_PATH, plans));
+    const onChange = vi.fn();
+
+    const { user } = renderTab({ onChange, values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }) });
+
+    const legacyCard = await screen.findByRole('checkbox', { name: /Legacy/ });
+    expect(legacyCard).toHaveAttribute('aria-checked', 'true');
+    expect(legacyCard).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
+    expect(screen.getByText('1 inactive plan selected')).toBeInTheDocument();
+
+    await user.click(legacyCard);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ subscriptionPlanIds: ['bronze'] }));
+  });
+
+  it('Select all selects every active plan and keeps a selected inactive one; Clear all clears everything', async () => {
+    server.use(collection(PLANS_PATH, plans));
+    const onChange = vi.fn();
+
+    const { rerender, user } = renderTab({ onChange, values: values({ subscriptionPlanIds: ['legacy'] }) });
 
     await screen.findByText('Bronze');
     await user.click(screen.getByRole('button', { name: 'Select all' }));
 
     const selectedIds: string[] = onChange.mock.calls[0][0].subscriptionPlanIds;
-    expect(selectedIds.sort()).toEqual(['bronze', 'gold']);
+    expect([...selectedIds].sort()).toEqual(['bronze', 'gold', 'legacy']);
 
     rerender(
       <ApiScopeProvider orgId={ORG}>
@@ -137,22 +184,43 @@ describe('SubscriptionPlansTab', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ subscriptionPlanIds: [] }));
   });
 
-  it('renders the published selection read-only: no Select all button, and cards cannot be changed', async () => {
+  it('read-only: shows exactly the plans the live listing holds, an inactive one badged, and nothing can be changed', async () => {
     server.use(collection(PLANS_PATH, plans));
     const onChange = vi.fn();
 
-    renderTab({ onChange, readOnly: true, values: values({ subscriptionPlanIds: ['bronze'] }) });
+    renderTab({ onChange, readOnly: true, values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }) });
 
     await screen.findByText('Bronze');
+    expect(screen.queryByRole('checkbox', { name: /Gold/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /select all|clear all/i })).not.toBeInTheDocument();
+    expect(summaryText('2 plans published')).toBeInTheDocument();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
 
-    const bronzeCard = screen.getByRole('checkbox', { name: /Bronze/ });
-    expect(bronzeCard).toHaveAttribute('aria-checked', 'true');
-    expect(bronzeCard).toHaveAttribute('aria-disabled', 'true');
-    expect(bronzeCard).toHaveAttribute('tabindex', '-1');
-    // `pointerEvents: none` (asserted directly, since a real click can't even
-    // reach an element in this state) is what makes the card inert — no click
-    // handler is wired at all when `readOnly`.
-    expect(bronzeCard).toHaveStyle({ pointerEvents: 'none' });
+    for (const name of [/Bronze/, /Legacy/]) {
+      const card = screen.getByRole('checkbox', { name });
+      expect(card).toHaveAttribute('aria-checked', 'true');
+      expect(card).toHaveAttribute('aria-disabled', 'true');
+      expect(card).toHaveAttribute('tabindex', '-1');
+      // `pointerEvents: none` (asserted directly, since a real click can't even
+      // reach an element in this state) is what makes the card inert — no click
+      // handler is wired at all when `readOnly`.
+      expect(card).toHaveStyle({ pointerEvents: 'none' });
+    }
+  });
+
+  it('read-only: an inactive plan the listing holds is shown even when every plan is inactive, and an unpublished selection says so', async () => {
+    server.use(collection(PLANS_PATH, [legacy]));
+
+    const { rerender } = renderTab({ readOnly: true, values: values({ subscriptionPlanIds: ['legacy'] }) });
+
+    expect(await screen.findByRole('checkbox', { name: /Legacy/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText('No subscription plans')).not.toBeInTheDocument();
+
+    rerender(
+      <ApiScopeProvider orgId={ORG}>
+        <SubscriptionPlansTab readOnly values={values()} />
+      </ApiScopeProvider>,
+    );
+    expect(await screen.findByText('This listing has no subscription plans.')).toBeInTheDocument();
   });
 });
