@@ -54,7 +54,9 @@ Query parameters:
 | :---- | :---- | :---- | :---- |
 | \<field\> | \<type\> | Yes / No | \<description, constraints, max length\> |
 
-**Response** — `200 OK`
+**Response** — `\<status, e.g. 200 OK / 201 Created / 204 No Content\>`
+
+<!-- Use the status the contract actually returns. If there is no body (e.g. 204), delete the JSON block and say "No body." -->
 
 ```json
 {

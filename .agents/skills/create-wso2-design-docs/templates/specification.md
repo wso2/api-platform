@@ -71,7 +71,7 @@ are what test-scenarios.md §3 turns into concrete cases, so keep them verifiabl
 
 <!--
 The awkward inputs and states the happy path does not cover. Where an artifact does not
-establish the behaviour, say so here and raise it in §6 — never invent the answer.
+establish the behaviour, say so here and raise it in Open Questions (§7) — never invent the answer.
 -->
 
 * \<edge case, and the defined behaviour — or a pointer to the Open Question that covers it.\>

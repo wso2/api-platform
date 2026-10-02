@@ -3,7 +3,7 @@
 <!--
 The concrete cases that verify the feature. Each row should be specific enough that someone who
 did not write the feature can run it. Trace each scenario back to a requirement in
-specification.md (FR-n / NFR-n) so coverage gaps are visible.
+specification.md (FR-nnn / SC-nnn, carried over verbatim) so coverage gaps are visible.
 -->
 
 # 1. Coverage Summary
@@ -22,8 +22,8 @@ specification.md (FR-n / NFR-n) so coverage gaps are visible.
 
 | ID | Requirement | Scenario | Steps | Expected result |
 | :---- | :---- | :---- | :---- | :---- |
-| TS-1 | FR-1 | \<happy path\> | \<1. ... 2. ...\> | \<observable outcome\> |
-| TS-2 | FR-2 | \<...\> | \<...\> | \<...\> |
+| TS-1 | FR-001 | \<happy path\> | \<1. ... 2. ...\> | \<observable outcome\> |
+| TS-2 | FR-002 | \<...\> | \<...\> | \<...\> |
 
 # 4. Negative and Validation Scenarios
 

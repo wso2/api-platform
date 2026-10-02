@@ -56,8 +56,8 @@ Read all of these that exist, in full:
 | `quickstart.md` | `test-scenarios.md` §2 preconditions |
 | `checklists/` | `test-scenarios.md` |
 
-Also read the feature's constitution/memory (`<spec-kit root>/.specify/memory/`) if present — it
-carries project-level constraints the design doc must not contradict.
+Also read the rules in `.claude/rules/` that apply to the components the feature touches — they
+carry the project-level constraints the design doc must not contradict.
 
 ## Step 3 — Decide which documents apply
 
@@ -93,9 +93,10 @@ Copy `templates/<file>` to `<feature folder>/wso2/<file>` and fill it in. Rules:
    enforced and *where*, not just "yes".
 4. **Delete sections that genuinely do not apply**, rather than filling them with `N/A` prose —
    except in the two questionnaires, whose rows are fixed and must all survive.
-5. **THE DELIVERED DOCUMENTS MUST STAND ALONE.** Each file is copied and pasted into a Google
-   Doc. Nothing in the feature folder — not the source artifacts, not the sibling documents —
-   exists for that reader, so a reference to one is a dead end. In the delivered text:
+5. **THE DELIVERED DOCUMENTS MUST STAND ALONE.** Each file is copied and pasted into its own
+   Google Doc, and the set is delivered together. The source artifacts never reach that reader,
+   and no file path in the feature folder resolves there, so a reference to either is a dead end.
+   Sibling documents do reach the reader, as separate docs known by their title. In the delivered text:
    * **Never name a source artifact.** No `spec.md`, `plan.md`, `research.md`, `data-model.md`,
      `tasks.md`, `quickstart.md`, `contracts/…`, `checklists/…`, `.specify/…`, and no
      `specs/<feature>/…` path. Never write "Spec Kit" (or the name of any tool that produced the
@@ -207,7 +208,7 @@ Print:
 
 ```bash
 cd <feature folder>/wso2
- grep -rn '\<[a-z]' . | grep -v '^Binary'   # no leftover \<placeholder\>
+grep -rnE '<[^>!]+>' .                      # no leftover <placeholder> or \<placeholder\>; inspect each hit
 grep -rn '<!--' .                            # no leftover guidance comments
 grep -rn 'TODO\|FIXME' .                     # never defer behind a comment
 

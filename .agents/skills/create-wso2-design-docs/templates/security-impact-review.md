@@ -24,7 +24,7 @@ Please adhere to the WSO2 Secure Coding Guidelines for implementation details an
 | **Authentication**: Is authentication required for all exposed API endpoints? |  |
 | **Authentication Mechanism:** How is authentication enforced?  |  |
 | **Privilege Level Defined:** What privilege level is required for the endpoints? (Admin, Publisher, Subscriber, Internal/System, Anonymous) |  |
-| **Least Privilege Enforcement:** Is access restricted to the minimum required privilege?(Lower-privileged roles must NOT gain unintended access.) |  |
+| **Least Privilege Enforcement:** Is access restricted to the minimum required privilege? (Lower-privileged roles must NOT gain unintended access.) |  |
 | **Resource Ownership Check (BOLA / IDOR):** When accessing a resource using an ID in the URL, does the system verify that the authenticated user has permission to access that specific resource? *(Example: Preventing User A from accessing another user’s order via `/api/orders/{orderId}`)* |  |
 | Is case sensitivity consistently enforced for user identities and role checks during authorization and other validations? |  |
 | **Cross-Tenant Isolation:** Does the feature strictly enforce tenant boundaries? (e.g., preventing Tenant A from accessing Tenant B resources) |  |
