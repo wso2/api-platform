@@ -151,6 +151,13 @@ export default function ExternalServersNew(): JSX.Element {
   const [serverTarget, setServerTarget] = useState('');
   const [serverContextOverride, setServerContextOverride] = useState<string | null>(null);
   const [lastValidatedUrl, setLastValidatedUrl] = useState('');
+  // The auth header/value actually sent by the last successful validateEndpoint call —
+  // not necessarily the live form fields. Empty when that validation ran without auth.
+  // Lets handleCreate detect credential drift since validation even when the Target URL
+  // itself (and therefore isTargetStale) hasn't changed — e.g. the user went back to
+  // step 1, edited the auth fields, and clicked Next again without re-validating.
+  const [lastValidatedAuthHeaderName, setLastValidatedAuthHeaderName] = useState('');
+  const [lastValidatedAuthHeaderValue, setLastValidatedAuthHeaderValue] = useState('');
   const listPath = buildProjectPath(
     currentOrganization,
     effectiveProject,
@@ -163,6 +170,8 @@ export default function ExternalServersNew(): JSX.Element {
       setValidationError(null);
       setValidationResult(null);
       setLastValidatedUrl('');
+      setLastValidatedAuthHeaderName('');
+      setLastValidatedAuthHeaderValue('');
       return;
     }
 
@@ -170,20 +179,31 @@ export default function ExternalServersNew(): JSX.Element {
     setValidationResult(null);
     setLastValidatedUrl(normalizedUrl);
 
+    // Captured once, up front: if the auth fields are edited while this request is in
+    // flight, the snapshot below must still reflect what was actually sent, not
+    // whatever the live fields hold by the time the response comes back.
+    const trimmedAuthHeaderName = authHeaderName.trim();
+    const trimmedAuthHeaderValue = authHeaderValue.trim();
+    const hasAuth = Boolean(trimmedAuthHeaderName && trimmedAuthHeaderValue);
+
     const request: MCPServerInfoFetchRequest = {
       url: normalizedUrl,
     };
 
-    if (authHeaderName.trim() && authHeaderValue.trim()) {
+    if (hasAuth) {
       request.auth = {
         type: 'header',
-        header: authHeaderName.trim(),
-        value: authHeaderValue.trim(),
+        header: trimmedAuthHeaderName,
+        value: trimmedAuthHeaderValue,
       };
     }
 
     try {
       const response = await fetchServerInfo(request);
+      // Snapshot what this request sent, mirroring how endpointUrl below is captured
+      // from the local normalizedUrl rather than re-read from live state.
+      setLastValidatedAuthHeaderName(hasAuth ? trimmedAuthHeaderName : '');
+      setLastValidatedAuthHeaderValue(hasAuth ? trimmedAuthHeaderValue : '');
       setValidationResult({
         endpointUrl: normalizedUrl,
         serverInfo: {
@@ -238,6 +258,13 @@ export default function ExternalServersNew(): JSX.Element {
     if (isTargetStale) {
       showSnackbar(
         'Target has changed since validation. Please re-fetch server info before creating.',
+        'error'
+      );
+      return;
+    }
+    if (isAuthStale) {
+      showSnackbar(
+        'Authentication settings have changed since validation. Please re-fetch server info before creating.',
         'error'
       );
       return;
@@ -377,6 +404,13 @@ export default function ExternalServersNew(): JSX.Element {
   // True whenever the Target field (editable on step 2) no longer matches
   // what was actually validated — e.g. the user edited it after discovery.
   const isTargetStale = serverTarget.trim() !== validatedUrl;
+  // True whenever the auth header/value have been edited since the last successful
+  // validation — e.g. the user went back to step 1, changed credentials, and clicked
+  // Next again without re-fetching. isTargetStale alone wouldn't catch this, since the
+  // Target URL itself may be unchanged.
+  const isAuthStale =
+    authHeaderName.trim() !== lastValidatedAuthHeaderName ||
+    authHeaderValue.trim() !== lastValidatedAuthHeaderValue;
 
   const versionValidationError =
     serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())
