@@ -603,11 +603,11 @@ blocks:
       - name: gateway-controller-mcp
         tags: "gateway-version>1.2.1"
         features:
-          - features/gateway_controller_mcp.feature
+          - features/gateway/mcp-server/controller_mcp.feature
       - name: gateway-controller-admin-mcp
         tags: "gateway-version>1.2.1"
         features:
-          - features/gateway_controller_admin_mcp.feature
+          - features/gateway/mcp-server/controller_admin_mcp.feature
 
   - name: analytics
     parallel: 1
