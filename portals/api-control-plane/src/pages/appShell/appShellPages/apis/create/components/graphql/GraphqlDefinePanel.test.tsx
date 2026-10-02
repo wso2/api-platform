@@ -22,7 +22,7 @@ import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { accepts, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlDefinePanel } from './GraphqlDefinePanel';
 
 const SAMPLE_SDL = 'type Query { hello: String }';
@@ -92,16 +92,17 @@ describe('GraphqlDefinePanel — draft field presence', () => {
 
     await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
     await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
-    await screen.findByText('Query', { exact: false });
-
+    // The endpoint is reported at once; the schema joins it when the
+    // background check comes back.
+    await waitFor(() =>
+      expect(onDraftChange.mock.calls.at(-1)?.[0]).toMatchObject({
+        schemaSource: 'introspection',
+        endpointUrl: 'https://backend.example.com/graphql',
+        sdl: SAMPLE_SDL,
+      }),
+    );
     const lastCall = onDraftChange.mock.calls.at(-1)?.[0];
-    expect(lastCall).toMatchObject({
-      schemaSource: 'introspection',
-      endpointUrl: 'https://backend.example.com/graphql',
-      sdl: SAMPLE_SDL,
-    });
     expect(lastCall).not.toHaveProperty('sdlUrl');
     expect(lastCall).not.toHaveProperty('sdlFile');
   });
@@ -117,11 +118,13 @@ describe('GraphqlDefinePanel — draft field presence', () => {
 
     await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
     await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
 
-    // The explorer still says why there is no schema …
-    expect(await screen.findByText('introspection is disabled on this endpoint')).toBeInTheDocument();
-    // … but the wizard gets a draft, so Continue is enabled.
+    // The status line under the field explains it; the explorer keeps its
+    // initial empty state rather than showing an error for a usable endpoint …
+    expect(await screen.findByText(/introspection may be disabled/)).toBeInTheDocument();
+    expect(screen.getByText('Schema will show here')).toBeInTheDocument();
+    expect(screen.queryByText('introspection is disabled on this endpoint')).not.toBeInTheDocument();
+    // … and the wizard gets a draft, so Continue is enabled.
     const lastCall = onDraftChange.mock.calls.at(-1)?.[0];
     expect(lastCall).toMatchObject({
       endpointUrl: 'https://backend.example.com/graphql',
@@ -202,7 +205,6 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
 
     await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
     await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
     await screen.findByText('Query', { exact: false });
 
     expect(onDraftChange).toHaveBeenLastCalledWith(

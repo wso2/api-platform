@@ -298,7 +298,7 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
             {approach === 'schema' ? (
               <GraphqlUrlUploadForm onResolved={setResolved} onValidationFailed={setFailure} />
             ) : (
-              <GraphqlIntrospectionForm onResolved={setResolved} onValidationFailed={setFailure} />
+              <GraphqlIntrospectionForm onResolved={setResolved} />
             )}
           </Box>
 

@@ -564,8 +564,9 @@
   "api.create.graphql.definePanel.source.fromUrl": {
     "defaultMessage": "Imported from {url}"
   },
-  "api.create.graphql.introspection.action.check": {
-    "defaultMessage": "Fetch"
+  "api.create.graphql.introspection.checking": {
+    "defaultMessage": "Checking the endpoint for a schema…",
+    "description": "Status line while the endpoint is being introspected in the background."
   },
   "api.create.graphql.introspection.disabledHint": {
     "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
