@@ -87,11 +87,22 @@
 }
 
 /* ── Key manager hint ─────────────────────────────────────────── */
-/* Two lines: what picking this key manager will do, then the operator's own
-   note about it if they wrote one. The mode line is the one a developer has to
-   read, so it carries the weight. */
+/* Up to three lines: that this is a sandbox key manager (only when it is), what
+   picking it will do, then the operator's own note if they wrote one. The mode
+   line is the one a developer has to read, so it carries the weight. */
+.ok-km-sandbox,
 .ok-km-mode,
 .ok-km-note { display: block; }
+
+/* Weighted above the mode line rather than below it: this changes what the
+   credential is FOR, not how it is obtained, and it is the one thing a developer
+   can get wrong without the form complaining. Carries the same colour as the
+   Sandbox badges in the listings so the two read as one fact. */
+.ok-km-sandbox {
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  color: var(--info, #0b6bcb);
+}
 
 .ok-km-mode { color: var(--text-muted); }
 

@@ -83,6 +83,16 @@
         var host = document.getElementById('ok-km-hint');
         if (!host || !km) return;
         host.textContent = '';
+        /*
+         * Sandbox is called out first and in its own voice, because it is the one
+         * property of the choice that changes what the resulting credential is for
+         * rather than how it is obtained. Production is left unsaid: it is the
+         * default, and labelling it would put a line on every selection and make
+         * neither stand out — the same reason the listings badge only sandbox.
+         */
+        if (km.keyType === 'SANDBOX') {
+            host.appendChild(el('span', 'ok-km-sandbox', 'Keys created here are sandbox keys.'));
+        }
         host.appendChild(el('span', 'ok-km-mode', modeOf(km).hint(km)));
         if (km.description) host.appendChild(el('span', 'ok-km-note', km.description));
     }
@@ -700,7 +710,13 @@
                 sel.appendChild(holder);
             }
             members.forEach(function (km) {
-                var opt = el('option', null, km.displayName || km.id);
+                // Marked in the option text as well as in the hint below, because
+                // the environment is part of what is being chosen here — seeing it
+                // only after selecting means discovering it after the decision.
+                // An <option> renders no markup, so this is text, not a badge.
+                var label = km.displayName || km.id;
+                if (km.keyType === 'SANDBOX') label += ' · Sandbox';
+                var opt = el('option', null, label);
                 opt.value = km.id;
                 holder.appendChild(opt);
             });
