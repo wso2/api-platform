@@ -37,6 +37,7 @@ func TestKindConstantsMatchThePlatform(t *testing.T) {
 		{"MCP proxy", KindMCPProxy, constants.MCPProxy},
 		{"LLM proxy", KindLLMProxy, constants.LLMProxy},
 		{"LLM provider", KindLLMProvider, constants.LLMProvider},
+		{"GraphQL API", KindGraphQLAPI, constants.GraphQLApi},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.exported != tc.internal {

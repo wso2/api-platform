@@ -166,7 +166,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 
 func supportsRuntimeBootstrapKind(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent:
+	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent, models.KindGraphQLApi:
 		return true
 	default:
 		return false
