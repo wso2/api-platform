@@ -26,6 +26,7 @@ import {
   useUpdateGraphQLApi,
   type GraphQLApiDetail,
 } from '@/api/resources/graphqlApis';
+import { AppPage } from '@/components/AppPage';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -123,6 +124,14 @@ const toUpdateBody = (
 // param instead — and is only reachable from the detail page's own edit
 // button, so it never mounts without an API in scope.
 export function GraphqlApiEditPage() {
+  return (
+    <AppPage>
+      <GraphqlApiEditPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlApiEditPageContent() {
   const intl = useIntl();
   const navigate = useNavigate();
   const { notify } = useNotifications();

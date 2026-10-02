@@ -18,6 +18,7 @@
 
 import { FormattedMessage } from 'react-intl';
 
+import { AppPage } from '@/components/AppPage';
 import { ComingSoon } from '@/components/ComingSoon';
 import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
@@ -27,6 +28,14 @@ import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
  * scope guard differs (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlCompliancePage() {
+  return (
+    <AppPage>
+      <GraphqlCompliancePageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlCompliancePageContent() {
   return (
     <GraphqlApiPageGuard>
       {() => (
