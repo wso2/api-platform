@@ -426,8 +426,8 @@ paths:
         - Subscription Plans
       summary: List subscription plans
       description: >-
-        Lists subscription plans for an organization. When `name` is supplied, only the matching plan (if any) is
-        returned. Plan names are unique within an organization.
+        Lists subscription plans for an organization, ordered by handle. When `name` is supplied, only the matching
+        plan (if any) is returned. Plan names are unique within an organization. Use `limit` and `offset` to page.
       operationId: listSubscriptionPlans
       parameters:
         - in: query
@@ -436,6 +436,8 @@ paths:
           schema:
             type: string
           description: Filter by exact plan name. Returns an array of zero or one items.
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionPlanListResponse"
@@ -454,15 +456,44 @@ paths:
       description: >-
         Creates one subscription plan when the request body is an object, or multiple subscription plans when the body
         is an array. Bulk creation returns a message instead of creating plans when `generateDefaultSubPlans` is
-        enabled.
+        enabled. With `existing=keep`, only the plans that do not exist yet are created, existing plans are left
+        untouched, and the response lists the outcome per plan (ignoring `generateDefaultSubPlans`).
       operationId: addSubscriptionPlans
+      parameters:
+        - in: query
+          name: existing
+          required: false
+          schema:
+            type: string
+            enum:
+              - reject
+              - keep
+            default: reject
+          description: >-
+            `reject` (default) fails a duplicate handle with 409. `keep` leaves plans that already exist untouched,
+            creates the missing ones and reports each as `exists` or `created`; the body may be one plan or an array, and the response is always the per-plan result list.
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
       responses:
         "200":
-          $ref: "#/components/responses/MessageResponse"
+          description: Message (bulk create disabled), or per-plan results when nothing was created (`existing=keep`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MessageResponse"
+                  - $ref: "#/components/schemas/SubscriptionPlanCreateResults"
         "201":
-          $ref: "#/components/responses/SubscriptionPlanMutationResponse"
+          description: Subscription plan(s) created. With `existing=keep`, the per-plan results.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/SubscriptionPlanResponse"
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/SubscriptionPlanResponse"
+                  - $ref: "#/components/schemas/SubscriptionPlanCreateResults"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -4561,6 +4592,23 @@ components:
       type: object
       additionalProperties:
         type: string
+    SubscriptionPlanCreateResults:
+      type: array
+      description: Outcome per requested plan, in request order.
+      items:
+        type: object
+        required:
+          - id
+          - status
+        properties:
+          id:
+            type: string
+            description: The plan's handle.
+          status:
+            type: string
+            enum:
+              - created
+              - exists
     SubscriptionPlanResponse:
       type: object
       properties:

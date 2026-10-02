@@ -128,6 +128,24 @@ const create = async (orgId, plan, createdBy, t) => {
   return findPlanByUuid(orgId, uuid, t);
 };
 
+/**
+ * Creates the plan unless one with the same handle exists. Resolves to `{ plan, created }`; an
+ * existing plan is returned untouched. If a concurrent request creates the handle between the
+ * lookup and the insert, the unique-constraint violation is absorbed and the winner's row returned
+ * (the same race handling as findOrCreateSafe).
+ */
+const createIfAbsent = async (orgId, plan, createdBy, t) => {
+  const existing = await getByName(orgId, plan.handle, t);
+  if (existing) return { plan: existing, created: false };
+  try {
+    const created = await db.withSavepoint(t || db, () => create(orgId, plan, createdBy, t));
+    return { plan: created, created: true };
+  } catch (error) {
+    if (!db.isDuplicateKeyError(error)) throw error;
+    return { plan: await getByName(orgId, plan.handle, t), created: false };
+  }
+};
+
 const createMany = async (orgId, plans, createdBy, t) => {
   const exec = t || db;
   const portalId = getPortalId();
@@ -244,7 +262,7 @@ const listByApi = async (apiId, t) => {
 const list = async (orgId, t) => {
   const exec = t || db;
   const plans = await exec.query(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ? ORDER BY handle`,
     [orgId, getPortalId()]
   );
   await attachLimits(plans, t);
@@ -279,6 +297,7 @@ const updateApiMapping = async (subscriptionPlans, apiId, updatedBy, t) => {
 
 module.exports = {
     create,
+    createIfAbsent,
     createMany,
     put,
     update,

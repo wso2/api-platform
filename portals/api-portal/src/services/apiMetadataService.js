@@ -1242,7 +1242,9 @@ const addSubscriptionPlans = async (req, res) => {
             return util.handleError(res, error);
         }
     }
-    if (Array.isArray(req.body)) {
+    if (req.query?.existing === 'keep') {
+        await createSubscriptionPlansIfAbsent(req, res);
+    } else if (Array.isArray(req.body)) {
         await createSubscriptionPlans(req, res);
     } else {
         await createSubscriptionPlan(req, res);
@@ -1358,6 +1360,39 @@ const createSubscriptionPlans = async (req, res) => {
             error: error.message,
             stack: error.stack,
             orgId: req.orgId
+        });
+        util.handleError(res, error);
+    }
+};
+
+// existing=keep: create the plans that do not exist and leave existing ones untouched.
+const createSubscriptionPlansIfAbsent = async (req, res) => {
+    const orgId = req.orgId;
+    const plans = Array.isArray(req.body) ? req.body : [req.body];
+    const userId = util.resolveActor(req);
+
+    if (plans.length === 0 || plans.some((p) => !p || typeof p !== "object" || Array.isArray(p))) {
+        return util.sendError(res, 400, "Missing or invalid fields in the request payload");
+    }
+
+    try {
+        const results = await db.withTransaction(async (t) => {
+            const outcomes = [];
+            for (const plan of plans) {
+                normalizePlanHandle(plan);
+                const { created } = await subscriptionPlanDao.createIfAbsent(orgId, plan, userId, t);
+                outcomes.push({ id: plan.handle, status: created ? 'created' : 'exists' });
+            }
+            return outcomes;
+        });
+        const created = results.filter((r) => r.status === 'created').length;
+        logger.info('Created subscription plans if absent', { orgId, requested: plans.length, created });
+        res.status(created > 0 ? 201 : 200).json(results);
+    } catch (error) {
+        logger.error('subscription plan create-if-absent failed', {
+            error: error.message,
+            stack: error.stack,
+            orgId
         });
         util.handleError(res, error);
     }
