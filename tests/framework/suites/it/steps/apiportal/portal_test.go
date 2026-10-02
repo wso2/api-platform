@@ -217,7 +217,7 @@ func TestBrowserRedirectsAreRoutedToTheirTarget(t *testing.T) {
 		require.NoError(t, err)
 		return u
 	}
-	require.True(t, isIdentityProvider(parse("https://testbench:3013/oauth2/authorize?org=a")))
+	require.True(t, isIdentityProvider(parse("https://testbench:3014/oauth2/authorize?org=a")))
 	require.False(t, isIdentityProvider(parse("/api-portal/default/views/default")))
 	require.False(t, isIdentityProvider(parse("http://api-portal-multi-organization:9543/api-portal/default/callback")))
 	require.False(t, isIdentityProvider(parse("https://testbench.evil.example/oauth2/authorize")))

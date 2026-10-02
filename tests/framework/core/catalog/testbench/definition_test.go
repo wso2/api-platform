@@ -50,7 +50,7 @@ func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
 	pair := shared.IdentityProviderTLS()
 	require.Equal(t, string(pair.CertPEM), definition.Env[oidc.EnvTLSCert])
 	require.Equal(t, string(pair.PrivateKeyPEM), definition.Env[oidc.EnvTLSKey])
-	require.Equal(t, "https://testbench:3013/oauth2/token", definition.Env[oidc.EnvIssuer])
+	require.Equal(t, "https://testbench:3014/oauth2/token", definition.Env[oidc.EnvIssuer])
 	require.Equal(t, OIDCIssuer, definition.Env[oidc.EnvIssuer])
 
 	block, _ := pem.Decode(pair.CertPEM)
