@@ -910,22 +910,22 @@ key_file = ""
 insecure_skip_verify = false
 
 # In-process store (advanced; defaults are sensible) that carries captured
-# request/response headers directly from the ext_proc handler to the ALS handler,
-# keyed by Envoy's x-request-id, instead of round-tripping them through Envoy
-# dynamic metadata. Only consulted while the collector is active ([analytics] or
-# [traffic_logging] enabled). A miss (never written, evicted, or TTL-expired)
-# never drops a log line -- it just falls back to decoding headers from the
-# access-log entry the old way.
+# request/response headers and bodies directly from the ext_proc handler to the ALS
+# handler, keyed by Envoy's x-request-id, instead of round-tripping them through
+# Envoy dynamic metadata. Only consulted while the collector is active ([analytics]
+# or [traffic_logging] enabled). A field is left out of metadata only once the
+# store has accepted it, and unread entries are never evicted; when the store is
+# full, fields simply stay in metadata. These limits trade memory for speed, never
+# for lost data.
 [analytics.correlation]
-# Total entries held across all shards combined. Size comfortably above the
-# number of requests that can be in-flight between ext_proc stream teardown and
-# their ALS entry being processed (see ttl below).
+# Total entries held across all shards combined: one per request, from its first
+# captured field until its access-log entry is processed.
 capacity = 20000
-# How long a written entry is honored before being treated as a miss. Envoy
-# flushes access logs on a 1s/16KiB buffer (collector.server's Envoy-sender-only
-# buffer_flush_interval/buffer_size_bytes), so the read normally follows the
-# write by about a second; 4s comfortably absorbs scheduling jitter.
-ttl = "4s"
+# How long an entry whose request has finished waits for its access-log entry
+# before its slot may be reused. Only entries that are never read are affected
+# (e.g. paths in collector.ignore_path_prefixes); the read normally follows about
+# a second after the request ends.
+ttl = "30s"
 # Independently-locked partitions, selected by hashing the request id. Rounded
 # up to the next power of two if not one already.
 shards = 32
@@ -934,8 +934,8 @@ shards = 32
 # the metadata path. 0 keeps every body in metadata.
 max_payload_bytes = 262144
 # Total body bytes the store may hold. Bodies are released as soon as their
-# access-log entry is processed; the oldest are evicted beyond this. 0 keeps every
-# body in metadata.
+# access-log entry is processed; a body that does not fit stays in metadata.
+# 0 keeps every body in metadata.
 max_body_bytes = 16777216
 
 # =============================================================================

@@ -87,52 +87,72 @@ func TestStore_Put_EmptyKeyIsNoop(t *testing.T) {
 	}
 }
 
-func TestStore_TTLExpiry(t *testing.T) {
-	s := NewStore(100, 10*time.Millisecond, 1)
+// The TTL never hides an entry: a completed entry stays readable until it is
+// taken or its slot is reclaimed for a new request.
+func TestStore_TTLMakesCompletedEntryReclaimableNotInvisible(t *testing.T) {
+	s := NewStore(1, 10*time.Millisecond, 1)
 	s.Put("req-1", Payload{RequestHeaders: map[string]string{"host": "example.com"}})
 
+	time.Sleep(30 * time.Millisecond)
 	if _, ok := s.Get("req-1"); !ok {
-		t.Fatal("expected a hit immediately after Put")
+		t.Fatal("past the TTL but not reclaimed: must still be readable")
 	}
 
-	time.Sleep(30 * time.Millisecond)
-
+	if !s.Merge("req-2", Payload{RequestHeaders: map[string]string{"host": "b"}}) {
+		t.Fatal("expected the stale completed entry's slot to be reclaimed")
+	}
 	if _, ok := s.Get("req-1"); ok {
-		t.Fatal("expected the entry to have expired")
+		t.Fatal("expected req-1 to have been reclaimed")
 	}
 }
 
-// TestStore_EvictionUnderCapacityPressure fills a single-shard store to capacity
-// and writes one more entry, and asserts the oldest (first-written) entry was
-// evicted (FIFO) while capacity is never exceeded.
-func TestStore_EvictionUnderCapacityPressure(t *testing.T) {
+// A full shard refuses new entries rather than evicting unread ones; the caller
+// then keeps those fields in Envoy metadata.
+func TestStore_FullShardRefusesInsteadOfEvicting(t *testing.T) {
 	const capacity = 8
-	s := NewStore(capacity, time.Hour, 1) // 1 shard: deterministic FIFO order
+	s := NewStore(capacity, time.Hour, 1)
 
 	for i := 0; i < capacity; i++ {
-		s.Put(fmt.Sprintf("req-%d", i), Payload{RequestHeaders: map[string]string{"i": fmt.Sprintf("%d", i)}})
+		if !s.Merge(fmt.Sprintf("req-%d", i), Payload{RequestHeaders: map[string]string{"i": fmt.Sprintf("%d", i)}}) {
+			t.Fatalf("expected req-%d to be accepted", i)
+		}
 	}
-	// Every entry should still be present -- the ring isn't over capacity yet.
+	if s.Merge("req-overflow", Payload{RequestHeaders: map[string]string{"i": "overflow"}}) {
+		t.Fatal("expected a full shard to refuse a new entry")
+	}
 	for i := 0; i < capacity; i++ {
 		if _, ok := s.Get(fmt.Sprintf("req-%d", i)); !ok {
-			t.Fatalf("expected req-%d to still be present before overflow", i)
+			t.Fatalf("expected unread req-%d to survive", i)
 		}
 	}
 
-	// One more write should evict the oldest entry (req-0).
-	s.Put("req-overflow", Payload{RequestHeaders: map[string]string{"i": "overflow"}})
+	// Completed entries within the TTL are not reclaimable either.
+	s.Complete("req-0")
+	if s.Merge("req-overflow", Payload{RequestHeaders: map[string]string{"i": "overflow"}}) {
+		t.Fatal("expected an entry completed within the TTL to be kept")
+	}
 
-	if _, ok := s.Get("req-0"); ok {
-		t.Fatal("expected the oldest entry to have been evicted under capacity pressure")
+	// Taking an entry frees its slot for a new one.
+	if _, ok := s.Take("req-3"); !ok {
+		t.Fatal("expected req-3")
 	}
-	if _, ok := s.Get("req-overflow"); !ok {
-		t.Fatal("expected the new entry to be present")
+	if !s.Merge("req-overflow", Payload{RequestHeaders: map[string]string{"i": "overflow"}}) {
+		t.Fatal("expected the freed slot to be reused")
 	}
-	// The rest of the window survives.
-	for i := 1; i < capacity; i++ {
-		if _, ok := s.Get(fmt.Sprintf("req-%d", i)); !ok {
-			t.Fatalf("expected req-%d to survive the eviction", i)
-		}
+}
+
+// Merging into an existing entry needs no new slot, so it succeeds on a full shard.
+func TestStore_MergeIntoExistingEntryOnFullShard(t *testing.T) {
+	s := NewStore(1, time.Hour, 1)
+	if !s.Merge("req-1", Payload{RequestHeaders: map[string]string{"a": "1"}}) {
+		t.Fatal("expected first merge to succeed")
+	}
+	if !s.Merge("req-1", Payload{ResponseHeaders: map[string]string{"b": "2"}}) {
+		t.Fatal("expected merge into the existing entry to succeed")
+	}
+	got, ok := s.Take("req-1")
+	if !ok || got.RequestHeaders["a"] != "1" || got.ResponseHeaders["b"] != "2" {
+		t.Fatalf("expected both phases merged, got %+v (ok=%v)", got, ok)
 	}
 }
 
@@ -198,7 +218,7 @@ func TestStore_Take_RemovesEntryAndFreesSlot(t *testing.T) {
 }
 
 func TestStore_Get_DoesNotRemove(t *testing.T) {
-	s := NewStore(10, time.Minute, 1)
+	s := NewStoreWithBodyLimits(10, time.Minute, 1, 10, 100)
 	s.Put("a", Payload{RequestBody: "x"})
 	_, ok := s.Get("a")
 	require.True(t, ok)
@@ -206,23 +226,29 @@ func TestStore_Get_DoesNotRemove(t *testing.T) {
 	assert.True(t, ok, "Get only peeks")
 }
 
-func TestStore_BodyBudget_EvictsOldestBodies(t *testing.T) {
-	// One shard, room for 100 entries but only 10 body bytes.
-	s := NewStoreWithBodyLimits(100, time.Minute, 1, 10, 10)
-	s.Put("old", Payload{RequestBody: "123456"})
-	s.Put("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}})
-	s.Put("new", Payload{RequestBody: "abcdef"})
+// Over the byte budget, a body is refused unless stale completed bodies can be
+// reclaimed to make room; unread in-flight bodies are never evicted.
+func TestStore_BodyBudget_RefusesOrReclaimsStale(t *testing.T) {
+	s := NewStoreWithBodyLimits(100, 10*time.Millisecond, 1, 10, 10)
+	require.True(t, s.Merge("in-flight", Payload{RequestBody: "123456"}))
+	assert.False(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "no room, and the existing body is in flight")
+	_, ok := s.Get("new")
+	assert.False(t, ok, "a refused merge stores nothing")
+	assert.True(t, s.Merge("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}}), "headers are not charged")
 
-	_, ok := s.Get("old")
-	assert.False(t, ok, "oldest body evicted to fit the budget")
-	got, ok := s.Get("new")
-	require.True(t, ok)
-	assert.Equal(t, "abcdef", got.RequestBody)
-	_, ok = s.Get("headers-only")
-	assert.True(t, ok, "entries without bodies are not charged and not evicted for bytes")
+	s.Complete("in-flight")
+	time.Sleep(30 * time.Millisecond)
+	assert.True(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "stale completed body reclaimed")
+	_, ok = s.Get("in-flight")
+	assert.False(t, ok)
+	assert.Equal(t, int64(6), s.shards[0].bodyBytes)
+}
 
-	sh := s.shards[0]
-	assert.Equal(t, int64(6), sh.bodyBytes)
+// A body over the per-body limit is refused outright.
+func TestStore_BodyOverLimitRefused(t *testing.T) {
+	s := NewStoreWithBodyLimits(100, time.Minute, 1, 4, 100)
+	assert.False(t, s.Merge("a", Payload{RequestBody: "12345"}))
+	assert.False(t, NewStore(100, time.Minute, 1).Merge("a", Payload{RequestBody: "x"}), "no body limits: bodies refused")
 }
 
 func TestStore_BodyBudget_TakeReleasesBytes(t *testing.T) {
@@ -236,16 +262,15 @@ func TestStore_BodyBudget_TakeReleasesBytes(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestStore_BodyBudget_UpdateInPlaceAndRingEvictionAccounting(t *testing.T) {
+func TestStore_BodyBudget_UpdateInPlaceAccounting(t *testing.T) {
 	s := NewStoreWithBodyLimits(2, time.Minute, 1, 100, 100)
-	s.Put("a", Payload{RequestBody: "1234"})
-	s.Put("a", Payload{RequestBody: "12"}) // update in place
-	assert.Equal(t, int64(2), s.shards[0].bodyBytes)
-	s.Put("b", Payload{RequestBody: "123"})
-	s.Put("c", Payload{RequestBody: "1"}) // ring of 2 wraps and evicts "a"
-	assert.Equal(t, int64(4), s.shards[0].bodyBytes)
-	_, ok := s.Get("a")
-	assert.False(t, ok)
+	require.True(t, s.Merge("a", Payload{RequestBody: "1234"}))
+	require.True(t, s.Merge("a", Payload{RequestBody: "12"})) // replaces the request body
+	require.True(t, s.Merge("a", Payload{ResponseBody: "123"}))
+	assert.Equal(t, int64(5), s.shards[0].bodyBytes)
+	_, ok := s.Take("a")
+	require.True(t, ok)
+	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
 }
 
 func TestStore_MaxPayloadBytes(t *testing.T) {

@@ -37,74 +37,145 @@ func newTestServerWithStore(t *testing.T, store *correlation.Store) *ExternalPro
 	return NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, store)
 }
 
-// TestWriteCorrelationEntry_StoresWhenRequestIDFromHeaderAndHeadersCaptured
-// covers the write side of Step 4's steady-state path: a real x-request-id and
-// captured headers must land in the store, keyed by that request id.
-func TestWriteCorrelationEntry_StoresWhenRequestIDFromHeaderAndHeadersCaptured(t *testing.T) {
-	store := correlation.NewStore(100, time.Minute, 4)
-	server := newTestServerWithStore(t, store)
-
+// correlatedExecCtx returns an execution context whose request id came from
+// Envoy's x-request-id, so its captured fields may go through the store.
+func correlatedExecCtx(server *ExternalProcessorServer, requestID string) *PolicyExecutionContext {
 	execCtx := newPolicyExecutionContext(server, "test-route", nil)
-	execCtx.requestID = "req-1"
+	execCtx.requestID = requestID
 	execCtx.requestIDFromHeader = true
-	execCtx.analyticsMetadata["request_headers"] = map[string]string{"host": "example.com"}
+	return execCtx
+}
 
-	server.writeCorrelationEntry(execCtx)
+// A captured field must already be in the store when buildAnalyticsStruct returns
+// the struct it was left out of: that struct goes into the ext_proc response, and
+// Envoy can emit the access-log entry as soon as it has that response.
+func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) {
+	store := correlation.NewStore(100, time.Minute, 4)
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
 
+	st, err := buildAnalyticsStruct(map[string]any{
+		"request_headers": map[string]string{"host": "example.com"},
+		"source":          "policy",
+	}, execCtx)
+	require.NoError(t, err)
+
+	_, inMetadata := st.GetFields()["request_headers"]
+	assert.False(t, inMetadata, "accepted by the store, so left out of Envoy metadata")
+	assert.Equal(t, "policy", st.GetFields()["source"].GetStringValue(), "unrelated fields still go to Envoy")
 	payload, ok := store.Get("req-1")
-	require.True(t, ok, "expected the entry to be stored")
+	require.True(t, ok, "stored synchronously, before the response is sent")
 	assert.Equal(t, "example.com", payload.RequestHeaders["host"])
 }
 
-// TestWriteCorrelationEntry_SkipsWhenNoRealRequestID covers the ext_proc uuid
-// fallback: when x-request-id was absent, execCtx.requestID is a locally
-// generated id the ALS side can never look up, so the write must be skipped
-// entirely rather than wasting a store slot no one will ever read.
-func TestWriteCorrelationEntry_SkipsWhenNoRealRequestID(t *testing.T) {
-	store := correlation.NewStore(100, time.Minute, 4)
-	server := newTestServerWithStore(t, store)
+// Each phase merges its own fields into the request's single entry.
+func TestBuildAnalyticsStruct_MergesPhasesIntoOneEntry(t *testing.T) {
+	store := correlation.NewStoreWithBodyLimits(100, time.Minute, 4, 1024, 4096)
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
 
-	execCtx := newPolicyExecutionContext(server, "test-route", nil)
-	execCtx.requestID = "generated-uuid-fallback"
-	execCtx.requestIDFromHeader = false
-	execCtx.analyticsMetadata["request_headers"] = map[string]string{"host": "example.com"}
+	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "1"}}, execCtx)
+	require.NoError(t, err)
+	_, err = buildAnalyticsStruct(map[string]any{"request_payload": "body"}, execCtx)
+	require.NoError(t, err)
+	_, err = buildAnalyticsStruct(map[string]any{"response_headers": map[string]string{"b": "2"}}, execCtx)
+	require.NoError(t, err)
 
-	server.writeCorrelationEntry(execCtx)
-
-	_, ok := store.Get("generated-uuid-fallback")
-	assert.False(t, ok, "must never store an entry keyed by a locally generated request id")
+	payload, ok := store.Get("req-1")
+	require.True(t, ok)
+	assert.Equal(t, "1", payload.RequestHeaders["a"])
+	assert.Equal(t, "body", payload.RequestBody)
+	assert.Equal(t, "2", payload.ResponseHeaders["b"])
 }
 
-// TestWriteCorrelationEntry_SkipsWhenNothingCaptured covers a request where
-// header capture wasn't enabled (or no policy contributed anything): nothing
-// worth correlating, so the store must stay empty.
-func TestWriteCorrelationEntry_SkipsWhenNothingCaptured(t *testing.T) {
-	store := correlation.NewStore(100, time.Minute, 4)
-	server := newTestServerWithStore(t, store)
+// Whenever the store does not take a field, it must stay in Envoy metadata.
+func TestBuildAnalyticsStruct_KeepsFieldsInMetadataWhenNotStored(t *testing.T) {
+	headers := map[string]string{"host": "example.com"}
 
-	execCtx := newPolicyExecutionContext(server, "test-route", nil)
-	execCtx.requestID = "req-empty"
-	execCtx.requestIDFromHeader = true
-	// analyticsMetadata has no request_headers/response_headers entries at all.
+	t.Run("generated request id", func(t *testing.T) {
+		store := correlation.NewStore(100, time.Minute, 4)
+		execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "generated-uuid")
+		execCtx.requestIDFromHeader = false
+		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, execCtx)
+		require.NoError(t, err)
+		assert.Contains(t, st.GetFields(), "request_headers")
+		_, ok := store.Get("generated-uuid")
+		assert.False(t, ok)
+	})
 
-	server.writeCorrelationEntry(execCtx)
+	t.Run("store full of in-flight requests", func(t *testing.T) {
+		store := correlation.NewStore(1, time.Nanosecond, 1)
+		server := newTestServerWithStore(t, store)
+		_, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, correlatedExecCtx(server, "in-flight"))
+		require.NoError(t, err)
 
-	_, ok := store.Get("req-empty")
-	assert.False(t, ok)
+		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, correlatedExecCtx(server, "next"))
+		require.NoError(t, err)
+		assert.Contains(t, st.GetFields(), "request_headers", "no slot, so the field stays in metadata")
+		_, ok := store.Get("in-flight")
+		assert.True(t, ok, "an unread, in-flight entry is never evicted")
+	})
+
+	t.Run("unrecognised header shape", func(t *testing.T) {
+		store := correlation.NewStore(100, time.Minute, 4)
+		execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
+		st, err := buildAnalyticsStruct(map[string]any{"request_headers": 12345}, execCtx)
+		require.NoError(t, err)
+		assert.Contains(t, st.GetFields(), "request_headers")
+	})
+
+	t.Run("no store", func(t *testing.T) {
+		execCtx := correlatedExecCtx(newTestServerWithStore(t, nil), "req-1")
+		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, execCtx)
+		require.NoError(t, err)
+		assert.Contains(t, st.GetFields(), "request_headers")
+	})
 }
 
-// TestWriteCorrelationEntry_NilStoreIsNoop covers the collector-disabled
-// deployment: ExternalProcessorServer.correlationStore is nil, and
-// writeCorrelationEntry must not panic or otherwise misbehave.
-func TestWriteCorrelationEntry_NilStoreIsNoop(t *testing.T) {
+// The LLM proxy's internal loopback hop can share the outer call's request id. It
+// must neither write the outer call's entry nor mark it complete, which would let
+// it be reclaimed while the outer call is still in flight.
+func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
+	store := correlation.NewStore(1, time.Nanosecond, 1)
+	server := newTestServerWithStore(t, store)
+
+	outer := correlatedExecCtx(server, "shared-id")
+	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"who": "outer"}}, outer)
+	require.NoError(t, err)
+
+	loopback := correlatedExecCtx(server, "shared-id")
+	st, err := buildAnalyticsStruct(map[string]any{
+		analyticsInternalLoopbackKey: "true",
+		"request_headers":            map[string]string{"who": "loopback"},
+	}, loopback)
+	require.NoError(t, err)
+	assert.Contains(t, st.GetFields(), "request_headers", "loopback hop keeps its data in metadata")
+
+	loopback.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
+	server.completeCorrelationEntry(loopback)
+
+	payload, ok := store.Get("shared-id")
+	require.True(t, ok)
+	assert.Equal(t, "outer", payload.RequestHeaders["who"], "outer entry untouched")
+	assert.False(t, store.Merge("other", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}),
+		"outer entry is still in flight, so its slot is not reclaimable")
+}
+
+// Completing a finished request makes its unread entry reclaimable after the TTL.
+func TestCompleteCorrelationEntry_MakesEntryReclaimable(t *testing.T) {
+	store := correlation.NewStore(1, time.Nanosecond, 1)
+	server := newTestServerWithStore(t, store)
+	execCtx := correlatedExecCtx(server, "done")
+	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, execCtx)
+	require.NoError(t, err)
+
+	server.completeCorrelationEntry(execCtx)
+	time.Sleep(time.Millisecond)
+
+	assert.True(t, store.Merge("next", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}))
+}
+
+func TestCompleteCorrelationEntry_NilStoreIsNoop(t *testing.T) {
 	server := newTestServerWithStore(t, nil)
-
-	execCtx := newPolicyExecutionContext(server, "test-route", nil)
-	execCtx.requestID = "req-1"
-	execCtx.requestIDFromHeader = true
-	execCtx.analyticsMetadata["request_headers"] = map[string]string{"host": "example.com"}
-
-	assert.NotPanics(t, func() { server.writeCorrelationEntry(execCtx) })
+	assert.NotPanics(t, func() { server.completeCorrelationEntry(correlatedExecCtx(server, "req-1")) })
 }
 
 // TestNormalizeAnalyticsHeaderValue covers every shape captured headers can
@@ -138,23 +209,5 @@ func TestNormalizeAnalyticsHeaderValue(t *testing.T) {
 
 	t.Run("unrecognized shape is nil", func(t *testing.T) {
 		assert.Nil(t, normalizeAnalyticsHeaderValue(12345))
-	})
-}
-
-func TestSnapshotHeaderPayload(t *testing.T) {
-	t.Run("builds a payload from both keys", func(t *testing.T) {
-		p := snapshotHeaderPayload(map[string]interface{}{
-			"request_headers":  map[string]string{"host": "example.com"},
-			"response_headers": map[string]string{"content-type": "application/json"},
-			"source":           "immediate-response", // unrelated key, ignored
-		})
-		assert.Equal(t, map[string]string{"host": "example.com"}, p.RequestHeaders)
-		assert.Equal(t, map[string]string{"content-type": "application/json"}, p.ResponseHeaders)
-		assert.False(t, p.IsEmpty())
-	})
-
-	t.Run("empty when neither key present", func(t *testing.T) {
-		p := snapshotHeaderPayload(map[string]interface{}{"source": "immediate-response"})
-		assert.True(t, p.IsEmpty())
 	})
 }
