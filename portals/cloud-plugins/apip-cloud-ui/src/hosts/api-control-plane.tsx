@@ -36,6 +36,7 @@ import {
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
+  type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
@@ -421,4 +422,4 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
 export const cloudExtensions = filterExtensionsForRuntime(
   getCloudExtensions(cloudPluginFeatures)
 );
-export type { ApiControlPlaneExtension };
+export type { ApiControlPlaneCloudEntry, ApiControlPlaneExtension };
