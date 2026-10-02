@@ -115,6 +115,16 @@ Feature: API Portal multi-organization pages and browser sign-in
     When I send an API Portal "GET" request to "/api-portal/elsewhere-${CTX:elsewhere}/views/default/applications" using portal "api-portal-multi-organization" as browser "nobody"
     Then the response status code should be 403
 
+  Scenario: A login whose organization claim names two organizations is refused and provisions nothing
+    Given I generate a unique resource name from "twofold" and store it as "twofold"
+    And the API Portal browser "tess" has an IDP session with claims:
+      | sub    | tess                          |
+      | org_id | ["${CTX:twofold}", "default"] |
+      | roles  | ["ap_admin"]                  |
+    When I sign in to API Portal "api-portal-multi-organization" from "/api-portal/default/views/default/login" as browser "tess"
+    Then the response status code should be 403
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:twofold}"
+
   Scenario: Silent sign-in asks the IDP only for the organization being browsed
     Given I generate a unique resource name from "silent-x" and store it as "silentX"
     And I generate a unique resource name from "silent-y" and store it as "silentY"
