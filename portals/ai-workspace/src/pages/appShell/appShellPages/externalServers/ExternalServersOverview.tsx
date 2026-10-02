@@ -918,9 +918,12 @@ export default function ExternalServersOverview(): JSX.Element {
             value: authHeaderValue.trim(),
           },
         };
-      } else if (!trimmedHeaderName) {
-        // No auth header configured, or the user is clearing it — validate the way the
-        // saved proxy would actually behave, unauthenticated.
+      } else if (!trimmedHeaderName || !isCredentialMasked) {
+        // No auth header configured, or the credential has been explicitly cleared
+        // (unmasked, then left blank instead of retyped) — in both cases there is no
+        // live credential to send. Validate the way the saved proxy would actually
+        // behave unauthenticated, rather than falling through to proxyId below, which
+        // would silently resolve the stored secret the user just cleared.
         request = { url: trimmedUrl };
       } else if (!headerNameUnchanged) {
         // The header was renamed but the value is still masked. proxyId would resolve
