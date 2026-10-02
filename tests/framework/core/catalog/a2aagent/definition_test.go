@@ -41,6 +41,10 @@ func TestTripPlannerDefinition(t *testing.T) {
 	require.Equal(t, "/.well-known/agent-card.json", definition.Health.Path)
 	require.Equal(t, "http://a2a-trip-planner:9099", definition.Env["TRIP_PUBLIC_URL"])
 	require.Equal(t, "9099", definition.Env["TRIP_PORT"])
+	require.Equal(t, "3", definition.Env["TRIP_STREAM_STEPS"])
+	require.Equal(t, "0.5", definition.Env["TRIP_STREAM_STEP_DELAY"])
+	require.Equal(t, "60", definition.Env["TRIP_SLOW_HOLD_SECONDS"])
+	require.Equal(t, "1.0", definition.Env["TRIP_SLOW_TICK"])
 }
 
 func TestTripPlannerImageOverride(t *testing.T) {

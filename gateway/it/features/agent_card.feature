@@ -1456,7 +1456,7 @@ Feature: Agent Card serving
     Then the response should be a client error
     And the response body should contain "but the gateway serves this transport at"
 
-  Scenario: A managed card interface URL that is not https is rejected
+  Scenario: A managed card interface URL that is not http or https is rejected
     When I deploy this Agent configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -1479,14 +1479,14 @@ Feature: Agent Card serving
             public:
               mode: managed
               content:
-                name: Card With A Plaintext URL
-                description: Advertises http rather than https
+                name: Card With A Non-HTTP URL
+                description: Advertises ws rather than http or https
                 version: 1.0.0
                 protocolVersion: "1.0"
                 supportedInterfaces:
                   - protocolBinding: HTTP+JSON
                     protocolVersion: "1.0"
-                    url: http://agents.example.com/agent-card-plaintext-url/v1
+                    url: ws://agents.example.com/agent-card-plaintext-url/v1
                 capabilities:
                   streaming: true
                 defaultInputModes:
@@ -1501,7 +1501,7 @@ Feature: Agent Card serving
                       - travel
       """
     Then the response should be a client error
-    And the response body should contain "must use https"
+    And the response body should contain "must use http or https"
 
   # The gateway does not serve /{tenant}/... routes, so a card advertising a
   # tenant tells clients to send requests to paths that 404.

@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"math"
 	"net/textproto"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -60,9 +62,13 @@ func parseSeconds(value string) (float64, error) {
 
 // Base holds shared state and request steps for one integration-test block.
 type Base struct {
-	topo        *frameworkruntime.Topology
-	funnel      *httpx.Funnel
-	featureRoot string
+	topo   *frameworkruntime.Topology
+	funnel *httpx.Funnel
+	// gatewayTLSFunnel carries data-plane requests to the gateway's HTTPS listener. It is
+	// separate from funnel because that client verifies peers as the Platform API; both
+	// publish into the same scenario response slot.
+	gatewayTLSFunnel *httpx.Funnel
+	featureRoot      string
 }
 
 // FeatureRoot returns the root directory containing suite feature assets.
@@ -102,14 +108,30 @@ type Suite struct {
 
 // New creates isolated step bindings for one runner in a resolved block.
 func New(topo *frameworkruntime.Topology, featureRoot ...string) (*Suite, error) {
-	return newSuite(topo, shared.ControlPlaneCrypto()["certs/cert.pem"], featureRoot...)
+	listenerPEM, err := gatewayListenerCertificate()
+	if err != nil {
+		return nil, err
+	}
+	return newSuite(topo, shared.ControlPlaneCrypto()["certs/cert.pem"], listenerPEM, featureRoot...)
 }
 
-func newSuite(topo *frameworkruntime.Topology, caPEM []byte, featureRoot ...string) (*Suite, error) {
+func newSuite(
+	topo *frameworkruntime.Topology, caPEM, gatewayListenerPEM []byte, featureRoot ...string,
+) (*Suite, error) {
 	tlsConfig, err := platformAPITLSConfig(caPEM)
 	if err != nil {
 		return nil, err
 	}
+	gatewayTLSConfig, err := gatewayListenerTLSConfig(gatewayListenerPEM)
+	if err != nil {
+		return nil, err
+	}
+	gatewayTLSClient := httpx.NewClient(httpx.Options{
+		Timeout:         30 * time.Second,
+		MaxRetries:      3,
+		RetryDelay:      2 * time.Second,
+		TLSClientConfig: gatewayTLSConfig,
+	})
 	client := httpx.NewClient(httpx.Options{
 		Timeout:         30 * time.Second,
 		MaxRetries:      3,
@@ -121,9 +143,10 @@ func newSuite(topo *frameworkruntime.Topology, caPEM []byte, featureRoot ...stri
 		root = featureRoot[0]
 	}
 	base := &Base{
-		topo:        topo,
-		funnel:      httpx.NewFunnel(client, 3, 2*time.Second),
-		featureRoot: root,
+		topo:             topo,
+		funnel:           httpx.NewFunnel(client, 3, 2*time.Second),
+		gatewayTLSFunnel: httpx.NewFunnel(gatewayTLSClient, 3, 2*time.Second),
+		featureRoot:      root,
 	}
 	stepscommon.ConfigureExpansion()
 	return &Suite{Base: base}, nil
@@ -141,6 +164,35 @@ func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
 		return nil, fmt.Errorf("loading the generated Platform API CA certificate")
 	}
 	return &tls.Config{RootCAs: rootCAs, ServerName: "platform-api"}, nil
+}
+
+// gatewayListenerCertPath is the repo-relative self-signed certificate the gateway serves on
+// its default HTTPS listener.
+const gatewayListenerCertPath = "gateway/gateway-controller/listener-certs/default-listener.crt"
+
+// gatewayListenerCertificate reads the gateway's default HTTPS listener certificate from the
+// checkout the framework runs in.
+func gatewayListenerCertificate() ([]byte, error) {
+	root, ok := shared.RepoRootFromCallerFile()
+	if !ok {
+		return nil, fmt.Errorf("locating the repository root for the gateway listener certificate")
+	}
+	pem, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(gatewayListenerCertPath)))
+	if err != nil {
+		return nil, fmt.Errorf("reading the gateway listener certificate: %w", err)
+	}
+	return pem, nil
+}
+
+// gatewayListenerTLSConfig trusts only the gateway's listener certificate. The name is pinned
+// to the certificate's own subject because the mapped address the suite dials varies by Docker
+// host, while scenarios that override the Host header still verify the same certificate.
+func gatewayListenerTLSConfig(pem []byte) (*tls.Config, error) {
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("loading the gateway listener certificate")
+	}
+	return &tls.Config{RootCAs: rootCAs, ServerName: "localhost"}, nil
 }
 
 // Register binds shared and product-specific Gherkin steps.
@@ -187,6 +239,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response header "([^"]*)" should be "([^"]*)"$`, b.responseHeaderEquals)
 	sc.Step(`^the response header "([^"]*)" should contain "([^"]*)"$`, b.responseHeaderContains)
 	sc.Step(`^the response header "([^"]*)" should not contain "([^"]*)"$`, b.responseHeaderNotContains)
+	sc.Step(`^the response header "([^"]*)" should not be "([^"]*)"$`, b.responseHeaderNotEquals)
 	sc.Step(`^the response header "([^"]*)" should match pattern "([^"]*)"$`,
 		b.responseHeaderMatchesPattern)
 	sc.Step(`^the response header "([^"]*)" should (exist|not exist)$`, b.responseHeaderPresence)
@@ -218,6 +271,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I store the JSON response field "([^"]*)" as "([^"]*)"$`,
 		b.storeJSONField)
+	sc.Step(`^I store the response body as "([^"]*)"$`, b.storeResponseBody)
+	sc.Step(`^I store the response header "([^"]*)" as "([^"]*)"$`, b.storeResponseHeader)
 	sc.Step(`^the JSON response array "([^"]*)" should (contain|not contain) an item with "([^"]*)" equal to "([^"]*)"$`,
 		b.jsonArrayItemPresence)
 	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should have "([^"]*)" equal to "([^"]*)"$`,
@@ -236,7 +291,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.generateUniqueResourceName)
 	sc.Step(`^I generate a unique API context from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueContext)
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)"$`, b.sendRequest)
+	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
@@ -352,6 +407,31 @@ func prometheusMetricPresent(body, name string) bool {
 		}
 	}
 	return false
+}
+
+// sendRequestOnListener invokes a data-plane path once on the gateway's HTTP listener, or on
+// its HTTPS listener when overHTTPS is non-empty.
+func (b *Base) sendRequestOnListener(ctx context.Context, method, overHTTPS, path string) error {
+	if overHTTPS == "" {
+		return b.sendRequest(ctx, method, path)
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURLOn("https", resolved)
+	if err != nil {
+		return err
+	}
+	method = strings.ToUpper(method)
+	if _, err := b.gatewayTLSFunnel.Send(ctx, httpx.Request{
+		Method: method, URL: url,
+		Headers: b.scenarioHeaders(ctx),
+		Host:    b.requestHost(ctx),
+	}); err != nil {
+		return fmt.Errorf("invoking %s %s: %w", method, url, err)
+	}
+	return nil
 }
 
 // sendRequest invokes a data-plane path once, without retrying.
@@ -961,6 +1041,24 @@ func (b *Base) responseHeaderNotContains(ctx context.Context, name, want string)
 	return nil
 }
 
+// responseHeaderNotEquals asserts a header does not carry one exact value, such as a validator
+// that must have changed. An absent header passes; pair it with a presence assertion when the
+// header must also be sent.
+func (b *Base) responseHeaderNotEquals(ctx context.Context, name, unwanted string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, unwanted)
+	if err != nil {
+		return err
+	}
+	if got := resp.Headers.Get(name); got == resolved {
+		return fmt.Errorf("expected header %q not to be %q, but it is (%s)", name, resolved, resp.Describe())
+	}
+	return nil
+}
+
 // responseHeaderMatchesPattern asserts a response header against an expanded regular expression.
 func (b *Base) responseHeaderMatchesPattern(ctx context.Context, name, pattern string) error {
 	resp, err := httpx.Published(ctx)
@@ -1384,6 +1482,49 @@ func (b *Base) storeJSONField(ctx context.Context, field, key string) error {
 	return nil
 }
 
+// storeResponseBody stores the published response body, byte for byte, in runner-local context,
+// so a later response can be compared with it exactly through "the response body should be:".
+func (b *Base) storeResponseBody(ctx context.Context, key string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("cannot store a response body with an empty key")
+	}
+	if !resp.HasBody() {
+		return fmt.Errorf("cannot store an empty response body as %q: %s", key, resp.Describe())
+	}
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store a response body without runner context")
+	}
+	local.Set(key, resp.Text())
+	return nil
+}
+
+// storeResponseHeader stores one response header value in runner-local context. An absent or
+// empty header is an error: storing nothing would make a later comparison against it vacuous.
+func (b *Base) storeResponseHeader(ctx context.Context, name, key string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("cannot store a response header with an empty key")
+	}
+	value := resp.Headers.Get(name)
+	if value == "" {
+		return fmt.Errorf("cannot store header %q: the response did not send it (%s)", name, resp.Describe())
+	}
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store a response header without runner context")
+	}
+	local.Set(key, value)
+	return nil
+}
+
 // jsonArrayItems decodes the published response and returns the array at a dotted path. An
 // empty path names the document itself, for an endpoint whose body is a bare JSON array.
 func jsonArrayItems(ctx context.Context, field string) ([]any, *httpx.Response, error) {
@@ -1523,8 +1664,11 @@ func jsonStringField(body []byte, field string) (string, error) {
 }
 
 // gatewayURL builds a data-plane URL, where deployed APIs are invoked.
-func (b *Base) gatewayURL(path string) (string, error) {
-	base, err := b.topo.URL("platform-gateway", "http")
+func (b *Base) gatewayURL(path string) (string, error) { return b.gatewayURLOn("http", path) }
+
+// gatewayURLOn resolves a path against the named gateway listener endpoint.
+func (b *Base) gatewayURLOn(endpoint, path string) (string, error) {
+	base, err := b.topo.URL("platform-gateway", endpoint)
 	if err != nil {
 		return "", err
 	}

@@ -462,3 +462,114 @@ func TestExplicitCurvesAreAppendedAfterTheDefaults(t *testing.T) {
 	require.Equal(t, tls.X25519MLKEM768, got.CurvePreferences[0])
 	require.Subset(t, got.CurvePreferences, defaultCurvePreferences())
 }
+
+// pacedHandler writes each line as its own flushed chunk, pausing between them.
+func pacedHandler(lines []string, pause time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		for i, line := range lines {
+			if i > 0 {
+				time.Sleep(pause)
+			}
+			_, _ = w.Write([]byte(line + "\n"))
+			flusher.Flush()
+		}
+	})
+}
+
+func TestStreamRecordsArrivalOffsetsAndRestoresFraming(t *testing.T) {
+	server := newTestServer(t, pacedHandler([]string{"data: one", "", "data: two"}, 80*time.Millisecond))
+	defer server.Close()
+
+	// A whole-request timeout shorter than the stream proves Stream is bounded by ctx instead.
+	client := NewClient(Options{Timeout: 20 * time.Millisecond})
+	var lines []string
+	var offsets []time.Duration
+	resp, err := client.Stream(context.Background(), Request{URL: server.URL}, func(line string, since time.Duration) bool {
+		lines = append(lines, line)
+		offsets = append(offsets, since)
+		return true
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"data: one", "", "data: two"}, lines)
+	require.Less(t, offsets[0], offsets[2], "a paced stream must not arrive as one unit")
+	require.Equal(t, "data: one\n\ndata: two\n", resp.Text())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Contains(t, resp.Headers.Get("Transfer-Encoding"), "chunked")
+	require.Empty(t, resp.Headers.Values("Content-Length"))
+}
+
+func TestStreamStopsWhenTheVisitorDeclinesMoreLines(t *testing.T) {
+	server := newTestServer(t, pacedHandler([]string{"a", "b", "c"}, 2*time.Second))
+	defer server.Close()
+
+	started := time.Now()
+	var seen []string
+	resp, err := NewClient(Options{}).Stream(context.Background(), Request{URL: server.URL},
+		func(line string, _ time.Duration) bool {
+			seen = append(seen, line)
+			return false
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{"a"}, seen)
+	require.Equal(t, "a\n", resp.Text())
+	require.Less(t, time.Since(started), 2*time.Second, "stopping must not wait for the next line")
+}
+
+func TestStreamRestoresContentLengthForAFixedBody(t *testing.T) {
+	server := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "6")
+		_, _ = w.Write([]byte("fixed\n"))
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(Options{}).Stream(context.Background(), Request{URL: server.URL},
+		func(string, time.Duration) bool { return true })
+	require.NoError(t, err)
+	require.Equal(t, "6", resp.Headers.Get("Content-Length"))
+	require.Empty(t, resp.Headers.Get("Transfer-Encoding"))
+}
+
+func TestStreamRejectsInvalidInput(t *testing.T) {
+	client := NewClient(Options{})
+	_, err := client.Stream(context.Background(), Request{URL: "http://127.0.0.1:1"}, nil)
+	require.ErrorContains(t, err, "visitor is required")
+
+	_, err = client.Stream(context.Background(), Request{URL: "  "}, func(string, time.Duration) bool { return true })
+	require.ErrorContains(t, err, "no URL")
+
+	_, err = client.Stream(context.Background(), Request{URL: "http://127.0.0.1:1"}, func(string, time.Duration) bool { return true })
+	require.Error(t, err)
+}
+
+func TestStreamFailsWhenTheContextEndsMidStream(t *testing.T) {
+	server := newTestServer(t, pacedHandler([]string{"a", "b"}, 2*time.Second))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err := NewClient(Options{}).Stream(ctx, Request{URL: server.URL}, func(string, time.Duration) bool { return true })
+	require.Error(t, err)
+}
+
+func TestFunnelStreamClearsThenPublishes(t *testing.T) {
+	server := newTestServer(t, pacedHandler([]string{"data: x"}, 0))
+	defer server.Close()
+
+	ctx := scoped()
+	require.NoError(t, tcontext.Set(ctx, ResponseKey, &Response{StatusCode: 999}))
+	funnel := newTestFunnel(0)
+
+	resp, err := funnel.Stream(ctx, Request{URL: server.URL}, func(string, time.Duration) bool { return true })
+	require.NoError(t, err)
+	published, err := Published(ctx)
+	require.NoError(t, err)
+	require.Same(t, resp, published)
+
+	require.NoError(t, tcontext.Set(ctx, ResponseKey, &Response{StatusCode: 999}))
+	_, err = funnel.Stream(ctx, Request{URL: "http://127.0.0.1:1"}, func(string, time.Duration) bool { return true })
+	require.Error(t, err)
+	_, err = Published(ctx)
+	require.Error(t, err, "a failed stream must not leave the previous response for an assertion")
+}
