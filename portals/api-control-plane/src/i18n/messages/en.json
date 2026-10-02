@@ -2363,34 +2363,6 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addFailed": {
-    "defaultMessage": "Failed to add API key",
-    "description": "Fallback toast when the server gives no reason for the failure."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.addSucceeded": {
-    "defaultMessage": "API key \"{name}\" added.",
-    "description": "Toast confirming a new key; {name} is the name the user typed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.adding": {
-    "defaultMessage": "Adding...",
-    "description": "Label of the add button while the key is being issued."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.keyNameLabel": {
-    "defaultMessage": "Key Name",
-    "description": "Label of the field naming the new key."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.keyNamePlaceholder": {
-    "defaultMessage": "Ex: Production Key",
-    "description": "Example name shown in the empty key-name field."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.keyValueHelper": {
-    "defaultMessage": "Stored hashed and pushed to deployed gateways; you cannot read it back later.",
-    "description": "Warns that the key value is write-only once submitted."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiKeysPanel.keyValueLabel": {
-    "defaultMessage": "API Key Value",
-    "description": "Label of the field holding the secret the gateways will accept."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle": {
     "defaultMessage": "Schema"
   },
