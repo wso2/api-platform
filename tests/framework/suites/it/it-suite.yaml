@@ -553,6 +553,9 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
+  # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
+  # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
+  # Gateway 1.2.0.
   - name: mcp-policies
     parallel: 2
     components:
@@ -561,7 +564,28 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
+      - name: agent-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_deploy.feature
+      - name: agent-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent-policies/agent_policies.feature
+      - name: agent-card
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_card.feature
+      - name: agent-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_api_keys.feature
+      - name: agent-streaming
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_streaming.feature
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
@@ -595,10 +619,16 @@ blocks:
     parallel: 1
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
+      - name: agent-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_analytics.feature
       - name: analytics-basic
         features:
           - features/gateway/observability/analytics_basic.feature

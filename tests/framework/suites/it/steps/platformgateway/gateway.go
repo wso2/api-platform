@@ -947,6 +947,8 @@ type resourceMetadata struct {
 // register wires gateway, health, and timeout steps.
 func (g *Gateway) register(sc *godog.ScenarioContext) {
 	g.registerRawHTTPSteps(sc)
+	g.registerA2AClientSteps(sc)
+	g.registerAgentSteps(sc)
 	// Request state is runner-scoped, so clear it before each scenario.
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
 		if err := tcontext.Set(ctx, keyGatewaySpecVersion, gatewaySpecVersionForVersion(gatewayVersion(g.topo))); err != nil {
@@ -1456,6 +1458,9 @@ var serviceEndpoints = map[string]struct {
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
 	"controller-metrics":    {component: "platform-gateway", endpoint: "metrics"},
 	"policy-engine-metrics": {component: "platform-gateway", endpoint: "pe-metrics"},
+	// The A2A agent behind every Agent, addressed directly so a scenario can compare what the
+	// gateway serves with what the agent itself serves.
+	"a2a-trip-planner": {component: "a2a-trip-planner", endpoint: "http"},
 }
 
 // serviceURL resolves a feature's service name and path to a URL on the running topology.
@@ -1886,6 +1891,10 @@ type analyticsEvent struct {
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
 	Metadata map[string]any `json:"metadata"`
+	// A2A is the event's first-class A2A dimension block, a sibling of metadata. It is decoded
+	// as a map because the assertions are about the published document: a typed mirror would
+	// let a renamed or relocated field compile and pass.
+	A2A map[string]any `json:"a2a"`
 }
 
 func (g *Gateway) analyticsHeader(
