@@ -40,10 +40,15 @@ func (u *Steps) stubsMCPServerValidationSuccess(ctx context.Context) error {
 		return err
 	}
 	return page.Route("**/fetch-server-info*", func(route playwright.Route) {
+		// supportedVersions is resolved per request rather than once at registration, so
+		// a scenario can change what the server reports between the create and a later
+		// refetch. It renders empty unless a step asked for versions, which keeps this
+		// body byte-identical for every scenario that does not care.
 		_ = route.Fulfill(playwright.RouteFulfillOptions{
 			Status:      playwright.Int(200),
 			ContentType: playwright.String("application/json"),
 			Body: `{"serverInfo":{"name":"Stub MCP Server","version":"1.0.0"},` +
+				stubbedSupportedVersionsField(ctx) +
 				`"tools":[],"resources":[],"prompts":[]}`,
 		})
 	})
