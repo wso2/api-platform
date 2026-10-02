@@ -118,6 +118,10 @@ const loadOAuth2Keys = async (req, res, next) => {
                 return {
                     keyId: k.keyId,
                     name: k.name || '',
+                    // Stamped on the key when it was created. Read from the record,
+                    // not from the key manager now — it says what this credential is,
+                    // not what that key manager issues today.
+                    keyType: k.keyType || 'PRODUCTION',
                     keyManagerId: k.keyManagerId,
                     keyManagerName: keyManagerNames.get(k.keyManagerId) || k.keyManagerId,
                     consumerKey: k.consumerKey,

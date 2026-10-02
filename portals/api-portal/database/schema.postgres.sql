@@ -285,6 +285,18 @@ CREATE TABLE IF NOT EXISTS key_managers (
     display_name VARCHAR(255) NOT NULL,
     enabled SMALLINT NOT NULL DEFAULT 1,
     token_endpoint VARCHAR(255) NOT NULL,
+    -- PRODUCTION | SANDBOX. Which environment the keys this key manager issues
+    -- belong to. A deployment runs one key manager per environment, so this is a
+    -- property of the key manager rather than a per-key choice; every key it
+    -- creates inherits it (oauth2_consumer_keys.key_type).
+    --
+    -- Fixed at creation and refused on update, for the same reason the driver type
+    -- is: keys already issued were created as one kind, and relabelling the key
+    -- manager cannot change what they are.
+    --
+    -- Not a CHECK constraint (R4-NO-ENUM-CHECK) — validated in the service layer
+    -- against constants.KEY_TYPE.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
@@ -457,6 +469,18 @@ CREATE TABLE IF NOT EXISTS oauth2_consumer_keys (
     -- Keycloak's does. NULL in both means this key is managed with the
     -- provisioning credential against a constructed URL, which is how every key
     -- on a key manager that issues no token behaves.
+    -- PRODUCTION | SANDBOX, copied from the key manager when the key was created.
+    --
+    -- Stored rather than derived from the key manager for two reasons: a
+    -- config-declared key manager has no row to join to, so a query for sandbox
+    -- keys would have nowhere to look; and it is a historical fact about what this
+    -- credential was issued as, which should not change if the key manager's own
+    -- flag ever did.
+    --
+    -- Resolved from the key manager in exactly one place today. When a per-key
+    -- choice is added later, that one line becomes `body.keyType ?? km.keyType`
+    -- and this column needs no change.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
     registration_access_token_enc BYTEA,
     registration_client_uri VARCHAR(1023),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -557,6 +581,24 @@ CREATE TABLE IF NOT EXISTS key_manager_configurations (
     -- new credential field is a code change rather than three dialect ALTERs
     -- plus a migration this component cannot express. NEVER the secret.
     auth_config JSONB,
+    -- Operator-chosen options for this key manager, as a JSON object. A bag rather
+    -- than a column each, because these accumulate: a new option is then a code
+    -- change in the DAO instead of three dialect ALTERs on a shipped table.
+    --
+    -- It is NOT an open bag. The DAO parses a closed set of known keys and drops
+    -- anything else, so this is a typed structure that happens to be stored as
+    -- JSON — the same treatment the (since reverted) connection_policy column had.
+    -- Unparseable JSON falls back to "no options set", never to a partial read.
+    --
+    -- Known keys:
+    --   supportedGrantTypes — string[]. The subset of the driver's declared grant
+    --     types a portal user may pick. Absent/empty means "whatever the driver
+    --     offers", which is the backwards-compatible default. An admin restriction,
+    --     not a capability statement: the key manager may well support more.
+    --
+    -- VARCHAR(1023), not TEXT (R3-NO-TEXT) and not JSONB (R3-JSONB) — no repository
+    -- query reads inside it; it is fetched whole with the row and parsed in JS.
+    settings VARCHAR(1023),
     -- The client secret / basic password, encrypted with security.encryption_key
     -- (AES-256-GCM), never plaintext, and decrypted only when a driver is built.
     -- Same treatment as webhook_subscribers.secret_enc.

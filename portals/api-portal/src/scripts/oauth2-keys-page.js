@@ -110,6 +110,9 @@
         var km = selectedKeyManager();
         if (!host) return;
         host.textContent = '';
+        // Cleared here rather than by each caller: this is the one place the fields
+        // are rebuilt, so a read-only state can never outlive the controls it froze.
+        host.classList.remove('ok-fields--readonly');
         if (!km) return;
         // The hint under the selector is not written here: describeKeyManager owns
         // it, and this function runs after it on every change. Two writers meant
@@ -319,16 +322,30 @@
      * still be chosen. A key cannot move between key managers, so in update mode the
      * selector is fixed to the one that issued it.
      */
+    /*
+     * Three modes, one dialog: 'add', 'edit', and 'view'.
+     *
+     * View exists because selecting a row used to open the update form, which put
+     * a developer in an editing state just for looking — and on a form whose save
+     * replaces the client metadata wholesale. Looking is now the default and
+     * changing is a deliberate choice, from the row menu or from this dialog's own
+     * Update button.
+     */
     function setMode(mode, km) {
         var editing = mode === 'edit';
-        _editKeyId = editing ? _editKeyId : null;
-        document.getElementById('ok-add-title').textContent = editing ? 'Update OAuth2 key' : 'Add OAuth2 key';
-        document.getElementById('ok-add-submit').hidden = editing;
+        var viewing = mode === 'view';
+        _editKeyId = (editing || viewing) ? _editKeyId : null;
+        document.getElementById('ok-add-title').textContent =
+            editing ? 'Update OAuth2 key' : (viewing ? 'OAuth2 key' : 'Add OAuth2 key');
+        document.getElementById('ok-add-submit').hidden = editing || viewing;
         document.getElementById('ok-edit-submit').hidden = !editing;
+        // Named for what it does in each mode: nothing has been typed in view mode,
+        // so "Cancel" would be offering to undo something that never happened.
+        document.getElementById('ok-add-cancel').textContent = viewing ? 'Close' : 'Cancel';
 
         var sel = document.getElementById('ok-km-select');
-        sel.disabled = editing;
-        if (editing && km) {
+        sel.disabled = editing || viewing;
+        if ((editing || viewing) && km) {
             sel.textContent = '';
             var opt = el('option', null, km.displayName || km.id);
             opt.value = km.id;
@@ -360,7 +377,7 @@
      * way an update can avoid discarding fields the user never touched — is to read
      * it back first.
      */
-    async function openEdit(keyId) {
+    async function openKey(keyId, mode) {
         var meta = await loadMetadata();
         if (!meta) {
             await alertMsg('Could not load the key manager details. Refresh the page and try again.', 'error');
@@ -391,16 +408,41 @@
         if (!km) {
             // The key outlived its key manager's configuration. Its properties cannot
             // be rendered without the descriptors that describe them.
-            await alertMsg('The key manager for this key is no longer available, so it cannot be updated.', 'error');
+            await alertMsg('The key manager for this key is no longer available, so its details cannot be shown.', 'error');
             return;
         }
 
         _editKeyId = keyId;
-        setMode('edit', km);
+        setMode(mode, km);
         // Rendered from the metadata descriptors, seeded with what the key manager
         // just told us this client currently holds.
         renderFields(key.properties || {});
+        if (mode === 'view') freezeFields();
         show('ok-add-modal');
+    }
+
+    /** Open one key read-only. Selecting a row lands here. */
+    function openView(keyId) { return openKey(keyId, 'view'); }
+
+    /** Open one key for update. The row menu's Update lands here. */
+    function openEdit(keyId) { return openKey(keyId, 'edit'); }
+
+    /*
+     * Make the rendered form inert.
+     *
+     * The same descriptors build the view and the edit form, so rather than a
+     * second renderer that would drift from the first, the controls are disabled
+     * after the fact. `disabled` rather than `readonly`: readonly does not apply to
+     * a checkbox or a select, which would leave two of the four property types
+     * quietly editable.
+     */
+    function freezeFields() {
+        var host = document.getElementById('ok-fields');
+        if (!host) return;
+        host.classList.add('ok-fields--readonly');
+        host.querySelectorAll('input, select, textarea').forEach(function (c) {
+            c.disabled = true;
+        });
     }
 
     async function submitEdit() {
@@ -875,9 +917,129 @@
         var b = document.getElementById(id);
         if (b) b.addEventListener('click', function () { hide('ok-add-modal'); });
     });
+    /* ── relative timestamps ──────────────────────────────────
+     *
+     * The Created column shows "3 days ago" and keeps the exact timestamp on the
+     * element's title, so the precise value is one hover away without spending a
+     * column on it.
+     *
+     * Computed here rather than server-side for two reasons: the reader's clock
+     * and time zone are the ones that matter, and a relative string rendered into
+     * HTML starts going stale immediately — a tab left open would still claim
+     * "just now" an hour later. The markup ships an absolute date, so with no
+     * script running the column is still correct, just less friendly.
+     */
+    var RELATIVE_UNITS = [
+        ['year', 365 * 24 * 60 * 60],
+        ['month', 30 * 24 * 60 * 60],
+        ['day', 24 * 60 * 60],
+        ['hour', 60 * 60],
+        ['minute', 60],
+    ];
+
+    function relativeTime(date) {
+        var seconds = Math.round((date.getTime() - Date.now()) / 1000);
+        var magnitude = Math.abs(seconds);
+        // Under a minute is "just now" rather than "in 0 seconds" / "41 seconds
+        // ago" — the precision is noise at that range, and the sign flips around
+        // zero if the two clocks disagree by a second.
+        if (magnitude < 60) return 'just now';
+        for (var i = 0; i < RELATIVE_UNITS.length; i++) {
+            var unit = RELATIVE_UNITS[i][0];
+            var size = RELATIVE_UNITS[i][1];
+            if (magnitude >= size) {
+                var value = Math.round(seconds / size);
+                // Intl handles pluralisation and wording per locale, including
+                // "yesterday" for -1 day, which a hand-rolled table gets wrong.
+                try {
+                    return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(value, unit);
+                } catch (e) {
+                    return Math.abs(value) + ' ' + unit + (Math.abs(value) === 1 ? '' : 's')
+                        + (value < 0 ? ' ago' : ' from now');
+                }
+            }
+        }
+        return 'just now';
+    }
+
+    function refreshTimestamps() {
+        var nodes = document.querySelectorAll('.ok-created-at[datetime]');
+        Array.prototype.forEach.call(nodes, function (node) {
+            var when = new Date(node.getAttribute('datetime'));
+            // An unparseable value leaves the server-rendered text alone rather
+            // than replacing a real date with "Invalid Date".
+            if (isNaN(when.getTime())) return;
+            node.textContent = relativeTime(when);
+        });
+    }
+
+    refreshTimestamps();
+    // A minute is the finest granularity shown, so that is how often it can change.
+    // Skipped while the tab is hidden; the visibility handler catches up on return,
+    // so a backgrounded page is not re-rendering a column nobody is looking at.
+    setInterval(function () {
+        if (!document.hidden) refreshTimestamps();
+    }, 60000);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) refreshTimestamps();
+    });
+
+    /* ── row overflow menu ────────────────────────────────────
+     *
+     * The panel is `position: fixed`, so it is placed here rather than by CSS:
+     * .ok-tablewrap scrolls on the x axis, and a box that scrolls on one axis
+     * clips on the other, so a dropdown anchored inside the cell would be cut
+     * off at the table's edge. Fixed takes it out of that box entirely — at the
+     * cost of having to set the coordinates, and of closing on scroll, since
+     * fixed coordinates do not follow the row.
+     */
+    function closeRowMenus() {
+        document.querySelectorAll('.ok-dropdown').forEach(function (d) { d.style.display = 'none'; });
+        document.querySelectorAll('.ok-menu-trigger[aria-expanded="true"]').forEach(function (t) {
+            t.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function openRowMenu(trigger) {
+        var dd = trigger.parentElement.querySelector('.ok-dropdown');
+        if (!dd) return;
+        var wasOpen = dd.style.display === 'flex';
+        closeRowMenus();
+        if (wasOpen) return;
+
+        // Measured while shown but off-screen: a display:none element has no size,
+        // so the flip-up decision below would be made against a height of zero.
+        dd.style.display = 'flex';
+        dd.style.visibility = 'hidden';
+        var r = trigger.getBoundingClientRect();
+        var h = dd.offsetHeight;
+        var w = dd.offsetWidth;
+        var below = window.innerHeight - r.bottom;
+        // Right-aligned to the trigger, and opening upward when the row is near
+        // the bottom of the viewport rather than running off it.
+        dd.style.top = (below < h + 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+        dd.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+        dd.style.visibility = '';
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    // Fixed coordinates do not track the element they were measured from, so any
+    // scroll — the page or the table's own horizontal scroller — closes the menu
+    // rather than leaving it floating beside nothing.
+    window.addEventListener('scroll', closeRowMenus, true);
+    window.addEventListener('resize', closeRowMenus);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeRowMenus(); });
+
     // Delegated: the rows are server-rendered, so one listener covers them all.
     document.addEventListener('click', function (e) {
         if (!e.target.closest) return;
+
+        var menuBtn = e.target.closest('.ok-row-menu');
+        if (menuBtn) { openRowMenu(menuBtn); return; }
+        // Any other click closes an open menu. This runs before the branches
+        // below so that choosing an item dismisses the menu it was chosen from.
+        if (!e.target.closest('.ok-dropdown')) closeRowMenus();
+
         var appBtn = e.target.closest('.ok-row-app');
         if (appBtn) { openAppModal(appBtn); return; }
 
@@ -890,6 +1052,7 @@
 
         var editBtn = e.target.closest('.ok-row-edit');
         if (editBtn) {
+            closeRowMenus();
             var editRow = editBtn.closest('tr');
             if (editRow) openEdit(editRow.getAttribute('data-key-id'));
             return;
@@ -897,18 +1060,24 @@
 
         var delBtn = e.target.closest('.ok-row-delete');
         if (delBtn) {
+            closeRowMenus();
             var delRow = delBtn.closest('tr');
             if (delRow) openDelete(delRow);
             return;
         }
 
-        // Selecting the row itself opens the same update view. A click inside the
-        // actions cell is excluded here rather than by stopPropagation on the cell:
-        // this listener is on `document`, so stopping the event at the cell would
-        // prevent it reaching the button branches above and kill every row action.
+        // Selecting the row opens the key read-only. It used to open the update
+        // form, which put a developer into an editing state just for looking — on a
+        // form whose save replaces the client metadata wholesale. Updating is now
+        // reached deliberately, from the row menu or from the view's own button.
+        //
+        // A click inside the actions cell is excluded here rather than by
+        // stopPropagation on the cell: this listener is on `document`, so stopping
+        // the event at the cell would prevent it reaching the button branches above
+        // and kill every row action.
         if (e.target.closest('.ok-actions')) return;
         var row = e.target.closest('tr.ok-row');
-        if (row) openEdit(row.getAttribute('data-key-id'));
+        if (row) openView(row.getAttribute('data-key-id'));
     });
 
     // Keyboard parity: the row is focusable and announced as a button, so it has to
@@ -917,7 +1086,7 @@
         if (e.key !== 'Enter' && e.key !== ' ') return;
         if (!e.target.classList || !e.target.classList.contains('ok-row')) return;
         e.preventDefault();
-        openEdit(e.target.getAttribute('data-key-id'));
+        openView(e.target.getAttribute('data-key-id'));
     });
     ['ok-app-close', 'ok-app-cancel'].forEach(function (id) {
         var b = document.getElementById(id);

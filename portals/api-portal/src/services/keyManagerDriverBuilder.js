@@ -119,6 +119,10 @@ async function forKeyManager(orgId, km) {
                 displayName: km.display_name,
                 description: '',
                 tokenEndpoint: km.token_endpoint,
+                // From the key_managers row. Every key created through this driver
+                // is stamped with it, so an omission here does not fail loudly —
+                // it silently records sandbox keys as production.
+                keyType: km.key_type,
             },
             (url, opts = {}) => client.request({ url, ...opts })
         );
@@ -150,6 +154,10 @@ async function forKeyManager(orgId, km) {
         registrationEndpoint: cfg.registrationEndpoint,
         tokenEndpoint: km.token_endpoint,
         authorizeEndpoint: cfg.authorizeEndpoint,
+        // Lives on `key_managers`, not on the configuration row, because a
+        // provision-type key manager has no configuration row and still issues
+        // keys for one environment.
+        keyType: km.key_type,
         clientPolicy: DB_CLIENT_POLICY,
     };
 

@@ -3,7 +3,7 @@
         <div class="cfg-panel-header">
           <div>
             <h2 class="cfg-panel-title">Key Managers</h2>
-            <p class="cfg-panel-desc">The OAuth2 key managers applications can obtain tokens from. Those marked <strong>Config</strong> are declared in the deployed configuration and are read-only here; the rest are stored by the portal and fully editable. <strong>Type</strong> is the driver, chosen when the key manager is added and fixed thereafter: a DCR type lets developers create their own client credentials from the OAuth2 Keys page, while <strong>Provision</strong> registers nothing and takes the client id of an application created at the identity server.</p>
+            <p class="cfg-panel-desc">The OAuth2 key managers applications can obtain tokens from. <strong>Type</strong> is the driver, chosen when the key manager is added and fixed thereafter: a DCR type lets developers create their own client credentials from the OAuth2 Keys page, while <strong>Provision</strong> registers nothing and takes the client id of an application created at the identity server. A row whose controls are greyed out is declared in the deployed configuration and can only be changed there.</p>
           </div>
           <button class="cfg-btn-primary" id="cfg-add-km-btn" type="button">
             <i class="bi bi-plus"></i> Add key manager
@@ -16,7 +16,6 @@
               <tr>
                 <th>Name</th>
                 <th>Token endpoint</th>
-                <th>Source</th>
                 <th>Type</th>
                 <th>Status</th>
                 <th style="width:90px;"></th>
@@ -26,6 +25,10 @@
               {{#keyManagers}}
               <tr id="cfg-km-row-{{id}}" data-id="{{id}}">
                 <td>
+                  {{!-- A wrapper, not `display:flex` on the <td> itself — that would
+                        take the cell out of table layout and the column would stop
+                        aligning with its header. --}}
+                  <div style="display:flex;align-items:center;gap:8px;">
                   {{!-- Only a stored key manager opens the edit modal; a config-declared
                         one has nothing this page can change, so its name is plain text. --}}
                   {{#if (eq source 'config')}}
@@ -34,17 +37,17 @@
                   <button type="button" class="cfg-km-edit-btn" data-id="{{id}}"
                     style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                   {{/if}}
+                  {{!-- Only sandbox is badged. Production is the default and the
+                        common case, so marking it would label every row and make
+                        neither stand out. --}}
+                  {{#if (eq keyType 'SANDBOX')}}
+                  <span class="cfg-env-badge" title="Keys created on this key manager are sandbox keys">Sandbox</span>
+                  {{/if}}
+                  </div>
                 </td>
                 <td>
                   <span class="cfg-name-chip" title="{{tokenEndpoint}}"
                     style="display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{tokenEndpoint}}</span>
-                </td>
-                <td>
-                  {{#if (eq source 'config')}}
-                  <span class="cfg-name-chip" title="Declared in the portal configuration. Edit the config file and restart to change it.">Config</span>
-                  {{else}}
-                  <span class="cfg-name-chip" title="Added through this page and stored by the portal.">Portal</span>
-                  {{/if}}
                 </td>
                 <td>
                   {{!-- The driver handling this key manager, fixed at creation. It is
@@ -60,14 +63,39 @@
                   {{/if}}
                 </td>
                 <td>
-                  {{#if enabled}}
-                  <span class="cfg-status-badge cfg-status-published">
-                    <span class="cfg-status-dot"></span>Enabled
-                  </span>
+                  {{!-- Enabling is the one property changed often and on its own, so it
+                        lives here rather than behind the edit form: a round trip through
+                        a modal to flip one flag reads as heavier than the change is.
+
+                        The same Bootstrap switch the LLM instructions page uses for
+                        "Portal is AI-discoverable" — one on/off control that reads as
+                        on/off, and unlike a radio it can be clicked back off.
+
+                        No visible "Enabled"/"Disabled" text: the switch's own position
+                        already says which it is, and the word only restated it. It is
+                        still named for anyone not looking at it — aria-label carries
+                        what the text used to, so a screen reader announces which key
+                        manager this switch belongs to rather than "checkbox".
+
+                        A config-declared key manager answers 409 to PUT, so its control
+                        is disabled and carries no data-id for the script to bind to —
+                        the same treatment its edit and delete buttons already get. --}}
+                  {{#if (eq source 'config')}}
+                  <div class="form-check form-switch cfg-status-toggle is-fixed"
+                    title="Declared in the portal configuration — edit the config file and restart to change it">
+                    <input class="form-check-input" type="checkbox" role="switch" disabled
+                      id="km-status-{{id}}" {{#if enabled}}checked{{/if}}
+                      aria-label="{{displayName}} is {{#if enabled}}enabled{{else}}disabled{{/if}} — declared in the portal configuration"
+                      style="width:2.5rem;height:1.4rem;" />
+                  </div>
                   {{else}}
-                  <span class="cfg-status-badge cfg-status-draft">
-                    <span class="cfg-status-dot"></span>Disabled
-                  </span>
+                  <div class="form-check form-switch cfg-status-toggle">
+                    <input class="form-check-input cfg-km-status-switch" type="checkbox" role="switch"
+                      id="km-status-{{id}}" data-id="{{id}}" data-name="{{displayName}}"
+                      {{#if enabled}}checked{{/if}} aria-label="Enable {{displayName}}"
+                      title="{{#if enabled}}Enabled{{else}}Disabled{{/if}}"
+                      style="width:2.5rem;height:1.4rem;" />
+                  </div>
                   {{/if}}
                 </td>
                 <td>
@@ -99,7 +127,7 @@
               </tr>
               {{/keyManagers}}
               {{#unless keyManagers.length}}
-              <tr><td colspan="6" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
+              <tr><td colspan="5" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>

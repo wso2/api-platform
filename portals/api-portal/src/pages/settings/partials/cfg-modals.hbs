@@ -281,10 +281,60 @@
               spells it, which is what the API is given, so nothing has to undo
               this on the way out. The label comes from the registry too, beside
               the type it names. --}}
+        {{!-- The grant types this driver declares ride along on the option, so the
+              grant-type checkboxes below can be rebuilt when the type changes
+              without a second trip to the server. jsonAttr escapes it for an
+              attribute; the script parses it back. --}}
         {{#each keyManagerTypes}}
-        <option value="{{value}}">{{label}}</option>
+        <option value="{{value}}" data-grants="{{jsonAttr grantTypes}}">{{label}}</option>
         {{/each}}
       </select>
+    </div>
+    {{!-- Which environment this key manager issues keys for. A deployment runs one
+          key manager per environment, so this is asked once here rather than on
+          every key — every key created on it inherits the answer.
+
+          Fixed at creation: the keys already issued were created as that kind, and
+          the API answers 409 to a change. Edit shows it disabled rather than
+          hiding it, so an admin can still see which one they are looking at. --}}
+    <div class="cfg-form-group" id="km-keytype-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">Key type <span class="required">*</span></span>
+      <div class="cfg-choice-group cfg-choice-group--inline">
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-production" value="PRODUCTION" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Production</span>
+            <span class="cfg-choice-desc">Keys for live traffic.</span>
+          </span>
+        </label>
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-sandbox" value="SANDBOX" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Sandbox</span>
+            <span class="cfg-choice-desc">Keys for testing against sandbox endpoints.</span>
+          </span>
+        </label>
+      </div>
+      <p class="cfg-form-hint" id="km-keytype-hint" hidden>Fixed when the key manager was created — add a new key manager for the other environment.</p>
+    </div>
+    {{!-- Add only. A shortcut for filling the endpoint fields below, not a setting:
+          nothing here is sent when the form is saved, and the key manager keeps no
+          record of where its endpoints were read from. Editing hides it, where the
+          endpoints are already settled and re-reading them would overwrite what an
+          admin may have corrected by hand. --}}
+    <div class="cfg-form-group" id="km-discovery-field" style="margin-bottom:16px;">
+      <label for="km-discovery-url">Discovery URL</label>
+      <div class="cfg-input-with-action">
+        <input type="text" id="km-discovery-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/token/.well-known/openid-configuration" />
+        {{!-- Icon only, so a long .well-known URL keeps the width. The word it
+              replaces lives in the title/aria-label, and the hint line below spells
+              out what the control does — so nothing rests on reading the glyph. --}}
+        <button type="button" class="cfg-icon-action" id="km-discovery-fetch"
+          title="Fetch endpoints" aria-label="Fetch endpoints from this discovery URL">
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p class="cfg-form-hint" id="km-discovery-status">Optional. Reads the server's own metadata document and fills in the endpoints below, so they need not be transcribed. They stay editable, and the URL itself is not saved.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
@@ -310,6 +360,19 @@
       <div class="cfg-form-group" style="margin-bottom:16px;">
         <label for="km-registration-endpoint">Registration endpoint <span class="required">*</span></label>
         <input type="text" id="km-registration-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/dcr/register" />
+      </div>
+      {{!-- Which grants a developer may pick when creating a key here. Populated
+            from the chosen driver's own declared options, so it cannot name a grant
+            this key manager was never going to offer. Leaving every box clear means
+            no restriction — whatever the driver offers — which is the default and
+            what every existing key manager already does.
+
+            Not cosmetic: the same list is enforced on POST/PUT /oauth2-keys, so a
+            request sent by hand is refused too. --}}
+      <div class="cfg-form-group" id="km-grants-field" style="margin-bottom:16px;">
+        <span class="cfg-form-legend">Grant types developers may use</span>
+        <div class="cfg-check-group" id="km-grants"></div>
+        <p class="cfg-form-hint">Optional. Leave all clear to allow every grant type this key manager supports.</p>
       </div>
       <div class="cfg-form-group" style="margin-bottom:16px;">
         <label for="km-auth-method">How the portal authenticates to it <span class="required">*</span></label>
@@ -372,19 +435,10 @@
 
 
     <div class="cfg-modal-actions">
-      {{!-- Whether this key manager is offered at all — a state of the record
-            rather than one of its fields, so it sits with the commit action and
-            not in the middle of the configuration above. Hidden while adding:
-            a new key manager is created enabled, and offering the switch there
-            invites the one choice nobody wants, creating it switched off. --}}
-      <label class="cfg-km-enabled" id="km-enabled-field" hidden>
-        <span class="wh-toggle">
-          <input type="checkbox" id="km-enabled" checked />
-          <span class="wh-toggle-slider"></span>
-        </span>
-        Enabled
-      </label>
-      <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
+      {{!-- Enabling is not edited here. It is one flag, changed often and on its
+              own, so it lives as a control in the Status column of the list — a
+              modal round trip to flip it read as heavier than the change is. --}}
+              <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-km-modal-save">Add key manager</button>
     </div>
   </div>

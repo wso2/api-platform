@@ -99,14 +99,31 @@ function typeLabel(type) {
 function registeredTypeOptions() {
     return registeredTypes().map((type) => {
         let keyCreation = 'register';
+        let grantTypes = [];
         try {
             const instance = drivers.get(type).create({}, null);
             if (instance && instance.keyCreation) keyCreation = instance.keyCreation;
+            /*
+             * The grant types this driver declares, so the key manager form can
+             * offer exactly them when an admin restricts the set. Read from the
+             * same metadata() a developer's key form is built from, rather than a
+             * second list here that would drift from it.
+             *
+             * A driver with no grant_types property (provision) yields [], which
+             * the form reads as "no restriction is expressible here".
+             */
+            const meta = instance && typeof instance.metadata === 'function' ? instance.metadata() : null;
+            const grantProp = ((meta && meta.properties) || []).find((p) => p.name === 'grant_types');
+            if (grantProp && Array.isArray(grantProp.options)) {
+                grantTypes = grantProp.options
+                    .filter((o) => o && o.value)
+                    .map((o) => ({ value: o.value, label: o.label || o.value }));
+            }
         } catch (_err) {
             // A driver that cannot be built from an empty config keeps the default;
             // this list is for labelling a selector, never for dispatch.
         }
-        return { value: type, label: typeLabel(type), keyCreation };
+        return { value: type, label: typeLabel(type), keyCreation, grantTypes };
     });
 }
 

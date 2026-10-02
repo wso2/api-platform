@@ -68,6 +68,11 @@
             // would render a leading separator — so those fall back to the
             // consumer key alone rather than an empty label.
             var label = key.name ? key.name + ' · ' + key.consumerKey : key.consumerKey;
+            // Marked in the text, not with a badge: an <option> renders no markup.
+            // This is the one control where a sandbox key gets attached to an
+            // application, so it is the one place the distinction has to be legible
+            // before the choice rather than after it.
+            if (key.keyType === 'SANDBOX') label += ' · Sandbox';
             // Say where it is now, so moving it is a decision rather than a surprise.
             opt.textContent = key.applicationName ? label + '  (on ' + key.applicationName + ')' : label;
             sel.appendChild(opt);

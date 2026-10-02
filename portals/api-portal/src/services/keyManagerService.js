@@ -22,8 +22,8 @@ const kmDao = require('../dao/keyManagerDao');
 const kmRegistry = require('./keyManagerRegistry');
 const kmConfigDao = require('../dao/keyManagerConfigurationDao');
 const oauth2KeyDao = require('../dao/oauth2ConsumerKeyDao');
-const { registeredTypes } = require('../keymanagers/core/registry');
-const { assertDialable } = require('../keymanagers/core/httpClient');
+const { registeredTypes, getDriver } = require('../keymanagers/core/registry');
+const { assertDialable, buildClient } = require('../keymanagers/core/httpClient');
 const { DB_CLIENT_POLICY } = require('./keyManagerDriverBuilder');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
@@ -121,6 +121,43 @@ function _validateRequiredFields(payload) {
     return null;
 }
 
+/**
+ * Normalize and check the environment this key manager issues keys for.
+ *
+ * Returns the canonical value, or an error. Absent means PRODUCTION: that is the
+ * column default and the behaviour every existing key manager already has.
+ *
+ * Accepted case-insensitively and normalized to upper case, the same treatment
+ * HTTP methods get elsewhere, so a caller sending "sandbox" is not told their
+ * perfectly clear request is invalid.
+ */
+function _resolveKeyType(raw) {
+    if (raw === undefined || raw === null || raw === '') {
+        return { keyType: constants.KEY_TYPE.PRODUCTION };
+    }
+    if (typeof raw !== 'string') {
+        return { error: `keyType must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` };
+    }
+    const keyType = raw.trim().toUpperCase();
+    if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
+        return { error: `keyType must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` };
+    }
+    return { keyType };
+}
+
+/*
+ * A key manager's environment is fixed when it is created.
+ *
+ * The keys it has already issued were created as one kind and recorded as such;
+ * relabelling the key manager cannot change what they are, and would leave its
+ * list showing a sandbox key manager full of production keys. Same reasoning,
+ * and the same 409, as the driver type above.
+ */
+const KEY_TYPE_IMMUTABLE_MESSAGE =
+    'A key manager\'s key type is fixed when it is created. The keys it has already '
+    + 'issued were created as that kind and cannot be reclassified — add a new key '
+    + 'manager for the other environment instead.';
+
 /*
  * A key manager declared in `[[api_portal.key_manager]]` is readable through
  * this API but not writable through it: its definition lives in the deployed
@@ -159,6 +196,33 @@ const TYPE_IMMUTABLE_CHANGE_MESSAGE =
     'A key manager\'s type cannot be changed after it is created: clients already registered through it '
     + 'exist at the original key manager and a different driver cannot manage them. Add a new key manager instead.';
 
+
+/**
+ * The grant types a driver declares, straight from its own metadata.
+ *
+ * Built from a bare instance: the property descriptors are a static fact about
+ * the driver, not about any one configured key manager, so no endpoints or
+ * credentials are needed to read them. Returns [] when the driver declares no
+ * grant_types property at all, which means "no restriction is expressible".
+ */
+function _declaredGrantTypes(type) {
+    try {
+        const create = getDriver(type);
+        if (!create) return [];
+        const instance = create({});
+        const meta = typeof instance.metadata === 'function' ? instance.metadata() : null;
+        const props = (meta && meta.properties) || [];
+        const grantProp = props.find((p) => p.name === 'grant_types');
+        if (!grantProp || !Array.isArray(grantProp.options)) return [];
+        return grantProp.options.map((o) => o.value).filter(Boolean);
+    } catch (error) {
+        // A driver that cannot be introspected must not block configuring a key
+        // manager — the restriction is simply unvalidated here, and the enforcement
+        // at key-creation time still compares against live metadata.
+        logger.warn('Could not read declared grant types for driver', { type, error: error.message });
+        return [];
+    }
+}
 
 function _validateProvisioning(provisioning, { isUpdate = false, existing = null } = {}) {
     const type = typeof provisioning.type === 'string' ? provisioning.type.trim() : '';
@@ -225,9 +289,37 @@ function _validateProvisioning(provisioning, { isUpdate = false, existing = null
         };
     }
 
+    /*
+     * The admin's restriction on which grants a portal user may pick.
+     *
+     * Checked against what the driver actually declares, so a restriction cannot
+     * name a grant this key manager was never going to offer — that would silently
+     * produce an empty dropdown and a key manager nobody can create a key on.
+     * Empty means "whatever the driver offers", which is the default.
+     */
+    const grants = provisioning.supportedGrantTypes;
+    let supportedGrantTypes = [];
+    if (grants !== undefined && grants !== null) {
+        if (!Array.isArray(grants)) {
+            return { error: 'provisioning.supportedGrantTypes must be an array of grant type names.' };
+        }
+        supportedGrantTypes = grants.filter((g) => typeof g === 'string' && g.trim()).map((g) => g.trim());
+        const declared = _declaredGrantTypes(type);
+        if (declared.length) {
+            const unknown = supportedGrantTypes.filter((g) => !declared.includes(g));
+            if (unknown.length) {
+                return {
+                    error: `provisioning.supportedGrantTypes contains grant type(s) this key manager `
+                        + `does not offer: ${unknown.join(', ')}. It offers: ${declared.join(', ')}.`,
+                };
+            }
+        }
+    }
+
     return {
         cfg: {
             type,
+            supportedGrantTypes,
             registrationEndpoint: provisioning.registrationEndpoint,
             authorizeEndpoint: provisioning.authorizeEndpoint || '',
             authMethod: auth.method,
@@ -335,6 +427,9 @@ const createKeyManager = async (req, res) => {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
 
+        const keyTypeCheck = _resolveKeyType(payload.keyType);
+        if (keyTypeCheck.error) return util.sendError(res, 400, keyTypeCheck.error);
+
         // Validated before any write: a rejected provisioning payload must not leave
         // a key manager behind that the caller then has to clean up by hand.
         let provisioningCfg = null;
@@ -348,7 +443,9 @@ const createKeyManager = async (req, res) => {
 
         const userId = util.resolveActor(req);
         try {
-            const record = await kmDao.create(orgId, { ...payload, handle }, userId);
+            const record = await kmDao.create(
+                orgId, { ...payload, handle, keyType: keyTypeCheck.keyType }, userId
+            );
             if (provisioningCfg) {
                 try {
                     await kmConfigDao.create({
@@ -443,6 +540,21 @@ const updateKeyManager = async (req, res) => {
          * Neither is a malformed request, so neither is a 400. The resource
          * exists and its current state is incompatible with what was asked.
          */
+        /*
+         * The environment is fixed at creation. Accepted in the payload rather than
+         * rejected outright so an unchanged round-trip — read the key manager, edit
+         * the name, send it all back — still works; only an actual change is refused.
+         */
+        if (payload.keyType !== undefined) {
+            const requested = _resolveKeyType(payload.keyType);
+            if (requested.error) return util.sendError(res, 400, requested.error);
+            const current = await kmDao.get(orgId, kmId);
+            const held = (current && current.key_type) || constants.KEY_TYPE.PRODUCTION;
+            if (requested.keyType !== held) {
+                return util.sendError(res, 409, KEY_TYPE_IMMUTABLE_MESSAGE);
+            }
+        }
+
         let provisioningCfg = null;
         const existingCfg = await kmConfigDao.get(orgId, kmId);
         if (payload.provisioning && !existingCfg) {
@@ -642,12 +754,142 @@ const deleteKeyManager = async (req, res) => {
     }
 };
 
+// ---------------------------------------------------------------------------
+// Discovery
+// ---------------------------------------------------------------------------
+
+/*
+ * The members of a discovery document this reads, mapped to the names the key
+ * manager payload uses. Everything else in the document is ignored: the portal
+ * configures three endpoints, and returning more would only invite a caller to
+ * expect the portal to do something with them.
+ */
+const DISCOVERY_FIELDS = Object.freeze({
+    token_endpoint: 'tokenEndpoint',
+    authorization_endpoint: 'authorizeEndpoint',
+    registration_endpoint: 'registrationEndpoint',
+});
+
+const DISCOVERY_FAILED_MESSAGE =
+    'The discovery document could not be read from that URL. Check the address, '
+    + 'or enter the endpoints by hand.';
+
+/**
+ * Keep a discovered value only if it is an absolute http(s) URL.
+ *
+ * The document comes from a host the operator named but the portal does not
+ * control, and these values land in form fields the admin then submits. A
+ * relative path, a `javascript:` URI or a non-string would be meaningless here
+ * and is dropped rather than echoed back — the field is simply left for the
+ * operator to fill in. Whether the URL may actually be dialled is not decided
+ * here: `POST /key-managers` validates that when it is asked to save it.
+ */
+function _usableDiscoveredUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    let parsed;
+    try {
+        parsed = new URL(value.trim());
+    } catch {
+        return null;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+    return parsed.toString();
+}
+
+/**
+ * Read an identity server's endpoints out of its discovery document.
+ *
+ * Stores nothing. This exists so an admin can paste one well-known URL instead
+ * of transcribing three endpoints, and the result is handed straight back to the
+ * form they are filling in.
+ *
+ * The fetch runs through the same guarded client and the same address policy as
+ * the key manager that is about to be created, for two reasons. It keeps this
+ * from being a softer way to make the portal dial an arbitrary host than the
+ * create path already allows (js-ssrf-prevention.md, directive 1 — the URL is
+ * admin-supplied, which is exactly the case that rule covers). And it means a
+ * document this reads is one the resulting key manager could reach too, so the
+ * form never fills itself in with endpoints that the save would then refuse.
+ */
+const discoverKeyManagerEndpoints = async (req, res) => {
+    const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    if (!rawUrl) {
+        return util.sendError(res, 400, 'url is required.');
+    }
+
+    // Reported with its own message rather than the generic one: this failure is
+    // about the address the admin typed and the deployment's configured policy,
+    // both of which they can act on, and it names nothing they did not supply.
+    try {
+        assertDialable(rawUrl, 'url', DB_CLIENT_POLICY);
+    } catch (err) {
+        return util.sendError(res, 400, err.message);
+    }
+
+    let response;
+    try {
+        const client = buildClient(DB_CLIENT_POLICY);
+        response = await client.request({
+            url: rawUrl,
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+        });
+    } catch (error) {
+        // A refused address, a TLS failure and a timeout all land here. The
+        // reason describes the deployment's own network, so it is logged and not
+        // returned (js-ssrf-prevention.md, directive 6).
+        logger.warn('Key manager discovery fetch failed', { error: error.message });
+        return util.sendError(res, 400, DISCOVERY_FAILED_MESSAGE);
+    }
+
+    // The client is built with maxRedirects: 0 and validateStatus: () => true, so
+    // a 3xx arrives here as a response rather than being followed to a host that
+    // never passed the check above. Anything but 200 is a document we do not have.
+    if (response.status !== 200) {
+        logger.warn('Key manager discovery returned a non-200 status', { status: response.status });
+        return util.sendError(res, 400, DISCOVERY_FAILED_MESSAGE);
+    }
+
+    // axios parses JSON by content type; a server answering HTML or text/plain
+    // leaves a string here, which is not a document either.
+    const doc = response.data;
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+        logger.warn('Key manager discovery returned a non-JSON document');
+        return util.sendError(res, 400, DISCOVERY_FAILED_MESSAGE);
+    }
+
+    /*
+     * Only the three endpoints, and only after each parses as an absolute
+     * http(s) URL. `issuer` is deliberately not returned: nothing on the form
+     * uses it, and passing a document-supplied string through unvalidated — this
+     * one is neither length-bounded nor shape-checked — leaves an
+     * attacker-controlled value in an API response for some later caller to
+     * render. A field no one reads is not worth that.
+     */
+    const result = {};
+    for (const [member, field] of Object.entries(DISCOVERY_FIELDS)) {
+        const usable = _usableDiscoveredUrl(doc[member]);
+        if (usable) result[field] = usable;
+    }
+
+    // A JSON object with none of the three endpoints is some other document that
+    // happened to parse — reported as a failed discovery rather than as an empty
+    // success, which would read on the form as "this server declares nothing".
+    if (!result.tokenEndpoint && !result.authorizeEndpoint && !result.registrationEndpoint) {
+        logger.warn('Key manager discovery document declared none of the expected endpoints');
+        return util.sendError(res, 400, DISCOVERY_FAILED_MESSAGE);
+    }
+
+    return res.status(200).json(result);
+};
+
 module.exports = {
     createKeyManager,
     updateKeyManager,
     getKeyManagers,
     getKeyManager,
     deleteKeyManager,
+    discoverKeyManagerEndpoints,
     // Exported for use in org creation YAML ingestion
     mapYamlToKeyManager,
     parseKeyManagerFromYamlFile,

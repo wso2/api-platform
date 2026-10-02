@@ -2202,6 +2202,52 @@ paths:
             - dp:key_manager:read
             - dp:key_manager:manage
             - dp:application_key_mapping:read
+  # Declared ahead of /key-managers/{kmId} for the same reason as the path above:
+  # the literal `discovery` segment has to be registered before the templated one,
+  # or this request resolves to getKeyManager with kmId="discovery".
+  /key-managers/discovery:
+    post:
+      tags:
+        - Key Managers
+      summary: Read a key manager's endpoints from its discovery document
+      description: >-
+        Fetches an OpenID Provider / OAuth 2.0 Authorization Server metadata document (RFC 8414, usually
+        `.../.well-known/openid-configuration`) and returns the endpoints needed to configure a key manager against
+        that server. Nothing is stored: this fills in a form, and the values are persisted only when the key manager
+        itself is created.
+
+
+        The URL is dialled under the same address policy `POST /key-managers` validates its endpoints against, so a
+        document this can read sits on a host the resulting key manager could also reach. A URL that is refused,
+        unreachable, or does not answer with a usable JSON document is reported as `400` with a generic message —
+        the specific cause is logged internally only, since it would otherwise describe the deployment's own network.
+      operationId: discoverKeyManagerEndpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyManagerDiscoveryRequest"
+      responses:
+        "200":
+          description: >-
+            The endpoints read from the discovery document. A field the document does not declare, or declares as
+            something other than an absolute http/https URL, is omitted rather than returned empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyManagerDiscoveryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      # Reading a discovery document makes the portal dial a host the caller names,
+      # so it is restricted to the callers who may configure a key manager's
+      # endpoints anyway — not opened to the read scopes the metadata path allows.
+      security:
+        - OAuth2Security:
+            - dp:key_manager:create
+            - dp:key_manager:manage
   /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
@@ -5774,6 +5820,44 @@ components:
             displayName:
               type: string
               example: My Mobile App
+    KeyManagerDiscoveryRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: >-
+            The discovery document's own URL — the full `.well-known` address, not the issuer it describes. Nothing
+            is appended to it.
+          example: https://api.asgardeo.io/t/myorg/oauth2/token/.well-known/openid-configuration
+      additionalProperties: false
+    KeyManagerDiscoveryResponse:
+      type: object
+      description: >-
+        Endpoints read out of the discovery document, named as the key manager payload names them rather than as
+        the document does. Every field is optional: a server that declares no registration endpoint simply omits it,
+        and the form leaves that field for the operator to fill in. Nothing else from the document is returned —
+        every value here has been parsed as an absolute http/https URL, and a member that is not one is dropped.
+      properties:
+        tokenEndpoint:
+          type: string
+          format: uri
+          description: From `token_endpoint`.
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        authorizeEndpoint:
+          type: string
+          format: uri
+          description: From `authorization_endpoint`.
+          example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        registrationEndpoint:
+          type: string
+          format: uri
+          description: >-
+            From `registration_endpoint`. Its presence means the server advertises Dynamic Client Registration; its
+            absence does not prove the server lacks it, only that the document does not say so.
+          example: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
     KeyManagerRequest:
       type: object
       required:
@@ -5793,6 +5877,20 @@ components:
           type: boolean
           default: true
           example: true
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          default: PRODUCTION
+          description: >-
+            Which environment this key manager issues keys for. Every key created on it inherits this value, so a
+            deployment runs one key manager per environment rather than choosing per key. Accepted
+            case-insensitively.
+
+
+            **Fixed at creation.** A `PUT` may repeat the stored value, so an unchanged round-trip succeeds, but
+            changing it answers `409`: the keys already issued were created as that kind and reclassifying the key
+            manager cannot change what they are.
+          example: SANDBOX
         tokenEndpoint:
           type: string
           format: uri
@@ -5817,6 +5915,13 @@ components:
           type: string
           description: Desired handle for the key manager (unique per org), stored as-is.
           example: asgardeo-prod
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            Accepted only when it matches the stored value — sending the key manager back unchanged works, changing
+            it answers `409`. See `keyType` on `KeyManagerRequest`.
+          example: SANDBOX
         enabled:
           type: boolean
           default: true
@@ -5849,6 +5954,13 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            Which environment this key manager issues keys for. Always present; `PRODUCTION` for a key manager
+            created before this field existed.
+          example: SANDBOX
         source:
           type: string
           description: >-
@@ -5915,6 +6027,13 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/token
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            The environment keys created here will belong to. Present in the developer-facing view because choosing
+            a key manager is how a developer chooses that.
+          example: SANDBOX
         source:
           type: string
           description: >-
@@ -6482,6 +6601,13 @@ components:
           type: string
           description: Display name for the key manager selector.
           example: Asgardeo
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            The environment a key created on this key manager will belong to. Present here because this is the
+            listing a developer picks from.
+          example: SANDBOX
         type:
           type: string
           description: >-
@@ -6642,6 +6768,20 @@ components:
             offering only non-interactive grants.
           maxLength: 1023
           example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        supportedGrantTypes:
+          type: array
+          items:
+            type: string
+          description: >-
+            Restricts which of this key manager's grant types a portal user may choose when creating a key. Omitted
+            or empty means no restriction — whatever the driver offers.
+
+
+            This is an administrator's policy, not a statement of capability: the key manager may well support more.
+            It narrows the options `GET /key-managers/metadata` returns **and** is enforced on
+            `POST`/`PUT /oauth2-keys`, since a dropdown narrowed in the browser would not restrain a request sent by
+            hand. A value the driver does not declare is rejected with `400`, listing the ones it does.
+          example: ["client_credentials"]
         auth:
           $ref: "#/components/schemas/KeyManagerProvisioningAuth"
       additionalProperties: false
@@ -6747,6 +6887,14 @@ components:
           type: string
           format: uri
           example: https://api.asgardeo.io/t/myorg/oauth2/authorize
+        supportedGrantTypes:
+          type: array
+          items:
+            type: string
+          description: >-
+            The configured restriction, when one is set. Omitted entirely when there is none — an empty array would
+            read as "no grant type is permitted".
+          example: ["client_credentials"]
         authMethod:
           type: string
           enum:
@@ -7117,6 +7265,13 @@ components:
           type: string
           description: Handle of the key manager that issued the credentials.
           example: asgardeo-prod
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            The environment this key belongs to, stamped from its key manager when it was created. A historical fact
+            about the credential: it does not change, and is not re-read from the key manager.
+          example: SANDBOX
         keyManagerName:
           type: string
           description: Display name of that key manager.
@@ -7180,6 +7335,13 @@ components:
         keyManagerId:
           type: string
           example: asgardeo-prod
+        keyType:
+          type: string
+          enum: [PRODUCTION, SANDBOX]
+          description: >-
+            The environment this key belongs to, stamped from its key manager when it was created. A historical fact
+            about the credential: it does not change, and is not re-read from the key manager.
+          example: SANDBOX
         keyManagerName:
           type: string
           example: Asgardeo

@@ -347,6 +347,11 @@ async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
                 // both surfaces below fall back to the consumer key rather than
                 // rendering an empty label.
                 name: key.name || '',
+                // Stamped on the key at creation from its key manager. Carried here
+                // so this listing marks a sandbox key the same way the OAuth2 Keys
+                // page does — an application showing its keys without that
+                // distinction is where a sandbox key gets attached by mistake.
+                keyType: key.keyType || 'PRODUCTION',
                 keyManagerName: names.get(key.keyManagerId) || key.keyManagerId,
                 consumerKey: key.consumerKey,
                 status: String(key.status || 'ACTIVE'),

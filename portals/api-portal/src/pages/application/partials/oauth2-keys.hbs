@@ -55,7 +55,17 @@
         <tr>
           {{!-- Blank rather than a placeholder when unset: a key created before the
                 name column existed simply has none, which is not an error. --}}
-          <td><span class="ak-key-name">{{this.name}}</span></td>
+          <td>
+            <span class="ak-key-name">{{this.name}}</span>
+            {{!-- Only sandbox is marked. Production is the default and the common
+                  case, so badging it would label every row and distinguish nothing.
+                  Shown here as well as on the OAuth2 Keys page because this is the
+                  list where a key is attached to an application — the moment a
+                  sandbox key gets onto a production app by mistake. --}}
+            {{#if (eq this.keyType 'SANDBOX')}}
+            <span class="ak-env-badge" title="A sandbox key — issued by a sandbox key manager">Sandbox</span>
+            {{/if}}
+          </td>
           <td>{{this.keyManagerName}}</td>
           {{!-- The consumer key is an identifier, not a secret. The secret is
                 returned once at creation and never stored, so it cannot appear. --}}

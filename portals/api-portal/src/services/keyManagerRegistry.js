@@ -52,6 +52,7 @@
  */
 
 const { getFactory } = require('../keymanagers');
+const constants = require('../utils/constants');
 const kmDao = require('../dao/keyManagerDao');
 const driverBuilder = require('./keyManagerDriverBuilder');
 const { NotFoundError } = require('../utils/errors/customErrors');
@@ -84,6 +85,10 @@ async function _configEntries() {
         // key_manager_configurations row; a config-declared one has no such row,
         // so it has to come off the built instance or it would show as untyped.
         driver_type: km.type,
+        // Which environment this key manager issues keys for, from the entry's
+        // `key_type`. Defaulted rather than left unset: every key created here is
+        // stamped with it, so "unset" would have to be invented downstream anyway.
+        key_type: km.keyType || constants.KEY_TYPE.PRODUCTION,
         // uuid/org_uuid/created_by/created_at have no meaning for a file-declared
         // entry. Left absent so the DTO omits them rather than inventing values.
     }));

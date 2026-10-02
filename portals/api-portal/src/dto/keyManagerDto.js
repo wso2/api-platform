@@ -16,6 +16,7 @@
  * under the License.
  */
 const { applyAudit } = require('./dtoUtils');
+const constants = require('../utils/constants');
 
 /**
  * Project a stored provisioning record into its response shape.
@@ -45,6 +46,11 @@ function toProvisioningView(cfg) {
     if (cfg.authResource) view.resource = cfg.authResource;
     if (cfg.authHeaderName) view.headerName = cfg.authHeaderName;
     if (cfg.authScheme) view.scheme = cfg.authScheme;
+    // Omitted when empty, which is what "no restriction — whatever the driver
+    // offers" means. Sending [] would read as "nothing is permitted".
+    if (cfg.supportedGrantTypes && cfg.supportedGrantTypes.length) {
+        view.supportedGrantTypes = cfg.supportedGrantTypes;
+    }
     return view;
 }
 
@@ -69,6 +75,9 @@ class KeyManagerDTO {
         if (km.org_uuid !== undefined) this.orgId = km.org_uuid;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
+        // Always present: every key manager issues keys for one environment, and a
+        // caller that has to guess the default would guess it differently each time.
+        this.keyType = km.key_type || constants.KEY_TYPE.PRODUCTION;
         if (km.source) this.source = km.source;
         // Whether the portal can register OAuth applications here, as opposed to
         // merely proxying token requests for one created elsewhere. Always true
@@ -104,6 +113,10 @@ class KeyManagerPublicDTO {
         this.id = km.handle;
         this.displayName = km.display_name;
         this.tokenEndpoint = km.token_endpoint;
+        // In the developer-facing view too: a developer picking a key manager is
+        // choosing which environment their credentials will be for, so hiding it
+        // would make that choice invisible at the moment it is made.
+        this.keyType = km.key_type || constants.KEY_TYPE.PRODUCTION;
         if (km.source) this.source = km.source;
     }
 }

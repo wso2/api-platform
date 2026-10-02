@@ -49,6 +49,7 @@ const db = require('../db/driver');
 const { getPortalId } = require('../utils/orgContext');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
+const constants = require('../utils/constants');
 const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 
 const TABLE = 'oauth2_consumer_keys';
@@ -71,6 +72,7 @@ const COLUMNS = [
     'key_manager_id',
     'consumer_key',
     'name',
+    'key_type',
     'status',
     'registration_client_uri',
     'created_by',
@@ -112,8 +114,19 @@ function toIsoUtc(value) {
     const text = String(value);
     // Already RFC 3339 (a `T` plus either Z or a numeric offset).
     if (/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/.test(text)) return text;
-    // SQLite's "YYYY-MM-DD HH:MM:SS" is UTC by definition of CURRENT_TIMESTAMP.
-    const asUtc = new Date(text.replace(' ', 'T') + (/[Zz]|[+-]\d{2}/.test(text) ? '' : 'Z'));
+    /*
+     * SQLite's "YYYY-MM-DD HH:MM:SS" is UTC by definition of CURRENT_TIMESTAMP, so
+     * a Z has to be appended before parsing — without one, JS reads the string as
+     * LOCAL time and the value silently shifts by the host's offset.
+     *
+     * The zone test is anchored to the end for that reason. An unanchored
+     * /[Zz]|[+-]\d{2}/ matches the hyphen in the DATE itself ("2026-10-02"), so it
+     * concluded every timestamp already carried an offset and never appended the Z
+     * — shifting every SQLite timestamp by the server's UTC offset. It went
+     * unnoticed while this column only ever rendered a date.
+     */
+    const hasZoneSuffix = /(?:[Zz]|[+-]\d{2}:?\d{2})$/.test(text);
+    const asUtc = new Date(text.replace(' ', 'T') + (hasZoneSuffix ? '' : 'Z'));
     return Number.isNaN(asUtc.getTime()) ? undefined : asUtc.toISOString();
 }
 
@@ -124,6 +137,9 @@ function toRecord(row) {
         keyManagerId: row.key_manager_id,
         consumerKey: row.consumer_key,
         name: row.name || '',
+        // Copied from the key manager when this key was created, never derived at
+        // read time — see the column comment in database/schema.*.sql.
+        keyType: row.key_type || constants.KEY_TYPE.PRODUCTION,
         status: row.status,
         // The URI is not a credential — it is the address the token is used at, and
         // the driver needs it to build the request. The token itself arrives only
@@ -146,7 +162,7 @@ function toRecord(row) {
  * @param {string} params.createdBy
  * @returns {Promise<object>} the stored record
  */
-const create = async ({ orgId, keyManagerId, consumerKey, name, createdBy, registration }) => {
+const create = async ({ orgId, keyManagerId, consumerKey, name, keyType, createdBy, registration }) => {
     const uuid = crypto.randomUUID();
     // Only a key manager that implements RFC 7592 sends these. Absent, both stay
     // NULL and this key is managed with the portal's provisioning credential.
@@ -155,11 +171,12 @@ const create = async ({ orgId, keyManagerId, consumerKey, name, createdBy, regis
     if (accessToken) requireCrypto();
     await db.execute(
         `INSERT INTO ${TABLE} (
-            uuid, org_uuid, portal_id, key_manager_id, consumer_key, name,
+            uuid, org_uuid, portal_id, key_manager_id, consumer_key, name, key_type,
             status, registration_access_token_enc, registration_client_uri,
             created_by, updated_by
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [uuid, orgId, getPortalId(), keyManagerId, consumerKey, name || null,
+            keyType || constants.KEY_TYPE.PRODUCTION,
             STATUS_ACTIVE,
             accessToken ? keyCrypto.encrypt(accessToken) : null,
             clientUri || null,

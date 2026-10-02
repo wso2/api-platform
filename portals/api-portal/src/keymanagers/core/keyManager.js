@@ -64,6 +64,16 @@ class KeyManager {
         this.authorizeEndpoint = cfg.authorizeEndpoint;
         this.registrationEndpoint = cfg.registrationEndpoint;
         /*
+         * Which environment the keys this key manager issues belong to —
+         * PRODUCTION or SANDBOX. Carried on the instance because a config-declared
+         * key manager has no database row: the registry projects it from here, and
+         * every key created through this driver is stamped with it.
+         *
+         * Defaulted rather than left undefined so a driver constructed from a bare
+         * object in a test still answers the question.
+         */
+        this.keyType = cfg.keyType || 'PRODUCTION';
+        /*
          * What creating a key here actually does, as the caller experiences it.
          *
          *   register  the portal creates the application and returns credentials

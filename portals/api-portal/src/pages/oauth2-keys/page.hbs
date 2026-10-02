@@ -70,7 +70,16 @@
               tabindex="0" role="button" aria-label="Open {{#if this.name}}{{this.name}}{{else}}{{this.consumerKey}}{{/if}}">
             {{!-- What the developer called it. Falls back to the consumer key, which
                   is what a key created before names existed has to be found by. --}}
-            <td class="ok-name">{{#if this.name}}{{this.name}}{{else}}<span class="ok-unnamed">{{this.consumerKey}}</span>{{/if}}</td>
+            <td class="ok-name">
+              {{#if this.name}}{{this.name}}{{else}}<span class="ok-unnamed">{{this.consumerKey}}</span>{{/if}}
+              {{!-- Only sandbox is badged. Production is the default and the common
+                    case, so labelling it would mark every row and distinguish
+                    nothing. Stamped when the key was created, from its key
+                    manager — it does not change. --}}
+              {{#if (eq this.keyType 'SANDBOX')}}
+              <span class="ok-env-badge" title="A sandbox key — issued by a sandbox key manager">Sandbox</span>
+              {{/if}}
+            </td>
             {{!-- The name only. The handle is on the row as a data attribute for the
                   code that needs it, and repeating it here was noise. --}}
             <td><span class="ok-km-name">{{this.keyManagerName}}</span></td>
@@ -84,23 +93,73 @@
               </button>
             </td>
             {{!-- An unassociated key is a normal state, not missing data: association
-                  is for attributing usage and has no bearing on the key working. --}}
-            <td class="ok-app">{{#if this.applicationName}}{{this.applicationName}}{{else}}—{{/if}}</td>
-            <td class="ok-created">{{#if this.createdAt}}{{formatExpiresAt this.createdAt}}{{else}}—{{/if}}</td>
+                  is for attributing usage and has no bearing on the key working.
+
+                  The control that changes it lives here rather than in Actions,
+                  beside the value it edits — so the column shows the association and
+                  is also where you change it. Small and icon-led because it repeats
+                  on every row; the column header is what gives a bare "+" its
+                  meaning, and the title/aria-label carry it for everyone else. --}}
+            <td class="ok-app">
+              <span class="ok-app-cell">
+                {{#if this.applicationName}}
+                <span class="ok-app-name">{{this.applicationName}}</span>
+                <button type="button" class="ok-app-btn ok-row-app"
+                  title="Change application" aria-label="Change the application this key is associated with">
+                  <i class="bi bi-pencil" aria-hidden="true"></i>
+                </button>
+                {{else}}
+                <button type="button" class="ok-app-btn ok-app-btn--empty ok-row-app"
+                  title="Associate an application" aria-label="Associate an application with this key">
+                  <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                </button>
+                {{/if}}
+              </span>
+            </td>
+            {{!-- Relative ("3 days ago") with the exact timestamp on hover. Rendered
+                  absolute here and rewritten by the page script, rather than computed
+                  twice: the server's clock and time zone are not the reader's, and a
+                  relative string baked into the HTML is wrong the moment the tab is
+                  left open. Without the script this stays a real date, which is the
+                  right thing to degrade to.
+
+                  <time datetime> carries the machine-readable instant, so the script
+                  never has to parse the displayed text back. --}}
+            <td class="ok-created">
+              {{#if this.createdAt}}
+              <time class="ok-created-at" datetime="{{this.createdAt}}"
+                title="{{formatExpiresAt this.createdAt}}">{{formatExpiresAt this.createdAt}}</time>
+              {{else}}—{{/if}}
+            </td>
             <td>
               <div class="ok-actions">
-                <button type="button" class="ok-btn-app ok-row-app">
-                  <i class="bi bi-grid"></i> {{#if this.applicationName}}Change app{{else}}Associate app{{/if}}
-                </button>
                 <button type="button" class="ok-btn-token ok-row-token">
                   <i class="bi bi-shield-check"></i> Get token
                 </button>
-                <button type="button" class="ok-btn-edit ok-row-edit">
-                  <i class="bi bi-pencil"></i> Update
-                </button>
-                <button type="button" class="ok-btn-delete ok-row-delete">
-                  <i class="bi bi-trash"></i> Delete
-                </button>
+                {{!-- Update and Delete sit behind the menu, as the settings API table
+                      presents them. They are the two that act on the key itself rather
+                      than on what it is attached to, and putting the destructive one a
+                      deliberate second click away is the point of the pattern.
+
+                      The menu is positioned by script, not by CSS: .ok-tablewrap scrolls
+                      on the x axis, which makes it clip on the y axis too, so a dropdown
+                      anchored inside the cell would be cut off by the table's own edge. --}}
+                <div class="ok-menu">
+                  <button type="button" class="ok-menu-trigger ok-row-menu" aria-label="More actions"
+                    aria-haspopup="true" aria-expanded="false">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                  <div class="ok-dropdown" role="menu">
+                    <button type="button" class="ok-dropdown-item ok-row-edit" role="menuitem">
+                      <i class="bi bi-pencil"></i> Update
+                    </button>
+                    <div class="ok-dropdown-divider"></div>
+                    <button type="button" class="ok-dropdown-item ok-dropdown-item--danger ok-row-delete"
+                      role="menuitem">
+                      <i class="bi bi-trash"></i> Delete
+                    </button>
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -268,6 +327,10 @@
         </div>
         <div id="ok-fields"></div>
       </div>
+      {{!-- Three modes share this footer. View mode shows neither submit button and
+            relabels the remaining one "Close": it is somewhere to look, and offering
+            a way to start editing from it only raises the question of whether you
+            already are. Updating is reached deliberately, from the row menu. --}}
       <div class="ok-modal-footer">
         <button type="button" class="dp-btn dp-btn--outline" id="ok-add-cancel">Cancel</button>
         <button type="button" class="dp-btn dp-btn--primary" id="ok-add-submit">Add key</button>

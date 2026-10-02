@@ -248,7 +248,15 @@ const loadSettingsPage = async (req, res) => {
          * place without editing this.
          */
         templateContent.keyManagerTypes = registeredTypeOptions()
-            .filter((option) => option.keyCreation !== 'provide');
+            .filter((option) => option.keyCreation !== 'provide')
+            /*
+             * Named products first, in the registry's own order; the generic driver
+             * last. It is the fallback for a key manager with no driver of its own,
+             * so an admin should reach it after looking for their product and not
+             * finding it — which an alphabetical list, where "Custom" sorts second,
+             * actively works against.
+             */
+            .sort((a, b) => (a.value === 'custom' ? 1 : 0) - (b.value === 'custom' ? 1 : 0));
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG

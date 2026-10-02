@@ -646,6 +646,81 @@
   color: var(--text-subtle);
 }
 
+/* A text field with an action that operates on what was typed into it, rather
+   than on the form. The button sizes to its own text and the input takes the
+   rest, so a long URL keeps the room instead of the label. `align-items` is
+   stretch so the two meet at the same height whatever the button's padding. */
+.cfg-input-with-action {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.cfg-input-with-action .cfg-form-input {
+  flex: 1 1 auto;
+  min-width: 0; /* a flex item defaults to min-content; without this a long placeholder widens the row */
+}
+
+.cfg-input-with-action > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cfg-input-with-action > button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A square icon button sized to sit beside a text input. Shares the pill
+   button's colours but not its shape: a round-ended 38px button reads as a
+   status dot rather than something to press. */
+.cfg-icon-action {
+  /* Height comes from the row's `align-items: stretch`, so the button always
+     matches the input beside it whatever that input's padding works out to — a
+     fixed height would pin it to one input size and leave a notch beside every
+     other. Width is set outright rather than derived with `aspect-ratio`: a flex
+     item resolves its main size before the stretched cross size is known, so an
+     aspect ratio here would silently do nothing. */
+  align-self: stretch;
+  width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cfg-icon-action:hover:not(:disabled) { background: var(--primary-surface); }
+
+/* The busy state. With no text to swap for "Fetching…", the spin is the only
+   signal the request is in flight, so it is applied to the glyph rather than
+   the button — a rotating border would turn the square box into a blur. */
+.cfg-icon-action.is-busy i {
+  display: inline-block;
+  animation: cfg-spin 0.9s linear infinite;
+}
+
+@keyframes cfg-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Honour a reduced-motion preference: the button still reports itself as busy
+   by dimming, it just does not rotate. */
+@media (prefers-reduced-motion: reduce) {
+  .cfg-icon-action.is-busy i { animation: none; }
+}
+
+/* The hint line doubles as this control's result, so it says which it is. The
+   neutral state keeps --text-subtle from .cfg-form-hint. */
+.cfg-form-hint.is-error { color: var(--danger, #c62828); }
+.cfg-form-hint.is-success { color: var(--success, #2e7d32); }
+
 /* A question whose answers need a sentence each, so radio cards rather than a
    dropdown. `.cfg-form-legend` matches `.cfg-form-group label` exactly — it is
    the same thing visually, but it labels a group rather than one control, so it
@@ -711,6 +786,73 @@
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--text-subtle);
+}
+
+/* Two short answers side by side rather than stacked. The stacked default is for
+   choices that need a sentence each; Production/Sandbox do not, and stacking them
+   pushes the rest of a long form further down for no gain. Falls back to the
+   column layout below the breakpoint, where side-by-side would squeeze both. */
+.cfg-choice-group--inline { flex-direction: row; }
+.cfg-choice-group--inline > .cfg-choice { flex: 1 1 0; }
+
+@media (max-width: 560px) {
+  .cfg-choice-group--inline { flex-direction: column; }
+}
+
+/* A disabled card must not keep offering itself — no hover lift, no pointer. The
+   radio stays visible (never `display:none`) so the settled answer is still
+   readable, which is the whole reason edit shows this rather than hiding it. */
+.cfg-form-group .cfg-choice:has(input:disabled) {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.cfg-form-group .cfg-choice:has(input:disabled):hover { border-color: var(--border); }
+.cfg-choice input[type="radio"]:disabled { cursor: default; }
+
+/* Checkbox list for a multi-answer restriction (grant types). Wraps, because the
+   number of options is the driver's to decide and a fixed column count would
+   either waste a row or overflow. */
+.cfg-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.cfg-form-group .cfg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 0;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.cfg-check input[type="checkbox"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Environment badge, used in the key manager list and beside an OAuth2 key.
+   Production is deliberately unmarked: it is the default and the common case, so
+   badging it would put a label on every row and make neither stand out. */
+.cfg-env-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--info, #0b6bcb);
+  background: color-mix(in srgb, var(--info, #0b6bcb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info, #0b6bcb) 28%, transparent);
+  white-space: nowrap;
 }
 
 /* The settled-fact field in edit mode: readable, clearly not editable. */
@@ -1266,6 +1408,40 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+/* The Status control in the key manager list. A radio, because the cell reports a
+   state rather than offering a multi-select — the click toggles, and the script
+   re-renders it from the server's answer. Scoped under .cfg-table so it inherits
+   none of the form-label rules. */
+/* The Bootstrap switch from the LLM instructions page, laid out for a table cell.
+   Bootstrap positions the input by floating it into `.form-switch`'s 2.5em
+   padding-left — which the explicit 2.5rem width overruns at this cell's smaller
+   font size, putting the knob under the label. So the padding/negative-margin
+   pair is replaced with a flex row here, and only the switch's own appearance
+   (track, knob, :checked fill) is left to Bootstrap. */
+.cfg-table .cfg-status-toggle.form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 0;
+  padding-left: 0;
+  margin: 0;
+}
+
+.cfg-table .cfg-status-toggle .form-check-input {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Config-declared: shown so the state stays readable, inert because PUT answers
+   409. Hover is excluded for the same reason the row's icon buttons exclude it —
+   a control that lights up under the cursor reads as clickable. */
+.cfg-table .cfg-status-toggle.is-fixed,
+.cfg-table .cfg-status-toggle.is-fixed .form-check-input {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .cfg-icon-btn {

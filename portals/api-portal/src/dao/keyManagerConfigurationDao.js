@@ -74,6 +74,7 @@ const PUBLIC_COLUMNS = [
     'description',
     'auth_method',
     'auth_config',
+    'settings',
     'created_by',
     'created_at',
     'updated_by',
@@ -120,6 +121,42 @@ function serializeAuthConfig(cfg) {
     return Object.keys(authConfig).length ? JSON.stringify(authConfig) : null;
 }
 
+/*
+ * The operator-chosen options bag, as stored in `settings`.
+ *
+ * A closed set of keys, not an open bag: anything not listed here is dropped on
+ * the way in and ignored on the way out, so the column stays a typed structure
+ * that happens to be JSON. An option added by a newer build and read by an older
+ * one is simply not seen, which is the same forgiving behaviour auth_config has.
+ */
+const SETTINGS_KEYS = Object.freeze(['supportedGrantTypes']);
+
+function serializeSettings(cfg) {
+    const settings = {};
+    // Stored only when it actually restricts something. An empty array and an
+    // absent key both mean "whatever the driver offers", and writing the empty
+    // form would make a round-trip look like a deliberate change.
+    if (Array.isArray(cfg.supportedGrantTypes) && cfg.supportedGrantTypes.length) {
+        settings.supportedGrantTypes = cfg.supportedGrantTypes
+            .filter((g) => typeof g === 'string' && g.trim())
+            .map((g) => g.trim());
+    }
+    return Object.keys(settings).length ? JSON.stringify(settings) : null;
+}
+
+function parseSettings(raw) {
+    const parsed = parseJsonColumn(raw) || {};
+    const settings = {};
+    for (const key of SETTINGS_KEYS) {
+        if (key === 'supportedGrantTypes') {
+            settings[key] = Array.isArray(parsed[key])
+                ? parsed[key].filter((g) => typeof g === 'string' && g.trim()).map((g) => g.trim())
+                : [];
+        }
+    }
+    return settings;
+}
+
 function toRecord(row) {
     if (!row) return null;
     // Postgres hands back a parsed object for JSONB; SQLite and SQL Server hand
@@ -142,6 +179,7 @@ function toRecord(row) {
         authResource: authConfig.resource || '',
         authHeaderName: authConfig.headerName || '',
         authScheme: authConfig.scheme || '',
+        ...parseSettings(row.settings),
         // Not the credential itself — only whether one is held, which is what a
         // form needs in order to render "leave blank to keep the current secret".
         // One column holds the secret for whichever method is stored, so these
@@ -211,13 +249,13 @@ const create = async ({ orgId, keyManagerUuid, cfg, createdBy }) => {
         `INSERT INTO ${TABLE} (
             key_manager_uuid, portal_id, org_uuid, driver_type,
             registration_endpoint, authorize_endpoint, description,
-            auth_method, auth_config, auth_secret_enc,
+            auth_method, auth_config, settings, auth_secret_enc,
             created_by, updated_by
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             keyManagerUuid, getPortalId(), orgId, cfg.type,
             cfg.registrationEndpoint, cfg.authorizeEndpoint || null, cfg.description || null,
-            cfg.authMethod, serializeAuthConfig(cfg),
+            cfg.authMethod, serializeAuthConfig(cfg), serializeSettings(cfg),
             secret ? kmCrypto.encrypt(secret) : null,
             createdBy, createdBy,
         ]
@@ -236,12 +274,12 @@ const update = async ({ orgId, keyManagerUuid, cfg, updatedBy }) => {
     requireCrypto();
     const sets = [
         'driver_type = ?', 'registration_endpoint = ?', 'authorize_endpoint = ?',
-        'description = ?', 'auth_method = ?', 'auth_config = ?',
+        'description = ?', 'auth_method = ?', 'auth_config = ?', 'settings = ?',
         'updated_by = ?', 'updated_at = CURRENT_TIMESTAMP',
     ];
     const params = [
         cfg.type, cfg.registrationEndpoint, cfg.authorizeEndpoint || null,
-        cfg.description || null, cfg.authMethod, serializeAuthConfig(cfg),
+        cfg.description || null, cfg.authMethod, serializeAuthConfig(cfg), serializeSettings(cfg),
         updatedBy,
     ];
     const secret = secretFor(cfg);

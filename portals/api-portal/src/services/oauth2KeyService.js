@@ -58,6 +58,7 @@ const util = require('../utils/util');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { getFactory } = require('../keymanagers');
+const kmConfigDao = require('../dao/keyManagerConfigurationDao');
 const kmRegistry = require('./keyManagerRegistry');
 const keyAppMappingDao = require('../dao/oauth2KeyAppMappingDao');
 const { KeyManagerCallError } = require('../keymanagers/core/keyManager');
@@ -80,6 +81,11 @@ function _toDetailDto(record, km, { secret = '', properties = {}, application } 
         // asked for it on every list — and for a provision key manager there is
         // nothing to ask.
         name: record.name || '',
+        // Stamped on the key when it was created, from its key manager. Read from
+        // the record, never from the key manager now: the key manager's own flag is
+        // frozen, but reading it live would still be answering a different question
+        // — what this credential IS, versus what that key manager issues today.
+        keyType: record.keyType || constants.KEY_TYPE.PRODUCTION,
         keyManagerId: record.keyManagerId,
         // Display name comes from the live config entry, not a stored copy, so
         // renaming a key manager does not leave stale names on old keys. A key
@@ -108,6 +114,7 @@ function _toListItemDto(record, km, application) {
     const dto = {
         keyId: record.keyId,
         name: record.name || '',
+        keyType: record.keyType || constants.KEY_TYPE.PRODUCTION,
         keyManagerId: record.keyManagerId,
         keyManagerName: km ? km.displayName : record.keyManagerId,
         consumerKey: record.consumerKey,
@@ -287,6 +294,126 @@ async function _resolveKeyManager(orgId, keyManagerId, opts) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Check a submitted property bag against what this key manager actually accepts.
+ *
+ * Until now nothing did: `properties` went straight from the request body into
+ * `km.createKey()` and on to the identity server, so the declared metadata was a
+ * description of the form rather than a contract. That is what makes an admin's
+ * grant-type restriction meaningful — a dropdown narrowed in the browser is not a
+ * restriction if the same request can be sent by hand.
+ *
+ * Three rules, all from the descriptors the driver emits:
+ *   - a property not declared is rejected, rather than forwarded to the server
+ *   - a declared `required` property must be present
+ *   - a value for a property with `options` must be one of them
+ *
+ * `requiredWhen` is deliberately not enforced here. It depends on another
+ * property's value, the drivers already express it, and getting the dependency
+ * subtly wrong would reject valid requests — the key manager itself rejects a
+ * registration missing a conditionally-required member, with a better message.
+ *
+ * @returns {string|null} an error message, or null when the bag is acceptable
+ */
+function _validateProperties(meta, properties) {
+    const declared = (meta && meta.properties) || [];
+    if (!declared.length) return null;
+    const byName = new Map(declared.map((p) => [p.name, p]));
+    const submitted = properties && typeof properties === 'object' && !Array.isArray(properties)
+        ? properties
+        : {};
+
+    const unknown = Object.keys(submitted).filter((k) => !byName.has(k));
+    if (unknown.length) {
+        return `This key manager does not accept the propert${unknown.length === 1 ? 'y' : 'ies'}: `
+            + `${unknown.join(', ')}.`;
+    }
+
+    const missing = declared
+        .filter((p) => p.required)
+        .filter((p) => {
+            const v = submitted[p.name];
+            if (v === undefined || v === null || v === '') return true;
+            return Array.isArray(v) && v.length === 0;
+        })
+        .map((p) => p.name);
+    if (missing.length) {
+        return `Missing required propert${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}.`;
+    }
+
+    for (const [name, value] of Object.entries(submitted)) {
+        const descriptor = byName.get(name);
+        if (!Array.isArray(descriptor.options) || !descriptor.options.length) continue;
+        if (value === undefined || value === null || value === '') continue;
+        const permitted = descriptor.options.map((o) => o.value);
+        // A multiselect submits an array, a select a single value. Both are checked
+        // against the same list, which is what the admin's restriction narrowed.
+        const offered = Array.isArray(value) ? value : [value];
+        const rejected = offered.filter((v) => !permitted.includes(v));
+        if (rejected.length) {
+            return `"${name}" does not accept: ${rejected.join(', ')}. `
+                + `Permitted here: ${permitted.join(', ')}.`;
+        }
+    }
+    return null;
+}
+
+/**
+ * The metadata for one key manager with its own settings applied — the same view
+ * GET /key-managers/metadata returns, which is what the property check above has
+ * to be made against, or a restriction would be advertised and not enforced.
+ */
+async function _effectiveMetadata(orgId, km, keyManagerId) {
+    const entry = await kmRegistry.findByHandle(orgId, keyManagerId);
+    if (entry && entry.source === kmRegistry.SOURCE_API && entry.uuid) {
+        const cfg = await kmConfigDao.get(orgId, entry.uuid);
+        return _applyKeyManagerSettings(km.metadata(), cfg, entry);
+    }
+    return _applyKeyManagerSettings(km.metadata(), null, entry);
+}
+
+/**
+ * Fold a stored key manager's own settings into the metadata its driver emits.
+ *
+ * Two things the driver cannot know about itself:
+ *
+ *   keyType           which environment this key manager issues keys for. A
+ *                     developer choosing a key manager is choosing that, so it
+ *                     has to be visible at the point of choice.
+ *
+ *   supportedGrantTypes  the admin's restriction on which grants may be picked.
+ *                     Applied by narrowing the declared options, not by adding a
+ *                     separate field, so a renderer needs to know nothing new —
+ *                     it draws whatever options it is given.
+ *
+ * Narrowing only: a configured value that the driver no longer declares is
+ * dropped rather than offered, so a restriction written against an older build
+ * cannot reintroduce a grant this one does not support. If that leaves nothing,
+ * the restriction is ignored and the driver's full set stands — an empty
+ * dropdown would make the key manager unusable with no way to tell why.
+ */
+function _applyKeyManagerSettings(meta, cfg, entry) {
+    const result = {
+        ...meta,
+        keyType: (entry && entry.key_type) || constants.KEY_TYPE.PRODUCTION,
+    };
+    const allowed = (cfg && cfg.supportedGrantTypes) || [];
+    if (!allowed.length || !Array.isArray(result.properties)) return result;
+
+    result.properties = result.properties.map((p) => {
+        if (p.name !== 'grant_types' || !Array.isArray(p.options)) return p;
+        const narrowed = p.options.filter((o) => allowed.includes(o.value));
+        if (!narrowed.length) {
+            logger.warn('Grant type restriction matched none of the driver\'s options; ignoring it', {
+                keyManagerId: entry && entry.handle, allowed,
+            });
+            return p;
+        }
+        return { ...p, options: narrowed };
+    });
+    return result;
+}
+
+/**
  * GET /key-managers/metadata — tag "Key Managers", operationId getKeyManagerMetadata.
  *
  * The configured key managers and the properties each accepts. Drivers emit the
@@ -297,7 +424,19 @@ const getKeyManagerMetadata = async (req, res) => {
     try {
         const orgId = req.orgId;
         const factory = await getFactory();
-        const metadata = factory.allMetadata();
+        /*
+         * Config-declared key managers. Their grant types are not restrictable —
+         * the restriction lives in `key_manager_configurations`, which a config
+         * entry has no row in — so only keyType is attached here. An operator who
+         * wants a narrower set on a config entry edits the file.
+         */
+        const configKeyTypes = new Map(
+            factory.all().map((km) => [km.id, km.keyType || constants.KEY_TYPE.PRODUCTION])
+        );
+        const metadata = factory.allMetadata().map((m) => ({
+            ...m,
+            keyType: configKeyTypes.get(m.id) || constants.KEY_TYPE.PRODUCTION,
+        }));
 
         // Every API-created key manager appears here, whichever kind it is. The
         // endpoint answers "where can I get a key", and both kinds are an answer:
@@ -330,7 +469,9 @@ const getKeyManagerMetadata = async (req, res) => {
             }
             // Null means "driver type this build does not ship" — left out rather
             // than listed as broken.
-            if (driver) metadata.push(driver.metadata());
+            if (!driver) continue;
+            const cfg = await kmConfigDao.get(orgId, entry.uuid);
+            metadata.push(_applyKeyManagerSettings(driver.metadata(), cfg, entry));
         }
         metadata.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -440,6 +581,11 @@ const createOAuth2Key = async (req, res) => {
             // Generic 404 with no echo of the submitted id.
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
+        const propertyError = _validateProperties(
+            await _effectiveMetadata(orgId, km, keyManagerId), properties
+        );
+        if (propertyError) return util.sendError(res, 400, propertyError);
+
         const issued = await km.createKey(properties);
 
         // Persist only what the portal needs to find this client again and to
@@ -456,6 +602,12 @@ const createOAuth2Key = async (req, res) => {
             keyManagerId: issued.keyManagerId,
             consumerKey: issued.consumerKey,
             name: (issued.properties && issued.properties.client_name) || '',
+            /*
+             * Inherited from the key manager, resolved here and nowhere else.
+             * When a per-key choice is added later this one expression becomes
+             * `req.body.keyType ?? km.keyType` and nothing else moves.
+             */
+            keyType: km.keyType || constants.KEY_TYPE.PRODUCTION,
             createdBy: actor,
             registration: issued.registration,
         });
@@ -597,6 +749,15 @@ const updateOAuth2Key = async (req, res) => {
             // reached — the same answer as a driver that cannot update.
             return util.sendError(res, 409, constants.ERROR_MESSAGE.OAUTH2_KEY_OPERATION_UNSUPPORTED);
         }
+
+        // The same contract as create. PUT replaces the client metadata wholesale,
+        // so an update is exactly as able to set a restricted grant type as a
+        // create is — checking only one of the two would leave the restriction
+        // trivially reachable by creating a key and then editing it.
+        const propertyError = _validateProperties(
+            await _effectiveMetadata(orgId, km, record.keyManagerId), req.body.properties
+        );
+        if (propertyError) return util.sendError(res, 400, propertyError);
 
         // Upstream first: the key manager is the system of record for the
         // metadata, so a failed call must leave nothing changed here either.
@@ -987,6 +1148,11 @@ const listApplicationOAuth2Keys = async (req, res) => {
 };
 
 module.exports = {
+    // Exported for tests: the property contract and the settings narrowing are
+    // what make an admin's grant-type restriction real rather than cosmetic, so
+    // they are worth asserting directly rather than only through a route.
+    _validateProperties,
+    _applyKeyManagerSettings,
     getKeyManagerMetadata,
     createOAuth2Key,
     listOAuth2Keys,

@@ -57,6 +57,7 @@
  */
 
 const { registeredTypes, getDriver } = require('../keymanagers/core/registry');
+const constants = require('../utils/constants');
 const { ApiKey, BasicAuth, ClientCredentials, MutualTLS } = require('../keymanagers/core/authenticators');
 
 const AUTH_METHODS = ['client_credentials', 'basic', 'mtls', 'api_key'];
@@ -197,9 +198,23 @@ function normalizeInstance(entry, i) {
         );
     }
 
+    // Which environment this key manager issues keys for. Rejected rather than
+    // defaulted on a typo: "sandbx" silently meaning production is exactly the
+    // kind of quiet wrong answer a startup check exists to prevent.
+    const keyType = typeof entry.keyType === 'string' && entry.keyType.trim()
+        ? entry.keyType.trim().toUpperCase()
+        : constants.KEY_TYPE.PRODUCTION;
+    if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
+        throw new Error(
+            `${where}: key_type must be one of ${Object.values(constants.KEY_TYPE).join(', ')} `
+            + `(got "${entry.keyType}")`
+        );
+    }
+
     return {
         id,
         type,
+        keyType,
         displayName: need('name', 'name'),
         description: typeof entry.description === 'string' ? entry.description : '',
         registrationEndpoint: need('registrationEndpoint', 'registration_endpoint'),
