@@ -60,6 +60,7 @@ jobs:
           cache-dependency-path: |
             portals/api-portal/package-lock.json
             portals/ai-workspace/package-lock.json
+            portals/api-control-plane/package-lock.json
 
       - name: Ensure C compiler is available
         run: |
@@ -100,6 +101,28 @@ jobs:
             exit 1
           fi
           node --test "${test_files[@]}"
+
+      # The API Control Plane is otherwise built only at release time, so anything
+      # that breaks its typecheck is not seen until an image build days or weeks
+      # later — by someone who did not write it. Both steps below exist because
+      # that happened: agent-proxy operations were added to the Platform API spec,
+      # operationScopes.ts could not be regenerated from them, and the mismatch
+      # surfaced as a failed release build.
+      #
+      # The codegen check is the stronger of the two: it fails in the pull request
+      # that changes the spec, rather than in the portal that consumes it.
+      - name: API Control Plane generated API types are current
+        working-directory: portals/api-control-plane
+        run: |
+          npm ci
+          npm run api:codegen:check
+
+      # Typecheck only. The image build runs `tsc --noEmit && vite build`, and it is
+      # the typecheck that catches generated-code drift, so this buys the same signal
+      # without the bundling time.
+      - name: API Control Plane typecheck
+        working-directory: portals/api-control-plane
+        run: npx tsc --noEmit
 
       - name: Build testbench image
         run: make -C tests/framework testbench
