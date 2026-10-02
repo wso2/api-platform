@@ -600,7 +600,7 @@
     "defaultMessage": "Introspection enabled · SDL fetched · {typeCount, plural, one {# type} other {# types}}"
   },
   "api.create.graphql.introspection.unresolved": {
-    "defaultMessage": "Could not derive a schema from that endpoint. Check the URL, and that introspection is enabled."
+    "defaultMessage": "Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema."
   },
   "api.create.graphql.schemaExplorer.action.download": {
     "defaultMessage": "Download SDL"
