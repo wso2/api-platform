@@ -87,7 +87,14 @@ const (
 	LLMProviderTemplate = "LlmProviderTemplate"
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
+	AgentProxy          = "AgentProxy"
 )
+
+// GatewayKindAgent is the gateway artifact kind an AgentProxy is deployed as.
+// Every other kind uses the same name on both sides of the CP↔gateway boundary;
+// AgentProxy is the one kind that does not, so the gateway's vocabulary is named
+// here and translated explicitly rather than stored as the CP kind.
+const GatewayKindAgent = "Agent"
 
 // Artifact origin values. Origin distinguishes control-plane created artifacts
 // (control_plane) from artifacts pushed up by a data-plane gateway (gateway_api).
@@ -251,6 +258,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProvider: true,
 	LLMProxy:    true,
 	MCPProxy:    true,
+	AgentProxy:  true,
 }
 
 // Throttle limit unit constants

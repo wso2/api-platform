@@ -96,6 +96,9 @@ func BuildSpec(version string) (builder.Spec, error) {
 				{Directory: runtimeDir, Args: []string{"cp", "../../LICENSE", "target/LICENSE"}},
 				{Directory: runtimeDir, Args: []string{"cp", "-R", "../configs/llm-pricing", "target/configs/llm-pricing"}},
 				{Directory: runtimeDir, Args: runtimeBuild},
+				// The export only adds files, so a definition left by an earlier build would ship
+				// beside its replacement and make every major-only reference to it ambiguous.
+				{Directory: runtimeDir, Args: []string{"rm", "-rf", "../target/build/gateway-controller/policies"}},
 				{Directory: runtimeDir, Args: []string{"mkdir", "-p", "../target/build/gateway-controller/policies"}},
 				{Directory: runtimeDir, Args: policyExport},
 				{Directory: runtimeDir, Args: []string{"sh", "-c", "docker run --rm --entrypoint cat \"$1\" /app/build-manifest.yaml > ../build-manifest.yaml", "sh", runtime}},

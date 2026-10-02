@@ -52,7 +52,8 @@ go test ./suites/cloud -count=1 -timeout=15m \
   -args -blocks=apip-cloud -cloud-env=development
 ```
 
-Prerequisite images: `make testbench` here. Coverage runs build source images through the
+Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
+`make a2a-trip-planner` here. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
 product coverage-image target. See
 [`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects

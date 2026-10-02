@@ -643,11 +643,13 @@ blocks:
     components:
       - name: platform-api
         db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
@@ -664,17 +666,38 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-postgres
     parallel: 2
     components:
       - name: platform-api
         db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
@@ -691,17 +714,38 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-sqlserver
     parallel: 2
     components:
       - name: platform-api
         db: sqlserver
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
@@ -718,6 +762,46 @@ blocks:
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
+
+  # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
+  # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
+  # gateway-restart block does for its own restart runners.
+  - name: agent-proxy-recovery
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: a2a-trip-planner
+    runners:
+      - name: agent-proxy-recovery
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_recovery.feature
+        tags: "gateway-version>1.2.0"
 
   - name: dp-to-cp-sync-disabled
     parallel: 1

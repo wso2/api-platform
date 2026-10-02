@@ -50,3 +50,10 @@ func TestKnownKinds_IsNotEmptyAndDefensivelyCopied(t *testing.T) {
 	kinds[0] = "mutated"
 	assert.NotEqual(t, "mutated", KnownKinds()[0])
 }
+
+// Agent proxies are known under the gateway document kind they are deployed as.
+func TestKnownKinds_IncludesAgentUnderItsGatewayKind(t *testing.T) {
+	kinds := KnownKinds()
+	assert.Contains(t, kinds, constants.GatewayKindAgent)
+	assert.NotContains(t, kinds, constants.AgentProxy)
+}
