@@ -397,6 +397,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProxy, "/llm-proxies")
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProviderTemplate, "/llm-provider-templates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindMCPProxy, "/mcp-proxies")
+	registerControllerDeleter(reg, topo, client, cleanup.KindAgent, "/agents")
 	registerControllerDeleter(reg, topo, client, cleanup.KindCertificate, "/certificates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindSecret, "/secrets")
 }

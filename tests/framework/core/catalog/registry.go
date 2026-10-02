@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/builder"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/a2aagent"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
@@ -238,6 +239,7 @@ func All() []*components.Definition {
 		cloudconsole.CloudConsole(),
 		testbench.Testbench(),
 		infrastructure.Redis(),
+		a2aagent.TripPlanner(),
 	}
 }
 

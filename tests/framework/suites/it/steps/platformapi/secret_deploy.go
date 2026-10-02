@@ -84,6 +84,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createRestAPIPolicySecret)
 	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
 		s.createRestAPIPlain)
+	sc.Step(`^I create a REST API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)" and API key authentication$`,
+		s.createRestAPIKeyAuth)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane$`, s.deployArtifact)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployArtifactAndStore)
@@ -234,6 +236,16 @@ func (s *Steps) createSecret(ctx context.Context, handle string) error {
 	if err != nil {
 		return err
 	}
+	return s.createSecretValued(ctx, resolvedHandle, "test-value-"+resolvedHandle)
+}
+
+// createSecretValued creates a GENERIC secret under the given handle holding value and registers
+// it for cleanup.
+func (s *Steps) createSecretValued(ctx context.Context, handle, value string) error {
+	resolvedHandle, err := stepscommon.Expand(ctx, handle)
+	if err != nil {
+		return err
+	}
 	base, bearer, err := s.authed(ctx)
 	if err != nil {
 		return err
@@ -244,7 +256,7 @@ func (s *Steps) createSecret(ctx context.Context, handle string) error {
 	for _, kv := range [][2]string{
 		{"id", resolvedHandle},
 		{"displayName", resolvedHandle},
-		{"value", "test-value-" + resolvedHandle},
+		{"value", value},
 		{"type", "GENERIC"},
 	} {
 		if err := mw.WriteField(kv[0], kv[1]); err != nil {
@@ -480,11 +492,33 @@ func (s *Steps) createRestAPIPlain(ctx context.Context, id, projectHandle, apiCo
 	})
 }
 
+// createRestAPIKeyAuth creates the plain REST API guarded by api-key-auth on the apiKeyHeader,
+// so a key issued through the control plane can be proven to authenticate at the gateway.
+func (s *Steps) createRestAPIKeyAuth(ctx context.Context, id, projectHandle, apiContext string) error {
+	operations := []map[string]any{
+		{"request": map[string]any{"method": "GET", "path": "/health"}},
+	}
+	policies := []map[string]any{
+		{"name": "api-key-auth", "version": "v1", "params": map[string]any{"key": apiKeyHeader, "in": "header"}},
+	}
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, map[string]any{
+		"url": "http://testbench:3000",
+	}, policies)
+}
+
 // createRestAPIWithSecret creates a REST API via platform-api with the given upstream block
 // and, optionally, operations. Despite the name, this is the general REST API creation path -
 // createRestAPIPlain also uses it, with no secret placeholder anywhere in its payload.
 func (s *Steps) createRestAPIWithSecret(
 	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
+) error {
+	return s.createRestAPI(ctx, id, projectHandle, apiContext, operations, upstreamMain, nil)
+}
+
+// createRestAPI is createRestAPIWithSecret with optional API-level policies.
+func (s *Steps) createRestAPI(
+	ctx context.Context, id, projectHandle, apiContext string, operations []map[string]any, upstreamMain map[string]any,
+	policies []map[string]any,
 ) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
@@ -512,6 +546,9 @@ func (s *Steps) createRestAPIWithSecret(
 	}
 	if operations != nil {
 		payload["operations"] = operations
+	}
+	if policies != nil {
+		payload["policies"] = policies
 	}
 
 	var created struct {

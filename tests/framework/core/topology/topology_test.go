@@ -1188,18 +1188,21 @@ func TestSelectionParallelValidation(t *testing.T) {
 	require.ErrorContains(t, err, "runner parallelism cannot be negative")
 }
 
-func TestGatewayVersionSelectionOverride(t *testing.T) {
+func TestGatewayVersionAndHostSelectionOverride(t *testing.T) {
 	var flags Selection
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	flags.Flags(fs)
-	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0"}))
+	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0", "-host=registry.example/test-gateway"}))
 	require.Equal(t, "1.1.0", flags.GatewayVersion)
+	require.Equal(t, "registry.example/test-gateway", flags.GatewayHost)
 
 	original := &components.Definition{
-		Name: "platform-gateway",
+		Name:  "platform-gateway",
+		Image: components.ImageRef{Ref: "ghcr.io/wso2/api-platform/gateway-controller:current"},
 		Compose: &components.ComposeSpec{Env: map[string]string{
-			"PG_CONTROLLER_IMAGE": "gateway-controller:current",
-			"PG_RUNTIME_IMAGE":    "gateway-runtime:current",
+			"PG_CONTROLLER_IMAGE": "ghcr.io/wso2/api-platform/gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    "ghcr.io/wso2/api-platform/gateway-runtime:current",
+			"OTHER_IMAGE":         "docker.io/library/postgres:current",
 		}},
 	}
 	suite := &Resolved{Blocks: []ResolvedBlock{{
@@ -1212,9 +1215,11 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	component := got.Blocks[0].Components[0]
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource)
-	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
-	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
-	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Image.Ref)
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, "docker.io/library/postgres:1.1.0", component.Def.Compose.Env["OTHER_IMAGE"])
+	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
 
 	sourceSuite := &Resolved{Blocks: []ResolvedBlock{{
 		Name: "gateway-controller-policies",
@@ -1230,6 +1235,37 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource,
 		"gateway-version must switch a source-build gateway to versioned mode")
+}
+
+func TestGatewayVersionSelectionWithoutHostPreservesExistingBehavior(t *testing.T) {
+	original := &components.Definition{
+		Name: "platform-gateway",
+		Compose: &components.ComposeSpec{Env: map[string]string{
+			"PG_CONTROLLER_IMAGE": "gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    "gateway-runtime:current",
+		}},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name:       "gateway-core",
+		Components: []ResolvedComponent{{Def: original}},
+	}}}
+
+	got, err := (Selection{GatewayVersion: "1.1.0"}).Apply(suite)
+	require.NoError(t, err)
+	component := got.Blocks[0].Components[0]
+	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+}
+
+func TestGatewayHostRequiresVersion(t *testing.T) {
+	_, err := (Selection{GatewayHost: "registry.example/test-gateway"}).Apply(&Resolved{})
+	require.ErrorContains(t, err, "-host requires -gateway-version")
+}
+
+func TestGatewayHostRejectsURLs(t *testing.T) {
+	_, err := (Selection{GatewayVersion: "1.1.0", GatewayHost: "https://registry.example/test-gateway"}).Apply(&Resolved{})
+	require.ErrorContains(t, err, "-host must be an image repository prefix")
 }
 
 func TestGatewayVersionSelectionUsesMatchingConfigProfile(t *testing.T) {

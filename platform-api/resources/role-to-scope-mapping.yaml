@@ -75,6 +75,7 @@ roles:
       - ap:llm_provider:manage
       - ap:llm_proxy:manage
       - ap:mcp_proxy:manage
+      - ap:agent_proxy:manage
       - ap:secret:manage
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
@@ -127,6 +128,8 @@ roles:
       - ap:llm_proxy:deployment:manage
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:manage
+      - ap:agent_proxy:read
+      - ap:agent_proxy:deployment:manage
       - ap:subscription_plan:manage
       - ap:application:read
       - ap:application:api_key:read
@@ -160,8 +163,8 @@ roles:
       - dp:api_workflow:read
       - dp:event:read
 
-  # API publisher — owns the full REST API, MCP proxy and LLM proxy lifecycle and
-  # the Developer Portal content for it. LLM providers are read-only: a publisher
+  # API publisher — owns the full REST API, MCP proxy, Agent proxy and LLM proxy
+  # lifecycle and the Developer Portal content for it. LLM providers are read-only: a publisher
   # points proxies at an existing provider, but creating, editing, deleting and
   # deploying providers are all admin tasks. Manages secrets, which back the
   # upstream auth values on the proxies it configures. Reads applications,
@@ -173,6 +176,7 @@ roles:
       - ap:project:manage
       - ap:rest_api:manage
       - ap:mcp_proxy:manage
+      - ap:agent_proxy:manage
       - ap:llm_provider:read
       - ap:llm_proxy:manage
       - ap:llm_template:read
@@ -220,6 +224,7 @@ roles:
       - ap:subscription_plan:read
       - ap:rest_api:read
       - ap:mcp_proxy:read
+      - ap:agent_proxy:read
       - ap:llm_proxy:read
       - ap:llm_provider:read
       - ap:api_key:read
@@ -239,8 +244,8 @@ roles:
       - dp:label:read
 
   # Auditor — read-only across both components. Grants no mutating scope
-  # (the one POST it can reach, mcp-proxies/fetch-server-info, is a read
-  # the spec models as a POST).
+  # (the two POSTs it can reach, mcp-proxies/fetch-server-info and
+  # agent-proxies/fetch-agent-card, are reads the spec models as POSTs).
   - name: ap_viewer
     scopes:
       # Platform API
@@ -267,6 +272,9 @@ roles:
       - ap:llm_proxy:api_key:read
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:read
+      - ap:agent_proxy:read
+      - ap:agent_proxy:deployment:read
+      - ap:agent_proxy:api_key:read
       - ap:secret:read
       - ap:api_key:read
       - ap:api_portal:draft:read

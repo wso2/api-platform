@@ -9,6 +9,17 @@
 
 // Feature-owned domain types; data reaches this feature only through PortalPort.
 
+/**
+ * Provisioning state of a managed portal, mirroring the backend plugin's
+ * ManagedApiPortalStatus enum. Owned by the plugin's in-process poller,
+ * NOT a live liveness signal: `active` is sticky once reached, so a portal
+ * whose pod dies later still reads `active` here.
+ *
+ * The UI's job is to distinguish "still provisioning" from "ready to visit"
+ * on Create; a rare post-provisioning outage is not something we surface.
+ */
+export type ManagedPortalStatus = 'pending' | 'active' | 'failed';
+
 export interface ManagedPortal {
   /** Portal id; equal to `handle` in the current backend. */
   id: string;
@@ -22,6 +33,12 @@ export interface ManagedPortal {
   url?: string;
   /** Data-plane env whose auth server backs portal-user login. Empty on list responses; populated by GET. */
   loginEnvironment?: string;
+  /**
+   * Provisioning-lifecycle status. Missing when the backend has not been
+   * upgraded to write it; treated as `active` by the UI so pre-upgrade portals
+   * still show a working Visit button.
+   */
+  status?: ManagedPortalStatus;
   /** ISO timestamp of the last row change. */
   updatedAt?: string;
 }
@@ -46,6 +63,14 @@ export interface OrgEnvironment {
   name: string;
   /** Optional label; the UI falls back to `name` when empty. */
   displayName?: string;
+  /**
+   * True when openchoreo marks this env as a production tier (spec.isProduction).
+   * Drives the Add-form's default selection: the picker preselects the first
+   * production env so the common case (bind portal to prod) is one click. Falls
+   * back to the first env in the list when no env is flagged. Missing on
+   * backends that don't expose it — treated as false.
+   */
+  isProduction?: boolean;
 }
 
 /** Data seam this feature depends on; satisfied by real (BFF) or mock (tests) implementations. */

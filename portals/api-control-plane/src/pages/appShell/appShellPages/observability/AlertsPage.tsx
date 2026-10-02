@@ -18,21 +18,28 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function AlertsPage() {
   return (
-    <ScopeGate prompt="Alerts are configured per API." requires="api" to={routes.apiObservabilityAlerts}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.alertsPage.feature"
-            defaultMessage="Observability alerts for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Alerts are configured per API."
+        requires="api"
+        to={routes.apiObservabilityAlerts}
+      >
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.alertsPage.feature"
+              defaultMessage="Observability alerts for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }

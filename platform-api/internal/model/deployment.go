@@ -158,13 +158,14 @@ func (d *MCPProxyDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
 
 // MCPProxyDeploymentSpec represents the spec section of the MCP proxy deployment YAML
 type MCPProxyDeploymentSpec struct {
-	DisplayName string           `yaml:"displayName" binding:"required"`
-	Version     string           `yaml:"version" binding:"required"`
-	Context     string           `yaml:"context" binding:"required"`
-	Vhost       *string          `yaml:"vhost" binding:"required"`
-	Upstream    MCPProxyUpstream `yaml:"upstream" binding:"required"`
-	SpecVersion string           `yaml:"specVersion" binding:"required"`
-	Policies    []Policy         `yaml:"policies,omitempty"`
+	DisplayName  string           `yaml:"displayName" binding:"required"`
+	Version      string           `yaml:"version" binding:"required"`
+	Context      string           `yaml:"context" binding:"required"`
+	Vhost        *string          `yaml:"vhost" binding:"required"`
+	Upstream     MCPProxyUpstream `yaml:"upstream" binding:"required"`
+	SpecVersion  string           `yaml:"specVersion,omitempty"`
+	SpecVersions []string         `yaml:"specVersions,omitempty"`
+	Policies     []Policy         `yaml:"policies,omitempty"`
 }
 
 // Adding this type to support the model in the gateway side
