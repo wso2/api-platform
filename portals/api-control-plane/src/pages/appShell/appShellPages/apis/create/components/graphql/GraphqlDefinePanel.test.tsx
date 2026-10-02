@@ -212,3 +212,46 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
     );
   });
 });
+
+/**
+ * The schema-import side reports a rejected SDL to the explorer — unlike
+ * "Start from scratch", where an endpoint without introspection is still a
+ * usable source, an SDL that doesn't parse is something the user must fix.
+ */
+describe('GraphqlDefinePanel — a schema that fails validation', () => {
+  it('shows each SDL error with its line and column, and hands the wizard no draft', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        message: 'The supplied SDL could not be parsed.',
+        resolved: false,
+        sdlErrors: [{ column: 12, line: 3, message: 'Unexpected Name "this"' }],
+      }),
+    );
+    const { onDraftChange, user } = renderPanel();
+
+    await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/broken.graphql');
+    await user.tab();
+
+    expect(await screen.findByText(/Line 3, column 12/)).toBeInTheDocument();
+    expect(screen.getByText(/Unexpected Name "this"/)).toBeInTheDocument();
+    expect(screen.queryByText('Schema will show here')).not.toBeInTheDocument();
+    // No draft, so the wizard's Continue stays disabled until it's fixed.
+    expect(onDraftChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('shows the server’s reason when a schema URL cannot be fetched', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        message: 'The schema URL could not be fetched.',
+        resolved: false,
+      }),
+    );
+    const { onDraftChange, user } = renderPanel();
+
+    await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/missing.graphql');
+    await user.tab();
+
+    expect(await screen.findByText('The schema URL could not be fetched.')).toBeInTheDocument();
+    expect(onDraftChange).toHaveBeenLastCalledWith(null);
+  });
+});
