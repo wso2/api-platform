@@ -114,9 +114,7 @@ export function AgentProxiesProvider({ children }: AgentProxiesProviderProps) {
   const projectId = currentProject?.id ?? '';
 
   // Switching projects leaves the previous fetch in flight; only the most
-  // recent request is allowed to write, so a slower earlier one cannot land
-  // another project's Agent proxies on screen. Clearing the list counts as a
-  // request too, or an in-flight fetch would repopulate it afterwards.
+  // recent request, clears included, is allowed to write.
   const agentProxiesRequestRef = useRef(0);
 
   const fetchAgentProxies = useCallback(async () => {

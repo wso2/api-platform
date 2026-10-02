@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Grid, PageContent, Stack, Typography } from '@wso2/oxygen-ui';
 import { Bot, Dock, Handshake, Workflow } from '@wso2/oxygen-ui-icons-react';
@@ -58,6 +58,8 @@ import ProxyQuickStartBanner from '../projects/ProxyQuickStartBanner';
 import KindSummaryCard from './KindSummaryCard';
 import KindDetailPanel, { KindDetailItem } from './KindDetailPanel';
 import { trackOverviewPageView } from '../../../../utils/app-insights';
+import * as llmProviderApis from '../../../../apis/llmProviderApis';
+import { linkedProxiesDeleteBlockedReason } from '../../../../utils/artifactDeletion';
 
 type ResourceKind =
   | 'llm-providers'
@@ -112,6 +114,29 @@ function OverviewContent(): React.JSX.Element {
     }
   }, []);
 
+  // A provider cannot be deleted while App LLM Proxies are built on it, so its
+  // usage is counted before the delete is attempted.
+  const deleteProviderIfUnused = useCallback(
+    async (providerId: string) => {
+      const organizationId = currentOrganization?.uuid;
+      if (!organizationId) {
+        throw new Error(
+          'Unable to verify App LLM Proxy usage because organization details are unavailable.'
+        );
+      }
+      const linkedProxies = await llmProviderApis.getLLMProviderProxies(
+        providerId,
+        organizationId
+      );
+      const linkedProxyCount = linkedProxies.count ?? 0;
+      if (linkedProxyCount > 0) {
+        throw new Error(linkedProxiesDeleteBlockedReason(linkedProxyCount));
+      }
+      await providers.deleteProvider(providerId);
+    },
+    [currentOrganization?.uuid, providers]
+  );
+
   const path = (suffix: string) =>
     buildProjectPath(currentOrganization, currentProject, suffix);
 
@@ -164,6 +189,7 @@ function OverviewContent(): React.JSX.Element {
       agentProxies.isLoading,
       applications.applicationsResponse.count,
       applications.isLoading,
+      deleteProviderIfUnused,
     ]
   );
 
@@ -321,7 +347,7 @@ function OverviewContent(): React.JSX.Element {
           canCreate: hasPermission(SCOPES.LLM_PROVIDER_CREATE),
           itemLabel: 'LLM Provider',
           canDelete: hasPermission(SCOPES.LLM_PROVIDER_DELETE),
-          onItemDelete: providers.deleteProvider,
+          onItemDelete: deleteProviderIfUnused,
           emptyImage: NoProviders,
           emptyTitle: 'Create your first LLM Provider',
           emptyDescription:

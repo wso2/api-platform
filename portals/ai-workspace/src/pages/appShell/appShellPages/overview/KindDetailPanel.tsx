@@ -46,6 +46,8 @@ import {
   DISABLED_ACTION_SX,
   NO_PERMISSION_TOOLTIP,
 } from '../../../../auth/permissions';
+import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 /** Rows shown inline before the panel defers to the full listing page. */
 const ITEM_PREVIEW_COUNT = 5;
@@ -131,15 +133,22 @@ export default function KindDetailPanel({
 }: KindDetailPanelProps): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<KindDetailItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const showSnackbar = useAIWorkspaceSnackbar();
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
       await onItemDelete(deleteTarget.id);
-      setDeleteTarget(null);
+      showSnackbar(`${itemLabel} deleted successfully.`, 'success');
+    } catch (error) {
+      showSnackbar(
+        getErrorMessage(error, `Failed to delete ${itemLabel}.`),
+        'error'
+      );
     } finally {
       setIsDeleting(false);
+      setDeleteTarget(null);
     }
   };
 
