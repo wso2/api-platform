@@ -130,7 +130,7 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
 });
 
 describe('GraphqlIntrospectionForm — a failed check', () => {
-  it('shows the unresolved message and reports null when introspection could not derive a schema', async () => {
+  it('still reports the endpoint, without a schema, when introspection could not derive one', async () => {
     server.use(accepts('post', '/graphql-apis/validate-schema', { resolved: false }));
     const { onResolved, user } = renderForm();
 
@@ -139,10 +139,15 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
 
     expect(
       await screen.findByText(
-        'Could not derive a schema from that endpoint. Check the URL, and that introspection is enabled.',
+        'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.',
       ),
     ).toBeInTheDocument();
-    expect(onResolved).toHaveBeenLastCalledWith(null);
+    // Introspection is commonly disabled on a working endpoint; the API can
+    // still be created against it, so the endpoint is reported — just no SDL.
+    expect(onResolved).toHaveBeenLastCalledWith({
+      endpointUrl: 'https://backend.example.com/graphql',
+      schemaSource: 'introspection',
+    });
   });
 
   it('reports null and shows nothing extra when the request itself fails', async () => {
@@ -157,7 +162,7 @@ describe('GraphqlIntrospectionForm — a failed check', () => {
     await waitFor(() => expect(onResolved).toHaveBeenLastCalledWith(null));
     expect(
       screen.queryByText(
-        'Could not derive a schema from that endpoint. Check the URL, and that introspection is enabled.',
+        'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.',
       ),
     ).not.toBeInTheDocument();
   });

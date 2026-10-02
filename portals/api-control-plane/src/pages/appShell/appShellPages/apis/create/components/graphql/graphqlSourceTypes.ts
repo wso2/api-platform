@@ -27,8 +27,13 @@ import type { GraphqlSchemaSource } from '../../types';
  */
 export type GraphqlResolvedSchema = {
   schemaSource: GraphqlSchemaSource;
-  /** Resolved SDL text, however it was obtained. */
-  sdl: string;
+  /**
+   * Resolved SDL text, however it was obtained. Absent only for an
+   * `introspection` source whose endpoint would not answer an introspection
+   * query (commonly disabled in production): the API can still be created
+   * against that endpoint, and simply starts with an empty schema.
+   */
+  sdl?: string;
   /** Only set when `schemaSource` is `'url'`. */
   sdlUrl?: string;
   /** Only set when `schemaSource` is `'file'`. */

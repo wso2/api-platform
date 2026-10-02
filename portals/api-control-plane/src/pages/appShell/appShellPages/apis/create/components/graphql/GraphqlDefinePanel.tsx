@@ -153,7 +153,11 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
 
   const sourceDescription = (() => {
     if (!resolved) return undefined;
-    if (resolved.schemaSource === 'introspection' && resolved.endpointUrl) {
+    if (
+      resolved.schemaSource === 'introspection' &&
+      resolved.endpointUrl &&
+      resolved.sdl !== undefined
+    ) {
       return intl.formatMessage(messages.fetchedFromIntrospection, { url: resolved.endpointUrl });
     }
     if (resolved.schemaSource === 'url' && resolved.sdlUrl) {
@@ -178,7 +182,7 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
         ? null
         : {
             schemaSource: resolved.schemaSource,
-            sdl: resolved.sdl,
+            ...(resolved.sdl === undefined ? {} : { sdl: resolved.sdl }),
             ...(resolved.sdlUrl === undefined ? {} : { sdlUrl: resolved.sdlUrl }),
             ...(resolved.sdlFile === undefined ? {} : { sdlFile: resolved.sdlFile }),
             ...(resolved.endpointUrl === undefined ? {} : { endpointUrl: resolved.endpointUrl }),

@@ -106,6 +106,31 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     expect(lastCall).not.toHaveProperty('sdlFile');
   });
 
+  it('lets "Start from scratch" continue with just the endpoint when introspection is disabled', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        message: 'introspection is disabled on this endpoint',
+        resolved: false,
+      }),
+    );
+    const { onDraftChange, user } = renderPanel();
+
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
+    await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+
+    // The explorer still says why there is no schema …
+    expect(await screen.findByText('introspection is disabled on this endpoint')).toBeInTheDocument();
+    // … but the wizard gets a draft, so Continue is enabled.
+    const lastCall = onDraftChange.mock.calls.at(-1)?.[0];
+    expect(lastCall).toMatchObject({
+      endpointUrl: 'https://backend.example.com/graphql',
+      schemaSource: 'introspection',
+    });
+    expect(lastCall).not.toHaveProperty('sdl');
+    expect(screen.queryByText(/Fetched by introspection/)).not.toBeInTheDocument();
+  });
+
   it('reports null once a resolved schema is cleared by switching approach', async () => {
     server.use(accepts('post', '/graphql-apis/validate-schema', { resolved: true, sdl: SAMPLE_SDL }));
     const { onDraftChange, user } = renderPanel();

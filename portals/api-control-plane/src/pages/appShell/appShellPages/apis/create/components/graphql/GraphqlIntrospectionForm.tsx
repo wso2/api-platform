@@ -86,7 +86,7 @@ const messages = defineMessages({
   unresolved: {
     id: 'api.create.graphql.introspection.unresolved',
     defaultMessage:
-      'Could not derive a schema from that endpoint. Check the URL, and that introspection is enabled.',
+      'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.',
   },
 });
 
@@ -142,7 +142,11 @@ export const GraphqlIntrospectionForm = ({
             onResolved({ endpointUrl: target, schemaSource: 'introspection', sdl: result.sdl });
             onValidationFailed?.(null);
           } else {
-            onResolved(null);
+            // Introspection is often disabled on a perfectly good endpoint. The
+            // backend resolves the schema best-effort, so the API can still be
+            // created against this endpoint — it just starts with an empty
+            // schema. The failure is still reported so the explorer shows why.
+            onResolved({ endpointUrl: target, schemaSource: 'introspection' });
             onValidationFailed?.({ message: result.message, sdlErrors: result.sdlErrors });
           }
         },
@@ -231,7 +235,7 @@ export const GraphqlIntrospectionForm = ({
           <FormattedMessage {...messages.status} values={{ typeCount: typeCountOf(validate.data.sdl) }} />
         </Typography>
       ) : failedToResolve ? (
-        <Typography color="error.main" variant="body2">
+        <Typography color="warning.main" variant="body2">
           <FormattedMessage {...messages.unresolved} />
         </Typography>
       ) : null}
