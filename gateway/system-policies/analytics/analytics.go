@@ -2325,7 +2325,7 @@ func getHeaderFlags(params map[string]interface{}) (sendRequestHeaders, sendResp
 // could be carried inside a structpb.Value across the ext_proc -> Envoy -> ALS round
 // trip. That round trip is gone for captured headers specifically: the policy engine
 // now hands this map straight to its in-process ext_proc<->ALS correlation store,
-// keyed by request id (see the policy engine's internal/analytics/correlation and
+// keyed per ext_proc stream (see the policy engine's internal/analytics/correlation and
 // internal/kernel's buildAnalyticsStruct, which deliberately excludes the
 // request_headers/response_headers keys this policy stamps into AnalyticsMetadata
 // from what gets sent to Envoy). Sensitive values are not masked here; the

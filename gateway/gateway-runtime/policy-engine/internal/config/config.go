@@ -131,8 +131,8 @@ type AnalyticsConfig struct {
 	SendResponseBody bool `koanf:"send_response_body"`
 	// Correlation tunes the in-process ext_proc→ALS correlation store (see
 	// internal/analytics/correlation) that carries captured request/response headers
-	// and bodies directly from the ext_proc handler to the ALS handler, keyed by
-	// Envoy's x-request-id, instead of round-tripping them through Envoy dynamic
+	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
+	// per-stream token, instead of round-tripping them through Envoy dynamic
 	// metadata and the ALS filter_metadata echo. Only consulted while the collector is active
 	// (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
 	Correlation CorrelationStoreConfig `koanf:"correlation"`

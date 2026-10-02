@@ -891,7 +891,7 @@ insecure_skip_verify = false
 
 # In-process store (advanced; defaults are sensible) that carries captured
 # request/response headers and bodies directly from the ext_proc handler to the ALS
-# handler, keyed by Envoy's x-request-id, instead of round-tripping them through
+# handler, keyed by a per-stream token, instead of round-tripping them through
 # Envoy dynamic metadata. Only consulted while the collector is active ([analytics]
 # or [traffic_logging] enabled). A field is left out of metadata only once the
 # store has accepted it, and unread entries are never evicted; when the store is

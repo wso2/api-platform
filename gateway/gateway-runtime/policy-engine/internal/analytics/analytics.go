@@ -301,39 +301,27 @@ func (c *Analytics) GetFaultType() FaultCategory {
 	return FaultCategoryOther
 }
 
-// lookupCorrelationPayload consults the ext_proc↔ALS correlation store for
-// captured headers, keyed by Envoy's Request.RequestId -- deliberately NOT
-// CommonProperties.StreamId, which the envoy proto documents as "optional, could
-// be any format string", unlike RequestId's documented x-request-id meaning (see
-// this same distinction preserved, unchanged, in this function's
-// MetaInfo.CorrelationID derivation below: the join key and the reported
-// correlation id are separate concerns, and only the former changes here).
+// lookupCorrelationPayload takes this access-log entry's captured headers and
+// bodies from the ext_proc↔ALS correlation store. The key is the stream's
+// correlation token (CorrelationTokenKey), which the ext_proc handler puts in
+// analytics_data whenever it stored anything -- not Envoy's request id, which a
+// client can supply and repeat across concurrent requests.
 //
-// Returns ok=false -- meaning "fall back to the access-log entry's own metadata"
-// -- when: the store was never wired in (collector disabled, or any caller,
-// including every existing test, that never called SetCorrelationStore); the
-// access-log entry carries no request id; or the store has no entry for it (this
-// request never had an ext_proc stream, e.g. a no-route 404, or all its captured
-// fields stayed in metadata because the store refused them). None of these are
-// errors: anything the store did not take is still in the entry's own metadata.
-//
-// A hit removes the entry (each request's access-log entry is processed once),
-// releasing any body it carries immediately. The exception is a hop carrying the
-// LLM proxy's internal-loopback marker: it may share the outer call's request id,
-// its own event is suppressed in Process, and consuming the entry there would
-// strip the outer call's line, so that hop only peeks.
-func (c *Analytics) lookupCorrelationPayload(logEntry *v3.HTTPAccessLogEntry, internalLoopbackHop bool) (correlation.Payload, bool) {
+// Returns ok=false when the store was never wired in (collector disabled, or a
+// caller that never called SetCorrelationStore), the entry carries no token (no
+// ext_proc stream, e.g. a no-route 404, or nothing was stored for this request),
+// or the store has no entry for it. None of these are errors: anything the store
+// did not take is still in the entry's own metadata. A hit removes the entry,
+// releasing any body it carries immediately.
+func (c *Analytics) lookupCorrelationPayload(metadata map[string]string) (correlation.Payload, bool) {
 	if c.correlationStore == nil {
 		return correlation.Payload{}, false
 	}
-	reqID := logEntry.GetRequest().GetRequestId()
-	if reqID == "" {
+	token := metadata[CorrelationTokenKey]
+	if token == "" {
 		return correlation.Payload{}, false
 	}
-	if internalLoopbackHop {
-		return c.correlationStore.Get(reqID)
-	}
-	return c.correlationStore.Take(reqID)
+	return c.correlationStore.Take(token)
 }
 
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
@@ -396,8 +384,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// Consulted once here and used below where request/response headers are
 	// attached to the event; every other field in this function is unaffected
 	// and continues to come from the ALS-decoded metadata above.
-	storedPayload, storeHit := c.lookupCorrelationPayload(logEntry,
-		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] != "")
+	storedPayload, storeHit := c.lookupCorrelationPayload(keyValuePairsFromMetadata)
 
 	event := &dto.Event{}
 	if debugEnabled {
