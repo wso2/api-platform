@@ -112,9 +112,10 @@ type Analytics struct {
 	// missingDirectPeerWarn limits the "direct remote address unavailable" warning to one
 	// line per process which otherwise repeating it once per request would flood the logs
 	missingDirectPeerWarn sync.Once
-	// correlationStore looks up captured request/response headers by request id,
-	// written by the ext_proc handler at stream teardown (see
-	// internal/analytics/correlation and internal/kernel's writeCorrelationEntry).
+	// correlationStore looks up captured request/response headers and bodies by
+	// request id, written by the ext_proc handler as it builds each phase's
+	// response (see internal/analytics/correlation and internal/kernel's
+	// storeInProcess).
 	// Nil when the collector is disabled, or in any test/caller that never calls
 	// SetCorrelationStore -- prepareAnalyticEvent treats a nil store exactly like
 	// a miss, falling back to decoding headers from the access-log entry's own
@@ -317,11 +318,10 @@ func (c *Analytics) GetFaultType() FaultCategory {
 // Returns ok=false -- meaning "fall back to the access-log entry's own metadata"
 // -- when: the store was never wired in (collector disabled, or any caller,
 // including every existing test, that never called SetCorrelationStore); the
-// access-log entry carries no request id; or the store has no live entry for it
-// (never written -- e.g. this request never had an ext_proc stream at all, such
-// as a no-route 404 -- TTL-expired, or evicted under capacity pressure). None of
-// these are errors: a miss only ever degrades headers to "unavailable" on this
-// one line, and prepareAnalyticEvent never drops the line itself.
+// access-log entry carries no request id; or the store has no entry for it (this
+// request never had an ext_proc stream, e.g. a no-route 404, or all its captured
+// fields stayed in metadata because the store refused them). None of these are
+// errors: anything the store did not take is still in the entry's own metadata.
 //
 // A hit removes the entry (each request's access-log entry is processed once),
 // releasing any body it carries immediately. The exception is a hop carrying the

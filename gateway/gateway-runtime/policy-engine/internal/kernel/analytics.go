@@ -82,22 +82,53 @@ const (
 	// (collector.request_body / collector.response_body), by the same convention.
 	analyticsRequestPayloadKey  = "request_payload"
 	analyticsResponsePayloadKey = "response_payload"
+	// analyticsInternalLoopbackKey is the marker the analytics system policy stamps
+	// on the LLM proxy's internal loopback hop, by the same convention.
+	analyticsInternalLoopbackKey = "x-wso2-internal-loopback"
 )
 
-// correlatesInProcess reports whether this request's captured data will reach the
-// ALS handler through the correlation store: the store exists and the request id
-// is Envoy's x-request-id, the key the ALS side looks up (see
-// writeCorrelationEntry). Only then may data be left out of Envoy metadata.
-func correlatesInProcess(execCtx *PolicyExecutionContext) bool {
-	return execCtx != nil && execCtx.server != nil && execCtx.server.correlationStore != nil &&
-		execCtx.requestIDFromHeader
+// correlatesInProcess reports whether this request may hand captured data to the
+// ALS handler through the correlation store: the store exists, the request id is
+// Envoy's x-request-id (the key the ALS side looks up), and the request is not the
+// LLM proxy's internal loopback hop. That hop can share the outer call's request
+// id, and its own access-log event is suppressed, so it keeps its data in Envoy
+// metadata and never touches the outer call's entry. data is the analytics
+// metadata being built, which can carry the loopback marker before
+// execCtx.analyticsMetadata does (e.g. on a short-circuit); it may be nil.
+func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) bool {
+	if execCtx == nil || execCtx.server == nil || execCtx.server.correlationStore == nil ||
+		!execCtx.requestIDFromHeader {
+		return false
+	}
+	if _, ok := data[analyticsInternalLoopbackKey]; ok {
+		return false
+	}
+	_, loopback := execCtx.analyticsMetadata[analyticsInternalLoopbackKey]
+	return !loopback
 }
 
-// inProcessBody returns v as a body the correlation store accepts: a non-empty
-// string within the store's per-body limit. Larger bodies stay in Envoy metadata.
-func inProcessBody(execCtx *PolicyExecutionContext, v any) (string, bool) {
-	body, ok := v.(string)
-	return body, ok && body != "" && len(body) <= execCtx.server.correlationStore.MaxPayloadBytes()
+// storeInProcess hands one captured header or body field to the correlation store
+// and reports whether the store accepted it; only then may the field be left out
+// of Envoy metadata. It runs while the ext_proc response for this phase is being
+// built, before that response is sent, so Envoy cannot emit the request's
+// access-log entry before the data is in the store. A field the store refuses (no
+// free slot, a body over the size or byte budget) or a header value of an
+// unrecognised shape stays in metadata, the pre-store path.
+func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool {
+	var p correlation.Payload
+	switch key {
+	case analyticsRequestHeadersKey:
+		p.RequestHeaders = normalizeAnalyticsHeaderValue(value)
+	case analyticsResponseHeadersKey:
+		p.ResponseHeaders = normalizeAnalyticsHeaderValue(value)
+	case analyticsRequestPayloadKey:
+		p.RequestBody, _ = value.(string)
+	case analyticsResponsePayloadKey:
+		p.ResponseBody, _ = value.(string)
+	default:
+		return false
+	}
+	return execCtx.server.correlationStore.Merge(execCtx.requestID, p)
 }
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -121,35 +152,25 @@ func convertToStructValue(value any) (*structpb.Value, error) {
 // buildAnalyticsStruct converts analytics metadata map to structpb.Struct
 // If execCtx is provided, adds system-level metadata (API name, version, etc.) to analytics_data.metadata
 //
-// Captured request/response headers (analyticsRequestHeadersKey /
-// analyticsResponseHeadersKey) are deliberately excluded from the struct sent to
-// Envoy: they used to make a full round trip -- JSON-encoded here, echoed back by
-// Envoy in the access-log entry's filter_metadata, JSON-decoded again on the ALS
-// side -- purely to correlate them back to the request they belonged to, even
-// though the ext_proc handler and the ALS handler are two goroutines in the same
-// process. They now travel through the in-process correlation store
-// (internal/analytics/correlation, written at ext_proc stream teardown, keyed by
-// request id) instead. Every other analytics_data field is unaffected: API
-// identity, auth context, subscription, AI/MCP metadata, and payloads still flow
-// through Envoy dynamic metadata exactly as before. See the "Step 4" section of
-// the traffic-logging CPU plan for the full reasoning, including the mandatory
-// ALS-side fallback for a store miss.
+// Captured request/response headers and bodies are handed to the in-process
+// correlation store (internal/analytics/correlation, keyed by request id) and left
+// out of the struct sent to Envoy, but only when the store accepts them (see
+// storeInProcess). They used to make a full round trip -- encoded here, forwarded
+// back on every later ext_proc message, echoed in the access-log entry's
+// filter_metadata, and decoded again on the ALS side -- purely to correlate them
+// back to their request, although the ext_proc and ALS handlers run in the same
+// process. Anything the store refuses stays in the struct, and every other
+// analytics_data field (API identity, auth context, subscription, AI/MCP metadata)
+// is unaffected.
 func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecutionContext) (*structpb.Struct, error) {
 	// Start with the analytics data from policies
 	fields := make(map[string]*structpb.Value)
 
 	// Add policy-provided analytics data
-	inProcess := correlatesInProcess(execCtx)
+	inProcess := correlatesInProcess(execCtx, analyticsData)
 	for key, value := range analyticsData {
-		if inProcess {
-			switch key {
-			case analyticsRequestHeadersKey, analyticsResponseHeadersKey:
-				continue
-			case analyticsRequestPayloadKey, analyticsResponsePayloadKey:
-				if _, ok := inProcessBody(execCtx, value); ok {
-					continue
-				}
-			}
+		if inProcess && storeInProcess(execCtx, key, value) {
+			continue
 		}
 		val, err := convertToStructValue(value)
 		if err != nil {
@@ -194,35 +215,8 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	return &structpb.Struct{Fields: fields}, nil
 }
 
-// snapshotHeaderPayload builds the correlation.Payload for one request from its
-// accumulated analyticsMetadata (execCtx.analyticsMetadata), ready to hand to the
-// correlation store at ext_proc stream teardown -- see
-// ExternalProcessorServer.writeCorrelationEntry in extproc.go. Returns a zero
-// Payload (Payload.IsEmpty() == true) when neither key was ever captured, which
-// the caller treats as "nothing to store".
-func snapshotHeaderPayload(analyticsMetadata map[string]interface{}) correlation.Payload {
-	return correlation.Payload{
-		RequestHeaders:  normalizeAnalyticsHeaderValue(analyticsMetadata[analyticsRequestHeadersKey]),
-		ResponseHeaders: normalizeAnalyticsHeaderValue(analyticsMetadata[analyticsResponseHeadersKey]),
-	}
-}
-
-// snapshotCorrelationPayload is snapshotHeaderPayload plus the captured bodies that
-// buildAnalyticsStruct kept out of Envoy metadata (see inProcessBody) -- exactly
-// those, so every body reaches the ALS side by one path or the other.
-func snapshotCorrelationPayload(execCtx *PolicyExecutionContext) correlation.Payload {
-	payload := snapshotHeaderPayload(execCtx.analyticsMetadata)
-	if body, ok := inProcessBody(execCtx, execCtx.analyticsMetadata[analyticsRequestPayloadKey]); ok {
-		payload.RequestBody = body
-	}
-	if body, ok := inProcessBody(execCtx, execCtx.analyticsMetadata[analyticsResponsePayloadKey]); ok {
-		payload.ResponseBody = body
-	}
-	return payload
-}
-
 // normalizeAnalyticsHeaderValue converts a captured header value out of
-// analyticsMetadata into the flat map[string]string shape the correlation store
+// analytics metadata into the flat map[string]string shape the correlation store
 // carries. Before this store existed, EVERY shape below reached the ALS side only
 // after a JSON-encode (here) -> Envoy echo -> JSON-decode round trip; this
 // reproduces that same flattening natively, so switching to the in-process store

@@ -106,8 +106,8 @@ type PolicyExecutionContext struct {
 	// freshly generated uuid because the header was absent. The correlation store
 	// (internal/analytics/correlation) is keyed on Envoy's x-request-id, so a
 	// locally generated fallback id can never match what the ALS side looks up --
-	// writing it would just waste a store slot no one will ever read. See
-	// ExternalProcessorServer.writeCorrelationEntry in extproc.go.
+	// so such a request's captured data must stay in Envoy metadata. See
+	// correlatesInProcess in analytics.go.
 	requestIDFromHeader bool
 
 	// Analytics metadata to be shared across request and response phases.
@@ -1942,7 +1942,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	}
 
 	// Recorded before the uuid fallback overwrites requestID, so
-	// writeCorrelationEntry can tell "real x-request-id" apart from "generated
+	// correlatesInProcess can tell "real x-request-id" apart from "generated
 	// locally because the header was absent" -- only the former can ever be
 	// looked up again on the ALS side (see requestIDFromHeader's doc comment).
 	ec.requestIDFromHeader = requestID != ""
