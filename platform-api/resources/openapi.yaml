@@ -1936,9 +1936,8 @@ paths:
       operationId: ListAPIDocuments
       security:
         - OAuth2Security:
-          # TODO
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:docs:read
+            - ap:docs:manage
       tags:
         - API Documents
       parameters:
@@ -1967,8 +1966,7 @@ paths:
       operationId: CreateAPIDocument
       security:
         - OAuth2Security:
-            - ap:rest_api:create
-            - ap:rest_api:manage
+            - ap:docs:manage
       tags:
         - API Documents
       requestBody:
@@ -2017,8 +2015,8 @@ paths:
       operationId: GetAPIDocument
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:docs:read
+            - ap:docs:manage
       tags:
         - API Documents
       responses:
@@ -2043,8 +2041,7 @@ paths:
       operationId: UpdateAPIDocument
       security:
         - OAuth2Security:
-            - ap:rest_api:update
-            - ap:rest_api:manage
+            - ap:docs:manage
       tags:
         - API Documents
       requestBody:
@@ -2079,8 +2076,7 @@ paths:
       operationId: DeleteAPIDocument
       security:
         - OAuth2Security:
-            - ap:rest_api:delete
-            - ap:rest_api:manage
+            - ap:docs:manage
       tags:
         - API Documents
       responses:
@@ -2112,8 +2108,8 @@ paths:
       operationId: GetAPIDocumentContent
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:docs:read
+            - ap:docs:manage
       tags:
         - API Documents
       responses:
@@ -6620,6 +6616,8 @@ components:
           scopes:
             ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
+            ap:docs:manage: Create, update, and delete user-authored API documents
+            ap:docs:read: Read user-authored API documents
             ap:api_portal:create: Create an API Portal
             ap:api_portal:delete: Delete an API Portal
             ap:api_portal:draft:manage: Read and write an API's draft for one portal
@@ -8263,7 +8261,9 @@ components:
           maxLength: 40
           example: "payment-webhook-howto"
         type:
-          $ref: '#/components/schemas/APIDocumentType'
+          type: string
+          description: Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+          example: HOW_TO
         displayName:
           type: string
           example: Payment Webhook How-To
@@ -8311,7 +8311,7 @@ components:
       description: |
         Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
         `displayName` are required; exactly one of `file` or `inlineContent`
-        must carry the body. `handle` is optional — the server generates one
+        must carry the body. `id` is optional — the server generates one
         from `displayName` when omitted.
       required:
         - type
@@ -8319,10 +8319,18 @@ components:
       properties:
         type:
           $ref: '#/components/schemas/APIDocumentType'
+        otherTypeName:
+          type: string
+          description: |
+            Free-form qualifier used when `type` is `OTHER`. Stored and returned
+            exactly as typed (no case conversion). Ignored for all other types.
+            Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
+            type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
+          example: FAQ
         displayName:
           type: string
           example: Payment Webhook How-To
-        handle:
+        id:
           type: string
           description: Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
           example: payment-webhook-howto
@@ -8346,8 +8354,6 @@ components:
         Supplying neither `file` nor `inlineContent` means a metadata-only
         update — the stored bytes are not touched.
       properties:
-        type:
-          $ref: '#/components/schemas/APIDocumentType'
         displayName:
           type: string
           example: Payment Webhook How-To (v2)

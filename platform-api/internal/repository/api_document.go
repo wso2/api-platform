@@ -143,10 +143,26 @@ func (r *DocumentRepo) ListDocumentsByArtifact(artifactUUID, orgUUID, docType st
 	whereClause := `WHERE artifact_uuid = ? AND organization_uuid = ?`
 	args := []interface{}{artifactUUID, orgUUID}
 	if docType != "" {
-		whereClause += ` AND type = ?`
-		args = append(args, docType)
-	}
-	if len(constants.ReservedAPIDocumentTypes) > 0 {
+		if docType == constants.DocumentTypeOther {
+			placeholders := make([]string, 0, len(constants.ForbiddenOtherTypeNames))
+			for t := range constants.ForbiddenOtherTypeNames {
+				placeholders = append(placeholders, "?")
+				args = append(args, t)
+			}
+			whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
+		} else {
+			whereClause += ` AND type = ?`
+			args = append(args, docType)
+			if len(constants.ReservedAPIDocumentTypes) > 0 {
+				placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+				for i, t := range constants.ReservedAPIDocumentTypes {
+					placeholders[i] = "?"
+					args = append(args, t)
+				}
+				whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
+			}
+		}
+	} else if len(constants.ReservedAPIDocumentTypes) > 0 {
 		placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
 		for i, t := range constants.ReservedAPIDocumentTypes {
 			placeholders[i] = "?"
@@ -244,8 +260,17 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 // UpdateDocument updates an existing document identified by artifact UUID + handle + org.
 // doc.Content is written only when updateContent is true, so a metadata-only PUT (no new file/inlineContent)
 // never overwrites the stored bytes with an empty payload.
+// Reserved types (DEFINITION, THUMBNAIL) are excluded from the WHERE clause so
+// user-facing callers can never mutate them through this path.
 func (r *DocumentRepo) UpdateDocument(doc *model.Document, updateContent bool) error {
 	now := time.Now().UTC()
+
+	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+	for i := range constants.ReservedAPIDocumentTypes {
+		reservedPlaceholders[i] = "?"
+	}
+	notReserved := ` AND type NOT IN (` + strings.Join(reservedPlaceholders, ", ") + `)`
+
 	var (
 		query  string
 		result sql.Result
@@ -256,25 +281,31 @@ func (r *DocumentRepo) UpdateDocument(doc *model.Document, updateContent bool) e
 			UPDATE api_documents
 			SET type = ?, display_name = ?, file_name = ?, content_type = ?, content = ?,
 			    updated_by = ?, updated_at = ?
-			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
-		`)
-		result, err = r.db.Exec(query,
+			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?` + notReserved)
+		args := []interface{}{
 			doc.Type, doc.DisplayName, doc.FileName, doc.ContentType, doc.Content,
 			doc.UpdatedBy, now,
 			doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
-		)
+		}
+		for _, t := range constants.ReservedAPIDocumentTypes {
+			args = append(args, t)
+		}
+		result, err = r.db.Exec(query, args...)
 	} else {
 		query = r.db.Rebind(`
 			UPDATE api_documents
 			SET type = ?, display_name = ?, file_name = ?,
 			    updated_by = ?, updated_at = ?
-			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
-		`)
-		result, err = r.db.Exec(query,
+			WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?` + notReserved)
+		args := []interface{}{
 			doc.Type, doc.DisplayName, doc.FileName,
 			doc.UpdatedBy, now,
 			doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID,
-		)
+		}
+		for _, t := range constants.ReservedAPIDocumentTypes {
+			args = append(args, t)
+		}
+		result, err = r.db.Exec(query, args...)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update document fields: %w", err)
@@ -291,10 +322,26 @@ func (r *DocumentRepo) UpdateDocument(doc *model.Document, updateContent bool) e
 
 // DeleteDocument removes a document by artifact UUID, handle, and org.
 func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID string) error {
-	query := r.db.Rebind(`DELETE FROM api_documents WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?`)
-	_, err := r.db.Exec(query, artifactUUID, handle, orgUUID)
+	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+	for i := range constants.ReservedAPIDocumentTypes {
+		reservedPlaceholders[i] = "?"
+	}
+	query := r.db.Rebind(`DELETE FROM api_documents WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ?
+		AND type NOT IN (` + strings.Join(reservedPlaceholders, ", ") + `)`)
+	args := []interface{}{artifactUUID, handle, orgUUID}
+	for _, t := range constants.ReservedAPIDocumentTypes {
+		args = append(args, t)
+	}
+	result, err := r.db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete document: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read delete affected rows: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -313,6 +360,34 @@ func (r *DocumentRepo) DocumentHandleExistsForArtifact(artifactUUID, handle stri
 			return false, nil
 		}
 		return false, fmt.Errorf("failed to check document handle for the artifact: %w", err)
+	}
+	return true, nil
+}
+
+// DocumentDisplayNameExistsForArtifact returns true if any user-authored document
+// attached to the artifact already uses displayName
+func (r *DocumentRepo) DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error) {
+	args := []interface{}{artifactUUID, displayName}
+	for _, t := range constants.ReservedAPIDocumentTypes {
+		args = append(args, t)
+	}
+	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
+	for i := range constants.ReservedAPIDocumentTypes {
+		reservedPlaceholders[i] = "?"
+	}
+	q := `SELECT 1 FROM api_documents WHERE artifact_uuid = ? AND display_name = ?
+		AND type NOT IN (` + strings.Join(reservedPlaceholders, ", ") + `)`
+	if excludeHandle != "" {
+		q += ` AND handle != ?`
+		args = append(args, excludeHandle)
+	}
+	row := r.db.QueryRow(r.db.Rebind(q), args...)
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check document display name for the artifact: %w", err)
 	}
 	return true, nil
 }

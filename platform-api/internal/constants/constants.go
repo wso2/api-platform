@@ -168,6 +168,12 @@ const (
 // keep it out of self-service/developer roles.
 const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
 
+// ScopeDocsRead and ScopeDocsManage govern the /apis/{apiType}/{apiId}/docs endpoints.
+const (
+	ScopeDocsRead   = "ap:docs:read"
+	ScopeDocsManage = "ap:docs:manage"
+)
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"
@@ -321,6 +327,18 @@ var ValidAPIDocumentUserTypes = map[string]bool{
 var ReservedAPIDocumentTypes = []string{
 	DocumentTypeDefinition,
 	DocumentTypeThumbnail,
+}
+
+// ForbiddenOtherTypeNames is the set of type names that may not be used as
+// otherTypeName when creating a document with type=OTHER.
+var ForbiddenOtherTypeNames = map[string]bool{
+	DocumentTypeDefinition:   true,
+	DocumentTypeThumbnail:    true,
+	DocumentTypeHowTo:        true,
+	DocumentTypeSampleAndSdk: true,
+	DocumentTypeSupportForum: true,
+	DocumentTypePublicForum:  true,
+	DocumentTypeOther:        true,
 }
 
 // Metadata key constants for deployment metadata

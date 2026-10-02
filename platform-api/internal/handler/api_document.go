@@ -112,9 +112,6 @@ func (h *APIDocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	docType := strings.TrimSpace(r.URL.Query().Get("type"))
-	if docType != "" {
-		docType = strings.ToUpper(docType)
-	}
 	limit, offset := parsePagination(r)
 
 	docs, total, err := h.service.GetAllApiDocuments(artifactUUID, orgID, docType, limit, offset)
@@ -200,7 +197,7 @@ func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.R
 
 // CreateDocument handles POST /apis/{apiType}/{apiId}/docs. Expects a
 // multipart/form-data body with: type (required), displayName (required),
-// handle (optional), and exactly one of file / inlineContent for the body.
+// id (optional handle), and exactly one of file / inlineContent for the body.
 func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request) error {
 	orgID, artifactUUID, err := h.resolveArtifactUUID(r)
 	if err != nil {
@@ -217,11 +214,12 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 	}
 
 	req := &dto.CreateAPIDocumentRequest{
-		Type:        strings.ToUpper(parsed.docType),
-		Handle:      parsed.handle,
-		DisplayName: parsed.displayName,
-		FileName:    parsed.fileName,
-		Content:     parsed.content,
+		Type:          strings.ToUpper(parsed.docType),
+		Handle:        parsed.handle,
+		DisplayName:   parsed.displayName,
+		FileName:      parsed.fileName,
+		Content:       parsed.content,
+		OtherTypeName: parsed.otherTypeName,
 	}
 
 	handle, err := h.service.CreateApiDocument(req, orgID, createdBy, artifactUUID)
@@ -263,10 +261,6 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 	}
 
 	req := &dto.UpdateAPIDocumentRequest{}
-	if parsed.docTypeSet {
-		upper := strings.ToUpper(parsed.docType)
-		req.Type = &upper
-	}
 	if parsed.displayNameSet {
 		req.DisplayName = &parsed.displayName
 	}
@@ -326,6 +320,7 @@ func (h *APIDocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Reque
 type parsedDocForm struct {
 	docType        string
 	docTypeSet     bool
+	otherTypeName  string // only meaningful when docType == "OTHER"
 	handle         string
 	displayName    string
 	displayNameSet bool
@@ -361,8 +356,11 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 				parsed.docType = strings.TrimSpace(vals[0])
 			}
 		}
-		if vals, ok := form.Value["handle"]; ok && len(vals) > 0 {
+		if vals, ok := form.Value["id"]; ok && len(vals) > 0 {
 			parsed.handle = strings.TrimSpace(vals[0])
+		}
+		if vals, ok := form.Value["otherTypeName"]; ok && len(vals) > 0 {
+			parsed.otherTypeName = strings.TrimSpace(vals[0])
 		}
 		if vals, ok := form.Value["displayName"]; ok {
 			parsed.displayNameSet = true
@@ -441,7 +439,7 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 func documentToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
 	return api.APIDocumentMetadata{
 		Id:          d.Handle,
-		Type:        api.APIDocumentType(d.Type),
+		Type:        d.Type,
 		DisplayName: d.DisplayName,
 		FileName:    optionalString(d.FileName),
 		ContentType: optionalString(d.ContentType),

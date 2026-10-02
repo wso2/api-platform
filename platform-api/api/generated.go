@@ -527,7 +527,7 @@ const (
 
 // APIDocumentCreateRequest Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
 // `displayName` are required; exactly one of `file` or `inlineContent`
-// must carry the body. `handle` is optional — the server generates one
+// must carry the body. `id` is optional — the server generates one
 // from `displayName` when omitted.
 type APIDocumentCreateRequest struct {
 	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
@@ -538,11 +538,17 @@ type APIDocumentCreateRequest struct {
 	// FileName Optional file name to associate with `inlineContent`. Ignored when `file` is present (the uploaded file's name is used instead).
 	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
 
-	// Handle Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
-	Handle *string `json:"handle,omitempty" yaml:"handle,omitempty"`
+	// Id Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// InlineContent Inline UTF-8 content (markdown). Mutually exclusive with `file`.
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// OtherTypeName Free-form qualifier used when `type` is `OTHER`. Stored and returned
+	// exactly as typed (no case conversion). Ignored for all other types.
+	// Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
+	// type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
+	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
 
 	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
 	// are managed via separate dedicated endpoints.
@@ -573,10 +579,9 @@ type APIDocumentMetadata struct {
 	// Id URL-safe handle used in the `{docId}` path segment.
 	Id string `binding:"required" json:"id" yaml:"id"`
 
-	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
-	// are managed via separate dedicated endpoints.
-	Type      APIDocumentType `json:"type" yaml:"type"`
-	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+	Type      string     `binding:"required" json:"type" yaml:"type"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy User who updated the docuement.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
@@ -601,10 +606,6 @@ type APIDocumentUpdateRequest struct {
 
 	// InlineContent Replacement UTF-8 content. Mutually exclusive with `file`.
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
-
-	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
-	// are managed via separate dedicated endpoints.
-	Type *APIDocumentType `json:"type,omitempty" yaml:"type,omitempty"`
 }
 
 // APIKeyItem defines model for APIKeyItem.

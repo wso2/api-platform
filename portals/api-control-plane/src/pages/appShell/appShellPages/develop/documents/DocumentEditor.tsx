@@ -35,7 +35,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { FileText, Upload } from '@wso2/oxygen-ui-icons-react';
-import { useId, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { isErrorCode, type ApiError } from '@/api/core/errors';
@@ -55,7 +55,15 @@ import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { segmentedSwitchSx } from '@/theme/receipes';
 import { isTextContent } from './documentContent';
-import { DEFAULT_DOCUMENT_TYPE, DOCUMENT_TYPES, documentTypeLabel } from './documentTypes';
+import {
+  DEFAULT_DOCUMENT_TYPE,
+  DOCUMENT_TYPES,
+  MAX_CUSTOM_TYPE_LENGTH,
+  documentTypeLabel,
+  documentTypeName,
+  validateCustomType,
+  type CustomTypeError,
+} from './documentTypes';
 import { readMarkdownFile, suggestDocumentName, type MarkdownFileError } from './markdownFile';
 
 const messages = defineMessages({
@@ -95,6 +103,27 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.typeLabel',
     defaultMessage: 'Document type',
   },
+  customTypeLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeLabel',
+    defaultMessage: 'Custom type',
+    description: 'Label for the free-text type name shown when the document type is "Other".',
+  },
+  customTypePlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypePlaceholder',
+    defaultMessage: 'e.g. Changelog',
+  },
+  customTypeHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeHint',
+    defaultMessage: 'Up to {max} characters.',
+  },
+  customTypeTooLong: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeTooLong',
+    defaultMessage: 'Use {max} characters or fewer.',
+  },
+  customTypeInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeInvalid',
+    defaultMessage: 'Use only letters, numbers, spaces, hyphens and underscores.',
+  },
   nameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameLabel',
     defaultMessage: 'Name',
@@ -103,10 +132,6 @@ const messages = defineMessages({
   namePlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.namePlaceholder',
     defaultMessage: 'e.g. Getting started',
-  },
-  nameRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameRequired',
-    defaultMessage: 'Enter a name for the document.',
   },
   contentLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentLabel',
@@ -118,20 +143,16 @@ const messages = defineMessages({
   },
   contentPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentPlaceholder',
-    defaultMessage: '# Title\n\nWrite your document in Markdown…',
-  },
-  contentRequired: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentRequired',
-    defaultMessage: 'Add some content to the document.',
+    defaultMessage: '# Write your document in Markdown…',
   },
   layout: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.layout',
     defaultMessage: 'Editor layout',
-    description: 'Accessible name of the Write / Split / Preview switch.',
+    description: 'Accessible name of the Source / Split / Preview switch.',
   },
-  write: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.write',
-    defaultMessage: 'Write',
+  source: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.source',
+    defaultMessage: 'Source',
   },
   split: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.split',
@@ -186,6 +207,24 @@ const messages = defineMessages({
     defaultMessage: 'Override',
     description: 'Confirms replacing the document content with an uploaded file. Verb.',
   },
+  leaveTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveTitle',
+    defaultMessage: 'Discard changes?',
+  },
+  leaveMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveMessage',
+    defaultMessage: 'You have unsaved changes. Are you sure you want to leave?',
+  },
+  leave: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leave',
+    defaultMessage: 'Leave',
+    description: 'Confirms leaving the document form and discarding unsaved changes. Verb.',
+  },
+  stay: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.stay',
+    defaultMessage: 'Stay',
+    description: 'Keeps the user on the document form. Verb.',
+  },
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.cancel',
     defaultMessage: 'Cancel',
@@ -224,7 +263,23 @@ const FILE_ERROR_MESSAGE: Record<MarkdownFileError, typeof messages.fileType> = 
   encoding: messages.fileNotText,
 };
 
-type Layout = 'write' | 'split' | 'preview';
+/**
+ * Format problems only. A *missing* required field shows no error — Create /
+ * Save simply stays disabled until every required field has a value.
+ */
+const CUSTOM_TYPE_ERROR_MESSAGE: Record<Exclude<CustomTypeError, 'required'>, typeof messages.customTypeTooLong> = {
+  tooLong: messages.customTypeTooLong,
+  invalid: messages.customTypeInvalid,
+};
+
+type Layout = 'source' | 'split' | 'preview';
+
+/**
+ * One height for every single-line field in the top row. A small Select and a
+ * small OutlinedInput otherwise differ by a few pixels, which shows as the
+ * boxes not lining up.
+ */
+const FIELD_SX = { height: 40 } as const;
 
 /** Shared height of the Markdown editor and the preview; both scroll inside it. */
 const EDITOR_HEIGHT = 480;
@@ -292,14 +347,18 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
   const typeLabelId = useId();
   const nameId = useId();
   const contentId = useId();
+  const customTypeId = useId();
 
-  const [type, setType] = useState<ApiDocumentType>(existing?.type ?? DEFAULT_DOCUMENT_TYPE);
+  // Only used when creating: an existing document's type is fixed and is
+  // shown read-only straight from the response.
+  const [type, setType] = useState<ApiDocumentType>(DEFAULT_DOCUMENT_TYPE);
+  const [customType, setCustomType] = useState('');
   const [name, setName] = useState(existing?.displayName ?? '');
   const [content, setContent] = useState(existingContent);
   const [fileName, setFileName] = useState(existing?.fileName ?? '');
   const [uploadedNew, setUploadedNew] = useState(false);
   const [layout, setLayout] = useState<Layout>('split');
-  const [touched, setTouched] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; content: string } | null>(null);
 
@@ -307,21 +366,37 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
   const saving = createMutation.isPending || updateMutation.isPending;
   const trimmedName = name.trim();
 
-  const errors: FieldErrors = {
-    displayName:
-      serverErrors.displayName ??
-      (touched && !trimmedName ? intl.formatMessage(messages.nameRequired) : undefined),
-    inlineContent:
-      serverErrors.inlineContent ??
-      (touched && !content.trim() ? intl.formatMessage(messages.contentRequired) : undefined),
-    type: serverErrors.type,
-  };
+  const errors: FieldErrors = serverErrors;
 
+  const isOther = type === 'OTHER';
+  const customTypeError = isOther ? validateCustomType(customType) : undefined;
+  // A format problem (too long, bad characters) is shown as the user types; an
+  // empty value is not an error to show, it just keeps the button disabled.
+  const customTypeFormatError = customTypeError === 'required' ? undefined : customTypeError;
   const contentChanged = content !== existingContent;
   const dirty = isEdit
-    ? type !== existing!.type || trimmedName !== existing!.displayName || contentChanged
+    ? trimmedName !== existing!.displayName || contentChanged
     : true;
-  const valid = Boolean(trimmedName) && Boolean(content.trim());
+  const hasUnsavedChanges = isEdit
+    ? dirty || uploadedNew
+    : Boolean(trimmedName || content.trim() || customType.trim() || fileName) ||
+      type !== DEFAULT_DOCUMENT_TYPE;
+
+  // Cancel and Back ask first when there is something to lose.
+  const requestCancel = () => {
+    if (hasUnsavedChanges) setConfirmLeave(true);
+    else onCancel();
+  };
+
+  // Closing or reloading the tab gets the browser's own "leave site?" prompt.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return undefined;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedChanges]);
+
+  const valid = Boolean(trimmedName) && Boolean(content.trim()) && !customTypeError;
 
   const applyUpload = (upload: { fileName: string; content: string }) => {
     setContent(upload.content);
@@ -363,7 +438,6 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
   };
 
   const save = () => {
-    setTouched(true);
     setServerErrors({});
     if (!valid || saving) return;
 
@@ -377,6 +451,7 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
             fileName: fileName || undefined,
             inlineContent: content,
             type,
+            otherTypeName: isOther ? customType.trim() : undefined,
           },
         },
         {
@@ -392,11 +467,11 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
 
     // Only what changed is sent: omitting the content makes this a
     // metadata-only update that leaves the stored bytes untouched.
+    // Type cannot be changed after creation.
     const body: UpdateApiDocumentBody = {
       displayName: trimmedName !== existing.displayName ? trimmedName : undefined,
       fileName: uploadedNew && fileName ? fileName : undefined,
       inlineContent: contentChanged ? content : undefined,
-      type: type !== existing.type ? type : undefined,
     };
     updateMutation.mutate(
       { apiId: apiHandle, apiType: REST_API_TYPE, body, docId: existing.id },
@@ -411,12 +486,12 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
   };
 
   const showEditor = layout !== 'preview';
-  const showPreview = layout !== 'write';
+  const showPreview = layout !== 'source';
 
   return (
     <Stack spacing={2}>
       <PageTitle>
-        <PageTitle.BackButton onClick={onCancel} sx={{ alignSelf: 'flex-start', ml: -1 }}>
+        <PageTitle.BackButton onClick={requestCancel} sx={{ alignSelf: 'flex-start', ml: -1 }}>
           <FormattedMessage {...messages.back} />
         </PageTitle.BackButton>
         <PageTitle.Header>
@@ -429,40 +504,89 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
 
       <Paper sx={{ p: 3 }}>
         <Stack spacing={3}>
-          <Stack direction={{ md: 'row', xs: 'column' }} spacing={2}>
-            <FormControl error={Boolean(errors.type)} sx={{ minWidth: 240 }}>
+          <Stack direction={{ md: 'row', xs: 'column' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+            <FormControl
+              disabled={isEdit}
+              error={Boolean(errors.type)}
+              sx={{ flexShrink: 0, width: { md: 240, xs: '100%' } }}
+            >
               <FormLabel id={typeLabelId}>
                 <FormattedMessage {...messages.typeLabel} />
               </FormLabel>
-              <Select
-                disabled={saving}
-                labelId={typeLabelId}
-                onChange={(event) => setType(event.target.value as ApiDocumentType)}
-                size="small"
-                value={type}
-              >
-                {DOCUMENT_TYPES.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    <FormattedMessage {...documentTypeLabel(option)} />
-                  </MenuItem>
-                ))}
-              </Select>
+              {isEdit ? (
+                <OutlinedInput
+                  inputProps={{ 'aria-labelledby': typeLabelId, readOnly: true }}
+                  size="small"
+                  sx={FIELD_SX}
+                  value={documentTypeName(intl, existing!.type)}
+                />
+              ) : (
+                <Select
+                  disabled={saving}
+                  labelId={typeLabelId}
+                  onChange={(event) => setType(event.target.value as ApiDocumentType)}
+                  size="small"
+                  sx={FIELD_SX}
+                  value={type}
+                >
+                  {DOCUMENT_TYPES.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      <FormattedMessage {...documentTypeLabel(option)} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              )}
               {errors.type && <FormHelperText>{errors.type}</FormHelperText>}
             </FormControl>
-            <FormControl error={Boolean(errors.displayName)} fullWidth required>
+            {/* Asked for only when creating; edit shows the custom name in the type field. */}
+            {isOther && !isEdit && (
+              <FormControl
+                error={Boolean(customTypeFormatError)}
+                required
+                sx={{ flexShrink: 0, width: { md: 220, xs: '100%' } }}
+              >
+                <FormLabel htmlFor={customTypeId}>
+                  <FormattedMessage {...messages.customTypeLabel} />
+                </FormLabel>
+                <OutlinedInput
+                  disabled={saving}
+                  id={customTypeId}
+                  inputProps={{ maxLength: MAX_CUSTOM_TYPE_LENGTH }}
+                  onChange={(event) => {
+                    setCustomType(event.target.value);
+                    setServerErrors((current) => ({ ...current, type: undefined }));
+                  }}
+                  placeholder={intl.formatMessage(messages.customTypePlaceholder)}
+                  size="small"
+                  sx={FIELD_SX}
+                  value={customType}
+                />
+                <FormHelperText>
+                  {customTypeFormatError ? (
+                    <FormattedMessage
+                      {...CUSTOM_TYPE_ERROR_MESSAGE[customTypeFormatError]}
+                      values={{ max: MAX_CUSTOM_TYPE_LENGTH }}
+                    />
+                  ) : (
+                    <FormattedMessage {...messages.customTypeHint} values={{ max: MAX_CUSTOM_TYPE_LENGTH }} />
+                  )}
+                </FormHelperText>
+              </FormControl>
+            )}
+            <FormControl error={Boolean(errors.displayName)} fullWidth required sx={{ minWidth: 0 }}>
               <FormLabel htmlFor={nameId}>
                 <FormattedMessage {...messages.nameLabel} />
               </FormLabel>
               <OutlinedInput
                 disabled={saving}
                 id={nameId}
-                onBlur={() => setTouched(true)}
                 onChange={(event) => {
                   setName(event.target.value);
                   setServerErrors((current) => ({ ...current, displayName: undefined }));
                 }}
                 placeholder={intl.formatMessage(messages.namePlaceholder)}
                 size="small"
+                sx={FIELD_SX}
                 value={name}
               />
               {errors.displayName && <FormHelperText>{errors.displayName}</FormHelperText>}
@@ -520,8 +644,8 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
                   sx={segmentedSwitchSx}
                   value={layout}
                 >
-                  <ToggleButton value="write">
-                    <FormattedMessage {...messages.write} />
+                  <ToggleButton value="source">
+                    <FormattedMessage {...messages.source} />
                   </ToggleButton>
                   <ToggleButton value="split">
                     <FormattedMessage {...messages.split} />
@@ -543,13 +667,11 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
                     inputProps={{ spellCheck: false }}
                     multiline
                     rows={1}
-                    onBlur={() => setTouched(true)}
-                    onChange={(event) => {
+                      onChange={(event) => {
                       setContent(event.target.value);
                       setServerErrors((current) => ({ ...current, inlineContent: undefined }));
                     }}
                     placeholder={intl.formatMessage(messages.contentPlaceholder)}
-                    // Fixed height; the textarea fills it and scrolls, rather than growing with the text.
                     sx={{
                       '& textarea': { height: '100% !important', overflowY: 'auto !important' },
                       alignItems: 'stretch',
@@ -588,11 +710,11 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
       <Box sx={{ bottom: 0, position: 'sticky', zIndex: 10 }}>
         <Card>
           <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', p: 2 }}>
-            <Button color="secondary" disabled={saving} onClick={onCancel} variant="outlined">
+            <Button color="secondary" disabled={saving} onClick={requestCancel} variant="outlined">
               <FormattedMessage {...messages.cancel} />
             </Button>
             <Button
-              disabled={saving || !dirty || (touched && !valid)}
+              disabled={saving || !dirty || !valid}
               onClick={save}
               variant="contained"
             >
@@ -605,6 +727,20 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
           </Stack>
         </Card>
       </Box>
+
+      <ConfirmDialog
+        cancelLabel={intl.formatMessage(messages.stay)}
+        confirmColor="warning"
+        confirmLabel={intl.formatMessage(messages.leave)}
+        message={intl.formatMessage(messages.leaveMessage)}
+        onCancel={() => setConfirmLeave(false)}
+        onConfirm={() => {
+          setConfirmLeave(false);
+          onCancel();
+        }}
+        open={confirmLeave}
+        title={intl.formatMessage(messages.leaveTitle)}
+      />
 
       <ConfirmDialog
         cancelLabel={intl.formatMessage(messages.cancel)}

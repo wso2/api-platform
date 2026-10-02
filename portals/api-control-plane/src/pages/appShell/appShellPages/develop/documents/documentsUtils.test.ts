@@ -18,6 +18,9 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { createIntl } from 'react-intl';
+
+import { documentTypeName, validateCustomType } from './documentTypes';
 import { documentsSearch, readDocumentsView } from './documentsSearch';
 import { readMarkdownFile, suggestDocumentName } from './markdownFile';
 
@@ -62,5 +65,30 @@ describe('suggestDocumentName', () => {
 
   it('falls back to a readable file name', () => {
     expect(suggestDocumentName('no heading', 'getting-started_guide.md')).toBe('getting started guide');
+  });
+});
+
+describe('custom "Other" document types', () => {
+  const intl = createIntl({ locale: 'en', messages: {} });
+
+  it('shows the custom name, or the fixed label, as the type', () => {
+    // Custom types are shown exactly as stored, case included.
+    expect(documentTypeName(intl, 'faq')).toBe('faq');
+    expect(documentTypeName(intl, 'FAQ')).toBe('FAQ');
+    expect(documentTypeName(intl, 'Release notes')).toBe('Release notes');
+    // Fixed types
+    expect(documentTypeName(intl, 'HOW_TO')).toBe('How To');
+    expect(documentTypeName(intl, 'OTHER')).toBe('Other');
+  });
+
+  it.each([
+    ['', 'required'],
+    ['   ', 'required'],
+    ['A very long type name', 'tooLong'],
+    ['Notes!', 'invalid'],
+    ['Changelog', undefined],
+    ['Release notes', undefined],
+  ])('validates %j', (name, error) => {
+    expect(validateCustomType(name)).toBe(error);
   });
 });
