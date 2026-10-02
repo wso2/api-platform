@@ -71,6 +71,24 @@ export type ApScope =
   | 'ap:gateway_custom_policy:delete'
   | 'ap:gateway_custom_policy:manage'
   | 'ap:gateway_custom_policy:read'
+  | 'ap:graphql_api:api_key:create'
+  | 'ap:graphql_api:api_key:delete'
+  | 'ap:graphql_api:api_key:manage'
+  | 'ap:graphql_api:api_key:update'
+  | 'ap:graphql_api:create'
+  | 'ap:graphql_api:delete'
+  | 'ap:graphql_api:deployment:create'
+  | 'ap:graphql_api:deployment:delete'
+  | 'ap:graphql_api:deployment:manage'
+  | 'ap:graphql_api:deployment:read'
+  | 'ap:graphql_api:deployment:restore'
+  | 'ap:graphql_api:deployment:undeploy'
+  | 'ap:graphql_api:gateway:create'
+  | 'ap:graphql_api:gateway:manage'
+  | 'ap:graphql_api:gateway:read'
+  | 'ap:graphql_api:manage'
+  | 'ap:graphql_api:read'
+  | 'ap:graphql_api:update'
   | 'ap:llm_provider:api_key:create'
   | 'ap:llm_provider:api_key:delete'
   | 'ap:llm_provider:api_key:manage'
@@ -224,6 +242,24 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:gateway_custom_policy:delete',
   'ap:gateway_custom_policy:manage',
   'ap:gateway_custom_policy:read',
+  'ap:graphql_api:api_key:create',
+  'ap:graphql_api:api_key:delete',
+  'ap:graphql_api:api_key:manage',
+  'ap:graphql_api:api_key:update',
+  'ap:graphql_api:create',
+  'ap:graphql_api:delete',
+  'ap:graphql_api:deployment:create',
+  'ap:graphql_api:deployment:delete',
+  'ap:graphql_api:deployment:manage',
+  'ap:graphql_api:deployment:read',
+  'ap:graphql_api:deployment:restore',
+  'ap:graphql_api:deployment:undeploy',
+  'ap:graphql_api:gateway:create',
+  'ap:graphql_api:gateway:manage',
+  'ap:graphql_api:gateway:read',
+  'ap:graphql_api:manage',
+  'ap:graphql_api:read',
+  'ap:graphql_api:update',
   'ap:llm_provider:api_key:create',
   'ap:llm_provider:api_key:delete',
   'ap:llm_provider:api_key:manage',
@@ -357,6 +393,11 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:gateway:manage',
     'ap:rest_api:manage',
   ],
+  AddGatewaysToGraphQLAPI: [
+    'ap:graphql_api:gateway:create',
+    'ap:graphql_api:gateway:manage',
+    'ap:graphql_api:manage',
+  ],
   copyLLMProviderTemplateVersion: ['ap:llm_template:create', 'ap:llm_template:manage'],
   CreateAPIKey: [
     'ap:api_key:all:manage',
@@ -368,6 +409,13 @@ export const OPERATION_SCOPES = {
   CreateApplication: ['ap:application:create', 'ap:application:manage'],
   CreateBuild: ['ap:rest_api:build:create', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
   CreateGateway: ['ap:gateway:create', 'ap:gateway:manage'],
+  CreateGraphQLAPI: ['ap:graphql_api:create', 'ap:graphql_api:manage'],
+  CreateGraphQLAPIKey: [
+    'ap:api_key:all:manage',
+    'ap:graphql_api:api_key:create',
+    'ap:graphql_api:api_key:manage',
+    'ap:graphql_api:manage',
+  ],
   createLLMProvider: ['ap:llm_provider:create', 'ap:llm_provider:manage'],
   createLLMProviderAPIKey: [
     'ap:api_key:all:manage',
@@ -414,6 +462,12 @@ export const OPERATION_SCOPES = {
   ],
   DeleteGateway: ['ap:gateway:delete', 'ap:gateway:manage'],
   DeleteGatewayCustomPolicy: ['ap:gateway_custom_policy:delete', 'ap:gateway_custom_policy:manage'],
+  DeleteGraphQLAPI: ['ap:graphql_api:delete', 'ap:graphql_api:manage'],
+  DeleteGraphQLAPIDeployment: [
+    'ap:graphql_api:deployment:delete',
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:manage',
+  ],
   deleteLLMProvider: ['ap:llm_provider:delete', 'ap:llm_provider:manage'],
   deleteLLMProviderAPIKey: [
     'ap:api_key:all:manage',
@@ -470,6 +524,11 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:deployment:manage',
     'ap:rest_api:manage',
   ],
+  DeployGraphQLAPI: [
+    'ap:graphql_api:deployment:create',
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:manage',
+  ],
   deployLLMProvider: [
     'ap:llm_provider:deployment:create',
     'ap:llm_provider:deployment:manage',
@@ -515,6 +574,25 @@ export const OPERATION_SCOPES = {
   GetGateway: ['ap:gateway:manage', 'ap:gateway:read'],
   GetGatewayCustomPolicy: ['ap:gateway_custom_policy:manage', 'ap:gateway_custom_policy:read'],
   GetGatewayManifest: ['ap:gateway:manage', 'ap:gateway:manifest:read'],
+  GetGraphQLAPI: ['ap:graphql_api:manage', 'ap:graphql_api:read'],
+  GetGraphQLAPIDeployment: [
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:deployment:read',
+    'ap:graphql_api:manage',
+  ],
+  GetGraphQLAPIDeployments: [
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:deployment:read',
+    'ap:graphql_api:manage',
+  ],
+  GetGraphQLAPIGateways: [
+    'ap:gateway:manage',
+    'ap:gateway:read',
+    'ap:graphql_api:gateway:manage',
+    'ap:graphql_api:gateway:read',
+    'ap:graphql_api:manage',
+  ],
+  GetGraphQLAPISDL: ['ap:graphql_api:manage', 'ap:graphql_api:read'],
   getLLMProvider: ['ap:llm_provider:manage', 'ap:llm_provider:read'],
   GetLLMProviderBuild: [
     'ap:llm_provider:build:manage',
@@ -610,6 +688,7 @@ export const OPERATION_SCOPES = {
   ListGatewayCustomPolicies: ['ap:gateway_custom_policy:manage', 'ap:gateway_custom_policy:read'],
   ListGateways: ['ap:gateway:manage', 'ap:gateway:read'],
   listGatewayTokens: ['ap:gateway:manage', 'ap:gateway:token:manage', 'ap:gateway:token:read'],
+  ListGraphQLAPIs: ['ap:graphql_api:manage', 'ap:graphql_api:read'],
   listLLMProviderAPIKeys: [
     'ap:api_key:all:manage',
     'ap:llm_provider:api_key:manage',
@@ -656,6 +735,11 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:deployment:restore',
     'ap:rest_api:manage',
   ],
+  RestoreGraphQLAPIDeployment: [
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:deployment:restore',
+    'ap:graphql_api:manage',
+  ],
   restoreLLMProviderDeployment: [
     'ap:llm_provider:deployment:manage',
     'ap:llm_provider:deployment:restore',
@@ -678,6 +762,12 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:manage',
   ],
   revokeGatewayToken: ['ap:gateway:manage', 'ap:gateway:token:delete', 'ap:gateway:token:manage'],
+  RevokeGraphQLAPIKey: [
+    'ap:api_key:all:manage',
+    'ap:graphql_api:api_key:delete',
+    'ap:graphql_api:api_key:manage',
+    'ap:graphql_api:manage',
+  ],
   rotateGatewayToken: ['ap:gateway:manage', 'ap:gateway:token:create', 'ap:gateway:token:manage'],
   rotateSecret: ['ap:secret:manage', 'ap:secret:update'],
   saveApiPublicationDraft: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:update'],
@@ -690,6 +780,11 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:deployment:manage',
     'ap:rest_api:deployment:undeploy',
     'ap:rest_api:manage',
+  ],
+  UndeployGraphQLAPIDeployment: [
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:deployment:undeploy',
+    'ap:graphql_api:manage',
   ],
   undeployLLMProviderDeployment: [
     'ap:llm_provider:deployment:manage',
@@ -719,6 +814,13 @@ export const OPERATION_SCOPES = {
   UpdateApiPortal: ['ap:api_portal:manage', 'ap:api_portal:update'],
   UpdateApplication: ['ap:application:manage', 'ap:application:update'],
   UpdateGateway: ['ap:gateway:manage', 'ap:gateway:update'],
+  UpdateGraphQLAPI: ['ap:graphql_api:manage', 'ap:graphql_api:update'],
+  UpdateGraphQLAPIKey: [
+    'ap:api_key:all:manage',
+    'ap:graphql_api:api_key:manage',
+    'ap:graphql_api:api_key:update',
+    'ap:graphql_api:manage',
+  ],
   updateLLMProvider: ['ap:llm_provider:manage', 'ap:llm_provider:update'],
   updateLLMProviderTemplate: ['ap:llm_template:manage', 'ap:llm_template:update'],
   updateLLMProxy: ['ap:llm_proxy:manage', 'ap:llm_proxy:update'],
@@ -728,5 +830,6 @@ export const OPERATION_SCOPES = {
   UpdateRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateSubscription: ['ap:subscription:manage', 'ap:subscription:update'],
   UpdateSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:update'],
+  ValidateGraphQLSchema: ['ap:graphql_api:create', 'ap:graphql_api:manage'],
   ValidateOpenAPISpec: ['ap:rest_api:create', 'ap:rest_api:manage'],
 } as const satisfies Record<keyof operations, readonly ApScope[]>;

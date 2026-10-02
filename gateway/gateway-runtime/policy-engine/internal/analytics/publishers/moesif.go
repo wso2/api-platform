@@ -263,6 +263,32 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["apiId"] = event.API.APIID
 	metadataMap["projectId"] = event.API.ProjectID
 
+	// apiResourceTemplate mirrors legacy WSO2 APIM's Moesif publisher (see
+	// SynapseAnalyticsDataProvider#getOperation), which existing Moesif charts
+	// (e.g. "Top Queries/Mutations") group on via metadata.apiResourceTemplate.raw.
+	// Legacy emitted this for every API kind, so it's intentionally written here
+	// for every kind too — REST/LLM/MCP/Agent/WebSub included — not just GraphQL;
+	// it duplicates the top-level Uri already sent for every event, so this adds
+	// no new exposure, only a redundant (but chart-compatible) metadata field.
+	// For a GraphQL API specifically, Operation.APIResourceTemplate is always the
+	// single fixed POST route (no per-operation identity, unlike legacy's
+	// schema-resolved resource name), so it's replaced with the client-supplied
+	// operationName, falling back to operationType, to keep that grouping
+	// meaningful — this substitution is the only GraphQL-specific part.
+	apiResourceTemplate := event.Operation.APIResourceTemplate
+	if event.API.APIType == "GraphQLApi" {
+		if graphqlAnalytics, ok := event.Properties["graphqlAnalytics"].(map[string]interface{}); ok {
+			if name, ok := graphqlAnalytics["operationName"].(string); ok && name != "" {
+				apiResourceTemplate = name
+			} else if opType, ok := graphqlAnalytics["operationType"].(string); ok && opType != "" {
+				apiResourceTemplate = opType
+			}
+		}
+	}
+	if apiResourceTemplate != "" {
+		metadataMap["apiResourceTemplate"] = apiResourceTemplate
+	}
+
 	// AI Metadata.
 	// Only include aiMetadata and aiTokenUsage for LlmProvider and LlmProxy events.
 	if event.API.APIType == "LlmProvider" || event.API.APIType == "LlmProxy" {
@@ -322,6 +348,13 @@ func (m *Moesif) Publish(event *dto.Event) {
 			} else {
 				slog.Warn("A2A analytics property cannot be converted to the required format")
 			}
+		}
+	}
+
+	// GraphQL Analytics
+	if event.API.APIType == "GraphQLApi" {
+		if graphqlAnalytics, ok := event.Properties["graphqlAnalytics"]; ok && graphqlAnalytics != nil {
+			metadataMap["graphqlAnalytics"] = graphqlAnalytics
 		}
 	}
 

@@ -43,7 +43,11 @@ export type ChipColor = 'default' | 'error' | 'info' | 'secondary' | 'success' |
  */
 const KIND_LABEL: Record<string, string> = {
   AsyncApi: 'Async API',
-  GraphQL: 'GraphQL API',
+  // `GraphQLAPI.kind` defaults to the literal `GraphQLApi` (see openapi.yaml) —
+  // matched exactly, not just `GraphQL`, so the fallback PascalCase-splitter
+  // never has to run on it (it would garble the adjacent capitals into
+  // "Graph QLApi").
+  GraphQLApi: 'GraphQL API',
   LlmProxy: 'LLM Proxy',
   McpProxy: 'MCP Proxy',
   RestApi: 'REST API',

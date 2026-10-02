@@ -59,6 +59,16 @@ const atApi = () =>
     params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
   });
 
+const GRAPHQL_API = 'graphql-api-1';
+
+const atGraphqlApi = () =>
+  makeConsoleScope({
+    component: undefined,
+    isApiScope: false,
+    isGraphQLApiScope: true,
+    params: { graphqlApiHandler: GRAPHQL_API, orgHandle: ORG, projectHandler: PROJECT },
+  });
+
 const itemsAt = (scope: ConsoleScope, route: string) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
@@ -94,7 +104,7 @@ describe('submenu children follow API scope', () => {
     },
   );
 
-  it.each(['develop', 'test', 'insights', 'observability'])(
+  it.each(['develop', 'insights', 'observability'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);
@@ -125,11 +135,69 @@ describe('submenu children follow API scope', () => {
 
   it('leaves items without children untouched', () => {
     const items = itemsAt(atApi(), routes.api(ORG, PROJECT, API));
-    const leaves = ['overview', 'gateways', 'deploy', 'publish'];
+    const leaves = ['overview', 'gateways', 'deploy', 'test', 'publish'];
 
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
     }
+  });
+});
+
+/*
+ * GraphQL pages have no sidebar entry of their own (see `graphqlApiPath`), so
+ * Develop only reaches them by revealing its existing children while a
+ * GraphQL API is in scope — this is the fix for "Policies and Documents
+ * cannot be seen under Develop" while browsing a GraphQL API. Test is not a
+ * submenu at all (see the `adaptive` item below) — its own page changes
+ * per scope instead.
+ */
+describe('submenu children also follow GraphQL API scope, for the submenus that have one', () => {
+  it.each(['develop', 'insights', 'observability'])(
+    '%s offers its GraphQL-capable children, linking into the GraphQL API',
+    (id) => {
+      const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
+
+      expect(item.children?.length).toBeGreaterThan(0);
+      for (const child of item.children ?? []) {
+        expect(child.to).toContain(`/graphql-apis/${GRAPHQL_API}/`);
+      }
+    },
+  );
+
+  it('does not offer develop-routing (Resources), which has no GraphQL equivalent', () => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'develop');
+
+    expect(item.children?.find((child) => child.id === 'develop-routing')).toBeUndefined();
+    expect(item.children?.map((child) => child.id)).toEqual(['develop-policies', 'develop-documents']);
+  });
+
+  it('links Test to the GraphQL test console, not a submenu, while a GraphQL API is in scope', () => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'test');
+
+    expect(item.children).toBeUndefined();
+    expect(item.to).toContain(`/graphql-apis/${GRAPHQL_API}/`);
+  });
+
+  // Pins the fix for a real bug: Insights and Observability had no
+  // `graphqlTo` on any child at all, so `revealsForGraphqlApi` was always
+  // false and both submenus stayed withheld while browsing a GraphQL API —
+  // matching the pre-fix "no GraphQL page exists" state, which is no longer
+  // true now that each child has a GraphQL-side page of its own.
+  it.each([
+    ['insights', ['insights-api', 'insights-compliance']],
+    ['observability', ['observability-metrics', 'observability-logs']],
+  ])('%s offers every child in GraphQL scope, unlike develop/test', (id, childIds) => {
+    const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), id);
+
+    expect(item.children?.map((child) => child.id)).toEqual(childIds);
+  });
+
+  it('marks develop-policies active on the GraphQL Develop Policies page', () => {
+    const route = routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API);
+    const parent = itemFor(atGraphqlApi(), route, 'develop');
+
+    expect(parent.isActive).toBe(false);
+    expect(parent.children?.find((child) => child.id === 'develop-policies')?.isActive).toBe(true);
   });
 });
 

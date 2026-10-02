@@ -538,6 +538,40 @@ func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
 	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
 }
 
+func TestLookupNestedMetadataField(t *testing.T) {
+	metadata := map[string]any{
+		"apiName": "countries-api",
+		"graphqlAnalytics": map[string]any{
+			"operationType": "mutation",
+			"isError":       true,
+		},
+	}
+
+	value, err := lookupNestedMetadataField(metadata, "apiName")
+	require.NoError(t, err)
+	require.Equal(t, "countries-api", value)
+
+	value, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.operationType")
+	require.NoError(t, err)
+	require.Equal(t, "mutation", value)
+
+	value, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.isError")
+	require.NoError(t, err)
+	require.Equal(t, true, value)
+
+	_, err = lookupNestedMetadataField(metadata, "graphqlAnalytics.missing")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(metadata, "missing")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(metadata, "apiName.tooDeep")
+	require.Error(t, err)
+
+	_, err = lookupNestedMetadataField(map[string]any{}, "anything")
+	require.Error(t, err)
+}
+
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}
@@ -583,6 +617,14 @@ func TestAssertAPICreationSucceeded(t *testing.T) {
 		{
 			name:     "1.1 resource status",
 			version:  "1.1.0",
+			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
+		},
+		{
+			// A current source build's resolved version comes from gateway/VERSION,
+			// which is not a "1.x.y" release SemVer (e.g. a date-based version).
+			// It must still be treated as newer than 1.1, not legacy.
+			name:     "current source build with a non-release version",
+			version:  "2026.09.24",
 			response: &httpx.Response{StatusCode: http.StatusCreated, Body: []byte(`{"status":{"id":"api-1","state":"deployed","createdAt":"now","updatedAt":"now"}}`)},
 		},
 		{

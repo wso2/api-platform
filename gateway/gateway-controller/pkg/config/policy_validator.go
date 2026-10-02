@@ -77,6 +77,29 @@ func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfi
 	return errors
 }
 
+// ValidateGraphQLAPIPolicies validates all policies in a GraphQL API configuration.
+// A GraphQLApi has no operations (see transform/graphql.go's buildPolicyChain), so —
+// like ValidateMCPProxyPolicies — only the API-level policy list is validated. Without
+// this, an unresolvable policy reference (unknown name, or a version not present in the
+// loaded policy definitions — e.g. a local/filePath policy whose schema never made it
+// into this controller image) is silently dropped from the chain at xDS-generation time
+// instead of failing the deploy, unlike RestApi/Mcp/Agent, which all reject such a
+// configuration up front via their own ValidateXPolicies call.
+func (pv *PolicyValidator) ValidateGraphQLAPIPolicies(apiConfig *api.GraphQLAPI) []ValidationError {
+	var errors []ValidationError
+
+	if apiConfig.Spec.Policies == nil {
+		return errors
+	}
+
+	for i, policy := range *apiConfig.Spec.Policies {
+		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+		errors = append(errors, errs...)
+	}
+
+	return errors
+}
+
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
 func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
 	var errors []ValidationError

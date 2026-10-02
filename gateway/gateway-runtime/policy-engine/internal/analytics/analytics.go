@@ -365,7 +365,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	target := dto.Target{}
 	target.ResponseCacheHit = isCacheHit(logEntry)
 	if response != nil {
-		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
+		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().GetValue())
 		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
 		target.Destination = logEntry.GetRequest().GetAuthority() + requestPath
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
@@ -449,7 +449,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if logEntry.GetCommonProperties().GetStreamId() != "" {
 		metaInfo.CorrelationID = logEntry.GetCommonProperties().GetStreamId()
 	} else {
-		metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+		metaInfo.CorrelationID = logEntry.GetRequest().GetRequestId()
 	}
 	metaInfo.RegionID = keyValuePairsFromMetadata[RegionKey]
 
@@ -476,7 +476,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.UserAgentHeader = userAgent
 	event.UserName = userName
 	event.UserIP = userIP
-	event.ProxyResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
+	event.ProxyResponseCode = int(logEntry.GetResponse().GetResponseCode().GetValue())
 	event.RequestTimestamp = logEntry.GetCommonProperties().GetStartTime().AsTime()
 	event.Properties = make(map[string]interface{}, 0)
 
@@ -708,6 +708,33 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindAgent) {
 		event.Properties[A2AAnalyticsProperty] = buildA2AAnalytics(
 			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
+	}
+
+	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindGraphQL) {
+		graphqlAnalytics := make(map[string]interface{})
+		if graphqlRequestProps, ok := keyValuePairsFromMetadata["graphql_request_properties"]; ok && graphqlRequestProps != "" {
+			// Parse the JSON string into a map
+			var propsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(graphqlRequestProps), &propsMap); err == nil {
+				maps.Copy(graphqlAnalytics, propsMap)
+			} else {
+				slog.Debug("Failed to unmarshal GraphQL request properties", "error", err)
+				// Fallback to raw string if parsing fails
+				graphqlAnalytics["graphql_request_properties"] = graphqlRequestProps
+			}
+		}
+		if graphqlResponseProps, ok := keyValuePairsFromMetadata["graphql_response_properties"]; ok && graphqlResponseProps != "" {
+			// Parse the JSON string into a map
+			var responsePropsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(graphqlResponseProps), &responsePropsMap); err == nil {
+				maps.Copy(graphqlAnalytics, responsePropsMap)
+			} else {
+				slog.Debug("Failed to unmarshal GraphQL response properties", "error", err)
+				// Fallback to raw string if parsing fails
+				graphqlAnalytics["graphql_response_properties"] = graphqlResponseProps
+			}
+		}
+		event.Properties["graphqlAnalytics"] = graphqlAnalytics
 	}
 
 	// Fault classification, last so it sees the finished event.

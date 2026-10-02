@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Policy } from '@/api/resources/restApis';
+import { versionLabel } from '@/utils/versionLabel';
 
 const messages = defineMessages({
   heading: {
@@ -183,11 +184,7 @@ export function AttachedPolicyList({
                 <Typography noWrap sx={{ flex: 1, fontWeight: 500 }} variant="body2">
                   {policy.name}
                 </Typography>
-                <Chip
-                  label={policy.version.startsWith('v') ? policy.version : `v${policy.version}`}
-                  size="small"
-                  variant="outlined"
-                />
+                <Chip label={versionLabel(policy.version)} size="small" variant="outlined" />
                 <Stack direction="row">
                   <Tooltip title={intl.formatMessage(messages.edit)}>
                     <IconButton

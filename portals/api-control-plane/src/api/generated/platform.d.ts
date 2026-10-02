@@ -152,9 +152,12 @@ export interface paths {
         put?: never;
         /**
          * Validate an OpenAPI specification
-         * @description Validates an OpenAPI 3.x or Swagger 2.x specification without creating
-         *     or modifying any resource. Returns a structured result indicating whether
-         *     the spec is valid and, if not, the list of validation errors.
+         * @description Validates an OpenAPI 3.x specification without creating
+         *     or modifying any resource. The spec may be supplied either as a
+         *     multipart file upload (`file`) or as a URL (`url`) that the backend
+         *     fetches server-side. Exactly one of `file` or `url` is required.
+         *     Returns a structured result indicating whether the spec is valid and,
+         *     if not, the list of validation errors.
          */
         post: operations["ValidateOpenAPISpec"];
         delete?: never;
@@ -174,9 +177,12 @@ export interface paths {
         put?: never;
         /**
          * Create a REST API from an OpenAPI specification
-         * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
-         *     as a multipart file upload The backend extracts operations from the spec,
-         *     creates the API, and persists the raw spec as the API definition document.
+         * @description Creates a new REST API by parsing an OpenAPI 3.x
+         *     specification. The spec may be supplied either as a multipart file
+         *     upload (`file`) or as a URL (`url`) that the backend fetches
+         *     server-side. Exactly one of `file` or `url` is required. The backend
+         *     extracts operations from the spec, creates the API, and persists the
+         *     raw spec as the API definition document.
          */
         post: operations["ImportOpenAPI"];
         delete?: never;
@@ -839,6 +845,318 @@ export interface paths {
          * @description Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
          */
         post: operations["deprecateRestApiOnApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get all GraphQL APIs for an organization
+         * @description Retrieves all GraphQL APIs belonging to an organization. Requires the
+         *     projectId query parameter to filter APIs by project. Access is validated
+         *     against the organization in the JWT token.
+         */
+        get: operations["ListGraphQLAPIs"];
+        put?: never;
+        /**
+         * Create a new GraphQL API
+         * @description Creates a new GraphQL API in the platform. `schemaSource` declares how the
+         *     schema is supplied: `inline` (the `sdl` field), `url` (fetched from
+         *     `sdlUrl`), `file` (the `sdlFile` multipart part), or `introspection` (the
+         *     default — `upstream.main.url` must expose standard GraphQL introspection).
+         *     Only the field matching the declared source may be present — a request
+         *     that supplies a field not matching the declared `schemaSource` (or more
+         *     than one schema field at once), omits the field/part its declared source
+         *     requires, or declares `introspection` against an `upstream.main.ref`
+         *     instead of a literal `url`, is a request-shape problem and is rejected
+         *     with `400` (`VALIDATION_FAILED`) describing exactly what's inconsistent.
+         *     Once the request shape itself is valid, schema resolution is best-effort:
+         *     if the declared source can't actually be resolved (unreachable URL,
+         *     invalid SDL, introspection failing/disabled), the API is still created
+         *     with an empty schema rather than failing — fetch it later via
+         *     `GET /graphql-apis/{graphqlApiId}/sdl` once it can be resolved. The API is
+         *     associated with a project, which must belong to the organization
+         *     specified in the JWT token.
+         */
+        post: operations["CreateGraphQLAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get GraphQL API by ID
+         * @description Retrieves the GraphQL API's metadata and configuration. The `sdl` field
+         *     is deliberately omitted from this response — it can be large, and most
+         *     callers only need the metadata — fetch it separately via
+         *     `GET /graphql-apis/{graphqlApiId}/sdl`.
+         */
+        get: operations["GetGraphQLAPI"];
+        /**
+         * Update GraphQL API
+         * @description Updates an existing GraphQL API's details. `schemaSource` behaves as on
+         *     create (see `POST /graphql-apis`), including the same `400`
+         *     (`VALIDATION_FAILED`) response for a request shape that's inconsistent
+         *     with the declared `schemaSource` — re-supply `sdl`/`sdlUrl`/`sdlFile`, or
+         *     leave it as `introspection` to re-query `upstream.main.url` and pick up a
+         *     changed backend schema. If resolution fails (the source can't actually be
+         *     resolved right now), the previously-stored schema is left unchanged rather
+         *     than being cleared.
+         */
+        put: operations["UpdateGraphQLAPI"];
+        post?: never;
+        /** Delete GraphQL API */
+        delete: operations["DeleteGraphQLAPI"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/sdl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the SDL for a GraphQL API
+         * @description Retrieves the GraphQL API's resolved schema in SDL form — the same text
+         *     `GET /graphql-apis/{graphqlApiId}` would have returned in its `sdl` field
+         *     before that field was split out into this dedicated endpoint (large, and
+         *     rarely needed alongside the rest of the metadata).
+         */
+        get: operations["GetGraphQLAPISDL"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/validate-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dry-run GraphQL schema resolution
+         * @description Attempts to resolve a schema exactly as `POST`/`PUT /graphql-apis`
+         *     would — the same `schemaSource`-driven structural validation, the
+         *     same best-effort resolution (§5.2) — without persisting anything. A
+         *     request-shape mismatch (`schemaSource` inconsistent with the fields
+         *     supplied) is a `400` (`VALIDATION_FAILED`), same as create/update. An
+         *     actual resolution failure (bad SDL, an unreachable `sdlUrl`, a failed
+         *     introspection query) is **not** an error here either — the response
+         *     reports `resolved: false` so the caller can decide what to do, rather
+         *     than having to create a real API just to find out.
+         */
+        post: operations["ValidateGraphQLSchema"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get gateways for GraphQL API
+         * @description Retrieves all gateways associated with the specified API, including deployment details.
+         *     Returns gateway information along with association timestamps and deployment status.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetGraphQLAPIGateways"];
+        put?: never;
+        /**
+         * Add gateways for GraphQL API
+         * @description Associates gateways to the specified API. If gateways are already associated,
+         *     updates the association timestamp. Returns all gateways associated with the API
+         *     including deployment details. Access is validated against the organization
+         *     in the JWT token.
+         */
+        post: operations["AddGatewaysToGraphQLAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create API key
+         * @description Creates a new API key for the specified GraphQL API. The API key will be hashed before
+         *     storage and broadcasted to all gateways where the API is deployed. This endpoint
+         *     allows external platforms to inject API keys to hybrid gateways.
+         */
+        post: operations["CreateGraphQLAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/api-keys/{apiKeyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update API key
+         * @description Updates an existing API key for the specified GraphQL API. The new API key value will
+         *     be hashed before storage and broadcasted to all gateways where the API is deployed.
+         *     This endpoint allows external platforms to rotate API keys on hybrid gateways.
+         */
+        put: operations["UpdateGraphQLAPIKey"];
+        post?: never;
+        /**
+         * Revoke API key
+         * @description Revokes an API key for the specified GraphQL API. The revocation will be broadcasted
+         *     to all gateways where the API is deployed. This endpoint allows external platforms
+         *     to revoke API keys on hybrid gateways.
+         */
+        delete: operations["RevokeGraphQLAPIKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get deployments for a GraphQL API
+         * @description Retrieves all deployment artifacts for a specific API. The graphqlApiId parameter is the API handle (identifier),
+         *     not the UUID. Supports filtering by gateway handle and deployment status.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetGraphQLAPIDeployments"];
+        put?: never;
+        /**
+         * Create and deploy a new deployment
+         * @description Creates an immutable deployment artifact for a GraphQL API and deploys it to a specified gateway.
+         *     Each deployment targets a single gateway. The graphqlApiId parameter is the API handle (identifier),
+         *     not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["DeployGraphQLAPI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/deployments/{deploymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get deployment by ID
+         * @description Retrieves metadata for a specific deployment artifact including status, gateway association,
+         *     and timestamps. Access is validated against the organization in the JWT token.
+         */
+        get: operations["GetGraphQLAPIDeployment"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete deployment
+         * @description Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["DeleteGraphQLAPIDeployment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/deployments/{deploymentId}/undeploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undeploy deployment from gateway
+         * @description Undeploys an active deployment, stopping the API from being served on the specified gateway.
+         *     The deployment artifact remains in the system and can be restored later.
+         *     Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+         *
+         *     The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["UndeployGraphQLAPIDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graphql-apis/{graphqlApiId}/deployments/{deploymentId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a previous deployment
+         * @description Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+         *     Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+         *     The target deployment must not already be in DEPLOYED status.
+         *
+         *     The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["RestoreGraphQLAPIDeployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1885,6 +2203,10 @@ export interface paths {
          *     auth configuration, and `auth.type: none` removes auth; an auth configuration that
          *     changes without complete credentials is rejected. There is no implicit PATCH
          *     behaviour.
+         *
+         *     For a gateway-originated Agent proxy (`readOnly: true`), only `description` and
+         *     `associatedGateways` are replaced from the body; every other field keeps the value
+         *     imported from the gateway, and `readOnly` in the body is ignored.
          */
         put: operations["updateAgentProxy"];
         post?: never;
@@ -2030,6 +2352,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-proxies/{agentProxyId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for an Agent proxy
+         * @description Lists the Agent proxy's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["listAgentProxyBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of an Agent proxy
+         * @description Renders the Agent proxy's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the Agent proxy since, and the same build can be deployed to
+         *     any number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     An Agent proxy keeps at most `deployments.max_builds_per_api` builds. Preparing
+         *     another first removes the oldest builds no current deployment is using; if every one
+         *     is in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["createAgentProxyBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent proxy build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["getAgentProxyBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an Agent proxy build
+         * @description Deletes one of the Agent proxy's builds, freeing a slot when the Agent proxy is at its
+         *     build limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["deleteAgentProxyBuild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent-proxies/{agentProxyId}/api-keys": {
         parameters: {
             query?: never;
@@ -2085,13 +2485,14 @@ export interface paths {
         put: operations["updateAgentProxyAPIKey"];
         post?: never;
         /**
-         * Revoke an API key for an Agent proxy
-         * @description Revokes the API key in the control plane, with the same behavior as REST API keys.
-         *     Revocation propagates to the gateways through the existing gateway event mechanism, so
-         *     a 204 confirms the control-plane revocation, not that every gateway has already dropped
-         *     the key. Only the key's creator may revoke it, unless the caller holds
-         *     `ap:api_key:all:manage`. The Agent proxy must be associated with at least one gateway;
-         *     otherwise the revocation is refused with 503.
+         * Delete an API key for an Agent proxy
+         * @description Deletes the API key from the control plane and records the deletion in the audit log.
+         *     A revocation is then propagated to the gateways the
+         *     Agent proxy is associated with through the existing gateway event mechanism, so a 204
+         *     confirms the control-plane deletion, not that every gateway has already dropped the key.
+         *     An Agent proxy associated with no gateway has nothing to notify, and the key is still
+         *     deleted. Only the key's creator may delete it, unless the caller holds
+         *     `ap:api_key:all:manage`.
          */
         delete: operations["revokeAgentProxyAPIKey"];
         options?: never;
@@ -2750,7 +3151,7 @@ export interface components {
              * @description Type of the artifact this key belongs to
              * @enum {string}
              */
-            artifactType: "RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy";
+            artifactType: "RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy" | "GraphQLApi";
         };
         UserAPIKeyListResponse: {
             /** @description List of API keys */
@@ -3725,12 +4126,24 @@ export interface components {
             revokedAt?: string | null;
         };
         CreateRESTAPIRequest: components["schemas"]["RESTAPI"] & Record<string, never>;
+        /**
+         * @description Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+         *     `file` or `url` must be provided; the backend rejects requests that
+         *     supply both or neither.
+         */
         ImportOpenAPIRequest: {
             /**
              * Format: binary
-             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             * @description OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
              */
-            file: string;
+            file?: string;
+            /**
+             * Format: uri
+             * @description HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+             *     from.
+             * @example https://petstore3.swagger.io/api/v3/openapi.json
+             */
+            url?: string;
             /**
              * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
              * @example my-rest-api-handle
@@ -3754,12 +4167,25 @@ export interface components {
             projectId: string;
             upstream: components["schemas"]["Upstream"];
         };
+        /**
+         * @description Multipart form for `POST /rest-apis/validate-openapi` and
+         *     `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+         *     must be provided; the backend rejects requests that supply both or
+         *     neither.
+         */
         OpenAPISpecFileRequest: {
             /**
              * Format: binary
-             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             * @description OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
              */
-            file: string;
+            file?: string;
+            /**
+             * Format: uri
+             * @description HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+             *     from. Mutually exclusive with `file`.
+             * @example https://petstore3.swagger.io/api/v3/openapi.json
+             */
+            url?: string;
         };
         ValidateOpenAPIResponse: {
             /** @description Whether the spec passed validation */
@@ -3767,6 +4193,11 @@ export interface components {
             /** @description Validation errors; empty when isValid is true */
             errors: components["schemas"]["OpenAPIValidationError"][];
             info?: components["schemas"]["OpenAPISpecInfo"];
+            /**
+             * @description The exact bytes the validator ran against. Always echoed for file
+             *     uploads; for URL sources it is echoed only when isValid is true.
+             */
+            content?: string;
         };
         OpenAPIValidationError: {
             /** @description Human-readable description of the validation error */
@@ -3783,6 +4214,424 @@ export interface components {
         OpenAPIContent: {
             /** @description Raw spec content */
             content?: string;
+        };
+        /**
+         * @example ENDPOINT
+         * @enum {string}
+         */
+        GraphQLIntrospectionMode: "SDL" | "ENDPOINT";
+        /** GraphQL API object */
+        GraphQLAPI: {
+            /**
+             * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+             * @example countries-graphql-api
+             */
+            id?: string;
+            /**
+             * @description Human-readable name for the API
+             * @example Countries GraphQL API
+             */
+            displayName: string;
+            /** @example Public GraphQL API for querying country/region reference data */
+            description?: string;
+            /**
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
+             * @example /countries/graphql
+             */
+            context?: string;
+            /** @example v1.0 */
+            version: string;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /**
+             * @description Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+             * @example john.doe
+             */
+            readonly updatedBy?: string;
+            /** @example default-project */
+            projectId: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-11T10:00:00Z
+             */
+            readonly createdAt?: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-11T10:00:00Z
+             */
+            readonly updatedAt?: string;
+            /**
+             * @description True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+             * @example false
+             */
+            readonly readOnly?: boolean;
+            /**
+             * @description Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+             *     endpoint (no per-operation paths), so `upstream.main.url` is the single
+             *     GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+             *     the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+             */
+            upstream: components["schemas"]["Upstream"];
+            /**
+             * @description Kind of the API based on its communication protocol or architectural style
+             * @default GraphQLApi
+             * @example GraphQLApi
+             */
+            kind: string;
+            /**
+             * @description Declares how the schema is being supplied, so the server validates
+             *     against stated intent instead of guessing it from which fields happen
+             *     to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+             *     `file` requires the `sdlFile` multipart part (see
+             *     GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+             *     literal `upstream.main.url` and derives the schema by querying it.
+             *     Only the field matching the declared source may be present — a
+             *     mismatch (wrong field populated, nothing populated, more than one
+             *     populated) is a `400` (`VALIDATION_FAILED`), not a silent
+             *     fall-through to a different resolution path. Schema *resolution* is
+             *     separate and best-effort: a failure to actually resolve (bad SDL,
+             *     unreachable URL, introspection failing) never fails the request —
+             *     see `sdl` below.
+             * @default introspection
+             * @example introspection
+             * @enum {string}
+             */
+            schemaSource: "inline" | "url" | "file" | "introspection";
+            /**
+             * @description The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+             *     directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+             *     (`url`), or derived from `upstream.main.url` (`introspection`). Always
+             *     the *resolved* schema, never a document-supplied schema-location
+             *     reference. Optional in practice: if resolution fails, the API is still
+             *     created/updated and this is left empty (create) or unchanged from its
+             *     previous value (update) rather than the request failing — see
+             *     `schemaSource`.
+             * @example type Query {
+             *       countries: [Country]
+             *       country(code: ID!): Country
+             *     }
+             *     type Country {
+             *       code: String
+             *       name: String
+             *       capital: String
+             *     }
+             */
+            sdl?: string;
+            /**
+             * Format: uri
+             * @description A URL to a raw SDL document to fetch and use as `sdl` when
+             *     `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+             *     document can be supplied by reference for other artifact kinds (see
+             *     LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+             *     `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+             *     file, not a live introspection query against a GraphQL server, and is
+             *     fetched through the same shared SSRF-guarded HTTP client every other
+             *     operator/tenant-supplied fetch in this API uses, under the operator-
+             *     configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+             *     host is resolved and every candidate IP — including each redirect hop —
+             *     is checked at dial time, refusing link-local/metadata/unspecified/
+             *     multicast addresses while private and in-cluster addresses (a Kubernetes
+             *     ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+             *     or echoed back; only the fetched `sdl` text is persisted and returned.
+             * @example https://raw.githubusercontent.com/example/countries-api/main/schema.graphql
+             */
+            sdlUrl?: string;
+            /**
+             * @description How `sdl` was obtained. SDL = supplied directly in the create/update
+             *     request. ENDPOINT = derived by introspecting `upstream.main.url` at
+             *     creation time. Informational only — storage and downstream behavior are
+             *     identical either way.
+             * @example ENDPOINT
+             */
+            readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
+            /**
+             * @description List of policies to be applied on the API. Reused unmodified from
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
+             */
+            policies?: components["schemas"]["Policy"][];
+            /**
+             * @description List of subscription plan names enabled for this API.
+             * @example [
+             *       "Gold",
+             *       "Silver"
+             *     ]
+             */
+            subscriptionPlans?: string[];
+        };
+        /** GraphQL API detail (without sdl) */
+        GraphQLAPIDetail: {
+            /**
+             * @description Unique handle/identifier for the API.
+             * @example countries-graphql-api
+             */
+            id?: string;
+            /**
+             * @description Human-readable name for the API
+             * @example Countries GraphQL API
+             */
+            displayName: string;
+            /** @example Public GraphQL API for querying country/region reference data */
+            description?: string;
+            /**
+             * @description Base path for the single GraphQL endpoint. Optional: when omitted
+             *     (or blank) on create/update, the server derives one from the API's
+             *     handle and version (`/{handle}/{version}/graphql`) instead of
+             *     rejecting the request. Suggested (not enforced) convention when
+             *     supplied explicitly: end the path with `/graphql`, matching how
+             *     most standalone GraphQL servers name their single endpoint — this
+             *     is not validated.
+             * @example /countries/graphql
+             */
+            context?: string;
+            /** @example v1.0 */
+            version: string;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /** @example john.doe */
+            readonly updatedBy?: string;
+            /** @example default-project */
+            projectId: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-11T10:00:00Z
+             */
+            readonly createdAt?: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-11T10:00:00Z
+             */
+            readonly updatedAt?: string;
+            /**
+             * @description True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+             * @example false
+             */
+            readonly readOnly?: boolean;
+            /**
+             * @description Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+             *     endpoint (no per-operation paths), so `upstream.main.url` is the single
+             *     GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+             *     the endpoint introspected at creation time (see `introspectionMode` below).
+             */
+            upstream: components["schemas"]["Upstream"];
+            /**
+             * @description Kind of the API based on its communication protocol or architectural style
+             * @default GraphQLApi
+             * @example GraphQLApi
+             */
+            kind: string;
+            /**
+             * @description How the schema was obtained. SDL = supplied directly in the create/update
+             *     request. ENDPOINT = derived by introspecting `upstream.main.url` at
+             *     creation time. Informational only — storage and downstream behavior are
+             *     identical either way.
+             * @example ENDPOINT
+             */
+            readonly introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
+            /**
+             * @description The exact source the current schema was declared with on the create or
+             *     last successful update — a finer-grained sibling of `introspectionMode`,
+             *     which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+             *     Resupply this value on a subsequent `PUT` that isn't meant to change the
+             *     schema, together with material satisfying that same source (`sdl` for
+             *     `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+             *     since `upstream.main.url` already suffices) — omitting it, or resupplying
+             *     a source without its required field, is a structural `400`, not a no-op.
+             * @example introspection
+             * @enum {string}
+             */
+            readonly schemaSource?: "inline" | "url" | "file" | "introspection";
+            /**
+             * @description List of policies to be applied on the API. Reused unmodified from
+             *     REST APIs. A GraphQL API has no per-operation list to add an
+             *     explicit `OPTIONS` entry to the way a REST API does, so when a
+             *     `cors` policy is attached, the gateway synthesizes an OPTIONS
+             *     route for the same path itself, sharing this same policy chain —
+             *     this is what lets `cors` (and every other policy in this list, in
+             *     declared order) answer a browser's preflight request.
+             */
+            policies?: components["schemas"]["Policy"][];
+            /**
+             * @description List of subscription plan names enabled for this API.
+             * @example [
+             *       "Gold",
+             *       "Silver"
+             *     ]
+             */
+            subscriptionPlans?: string[];
+        };
+        /** GraphQL API SDL */
+        GraphQLAPISDLResponse: {
+            /**
+             * @description The GraphQL schema in SDL form, resolved at create/update time (either
+             *     supplied directly or derived via upstream introspection) — see
+             *     `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+             * @example type Query {
+             *       countries: [Country]
+             *       country(code: ID!): Country
+             *     }
+             *     type Country {
+             *       code: String
+             *       name: String
+             *       capital: String
+             *     }
+             */
+            sdl: string;
+        };
+        CreateGraphQLAPIRequest: components["schemas"]["GraphQLAPI"] & Record<string, never>;
+        /** GraphQL API object with SDL file upload */
+        GraphQLAPIMultipartRequest: {
+            /**
+             * @description JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+             *     GraphQLAPI fields for update, including `schemaSource`. When
+             *     `schemaSource` is `file`, the `sdlFile` part below is required and any
+             *     `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+             *     silent override — every schema-source variant is expressed
+             *     consistently through the `schemaSource` field rather than by which
+             *     part happens to be present.
+             * @example {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+             */
+            metadata: string;
+            /**
+             * Format: binary
+             * @description The GraphQL SDL document as a file upload (e.g. schema.graphql).
+             *     Required when `schemaSource` is `file`; must be omitted otherwise.
+             */
+            sdlFile?: string;
+        };
+        /** GraphQL API list item */
+        GraphQLAPIListItem: {
+            /** @example countries-graphql-api */
+            id?: string;
+            /** @example Countries GraphQL API */
+            displayName: string;
+            description?: string;
+            /** @example /countries/graphql */
+            context: string;
+            /** @example v1.0 */
+            version: string;
+            /** @example default-project */
+            projectId: string;
+            upstream?: components["schemas"]["Upstream"];
+            introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
+            /**
+             * @default GraphQLApi
+             * @example GraphQLApi
+             */
+            kind: string;
+            /** @example false */
+            readOnly?: boolean;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /** Format: date-time */
+            readonly createdAt?: string;
+            /** Format: date-time */
+            readonly updatedAt?: string;
+        };
+        GraphQLAPIListResponse: {
+            /** @example 1 */
+            count: number;
+            list: components["schemas"]["GraphQLAPIListItem"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** GraphQL schema validation request */
+        ValidateGraphQLSchemaRequest: {
+            /**
+             * @description Same semantics as `GraphQLAPI.schemaSource` — declares which of
+             *     `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+             *     supplies the schema to resolve.
+             * @default introspection
+             * @example introspection
+             * @enum {string}
+             */
+            schemaSource: "inline" | "url" | "file" | "introspection";
+            /** @description The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`). */
+            sdl?: string;
+            /**
+             * Format: uri
+             * @description A URL to fetch the SDL from, when `schemaSource` is `url`.
+             */
+            sdlUrl?: string;
+            /**
+             * @description Only relevant when `schemaSource` is `introspection` (explicit or
+             *     inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+             *     since a validation request for `inline`/`url`/`file` has no use
+             *     for it.
+             */
+            upstream?: components["schemas"]["Upstream"];
+        };
+        /** GraphQL schema validation request with SDL file upload */
+        ValidateGraphQLSchemaMultipartRequest: {
+            /**
+             * @description JSON-encoded ValidateGraphQLSchemaRequest.
+             * @example {"schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+             */
+            metadata: string;
+            /**
+             * Format: binary
+             * @description The GraphQL SDL document as a file upload. Required when
+             *     `schemaSource` is `file`; must be omitted otherwise.
+             */
+            sdlFile?: string;
+        };
+        /** GraphQL schema validation result */
+        ValidateGraphQLSchemaResponse: {
+            /**
+             * @description Whether the declared schemaSource actually resolved to a usable schema.
+             * @example true
+             */
+            resolved: boolean;
+            /** @description The resolved SDL text when `resolved` is `true`; empty otherwise. */
+            sdl: string;
+            /** @description Only set when `resolved` is `true`. */
+            introspectionMode?: components["schemas"]["GraphQLIntrospectionMode"];
+            /**
+             * @description A generic explanation, set only when `resolved` is `false`. Never
+             *     the specific parser/fetch/introspection failure reason — reuses
+             *     the same sterile message `GraphQLAPISchemaResolveFailed` uses
+             *     elsewhere (`error-handling.md`).
+             * @example The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
+             */
+            message?: string;
+            /**
+             * @description Set only when `resolved` is `false` and the failure was a parse
+             *     error on SDL text the caller effectively authored: `schemaSource`
+             *     `inline`/`file` always, and `url` once its fetch itself succeeded.
+             *     Unlike `message`, these are safe to show verbatim — they describe
+             *     the caller's own document, not a network outcome. Never set for a
+             *     `url` fetch failure or an `introspection` failure, since revealing
+             *     those could map internal topology (`error-handling.md`,
+             *     `ssrf-prevention.md`).
+             */
+            sdlErrors?: components["schemas"]["GraphQLSdlValidationIssue"][];
+        };
+        /** GraphQL SDL validation issue */
+        GraphQLSdlValidationIssue: {
+            /**
+             * @description The parser's own error message for this issue.
+             * @example Unexpected Name "this"
+             */
+            message: string;
+            /**
+             * @description 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 3
+             */
+            line?: number;
+            /**
+             * @description 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+             * @example 12
+             */
+            column?: number;
         };
         /**
          * @description Time unit for API key expiration duration
@@ -5520,10 +6369,26 @@ export interface components {
             vhost?: string;
             upstream: components["schemas"]["Upstream"];
             /**
-             * @description MCP specification version supported by this proxy
-             * @enum {string}
+             * @deprecated
+             * @description DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
              */
-            mcpSpecVersion?: "2025-06-18" | "2025-11-25";
+            mcpSpecVersion?: string;
+            /**
+             * @description MCP specification versions this proxy declares. Any MCP revision date is accepted.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            mcpSpecVersions?: string[];
+            /**
+             * @description MCP specification versions the upstream server reported when it was discovered by /mcp-proxies/fetch-server-info. A snapshot of what the server said, recorded for reference: it restricts nothing and is not sent to a gateway.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            upstreamMcpSpecVersions?: string[];
             /** @description List of policies to be applied */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -5589,8 +6454,19 @@ export interface components {
              * @enum {string}
              */
             status?: "pending" | "deployed" | "failed";
-            /** @example 2025-11-25 */
+            /**
+             * @deprecated
+             * @description DEPRECATED - use mcpSpecVersions.
+             * @example 2025-11-25
+             */
             mcpSpecVersion?: string;
+            /**
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            mcpSpecVersions?: string[];
             /**
              * Format: date-time
              * @example 2025-11-25T10:30:00Z
@@ -5643,6 +6519,16 @@ export interface components {
         } | unknown | unknown;
         MCPServerInfoFetchResponse: {
             serverInfo?: Record<string, never>;
+            /**
+             * @description MCP protocol versions the server reported. A modern server answers server/discover
+             *     with the full set; a legacy one yields the single version its initialize handshake
+             *     negotiated. Absent when neither could be determined.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            supportedVersions?: string[];
             tools?: Record<string, never>[];
             resources?: Record<string, never>[];
             prompts?: Record<string, never>[];
@@ -5865,7 +6751,7 @@ export interface components {
         /** API Portal detail */
         ApiPortalResponse: {
             /**
-             * @description Handle (URL-friendly slug) of the API Portal, primary identifier.
+             * @description URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
              * @example acme-portal
              */
             readonly id: string;
@@ -5874,11 +6760,6 @@ export interface components {
              * @example Acme Developer Portal
              */
             name: string;
-            /**
-             * @description URL-friendly slug. Immutable after creation. Equal to `id`.
-             * @example acme-portal
-             */
-            readonly handle: string;
             description?: string | null;
             /**
              * Format: uri
@@ -5903,17 +6784,20 @@ export interface components {
          * @description Lightweight projection returned in collection responses (excludes the metadata blob).
          */
         ApiPortalListItem: {
-            /** @example acme-portal */
+            /**
+             * @description URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
+             * @example acme-portal
+             */
             id: string;
             /** @example Acme Developer Portal */
             name: string;
-            /** @example acme-portal */
-            handle: string;
             description?: string | null;
             /** Format: uri */
             url: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: date-time */
+            updatedAt?: string | null;
         };
         /** Create API Portal request */
         CreateApiPortalRequest: {
@@ -6050,7 +6934,7 @@ export interface components {
              */
             readonly updatedBy?: string;
             /**
-             * @description True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+             * @description True if the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane. False for control-plane created Agent proxies.
              * @example false
              */
             readonly readOnly?: boolean;
@@ -6316,7 +7200,7 @@ export interface components {
             /** @example john.doe */
             readonly updatedBy?: string;
             /**
-             * @description True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+             * @description True when the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane.
              * @example false
              */
             readonly readOnly?: boolean;
@@ -8312,6 +9196,595 @@ export interface operations {
             409: components["responses"]["PublicationConflict"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    ListGraphQLAPIs: {
+        parameters: {
+            query: {
+                /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned. */
+                projectId: components["parameters"]["projectId-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description GraphQL APIs retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLAPIListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description GraphQL API object that needs to be added, as `multipart/form-data` — see
+         *     GraphQLAPIMultipartRequest. This is the only accepted content type, even
+         *     when `schemaSource` is `inline`, `url`, or `introspection` and no file is
+         *     being uploaded, so that every schema-source variant is expressed the
+         *     same way.
+         */
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["GraphQLAPIMultipartRequest"];
+            };
+        };
+        responses: {
+            /** @description GraphQL API created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLAPI"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description GraphQL API retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLAPIDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * @description As `multipart/form-data` only — see GraphQLAPIMultipartRequest and the
+         *     note on `POST /graphql-apis`.
+         */
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["GraphQLAPIMultipartRequest"];
+            };
+        };
+        responses: {
+            /** @description GraphQL API updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLAPI"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description GraphQL API deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetGraphQLAPISDL: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SDL retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphQLAPISDLResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    ValidateGraphQLSchema: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description As `multipart/form-data` only, following the same convention as
+         *     `POST /graphql-apis` — see `GraphQLAPIMultipartRequest`.
+         */
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ValidateGraphQLSchemaMultipartRequest"];
+            };
+        };
+        responses: {
+            /** @description Schema resolution attempted — see `resolved` for the outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateGraphQLSchemaResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetGraphQLAPIGateways: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of gateways associated with the API, including deployment details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPIGatewayListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    AddGatewaysToGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        /** @description List of gateways to associate with the API */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AddGatewayToRESTAPIRequest"][];
+            };
+        };
+        responses: {
+            /** @description List of all gateways associated with the API, including deployment details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPIGatewayListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateGraphQLAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        /** @description API key creation request */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAPIKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description API key created successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAPIKeyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["GatewayConnectionUnavailable"];
+        };
+    };
+    UpdateGraphQLAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /**
+                 * @description The unique name/identifier of the API key
+                 * @example my-api-key
+                 */
+                apiKeyId: string;
+            };
+            cookie?: never;
+        };
+        /** @description API key update request */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAPIKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description API key updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateAPIKeyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["GatewayConnectionUnavailable"];
+        };
+    };
+    RevokeGraphQLAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /**
+                 * @description The unique name/identifier of the API key to revoke
+                 * @example my-api-key
+                 */
+                apiKeyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API key revoked successfully (no content) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["GatewayConnectionUnavailable"];
+        };
+    };
+    GetGraphQLAPIDeployments: {
+        parameters: {
+            query?: {
+                /** @description **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by. */
+                gatewayId?: components["parameters"]["gatewayId-Q"];
+                /** @description Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED) */
+                status?: components["parameters"]["deploymentStatus-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployments retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeployGraphQLAPI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Deployment request with gateway ID, base reference, and metadata */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployRequest"];
+            };
+        };
+        responses: {
+            /** @description GraphQL API deployed successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetGraphQLAPIDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteGraphQLAPIDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /** @description The UUID of the deployment */
+                deploymentId: components["parameters"]["deploymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deployment deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["DeploymentActiveConflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UndeployGraphQLAPIDeployment: {
+        parameters: {
+            query: {
+                /** @description Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway) */
+                gatewayId: string;
+            };
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /** @description UUID of the deployment to undeploy */
+                deploymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    RestoreGraphQLAPIDeployment: {
+        parameters: {
+            query: {
+                /** @description Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway) */
+                gatewayId: string;
+            };
+            header?: never;
+            path: {
+                /** @description **GraphQL API ID** consisting of the **handle** (unique identifier) of the API. */
+                graphqlApiId: string;
+                /** @description UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED) */
+                deploymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     listLLMProviderTemplates: {
@@ -10688,6 +12161,127 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    listAgentProxyBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     listAgentProxyAPIKeys: {
         parameters: {
             query?: {
@@ -10809,7 +12403,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description API key revoked successfully (no content) */
+            /** @description API key deleted successfully (no content) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10820,7 +12414,6 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
-            503: components["responses"]["GatewayConnectionUnavailable"];
         };
     };
     ListGateways: {
@@ -12080,7 +13673,7 @@ export interface operations {
                  *     If omitted, all types are returned.
                  * @example LlmProxy,LlmProvider
                  */
-                type?: ("RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy")[];
+                type?: ("RestApi" | "LlmProvider" | "LlmProxy" | "AgentProxy" | "GraphQLApi")[];
                 /** @description Maximum number of items to return per page. */
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
