@@ -45,9 +45,9 @@ import { routes } from '@/routes/paths';
 import { isValidUrl } from '../../apis/utils/developEdit';
 import { GraphqlSchemaExplorer } from '../../apis/create/components/graphql/GraphqlSchemaExplorer';
 import { DeployedGatewaysPanel } from '../../apis/overview/DeployedGatewaysPanel';
+import { ApiKeysPanel } from '../../apis/overview/ApiKeysPanel';
 import { InvokeUrlPanel } from '../../apis/overview/InvokeUrlPanel';
 import { resuppliedSchemaSource } from '../utils/graphqlApiMetadataUpdate';
-import { GraphqlApiKeysPanel } from './GraphqlApiKeysPanel';
 
 const messages = defineMessages({
   schemaTitle: {
@@ -57,7 +57,8 @@ const messages = defineMessages({
   endpointTitle: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
     defaultMessage: 'Endpoint',
-    description: 'Label above the URL that requests from this console are sent to. Shown in capitals by the layout, so translate it as ordinary words.',
+    description:
+      'Label above the URL that requests from this console are sent to. Shown in capitals by the layout, so translate it as ordinary words.',
   },
   endpointNotConfigured: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured',
@@ -323,10 +324,10 @@ const EndpointPanel = ({ api, sdl }: { api: GraphQLApiDetail; sdl?: string }) =>
  * Overview tab for a GraphQL API: schema explorer on the left, connectivity
  * details on the right — mirrors `apis/overview/OverviewTab.tsx`'s layout,
  * swapping the REST-only resources panel for the schema explorer already
- * built for the creation wizard, and API keys for `GraphqlApiKeysPanel` (its
- * create-key flow is genuinely different from REST's, see that file).
- * `InvokeUrlPanel` and `DeployedGatewaysPanel` are reused unmodified — both
- * are generic over their own props/a route builder, not REST-specific.
+ * built for the creation wizard. `ApiKeysPanel` is shared with REST and pointed
+ * at this API's own key endpoints via `apiKind="graphql"`; `InvokeUrlPanel` and
+ * `DeployedGatewaysPanel` are reused unmodified — both are generic over their
+ * own props/a route builder, not REST-specific.
  */
 export function GraphqlOverviewTab({
   api,
@@ -359,9 +360,13 @@ export function GraphqlOverviewTab({
             <>
               <Card sx={{ p: 2 }}>
                 <Stack spacing={2}>
-                  <InvokeUrlPanel context={api.context} gateways={deployedGateways} version={api.version} />
+                  <InvokeUrlPanel
+                    context={api.context}
+                    gateways={deployedGateways}
+                    version={api.version}
+                  />
                   <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
-                    <GraphqlApiKeysPanel graphqlApiId={api.id ?? ''} />
+                    <ApiKeysPanel apiId={api.id ?? ''} apiKind="graphql" />
                   </Box>
                 </Stack>
               </Card>
