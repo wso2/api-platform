@@ -79,7 +79,7 @@ Ordered the way a reader should explore. Every `sources` entry appears here. Row
 | HTTP | `<component>/internal/handler/<file>.go` | <what this layer owns> |
 | Logic | `<component>/internal/service/<file>.go` | <what this layer owns> |
 | Storage | `<component>/internal/repository/<file>.go` | <what this layer owns> |
-| Schema | `<component>/internal/database/schema.*.sql` | <table> |
+| Schema | `<component>/internal/database/schema.sqlite.sql` | <table> (other dialects change with it) |
 | Config | `<component>/config/config.go` | <key> |
 | Tests | `<component>/internal/handler/<file>_test.go` | Executable specification of the behaviour |
 

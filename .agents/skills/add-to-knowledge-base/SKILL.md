@@ -1,6 +1,6 @@
 ---
 name: add-to-knowledge-base
-description: Add or update a living feature document in the repository knowledge base under kb/. Use when someone asks to "add to knowledge base", "add-to-knowledge-base", "document this feature in kb", "create a kb entry", or "write the feature doc for <feature>". Produces one Open Knowledge Format (OKF) concept file per feature, shaped for product managers and developers at once, with a sources list that the docs-sync check enforces against code changes.
+description: Add or update a living feature document in the repository knowledge base under kb/. Use when someone asks to "add to knowledge base", "add-to-knowledge-base", "document this feature in kb", "create a kb entry", or "write the feature doc for <feature>". Produces one Open Knowledge Format (OKF) concept file per feature, shaped for product managers and developers at once, with a sources list that ties the document to the code it describes.
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Skill
 ---
 
@@ -18,7 +18,7 @@ Prerequisite: the `okf-open-knowledge-format` skill is not committed. If it is m
 
 3. **Apply the template.** Replace the body with [TEMPLATE.md](TEMPLATE.md), filled in. Keep exactly its sections and order. Do not add sections. If a section has nothing to say, write "None" under it rather than deleting it, so a reader can tell "considered" from "forgotten".
 
-4. **Finish.** Add the file to `kb/<component>/index.md` with its description, add a dated entry to `kb/log.md` (newest first), re-run the OKF validation, and run `scripts/check-feature-docs.sh` if the branch has code changes. Report which `sources` paths do not exist yet.
+4. **Finish.** Add the file to `kb/<component>/index.md` with its description, add a dated entry to `kb/log.md` (newest first), re-run the OKF validation. Report which `sources` paths do not exist yet.
 
 ## Rules
 
@@ -29,7 +29,7 @@ These override anything the OKF skill or the template example suggests.
 3. **Two audiences, one file.** The body is a shared header, then a Product view, then a Developer view. Nothing in the Product view names a file. Nothing in the Developer view re-explains a use case. Decisions are written in user terms ("uploading never changes how traffic is routed"), not implementation terms.
 4. **Decisions versus open questions.** A choice that was made goes in Decisions with its reason. A choice not yet made goes in Open questions with options, owner and needed-by. When a question is answered, move it.
 5. **Limitations are rows with tracking.** Each row links an issue or says "Not yet filed". Delete the row when fixed. Never leave a stale row.
-6. **`sources` lists what the feature owns.** `scripts/check-feature-docs.sh` fails a PR that changes a listed path without updating the document, so every entry must be a file or directory whose change would plausibly invalidate the document. Include:
+6. **`sources` lists what the feature owns.** Anyone changing a listed path is expected to update the document (see `.claude/rules/feature-docs.md`), so every entry must be a file or directory whose change would plausibly invalidate the document. Include:
    - files and directories created for the feature;
    - a shared file only when it implements a behaviour stated in Decisions (for example, the file that holds the resolution order or the fixed error body).
 
