@@ -140,6 +140,9 @@ blocks:
       - name: mcp-proxy
         features:
           - features/mcp_proxy.feature
+      - name: agent-proxy
+        features:
+          - features/agent_proxy.feature
       - name: mcp-secrets
         features:
           - features/mcp_secret_management.feature
