@@ -139,7 +139,7 @@ func TestPrepareAnalyticEvent_NoCorrelationStore(t *testing.T) {
 
 // TestPrepareAnalyticEvent_NoXRequestID covers a request whose ext_proc side
 // never saw an x-request-id header at all: buildRequestContexts falls back to a
-// generated uuid there, which writeCorrelationEntry (internal/kernel/extproc.go)
+// generated uuid there, which correlatesInProcess (internal/kernel/analytics.go)
 // never writes to the store under -- so the ALS side must never get a spurious
 // hit either. Here that's modeled directly: the access-log entry itself carries
 // no RequestId (empty string), which lookupCorrelationPayload must treat as an
@@ -151,7 +151,7 @@ func TestPrepareAnalyticEvent_NoXRequestID(t *testing.T) {
 	store := correlation.NewStore(100, time.Minute, 4)
 	// Simulate a store that (incorrectly, hypothetically) held an entry under the
 	// empty key -- lookupCorrelationPayload must still refuse to match it, since
-	// Put() itself never allows this in production (see writeCorrelationEntry's
+	// Merge itself never allows this in production (see correlatesInProcess's
 	// requestIDFromHeader gate).
 	store.Put("", correlation.Payload{RequestHeaders: map[string]string{"host": "should-never-be-used"}})
 	a.SetCorrelationStore(store)

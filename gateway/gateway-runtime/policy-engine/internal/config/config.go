@@ -131,36 +131,32 @@ type AnalyticsConfig struct {
 	SendResponseBody bool `koanf:"send_response_body"`
 	// Correlation tunes the in-process ext_proc→ALS correlation store (see
 	// internal/analytics/correlation) that carries captured request/response headers
-	// directly from the ext_proc handler to the ALS handler, keyed by Envoy's
-	// x-request-id, instead of round-tripping them through Envoy dynamic metadata and
-	// the ALS filter_metadata echo. Only consulted while the collector is active
+	// and bodies directly from the ext_proc handler to the ALS handler, keyed by
+	// Envoy's x-request-id, instead of round-tripping them through Envoy dynamic
+	// metadata and the ALS filter_metadata echo. Only consulted while the collector is active
 	// (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
 	Correlation CorrelationStoreConfig `koanf:"correlation"`
 }
 
-// CorrelationStoreConfig tunes the in-process, sharded, TTL-evicting store the
-// ext_proc handler writes captured headers into at stream teardown, and the ALS
-// handler reads at access-log-entry time -- the "Step 4" fix for the round trip
-// previously required to carry headers through Envoy: JSON-encode in the analytics
-// system policy -> structpb -> ext_proc dynamic metadata -> Envoy filter_metadata
-// echo -> protobuf decode -> JSON-decode again on the ALS side. A miss (never
-// written, evicted, or TTL-expired) is not an error: the ALS handler falls back to
-// whatever the access-log entry itself carries, so a log line is never dropped —
-// only headers are potentially degraded to "unavailable" on that one line.
+// CorrelationStoreConfig tunes the in-process, sharded store the ext_proc handler
+// writes captured headers and bodies into as each phase's response is built, and
+// the ALS handler reads at access-log-entry time, replacing their round trip
+// through Envoy dynamic metadata. A field is left out of metadata only once the
+// store has accepted it, and unread entries are never evicted, so sizing these
+// limits trades memory against how often fields fall back to metadata -- not
+// against losing them.
 type CorrelationStoreConfig struct {
-	// Capacity bounds the number of in-flight entries held across all shards
-	// combined. Size it comfortably above the number of requests that can be
-	// in-flight between ext_proc stream teardown and their ALS entry being
-	// processed (see TTL) -- once a shard is full, its oldest entry is evicted to
-	// make room (FIFO), never blocked or grown unbounded.
+	// Capacity bounds the number of entries held across all shards combined: one
+	// per request from its first captured field until the ALS handler reads it.
+	// When a shard has no free slot, new requests keep their captured fields in
+	// Envoy metadata instead.
 	Capacity int `koanf:"capacity"`
-	// TTL bounds how long a written entry is honored before being treated as
-	// expired (a miss), independent of capacity-driven eviction. Envoy flushes
-	// access logs to the policy-engine's ALS receiver on a 1s/16KiB buffer
-	// (collector.server's Envoy-sender-only buffer_flush_interval/
-	// buffer_size_bytes), so the read normally follows the write by about a
-	// second; the default here is 4x that flush interval to comfortably absorb
-	// scheduling jitter and batching without holding entries indefinitely.
+	// TTL is how long an entry whose request has finished waits for its
+	// access-log entry before its slot may be reclaimed for a new request. It only
+	// matters for entries that are never read -- e.g. paths filtered by
+	// collector.ignore_path_prefixes -- since the ALS handler normally reads an
+	// entry about a second after the request ends (Envoy's 1s/16KiB access-log
+	// buffer). Entries of in-flight requests are never reclaimed.
 	TTL time.Duration `koanf:"ttl"`
 	// Shards is the number of independently-locked partitions the store is split
 	// into, selected by hashing the request id. A single mutex would itself become
@@ -177,10 +173,8 @@ type CorrelationStoreConfig struct {
 	// configured for. 0 disables body storage.
 	MaxPayloadBytes int `koanf:"max_payload_bytes"`
 	// MaxBodyBytes bounds the body bytes held across all shards combined. Bodies are
-	// removed as soon as their access-log entry is processed; this budget only
-	// matters for entries that are never read back (e.g. paths filtered by
-	// collector.ignore_path_prefixes), where the oldest are evicted first. 0
-	// disables body storage.
+	// removed as soon as their access-log entry is processed; a body that does not
+	// fit stays in Envoy metadata. 0 disables body storage.
 	MaxBodyBytes int64 `koanf:"max_body_bytes"`
 }
 
@@ -1189,7 +1183,7 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 	return CorrelationStoreConfig{
 		Capacity:        20000,
-		TTL:             4 * time.Second,
+		TTL:             30 * time.Second,
 		Shards:          32,
 		MaxPayloadBytes: 256 << 10,
 		MaxBodyBytes:    16 << 20,

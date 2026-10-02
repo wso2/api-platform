@@ -75,10 +75,10 @@ type ExternalProcessorServer struct {
 	maxRequestDecompressedBytes  int64
 	maxResponseDecompressedBytes int64
 
-	// correlationStore carries captured request/response headers from this
-	// stream's teardown to the ALS handler, keyed by x-request-id, instead of
-	// round-tripping them through Envoy dynamic metadata (see
-	// writeCorrelationEntry and internal/analytics/correlation's package doc).
+	// correlationStore carries captured request/response headers and bodies to
+	// the ALS handler, keyed by x-request-id, instead of round-tripping them
+	// through Envoy dynamic metadata (see storeInProcess and
+	// internal/analytics/correlation's package doc).
 	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
 	// will ever read the store in that case, so nothing writes to it either.
 	correlationStore *correlation.Store
@@ -90,7 +90,7 @@ type ExternalProcessorServer struct {
 // nothing on the request path looks one up by name. A route that could not be prepared
 // never reaches the kernel.
 //
-// corrStore may be nil (collector disabled): writeCorrelationEntry is a no-op in that case.
+// corrStore may be nil (collector disabled): captured data then stays in Envoy metadata.
 func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64, corrStore *correlation.Store) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
@@ -212,12 +212,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// without an execCtx stamp parentSpan inline instead.
 	// Registered first (and so, by LIFO defer order, run LAST -- after the span
 	// has ended and the terminal outcome has been recorded) since it has nothing
-	// to do with tracing: it hands captured headers to the correlation store so
-	// the ALS handler can pick them up by request id instead of decoding them
-	// back out of Envoy's access-log echo. See writeCorrelationEntry.
+	// to do with tracing: it marks the request's correlation-store entry complete.
+	// See completeCorrelationEntry.
 	defer func() {
 		if execCtx != nil {
-			s.writeCorrelationEntry(execCtx)
+			s.completeCorrelationEntry(execCtx)
 		}
 	}()
 	defer func() {
@@ -294,46 +293,21 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	}
 }
 
-// writeCorrelationEntry hands execCtx's captured headers to the correlation store
-// at ext_proc stream teardown, so the ALS handler can look them up by request id
-// instead of decoding them back out of Envoy's access-log echo (see
-// internal/analytics/correlation's package doc for the full reasoning).
+// completeCorrelationEntry tells the correlation store that execCtx's request is
+// finished on the ext_proc side. Captured fields were already merged into the store
+// as each phase's response was built (see storeInProcess); completing the entry
+// only makes it eligible for reclaim if its access-log entry never arrives.
 //
 // Called from a defer registered before every other per-stream teardown defer in
-// Process, so it runs on EVERY terminal path out of that function: normal EOF,
-// a receive/send error, and a policy denial (which still leaves execCtx and its
-// accumulated analyticsMetadata intact -- TranslateRequestHeaderActions and its
-// siblings merge a short-circuiting policy's own AnalyticsMetadata into
-// execCtx.analyticsMetadata exactly like a pass-through policy's, see
-// translator.go). A stream that failed before the first message ever arrived
-// (execCtx still nil) has nothing to write, which the defer's own nil check
-// already skips.
-func (s *ExternalProcessorServer) writeCorrelationEntry(execCtx *PolicyExecutionContext) {
-	if s.correlationStore == nil {
-		// Collector disabled: nothing will ever read the store, so recording a
-		// metric here would just be noise on every single request.
+// Process, so it runs on every terminal path out of that function. Requests that
+// never used the store (no store, no x-request-id, or the LLM proxy's loopback hop,
+// which may share the outer call's id) are skipped, so a loopback hop can never
+// mark the outer call's entry complete while that call is still in flight.
+func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
+	if !correlatesInProcess(execCtx, nil) {
 		return
 	}
-
-	if !execCtx.requestIDFromHeader {
-		// No x-request-id on the downstream request: execCtx.requestID is a
-		// locally generated uuid the ALS side can never look up (it keys on
-		// Envoy's Request.RequestId, which mirrors the same header -- see
-		// prepareAnalyticEvent). Writing it would only waste a store slot.
-		metrics.CorrelationStoreWritesTotal.WithLabelValues("skipped_no_request_id").Inc()
-		return
-	}
-
-	payload := snapshotCorrelationPayload(execCtx)
-	if payload.IsEmpty() {
-		// Header capture wasn't enabled (or no policy contributed anything) for
-		// this request -- nothing worth correlating.
-		metrics.CorrelationStoreWritesTotal.WithLabelValues("skipped_empty").Inc()
-		return
-	}
-
-	s.correlationStore.Put(execCtx.requestID, payload)
-	metrics.CorrelationStoreWritesTotal.WithLabelValues("stored").Inc()
+	s.correlationStore.Complete(execCtx.requestID)
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler

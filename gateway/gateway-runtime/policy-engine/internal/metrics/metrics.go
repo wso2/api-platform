@@ -465,16 +465,16 @@ func initMetrics() {
 	)
 
 	// Correlation-store metrics (internal/analytics/correlation): the in-process
-	// ext_proc->ALS handoff for captured headers, keyed by request id, that replaces
-	// the previous Envoy dynamic-metadata round trip. A miss never drops a log line
-	// (the ALS handler falls back to whatever the access-log entry itself carries),
-	// so these exist to make that degraded path visible rather than silent.
+	// ext_proc->ALS handoff for captured headers and bodies, keyed by request id,
+	// that replaces their Envoy dynamic-metadata round trip. A rejected write keeps
+	// that field in metadata, so rejected_* results show how often the store is
+	// too small rather than any data loss.
 	CorrelationStoreWritesTotal = newCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "correlation_store_writes_total",
-			Help: "Total number of ext_proc correlation-store write attempts, by result " +
-				"(stored, skipped_no_request_id, skipped_disabled, skipped_empty)",
+			Help: "Total number of captured fields offered to the correlation store, by result " +
+				"(stored; rejected_full or rejected_budget, which keep the field in Envoy metadata)",
 		},
 		[]string{"result"},
 	)
@@ -492,7 +492,7 @@ func initMetrics() {
 		prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "correlation_store_evictions_total",
-			Help:      "Total number of correlation-store entries evicted to make room for a new write before their TTL expired",
+			Help:      "Total number of unread correlation-store entries reclaimed after their request finished more than the TTL ago",
 		},
 	)
 }
