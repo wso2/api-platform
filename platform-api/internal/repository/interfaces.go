@@ -524,6 +524,7 @@ type DocumentRepository interface {
 	UpdateDocument(doc *model.Document, updateContent bool) error
 	DeleteDocument(artifactUUID, handle, orgUUID string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
+	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
 	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
 	// scoped to one artifact (api_documents' real unique index is
 	// (artifact_uuid, handle) — a handle is only guaranteed unique per

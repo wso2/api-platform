@@ -38,7 +38,7 @@ import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useFormatters } from '@/i18n/useFormatters';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { documentTypeLabel } from '../../develop/documents/documentTypes';
+import { documentTypeName } from '../../develop/documents/documentTypes';
 import { documentsSearch } from '../../develop/documents/documentsSearch';
 
 const messages = defineMessages({
@@ -144,7 +144,7 @@ export function DocumentsPanel() {
                       sx={{ minWidth: 0 }}
                     />
                     <Chip
-                      label={intl.formatMessage(documentTypeLabel(document.type))}
+                      label={documentTypeName(intl, document.type)}
                       size="small"
                       sx={{ flexShrink: 0, typography: 'caption' }}
                     />

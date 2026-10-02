@@ -4014,7 +4014,11 @@ export interface components {
              * @example payment-webhook-howto
              */
             id: string;
-            type: components["schemas"]["APIDocumentType"];
+            /**
+             * @description Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+             * @example HOW_TO
+             */
+            type: string;
             /** @example Payment Webhook How-To */
             displayName: string;
             /**
@@ -4048,18 +4052,26 @@ export interface components {
         /**
          * @description Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
          *     `displayName` are required; exactly one of `file` or `inlineContent`
-         *     must carry the body. `handle` is optional — the server generates one
+         *     must carry the body. `id` is optional — the server generates one
          *     from `displayName` when omitted.
          */
         APIDocumentCreateRequest: {
             type: components["schemas"]["APIDocumentType"];
+            /**
+             * @description Free-form qualifier used when `type` is `OTHER`. Stored and returned
+             *     exactly as typed (no case conversion). Ignored for all other types.
+             *     Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
+             *     type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
+             * @example FAQ
+             */
+            otherTypeName?: string;
             /** @example Payment Webhook How-To */
             displayName: string;
             /**
              * @description Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
              * @example payment-webhook-howto
              */
-            handle?: string;
+            id?: string;
             /**
              * Format: binary
              * @description Uploaded document bytes. Mutually exclusive with `inlineContent`.
@@ -4080,7 +4092,6 @@ export interface components {
          *     update — the stored bytes are not touched.
          */
         APIDocumentUpdateRequest: {
-            type?: components["schemas"]["APIDocumentType"];
             /** @example Payment Webhook How-To (v2) */
             displayName?: string;
             /**

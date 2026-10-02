@@ -35,7 +35,7 @@ import { useFormatters } from '@/i18n/useFormatters';
 import { Can } from '@/permissions';
 import { isErrorCode } from '@/api/core/errors';
 import { isTextContent } from './documentContent';
-import { documentTypeLabel } from './documentTypes';
+import { documentTypeName } from './documentTypes';
 
 const messages = defineMessages({
   loading: {
@@ -167,7 +167,7 @@ export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: Document
           <Box>
             <Chip
               color="primary"
-              label={intl.formatMessage(documentTypeLabel(document.type))}
+              label={documentTypeName(intl, document.type)}
               size="small"
               variant="outlined"
             />

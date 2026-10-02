@@ -18,6 +18,7 @@
 package service
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -124,9 +125,17 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 	return doc.Handle, nil
 }
 
+// resolveStoredDocType computes the value to persist in the type column.
+// For OTHER it stores the otherTypeName value directly (e.g. "FAQ"), so the
+// OTHER_ prefix never appears in the database. Fixed types are stored as-is.
+func resolveStoredDocType(docType, otherTypeName string) string {
+	if docType != constants.DocumentTypeOther {
+		return docType
+	}
+	return strings.TrimSpace(otherTypeName)
+}
+
 // CreateApiDocument creates a user-authored document attached to an artifact.
-// Validates the caller-supplied type against ValidAPIDocumentUserTypes
-// (so reserved types cannot be reached through this path entry)
 func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest, orgID, userID, artifactUUID string) (string, error) {
 	if req == nil {
 		return "", apperror.ValidationFailed.New("document request is required")
@@ -137,8 +146,26 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	if !constants.ValidAPIDocumentUserTypes[req.Type] {
 		return "", apperror.ValidationFailed.New("invalid document type")
 	}
+	if req.Type == constants.DocumentTypeOther {
+		trimmed := strings.TrimSpace(req.OtherTypeName)
+		if trimmed == "" {
+			return "", apperror.ValidationFailed.New("otherTypeName is required when type is OTHER")
+		}
+		if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+			return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+		}
+	}
+	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
 	if strings.TrimSpace(req.DisplayName) == "" {
 		return "", apperror.ValidationFailed.New("displayName is required")
+	}
+	nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, req.DisplayName, "")
+	if nameErr != nil {
+		s.slogger.Error("Failed to check document display name existence", "artifactUUID", artifactUUID, "error", nameErr)
+		return "", apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
+	}
+	if nameExists {
+		return "", apperror.Conflict.New().WithLogMessage("document display name already exists for artifact")
 	}
 	if req.Handle != "" {
 		exists, existsErr := s.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, req.Handle)
@@ -241,6 +268,9 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 	}
 
 	if err := s.documentRepo.DeleteDocument(artifactUUID, handle, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return apperror.NotFound.New()
+		}
 		s.slogger.Error("Failed to delete document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return err
 	}
@@ -256,12 +286,6 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType string, limit, offset int) ([]*model.Document, int, error) {
 	if artifactUUID == "" {
 		return nil, 0, apperror.ValidationFailed.New("artifact UUID is required")
-	}
-	// if docType is supplied, it must be a valid non reserved doc type
-	if docType != "" {
-		if !constants.ValidAPIDocumentUserTypes[docType] {
-			return []*model.Document{}, 0, nil
-		}
 	}
 
 	docs, total, err := s.documentRepo.ListDocumentsByArtifact(artifactUUID, orgID, docType, limit, offset)
@@ -328,33 +352,35 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		return apperror.NotFound.New()
 	}
 
-	merged := *existing
-	merged.UpdatedBy = userID
-	if req.Type != nil {
-		if !constants.ValidAPIDocumentUserTypes[*req.Type] {
-			return apperror.ValidationFailed.New("invalid document type")
-		}
-		merged.Type = *req.Type
-	}
+	updatedDocument := *existing
+	updatedDocument.UpdatedBy = userID
 	if req.DisplayName != nil {
 		trimmed := strings.TrimSpace(*req.DisplayName)
 		if trimmed == "" {
 			return apperror.ValidationFailed.New("displayName must not be empty")
 		}
-		merged.DisplayName = trimmed
+		nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, trimmed, handle)
+		if nameErr != nil {
+			s.slogger.Error("Failed to check document display name existence", "artifactUUID", artifactUUID, "error", nameErr)
+			return apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
+		}
+		if nameExists {
+			return apperror.Conflict.New().WithLogMessage("document display name already exists for artifact")
+		}
+		updatedDocument.DisplayName = trimmed
 	}
 	if req.FileName != nil {
-		merged.FileName = *req.FileName
+		updatedDocument.FileName = *req.FileName
 	}
 	updateContent := req.Content != nil
 	if updateContent {
-		merged.Content = req.Content
+		updatedDocument.Content = req.Content
 		if req.ContentType != nil {
-			merged.ContentType = *req.ContentType
+			updatedDocument.ContentType = *req.ContentType
 		}
 	}
 
-	if err := s.documentRepo.UpdateDocument(&merged, updateContent); err != nil {
+	if err := s.documentRepo.UpdateDocument(&updatedDocument, updateContent); err != nil {
 		s.slogger.Error("Failed to update document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return err
 	}

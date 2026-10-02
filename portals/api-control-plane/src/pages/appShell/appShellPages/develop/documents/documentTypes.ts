@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { defineMessages, type MessageDescriptor } from 'react-intl';
+import { defineMessages, type IntlShape, type MessageDescriptor } from 'react-intl';
 
 import type { ApiDocumentType } from '@/api/resources/apiDocuments';
 
@@ -74,3 +74,44 @@ export const documentTypeLabel = (type: string): MessageDescriptor =>
   LABELS[type as ApiDocumentType] ?? messages.other;
 
 export const DEFAULT_DOCUMENT_TYPE: ApiDocumentType = 'HOW_TO';
+
+/* -------------------------------------------------------------------------- */
+/* Custom "Other" types                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `api_documents.type` is VARCHAR(20). Custom types are stored as the bare
+ * name the user typed, so the full column width is available.
+ */
+export const MAX_CUSTOM_TYPE_LENGTH = 20;
+
+/** Letters, digits, spaces, hyphens and underscores. */
+const CUSTOM_TYPE_PATTERN = /^[\p{L}\p{N} _-]+$/u;
+
+export type CustomTypeError = 'required' | 'tooLong' | 'invalid';
+
+/** Why a custom type name can't be saved, or `undefined` when it can. */
+export const validateCustomType = (name: string): CustomTypeError | undefined => {
+  const trimmed = name.trim();
+  if (!trimmed) return 'required';
+  if (!CUSTOM_TYPE_PATTERN.test(trimmed)) return 'invalid';
+  if (trimmed.length > MAX_CUSTOM_TYPE_LENGTH) return 'tooLong';
+  return undefined;
+};
+
+const FIXED_TYPES_SET = new Set<string>(DOCUMENT_TYPES);
+
+/**
+ * Whether a stored type is a custom one. The server stores a custom type as the
+ * bare name the user typed ("FAQ"), so anything outside the fixed set is custom.
+ */
+export const isCustomDocumentType = (type: string): boolean => !FIXED_TYPES_SET.has(type);
+
+/**
+ * What to call a document's type on screen: the translated label of a fixed
+ * type, or a custom type's own name exactly as stored.
+ */
+export const documentTypeName = (intl: IntlShape, type: string): string =>
+  isCustomDocumentType(type) && type
+    ? type
+    : intl.formatMessage(documentTypeLabel(type));

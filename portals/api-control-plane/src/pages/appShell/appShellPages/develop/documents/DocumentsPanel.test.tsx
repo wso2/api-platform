@@ -25,7 +25,7 @@ import { resetHttpClient } from '@/api/core/http';
 import type { ApiDocument, ApiDocumentMetadata } from '@/api/resources/apiDocuments';
 import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
-import { apiUrl, collection, recorder, type Recorder } from '@/test/msw';
+import { apiUrl, listEnvelope, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { DocumentsPanel } from './DocumentsPanel';
@@ -66,7 +66,20 @@ const notFound = () =>
  */
 function serve(documents: DocumentFixture[]) {
   server.use(
-    collection(COLLECTION, documents.map(metadata), { record: requests }),
+    // Read on every request, so documents a test adds later (a create) appear in the list.
+    http.get(apiUrl(COLLECTION), async ({ request }) => {
+      await requests.capture(request);
+      const params = new URL(request.url).searchParams;
+      const offset = Number(params.get('offset') ?? 0);
+      const limit = Number(params.get('limit') ?? 20);
+      return HttpResponse.json(
+        listEnvelope(documents.slice(offset, offset + limit).map(metadata), {
+          limit,
+          offset,
+          total: documents.length,
+        })
+      );
+    }),
     http.get(apiUrl(`${COLLECTION}/:docId/content`), ({ params }) => {
       const document = documents.find((candidate) => candidate.id === params.docId);
       return document
@@ -140,6 +153,35 @@ describe('DocumentsPanel', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=sdk`);
   });
 
+  it('collapses and expands a document-type group', async () => {
+    serve([aDocument('getting-started'), aDocument('sdk', { type: 'SAMPLE_SDK' })]);
+    const { user } = renderPage();
+
+    const header = await screen.findByRole('button', { name: 'Samples & SDK (1)' });
+    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^sdk/ })).toBeVisible();
+
+    await user.click(header);
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^sdk/ })).not.toBeInTheDocument());
+    // Other groups are untouched.
+    expect(screen.getByRole('button', { name: /^getting-started/ })).toBeInTheDocument();
+
+    await user.click(header);
+    expect(await screen.findByRole('button', { name: /^sdk/ })).toBeInTheDocument();
+  });
+
+  it('shows one read-only type field with the custom type name when editing', async () => {
+    serve([aDocument('faq-doc', { type: 'FAQ' as never })]);
+    renderPage(`${BASE}?doc=faq-doc&mode=edit`);
+
+    const typeField = await screen.findByRole('textbox', { name: 'Document type' });
+    expect(typeField).toHaveValue('FAQ');
+    expect(typeField).toHaveAttribute('readonly');
+    expect(screen.queryByLabelText(/^Custom type/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Up to \d+ characters/)).not.toBeInTheDocument();
+  });
+
   it('opens the document named in the URL', async () => {
     serve([aDocument('getting-started'), aDocument('faq', { type: 'OTHER' })]);
     renderPage(`${BASE}?doc=faq`);
@@ -180,6 +222,97 @@ describe('DocumentsPanel', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=error-handling`)
     );
     expect(requests.calls.some((r) => r.method === 'POST')).toBe(true);
+  });
+
+  it('saves an "Other" document with its custom type in otherTypeName', async () => {
+    const documents: DocumentFixture[] = [];
+    serve(documents);
+    server.use(
+      http.post(apiUrl(COLLECTION), async ({ request }) => {
+        await requests.capture(request);
+        // The server stores the custom name itself as the type, case untouched.
+        const created = aDocument('changes', { displayName: 'Changes', type: 'Changelog' as never });
+        documents.push(created);
+        return HttpResponse.json(metadata(created), { status: 201 });
+      })
+    );
+    const { user } = renderPage(`${BASE}?mode=create`);
+
+    await user.click(await screen.findByRole('combobox', { name: 'Document type' }));
+    await user.click(await screen.findByRole('option', { name: 'Other' }));
+    await user.type(screen.getByLabelText(/^Custom type/), 'Changelog');
+    await user.type(screen.getByLabelText(/^Name/), 'Changes');
+    await user.type(screen.getByLabelText(/^Content/), 'All notable changes.');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`)
+    );
+    const post = requests.calls.find((r) => r.method === 'POST');
+    expect(post?.body).toMatch(/name="type"\r\n\r\nOTHER\r\n/);
+    expect(post?.body).toMatch(/name="otherTypeName"\r\n\r\nChangelog\r\n/);
+    // Listed under its own group, and its type chip shows the custom name, not "Other".
+    await waitFor(() => expect(screen.getAllByText('Changelog')).toHaveLength(2));
+  });
+
+  it('keeps Create disabled until every required field is filled', async () => {
+    serve([]);
+    const { user } = renderPage(`${BASE}?mode=create`);
+
+    const create = await screen.findByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/^Name/), 'Changes');
+    expect(create).toBeDisabled();
+    await user.type(screen.getByLabelText(/^Content/), 'All notable changes.');
+    expect(create).toBeEnabled();
+
+    // "Other" adds a required custom type, which disables Create again until filled.
+    await user.click(screen.getByRole('combobox', { name: 'Document type' }));
+    await user.click(await screen.findByRole('option', { name: 'Other' }));
+    expect(create).toBeDisabled();
+    await user.type(screen.getByLabelText(/^Custom type/), 'Changelog');
+    expect(create).toBeEnabled();
+
+    // Missing values are never flagged in red — the disabled button says enough.
+    expect(screen.queryByText(/^Enter a name/)).not.toBeInTheDocument();
+  });
+
+  it('leaves a form with nothing entered without asking', async () => {
+    serve([aDocument('getting-started')]);
+    const { user } = renderPage(`${BASE}?mode=create`);
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('mode=create'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks before Cancel discards unsaved changes', async () => {
+    serve([aDocument('getting-started')]);
+    const { user } = renderPage(`${BASE}?doc=getting-started&mode=edit`);
+
+    await user.type(await screen.findByLabelText(/^Content/), ' More.');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('You have unsaved changes. Are you sure you want to leave?')
+    ).toBeInTheDocument();
+
+    // Stay keeps the form and the edits.
+    await user.click(within(dialog).getByRole('button', { name: 'Stay' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByLabelText(/^Content/)).toHaveValue('# getting-started\n\nBody of getting-started. More.');
+    expect(screen.getByTestId('location')).toHaveTextContent('mode=edit');
+
+    // Leave discards them and returns to the document.
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`)
+    );
+    expect(screen.getByTestId('location')).not.toHaveTextContent('mode=edit');
   });
 
   it('warns before an upload replaces an existing document’s content', async () => {
