@@ -29,6 +29,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -322,17 +323,46 @@ func nonNil(s []string) []string {
 	return s
 }
 
+// loadActivePlans loads the plans for handles and rejects any handle that is
+// absent from the organization's catalog or is not ACTIVE.
+func (s *PublicationService) loadActivePlans(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error) {
+	plans, err := s.subscriptionPlanRepo.GetByHandles(handles, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+	}
+	var unknown []string
+	for _, h := range handles {
+		plan, ok := plans[h]
+		if !ok {
+			unknown = append(unknown, h)
+			continue
+		}
+		if plan.Status != model.SubscriptionPlanStatusActive {
+			return nil, apperror.APIPublicationValidationFailed.New(fmt.Sprintf("Subscription plan '%s' is not active.", h))
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, apperror.APIPublicationValidationFailed.New(
+			"subscriptionPlanIds not found in the organization's catalog: " + strings.Join(unknown, ", "))
+	}
+	return plans, nil
+}
+
 // resolvePlanUUIDs resolves each subscription plan handle to its UUID,
-// rejecting any handle absent from the organization's catalog.
+// rejecting any handle that is unknown or not ACTIVE.
 func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) ([]string, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
-	resolved, err := s.subscriptionPlanRepo.GetUUIDsByHandles(handles, orgUUID)
+	plans, err := s.loadActivePlans(handles, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+		return nil, err
 	}
-	return uuidsForHandles(handles, resolved, "subscriptionPlanIds not found in the organization's catalog")
+	uuids := make([]string, 0, len(handles))
+	for _, h := range handles {
+		uuids = append(uuids, plans[h].UUID)
+	}
+	return uuids, nil
 }
 
 // resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
@@ -607,6 +637,10 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
+	if err := s.ensurePortalPlans(ctx, portal, draft.SubscriptionPlanIds, orgUUID, actor); err != nil {
+		return nil, false, err
+	}
+
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
 		return nil, false, portalPushError(err)
 	}
@@ -723,6 +757,52 @@ func portalPushError(err error) error {
 		return apperror.APIPublicationPortalConflict.New(conflictReasonOrDefault(conflict))
 	}
 	return apperror.APIPublicationPortalUnavailable.Wrap(err)
+}
+
+// ensurePlansTimeout bounds the whole plan-ensure step, so a slow portal cannot
+// push Publish past the server's write timeout.
+const ensurePlansTimeout = 25 * time.Second
+
+// ensurePortalPlans makes sure every selected plan exists on the portal. It sends
+// the plans from the platform-api catalog in one call: the portal creates the
+// missing ones and keeps the existing ones as they are. Plans created before a
+// later failure are left in place, and a retry converges.
+func (s *PublicationService) ensurePortalPlans(ctx context.Context, portal *model.APIPortal, handles []string, orgUUID, actor string) error {
+	if len(handles) == 0 {
+		return nil
+	}
+	catalog, err := s.loadActivePlans(handles, orgUUID)
+	if err != nil {
+		return err
+	}
+	plans := make([]PortalPlan, 0, len(handles))
+	for _, h := range handles {
+		plans = append(plans, toPortalPlan(catalog[h]))
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, ensurePlansTimeout)
+	defer cancel()
+
+	created, err := s.portalPublisher.CreateSubscriptionPlansIfAbsent(ctx, portal, plans)
+	if err != nil {
+		return portalPushError(err)
+	}
+	if len(created) > 0 {
+		s.slogger.Info("created subscription plans on the portal",
+			"portal", portal.Handle, "count", len(created), "plans", created, "actor", actor)
+	}
+	return nil
+}
+
+// toPortalPlan maps a platform-api plan to the portal's shape: one REQUEST_COUNT
+// limit, or limitCount -1 with no time unit for a plan without a limit.
+func toPortalPlan(plan *model.SubscriptionPlan) PortalPlan {
+	limit := PortalPlanLimit{LimitType: constants.LimitTypeRequestCount, TimeAmount: 1, LimitCount: -1}
+	if plan.ThrottleLimitCount != nil {
+		limit.LimitCount = int64(*plan.ThrottleLimitCount)
+		limit.TimeUnit = plan.ThrottleLimitUnit
+	}
+	return PortalPlan{Handle: plan.Handle, DisplayName: plan.Name, RefID: plan.UUID, Limits: []PortalPlanLimit{limit}}
 }
 
 // publicationStatusNotPublished is the rollup's own label for "no live row

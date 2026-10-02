@@ -49,6 +49,10 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) CreateSubscriptionPlansIfAbsent(_ context.Context, _ *model.APIPortal, _ []service.PortalPlan) ([]string, error) {
+	return nil, nil
+}
+
 // newPublicationTestService wires a real PublicationService against it.db,
 // using the same repositories production code uses. Unlike the rest of this
 // package (which drives repositories directly), these tests go through the
@@ -217,6 +221,27 @@ func TestPublicationDraft_UnknownPlanHandleRejected(t *testing.T) {
 	}
 	if !apperror.APIPublicationValidationFailed.Is(err) {
 		t.Fatalf("[%s] want APIPublicationValidationFailed, got %v", it.driver, err)
+	}
+}
+
+// TestPublicationDraft_InactivePlanRejected verifies a plan that exists but is
+// INACTIVE is rejected at draft save, and accepted again once reactivated.
+func TestPublicationDraft_InactivePlanRejected(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	svc := newPublicationTestService(it)
+	draft := &model.Publication{DisplayName: "x", Version: "1.0", AgentVisibility: "VISIBLE"}
+
+	it.exec(t, `UPDATE subscription_plans SET status = 'INACTIVE' WHERE uuid = ? AND organization_uuid = ?`, g.plan, g.org)
+	_, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor", draft, []string{planHandleFor(g)}, nil)
+	if !apperror.APIPublicationValidationFailed.Is(err) {
+		t.Fatalf("[%s] want APIPublicationValidationFailed for an inactive plan, got %v", it.driver, err)
+	}
+
+	it.exec(t, `UPDATE subscription_plans SET status = 'ACTIVE' WHERE uuid = ? AND organization_uuid = ?`, g.plan, g.org)
+	if _, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor", draft, []string{planHandleFor(g)}, nil); err != nil {
+		t.Fatalf("[%s] want an active plan accepted, got %v", it.driver, err)
 	}
 }
 
@@ -579,7 +604,7 @@ func TestPublicationUnpublish_DeletesWhenDraftExists(t *testing.T) {
 // unpublishConflictPublisher always rejects Unpublish with a
 // *service.PortalConflictError, simulating a portal that still has active
 // subscriptions/API keys attached to the listing.
-type unpublishConflictPublisher struct{}
+type unpublishConflictPublisher struct{ alwaysSucceedsPortalPublisher }
 
 func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil
@@ -643,7 +668,7 @@ func TestPublicationUnpublish_PortalConflict(t *testing.T) {
 // *service.PortalConflictError carrying the curated ERR_SUB_EXIST reason,
 // simulating what HTTPPortalPublisher.Unpublish itself now produces when the
 // portal's response names that known error code.
-type unpublishSubscriptionConflictPublisher struct{}
+type unpublishSubscriptionConflictPublisher struct{ alwaysSucceedsPortalPublisher }
 
 func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication, _ *model.PublicationContent) error {
 	return nil

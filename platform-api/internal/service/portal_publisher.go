@@ -42,6 +42,29 @@ type PortalPublisher interface {
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
 	Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error
+
+	// CreateSubscriptionPlansIfAbsent sends plans to the portal in one call. The portal
+	// creates the ones it does not have and leaves existing ones untouched. It returns
+	// the handles it created. Errors follow the same contract as Publish.
+	CreateSubscriptionPlansIfAbsent(ctx context.Context, portal *model.APIPortal, plans []PortalPlan) (created []string, err error)
+}
+
+// PortalPlanLimit is one limit of a portal subscription plan. TimeUnit is empty
+// for an unlimited plan.
+type PortalPlanLimit struct {
+	LimitType  string
+	TimeUnit   string
+	TimeAmount int
+	LimitCount int64
+}
+
+// PortalPlan is a subscription plan as the API Portal sees it. Handle is the
+// portal's plan id.
+type PortalPlan struct {
+	Handle      string
+	DisplayName string
+	RefID       string
+	Limits      []PortalPlanLimit
 }
 
 // PortalConflictError signals that the API Portal rejected a request and will

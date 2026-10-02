@@ -214,12 +214,14 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	return m, rows.Err()
 }
 
-// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid, scoped to
-// the organization. A handle absent from the returned map does not exist in the
-// org's catalog. Returns an empty map for empty input.
-func (r *SubscriptionPlanRepo) GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error) {
+// GetByHandles returns each plan in the organization whose handle is in handles,
+// keyed by handle, with its status and single throttling limit. A handle absent
+// from the returned map does not exist in the org's catalog. Returns an empty map
+// for empty input.
+func (r *SubscriptionPlanRepo) GetByHandles(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error) {
+	plans := make(map[string]*model.SubscriptionPlan, len(handles))
 	if len(handles) == 0 {
-		return map[string]string{}, nil
+		return plans, nil
 	}
 	placeholders := make([]string, len(handles))
 	args := make([]interface{}, 0, len(handles)+1)
@@ -228,28 +230,24 @@ func (r *SubscriptionPlanRepo) GetUUIDsByHandles(handles []string, orgUUID strin
 		args = append(args, h)
 	}
 	args = append(args, orgUUID)
-	query := fmt.Sprintf(`
-		SELECT handle, uuid
-		FROM subscription_plans
-		WHERE handle IN (%s) AND organization_uuid = ?
-	`, strings.Join(placeholders, ","))
+	query := fmt.Sprintf(`SELECT `+planSelectColumns+`
+		WHERE p.handle IN (%s) AND p.organization_uuid = ?`, strings.Join(placeholders, ","))
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+		return nil, fmt.Errorf("failed to load subscription plans by handle: %w", err)
 	}
 	defer rows.Close()
-	m := make(map[string]string)
 	for rows.Next() {
-		var handle, uuid string
-		if err := rows.Scan(&handle, &uuid); err != nil {
+		plan, err := scanPlan(rows)
+		if err != nil {
 			return nil, err
 		}
-		m[handle] = uuid
+		plans[plan.Handle] = plan
 	}
-	return m, rows.Err()
+	return plans, rows.Err()
 }
 
-// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid to
+// GetHandlesByIDs maps subscription_plan_uuid to
 // handle, for reconstructing a subscriptionPlanIds response from stored mapping
 // rows. Returns an empty map for empty input.
 func (r *SubscriptionPlanRepo) GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error) {

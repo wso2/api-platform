@@ -149,6 +149,11 @@ func apiURL(portal *model.APIPortal, apiHandle string) string {
 	return apisURL(portal) + "/" + url.PathEscape(apiHandle)
 }
 
+// plansURL is the portal's subscription plan collection URL.
+func plansURL(portal *model.APIPortal) string {
+	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/subscription-plans"
+}
+
 // Publish implements PortalPublisher.
 func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
 	exists, err := p.checkExists(ctx, portal, apiHandle)
@@ -401,4 +406,107 @@ func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publicati
 		return nil, "", fmt.Errorf("failed to finalize multipart body: %w", err)
 	}
 	return &buf, mw.FormDataContentType(), nil
+}
+
+// portalPlanResultMaxBytes bounds the plan-create response read into memory.
+const portalPlanResultMaxBytes = 4 << 20 // 4 MiB
+
+type portalPlanLimitJSON struct {
+	LimitType  string  `json:"limitType"`
+	TimeUnit   *string `json:"timeUnit"`
+	TimeAmount int     `json:"timeAmount"`
+	LimitCount int64   `json:"limitCount"`
+}
+
+type portalPlanJSON struct {
+	ID          string                `json:"id"`
+	DisplayName string                `json:"displayName"`
+	RefID       string                `json:"refId,omitempty"`
+	Limits      []portalPlanLimitJSON `json:"limits"`
+}
+
+// portalPlanResultJSON is one entry of the portal's per-plan create result.
+type portalPlanResultJSON struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+const portalPlanStatusCreated = "created"
+
+// toPortalPlanJSON maps a plan to the portal's request shape. description is
+// left out: the portal's schema makes it a non-nullable string.
+func toPortalPlanJSON(plan PortalPlan) portalPlanJSON {
+	limits := make([]portalPlanLimitJSON, 0, len(plan.Limits))
+	for _, l := range plan.Limits {
+		item := portalPlanLimitJSON{LimitType: l.LimitType, TimeAmount: l.TimeAmount, LimitCount: l.LimitCount}
+		if l.TimeUnit != "" {
+			unit := l.TimeUnit
+			item.TimeUnit = &unit
+		}
+		limits = append(limits, item)
+	}
+	return portalPlanJSON{ID: plan.Handle, DisplayName: plan.DisplayName, RefID: plan.RefID, Limits: limits}
+}
+
+// CreateSubscriptionPlansIfAbsent implements PortalPublisher: POST
+// /subscription-plans?existing=keep with an array. The portal creates the plans it
+// does not have, leaves existing ones untouched and answers with a per-plan
+// result. A portal without this parameter rejects the request with a 400.
+func (p *HTTPPortalPublisher) CreateSubscriptionPlansIfAbsent(ctx context.Context, portal *model.APIPortal, plans []PortalPlan) ([]string, error) {
+	authHeader, err := p.authHeader(ctx, portal)
+	if err != nil {
+		return nil, err
+	}
+	payload := make([]portalPlanJSON, 0, len(plans))
+	for _, plan := range plans {
+		payload = append(payload, toPortalPlanJSON(plan))
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal portal plan request: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, plansURL(portal)+"?existing=keep", bytes.NewReader(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build portal plan request: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("portal subscription plan call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated:
+	case isPortalAuthFailure(resp.StatusCode):
+		return nil, portalAuthError(resp.StatusCode)
+	case isPortalRejection(resp.StatusCode):
+		return nil, portalRejection(resp, "the API Portal rejected a subscription plan")
+	default:
+		return nil, fmt.Errorf("portal subscription plan call failed: unexpected status %d", resp.StatusCode)
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, portalPlanResultMaxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read portal plan result: %w", err)
+	}
+	if len(raw) > portalPlanResultMaxBytes {
+		return nil, fmt.Errorf("portal plan result exceeds %d bytes", portalPlanResultMaxBytes)
+	}
+	var results []portalPlanResultJSON
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, fmt.Errorf("failed to parse portal plan result: %w", err)
+	}
+	var created []string
+	for _, r := range results {
+		if r.Status == portalPlanStatusCreated {
+			created = append(created, r.ID)
+		}
+	}
+	return created, nil
 }
