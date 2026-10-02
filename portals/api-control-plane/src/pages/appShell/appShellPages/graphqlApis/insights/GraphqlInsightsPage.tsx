@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { AppPage } from '@/components/AppPage';
+
 import { InsightsPageContent } from '../../insights/InsightsPageContent';
 import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
@@ -25,5 +27,13 @@ import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
  * (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlInsightsPage() {
+  return (
+    <AppPage>
+      <GraphqlInsightsPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlInsightsPageContent() {
   return <GraphqlApiPageGuard>{() => <InsightsPageContent />}</GraphqlApiPageGuard>;
 }

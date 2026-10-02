@@ -21,6 +21,7 @@ import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateways } from '@/api/resources/gateways';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
 import {
@@ -80,7 +81,8 @@ const messages = defineMessages({
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.title',
     defaultMessage: 'Deploy {apiName}',
-    description: 'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+    description:
+      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.subtitle',
@@ -126,6 +128,14 @@ const messages = defineMessages({
  * (see `graphqlApiPath`), so it guards on its own route param instead.
  */
 export function GraphqlDeployPage() {
+  return (
+    <AppPage>
+      <GraphqlDeployPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlDeployPageContent() {
   const intl = useIntl();
   const { orgHandle = '', graphqlApiHandler } = useParams();
   const navigate = useNavigate();

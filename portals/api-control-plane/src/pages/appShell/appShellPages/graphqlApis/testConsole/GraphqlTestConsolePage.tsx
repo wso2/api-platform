@@ -38,6 +38,7 @@ import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
@@ -73,7 +74,8 @@ const messages = defineMessages({
   },
   fetchFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed',
-    defaultMessage: 'Could not reach the test console service. Check your connection and try again.',
+    defaultMessage:
+      'Could not reach the test console service. Check your connection and try again.',
     description:
       'Shown when the browser fetch to this app\'s own backend fails below the HTTP level (network error) — a bare "Failed to fetch" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API\'s gateway, so this is not a CORS or gateway-certificate problem.',
   },
@@ -150,6 +152,14 @@ query Schema {
  * auth before the docs/autocomplete could load at all.
  */
 export function GraphqlTestConsolePage() {
+  return (
+    <AppPage>
+      <GraphqlTestConsolePageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlTestConsolePageContent() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const { graphqlApiHandler } = useParams();
