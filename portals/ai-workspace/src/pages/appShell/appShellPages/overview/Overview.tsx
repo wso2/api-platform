@@ -189,7 +189,6 @@ function OverviewContent(): React.JSX.Element {
       agentProxies.isLoading,
       applications.applicationsResponse.count,
       applications.isLoading,
-      deleteProviderIfUnused,
     ]
   );
 
@@ -363,6 +362,7 @@ function OverviewContent(): React.JSX.Element {
     applications,
     agentProxies,
     templatesResponse,
+    deleteProviderIfUnused,
   ]);
 
   return (
