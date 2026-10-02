@@ -33,6 +33,7 @@ import { Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
@@ -73,17 +74,19 @@ const messages = defineMessages({
   deployToGateway: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway',
     defaultMessage: 'Deploy to Gateway',
-    description: 'Button on the API overview header that opens the API\'s deployment page.',
+    description: "Button on the API overview header that opens the API's deployment page.",
   },
   editApi: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.editApi',
     defaultMessage: 'Edit API details',
-    description: 'Accessible label and tooltip for the button beside the API name, which opens the edit page.',
+    description:
+      'Accessible label and tooltip for the button beside the API name, which opens the edit page.',
   },
   gatewayManaged: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged',
     defaultMessage: 'Gateway-managed',
-    description: 'Chip marking an API that was discovered from a gateway and cannot be edited here.',
+    description:
+      'Chip marking an API that was discovered from a gateway and cannot be edited here.',
   },
   gatewayManagedHint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint',
@@ -93,7 +96,8 @@ const messages = defineMessages({
   descriptionPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.description.placeholder',
     defaultMessage: 'No description',
-    description: 'Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value.',
+    description:
+      'Shown in place of the API description when the API has none. Rendered in italics as an absence, not as a value.',
   },
   typeChip: {
     id: 'api.create.apiType.graphQl.title',
@@ -156,6 +160,14 @@ function DescriptionField({ description }: { description: string }) {
  * `useParams` directly.
  */
 export function GraphqlApiDetailPage() {
+  return (
+    <AppPage>
+      <GraphqlApiDetailPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlApiDetailPageContent() {
   const { params } = useConsoleScope();
   const { graphqlApiHandler } = useParams();
   const intl = useIntl();

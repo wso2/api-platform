@@ -19,6 +19,7 @@
 import { defineMessages, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { DocumentsPanel } from '../../develop/documents/DocumentsPanel';
@@ -45,6 +46,14 @@ const messages = defineMessages({
  * param instead.
  */
 export function GraphqlDevelopDocumentsPage() {
+  return (
+    <AppPage>
+      <GraphqlDevelopDocumentsPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlDevelopDocumentsPageContent() {
   const intl = useIntl();
   const { graphqlApiHandler } = useParams();
   const apiQuery = useGraphQLApi(graphqlApiHandler);

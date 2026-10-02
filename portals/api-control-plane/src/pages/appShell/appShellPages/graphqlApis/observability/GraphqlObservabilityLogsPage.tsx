@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { AppPage } from '@/components/AppPage';
+
 import { RuntimeLogsContent } from '../../observability/RuntimeLogsContent';
 import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
 
@@ -25,6 +27,14 @@ import { GraphqlApiPageGuard } from '../components/GraphqlApiPageGuard';
  * differs (`GraphqlApiPageGuard` here, `ScopeGate` for REST).
  */
 export function GraphqlObservabilityLogsPage() {
+  return (
+    <AppPage>
+      <GraphqlObservabilityLogsPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlObservabilityLogsPageContent() {
   return (
     <GraphqlApiPageGuard>
       {(graphqlApiHandler) => <RuntimeLogsContent apiHandler={graphqlApiHandler} />}

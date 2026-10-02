@@ -20,6 +20,7 @@ import { PageTitle } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
 import { ComingSoon } from '@/components/ComingSoon';
 import { ErrorState, LoadingState } from '@/components/StateViews';
@@ -28,11 +29,13 @@ const messages = defineMessages({
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title',
     defaultMessage: 'Publish {apiName}',
-    description: 'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
+    description:
+      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle',
-    defaultMessage: 'List this API in the Developer Portal for consumers to discover and subscribe to.',
+    defaultMessage:
+      'List this API in the Developer Portal for consumers to discover and subscribe to.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
@@ -62,6 +65,14 @@ const messages = defineMessages({
  * route param instead.
  */
 export function GraphqlPublishPage() {
+  return (
+    <AppPage>
+      <GraphqlPublishPageContent />
+    </AppPage>
+  );
+}
+
+function GraphqlPublishPageContent() {
   const intl = useIntl();
   const { graphqlApiHandler } = useParams();
   const apiQuery = useGraphQLApi(graphqlApiHandler);
