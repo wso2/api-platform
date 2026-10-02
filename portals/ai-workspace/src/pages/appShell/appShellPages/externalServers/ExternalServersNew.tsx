@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type { JSX } from 'react';
 import React, { useMemo, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
