@@ -28,6 +28,7 @@ const VALUES: DraftFormValues = {
   description: 'Manage loans.',
   productionUrl: 'https://api.example.com',
   sandboxUrl: 'https://sandbox.example.com',
+  subscriptionPlanIds: [],
 };
 
 describe('ApiDetailsTab', () => {
@@ -50,7 +51,10 @@ describe('ApiDetailsTab', () => {
     const onChange = vi.fn();
     const { user } = renderWithProviders(<ApiDetailsTab onChange={onChange} readOnly values={VALUES} />);
 
-    for (const value of Object.values(VALUES)) {
+    // `ApiDetailsTab` only ever renders the string fields; `subscriptionPlanIds`
+    // belongs to a different tab and has no input here.
+    const stringValues = Object.values(VALUES).filter((value): value is string => typeof value === 'string');
+    for (const value of stringValues) {
       expect(screen.getByDisplayValue(value)).toHaveAttribute('readonly');
     }
     await user.type(screen.getByDisplayValue('Loans'), 'x');

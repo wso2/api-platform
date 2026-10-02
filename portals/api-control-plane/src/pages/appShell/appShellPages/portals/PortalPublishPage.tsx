@@ -48,6 +48,7 @@ import { PublicationVersionToggle } from './components/PublicationVersionToggle'
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
 import { SpecificationTab } from './components/SpecificationTab';
+import { SubscriptionPlansTab } from './components/SubscriptionPlansTab';
 import { usePublishPageData } from './usePublishPageData';
 import {
   draftFormValuesToInput,
@@ -199,7 +200,7 @@ const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
 
-type PublishTab = 'details' | 'specification';
+type PublishTab = 'details' | 'specification' | 'subscriptionPlans';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
@@ -207,13 +208,13 @@ type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprec
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
- * Only "API Details" and "Specification" are editable; the other tabs render
- * disabled. Save Draft and Publish each enforce their own rule: Save Draft
- * always writes `.../draft`, and writes `.../draft/definition` too only when
- * the specification text parses, reporting honestly when it couldn't; Publish
- * requires both saves to succeed before it calls `.../publish`, since the
- * server's publish takes no body and only publishes what the draft already
- * holds.
+ * "API Details", "Specification" and "Subscription Plans" are editable; the
+ * other tabs still render disabled. Save Draft and Publish each enforce their
+ * own rule: Save Draft always writes `.../draft`, and writes
+ * `.../draft/definition` too only when the specification text parses,
+ * reporting honestly when it couldn't; Publish requires both saves to succeed
+ * before it calls `.../publish`, since the server's publish takes no body and
+ * only publishes what the draft already holds.
  *
  * No `ScopeGate`: this page is only reachable from the Portals listing's card,
  * which is already fully API-scoped.
@@ -467,9 +468,9 @@ function PortalPublishPageContent() {
 
   const renderContent = () => {
     if (showingPublished) {
-      return tab === 'details' ? (
-        <ApiDetailsTab readOnly values={publishedValues} />
-      ) : (
+      if (tab === 'details') return <ApiDetailsTab readOnly values={publishedValues} />;
+      if (tab === 'subscriptionPlans') return <SubscriptionPlansTab readOnly values={publishedValues} />;
+      return (
         <PublishedSpecificationTab
           definition={data.publishedDefinition.definition}
           failed={data.publishedDefinition.failed}
@@ -477,20 +478,26 @@ function PortalPublishPageContent() {
         />
       );
     }
-    return tab === 'details' ? (
-      <ApiDetailsTab
-        disabled={pendingAction !== 'idle'}
-        errors={{
-          displayName: errorFor('displayName'),
-          version: errorFor('version'),
-          productionUrl: errorFor('productionUrl'),
-          sandboxUrl: errorFor('sandboxUrl'),
-        }}
-        onBlurField={markTouched}
-        onChange={setValues}
-        values={values}
-      />
-    ) : (
+    if (tab === 'details') {
+      return (
+        <ApiDetailsTab
+          disabled={pendingAction !== 'idle'}
+          errors={{
+            displayName: errorFor('displayName'),
+            version: errorFor('version'),
+            productionUrl: errorFor('productionUrl'),
+            sandboxUrl: errorFor('sandboxUrl'),
+          }}
+          onBlurField={markTouched}
+          onChange={setValues}
+          values={values}
+        />
+      );
+    }
+    if (tab === 'subscriptionPlans') {
+      return <SubscriptionPlansTab disabled={pendingAction !== 'idle'} onChange={setValues} values={values} />;
+    }
+    return (
       <SpecificationTab
         disabled={pendingAction !== 'idle'}
         format={definitionFormat}
@@ -541,7 +548,7 @@ function PortalPublishPageContent() {
             >
               <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
               <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-              <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+              <Tab label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
               <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
               <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>

@@ -2197,6 +2197,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
+    "defaultMessage": "Unlimited",
+    "description": "Plan card value when the plan has no configured limit."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
     "defaultMessage": "Go to publish",
     "description": "Card action opening the publish flow for this API on this portal."
@@ -2269,6 +2273,28 @@
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
+    "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
+    "defaultMessage": "Create a subscription plan for your organization before offering it on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
+    "defaultMessage": "No active subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
+    "defaultMessage": "Unable to load subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
+    "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll": {
+    "defaultMessage": "Select all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} plans selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",
     "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
@@ -2290,13 +2316,28 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
-    "defaultMessage": "Grid view",
-    "description": "Accessible label for the button switching to the card grid."
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap": {
+    "defaultMessage": "no request cap"
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.listView": {
-    "defaultMessage": "List view",
-    "description": "Accessible label for the button switching to the table rows."
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth": {
+    "defaultMessage": "{unit} / {window}",
+    "description": "Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. \"MB\"); {window} is the lowercase time window (e.g. \"month\")."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerDay": {
+    "defaultMessage": "requests / day"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerHour": {
+    "defaultMessage": "requests / hour"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerMinute": {
+    "defaultMessage": "requests / minute"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequestPerMonth": {
+    "defaultMessage": "requests / month"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens": {
+    "defaultMessage": "tokens / {window}",
+    "description": "Token-count limit unit. {window} is the lowercase time window (e.g. \"month\")."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -3918,10 +3959,6 @@
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
   },
-  "project.card.actionsLabel": {
-    "defaultMessage": "Project actions",
-    "description": "Accessible label for the button opening the card overflow menu."
-  },
   "project.card.apiCount": {
     "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
@@ -3932,9 +3969,6 @@
   "project.card.defaultBadge": {
     "defaultMessage": "DEFAULT",
     "description": "Badge marking the organization’s default project."
-  },
-  "project.card.delete": {
-    "defaultMessage": "Delete"
   },
   "project.card.deleteNamed": {
     "defaultMessage": "Delete {name}"
@@ -3956,9 +3990,6 @@
   "project.card.updatedAt": {
     "defaultMessage": "Updated {relative}",
     "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
-  },
-  "project.list.count": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
   },
   "project.list.createProjectButton": {
     "defaultMessage": "Create Project"
@@ -4009,26 +4040,6 @@
   },
   "project.list.searchPlaceholder": {
     "defaultMessage": "Search projects"
-  },
-  "project.list.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by project name, ascending."
-  },
-  "project.list.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by project name, descending."
-  },
-  "project.list.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent project first."
-  },
-  "project.list.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest project first."
-  },
-  "project.list.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the project list order."
   },
   "project.list.subHeader.default": {
     "defaultMessage": "Select a project to manage APIs."

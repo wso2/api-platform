@@ -119,19 +119,27 @@ export const focusRingSx = (theme: Theme) => ({
 
 /**
  * State layer for a card the user picks from a set of options: the API
- * creation wizard's API-type and Gateway Creation's Gateway-type Card.
+ * creation wizard's API-type and Gateway Creation's Gateway-type Card, and the
+ * Subscription Plans tab's plan cards.
  *
  * `Form.CardButton` already owns the hover treatment; this adds the part that
- * depends on *state*: a primary-tinted ring on the current choice, and a flat,
- * dimmed surface for an option that is visible but cannot be picked (not yet
+ * depends on *state*: a tinted ring on the current choice, and a flat, dimmed
+ * surface for an option that is visible but cannot be picked (not yet
  * released, or not offered by the selected proxy type). Disabling the click is
- * the `disabled` prop's job, this only makes the state legible.
+ * the `disabled` prop's job, this only makes the state legible. `accent`
+ * mirrors `segmentedSwitchSx`'s own param: success for a selection that
+ * represents something live (the Subscription Plans tab's published view),
+ * primary everywhere else.
  */
-export const selectableCardSx = (theme: Theme, state: { disabled?: boolean; selected?: boolean }) =>
+export const selectableCardSx = (
+  theme: Theme,
+  state: { disabled?: boolean; selected?: boolean },
+  accent: 'primary' | 'success' = 'primary',
+) =>
   ({
-    borderColor: state.selected ? 'primary.main' : 'divider',
+    borderColor: state.selected ? theme.palette[accent].main : 'divider',
     ...(state.selected && {
-      backgroundColor: alpha(theme.palette.primary.main, 0.06),
+      backgroundColor: alpha(theme.palette[accent].main, 0.06),
       boxShadow: theme.shadows[1],
     }),
     ...(state.disabled && {

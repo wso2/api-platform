@@ -39,12 +39,12 @@ const messages = defineMessages({
 
 /**
  * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details fields this release covers
- * (`displayName`, `version`, `description`, the two endpoint URLs). Everything
- * else `PublicationDetailsCore` carries (tags, labels, agentVisibility, owners,
- * subscriptionPlanIds, docIds) belongs to a tab this alpha doesn't show, so a
- * save never sends it — a save sends every field currently shown, not every
- * field the schema could hold.
+ * the API Details and Subscription Plans fields this release covers
+ * (`displayName`, `version`, `description`, the two endpoint URLs,
+ * `subscriptionPlanIds`). Everything else `PublicationDetailsCore` carries
+ * (tags, labels, agentVisibility, owners, docIds) belongs to a tab this alpha
+ * doesn't show, so a save never sends it — a save sends every field currently
+ * shown, not every field the schema could hold.
  */
 export type DraftFormValues = {
   displayName: string;
@@ -52,6 +52,7 @@ export type DraftFormValues = {
   description: string;
   productionUrl: string;
   sandboxUrl: string;
+  subscriptionPlanIds: string[];
 };
 
 export const emptyDraftFormValues: DraftFormValues = {
@@ -60,6 +61,7 @@ export const emptyDraftFormValues: DraftFormValues = {
   description: '',
   productionUrl: '',
   sandboxUrl: '',
+  subscriptionPlanIds: [],
 };
 
 /**
@@ -81,6 +83,7 @@ export const resolveDraftFormValues = (
       description: draft.description ?? '',
       productionUrl: draft.endpoints?.productionUrl ?? '',
       sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
+      subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
     };
   }
   if (publication) {
@@ -90,6 +93,7 @@ export const resolveDraftFormValues = (
       description: publication.description ?? '',
       productionUrl: publication.endpoints?.productionUrl ?? '',
       sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
+      subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
     };
   }
   if (api) {
@@ -99,6 +103,7 @@ export const resolveDraftFormValues = (
       description: api.description ?? '',
       productionUrl: api.upstream?.main?.url ?? '',
       sandboxUrl: api.upstream?.sandbox?.url ?? '',
+      subscriptionPlanIds: [],
     };
   }
   return emptyDraftFormValues;
@@ -127,6 +132,11 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
+    // Always sent, including `[]` to explicitly clear every selection: the
+    // generated field is a *pointer* to a slice, so `omitempty` only
+    // suppresses a nil pointer — an empty array still round-trips as an
+    // explicit "no plans selected" rather than being dropped.
+    subscriptionPlanIds: values.subscriptionPlanIds,
   };
 };
 

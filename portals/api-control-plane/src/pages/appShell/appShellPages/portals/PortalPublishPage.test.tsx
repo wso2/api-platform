@@ -30,6 +30,8 @@ import {
   aPublication,
   aPublicationDraftDetails,
   aRestApi,
+  aSubscriptionPlan,
+  collection,
   failure,
   noContent,
   recorder,
@@ -195,17 +197,50 @@ describe('PortalPublishPage', () => {
     expect(screen.getByDisplayValue('https://backend.internal/loans')).toBeInTheDocument();
   });
 
-  it('disables Subscription Plans, Documentation and Landing Page for this alpha', async () => {
+  it('disables Documentation and Landing Page for this alpha', async () => {
     servePublicationState();
 
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Documentation' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Landing Page' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'API Details' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
+    expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeEnabled();
+  });
+
+  it('Subscription Plans tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlanIds: [] }),
+      publication: aPublication({ subscriptionPlanIds: ['bronze'] }),
+    });
+    server.use(collection('/subscription-plans', [bronze, gold]));
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    await user.click(await screen.findByRole('checkbox', { name: /Gold/ }));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
+      subscriptionPlanIds: ['gold'],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    const bronzeCard = await screen.findByRole('checkbox', { name: /Bronze/ });
+    expect(bronzeCard).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
   });
 
   it('explains a missing draft once, without retrying, when the definition save 404s', async () => {
