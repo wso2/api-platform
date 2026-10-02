@@ -21,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -94,10 +95,16 @@ export function AgentProxyProvider({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Navigating between proxies leaves the previous fetch in flight; only the
+  // most recent request, clears included, is allowed to write.
+  const agentProxyRequestRef = useRef(0);
+
   // Fetch single Agent proxy
   const fetchAgentProxy = useCallback(async () => {
+    const requestId = (agentProxyRequestRef.current += 1);
     if (!agentProxyId) {
       setAgentProxy(null);
+      setError(null);
       setIsLoading(false);
       return;
     }
@@ -109,15 +116,19 @@ export function AgentProxyProvider({
         agentProxyId,
         apimBaseUrl
       );
+      if (agentProxyRequestRef.current !== requestId) return;
       setAgentProxy(fetched);
     } catch (err) {
+      if (agentProxyRequestRef.current !== requestId) return;
       logger.error(`Failed to fetch Agent proxy ${agentProxyId}:`, err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch Agent proxy')
       );
       setAgentProxy(null);
     } finally {
-      setIsLoading(false);
+      if (agentProxyRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [agentProxyId, apimBaseUrl]);
 
