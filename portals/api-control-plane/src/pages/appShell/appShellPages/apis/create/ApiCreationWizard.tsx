@@ -24,7 +24,6 @@ import { useNavigate } from 'react-router-dom';
 import { DefineApiPanel } from './components/DefineApiPanel';
 import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { GraphqlConfigureForm } from './components/graphql/GraphqlConfigureForm';
-import { GraphqlCreationConfirmation } from './components/graphql/GraphqlCreationConfirmation';
 import { GraphqlDefinePanel } from './components/graphql/GraphqlDefinePanel';
 import {
   ApiCreationWizardDraftState,
@@ -37,7 +36,7 @@ import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
 import { AppPage } from '@/components/AppPage';
 import { useImportOpenApi } from '@/api/resources/restApis';
-import { useCreateGraphQLApi, type GraphQLApi } from '@/api/resources/graphqlApis';
+import { useCreateGraphQLApi } from '@/api/resources/graphqlApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
 import { toCreateApiFormErrors, type CreateApiFormErrors } from './utils/serverFieldErrors';
@@ -316,12 +315,6 @@ const ApiCreationWizardContent = () => {
     useState<GraphqlApiCreationFormState | null>(null);
   const [graphqlCreationStarted, setGraphqlCreationStarted] = useState(false);
   const [graphqlFormErrors, setGraphqlFormErrors] = useState<CreateApiFormErrors | null>(null);
-  /**
-   * Set once creation succeeds — swaps the progress screen for a self-
-   * contained confirmation rather than navigating into the shared (REST-typed)
-   * API overview page. See the plan's scope note on `ConsoleScopeProvider`.
-   */
-  const [graphqlCreated, setGraphqlCreated] = useState<GraphQLApi | null>(null);
 
   const createGraphqlApi = (values: GraphqlApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -348,11 +341,20 @@ const ApiCreationWizardContent = () => {
     createGraphqlApi(finalData);
   };
 
-  const handleGraphqlCreationComplete = useCallback(() => {
-    if (createGraphQLApiMutation.data) {
-      setGraphqlCreated(createGraphQLApiMutation.data);
-    }
-  }, [createGraphQLApiMutation.data]);
+  /** Same as `goToCreatedApi`, into the GraphQL API's own overview page. */
+  const goToCreatedGraphqlApi = useCallback(() => {
+    const { orgHandle, projectHandler } = params;
+    if (!orgHandle || !projectHandler) return;
+
+    const createdId = createGraphQLApiMutation.data?.id;
+    navigate(
+      createdId
+        ? routes.graphqlApi(orgHandle, projectHandler, createdId)
+        : // Created, but the response carried no handle to navigate to.
+          routes.apis(orgHandle, projectHandler),
+      { replace: true },
+    );
+  }, [createGraphQLApiMutation.data?.id, navigate, params]);
 
   const graphqlCreationStatus: ApiCreationProgressStatus = createGraphQLApiMutation.isError
     ? 'failed'
@@ -378,10 +380,6 @@ const ApiCreationWizardContent = () => {
   }
 
   if (graphqlCreationStarted && graphqlSubmittedValues) {
-    if (graphqlCreated) {
-      return <GraphqlCreationConfirmation api={graphqlCreated} />;
-    }
-
     return (
       <ApiCreationProgress
         displayName={graphqlSubmittedValues.displayName}
@@ -389,7 +387,7 @@ const ApiCreationWizardContent = () => {
           createGraphQLApiMutation.reset();
           setGraphqlCreationStarted(false);
         }}
-        onComplete={handleGraphqlCreationComplete}
+        onComplete={goToCreatedGraphqlApi}
         onRetry={() => createGraphqlApi(graphqlSubmittedValues)}
         status={graphqlCreationStatus}
       />

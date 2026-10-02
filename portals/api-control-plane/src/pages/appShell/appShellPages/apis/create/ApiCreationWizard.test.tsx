@@ -18,12 +18,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { resetHttpClient } from '@/api/core/http';
 import { accepts, collection, failure, recorder } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { routes } from '@/routes/paths';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ApiCreationWizard } from './ApiCreationWizard';
 
 /*
@@ -199,9 +201,18 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
   });
 });
 
+/** Renders the router's current path, so a test can see where the wizard navigated. */
+const LocationProbe = () => <output data-testid="location">{useLocation().pathname}</output>;
+
 /** Runs the wizard's GraphQL path as far as a submitted create request. */
 const submitGraphqlCreate = async () => {
-  const rendered = renderWithProviders(<ApiCreationWizard />, { route, scope });
+  const rendered = renderWithProviders(
+    <>
+      <ApiCreationWizard />
+      <LocationProbe />
+    </>,
+    { route, scope },
+  );
   const { user } = rendered;
 
   await user.click(screen.getByRole('button', { name: 'Choose GraphQL' }));
@@ -215,7 +226,7 @@ const submitGraphqlCreate = async () => {
 };
 
 describe('ApiCreationWizard — GraphQL creation', () => {
-  it('posts a GraphQL create request and lands on the confirmation screen', async () => {
+  it('posts a GraphQL create request, then lands on the new API’s overview', async () => {
     const createRequests = recorder();
     server.use(
       accepts(
@@ -233,7 +244,13 @@ describe('ApiCreationWizard — GraphQL creation', () => {
 
     await submitGraphqlCreate();
 
-    expect(await screen.findByText('Countries API created')).toBeInTheDocument();
+    // Same as REST: the progress screen hands off to the API's overview page —
+    // no separate confirmation screen in between.
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        routes.graphqlApi(scope.params.orgHandle, scope.params.projectHandler, 'countries-api'),
+      ),
+    );
     expect(createRequests.count()).toBe(1);
     expect(createRequests.last()?.url.pathname).toContain('/graphql-apis');
   });

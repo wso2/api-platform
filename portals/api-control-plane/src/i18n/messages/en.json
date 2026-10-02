@@ -540,26 +540,6 @@
   "api.create.graphql.configureForm.version.helper": {
     "defaultMessage": "e.g. 1.0"
   },
-  "api.create.graphql.confirmation.action.goToApi": {
-    "defaultMessage": "Go to API"
-  },
-  "api.create.graphql.confirmation.copy.action": {
-    "defaultMessage": "Copy {label}",
-    "description": "Accessible label for a field's copy-to-clipboard button."
-  },
-  "api.create.graphql.confirmation.copy.done": {
-    "defaultMessage": "Copied to clipboard."
-  },
-  "api.create.graphql.confirmation.endpoint.label": {
-    "defaultMessage": "Query and Mutation URL"
-  },
-  "api.create.graphql.confirmation.subtitle": {
-    "defaultMessage": "Deploy it to a gateway and try it out from its own overview page."
-  },
-  "api.create.graphql.confirmation.title": {
-    "defaultMessage": "{name} created",
-    "description": "{name} is the display name the user gave the API. Never translated."
-  },
   "api.create.graphql.definePanel.approach.label": {
     "defaultMessage": "How do you want to define this GraphQL API?"
   },
