@@ -245,7 +245,7 @@ clean-gateway: ## Clean gateway build artifacts
 .PHONY: install-skills
 install-skills: ## Install third-party agent skills pinned in skills-lock.json
 	@command -v npx >/dev/null 2>&1 || { echo "Error: npx is not installed. Install Node.js (https://nodejs.org), which provides npx, then re-run 'make install-skills'." >&2; exit 1; }
-	npx -y skills experimental_install
+	npx -y skills@1.7.0 experimental_install
 
 # Spec Kit (https://github.github.com/spec-kit/): installs the `specify` CLI with
 # uv, then scaffolds .specify/ and the speckit-* skills into .agents/skills/.
