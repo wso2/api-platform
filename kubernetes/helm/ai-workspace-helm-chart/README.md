@@ -27,8 +27,9 @@ post-install notes.
 - **Wiring is automatic.** The UI derives the in-cluster Platform API URL
   (`https://<release>-platform-api:9243`) from `global.platformApi`, so you don't need to set
   any URL when both components are in the same release.
-- **The umbrella validates cross-component settings.** The install fails early if no UI is
-  enabled, if the Platform API is disabled without an external URL, or if
+- **The umbrella validates cross-component settings.** The install fails early if
+  `ai-workspace-ui` is disabled, if the Platform API is disabled without an external URL
+  (`ai-workspace-ui.config.controlPlane.url`), or if
   `platform-api.config.auth.authorization.mode` doesn't match
   `ai-workspace-ui.config.auth.authorization.mode`.
 - **One ServiceAccount per release.** It's created by the umbrella (`global.serviceAccount`)
@@ -65,6 +66,12 @@ kubectl get pods -n cert-manager
 Run every command below from `kubernetes/helm/`. The script writes `values-secrets.yaml` to
 your current directory.
 
+The commands assume the release **and** namespace are both named `ai-workspace`. Every
+resource is prefixed with the release name: `<release>-platform-api`,
+`<release>-platform-api-secrets`, `<release>-platform-api-data`, and so on. If you choose
+different names, substitute them in every command below, including access, uninstall, and
+cleanup.
+
 ### Step 1: Generate the Secrets
 
 The chart never creates or embeds secret values. `generate-secrets.sh` creates the
@@ -85,12 +92,15 @@ The script:
   is set. Basic (file-based) login doesn't need it.
 
 It is **cumulative and idempotent**: a re-run never rotates or deletes an existing Secret.
-Optional inputs are passed as environment variables:
+Optional inputs are passed as environment variables. Read secret values with `read -rs`
+so they never land in your shell history:
 
 ```bash
-APIP_CP_DATABASE_PASSWORD='<db-password>' \
-APIP_AIW_AUTH_OIDC_CLIENT_SECRET='<oidc-client-secret>' \
-  ./ai-workspace-helm-chart/generate-secrets.sh ai-workspace
+read -rsp 'Platform API DB password: ' APIP_CP_DATABASE_PASSWORD; echo
+read -rsp 'OIDC client secret: ' APIP_AIW_AUTH_OIDC_CLIENT_SECRET; echo
+export APIP_CP_DATABASE_PASSWORD APIP_AIW_AUTH_OIDC_CLIENT_SECRET
+./ai-workspace-helm-chart/generate-secrets.sh ai-workspace
+unset APIP_CP_DATABASE_PASSWORD APIP_AIW_AUTH_OIDC_CLIENT_SECRET
 ```
 
 | Variable | Used for |
@@ -231,9 +241,12 @@ kubectl logs -l app.kubernetes.io/component=ai-workspace -n ai-workspace
 - **Lost the admin password** — the script never shows it again. Generate a new bcrypt hash
   and patch it into the Secret, then restart the Platform API:
   ```bash
-  HASH=$(printf '%s' 'new-password' | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n')
-  kubectl patch secret ai-workspace-platform-api-secrets -n ai-workspace \
-    -p "{\"stringData\":{\"APIP_CP_ADMIN_PASSWORD_HASH\":\"$HASH\"}}"
+  read -rsp 'New admin password: ' NEW_PASSWORD; echo
+  PATCH=$(umask 077; mktemp)
+  printf '{"stringData":{"APIP_CP_ADMIN_PASSWORD_HASH":"%s"}}' \
+    "$(printf '%s' "$NEW_PASSWORD" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n')" > "$PATCH"
+  kubectl patch secret ai-workspace-platform-api-secrets -n ai-workspace --patch-file "$PATCH"
+  rm -f "$PATCH"; unset NEW_PASSWORD
   kubectl rollout restart deployment/ai-workspace-platform-api -n ai-workspace
   ```
   Don't delete the Secret and re-run the script to reset the password. That also replaces

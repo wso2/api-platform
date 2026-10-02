@@ -75,25 +75,37 @@ The chart never creates or embeds secret values. The render **fails** unless
 | `APIP_CP_DATABASE_PASSWORD` | `config.database.driver` is `postgres` / `sqlserver` |
 | `APIP_CP_WEBHOOK_SECRET` | `config.webhook.enabled=true` |
 
+Each value is written to its own file in a private temporary directory. The directory is
+passed with `--from-file`, which turns each file name into a Secret key. Secret values never
+appear in shell history or in `kubectl`'s command-line arguments.
+
 ```bash
 kubectl create namespace platform-api
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt_private.pem
-openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
+SECRET_DIR=$(umask 077; mktemp -d)
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$SECRET_DIR/jwt_private.pem"
+openssl rsa -in "$SECRET_DIR/jwt_private.pem" -pubout -out "$SECRET_DIR/jwt_public.pem"
+openssl rand -hex 32 | tr -d '\n' > "$SECRET_DIR/APIP_CP_ENCRYPTION_KEY"
+printf '%s' admin > "$SECRET_DIR/APIP_CP_ADMIN_USERNAME"
 ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
-kubectl create secret generic platform-api-secrets -n platform-api \
-  --from-literal=APIP_CP_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
-  --from-literal=APIP_CP_ADMIN_USERNAME=admin \
-  --from-literal=APIP_CP_ADMIN_PASSWORD_HASH="$(printf "%s" "$ADMIN_PASSWORD" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n')" \
-  --from-file=jwt_public.pem --from-file=jwt_private.pem
+printf '%s' "$ADMIN_PASSWORD" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n' \
+  > "$SECRET_DIR/APIP_CP_ADMIN_PASSWORD_HASH"
+kubectl create secret generic platform-api-secrets -n platform-api --from-file="$SECRET_DIR"
 echo "admin password: $ADMIN_PASSWORD"   # store it now
-rm jwt_private.pem                       # keep jwt_public.pem if a portal must verify tokens
+cp "$SECRET_DIR/jwt_public.pem" .        # only if a portal must verify tokens
+rm -rf "$SECRET_DIR"; unset ADMIN_PASSWORD
 ```
+
+For a database password or webhook secret, read it with `read -rsp` and write it to
+`$SECRET_DIR/APIP_CP_DATABASE_PASSWORD` or `$SECRET_DIR/APIP_CP_WEBHOOK_SECRET` before
+running `kubectl create secret`.
 
 The key names can be changed through `secrets.keys.*`.
 
 ### Standalone, Step 2: Install the chart
 
-Run from `kubernetes/helm/`.
+Run from `kubernetes/helm/`. The commands assume the release **and** namespace are both
+named `platform-api`. Resource names are prefixed with the release name
+(`<release>-platform-api`, `<release>-platform-api-data`); substitute your own if they differ.
 
 Install with default values:
 ```bash

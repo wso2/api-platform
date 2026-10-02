@@ -70,19 +70,32 @@ The render **fails** unless `secrets.existingSecret` is set.
 | `APIP_AP_DATABASE_PASSWORD` | `config.database.driver` is `postgres` / `mssql` |
 | `APIP_AP_AUTH_IDP_CLIENT_SECRET` | OIDC login, together with `secrets.hasIdpClientSecret=true` |
 
-```bash
-# jwt_public.pem = the public half of the Platform API's RS256 keypair, e.g.:
-kubectl get secret <platform-api-secret> -n <pa-namespace> -o jsonpath='{.data.jwt_public\.pem}' | base64 --decode > jwt_public.pem
+Each value is written to its own file in a private temporary directory. The directory is
+passed with `--from-file`, which turns each file name into a Secret key. Secret values never
+appear in shell history or in `kubectl`'s command-line arguments.
 
-kubectl create secret generic api-portal-secrets -n api-portal \
-  --from-literal=APIP_AP_SECURITY_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
-  --from-literal=APIP_AP_SECURITY_SESSION_SECRET="$(openssl rand -hex 32)" \
-  --from-file=jwt_public.pem
+```bash
+kubectl create namespace api-portal
+SECRET_DIR=$(umask 077; mktemp -d)
+# jwt_public.pem = the public half of the Platform API's RS256 keypair, e.g.:
+kubectl get secret <platform-api-secret> -n <pa-namespace> -o jsonpath='{.data.jwt_public\.pem}' \
+  | base64 --decode > "$SECRET_DIR/jwt_public.pem"
+openssl rand -hex 32 | tr -d '\n' > "$SECRET_DIR/APIP_AP_SECURITY_ENCRYPTION_KEY"
+openssl rand -hex 32 | tr -d '\n' > "$SECRET_DIR/APIP_AP_SECURITY_SESSION_SECRET"
+kubectl create secret generic api-portal-secrets -n api-portal --from-file="$SECRET_DIR"
+rm -rf "$SECRET_DIR"
 ```
+
+For a database password or OIDC client secret, read it with `read -rsp` and write it to
+`$SECRET_DIR/APIP_AP_DATABASE_PASSWORD` or `$SECRET_DIR/APIP_AP_AUTH_IDP_CLIENT_SECRET`
+before running `kubectl create secret`. For the OIDC secret, also set
+`secrets.hasIdpClientSecret=true`.
 
 ### Standalone, Step 2: Install the chart
 
-Run from `kubernetes/helm/`:
+Run from `kubernetes/helm/`. The commands assume release `api-portal-ui` in namespace
+`api-portal`. Resource names are prefixed with the release name (`<release>-api-portal`,
+`<release>-api-portal-data`); substitute your own if they differ.
 
 ```bash
 helm install api-portal-ui ./api-portal-ui-helm-chart -n api-portal \

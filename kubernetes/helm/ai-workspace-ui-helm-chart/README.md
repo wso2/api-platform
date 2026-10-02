@@ -60,7 +60,9 @@ ai-workspace-ui:
 ### Standalone
 
 In the default `basic` auth mode (the Platform API's file-based login), **no Secret is
-needed**. Run from `kubernetes/helm/`:
+needed**. Run from `kubernetes/helm/`. The commands assume release `ai-workspace-ui` in
+namespace `ai-workspace`. Resource names are prefixed with the release name
+(`<release>-ai-workspace`); substitute your own if they differ.
 
 ```bash
 helm install ai-workspace-ui ./ai-workspace-ui-helm-chart -n ai-workspace --create-namespace \
@@ -84,11 +86,17 @@ helm install ai-workspace-ui ./ai-workspace-ui-helm-chart -n ai-workspace --crea
 
 #### OIDC mode
 
-The BFF is a confidential OIDC client, so it needs a client secret:
+The BFF is a confidential OIDC client, so it needs a client secret. Create the Secret
+**before** installing. The secret is read without echo and passed through a private
+temporary file, so it never appears in shell history or in `kubectl`'s arguments:
 
 ```bash
-kubectl create secret generic ai-workspace-ui-secrets -n ai-workspace \
-  --from-literal=APIP_AIW_AUTH_OIDC_CLIENT_SECRET='<client-secret>'
+kubectl create namespace ai-workspace       # skip if it already exists
+SECRET_DIR=$(umask 077; mktemp -d)
+read -rsp 'OIDC client secret: ' OIDC_SECRET; echo
+printf '%s' "$OIDC_SECRET" > "$SECRET_DIR/APIP_AIW_AUTH_OIDC_CLIENT_SECRET"
+kubectl create secret generic ai-workspace-ui-secrets -n ai-workspace --from-file="$SECRET_DIR"
+rm -rf "$SECRET_DIR"; unset OIDC_SECRET
 ```
 
 ```yaml
@@ -105,6 +113,12 @@ config:
       redirectUrl: https://workspace.example.com/ai-workspace/api/auth/callback
       postLogoutRedirectUrl: https://workspace.example.com/ai-workspace/login
       scope: "openid profile email"
+```
+
+```bash
+helm install ai-workspace-ui ./ai-workspace-ui-helm-chart -n ai-workspace \
+  -f oidc-values.yaml \
+  --set config.controlPlane.url=https://platform-api-platform-api.platform-api.svc:9243
 ```
 
 ## Accessing the UI

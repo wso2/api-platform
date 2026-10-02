@@ -67,6 +67,11 @@ kubectl get pods -n cert-manager
 Run every command below from `kubernetes/helm/`. The script writes `values-secrets.yaml` to
 your current directory.
 
+The commands assume the release **and** namespace are both named `api-portal`. Every resource is
+prefixed with the release name: `<release>-platform-api`, `<release>-platform-api-secrets`,
+`<release>-platform-api-data`, and so on. If you choose different names, substitute them in
+every command below, including access, uninstall, and cleanup.
+
 ### Step 1: Generate the Secrets
 
 The chart never creates or embeds secret values. `generate-secrets.sh` creates the
@@ -87,12 +92,15 @@ The script:
   secret, and a copy of the Platform API public key (`jwt_public.pem`).
 
 It is **cumulative and idempotent**: a re-run never rotates or deletes an existing Secret.
-Optional inputs are passed as environment variables:
+Optional inputs are passed as environment variables. Read secret values with `read -rs`
+so they never land in your shell history:
 
 ```bash
-APIP_AP_DATABASE_PASSWORD='<portal-db-password>' \
-APIP_AP_AUTH_IDP_CLIENT_SECRET='<oidc-client-secret>' \
-  ./api-portal-helm-chart/generate-secrets.sh api-portal
+read -rsp 'API Portal DB password: ' APIP_AP_DATABASE_PASSWORD; echo
+read -rsp 'OIDC client secret: ' APIP_AP_AUTH_IDP_CLIENT_SECRET; echo
+export APIP_AP_DATABASE_PASSWORD APIP_AP_AUTH_IDP_CLIENT_SECRET
+./api-portal-helm-chart/generate-secrets.sh api-portal
+unset APIP_AP_DATABASE_PASSWORD APIP_AP_AUTH_IDP_CLIENT_SECRET
 ```
 
 | Variable | Used for |
@@ -243,9 +251,12 @@ kubectl logs -l app.kubernetes.io/component=api-portal -n api-portal
 - **Lost the admin password** — the script never shows it again. Patch a new bcrypt hash
   into the Platform API Secret, then restart the Platform API:
   ```bash
-  HASH=$(printf '%s' 'new-password' | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n')
-  kubectl patch secret api-portal-platform-api-secrets -n api-portal \
-    -p "{\"stringData\":{\"APIP_CP_ADMIN_PASSWORD_HASH\":\"$HASH\"}}"
+  read -rsp 'New admin password: ' NEW_PASSWORD; echo
+  PATCH=$(umask 077; mktemp)
+  printf '{"stringData":{"APIP_CP_ADMIN_PASSWORD_HASH":"%s"}}' \
+    "$(printf '%s' "$NEW_PASSWORD" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n')" > "$PATCH"
+  kubectl patch secret api-portal-platform-api-secrets -n api-portal --patch-file "$PATCH"
+  rm -f "$PATCH"; unset NEW_PASSWORD
   kubectl rollout restart deployment/api-portal-platform-api -n api-portal
   ```
 
