@@ -18,7 +18,7 @@ Prerequisite: the `okf-open-knowledge-format` skill is not committed. If it is m
 
 3. **Apply the template.** Replace the body with [TEMPLATE.md](TEMPLATE.md), filled in. Keep exactly its sections and order. Do not add sections. If a section has nothing to say, write "None" under it rather than deleting it, so a reader can tell "considered" from "forgotten".
 
-4. **Finish.** Add the file to `kb/<component>/index.md` with its description, add a dated entry to `kb/log.md` (newest first), re-run the OKF validation. Report which `sources` paths do not exist yet.
+4. **Finish.** Confirm the `kb/<component>/index.md` entry and the dated `kb/log.md` entry from Step 1 exist and match the final document (update them rather than adding duplicates), and re-run the OKF validation. Report which `sources` paths do not exist yet.
 
 ## Rules
 
