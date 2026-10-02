@@ -350,7 +350,10 @@ export function GraphqlOverviewTab({
             <Typography sx={{ fontWeight: 600, mb: 1.5 }} variant="h6">
               <FormattedMessage {...messages.schemaTitle} />
             </Typography>
-            <GraphqlSchemaExplorer sdl={sdl} />
+            {/* An API imported from a gateway carries no SDL, and the server
+                returns it as an empty string — that's "no schema yet", not an
+                unparseable one, so the explorer gets its initial empty state. */}
+            <GraphqlSchemaExplorer sdl={sdl?.trim() ? sdl : undefined} />
           </Card>
         </Stack>
       </Grid>

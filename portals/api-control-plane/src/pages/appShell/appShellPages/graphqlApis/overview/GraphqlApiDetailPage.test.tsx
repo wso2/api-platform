@@ -109,6 +109,25 @@ describe('GraphqlApiDetailPage', () => {
     );
   });
 
+  it.each([
+    { label: 'empty', sdl: '' },
+    { label: 'whitespace-only', sdl: '  \n' },
+  ])('shows the schema’s initial state, not a parse error, for an $label SDL', async ({ sdl }) => {
+    // An API imported from a gateway (DP → CP) carries no SDL; the server
+    // still answers `/sdl` with 200, just an empty string.
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', { ...api, readOnly: true }),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl }),
+      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('Schema will show here')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be parsed/)).not.toBeInTheDocument();
+  });
+
   it('hides the edit button and shows a Gateway-managed chip for a read-only API', async () => {
     const readOnlyApi = { ...api, readOnly: true };
     server.use(
