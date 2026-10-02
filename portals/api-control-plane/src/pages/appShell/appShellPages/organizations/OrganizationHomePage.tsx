@@ -38,15 +38,7 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  ArrowRight,
-  Boxes,
-  Clock,
-  Network,
-  PanelTop,
-  Trash2,
-  Workflow,
-} from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Boxes, Clock, Network, PanelTop, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -390,7 +382,7 @@ function OrganizationHomePageContent() {
             <OverviewCard
               action={intl.formatMessage(messages.apiAction)}
               description={intl.formatMessage(messages.apiDescription)}
-              icon={<Workflow size={22} />}
+              icon={<Boxes size={22} />}
               metric={
                 restApiCountsQuery.isPending || restApiCountsQuery.error
                   ? '—'
