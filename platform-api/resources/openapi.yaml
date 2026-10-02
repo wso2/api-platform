@@ -4680,7 +4680,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:create
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4728,7 +4727,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4776,7 +4774,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4844,7 +4841,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4889,7 +4885,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:update
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4934,7 +4929,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:delete
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4981,9 +4975,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:create
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5032,9 +5024,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:read
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5072,9 +5062,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:read
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5106,9 +5094,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:delete
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5145,9 +5131,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:undeploy
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5198,9 +5182,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:restore
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5258,9 +5240,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:create
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5306,9 +5286,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:read
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5342,9 +5320,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:read
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5392,9 +5368,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:delete
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5432,11 +5406,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:read
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5480,11 +5451,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:create
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5537,11 +5505,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:update
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5594,11 +5559,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:delete
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
