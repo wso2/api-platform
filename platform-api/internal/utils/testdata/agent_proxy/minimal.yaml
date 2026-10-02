@@ -1,0 +1,18 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Agent
+metadata:
+    name: weather-agent
+    labels:
+        projectId: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
+spec:
+    displayName: Weather Agent
+    version: v1.0
+    context: /weather
+    upstream:
+        url: http://weather-agent:9000
+    a2a:
+        protocolVersion: "1.0"
+        operationConfigs:
+            transports:
+                - protocolBinding: JSONRPC
+                  pathPrefix: /rpc

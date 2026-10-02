@@ -968,16 +968,16 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I authenticate using basic auth as "([^"]*)"$`, g.authenticateAs)
 
 	sc.Step(
-		`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) with configuration:$`,
+		`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) with configuration:$`,
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
-	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1295,6 +1295,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM provider template": {"LlmProviderTemplate", collLLMTemplates},
 	"MCP proxy":             {"Mcp", collMCPProxies},
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
+	"Agent":                 {"Agent", collAgents},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -1613,6 +1614,9 @@ func (g *Gateway) serviceRequestWithBody(
 	if err != nil {
 		return err
 	}
+	if err := g.awaitMappedTestbenchService(ctx, service); err != nil {
+		return err
+	}
 
 	// The config dump lags the deploy by one event-hub poll and nothing else exposes that, so
 	// the framework waits here rather than making every scenario encode the timing.
@@ -1635,6 +1639,38 @@ func (g *Gateway) serviceRequestWithBody(
 		}
 	}
 	return g.invokeWith(ctx, method, url, headers, payload)
+}
+
+// awaitMappedTestbenchService verifies the host-side mapped port used by a direct
+// testbench request. Testbench exposes one health endpoint per service port; probing the
+// same endpoint as the request catches a stale or unavailable mapped port without changing
+// the request or its response assertion.
+func (g *Gateway) awaitMappedTestbenchService(ctx context.Context, service string) error {
+	spec, ok := serviceEndpoints[service]
+	if !ok || spec.component != "testbench" {
+		return nil
+	}
+	base, err := g.topo.URL(spec.component, spec.endpoint)
+	if err != nil {
+		return err
+	}
+	healthURL := strings.TrimRight(base, "/") + "/testbench/health"
+	return retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, requestErr := g.funnel.Client().Do(ctx, httpx.Request{
+				Method: http.MethodGet,
+				URL:    healthURL,
+			}, 0, 0)
+			if requestErr != nil {
+				return nil, retry.Transient(requestErr)
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool {
+			return resp != nil && resp.StatusCode == http.StatusOK
+		},
+		fmt.Sprintf("waiting for testbench service %q mapped endpoint", service),
+	)
 }
 
 // serviceRequestUntilStatus polls a component endpoint until it returns the
@@ -2145,6 +2181,7 @@ const (
 	collLLMTemplates = "/llm-provider-templates"
 	collMCPProxies   = "/mcp-proxies"
 	collLLMProxies   = "/llm-proxies"
+	collAgents       = "/agents"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2307,6 +2344,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindLLMProviderTemplate, true
 	case collMCPProxies:
 		return cleanup.KindMCPProxy, true
+	case collAgents:
+		return cleanup.KindAgent, true
 	default:
 		return cleanup.Kind{}, false
 	}

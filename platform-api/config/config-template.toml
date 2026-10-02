@@ -479,6 +479,22 @@ max_redirects = 5
 allowed_schemes = ["http", "https"]
 
 # ---------------------------------------------------------------------------
+# Agent Card display cache — in-process, per replica
+# ---------------------------------------------------------------------------
+# The public Agent Card of a passthrough Agent proxy is not stored, so the
+# control plane fetches it from the upstream whenever that page is viewed.
+# This cache keeps that off the upstream on every view. It holds nothing
+# durable: a restart empties it, and two replicas may report different `Age`
+# values for the same Agent proxy. It is display-only — deployment artifacts
+# always read stored configuration, never a cached card. A request carrying
+# `Cache-Control: no-cache` always bypasses it and refreshes the entry.
+[platform_api.agent_card_cache]
+positive_ttl = "60s"   # how long a fetched card is served from cache (0 = never cache successes)
+negative_ttl = "10s"   # how long a fetch failure is served from cache (0 = never cache failures)
+max_entries  = 512     # LRU cap on cached Agent proxies (0 = cache nothing)
+max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
+
+# ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "3s", "10m", "1h". All must be positive.

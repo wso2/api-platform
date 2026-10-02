@@ -147,7 +147,7 @@ func platformAPITLSConfig(caPEM []byte) (*tls.Config, error) {
 func (s *Suite) Register(sc *godog.ScenarioContext) {
 	s.registerBaseSteps(sc)
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
-	platformapi.Register(sc, s.topo, s.funnel.Client())
+	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot)
 	apiportal.Register(sc, s.topo, s.funnel.Client())
 }
 
@@ -218,6 +218,12 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I store the JSON response field "([^"]*)" as "([^"]*)"$`,
 		b.storeJSONField)
+	sc.Step(`^the JSON response array "([^"]*)" should (contain|not contain) an item with "([^"]*)" equal to "([^"]*)"$`,
+		b.jsonArrayItemPresence)
+	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should have "([^"]*)" equal to "([^"]*)"$`,
+		b.jsonArrayItemFieldIs)
+	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should not have field "([^"]*)"$`,
+		b.jsonArrayItemFieldAbsent)
 	sc.Step(`^I set header "([^"]*)" to "([^"]*)"$`, b.setHeader)
 	sc.Step(`^I clear all headers$`, b.clearHeaders)
 	sc.Step(`^I reset the request$`, b.resetRequest)
@@ -1375,6 +1381,128 @@ func (b *Base) storeJSONField(ctx context.Context, field, key string) error {
 		return fmt.Errorf("cannot store JSON field %q without runner context", field)
 	}
 	local.Set(key, textValue)
+	return nil
+}
+
+// jsonArrayItems decodes the published response and returns the array at a dotted path. An
+// empty path names the document itself, for an endpoint whose body is a bare JSON array.
+func jsonArrayItems(ctx context.Context, field string) ([]any, *httpx.Response, error) {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var doc any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return nil, resp, fmt.Errorf("response is not JSON: %w (%s)", err, resp.Describe())
+	}
+	value, ok := traverseJSON(doc, field)
+	if !ok {
+		return nil, resp, fmt.Errorf("JSON field %q is absent from %s", field, resp.Describe())
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, resp, fmt.Errorf("JSON field %q holds %T, not an array: %s", field, value, resp.Describe())
+	}
+	return items, resp, nil
+}
+
+// jsonArrayItemsMatching returns the objects in an array whose key field renders as want.
+//
+// A shared collection — another runner's keys in a user listing, another scenario's deployments —
+// has no stable element order, so the item is selected by an identifying field rather than an
+// index. Matching compares the rendered value exactly, as jsonFieldIs does.
+func jsonArrayItemsMatching(items []any, key, want string) []map[string]any {
+	var matched []map[string]any
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		value, ok := traverseJSON(object, key)
+		if ok && fmt.Sprintf("%v", value) == want {
+			matched = append(matched, object)
+		}
+	}
+	return matched
+}
+
+func (b *Base) jsonArrayItemPresence(ctx context.Context, field, presence, key, want string) error {
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	items, resp, err := jsonArrayItems(ctx, field)
+	if err != nil {
+		return err
+	}
+	matched := jsonArrayItemsMatching(items, key, expected)
+	switch presence {
+	case "contain":
+		if len(matched) == 0 {
+			return fmt.Errorf("JSON array %q has no item with %q equal to %q: %s", field, key, expected, resp.Describe())
+		}
+	case "not contain":
+		if len(matched) != 0 {
+			return fmt.Errorf("JSON array %q has %d item(s) with %q equal to %q: %s", field, len(matched), key, expected, resp.Describe())
+		}
+	default:
+		return fmt.Errorf("unknown array presence %q", presence)
+	}
+	return nil
+}
+
+// jsonArrayItem returns the single array item selected by key; zero or several matches are an
+// error, since an assertion against an ambiguous item proves nothing about the intended one.
+func jsonArrayItem(ctx context.Context, field, key, want string) (map[string]any, *httpx.Response, error) {
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return nil, nil, err
+	}
+	items, resp, err := jsonArrayItems(ctx, field)
+	if err != nil {
+		return nil, resp, err
+	}
+	matched := jsonArrayItemsMatching(items, key, expected)
+	if len(matched) != 1 {
+		return nil, resp, fmt.Errorf("JSON array %q has %d items with %q equal to %q, want exactly one: %s",
+			field, len(matched), key, expected, resp.Describe())
+	}
+	return matched[0], resp, nil
+}
+
+func (b *Base) jsonArrayItemFieldIs(ctx context.Context, field, key, keyValue, itemField, want string) error {
+	item, resp, err := jsonArrayItem(ctx, field, key, keyValue)
+	if err != nil {
+		return err
+	}
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	got, ok := traverseJSON(item, itemField)
+	if !ok {
+		return fmt.Errorf("the selected item of %q has no field %q: %s", field, itemField, resp.Describe())
+	}
+	gotText := fmt.Sprintf("%v", got)
+	if got == nil {
+		gotText = "null"
+	}
+	if gotText != expected {
+		return fmt.Errorf("the selected item of %q field %q: expected %q, got %q: %s",
+			field, itemField, expected, gotText, resp.Describe())
+	}
+	return nil
+}
+
+func (b *Base) jsonArrayItemFieldAbsent(ctx context.Context, field, key, keyValue, itemField string) error {
+	item, resp, err := jsonArrayItem(ctx, field, key, keyValue)
+	if err != nil {
+		return err
+	}
+	if got, ok := traverseJSON(item, itemField); ok {
+		return fmt.Errorf("the selected item of %q should not have field %q, but it holds %v: %s",
+			field, itemField, got, resp.Describe())
+	}
 	return nil
 }
 

@@ -42,55 +42,55 @@ blocks:
     runners:
       - name: security
         features:
-          - features/apiportal_security.feature
+          - features/apiportal/security/security.feature
       - name: auth
         features:
-          - features/apiportal_auth.feature
+          - features/apiportal/security/auth.feature
       - name: rest-apis
         features:
-          - features/apiportal_rest_apis.feature
+          - features/apiportal/core/rest_apis.feature
       - name: resources
         features:
-          - features/apiportal_resources.feature
+          - features/apiportal/core/resources.feature
       - name: mcp-servers
         features:
-          - features/apiportal_mcp_servers.feature
+          - features/apiportal/ai/mcp_servers.feature
       - name: api-types
         features:
-          - features/apiportal_api_types.feature
+          - features/apiportal/core/api_types.feature
       - name: subscriptions
         features:
-          - features/apiportal_subscriptions.feature
+          - features/apiportal/subscriptions/subscriptions.feature
       - name: views-labels
         features:
-          - features/apiportal_views_labels_advanced.feature
+          - features/apiportal/content/views_labels_advanced.feature
       - name: views-pages
         features:
-          - features/apiportal_views_pages.feature
+          - features/apiportal/content/views_pages.feature
       - name: workflows
         features:
-          - features/apiportal_workflows.feature
+          - features/apiportal/ai/workflows.feature
       - name: content
         features:
-          - features/apiportal_content.feature
+          - features/apiportal/content/content.feature
       - name: organization-content
         features:
-          - features/apiportal_organization_content.feature
+          - features/apiportal/content/organization_content.feature
       - name: api-keys
         features:
-          - features/apiportal_api_keys.feature
+          - features/apiportal/subscriptions/api_keys.feature
       - name: discovery
         features:
-          - features/apiportal_discovery.feature
+          - features/apiportal/ai/discovery.feature
       - name: organizations
         features:
-          - features/apiportal_organizations.feature
+          - features/apiportal/organizations/organizations.feature
       - name: organization-isolation
         features:
-          - features/apiportal_organization_isolation.feature
+          - features/apiportal/organizations/organization_isolation.feature
       - name: artifact-uploads
         features:
-          - features/apiportal_artifact_upload.feature
+          - features/apiportal/core/artifact_upload.feature
 
   # Webhook subscribers are organization-wide. Keep their intentionally failing
   # delivery targets isolated from every other API Portal runner.
@@ -106,19 +106,19 @@ blocks:
     runners:
       - name: webhook-subscribers
         features:
-          - features/apiportal_webhook_subscribers.feature
+          - features/apiportal/webhooks/webhook_subscribers.feature
       - name: application-webhooks
         features:
-          - features/apiportal_application_webhooks.feature
+          - features/apiportal/webhooks/application_webhooks.feature
       - name: api-key-webhooks
         features:
-          - features/apiportal_api_key_webhooks.feature
+          - features/apiportal/webhooks/api_key_webhooks.feature
       - name: subscription-webhooks
         features:
-          - features/apiportal_subscription_webhooks.feature
+          - features/apiportal/webhooks/subscription_webhooks.feature
       - name: webhook-delivery
         features:
-          - features/apiportal_webhook_delivery.feature
+          - features/apiportal/webhooks/webhook_delivery.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -137,7 +137,7 @@ blocks:
     runners:
       - name: authorization
         features:
-          - features/apiportal_auth_scope.feature
+          - features/apiportal/security/auth_scope.feature
 
   - name: api-portal-auth-role
     parallel: 1
@@ -156,7 +156,7 @@ blocks:
     runners:
       - name: authorization
         features:
-          - features/apiportal_auth_role.feature
+          - features/apiportal/security/auth_role.feature
 
   - name: api-portal-grant-table
     parallel: 1
@@ -169,7 +169,7 @@ blocks:
     runners:
       - name: grant-table-parity
         features:
-          - features/apiportal_grant_table_parity.feature
+          - features/apiportal/security/grant_table_parity.feature
 
   - name: api-portal-foreign-org
     parallel: 1
@@ -185,7 +185,7 @@ blocks:
     runners:
       - name: foreign-org-login
         features:
-          - features/apiportal_foreign_org_login.feature
+          - features/apiportal/organizations/foreign_org_login.feature
 
   - name: gateway-core
     parallel: 7
@@ -197,207 +197,207 @@ blocks:
     runners:
       - name: api-error-responses
         features:
-          - features/api_error_responses.feature
+          - features/gateway/core/api_error_responses.feature
       - name: health
         features:
-          - features/health.feature
+          - features/gateway/core/health.feature
       - name: api-management
         features:
-          - features/api_management.feature
+          - features/gateway/core/api_management.feature
       - name: api-deploy
         features:
-          - features/api_deploy.feature
+          - features/gateway/core/api_deploy.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
-          - features/upstream_url_validation.feature
+          - features/gateway/routes/upstream_url_validation.feature
       - name: api-keys
         features:
-          - features/api_keys.feature
+          - features/gateway/security/api_keys.feature
       - name: api-with-policies
         features:
-          - features/api_with_policies.feature
+          - features/gateway/core/api_with_policies.feature
       - name: search-deployments
         features:
-          - features/search_deployments.feature
+          - features/gateway/core/search_deployments.feature
       - name: lazy-resources-xds
         features:
-          - features/lazy_resources_xds.feature
+          - features/gateway/core/lazy_resources_xds.feature
       - name: dynamic-endpoint
         tags: "gateway-version>=1.2.0"
         features:
-          - features/dynamic_endpoint.feature
+          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
-          - features/route_path_matching.feature
+          - features/gateway/routes/route_path_matching.feature
       - name: route-path-matching-prefix
         tags: "gateway-version>=1.2.0"
         features:
-          - features/route_path_matching_prefix.feature
+          - features/gateway/routes/route_path_matching_prefix.feature
       - name: path-normalization
         tags: "gateway-version>=1.2.0"
         features:
-          - features/path_normalization.feature
+          - features/gateway/routes/path_normalization.feature
       - name: header-routing
         tags: "gateway-version>=1.2.0"
         features:
-          - features/header_routing.feature
+          - features/gateway/routes/header_routing.feature
       - name: host-rewrite
         features:
-          - features/host_rewrite.feature
+          - features/gateway/routes-policies/host_rewrite.feature
       - name: redirect
         tags: "gateway-version>=1.2.0"
         features:
-          - features/redirect.feature
+          - features/gateway/routes-policies/redirect.feature
       - name: request-rewrite
         features:
-          - features/request_rewrite.feature
+          - features/gateway/routes-policies/request_rewrite.feature
       - name: cors
         features:
-          - features/cors.feature
+          - features/gateway/security-policies/cors.feature
       - name: respond
         features:
-          - features/respond.feature
+          - features/gateway/routes-policies/respond.feature
       - name: sandbox-routing
         features:
-          - features/sandbox_routing.feature
+          - features/gateway/routes/sandbox_routing.feature
       - name: sandbox-upstream-first-url
         tags: "gateway-version<1.2.0"
         features:
-          - features/sandbox_upstream_first_url.feature
+          - features/gateway/routes/sandbox_upstream_first_url.feature
       - name: sandbox-upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
-          - features/sandbox_upstream_url_validation.feature
+          - features/gateway/routes/sandbox_upstream_url_validation.feature
       - name: content-length-guardrail
         features:
-          - features/content_length_guardrail.feature
+          - features/gateway/guardrails-policies/content_length_guardrail.feature
       - name: word-count-guardrail
         features:
-          - features/word_count_guardrail.feature
+          - features/gateway/guardrails-policies/word_count_guardrail.feature
       - name: sentence-count-guardrail
         features:
-          - features/sentence_count_guardrail.feature
+          - features/gateway/guardrails-policies/sentence_count_guardrail.feature
       - name: url-guardrail
         features:
-          - features/url_guardrail.feature
+          - features/gateway/guardrails-policies/url_guardrail.feature
       - name: regex-guardrail
         features:
-          - features/regex_guardrail.feature
+          - features/gateway/guardrails-policies/regex_guardrail.feature
       - name: json-schema-guardrail
         features:
-          - features/json_schema_guardrail.feature
+          - features/gateway/guardrails-policies/json_schema_guardrail.feature
       - name: cel-conditions
         features:
-          - features/cel_conditions.feature
+          - features/gateway/core/cel_conditions.feature
       - name: certificates
         features:
-          - features/certificates.feature
+          - features/gateway/security/certificates.feature
       - name: secrets
         features:
-          - features/secrets.feature
+          - features/gateway/security/secrets.feature
       - name: basic-ratelimit
         features:
-          - features/basic_ratelimit.feature
+          - features/gateway/ratelimit-policies/basic_ratelimit.feature
       - name: ratelimit-headers
         features:
-          - features/ratelimit_headers.feature
+          - features/gateway/ratelimit-policies/ratelimit_headers.feature
       - name: ratelimit-cost-extraction
         features:
-          - features/ratelimit_cost_extraction.feature
+          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
       - name: ratelimit-key-extraction
         features:
-          - features/ratelimit_key_extraction.feature
+          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
       - name: ratelimit-multi-quota
         features:
-          - features/ratelimit_multi_quota.feature
+          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
       - name: token-based-ratelimit
         features:
-          - features/token_based_ratelimit.feature
+          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
       - name: token-based-ratelimit-provider-templates
         tags: "gateway-version>=1.2.0"
         features:
-          - features/token_based_ratelimit_provider_templates.feature
+          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit_provider_templates.feature
       - name: llm-cost-based-ratelimit
         # Excludes scenarios whose exact post-charge assertion is blocked by the
         # gateway rejecting the non-billable readiness probe after exhaustion.
         tags: "~@known-issue"
         features:
-          - features/llm_cost_based_ratelimit.feature
+          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_based_ratelimit.feature
       - name: llm-cost-calculation-providers
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_cost_calculation_providers.feature
+          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_calculation_providers.feature
       - name: llm-provider-global-ratelimit
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_provider_global_ratelimit.feature
+          - features/ai-workspace-gateway/ratelimit-policies/llm_provider_global_ratelimit.feature
       - name: llm-provider-management
         features:
-          - features/llm_provider.feature
+          - features/ai-workspace-gateway/llm/llm_provider.feature
       - name: llm-provider-policy-validation
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_provider_policy_validation.feature
+          - features/ai-workspace-gateway/llm/llm_provider_policy_validation.feature
       - name: llm-provider-template-management
         features:
-          - features/llm_provider_template.feature
+          - features/ai-workspace-gateway/llm/llm_provider_template.feature
       - name: llm-proxy-management
         features:
-          - features/llm_proxy.feature
+          - features/ai-workspace-gateway/llm/llm_proxy.feature
       - name: llm-proxy-policy-validation
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_proxy_policy_validation.feature
+          - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
       - name: model-round-robin
         features:
-          - features/model_round_robin.feature
+          - features/ai-workspace-gateway/llm-policies/model_round_robin.feature
       - name: model-round-robin-multi-provider
         tags: "gateway-version>=1.2.0"
         features:
-          - features/model_round_robin_multi_provider.feature
+          - features/ai-workspace-gateway/llm-policies/model_round_robin_multi_provider.feature
       - name: model-weighted-round-robin
         features:
-          - features/model_weighted_round_robin.feature
+          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin.feature
       - name: model-weighted-round-robin-multi-provider
         tags: "gateway-version>=1.2.0"
         features:
-          - features/model_weighted_round_robin_multi_provider.feature
+          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_policy_path_specificity.feature
+          - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
       - name: prompt-template
         features:
-          - features/prompt_template.feature
+          - features/ai-workspace-gateway/llm-policies/prompt_template.feature
       - name: prompt-decorator
         features:
-          - features/prompt_decorator.feature
+          - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
       - name: prompt-compressor
         features:
-          - features/prompt_compressor.feature
+          - features/ai-workspace-gateway/llm-policies/prompt_compressor.feature
       - name: aws-bedrock-guardrail
         tags: "gateway-version>1.2.0"
         features:
-          - features/aws_bedrock_guardrail.feature
+          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
-          - features/mcp_deploy.feature
+          - features/ai-workspace-gateway/mcp/mcp_deploy.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
-          - features/oauth2_auth.feature
+          - features/gateway/security-policies/oauth2_auth.feature
       - name: policy-engine-admin
         features:
-          - features/policy_engine_admin.feature
+          - features/gateway/core/policy_engine_admin.feature
         tags: "~@known-issue"
       - name: template-functions
         features:
-          - features/template_functions.feature
+          - features/gateway/core/template_functions.feature
       - name: template-functions-typed
         tags: "gateway-version>=1.2.0"
         features:
-          - features/template_functions_typed.feature
+          - features/gateway/core/template_functions_typed.feature
 
   - name: legacy-aws-bedrock-guardrail
     parallel: 1
@@ -411,7 +411,7 @@ blocks:
       - name: aws-bedrock-guardrail
         tags: "gateway-version<=1.2.0"
         features:
-          - features/aws_bedrock_guardrail.feature
+          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
@@ -423,7 +423,7 @@ blocks:
     runners:
       - name: config-dump
         features:
-          - features/config_dump.feature
+          - features/gateway/core/config_dump.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -441,11 +441,11 @@ blocks:
     runners:
       - name: startup-db-bootstrap
         features:
-          - features/startup_db_bootstrap.feature
+          - features/gateway/core/startup_db_bootstrap.feature
       - name: dp-to-cp-reconnect
         tags: "gateway-version>=1.2.0"
         features:
-          - features/dp_to_cp_reconnect.feature
+          - features/gateway/control-plane/dp_to_cp_reconnect.feature
 
   - name: pii-masking-regex
     parallel: 1
@@ -457,7 +457,7 @@ blocks:
     runners:
       - name: pii-masking-regex
         features:
-          - features/pii_masking_regex.feature
+          - features/gateway/guardrails-policies/pii_masking_regex.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -470,7 +470,7 @@ blocks:
     runners:
       - name: metrics
         features:
-          - features/metrics.feature
+          - features/gateway/observability/metrics.feature
 
   - name: gateway-logging
     parallel: 1
@@ -483,7 +483,7 @@ blocks:
     runners:
       - name: log-message
         features:
-          - features/log_message.feature
+          - features/gateway/observability-policies/log_message.feature
 
   - name: vhost-routing-single
     parallel: 1
@@ -496,7 +496,7 @@ blocks:
     runners:
       - name: vhost-routing-single
         features:
-          - features/vhost_routing_single.feature
+          - features/gateway/routes/vhost_routing_single.feature
 
   - name: vhost-routing-multi
     parallel: 1
@@ -509,11 +509,11 @@ blocks:
     runners:
       - name: vhost-routing-multi
         features:
-          - features/vhost_routing_multi.feature
+          - features/gateway/routes/vhost_routing_multi.feature
       - name: vhost-routing-multiple-production-hosts
         tags: "gateway-version>=1.2.0"
         features:
-          - features/vhost_routing_multiple_production_hosts.feature
+          - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
 
   - name: azure-content-safety
     parallel: 1
@@ -526,7 +526,7 @@ blocks:
     runners:
       - name: azure-content-safety
         features:
-          - features/azure_content_safety.feature
+          - features/gateway/guardrails-policies/azure_content_safety.feature
 
   - name: semantic-ai
     parallel: 2
@@ -541,17 +541,17 @@ blocks:
     runners:
       - name: semantic-cache
         features:
-          - features/semantic_cache.feature
+          - features/ai-workspace-gateway/llm-policies/semantic_cache.feature
       - name: semantic-cache-isolation
         tags: "gateway-version>=1.2.0"
         features:
-          - features/semantic_cache_isolation.feature
+          - features/ai-workspace-gateway/llm-policies/semantic_cache_isolation.feature
       - name: semantic-prompt-guard
         features:
-          - features/semantic_prompt_guard.feature
+          - features/gateway/guardrails-policies/semantic_prompt_guard.feature
       - name: semantic-tool-filtering
         features:
-          - features/semantic_tool_filtering.feature
+          - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
   - name: mcp-policies
     parallel: 2
@@ -565,18 +565,18 @@ blocks:
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
-          - features/mcp_policies.feature
+          - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
-          - features/mcp_gateway_url_precedence.feature
+          - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
       - name: jwt-auth
         features:
-          - features/jwt_auth.feature
+          - features/gateway/security-policies/jwt_auth.feature
       - name: jwt-auth-scope-claim-rules
         tags: "gateway-version>=1.2.0"
         features:
-          - features/jwt_auth_scope_claim_rules.feature
+          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1
@@ -589,7 +589,7 @@ blocks:
     runners:
       - name: mcp-auth-gateway-host
         features:
-          - features/mcp_auth_gateway_host.feature
+          - features/ai-workspace-gateway/mcp-policies/mcp_auth_gateway_host.feature
 
   - name: analytics
     parallel: 1
@@ -601,17 +601,17 @@ blocks:
     runners:
       - name: analytics-basic
         features:
-          - features/analytics_basic.feature
+          - features/gateway/observability/analytics_basic.feature
       - name: analytics-llm
         tags: "gateway-version>=1.2.0"
         features:
-          - features/analytics_llm.feature
+          - features/gateway/observability/analytics_llm.feature
       - name: analytics-header-filter
         features:
-          - features/analytics_header_filter.feature
+          - features/gateway/observability-policies/analytics_header_filter.feature
       - name: subscription-analytics
         features:
-          - features/subscription_analytics.feature
+          - features/gateway/observability/subscription_analytics.feature
 
   - name: backend-timeout
     parallel: 2
@@ -625,96 +625,183 @@ blocks:
       - name: upstream-connect-timeout
         tags: "gateway-version>=1.2.0"
         features:
-          - features/upstream_connect_timeout.feature
+          - features/gateway/routes/upstream_connect_timeout.feature
       - name: backend-route-timeout
         tags: "gateway-version>=1.2.0"
         features:
-          - features/backend_timeout.feature
+          - features/gateway/routes/backend_timeout.feature
       - name: llm-backend-timeout
         tags: "gateway-version>=1.2.0"
         features:
-          - features/llm_backend_timeout.feature
+          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
       - name: interceptor-service
         features:
-          - features/interceptor_service.feature
+          - features/gateway/routes-policies/interceptor_service.feature
 
   - name: platform-api-sqlite
     parallel: 2
     components:
       - name: platform-api
         db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
         features:
-          - features/dp_to_cp.feature
+          - features/gateway/control-plane/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
-          - features/platform_api_secret_deploy.feature
+          - features/management-portal/deployments/platform_api_secret_deploy.feature
       - name: platform-api-deployment
         features:
-          - features/api_deployment.feature
+          - features/management-portal/deployments/api_deployment.feature
       - name: platform-api-secured-invocation
         features:
-          - features/secured_api_invocation.feature
+          - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-postgres
     parallel: 2
     components:
       - name: platform-api
         db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
         features:
-          - features/dp_to_cp.feature
+          - features/gateway/control-plane/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
-          - features/platform_api_secret_deploy.feature
+          - features/management-portal/deployments/platform_api_secret_deploy.feature
       - name: platform-api-deployment
         features:
-          - features/api_deployment.feature
+          - features/management-portal/deployments/api_deployment.feature
       - name: platform-api-secured-invocation
         features:
-          - features/secured_api_invocation.feature
+          - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
 
   - name: platform-api-sqlserver
     parallel: 2
     components:
       - name: platform-api
         db: sqlserver
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
         features:
-          - features/dp_to_cp.feature
+          - features/gateway/control-plane/dp_to_cp.feature
       - name: platform-api-secret-deploy
+        tags: "gateway-version>=1.2.0"
         features:
-          - features/platform_api_secret_deploy.feature
+          - features/management-portal/deployments/platform_api_secret_deploy.feature
       - name: platform-api-deployment
         features:
-          - features/api_deployment.feature
+          - features/management-portal/deployments/api_deployment.feature
       - name: platform-api-secured-invocation
         features:
-          - features/secured_api_invocation.feature
+          - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
+      - name: agent-proxy-management
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
+      - name: agent-proxy-cards
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-deployment
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-api-keys
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
+        tags: "gateway-version>1.2.0"
+      - name: agent-proxy-import
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
+        tags: "gateway-version>1.2.0"
+
+  # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
+  # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
+  # gateway-restart block does for its own restart runners.
+  - name: agent-proxy-recovery
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: a2a-trip-planner
+    runners:
+      - name: agent-proxy-recovery
+        features:
+          - features/ai-workspace-gateway/agent/agent_proxy_recovery.feature
+        tags: "gateway-version>1.2.0"
 
   - name: dp-to-cp-sync-disabled
     parallel: 1
@@ -730,7 +817,7 @@ blocks:
     runners:
       - name: dp-to-cp-sync-disabled
         features:
-          - features/dp_to_cp_sync_disabled.feature
+          - features/gateway/control-plane/dp_to_cp_sync_disabled.feature
 
   - name: multigateway
     parallel: 1
@@ -745,7 +832,7 @@ blocks:
     runners:
       - name: multigateway
         features:
-          - features/multigateway.feature
+          - features/management-portal/deployments/multigateway.feature
 
   - name: devportal-webhook
     parallel: 1
@@ -764,7 +851,7 @@ blocks:
     runners:
       - name: devportal-webhook
         features:
-          - features/devportal_webhook.feature
+          - features/apiportal/webhooks/devportal_webhook.feature
 
   # This block is intended for gateway-controllers pull requests. Its policy source is
   # an adjacent checkout, so callers must check out gateway-controllers next to this
@@ -781,4 +868,4 @@ blocks:
       - name: time-based-model-routing
         tags: "gateway-version>=1.2.0"
         features:
-          - features/time_based_model_routing.feature
+          - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature

@@ -132,7 +132,6 @@ func mustJSON(t *testing.T, v any) []byte {
 // that any suspicious response body payload text doesn't contain the raw.
 type apiPortalResp struct {
 	Id          string                 `json:"id"`
-	Handle      string                 `json:"handle"`
 	Name        string                 `json:"name"`
 	Description *string                `json:"description,omitempty"`
 	Url         string                 `json:"url"`
@@ -182,7 +181,7 @@ func TestAPIPortalHandler_Create_HappyPath(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Id != "acme" || got.Handle != "acme" || got.Name != "Acme Portal" ||
+	if got.Id != "acme" || got.Name != "Acme Portal" ||
 		got.Url != "https://acme.example.com" {
 		t.Errorf("response fields wrong: %+v", got)
 	}
@@ -359,7 +358,7 @@ func TestAPIPortalHandler_Get_HappyPath(t *testing.T) {
 	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Handle != "acme" || got.Name != "Acme" {
+	if got.Id != "acme" || got.Name != "Acme" {
 		t.Errorf("Get response wrong: %+v", got)
 	}
 	// GET must never surface the raw sharedKey — belt-and-suspenders check
@@ -466,8 +465,8 @@ func TestAPIPortalHandler_Update_HappyPath(t *testing.T) {
 	if got.Name != "new" {
 		t.Errorf("mutable fields not applied: %+v", got)
 	}
-	if got.Handle != "acme" {
-		t.Errorf("handle mutated: %q", got.Handle)
+	if got.Id != "acme" {
+		t.Errorf("id (handle) mutated: %q", got.Id)
 	}
 	if strings.Contains(putRec.Body.String(), apiPortalTestSharedKey) {
 		t.Errorf("raw sharedKey leaked in Update response body: %s", putRec.Body.String())

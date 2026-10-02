@@ -29,6 +29,7 @@ import (
 	"syscall"
 
 	"github.com/wso2/api-platform/tests/framework/testbench"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/agentcard"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
@@ -94,6 +95,7 @@ func services() ([]testbench.Service, error) {
 		capture.New(),
 		oauth2.New(),
 		webhook.New(),
+		agentcard.New(),
 	}, nil
 }
 

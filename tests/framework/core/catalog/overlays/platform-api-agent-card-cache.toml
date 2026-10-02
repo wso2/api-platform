@@ -1,0 +1,14 @@
+# Enables the platform-api webhook receiver for API Portal integration tests.
+[platform_api.webhook]
+enabled = true
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
+
+# Agent Card display-cache timings for the Agent proxy scenarios.
+#
+# The defaults (60s positive, 10s negative) are chosen for operators; a scenario that proves an
+# entry expires would spend a minute waiting on each. These keep both TTLs well above the time a
+# scenario takes between two consecutive fetches, so a within-TTL cache hit stays deterministic,
+# while an expiry is still observed inside the shared propagation deadline.
+[platform_api.agent_card_cache]
+positive_ttl = "20s"
+negative_ttl = "8s"

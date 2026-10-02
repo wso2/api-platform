@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/session"
+	"net/url"
 )
 
 // TestCallbackReasonsAreDistinct pins that the four ways a callback fails to match a
@@ -206,5 +207,49 @@ func TestCallbackConsumesTheTransaction(t *testing.T) {
 	var mismatch ErrStateMismatch
 	if !errors.As(err, &mismatch) || mismatch.Reason != ReasonNoTransaction {
 		t.Errorf("replay err = %v, want %s", err, ReasonNoTransaction)
+	}
+}
+
+// AuthCodeURL writes the protocol parameters after the caller's extras. This pins that
+// ordering: it is the guard that stops a forwarded parameter from widening the request
+// even if the server's allowlist were ever loosened.
+func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
+	o := &OIDC{
+		clientID:    "ai-workspace",
+		redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
+		scopes:      "openid profile email",
+		txs:         make(map[string]*txn),
+		done:        make(chan struct{}),
+		disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
+	}
+
+	authURL, _, err := o.AuthCodeURL("/", url.Values{
+		"fidp":          {"google"},
+		"scope":         {"openid admin"},
+		"redirect_uri":  {"https://evil.example.com/steal"},
+		"response_type": {"token"},
+		"client_id":     {"another-client"},
+	})
+	if err != nil {
+		t.Fatalf("AuthCodeURL: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	q := parsed.Query()
+
+	if q.Get("fidp") != "google" {
+		t.Errorf("fidp = %q, want it forwarded", q.Get("fidp"))
+	}
+	for name, want := range map[string]string{
+		"response_type": "code",
+		"client_id":     o.clientID,
+		"redirect_uri":  o.redirectURL,
+		"scope":         o.scopes,
+	} {
+		if got := q.Get(name); got != want {
+			t.Errorf("%s = %q, want %q — an extra parameter overrode a protocol one", name, got, want)
+		}
 	}
 }

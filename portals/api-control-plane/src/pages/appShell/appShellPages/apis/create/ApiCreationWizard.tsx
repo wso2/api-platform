@@ -26,6 +26,7 @@ import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
+import { AppPage } from '@/components/AppPage';
 import { useImportOpenApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
@@ -92,7 +93,13 @@ const messages = defineMessages({
   },
 });
 
-export const ApiCreationWizard = () => {
+export const ApiCreationWizard = () => (
+  <AppPage hideBreadcrumbs>
+    <ApiCreationWizardContent />
+  </AppPage>
+);
+
+const ApiCreationWizardContent = () => {
   const intl = useIntl();
   const [step, setStep] = useState<ApiCreationStepKey>('apiType');
   const [apiType, setApiType] = useState<ApiType | null>(

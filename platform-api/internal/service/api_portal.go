@@ -19,6 +19,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -142,9 +144,25 @@ func derefStr(p *string) string {
 }
 
 // CreateAPIPortal validates the request, enforces handle uniqueness, encrypts the shared key, and inserts a row scoped to orgID.
+// The row is created with status "active" - the OSS-native lifecycle has no
+// intermediate provisioning state. Cloud-plugin callers that need to insert
+// with a different initial status should use CreateAPIPortalWithStatus.
 func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
+	return s.CreateAPIPortalWithStatus(req, orgID, createdBy, constants.APIPortalStatusActive)
+}
+
+// CreateAPIPortalWithStatus is the create path for callers that own the
+// portal's provisioning lifecycle (currently only the cloud plugin's managed
+// portals feature). Behaves identically to CreateAPIPortal but writes the
+// provided status instead of hardcoding active. Not exposed via REST; only
+// Go-embedding callers can reach it. The status value is validated against
+// the platform-api constants set.
+func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
+	}
+	if err := validateAPIPortalStatus(status); err != nil {
+		return nil, err
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -189,7 +207,7 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 		Name:            name,
 		Description:     strings.TrimSpace(derefStr(req.Description)),
 		URL:             portalURL,
-		Status:          constants.APIPortalStatusActive,
+		Status:          status,
 		InternalAuthKey: encryptedKey,
 		Metadata:        derefAPIPortalMetadata(req.Metadata),
 		CreatedBy:       actor,
@@ -205,6 +223,122 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
 	return ModelToAPIPortalResponse(portal), nil
+}
+
+// validateAPIPortalStatus rejects any value not in the platform-api-defined
+// constants set so a caller cannot inject unknown state.
+func validateAPIPortalStatus(status string) error {
+	switch status {
+	case constants.APIPortalStatusPending,
+		constants.APIPortalStatusActive,
+		constants.APIPortalStatusFailed:
+		return nil
+	default:
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("Invalid API Portal status %q; expected one of %q, %q, %q.",
+				status,
+				constants.APIPortalStatusPending,
+				constants.APIPortalStatusActive,
+				constants.APIPortalStatusFailed))
+	}
+}
+
+// UpdateAPIPortalStatus flips only the provisioning status column, scoped by
+// handle within orgID. Used by the cloud plugin's provisioning poller to
+// transition pending -> active on success or pending -> failed on timeout.
+// Not exposed via REST.
+//
+// Target status is restricted to the terminal values (active, failed) so the
+// docstring's pending -> terminal contract is enforced. Writing pending here
+// would rewrite an already-pending row in place, keep it eligible for further
+// polling, and record a misleading state-transition audit event. Initial
+// pending assignment lives on the Create path (CreateAPIPortalWithStatus).
+func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error {
+	if err := validateAPIPortalStatus(status); err != nil {
+		return err
+	}
+	if status == constants.APIPortalStatusPending {
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("API Portal status transitions cannot target %q; only %q or %q are permitted here.",
+				constants.APIPortalStatusPending,
+				constants.APIPortalStatusActive,
+				constants.APIPortalStatusFailed))
+	}
+	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return apperror.APIPortalNotFound.New()
+	}
+	// repository.ErrAPIPortalNotPending is a normal outcome for concurrent pollers
+	// racing the state machine (see repository docs); it flows through unchanged
+	// so plugin callers can detect it via errors.Is and drop their write silently.
+	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status); err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, strings.TrimSpace(updatedBy))
+	return nil
+}
+
+// GetAPIPortalStatus returns just the provisioning status column for a portal.
+// Cheaper than GetAPIPortal when the caller (typically the cloud plugin's Get
+// projection) only needs the status. Missing portal surfaces as an
+// APIPortalNotFound error; empty status is impossible because the column has
+// a schema default and a NOT NULL constraint.
+func (s *APIPortalService) GetAPIPortalStatus(handle, orgID string) (string, error) {
+	status, err := s.portalRepo.GetStatusByHandle(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", apperror.APIPortalNotFound.New()
+		}
+		return "", err
+	}
+	return status, nil
+}
+
+// ListAPIPortalStatuses returns handle -> status for every portal in the org.
+// Used by the cloud plugin's List projection to stamp status per row in one
+// DB round-trip. Empty result when the org has no portals.
+func (s *APIPortalService) ListAPIPortalStatuses(orgID string) (map[string]string, error) {
+	return s.portalRepo.ListStatusesByOrg(orgID)
+}
+
+// ListAPIPortalLoginEnvironments returns handle -> loginEnvironment for
+// portals in the org whose metadata blob carries the key. Plugin-facing
+// companion to ListAPIPortalStatuses that keeps the cloud-plugin-specific
+// loginEnvironment field off ApiPortalListItem (the REST list projection
+// stays lightweight and OSS-neutral). Portals whose metadata does not carry
+// the key are omitted from the map; empty org returns an empty map.
+func (s *APIPortalService) ListAPIPortalLoginEnvironments(orgID string) (map[string]string, error) {
+	return s.portalRepo.ListLoginEnvironmentsByOrg(orgID)
+}
+
+// ListAPIPortalsByStatus returns the identity (org, handle, url, status) of
+// every portal across every org whose status matches. Cross-org by design:
+// the cloud plugin's provisioning poller has no org list at startup and needs
+// to re-track every pending portal to survive a crash mid-provisioning.
+func (s *APIPortalService) ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error) {
+	if err := validateAPIPortalStatus(status); err != nil {
+		return nil, err
+	}
+	portals, err := s.portalRepo.ListByStatus(status)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.APIPortalIdentity, 0, len(portals))
+	for _, p := range portals {
+		if p == nil {
+			continue
+		}
+		out = append(out, api.APIPortalIdentity{
+			OrgID:  p.OrganizationID,
+			Handle: p.Handle,
+			URL:    p.URL,
+			Status: p.Status,
+		})
+	}
+	return out, nil
 }
 
 // GetAPIPortal returns a single API Portal identified by its handle within orgID.
