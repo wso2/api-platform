@@ -152,7 +152,9 @@ function page(role) {
     // here, mirroring how API_PREFIX carries it for as(role).
     return {
         get: (path) => agent.get(`${BASE_PATH}${path}`),
+        post: (path, body) => withXsrf(agent.post(`${BASE_PATH}${path}`)).send(body),
         put: (path, body) => withXsrf(agent.put(`${BASE_PATH}${path}`)).send(body),
+        del: (path) => withXsrf(agent.delete(`${BASE_PATH}${path}`)),
     };
 }
 
