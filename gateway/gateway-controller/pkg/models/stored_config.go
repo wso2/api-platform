@@ -40,6 +40,7 @@ const (
 	KindLlmProvider         ArtifactKind = "LlmProvider"
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
+	KindSecret              ArtifactKind = "Secret"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.

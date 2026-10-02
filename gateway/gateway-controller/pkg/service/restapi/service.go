@@ -64,8 +64,7 @@ type UpdateResult struct {
 // DeleteResult holds the result of a Delete operation.
 type DeleteResult struct {
 	Handle string
-	// Config is the stored configuration that was deleted, so the handler can notify
-	// the control plane (undeploy) for gateway-originated artifacts.
+	// Config is the stored configuration that was deleted.
 	Config *models.StoredConfig
 }
 
@@ -440,6 +439,10 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	// Publish deletion event so all replicas (including self) converge through event listener sync.
 	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, params.CorrelationID, log)
 
+	// Notify the control plane (DP->CP) so a gateway-originated artifact is marked
+	// undeployed there rather than left stale.
+	s.pushArtifactUndeploy(cfg, log)
+
 	log.Info("API configuration deleted",
 		slog.String("id", cfg.UUID),
 		slog.String("handle", params.Handle))
@@ -499,6 +502,31 @@ func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, log *sl
 	if err := s.policyManager.UpsertAPIConfig(cfg); err != nil {
 		log.Error("Failed to upsert runtime config", slog.Any("error", err))
 	}
+}
+
+// canPushToControlPlane reports whether a DP->CP push should be attempted now.
+func (s *RestAPIService) canPushToControlPlane() bool {
+	return s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() &&
+		!s.controlPlaneClient.IsOnPrem() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
+}
+
+// pushArtifactUndeploy tells the control plane a gateway-originated REST API was
+// deleted from this gateway. The control plane keeps the artifact and marks it
+// undeployed (it can be re-deployed later).
+func (s *RestAPIService) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg == nil || cfg.Origin != models.OriginGatewayAPI || !s.canPushToControlPlane() {
+		return
+	}
+	undeploy := *cfg
+	undeploy.DesiredState = models.StateUndeployed
+	pusher := s.controlPlaneClient
+	pusher.SubmitArtifactPush(func() {
+		uc := undeploy
+		if err := pusher.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
+			log.Error("Failed to push artifact undeploy to control plane",
+				slog.String("artifact_id", uc.UUID), slog.Any("error", err))
+		}
+	})
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane.
