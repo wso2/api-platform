@@ -246,6 +246,8 @@ clean-gateway: ## Clean gateway build artifacts
 install-skills: ## Install third-party agent skills pinned in skills-lock.json
 	@command -v npx >/dev/null 2>&1 || { echo "Error: npx is not installed. Install Node.js (https://nodejs.org), which provides npx, then re-run 'make install-skills'." >&2; exit 1; }
 	npx -y skills@1.7.0 experimental_install
+	@# experimental_install logs a failed restore but still exits 0, so verify every locked skill landed.
+	@node -e 'const s=Object.keys(require("./skills-lock.json").skills).filter(n=>!require("fs").existsSync(".agents/skills/"+n+"/SKILL.md"));if(s.length){console.error("Error: skills not installed: "+s.join(", "));process.exit(1)}'
 
 # Spec Kit (https://github.github.com/spec-kit/): installs the `specify` CLI with
 # uv, then scaffolds .specify/ and the speckit-* skills into .agents/skills/.
