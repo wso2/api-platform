@@ -43,15 +43,18 @@ export type GraphqlResolvedSchema = {
 };
 
 /**
- * What either half of the source step reports when `/graphql-apis/validate-schema`
- * comes back with `resolved: false` — fed to `GraphqlSchemaExplorer` so it can
- * show the actual reason instead of the generic empty state.
+ * What the schema-import half of the source step (`GraphqlUrlUploadForm`)
+ * reports when `/graphql-apis/validate-schema` comes back with
+ * `resolved: false` — fed to `GraphqlSchemaExplorer` so it can show the actual
+ * reason instead of the generic empty state. The "Start from scratch" half
+ * reports none: an endpoint that won't answer introspection is still usable,
+ * so its explorer keeps the empty state and the reason sits under the field.
  *
  * `sdlErrors` (line/column-anchored parser detail) is only ever present for a
- * `schemaSource` of `inline`/`file`/`url` — never `introspection`, and never a
- * `url` fetch failure — see `ValidateGraphQLSchemaResponse.sdlErrors`'s own
- * doc comment in openapi.yaml for why that split matters. `message` is the
- * generic fallback, always present when `sdlErrors` is not.
+ * `schemaSource` of `inline`/`file`/`url` — never a `url` fetch failure — see
+ * `ValidateGraphQLSchemaResponse.sdlErrors`'s own doc comment in openapi.yaml
+ * for why that split matters. `message` is the generic fallback, always
+ * present when `sdlErrors` is not.
  */
 export type GraphqlResolutionFailure = {
   message?: string;

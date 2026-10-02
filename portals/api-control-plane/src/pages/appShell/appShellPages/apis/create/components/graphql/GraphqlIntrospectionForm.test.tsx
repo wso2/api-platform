@@ -20,7 +20,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { accepts, recorder, type Recorder } from '@/test/msw';
+import { http } from 'msw';
+
+import { accepts, apiUrl, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlIntrospectionForm } from './GraphqlIntrospectionForm';
@@ -43,30 +45,47 @@ const renderForm = (onResolved = vi.fn()) => {
   return { onResolved, ...rendered };
 };
 
-describe('GraphqlIntrospectionForm — validation', () => {
-  it('requires an endpoint before checking', async () => {
+const ENDPOINT = 'https://backend.example.com/graphql';
+const UNRESOLVED =
+  'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.';
+
+describe('GraphqlIntrospectionForm — the endpoint alone', () => {
+  it('has no separate fetch step, like REST’s Start from scratch', () => {
+    renderForm();
+
+    expect(screen.queryByRole('button', { name: 'Fetch' })).not.toBeInTheDocument();
+  });
+
+  it('reports a valid endpoint as the source straight away, before any check finishes', async () => {
+    // Never answers, so only the endpoint itself can have been reported.
+    server.use(http.post(apiUrl('/graphql-apis/validate-schema'), () => new Promise(() => {})));
     const { onResolved, user } = renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    await user.type(screen.getByLabelText(/Endpoint URL/), ENDPOINT);
 
+    expect(onResolved).toHaveBeenLastCalledWith({
+      endpointUrl: ENDPOINT,
+      schemaSource: 'introspection',
+    });
+  });
+
+  it('reports nothing usable for an empty or invalid endpoint, and says why once touched', async () => {
+    const { onResolved, user } = renderForm();
+
+    await user.click(screen.getByLabelText(/Endpoint URL/));
+    await user.tab();
     expect(
       await screen.findByText('Enter the GraphQL endpoint to introspect.'),
     ).toBeInTheDocument();
-    expect(onResolved).not.toHaveBeenCalled();
-  });
-
-  it('rejects a non-URL value once the field is touched', async () => {
-    const { user } = renderForm();
 
     await user.type(screen.getByLabelText(/Endpoint URL/), 'not-a-url');
-    await user.tab();
-
     expect(await screen.findByText('Enter a valid HTTP or HTTPS URL.')).toBeInTheDocument();
+    expect(onResolved).toHaveBeenLastCalledWith(null);
   });
 });
 
-describe('GraphqlIntrospectionForm — a successful check', () => {
-  it('reports the resolved schema and shows the type count', async () => {
+describe('GraphqlIntrospectionForm — the background check', () => {
+  it('checks once typing settles, and adds the schema it finds', async () => {
     server.use(
       accepts(
         'post',
@@ -77,16 +96,16 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
     );
     const { onResolved, user } = renderForm();
 
-    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    await user.type(screen.getByLabelText(/Endpoint URL/), ENDPOINT);
 
     await waitFor(() =>
-      expect(onResolved).toHaveBeenCalledWith({
-        endpointUrl: 'https://backend.example.com/graphql',
+      expect(onResolved).toHaveBeenLastCalledWith({
+        endpointUrl: ENDPOINT,
         schemaSource: 'introspection',
         sdl: 'type Query { hello: String greet(name: String): String }',
       }),
     );
+    // One request for the whole typed URL, not one per keystroke.
     expect(requests.count()).toBe(1);
     // Query + String, plus Boolean pulled in by the always-present
     // @skip/@include directives (see graphqlSchema.test.ts's countNamedTypes
@@ -94,7 +113,7 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
     expect(await screen.findByText(/3 types/)).toBeInTheDocument();
   });
 
-  it('fills the endpoint field from the sample-URL link and checks it immediately', async () => {
+  it('fills the endpoint field from the sample-URL link and checks it', async () => {
     server.use(
       accepts(
         'post',
@@ -105,19 +124,11 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
     );
     const { onResolved, user } = renderForm();
 
-    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
-    await waitFor(() =>
-      expect(onResolved).toHaveBeenLastCalledWith({
-        endpointUrl: 'https://backend.example.com/graphql',
-        schemaSource: 'introspection',
-        sdl: 'type Query { a: String }',
-      }),
-    );
-
     await user.click(screen.getByRole('button', { name: 'Try with Sample URL' }));
 
-    expect(screen.getByLabelText(/Endpoint URL/)).toHaveValue('https://countries.trevorblades.com/graphql');
+    expect(screen.getByLabelText(/Endpoint URL/)).toHaveValue(
+      'https://countries.trevorblades.com/graphql',
+    );
     await waitFor(() =>
       expect(onResolved).toHaveBeenLastCalledWith({
         endpointUrl: 'https://countries.trevorblades.com/graphql',
@@ -125,67 +136,71 @@ describe('GraphqlIntrospectionForm — a successful check', () => {
         sdl: 'type Query { a: String }',
       }),
     );
-    expect(requests.count()).toBe(2);
+    expect(requests.count()).toBe(1);
+  });
+
+  it('drops a schema found for an earlier endpoint once the field changes', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        resolved: true,
+        sdl: 'type Query { a: String }',
+      }),
+    );
+    const { onResolved, user } = renderForm();
+
+    await user.type(screen.getByLabelText(/Endpoint URL/), ENDPOINT);
+    await screen.findByText(/types/);
+
+    await user.type(screen.getByLabelText(/Endpoint URL/), '2');
+
+    expect(onResolved).toHaveBeenLastCalledWith({
+      endpointUrl: `${ENDPOINT}2`,
+      schemaSource: 'introspection',
+    });
   });
 });
 
-describe('GraphqlIntrospectionForm — a failed check', () => {
-  it('still reports the endpoint, without a schema, when introspection could not derive one', async () => {
-    server.use(accepts('post', '/graphql-apis/validate-schema', { resolved: false }));
+describe('GraphqlIntrospectionForm — a check that finds no schema', () => {
+  it('keeps the endpoint as the source, without a schema, when introspection is disabled', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', {
+        message: 'introspection is disabled',
+        resolved: false,
+      }),
+    );
     const { onResolved, user } = renderForm();
 
-    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    await user.type(screen.getByLabelText(/Endpoint URL/), ENDPOINT);
 
-    expect(
-      await screen.findByText(
-        'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.',
-      ),
-    ).toBeInTheDocument();
-    // Introspection is commonly disabled on a working endpoint; the API can
-    // still be created against it, so the endpoint is reported — just no SDL.
+    // Explained here, under the field — the only place it is.
+    expect(await screen.findByText(UNRESOLVED)).toBeInTheDocument();
     expect(onResolved).toHaveBeenLastCalledWith({
-      endpointUrl: 'https://backend.example.com/graphql',
+      endpointUrl: ENDPOINT,
       schemaSource: 'introspection',
     });
   });
 
-  it('reports null and shows nothing extra when the request itself fails', async () => {
+  it('keeps the endpoint as the source and shows nothing extra when the check itself fails', async () => {
     server.use(
-      accepts('post', '/graphql-apis/validate-schema', { status: 'error' }, { status: 500 }),
-    );
-    const { onResolved, user } = renderForm();
-
-    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
-
-    await waitFor(() => expect(onResolved).toHaveBeenLastCalledWith(null));
-    expect(
-      screen.queryByText(
-        'Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema.',
+      accepts(
+        'post',
+        '/graphql-apis/validate-schema',
+        { status: 'error' },
+        { record: requests, status: 500 },
       ),
-    ).not.toBeInTheDocument();
-  });
-
-  it('clears a prior result and re-checks when the endpoint is edited, re-enabling Check', async () => {
-    server.use(accepts('post', '/graphql-apis/validate-schema', { resolved: true, sdl: 'type Query { a: String }' }));
+    );
     const { onResolved, user } = renderForm();
 
-    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
-    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    await user.type(screen.getByLabelText(/Endpoint URL/), ENDPOINT);
+
+    await waitFor(() => expect(requests.count()).toBe(1));
     await waitFor(() =>
-      expect(onResolved).toHaveBeenLastCalledWith({
-        endpointUrl: 'https://backend.example.com/graphql',
-        schemaSource: 'introspection',
-        sdl: 'type Query { a: String }',
-      }),
+      expect(screen.queryByText('Checking the endpoint for a schema…')).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeDisabled();
-
-    await user.type(screen.getByLabelText(/Endpoint URL/), '2');
-
-    expect(onResolved).toHaveBeenLastCalledWith(null);
-    expect(screen.queryByText(/types in this schema/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Fetch' })).toBeEnabled();
+    expect(screen.queryByText(UNRESOLVED)).not.toBeInTheDocument();
+    expect(onResolved).toHaveBeenLastCalledWith({
+      endpointUrl: ENDPOINT,
+      schemaSource: 'introspection',
+    });
   });
 });

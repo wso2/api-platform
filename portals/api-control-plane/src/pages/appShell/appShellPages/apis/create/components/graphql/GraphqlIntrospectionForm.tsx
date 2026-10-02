@@ -27,18 +27,20 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Info, Zap } from '@wso2/oxygen-ui-icons-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
 import { useValidateGraphQLSchema } from '@/api/resources/graphqlApis';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { isValidUrl } from '../../../utils/developEdit';
 import { countNamedTypes, parseGraphQLSdl } from '../../utils/graphqlSchema';
-import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlSourceTypes';
+import type { GraphqlResolvedSchema } from './graphqlSourceTypes';
 
 const messages = defineMessages({
-  check: {
-    id: 'api.create.graphql.introspection.action.check',
-    defaultMessage: 'Fetch',
+  checking: {
+    id: 'api.create.graphql.introspection.checking',
+    defaultMessage: 'Checking the endpoint for a schema…',
+    description: 'Status line while the endpoint is being introspected in the background.',
   },
   disabledHint: {
     id: 'api.create.graphql.introspection.disabledHint',
@@ -98,89 +100,102 @@ const messages = defineMessages({
  */
 const SAMPLE_ENDPOINT_URL = 'https://countries.trevorblades.com/graphql';
 
+/** How long typing must settle before the endpoint is introspected. */
+const CHECK_DEBOUNCE_MS = 500;
+
+/** The background introspection check, tied to the endpoint it was run for. */
+type CheckState =
+  | { target: string; status: 'checking' | 'failed' | 'unresolved' }
+  | { target: string; status: 'resolved'; sdl: string; typeCount: number };
+
 export type GraphqlIntrospectionFormProps = {
   /** Called with the resolved schema, or `null` once the inputs move on from it. */
   onResolved: (resolved: GraphqlResolvedSchema | null) => void;
-  /**
-   * Called with the last validation failure's detail, or `null` once cleared —
-   * lets `GraphqlSchemaExplorer` show the actual reason instead of its
-   * generic empty state. Optional so a caller with no explorer to feed
-   * (there is currently only one) isn't forced to wire it.
-   */
-  onValidationFailed?: (failure: GraphqlResolutionFailure | null) => void;
 };
 
 /**
- * "Start from scratch" side of the source step: a backend endpoint the
- * gateway introspects to derive its starting schema, checked without leaving
- * the step via the dry-run `/graphql-apis/validate-schema` endpoint.
+ * "Start from scratch" side of the source step — mirrors REST's own: a valid
+ * backend endpoint is all Continue needs. The gateway derives the schema by
+ * introspecting it at create time, best-effort, so an endpoint with
+ * introspection disabled still creates an API, just with an empty schema.
+ *
+ * Meanwhile the endpoint is introspected in the background through the dry-run
+ * `/graphql-apis/validate-schema` call once typing settles, purely to preview
+ * the schema in the explorer: a schema it finds is added to what's reported.
+ * Finding none — usually just introspection being disabled — is explained in
+ * the status line under the field, and the explorer keeps its initial empty
+ * state rather than showing an error for a perfectly usable endpoint. Neither
+ * outcome gates Continue.
  */
-export const GraphqlIntrospectionForm = ({
-  onResolved,
-  onValidationFailed,
-}: GraphqlIntrospectionFormProps) => {
+export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFormProps) => {
   const [endpoint, setEndpoint] = useState('');
   const [touched, setTouched] = useState(false);
-  const validate = useValidateGraphQLSchema();
+  const [check, setCheck] = useState<CheckState | null>(null);
+  const { mutate } = useValidateGraphQLSchema();
 
   const trimmed = endpoint.trim();
-  const invalid = touched && (trimmed === '' || !isValidUrl(trimmed));
+  const valid = trimmed !== '' && isValidUrl(trimmed);
+  const invalid = touched && !valid;
 
-  const handleChange = (next: string) => {
-    setEndpoint(next);
-    validate.reset();
-    onResolved(null);
-    onValidationFailed?.(null);
-  };
+  // The endpoint the latest result must belong to; a check still in flight
+  // when the field changes resolves for an endpoint no longer on screen.
+  const latestEndpoint = useRef(trimmed);
+  latestEndpoint.current = trimmed;
 
-  const runCheck = (target: string) => {
-    validate.mutate(
+  // Only a check for the endpoint currently in the field says anything about it.
+  const current = check?.target === trimmed ? check : null;
+  const currentSdl = current?.status === 'resolved' ? current.sdl : undefined;
+
+  // What the wizard gets is derived from the field and the check for exactly
+  // that endpoint: a valid endpoint is a usable source on its own, before (and
+  // whatever) the background check finds; a schema it finds is added.
+  useEffect(() => {
+    onResolved(
+      valid
+        ? {
+            endpointUrl: trimmed,
+            schemaSource: 'introspection',
+            ...(currentSdl === undefined ? {} : { sdl: currentSdl }),
+          }
+        : null,
+    );
+  }, [currentSdl, onResolved, trimmed, valid]);
+
+  const checkTarget = useDebouncedValue(valid ? trimmed : '', CHECK_DEBOUNCE_MS);
+
+  useEffect(() => {
+    if (checkTarget === '') return;
+    const target = checkTarget;
+    const stale = () => latestEndpoint.current !== target;
+
+    setCheck({ status: 'checking', target });
+    mutate(
       { metadata: { schemaSource: 'introspection', upstream: { main: { url: target } } } },
       {
         onSuccess: (result) => {
-          if (result.resolved) {
-            onResolved({ endpointUrl: target, schemaSource: 'introspection', sdl: result.sdl });
-            onValidationFailed?.(null);
-          } else {
-            // Introspection is often disabled on a perfectly good endpoint. The
-            // backend resolves the schema best-effort, so the API can still be
-            // created against this endpoint — it just starts with an empty
-            // schema. The failure is still reported so the explorer shows why.
-            onResolved({ endpointUrl: target, schemaSource: 'introspection' });
-            onValidationFailed?.({ message: result.message, sdlErrors: result.sdlErrors });
-          }
+          if (stale()) return;
+          setCheck(
+            result.resolved
+              ? { sdl: result.sdl, status: 'resolved', target, typeCount: typeCountOf(result.sdl) }
+              : { status: 'unresolved', target },
+          );
         },
         onError: () => {
-          onResolved(null);
-          onValidationFailed?.(null);
+          if (stale()) return;
+          setCheck({ status: 'failed', target });
         },
       },
     );
-  };
+  }, [checkTarget, mutate]);
 
-  const handleCheck = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setTouched(true);
-    if (trimmed === '' || !isValidUrl(trimmed)) return;
-    runCheck(trimmed);
-  };
-
-  /** Fills the field with a known-good endpoint and checks it immediately,
-   * the same one-click gesture as `GraphqlUrlUploadForm`'s own sample link. */
+  /** Fills the field with a known-good endpoint; the background check picks it up. */
   const handleSample = () => {
     setEndpoint(SAMPLE_ENDPOINT_URL);
     setTouched(false);
-    validate.reset();
-    onResolved(null);
-    onValidationFailed?.(null);
-    runCheck(SAMPLE_ENDPOINT_URL);
   };
 
-  const resolved = validate.data?.resolved === true;
-  const failedToResolve = validate.isSuccess && validate.data.resolved === false;
-
   return (
-    <Stack component="form" noValidate onSubmit={handleCheck} spacing={2}>
+    <Stack spacing={2}>
       <Box>
         <Typography sx={{ fontWeight: 700 }} variant="h3">
           <FormattedMessage {...messages.endpointHeading} />
@@ -189,36 +204,25 @@ export const GraphqlIntrospectionForm = ({
           <FormattedMessage {...messages.endpointDescription} />
         </Typography>
       </Box>
-      <Stack direction="row" spacing={1.5}>
-        <FormControl error={invalid} fullWidth required>
-          <FormLabel htmlFor="graphqlIntrospectionEndpoint">
-            <FormattedMessage {...messages.endpointLabel} />
-          </FormLabel>
-          <OutlinedInput
-            id="graphqlIntrospectionEndpoint"
-            onBlur={() => setTouched(true)}
-            onChange={(event) => handleChange(event.target.value)}
-            sx={{ mt: 0.75 }}
-            value={endpoint}
-          />
-          {invalid ? (
-            <FormHelperText>
-              <FormattedMessage
-                {...(trimmed === '' ? messages.endpointRequired : messages.endpointInvalid)}
-              />
-            </FormHelperText>
-          ) : null}
-        </FormControl>
-        <Button
-          disabled={resolved}
-          loading={validate.isPending}
-          sx={{ alignSelf: 'flex-end', flexShrink: 0 }}
-          type="submit"
-          variant="outlined"
-        >
-          <FormattedMessage {...messages.check} />
-        </Button>
-      </Stack>
+      <FormControl error={invalid} fullWidth required>
+        <FormLabel htmlFor="graphqlIntrospectionEndpoint">
+          <FormattedMessage {...messages.endpointLabel} />
+        </FormLabel>
+        <OutlinedInput
+          id="graphqlIntrospectionEndpoint"
+          onBlur={() => setTouched(true)}
+          onChange={(event) => setEndpoint(event.target.value)}
+          sx={{ mt: 0.75 }}
+          value={endpoint}
+        />
+        {invalid ? (
+          <FormHelperText>
+            <FormattedMessage
+              {...(trimmed === '' ? messages.endpointRequired : messages.endpointInvalid)}
+            />
+          </FormHelperText>
+        ) : null}
+      </FormControl>
       <Button
         onClick={handleSample}
         size="small"
@@ -230,11 +234,15 @@ export const GraphqlIntrospectionForm = ({
         <FormattedMessage {...messages.sampleUrl} />
       </Button>
 
-      {resolved && validate.data ? (
-        <Typography color="success.main" sx={{ alignItems: 'center', display: 'flex', gap: 1 }} variant="body2">
-          <FormattedMessage {...messages.status} values={{ typeCount: typeCountOf(validate.data.sdl) }} />
+      {current?.status === 'checking' ? (
+        <Typography color="text.secondary" variant="body2">
+          <FormattedMessage {...messages.checking} />
         </Typography>
-      ) : failedToResolve ? (
+      ) : current?.status === 'resolved' ? (
+        <Typography color="success.main" sx={{ alignItems: 'center', display: 'flex', gap: 1 }} variant="body2">
+          <FormattedMessage {...messages.status} values={{ typeCount: current.typeCount }} />
+        </Typography>
+      ) : current?.status === 'unresolved' ? (
         <Typography color="warning.main" variant="body2">
           <FormattedMessage {...messages.unresolved} />
         </Typography>
