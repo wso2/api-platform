@@ -754,6 +754,33 @@ function AgentProxyOverviewContent(): React.JSX.Element {
       showSnackbar('At least one transport is required.', 'error');
       return;
     }
+    // A stored credential is only carried forward while the endpoint, auth type
+    // and header all stay the same; changing any of them drops it, so both
+    // fields have to be filled rather than reaching the backend incomplete.
+    if (hasBackendConnectionChanges && !isNoCredentialAuthType(authType)) {
+      const savedMain = agentProxy.upstream?.main;
+      const keepsStoredCredential =
+        endpointUrl.trim() === (savedMain?.url ?? '').trim() &&
+        authType === (savedMain?.auth?.type || 'none') &&
+        authHeaderName.trim() === (savedMain?.auth?.header ?? '').trim();
+      // The field holds a mask when a credential is stored, so a non-empty
+      // value alone does not mean a new one was typed.
+      const suppliesCredential =
+        !isCredentialMasked &&
+        hasCredentialChanged &&
+        Boolean(authHeaderValue.trim());
+
+      if (
+        !authHeaderName.trim() ||
+        (!keepsStoredCredential && !suppliesCredential)
+      ) {
+        showSnackbar(
+          'Enter the authentication header and credential value.',
+          'error'
+        );
+        return;
+      }
+    }
     const cardError = validateCardState();
     if (cardError) {
       showSnackbar(cardError, 'error');
