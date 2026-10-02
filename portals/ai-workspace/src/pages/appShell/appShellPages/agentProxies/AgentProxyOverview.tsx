@@ -750,6 +750,10 @@ function AgentProxyOverviewContent(): React.JSX.Element {
 
   const handleSaveChanges = async () => {
     if (!agentProxy?.a2a) return;
+    if (selectedTransports.length === 0) {
+      showSnackbar('At least one transport is required.', 'error');
+      return;
+    }
     const cardError = validateCardState();
     if (cardError) {
       showSnackbar(cardError, 'error');
