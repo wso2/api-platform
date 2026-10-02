@@ -18,7 +18,8 @@
 
 // Package correlation implements the in-process handoff of captured analytics
 // headers and bodies from the ext_proc handler to the ALS (access-log) handler,
-// keyed by the request's Envoy-generated x-request-id.
+// keyed by a token unique to each ext_proc stream (a client-supplied x-request-id
+// can repeat across concurrent requests, so it is not used as the key).
 //
 // Before this store existed, captured request/response headers made a full round
 // trip through Envoy for no reason other than correlating them back to the request
@@ -28,7 +29,7 @@
 // the ext_proc handler and the ALS handler are two goroutines in the very same
 // process, that round trip bought nothing but CPU. This store lets the ext_proc
 // handler stash the already-typed values directly, and the ALS handler fetch them
-// back by request id instead of decoding Envoy's echo.
+// back by that token instead of decoding Envoy's echo.
 //
 // Delivery is preserved, not best effort: a field is left out of Envoy metadata
 // only after Merge has accepted it, and Merge runs before the ext_proc response
@@ -135,7 +136,7 @@ type shard struct {
 	maxBodyBytes int64
 }
 
-// Store is a bounded, sharded key/value store from request id to Payload. The
+// Store is a bounded, sharded key/value store from correlation token to Payload. The
 // zero value is not usable -- construct with NewStore or NewStoreWithBodyLimits.
 type Store struct {
 	shards []*shard

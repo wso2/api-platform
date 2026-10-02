@@ -101,14 +101,11 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
-	// requestIDFromHeader is true only when requestID came from the downstream
-	// x-request-id header itself, false when buildRequestContexts fell back to a
-	// freshly generated uuid because the header was absent. The correlation store
-	// (internal/analytics/correlation) is keyed on Envoy's x-request-id, so a
-	// locally generated fallback id can never match what the ALS side looks up --
-	// so such a request's captured data must stay in Envoy metadata. See
-	// correlatesInProcess in analytics.go.
-	requestIDFromHeader bool
+	// correlationToken keys this stream's correlation-store entry. It is unique
+	// per ext_proc stream (see correlationKey) rather than the request id, which a
+	// client can supply and repeat. Empty until the first captured field is
+	// offered to the store.
+	correlationToken string
 
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without
@@ -1941,11 +1938,6 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		}
 	}
 
-	// Recorded before the uuid fallback overwrites requestID, so
-	// correlatesInProcess can tell "real x-request-id" apart from "generated
-	// locally because the header was absent" -- only the former can ever be
-	// looked up again on the ALS side (see requestIDFromHeader's doc comment).
-	ec.requestIDFromHeader = requestID != ""
 	if requestID == "" {
 		requestID = uuid.New().String()
 	}

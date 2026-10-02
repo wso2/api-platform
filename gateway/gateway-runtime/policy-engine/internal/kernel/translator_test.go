@@ -682,7 +682,6 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 	execCtx.requestID = "req-1"
-	execCtx.requestIDFromHeader = true
 	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path: "/api/test",
 		SharedContext: &policy.SharedContext{
@@ -734,7 +733,7 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	_, sentToEnvoy := analyticsData.GetFields()["request_headers"]
 	assert.False(t, sentToEnvoy, "request_headers must not be sent to Envoy")
 	// ...because the store already holds it for the ALS handler.
-	stored, ok := store.Get("req-1")
+	stored, ok := store.Get(analyticsData.GetFields()[CorrelationTokenKey].GetStringValue())
 	require.True(t, ok)
 	assert.Equal(t, "req-1", stored.RequestHeaders["x-request-id"])
 	// The immediate response's own (non-header) analytics metadata survives the
@@ -1267,17 +1266,19 @@ func TestBuildAnalyticsStruct_KeepsHeadersWhenNotCorrelatedInProcess(t *testing.
 	data := map[string]any{"request_headers": `{"a":"b"}`, "response_headers": `{"c":"d"}`}
 	for name, tc := range map[string]struct {
 		server         *ExternalProcessorServer
-		idFromHeader   bool
+		loopback       bool
 		wantInMetadata bool
 	}{
-		"no store":             {withoutStore, true, true},
-		"generated request id": {withStore, false, true},
-		"correlated":           {withStore, true, false},
+		"no store":     {withoutStore, false, true},
+		"loopback hop": {withStore, true, true},
+		"correlated":   {withStore, false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			execCtx := newPolicyExecutionContext(tc.server, "test-route", &registry.PolicyChain{})
 			execCtx.requestID = "req-" + name
-			execCtx.requestIDFromHeader = tc.idFromHeader
+			if tc.loopback {
+				execCtx.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
+			}
 			st, err := buildAnalyticsStruct(data, execCtx)
 			require.NoError(t, err)
 			_, req := st.GetFields()["request_headers"]
@@ -1298,7 +1299,6 @@ func TestBuildAnalyticsStruct_BodiesRoutedByStoreLimit(t *testing.T) {
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, store)
 	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 	execCtx.requestID = "req-bodies"
-	execCtx.requestIDFromHeader = true
 
 	data := map[string]any{"request_payload": "small", "response_payload": "this one is too large"}
 	st, err := buildAnalyticsStruct(data, execCtx)
@@ -1308,7 +1308,7 @@ func TestBuildAnalyticsStruct_BodiesRoutedByStoreLimit(t *testing.T) {
 	assert.False(t, reqInMetadata, "small body goes in-process")
 	assert.Equal(t, "this one is too large", st.GetFields()["response_payload"].GetStringValue(), "large body stays in metadata")
 
-	stored, ok := store.Get("req-bodies")
+	stored, ok := store.Get(execCtx.correlationToken)
 	require.True(t, ok)
 	assert.Equal(t, "small", stored.RequestBody)
 	assert.Empty(t, stored.ResponseBody, "a body left in metadata must not also be stored")

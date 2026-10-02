@@ -19,8 +19,12 @@
 package kernel
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"sync/atomic"
 
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -85,19 +89,44 @@ const (
 	// analyticsInternalLoopbackKey is the marker the analytics system policy stamps
 	// on the LLM proxy's internal loopback hop, by the same convention.
 	analyticsInternalLoopbackKey = "x-wso2-internal-loopback"
+	// CorrelationTokenKey carries a stream's correlation-store key to the ALS
+	// handler in analytics_data. It must match the ALS side's constant of the same
+	// name in internal/analytics.
+	CorrelationTokenKey = Wso2MetadataPrefix + "correlation-token"
 )
 
+// correlationTokenPrefix makes tokens unique across policy-engine restarts, and
+// correlationTokenSeq unique within one process.
+var (
+	correlationTokenPrefix = func() string {
+		b := make([]byte, 6)
+		if _, err := rand.Read(b); err != nil {
+			panic(fmt.Sprintf("generating correlation token prefix: %v", err))
+		}
+		return hex.EncodeToString(b) + "-"
+	}()
+	correlationTokenSeq atomic.Uint64
+)
+
+// correlationKey returns this stream's correlation-store key, creating it on
+// first use. The request id cannot serve as the key: Envoy keeps a client-supplied
+// x-request-id, so concurrent requests can share one and would overwrite or
+// consume each other's entry.
+func (ec *PolicyExecutionContext) correlationKey() string {
+	if ec.correlationToken == "" {
+		ec.correlationToken = correlationTokenPrefix + strconv.FormatUint(correlationTokenSeq.Add(1), 36)
+	}
+	return ec.correlationToken
+}
+
 // correlatesInProcess reports whether this request may hand captured data to the
-// ALS handler through the correlation store: the store exists, the request id is
-// Envoy's x-request-id (the key the ALS side looks up), and the request is not the
-// LLM proxy's internal loopback hop. That hop can share the outer call's request
-// id, and its own access-log event is suppressed, so it keeps its data in Envoy
-// metadata and never touches the outer call's entry. data is the analytics
+// ALS handler through the correlation store: the store exists and the request is
+// not the LLM proxy's internal loopback hop, whose own access-log event is
+// suppressed, so it keeps its data in Envoy metadata. data is the analytics
 // metadata being built, which can carry the loopback marker before
 // execCtx.analyticsMetadata does (e.g. on a short-circuit); it may be nil.
 func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) bool {
-	if execCtx == nil || execCtx.server == nil || execCtx.server.correlationStore == nil ||
-		!execCtx.requestIDFromHeader {
+	if execCtx == nil || execCtx.server == nil || execCtx.server.correlationStore == nil {
 		return false
 	}
 	if _, ok := data[analyticsInternalLoopbackKey]; ok {
@@ -128,7 +157,7 @@ func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool
 	default:
 		return false
 	}
-	return execCtx.server.correlationStore.Merge(execCtx.requestID, p)
+	return execCtx.server.correlationStore.Merge(execCtx.correlationKey(), p)
 }
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -153,9 +182,11 @@ func convertToStructValue(value any) (*structpb.Value, error) {
 // If execCtx is provided, adds system-level metadata (API name, version, etc.) to analytics_data.metadata
 //
 // Captured request/response headers and bodies are handed to the in-process
-// correlation store (internal/analytics/correlation, keyed by request id) and left
+// correlation store (internal/analytics/correlation, keyed by the stream's
+// correlation token) and left
 // out of the struct sent to Envoy, but only when the store accepts them (see
-// storeInProcess). They used to make a full round trip -- encoded here, forwarded
+// storeInProcess); the struct then carries the stream's correlation token
+// (CorrelationTokenKey) instead. They used to make a full round trip -- encoded here, forwarded
 // back on every later ext_proc message, echoed in the access-log entry's
 // filter_metadata, and decoded again on the ALS side -- purely to correlate them
 // back to their request, although the ext_proc and ALS handlers run in the same
@@ -177,6 +208,12 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 			return nil, fmt.Errorf("failed to convert analytics value for key %s: %w", key, err)
 		}
 		fields[key] = val
+	}
+	// Every phase repeats the token once the stream has one, so whichever
+	// analytics_data Envoy ends up with tells the ALS handler where this request's
+	// stored fields are.
+	if execCtx != nil && execCtx.correlationToken != "" {
+		fields[CorrelationTokenKey] = structpb.NewStringValue(execCtx.correlationToken)
 	}
 
 	// Add system-level metadata if context is provided

@@ -465,7 +465,7 @@ func initMetrics() {
 	)
 
 	// Correlation-store metrics (internal/analytics/correlation): the in-process
-	// ext_proc->ALS handoff for captured headers and bodies, keyed by request id,
+	// ext_proc->ALS handoff for captured headers and bodies, keyed per stream,
 	// that replaces their Envoy dynamic-metadata round trip. A rejected write keeps
 	// that field in metadata, so rejected_* results show how often the store is
 	// too small rather than any data loss.
