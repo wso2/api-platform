@@ -94,7 +94,7 @@ type ExternalProcessorServer struct {
 	handleUpstreamFaults bool
 
 	// correlationStore carries captured request/response headers and bodies to
-	// the ALS handler, keyed by x-request-id, instead of round-tripping them
+	// the ALS handler, keyed by a per-stream token, instead of round-tripping them
 	// through Envoy dynamic metadata (see storeInProcess and
 	// internal/analytics/correlation's package doc).
 	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
@@ -365,14 +365,13 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 //
 // Called from a defer registered before every other per-stream teardown defer in
 // Process, so it runs on every terminal path out of that function. Requests that
-// never used the store (no store, no x-request-id, or the LLM proxy's loopback hop,
-// which may share the outer call's id) are skipped, so a loopback hop can never
-// mark the outer call's entry complete while that call is still in flight.
+// never used the store (no store, nothing captured, or the LLM proxy's loopback
+// hop) are skipped.
 func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
-	if !correlatesInProcess(execCtx, nil) {
+	if !correlatesInProcess(execCtx, nil) || execCtx.correlationToken == "" {
 		return
 	}
-	s.correlationStore.Complete(execCtx.requestID)
+	s.correlationStore.Complete(execCtx.correlationToken)
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler

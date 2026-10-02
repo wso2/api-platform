@@ -37,12 +37,10 @@ func newTestServerWithStore(t *testing.T, store *correlation.Store) *ExternalPro
 	return NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, store)
 }
 
-// correlatedExecCtx returns an execution context whose request id came from
-// Envoy's x-request-id, so its captured fields may go through the store.
+// correlatedExecCtx returns an execution context for one ext_proc stream.
 func correlatedExecCtx(server *ExternalProcessorServer, requestID string) *PolicyExecutionContext {
 	execCtx := newPolicyExecutionContext(server, "test-route", nil)
 	execCtx.requestID = requestID
-	execCtx.requestIDFromHeader = true
 	return execCtx
 }
 
@@ -62,7 +60,10 @@ func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) 
 	_, inMetadata := st.GetFields()["request_headers"]
 	assert.False(t, inMetadata, "accepted by the store, so left out of Envoy metadata")
 	assert.Equal(t, "policy", st.GetFields()["source"].GetStringValue(), "unrelated fields still go to Envoy")
-	payload, ok := store.Get("req-1")
+	token := st.GetFields()[CorrelationTokenKey].GetStringValue()
+	require.NotEmpty(t, token, "the struct tells the ALS side where the fields went")
+	assert.Equal(t, execCtx.correlationToken, token)
+	payload, ok := store.Get(token)
 	require.True(t, ok, "stored synchronously, before the response is sent")
 	assert.Equal(t, "example.com", payload.RequestHeaders["host"])
 }
@@ -79,7 +80,7 @@ func TestBuildAnalyticsStruct_MergesPhasesIntoOneEntry(t *testing.T) {
 	_, err = buildAnalyticsStruct(map[string]any{"response_headers": map[string]string{"b": "2"}}, execCtx)
 	require.NoError(t, err)
 
-	payload, ok := store.Get("req-1")
+	payload, ok := store.Get(execCtx.correlationToken)
 	require.True(t, ok)
 	assert.Equal(t, "1", payload.RequestHeaders["a"])
 	assert.Equal(t, "body", payload.RequestBody)
@@ -90,27 +91,17 @@ func TestBuildAnalyticsStruct_MergesPhasesIntoOneEntry(t *testing.T) {
 func TestBuildAnalyticsStruct_KeepsFieldsInMetadataWhenNotStored(t *testing.T) {
 	headers := map[string]string{"host": "example.com"}
 
-	t.Run("generated request id", func(t *testing.T) {
-		store := correlation.NewStore(100, time.Minute, 4)
-		execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "generated-uuid")
-		execCtx.requestIDFromHeader = false
-		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, execCtx)
-		require.NoError(t, err)
-		assert.Contains(t, st.GetFields(), "request_headers")
-		_, ok := store.Get("generated-uuid")
-		assert.False(t, ok)
-	})
-
 	t.Run("store full of in-flight requests", func(t *testing.T) {
 		store := correlation.NewStore(1, time.Nanosecond, 1)
 		server := newTestServerWithStore(t, store)
-		_, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, correlatedExecCtx(server, "in-flight"))
+		inFlight := correlatedExecCtx(server, "in-flight")
+		_, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, inFlight)
 		require.NoError(t, err)
 
 		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, correlatedExecCtx(server, "next"))
 		require.NoError(t, err)
 		assert.Contains(t, st.GetFields(), "request_headers", "no slot, so the field stays in metadata")
-		_, ok := store.Get("in-flight")
+		_, ok := store.Get(inFlight.correlationToken)
 		assert.True(t, ok, "an unread, in-flight entry is never evicted")
 	})
 
@@ -130,9 +121,33 @@ func TestBuildAnalyticsStruct_KeepsFieldsInMetadataWhenNotStored(t *testing.T) {
 	})
 }
 
-// The LLM proxy's internal loopback hop can share the outer call's request id. It
-// must neither write the outer call's entry nor mark it complete, which would let
-// it be reclaimed while the outer call is still in flight.
+// Envoy keeps a client-supplied x-request-id, so concurrent requests can share
+// one. Each stream must still get its own entry, or one request's line would
+// receive the other's fields and the other's would miss.
+func TestCorrelation_DuplicateRequestIDsGetSeparateEntries(t *testing.T) {
+	store := correlation.NewStore(100, time.Minute, 4)
+	server := newTestServerWithStore(t, store)
+	a := correlatedExecCtx(server, "client-chosen-id")
+	b := correlatedExecCtx(server, "client-chosen-id")
+
+	stA, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"who": "a"}}, a)
+	require.NoError(t, err)
+	stB, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"who": "b"}}, b)
+	require.NoError(t, err)
+
+	tokenA := stA.GetFields()[CorrelationTokenKey].GetStringValue()
+	tokenB := stB.GetFields()[CorrelationTokenKey].GetStringValue()
+	require.NotEqual(t, tokenA, tokenB)
+	gotA, ok := store.Take(tokenA)
+	require.True(t, ok)
+	gotB, ok := store.Take(tokenB)
+	require.True(t, ok)
+	assert.Equal(t, "a", gotA.RequestHeaders["who"])
+	assert.Equal(t, "b", gotB.RequestHeaders["who"])
+}
+
+// The LLM proxy's internal loopback hop keeps its data in Envoy metadata (its own
+// access-log event is suppressed) and never writes or completes another entry.
 func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 	store := correlation.NewStore(1, time.Nanosecond, 1)
 	server := newTestServerWithStore(t, store)
@@ -148,11 +163,12 @@ func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 	}, loopback)
 	require.NoError(t, err)
 	assert.Contains(t, st.GetFields(), "request_headers", "loopback hop keeps its data in metadata")
+	assert.NotContains(t, st.GetFields(), CorrelationTokenKey)
 
 	loopback.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
 	server.completeCorrelationEntry(loopback)
 
-	payload, ok := store.Get("shared-id")
+	payload, ok := store.Get(outer.correlationToken)
 	require.True(t, ok)
 	assert.Equal(t, "outer", payload.RequestHeaders["who"], "outer entry untouched")
 	assert.False(t, store.Merge("other", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}),
@@ -171,6 +187,11 @@ func TestCompleteCorrelationEntry_MakesEntryReclaimable(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	assert.True(t, store.Merge("next", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}))
+}
+
+func TestCorrelationTokenKey(t *testing.T) {
+	// The ALS side (internal/analytics) spells out the same key.
+	assert.Equal(t, "x-wso2-correlation-token", CorrelationTokenKey)
 }
 
 func TestCompleteCorrelationEntry_NilStoreIsNoop(t *testing.T) {

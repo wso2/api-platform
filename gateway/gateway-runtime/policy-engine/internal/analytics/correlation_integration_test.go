@@ -67,13 +67,13 @@ func TestPrepareAnalyticEvent_CorrelationStoreHit(t *testing.T) {
 	a := NewAnalytics(cfg)
 
 	store := correlation.NewStore(100, time.Minute, 4)
-	store.Put("req-hit-1", correlation.Payload{
+	store.Put("token-hit-1", correlation.Payload{
 		RequestHeaders:  map[string]string{"host": "example.com"},
 		ResponseHeaders: map[string]string{"content-type": "application/json"},
 	})
 	a.SetCorrelationStore(store)
 
-	logEntry := createLogEntryWithRequestID("req-hit-1")
+	logEntry := createLogEntryWithToken(t, "req-hit-1", "token-hit-1")
 	event := a.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
@@ -137,33 +137,37 @@ func TestPrepareAnalyticEvent_NoCorrelationStore(t *testing.T) {
 	assert.Contains(t, raw, "example.com")
 }
 
-// TestPrepareAnalyticEvent_NoXRequestID covers a request whose ext_proc side
-// never saw an x-request-id header at all: buildRequestContexts falls back to a
-// generated uuid there, which correlatesInProcess (internal/kernel/analytics.go)
-// never writes to the store under -- so the ALS side must never get a spurious
-// hit either. Here that's modeled directly: the access-log entry itself carries
-// no RequestId (empty string), which lookupCorrelationPayload must treat as an
-// automatic miss without even querying the store.
-func TestPrepareAnalyticEvent_NoXRequestID(t *testing.T) {
-	cfg := &config.Config{}
-	a := NewAnalytics(cfg)
-
+// TestPrepareAnalyticEvent_KeyedByTokenNotRequestID covers an access-log entry
+// without a correlation token: the ext_proc side stored nothing for it, so the
+// ALS side must miss even if some entry happens to be stored under its request id
+// (a client-chosen x-request-id is not a safe key).
+func TestPrepareAnalyticEvent_KeyedByTokenNotRequestID(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
 	store := correlation.NewStore(100, time.Minute, 4)
-	// Simulate a store that (incorrectly, hypothetically) held an entry under the
-	// empty key -- lookupCorrelationPayload must still refuse to match it, since
-	// Merge itself never allows this in production (see correlatesInProcess's
-	// requestIDFromHeader gate).
-	store.Put("", correlation.Payload{RequestHeaders: map[string]string{"host": "should-never-be-used"}})
+	store.Put("req-1", correlation.Payload{RequestHeaders: map[string]string{"host": "should-never-be-used"}})
 	a.SetCorrelationStore(store)
 
-	logEntry := createLogEntryWithMetadata(nil) // no analytics_data metadata either
-	logEntry.Request.RequestId = ""
-
-	event := a.prepareAnalyticEvent(logEntry)
+	event := a.prepareAnalyticEvent(createLogEntryWithRequestID("req-1"))
 
 	require.NotNil(t, event)
 	_, ok := event.Properties[dto.PropKeyRequestHeaders]
-	assert.False(t, ok, "a request with no x-request-id must never surface a spurious store hit")
+	assert.False(t, ok, "no token, so no store lookup")
+}
+
+// Two access-log entries with the same (client-supplied) request id but
+// different tokens each get their own stream's fields.
+func TestPrepareAnalyticEvent_SameRequestIDDifferentTokens(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
+	store := correlation.NewStore(100, time.Minute, 4)
+	store.Put("token-a", correlation.Payload{RequestHeaders: map[string]string{"who": "a"}})
+	store.Put("token-b", correlation.Payload{RequestHeaders: map[string]string{"who": "b"}})
+	a.SetCorrelationStore(store)
+
+	eventB := a.prepareAnalyticEvent(createLogEntryWithToken(t, "dup", "token-b"))
+	eventA := a.prepareAnalyticEvent(createLogEntryWithToken(t, "dup", "token-a"))
+
+	assert.Equal(t, map[string]string{"who": "a"}, eventA.Properties[dto.PropKeyRequestHeaders])
+	assert.Equal(t, map[string]string{"who": "b"}, eventB.Properties[dto.PropKeyRequestHeaders])
 }
 
 // TestPrepareAnalyticEvent_NoExtProcStream covers an access-log entry for a
@@ -186,16 +190,31 @@ func TestPrepareAnalyticEvent_NoExtProcStream(t *testing.T) {
 	assert.False(t, ok, "no headers should be present when neither the store nor metadata has any")
 }
 
-// withAnalyticsData attaches an analytics_data struct to the entry's ext_proc
+// withAnalyticsData adds fields to the entry's analytics_data in its ext_proc
 // filter metadata, as Envoy echoes it back in the access-log entry.
 func withAnalyticsData(t *testing.T, entry *v3.HTTPAccessLogEntry, data map[string]any) *v3.HTTPAccessLogEntry {
 	t.Helper()
-	inner, err := structpb.NewStruct(data)
-	require.NoError(t, err)
-	entry.CommonProperties.Metadata = &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
-		constants.ExtProcFilterName: {Fields: map[string]*structpb.Value{"analytics_data": structpb.NewStructValue(inner)}},
-	}}
+	if entry.CommonProperties.Metadata == nil {
+		entry.CommonProperties.Metadata = &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{
+			constants.ExtProcFilterName: {Fields: map[string]*structpb.Value{
+				"analytics_data": structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{}}),
+			}},
+		}}
+	}
+	inner := entry.CommonProperties.Metadata.FilterMetadata[constants.ExtProcFilterName].Fields["analytics_data"].GetStructValue()
+	for k, v := range data {
+		val, err := structpb.NewValue(v)
+		require.NoError(t, err)
+		inner.Fields[k] = val
+	}
 	return entry
+}
+
+// createLogEntryWithToken is createLogEntryWithRequestID for a request whose
+// ext_proc stream stored fields under token.
+func createLogEntryWithToken(t *testing.T, requestID, token string) *v3.HTTPAccessLogEntry {
+	t.Helper()
+	return withAnalyticsData(t, createLogEntryWithRequestID(requestID), map[string]any{CorrelationTokenKey: token})
 }
 
 // A stored body is preferred over metadata, and the hit consumes the entry so its
@@ -206,31 +225,20 @@ func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
 	cfg.Collector.ResponseBody = true
 	a := NewAnalytics(cfg)
 	store := correlation.NewStoreWithBodyLimits(100, time.Minute, 1, 1024, 4096)
-	store.Put("req-body-1", correlation.Payload{RequestBody: "from-store"})
+	store.Put("token-body-1", correlation.Payload{RequestBody: "from-store"})
 	a.SetCorrelationStore(store)
 
-	entry := withAnalyticsData(t, createLogEntryWithRequestID("req-body-1"),
+	entry := withAnalyticsData(t, createLogEntryWithToken(t, "req-body-1", "token-body-1"),
 		map[string]any{"response_payload": "large-from-metadata"})
 	event := a.prepareAnalyticEvent(entry)
 
 	assert.Equal(t, "from-store", event.Properties[dto.PropKeyRequestPayload])
 	assert.Equal(t, "large-from-metadata", event.Properties[dto.PropKeyResponsePayload], "metadata still serves bodies the store did not take")
-	_, stillThere := store.Get("req-body-1")
+	_, stillThere := store.Get("token-body-1")
 	assert.False(t, stillThere, "entry consumed by the ALS read")
 }
 
-// The LLM proxy's internal loopback hop can share the outer call's request id;
-// it must only peek so the outer call's own line still finds the entry.
-func TestPrepareAnalyticEvent_LoopbackHopDoesNotConsumeEntry(t *testing.T) {
-	a := NewAnalytics(&config.Config{})
-	store := correlation.NewStore(100, time.Minute, 1)
-	store.Put("req-shared", correlation.Payload{RequestHeaders: map[string]string{"h": "v"}})
-	a.SetCorrelationStore(store)
-
-	entry := withAnalyticsData(t, createLogEntryWithRequestID("req-shared"),
-		map[string]any{InternalLoopbackMetadataKey: "true"})
-	a.prepareAnalyticEvent(entry)
-
-	_, stillThere := store.Get("req-shared")
-	assert.True(t, stillThere)
+func TestCorrelationTokenKey(t *testing.T) {
+	// The ext_proc side (internal/kernel) spells out the same key.
+	assert.Equal(t, "x-wso2-correlation-token", CorrelationTokenKey)
 }
