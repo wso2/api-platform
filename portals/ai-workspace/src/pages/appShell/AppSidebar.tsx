@@ -21,6 +21,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Box, Sidebar } from '@wso2/oxygen-ui';
 import {
   BarChart3,
+  Bot,
   Dock,
   Handshake,
   Home,
@@ -121,6 +122,10 @@ export default function AppSidebar({
     currentOrganization,
     '/mcp-proxy'
   );
+  const orgAgentProxiesPath = buildOrgPath(
+    currentOrganization,
+    '/agent-proxy'
+  );
   const orgGatewaysPath = buildOrgPath(currentOrganization, '/gateways');
   const orgInsightsPath = buildOrgPath(currentOrganization, '/insights');
   const orgSettingsPath = buildOrgPath(currentOrganization, '/settings');
@@ -151,6 +156,9 @@ export default function AppSidebar({
   const externalServersPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/mcp-proxy')
     : orgExternalServersPath;
+  const agentProxiesPath = currentProject
+    ? buildProjectPath(currentOrganization, currentProject, '/agent-proxy')
+    : orgAgentProxiesPath;
   const gatewaysPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/gateways')
     : orgGatewaysPath;
@@ -190,14 +198,6 @@ export default function AppSidebar({
                   <Rocket size={20} />
                 </Sidebar.ItemIcon>
                 <Sidebar.ItemLabel>Quick Start</Sidebar.ItemLabel>
-                <Sidebar.ItemBadge
-                  sx={{
-                    background: 'linear-gradient(135deg, #F87644, #e8501a)',
-                    borderRadius: 0.3,
-                  }}
-                >
-                  New
-                </Sidebar.ItemBadge>
               </Sidebar.Item>
             </NavLink>
           </Box>
@@ -297,6 +297,37 @@ export default function AppSidebar({
                       <McpMenuIcon size={20} aria-hidden />
                     </Sidebar.ItemIcon>
                     <Sidebar.ItemLabel>MCP Proxies</Sidebar.ItemLabel>
+                  </Sidebar.Item>
+                </NavLink>
+              </Sidebar.Category>
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
+            </>
+          )}
+
+          {hasPermission(SCOPES.AGENT_PROXY_READ) && (
+            <>
+              <Sidebar.Category>
+                <Sidebar.CategoryLabel>
+                  <Box
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
+                    <span style={{ fontSize: '0.8rem' }}>Agents</span>
+                  </Box>
+                </Sidebar.CategoryLabel>
+                <NavLink to={agentProxiesPath} style={navLinkStyle}>
+                  <Sidebar.Item id="agent-proxies">
+                    <Sidebar.ItemIcon>
+                      <Bot size={20} aria-hidden />
+                    </Sidebar.ItemIcon>
+                    <Sidebar.ItemLabel>Agent Proxies</Sidebar.ItemLabel>
+                    <Sidebar.ItemBadge
+                      sx={{
+                        background: 'linear-gradient(135deg, #F87644, #e8501a)',
+                        borderRadius: 0.3,
+                      }}
+                    >
+                      New
+                    </Sidebar.ItemBadge>
                   </Sidebar.Item>
                 </NavLink>
               </Sidebar.Category>

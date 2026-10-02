@@ -52,27 +52,32 @@ import {
 import { Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
+import { useAgentProxies } from '../../../../contexts/agentProxy';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { formatRelativeTime } from '../proxies/LLMProxyLayout';
 import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
-import type { MCPServer } from '../../../../utils/types';
-import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
+import type { AgentProxyListItem } from '../../../../utils/types';
+import NoAgents from '../../../../assets/images/NoAgents.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
 import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
-import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
 
-export default function ExternalServersList(): React.JSX.Element {
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 0) return '';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0]}${words[1][0]}`.toUpperCase();
+}
+
+export default function AgentProxiesList(): React.JSX.Element {
   const navigate = useNavigate();
   const { projectSlug } = useParams<{ projectSlug: string }>();
   const {
@@ -84,16 +89,9 @@ export default function ExternalServersList(): React.JSX.Element {
   } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
-  const { canCreate, limitMessage } = useResourceLimits();
-  const hasMcpProxyPermission = hasPermission(SCOPES.MCP_PROXY_CREATE);
-  const isMcpProxyQuotaReached = !canCreate('mcpProxies');
-  const canCreateMcpProxy = hasMcpProxyPermission && !isMcpProxyQuotaReached;
-  const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
-  // Permission first: not being allowed to create at all is the more fundamental
-  // reason, and a user without the scope has no use for a quota message.
-  const createMcpProxyTooltip = !hasMcpProxyPermission
-    ? NO_PERMISSION_TOOLTIP
-    : limitMessage('mcpProxies');
+  const canCreateAgentProxy = hasPermission(SCOPES.AGENT_PROXY_CREATE);
+  const canDeleteAgentProxy = hasPermission(SCOPES.AGENT_PROXY_DELETE);
+  const createAgentProxyTooltip = canCreateAgentProxy ? '' : NO_PERMISSION_TOOLTIP;
   const routeProject = useMemo(
     () =>
       projectsForCurrentOrganization.find(
@@ -105,43 +103,15 @@ export default function ExternalServersList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [servers, setServers] = useState<MCPServer[]>([]);
-  const [isServersLoading, setIsServersLoading] = useState(false);
-  const [hasFetchedServers, setHasFetchedServers] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<MCPServer | null>(null);
+  const {
+    agentProxiesResponse,
+    isLoading: isAgentProxiesLoading,
+    deleteAgentProxy,
+  } = useAgentProxies();
+  const agentProxies = agentProxiesResponse.list;
+  const [deleteTarget, setDeleteTarget] = useState<AgentProxyListItem | null>(null);
 
   const organizationId = currentOrganization?.uuid ?? '';
-  const projectId = effectiveProject?.id ?? '';
-  const apimBaseUrl = PLATFORM_API_BASE_URL;
-
-  useEffect(() => {
-    if (!organizationId || !projectId) return;
-    let cancelled = false;
-    const fetchServers = async () => {
-      try {
-        setIsServersLoading(true);
-        setHasFetchedServers(false);
-        const response = await mcpProxiesApis.getMCPServers(
-          projectId,
-          apimBaseUrl
-        );
-        if (!cancelled) {
-          setServers(response.list ?? []);
-        }
-      } catch {
-        // silently fail on load
-      } finally {
-        if (!cancelled) {
-          setIsServersLoading(false);
-          setHasFetchedServers(true);
-        }
-      }
-    };
-    fetchServers();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, projectId, apimBaseUrl]);
 
   useEffect(() => {
     setSelectedProjectId('');
@@ -159,45 +129,49 @@ export default function ExternalServersList(): React.JSX.Element {
     if (!selectedProject || !currentOrganization?.id) return;
     setCurrentProject?.(selectedProject);
     navigate(
-      buildProjectPath(currentOrganization, selectedProject, '/mcp-proxy')
+      buildProjectPath(currentOrganization, selectedProject, '/agent-proxy')
     );
   };
 
-  const filteredServers = useMemo(() => {
+  const filteredAgentProxies = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return servers;
+    if (!query) return agentProxies;
 
-    return servers.filter((server) =>
-      [server.displayName, server.description, server.context, server.version]
+    return agentProxies.filter((agentProxy) =>
+      [
+        agentProxy.displayName,
+        agentProxy.description,
+        agentProxy.context,
+        agentProxy.version,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query)
     );
-  }, [searchQuery, servers]);
+  }, [searchQuery, agentProxies]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
-    const serverId = deleteTarget.id;
+    const agentProxyId = deleteTarget.id;
     try {
-      await mcpProxiesApis.deleteMCPServer(serverId, apimBaseUrl);
-      setServers((prev) => prev.filter((s) => s.id !== serverId));
-      showSnackbar('MCP Proxy deleted successfully.', 'success');
+      await deleteAgentProxy(agentProxyId);
+      showSnackbar('Agent Proxy deleted successfully.', 'success');
     } catch (error) {
       showSnackbar(
-        getErrorDescription(error, 'Failed to delete MCP Proxy.'),
+        getErrorDescription(error, 'Failed to delete Agent Proxy.'),
         'error'
       );
     }
     setDeleteTarget(null);
   };
 
-  const handleServerRowClick = (server: MCPServer) => {
+  const handleAgentProxyRowClick = (agentProxy: AgentProxyListItem) => {
     navigate(
       buildProjectPath(
         currentOrganization,
         effectiveProject,
-        `/mcp-proxy/${server.id}`
+        `/agent-proxy/${agentProxy.id}`
       )
     );
   };
@@ -209,13 +183,13 @@ export default function ExternalServersList(): React.JSX.Element {
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.external.servers.are.created.and.managed.at.the.project.level"
-                defaultMessage="MCP proxies are created and managed at the project level."
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.agent.proxies.are.created.and.managed.at.the.project.level"
+                defaultMessage="Agent proxies are created and managed at the project level."
               />
             </Typography>
             <Typography variant="body2" color="text.secondary">
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.select.a.project.to.switch.to.project.level.and.continue"
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.select.a.project.to.switch.to.project.level.and.continue"
                 defaultMessage="Select a project to switch to project level and continue."
               />
             </Typography>
@@ -229,7 +203,7 @@ export default function ExternalServersList(): React.JSX.Element {
             <FormControl fullWidth sx={{ maxWidth: 500 }}>
               <FormLabel>
                 <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.project"
+                  id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.project"
                   defaultMessage="Project"
                 />
               </FormLabel>
@@ -249,14 +223,14 @@ export default function ExternalServersList(): React.JSX.Element {
                 {isProjectsLoading ? (
                   <MenuItem value="__loading__" disabled>
                     <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.loading.projects"
+                      id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.loading.projects"
                       defaultMessage="Loading projects..."
                     />
                   </MenuItem>
                 ) : projectsForCurrentOrganization.length === 0 ? (
                   <MenuItem value="" disabled>
                     <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.no.projects.available"
+                      id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.no.projects.available"
                       defaultMessage="No projects available"
                     />
                   </MenuItem>
@@ -277,7 +251,7 @@ export default function ExternalServersList(): React.JSX.Element {
               sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.go.to.project.level"
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.go.to.project.level"
                 defaultMessage="Go to Project Level"
               />
             </Button>
@@ -302,20 +276,20 @@ export default function ExternalServersList(): React.JSX.Element {
           <PageTitle sx={{ minWidth: 0, flex: 1 }}>
             <PageTitle.Header>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.external.servers"
-                defaultMessage="MCP Proxies"
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.agent.proxies"
+                defaultMessage="Agent Proxies"
               />
             </PageTitle.Header>
             <PageTitle.SubHeader>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.and.manage.mcp.servers.for.this.project"
-                defaultMessage="Create and manage MCP proxies for this project."
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.create.and.manage.agent.proxies.for.this.project"
+                defaultMessage="Create and manage agent proxies for this project."
               />
             </PageTitle.SubHeader>
           </PageTitle>
 
-          {servers.length > 0 ? (
-            <Tooltip title={createMcpProxyTooltip}>
+          {agentProxies.length > 0 ? (
+            <Tooltip title={createAgentProxyTooltip}>
               <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
                 <Button
                   variant="contained"
@@ -323,15 +297,15 @@ export default function ExternalServersList(): React.JSX.Element {
                   to={buildProjectPath(
                     currentOrganization,
                     effectiveProject,
-                    '/mcp-proxy/create'
+                    '/agent-proxy/create'
                   )}
                   startIcon={<Plus size={20} />}
-                  disabled={!canCreateMcpProxy}
+                  disabled={!canCreateAgentProxy}
                   sx={DISABLED_ACTION_SX}
                 >
                   <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
-                    defaultMessage="Create MCP Proxy"
+                    id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.create.agent.proxy"
+                    defaultMessage="Create Agent Proxy"
                   />
                 </Button>
               </Box>
@@ -340,7 +314,7 @@ export default function ExternalServersList(): React.JSX.Element {
         </Box>
       </Grid>
 
-      {isServersLoading || !hasFetchedServers ? (
+      {isAgentProxiesLoading ? (
         <Grid size={{ xs: 12 }}>
           <Card>
             <TableContainer>
@@ -388,7 +362,7 @@ export default function ExternalServersList(): React.JSX.Element {
             </TableContainer>
           </Card>
         </Grid>
-      ) : hasFetchedServers && servers.length === 0 ? (
+      ) : agentProxies.length === 0 ? (
         <Grid size={{ xs: 12 }}>
           <Box
             sx={{
@@ -406,14 +380,14 @@ export default function ExternalServersList(): React.JSX.Element {
             >
               <Box
                 component="img"
-                src={NoMCPServers}
-                alt="No MCP proxies"
+                src={NoAgents}
+                alt="No agent proxies"
                 sx={{ width: 140, maxWidth: '80%' }}
               />
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.your.first.mcp.server"
-                  defaultMessage="Create your first MCP Proxy"
+                  id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.create.your.first.agent.proxy"
+                  defaultMessage="Create your first agent proxy"
                 />
               </Typography>
               <Typography
@@ -422,11 +396,11 @@ export default function ExternalServersList(): React.JSX.Element {
                 sx={{ maxWidth: 420 }}
               >
                 <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.setup.an.mcp.server.description"
-                  defaultMessage="Set up an MCP Proxy to expose tools, prompts, and resources through your AI gateway workflows."
+                  id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.setup.an.agent.proxy.description"
+                  defaultMessage="Set up an Agent Proxy to expose skills, tasks, and messages through your AI gateway workflows."
                 />
               </Typography>
-              <Tooltip title={createMcpProxyTooltip}>
+              <Tooltip title={createAgentProxyTooltip}>
                 <Box component="span">
                   <Button
                     variant="contained"
@@ -434,15 +408,15 @@ export default function ExternalServersList(): React.JSX.Element {
                     to={buildProjectPath(
                       currentOrganization,
                       effectiveProject,
-                      '/mcp-proxy/create'
+                      '/agent-proxy/create'
                     )}
                     startIcon={<Plus size={20} />}
-                    disabled={!canCreateMcpProxy}
+                    disabled={!canCreateAgentProxy}
                     sx={DISABLED_ACTION_SX}
                   >
                     <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
-                      defaultMessage="Create MCP Proxy"
+                      id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.create.agent.proxy"
+                      defaultMessage="Create Agent Proxy"
                     />
                   </Button>
                 </Box>
@@ -455,7 +429,7 @@ export default function ExternalServersList(): React.JSX.Element {
           <Grid size={{ xs: 12 }}>
             <TextField
               fullWidth
-              placeholder={searchQuery ? undefined : 'Search MCP Proxies...'}
+              placeholder={searchQuery ? undefined : 'Search Agent Proxies...'}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               slotProps={{
@@ -485,23 +459,23 @@ export default function ExternalServersList(): React.JSX.Element {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredServers.length === 0 ? (
+                    {filteredAgentProxies.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6}>
                           <Typography variant="body2" color="text.secondary">
                             <FormattedMessage
-                              id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.no.mcp.servers.found"
-                              defaultMessage="No MCP proxies found."
+                              id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.no.agent.proxies.found"
+                              defaultMessage="No agent proxies found."
                             />
                           </Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredServers.map((server) => (
+                      filteredAgentProxies.map((agentProxy) => (
                         <TableRow
-                          key={server.id}
+                          key={agentProxy.id}
                           hover
-                          onClick={() => handleServerRowClick(server)}
+                          onClick={() => handleAgentProxyRowClick(agentProxy)}
                           sx={{ cursor: 'pointer' }}
                         >
                           <TableCell sx={{ minWidth: 220 }}>
@@ -522,10 +496,7 @@ export default function ExternalServersList(): React.JSX.Element {
                                   fontSize: 16,
                                 }}
                               >
-                                {(server.displayName || '—')
-                                  .trim()
-                                  .slice(0, 2)
-                                  .toUpperCase()}
+                                {getInitials(agentProxy.displayName || '')}
                               </Avatar>
                               <Typography
                                 variant="h6"
@@ -537,7 +508,7 @@ export default function ExternalServersList(): React.JSX.Element {
                                   whiteSpace: 'nowrap',
                                 }}
                               >
-                                {server.displayName}
+                                {agentProxy.displayName}
                               </Typography>
                             </Box>
                           </TableCell>
@@ -549,29 +520,29 @@ export default function ExternalServersList(): React.JSX.Element {
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {server.description || '—'}
+                            {agentProxy.description || '—'}
                           </TableCell>
-                          <TableCell>{server.context || '—'}</TableCell>
-                          <TableCell>{server.version || '—'}</TableCell>
+                          <TableCell>{agentProxy.context || '—'}</TableCell>
+                          <TableCell>{agentProxy.version || '—'}</TableCell>
                           <TableCell>
-                            {formatRelativeTime(server.updatedAt)}
+                            {formatRelativeTime(agentProxy.updatedAt)}
                           </TableCell>
                           <TableCell align="right">
                             <Tooltip
                               title={
-                                canDeleteMcpProxy ? '' : NO_PERMISSION_TOOLTIP
+                                canDeleteAgentProxy ? '' : NO_PERMISSION_TOOLTIP
                               }
                             >
                               <Box component="span">
                                 <IconButton
                                   size="small"
                                   color="error"
-                                  disabled={!canDeleteMcpProxy}
+                                  disabled={!canDeleteAgentProxy}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    setDeleteTarget(server);
+                                    setDeleteTarget(agentProxy);
                                   }}
-                                  aria-label={`Delete ${server.displayName}`}
+                                  aria-label={`Delete ${agentProxy.displayName}`}
                                 >
                                   <Trash2 size={16} />
                                 </IconButton>
@@ -601,11 +572,11 @@ export default function ExternalServersList(): React.JSX.Element {
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
       >
-        <DialogTitle>Delete external server</DialogTitle>
+        <DialogTitle>Delete agent proxy</DialogTitle>
         <DialogContent>
           {deleteTarget?.readOnly ? (
             <GatewayArtifactDeleteWarning
-              artifactType="MCP Proxy"
+              artifactType="Agent Proxy"
               artifactName={deleteTarget.displayName}
             />
           ) : null}
