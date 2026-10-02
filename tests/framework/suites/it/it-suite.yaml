@@ -446,10 +446,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-      - name: api-key-auth
-        tags: "gateway-version>=1.2.0;~@api-key-auth-restart && ~@api-key-auth-multigateway"
-        features:
-          - features/api_key_auth.feature
 
   - name: legacy-aws-bedrock-guardrail
     parallel: 1
@@ -996,3 +992,7 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
+      - name: api-key-auth
+        tags: "gateway-version>=1.2.0;~@api-key-auth-restart && ~@api-key-auth-multigateway"
+        features:
+          - features/api_key_auth.feature

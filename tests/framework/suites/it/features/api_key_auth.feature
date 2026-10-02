@@ -758,6 +758,162 @@ Feature: API key authentication policy
     Then the response should be successful
     And I send a "GET" request to "${CTX:akaCtx}/s17/probe" until status 404
 
+  # Group 05 - Lifecycle to runtime effect
+  @aka-g05 @aka-18
+  Scenario: A revoked key is rejected once the revocation has propagated
+    Given I generate a unique value from "aka-s18" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s18" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s18/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s18/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "k1"
+    And I set header "API-Key" to "${CTX:k1}"
+    And I send a "GET" request to "${CTX:akaCtx}/s18/probe" until status 200
+    When I reset the request
+    And I send a "DELETE" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys/key-one"
+    Then the response status should be 200
+    And the JSON response field "status" should be "success"
+    When I set header "API-Key" to "${CTX:k1}"
+    And I send a "GET" request to "${CTX:akaCtx}/s18/probe" until status 401
+    When I send a "GET" request to "${CTX:akaCtx}/s18/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s18/probe" until status 404
+
+  @aka-g05 @aka-19
+  Scenario: Regenerating or rotating a key invalidates the old value
+    Given I generate a unique value from "aka-s19" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s19" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s19/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "oldKey"
+    And I set header "API-Key" to "${CTX:oldKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 200
+    When I reset the request
+    And I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys/key-one/regenerate" with body:
+      """
+      {}
+      """
+    Then the response status should be 200
+    And the JSON response field "apiKey.apiKey" should not equal "${CTX:oldKey}"
+    And I store the JSON response field "apiKey.apiKey" as "newKey"
+    And I set header "API-Key" to "${CTX:newKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 200
+    When I send a "GET" request to "${CTX:akaCtx}/s19/probe"
+    Then the response status code should be 200
+    When I set header "API-Key" to "${CTX:oldKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 401
+    When I send a "GET" request to "${CTX:akaCtx}/s19/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I reset the request
+    And I generate a unique resource name from "aka-s19" and store it as "externalSeed"
+    And I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"external-key","apiKey":"${CTX:externalSeed}-original-custom-value-0123456789abcdef"}
+      """
+    Then the response status should be 201
+    And I set header "API-Key" to "${CTX:externalSeed}-original-custom-value-0123456789abcdef"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 200
+    When I reset the request
+    And I send a "PUT" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys/external-key" with body:
+      """
+      {"apiKey":"${CTX:externalSeed}-rotated-custom-value-0123456789abcdef"}
+      """
+    Then the response status should be 200
+    And I set header "API-Key" to "${CTX:externalSeed}-rotated-custom-value-0123456789abcdef"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 200
+    When I set header "API-Key" to "${CTX:externalSeed}-original-custom-value-0123456789abcdef"
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 401
+    When I send a "GET" request to "${CTX:akaCtx}/s19/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s19/probe" until status 404
+
+  @aka-g05 @aka-20
+  Scenario: A deleted key stays rejected even after its name is reused
+    Given I generate a unique value from "aka-s20" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s20" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s20/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s20/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "firstKey"
+    And I set header "API-Key" to "${CTX:firstKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s20/probe" until status 200
+    When I reset the request
+    And I send a "DELETE" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys/key-one"
+    Then the response status should be 200
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys"
+    Then the response body should not contain "key-one"
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And the JSON response field "apiKey.apiKey" should not equal "${CTX:firstKey}"
+    And I store the JSON response field "apiKey.apiKey" as "secondKey"
+    And I set header "API-Key" to "${CTX:secondKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s20/probe" until status 200
+    When I set header "API-Key" to "${CTX:firstKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s20/probe" until status 401
+    When I send a "GET" request to "${CTX:akaCtx}/s20/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s20/probe" until status 404
+
   # Group 06 - Expiry
   @aka-g06 @aka-21
   Scenario: A key used before its expiry works
