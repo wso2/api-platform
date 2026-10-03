@@ -381,6 +381,9 @@ func (cs *CertStore) GetClientCAPool() (bundle []byte, hasRelay bool, err error)
 // PEM certificate chain, leaf first, and decrypted private key. It never
 // returns a partial or still-encrypted result.
 func (cs *CertStore) GetGatewayIdentityMaterial(name string) (certChainPEM []byte, privateKeyPEM []byte, err error) {
+	if cs.db == nil {
+		return nil, nil, fmt.Errorf("gateway identity %q not found: no certificate database", name)
+	}
 	cert, err := cs.db.GetCertificateByName(name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gateway identity %q not found: %w", name, err)
@@ -463,6 +466,9 @@ func (cs *CertStore) logDuplicateDefaultIdentities(sorted []*models.StoredCertif
 func (cs *CertStore) GetUpstreamTrustBundle(names []string) ([]byte, error) {
 	var buf bytes.Buffer
 	for _, name := range names {
+		if cs.db == nil {
+			return nil, fmt.Errorf("certificate %q not found: no certificate database", name)
+		}
 		cert, err := cs.db.GetCertificateByName(name)
 		if err != nil {
 			return nil, fmt.Errorf("certificate %q not found: %w", name, err)

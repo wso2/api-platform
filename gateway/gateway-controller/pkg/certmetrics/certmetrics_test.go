@@ -122,6 +122,37 @@ func TestRefresh_CountsPerUsageAndSetsExpiryGauges(t *testing.T) {
 	}
 }
 
+func TestRefresh_DropsTheSeriesOfADeletedCertificate(t *testing.T) {
+	setupTestRegistry(t)
+
+	notAfter := time.Now().Add(400 * 24 * time.Hour)
+	store := &fakeStore{certs: []*models.StoredCertificate{
+		{UUID: "c-1", Name: "client-a", Usage: models.CertificateUsageDownstream, NotAfter: notAfter},
+		{UUID: "c-2", Name: "client-b", Usage: models.CertificateUsageDownstream, NotAfter: notAfter},
+	}}
+	if _, err := Refresh(store); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if !hasSeriesWithLabelValue(t, "gateway_controller_certificate_expiry_seconds", "client-b") {
+		t.Fatalf("expected an expiry series for client-b before the delete")
+	}
+
+	store.certs = store.certs[:1]
+	if _, err := Refresh(store); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+
+	if hasSeriesWithLabelValue(t, "gateway_controller_certificate_expiry_seconds", "client-b") {
+		t.Fatalf("expected no expiry series for the deleted client-b")
+	}
+	if !hasSeriesWithLabelValue(t, "gateway_controller_certificate_expiry_seconds", "client-a") {
+		t.Fatalf("expected the expiry series for client-a to remain")
+	}
+	if v, ok := gaugeValue(t, "gateway_controller_certificates_total", models.CertificateUsageDownstream); !ok || v != 1 {
+		t.Fatalf("expected certificates_total{usage=downstream}=1, got %v (found=%v)", v, ok)
+	}
+}
+
 func TestSweep_LogsOneWarnPerExpiringCertificate(t *testing.T) {
 	setupTestRegistry(t)
 

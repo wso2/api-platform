@@ -135,3 +135,26 @@ func TestGetDefaultGatewayIdentity_DuplicateWarningOncePerChange(t *testing.T) {
 	lookup()
 	assert.Equal(t, 3, strings.Count(logs.String(), line), "the set returning after a single default is logged again")
 }
+
+func TestNamedLookupsWithoutDatabase(t *testing.T) {
+	cs := NewCertStore(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, "", "")
+
+	t.Run("gateway identity", func(t *testing.T) {
+		chain, key, err := cs.GetGatewayIdentityMaterial("partner")
+		require.EqualError(t, err, `gateway identity "partner" not found: no certificate database`)
+		assert.Nil(t, chain)
+		assert.Nil(t, key)
+	})
+
+	t.Run("upstream trust bundle", func(t *testing.T) {
+		bundle, err := cs.GetUpstreamTrustBundle([]string{"partner-ca"})
+		require.EqualError(t, err, `certificate "partner-ca" not found: no certificate database`)
+		assert.Nil(t, bundle)
+	})
+
+	t.Run("empty upstream trust bundle", func(t *testing.T) {
+		bundle, err := cs.GetUpstreamTrustBundle(nil)
+		require.NoError(t, err)
+		assert.Empty(t, bundle)
+	})
+}

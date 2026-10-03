@@ -95,10 +95,6 @@ func mtlsPolicy(params map[string]interface{}) api.Policy {
 	return p
 }
 
-func namedPolicy(name string) api.Policy {
-	return api.Policy{Name: name, Version: "v1"}
-}
-
 // restAPIWithAPILevelPolicies attaches the given policies at API level (spec.policies).
 func restAPIWithAPILevelPolicies(policies ...api.Policy) *api.RestAPI {
 	cfg := createValidRestAPIConfig()
