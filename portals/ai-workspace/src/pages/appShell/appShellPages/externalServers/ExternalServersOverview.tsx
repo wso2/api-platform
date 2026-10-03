@@ -333,6 +333,12 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
+  // Bumped every time `server` is replaced (including by a successful Save's
+  // setServer(updated), not just the initial load) — see the reset effect below.
+  // handleRefetch captures this before its request and checks it after, so a refetch
+  // that straddles a concurrent Save can tell its response is now stale and discard it
+  // instead of staging discovery data for a config Save has already superseded.
+  const serverRevisionRef = useRef(0);
 
   const updateSelectedPolicies = useCallback(
     (updater: React.SetStateAction<SelectedPolicy[]>) => {
@@ -619,6 +625,7 @@ export default function ExternalServersOverview(): JSX.Element {
   // against the current persisted state rather than a snapshot taken once on mount.
   useEffect(() => {
     if (!server) return;
+    serverRevisionRef.current += 1;
     setEndpointUrl(server.upstream?.main?.url ?? '');
     setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
     // auth.value is write-only and never returned by GET — auth.header is the only
@@ -887,6 +894,10 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const handleRefetch = async () => {
     if (!server) return;
+    // Captured before the request, compared after — if a concurrent Save replaces
+    // server while this fetch is in flight, the revision will have moved on by the
+    // time the response comes back.
+    const startServerRevision = serverRevisionRef.current;
     const trimmedUrl = endpointUrl.trim();
     if (!trimmedUrl) {
       showSnackbar('Enter an endpoint URL before refetching.', 'error');
@@ -949,6 +960,13 @@ export default function ExternalServersOverview(): JSX.Element {
         request,
         apimBaseUrl
       );
+      if (serverRevisionRef.current !== startServerRevision) {
+        // The persisted server config was replaced (e.g. by a concurrent Save) while
+        // this fetch was in flight. The response describes a target/config that Save
+        // has already superseded, so discard it rather than staging discovery data
+        // that would resurrect "unsaved changes" right after a save completed.
+        return;
+      }
       // Stage the discovered tools/resources/prompts so the user can Save them —
       // the fetch-server-info response already uses the same MCPServerTool/
       // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
