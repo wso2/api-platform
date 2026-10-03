@@ -16,6 +16,18 @@
  * under the License.
  */
 
+/*
+ * NOT REGISTERED IN THIS BUILD. ./index.js deliberately does not require this
+ * module, so `type = "keycloak"` is refused at startup and the type is absent
+ * from the key manager form. The code is kept because it was written and
+ * verified against a live Keycloak 26.7.4; re-enable it by restoring the
+ * require line in ./index.js.
+ *
+ * Nothing else gates it — a driver is only ever reached through the registry,
+ * and the registry is filled by that require.
+ */
+
+
 
 'use strict';
 

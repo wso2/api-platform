@@ -181,7 +181,7 @@ function buildClient(policy = {}) {
     // client, so it builds its own Agent rather than reusing the shared pair.
     const { tlsOptions, pooling } = buildOutboundAgents(portalConfig());
 
-    return axios.create({
+    const client = axios.create({
         timeout: cfg.timeoutMs || 10000,
         // A 3xx must not walk the request to a host that never passed the checks
         // above; redirects are surfaced as the response instead of followed.
@@ -202,6 +202,41 @@ function buildClient(policy = {}) {
             ...(clientCert || {}),
         }),
     });
+
+    /*
+     * Check the destination of every request, not just the endpoints configured
+     * for this key manager.
+     *
+     * The guarded `lookup` above only sees hostnames: Node connects straight to an
+     * IP literal without consulting it, and nothing in the Agent looks at the
+     * scheme at all. For a configured endpoint that is fine, because it cannot be
+     * set without passing `assertDialable` at startup or at API create/update —
+     * the note on that function says exactly this, and that it stops holding the
+     * moment a URL can arrive from anywhere else.
+     *
+     * RFC 7592 is that other way in. `registration_client_uri` comes from the key
+     * manager's own registration response, is stored, and is then used verbatim as
+     * the URL for every later read/update/delete — carrying the registration
+     * access token with it. A malicious or compromised key manager answering with
+     * `http://169.254.169.254/...` would otherwise have the portal post that token
+     * to the cloud metadata service. Verified before this interceptor existed: such
+     * a request was attempted, failing only because the address happened to be
+     * unreachable from the host.
+     *
+     * Applied with this client's own policy, so a key manager legitimately on a
+     * private address still reaches its own cross-host registration URI — the
+     * check restricts scheme and address range, not which host is permitted.
+     */
+    client.interceptors.request.use((request) => {
+        // axios resolves the final URL from baseURL + url. Nothing here sets a
+        // baseURL, but asking axios rather than reading request.url keeps this
+        // correct if one is ever added.
+        const target = typeof client.getUri === 'function' ? client.getUri(request) : request.url;
+        assertDialable(target, 'request URL', policy);
+        return request;
+    });
+
+    return client;
 }
 
 module.exports = { buildClient, assertDialable };

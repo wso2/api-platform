@@ -43,4 +43,21 @@ require('./thunderid');
 require('./wso2is');
 require('./asgardeo');
 require('./custom');
-require('./keycloak');
+
+/*
+ * ./keycloak is deliberately NOT required.
+ *
+ * The driver is written, tested against Keycloak 26.7.4, and left in the tree —
+ * but not registered, so `type = "keycloak"` is not a value this build accepts
+ * and the type does not appear in the key manager form. Re-enable it by
+ * restoring the require line below; nothing else has to change, because a driver
+ * is only ever reached through the registry.
+ *
+ *   require('./keycloak');
+ *
+ * A Keycloak instance can still be used in the meantime through the `custom`
+ * driver, which speaks the same RFC 7591/7592 protocol. The one behaviour it
+ * will not carry over is Keycloak's registration-access-token rotation handling,
+ * which is the reason that driver exists separately — `custom` stores and
+ * rewrites the token the same way, so this matters only if the two diverge.
+ */
