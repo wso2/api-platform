@@ -19,7 +19,9 @@
 // End-to-end for the Key Manager form: an admin creates a key manager (the form
 // has no Handle field — the server generates a UUID handle since the UI sends no id),
 // the creation is confirmed over the REST API, and a developer then sees key
-// generation enabled on their application because an org key manager now exists.
+// manager offered to them on the OAuth2 Keys page, because an org key manager now
+// exists. Key generation used to be asserted on the application detail page; that
+// flow was removed when a key manager stopped being bound to an application.
 
 describe('Settings — Key Managers', () => {
     // Not crypto.randomUUID(): Cypress runs specs against http://api-portal:9543, an
@@ -58,6 +60,13 @@ describe('Settings — Key Managers', () => {
         cy.get('#cfg-add-km-btn').click();
         cy.get('#cfg-km-modal').should('be.visible');
         cy.get('#km-display').type(KM_NAME);
+        // "They already exist": this key manager only proxies token requests for
+        // applications registered at the identity server, so it needs no
+        // registration endpoint or provisioning credential. The form opens on "The
+        // portal creates them", which now refuses a blank registration block rather
+        // than silently saving an importing key manager — so the mode has to be
+        // chosen explicitly for a token-proxy-only key manager like this one.
+        cy.get('#km-mode-import').check();
         cy.get('#km-token-endpoint').type(ENDPOINT);
         cy.get('#cfg-km-modal-save').click();
         cy.contains('.cfg-km-edit-btn', KM_NAME, { timeout: 15000 }).should('exist');
@@ -84,13 +93,13 @@ describe('Settings — Key Managers', () => {
 
         cy.createApplication(APP_NAME, 'App for the key-manager key-generation test');
 
-        // 4. On the application, key generation is now enabled: the "unavailable"
-        //    message is gone and the key-manager card (with its key controls) renders.
-        cy.visitPortal('/applications');
-        cy.contains('.app-card-name', APP_NAME).click();
-        cy.url().should('include', '/applications/');
-        cy.get('.mk-unavailable').should('not.exist');
-        cy.get('.mk-km-card').should('exist');
-        cy.get('[id^="addClientIdBtn-"]').should('exist');
+        // 4. Key generation is now available to the developer. It no longer lives on
+        //    the application page — a key manager is not bound to an application —
+        //    so the check is that the OAuth2 Keys page offers this key manager as a
+        //    choice, which is what "enabled for a developer" now means.
+        cy.visitPortal('/oauth2-keys');
+        cy.get('#ok-add-btn, #ok-add-btn-empty').first().click();
+        cy.get('#ok-add-modal').should('be.visible');
+        cy.get('#ok-km-select').should('contain', KM_NAME);
     });
 });
