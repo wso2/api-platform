@@ -59,7 +59,7 @@ app.engine('.hbs', engine({
 app.set('view engine', 'hbs');
 
 registerHelpers();
-
+// Test
 // Session, passport and the XSRF cookie are mounted at BASE_PATH rather than app-wide,
 // and that placement is load-bearing rather than tidiness.
 //
