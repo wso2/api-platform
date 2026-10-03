@@ -42,7 +42,9 @@ import (
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/gatewayidentity"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -4212,5 +4214,77 @@ func TestPolicyRemovalErrorHandling(t *testing.T) {
 			err := mock.RemovePolicy("0000-test-id-0000-000000000000")
 			assert.Equal(t, tt.want, storage.IsPolicyNotFoundError(err))
 		})
+	}
+}
+
+// codeEnum reads schemaName's "code" property enum from the embedded OpenAPI
+// spec and returns it as a set. It fails the test if there is no enum.
+func codeEnum(t *testing.T, schemaName string) map[string]bool {
+	t.Helper()
+
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		t.Fatalf("failed to load embedded OpenAPI spec: %v", err)
+	}
+
+	schemaRef, ok := swagger.Components.Schemas[schemaName]
+	if !ok || schemaRef.Value == nil {
+		t.Fatalf("spec has no schema %q", schemaName)
+	}
+	codeProp, ok := schemaRef.Value.Properties["code"]
+	if !ok || codeProp.Value == nil {
+		t.Fatalf("schema %q has no 'code' property", schemaName)
+	}
+	if len(codeProp.Value.Enum) == 0 {
+		t.Fatalf("schema %q's code property has no enum — it is still only documented via `example`", schemaName)
+	}
+
+	enum := make(map[string]bool, len(codeProp.Value.Enum))
+	for _, v := range codeProp.Value.Enum {
+		s, ok := v.(string)
+		if !ok {
+			t.Fatalf("schema %q's code enum contains a non-string value: %v", schemaName, v)
+		}
+		enum[s] = true
+	}
+	return enum
+}
+
+// Every certificate warning code is declared in CertificateWarning.code.
+func TestOpenAPI_CertificateWarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
+	enum := codeEnum(t, "CertificateWarning")
+
+	emitted := []string{
+		clientca.CodeClientCAIsLeaf,
+		clientca.CodeClientCANotYetValid,
+		clientca.CodeCertExpiresSoon,
+		gatewayidentity.CodeNoClientAuthEKU,
+	}
+	for _, code := range emitted {
+		if !enum[code] {
+			t.Errorf("CertificateWarning.code enum is missing %q", code)
+		}
+	}
+}
+
+// Every deploy warning code is declared in Warning.code.
+func TestOpenAPI_WarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
+	enum := codeEnum(t, "Warning")
+
+	emitted := []string{
+		config.WarningCodeMTLSAcceptInheritsPool,
+		config.WarningCodeMTLSAcceptUnnarrowed,
+		config.WarningCodeMTLSAuthNotFirst,
+		config.WarningCodeMTLSAcceptNamesRelayAuthority,
+		config.WarningCodeMTLSThumbprintNormalised,
+		config.WarningCodeHeaderCertBypassActive,
+		config.WarningCodeMTLSHostnameNotScoped,
+		config.WarningCodeTLSVerifyHostNameDisabled,
+		config.WarningCodeTLSIdentityExpired,
+	}
+	for _, code := range emitted {
+		if !enum[code] {
+			t.Errorf("Warning.code enum is missing %q", code)
+		}
 	}
 }
