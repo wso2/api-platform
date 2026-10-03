@@ -66,7 +66,6 @@ Base URLs:
 
 - [List all custom certificates](certificate-management.md#list-all-custom-certificates)
 - [Upload a new certificate](certificate-management.md#upload-a-new-certificate)
-- [Rotate a gateway identity's certificate and key](certificate-management.md#rotate-a-gateway-identitys-certificate-and-key)
 - [Delete a certificate](certificate-management.md#delete-a-certificate)
 - [Manually reload certificates](certificate-management.md#manually-reload-certificates)
 
@@ -115,7 +114,6 @@ Base URLs:
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
-- [Warning](schemas.md#warning)
 - [RestAPIRequest](schemas.md#restapirequest)
 - [RestAPI](schemas.md#restapi)
 - [Metadata](schemas.md#metadata)
@@ -181,7 +179,6 @@ Base URLs:
 - [UpstreamAuth](schemas.md#upstreamauth)
 - [LLMUpstreamAuth](schemas.md#llmupstreamauth)
 - [LLMProxyProvider](schemas.md#llmproxyprovider)
-- [LLMProxyProviderEntry](schemas.md#llmproxyproviderentry)
 - [LLMProxyAdditionalProvider](schemas.md#llmproxyadditionalprovider)
 - [LLMProxyTransformer](schemas.md#llmproxytransformer)
 - [LLMAccessControl](schemas.md#llmaccesscontrol)
@@ -199,9 +196,7 @@ Base URLs:
 - [SecretConfigListData](schemas.md#secretconfiglistdata)
 - [SecretListItem](schemas.md#secretlistitem)
 - [CertificateUploadRequest](schemas.md#certificateuploadrequest)
-- [CertificateMatch](schemas.md#certificatematch)
 - [CertificateResponse](schemas.md#certificateresponse)
-- [CertificateWarning](schemas.md#certificatewarning)
 - [CertificateListResponse](schemas.md#certificatelistresponse)
 - [APIKeyListResponse](schemas.md#apikeylistresponse)
 - [SecretListResponse](schemas.md#secretlistresponse)

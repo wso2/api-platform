@@ -315,14 +315,7 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ]
+    "deployedAt": "2026-04-24T07:21:13Z"
   }
 }
 ```
@@ -507,14 +500,7 @@ Required roles: `admin`, `developer`
         "state": "deployed",
         "createdAt": "2026-04-24T07:21:13Z",
         "updatedAt": "2026-04-24T07:21:13Z",
-        "deployedAt": "2026-04-24T07:21:13Z",
-        "warnings": [
-          {
-            "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-            "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-            "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-          }
-        ]
+        "deployedAt": "2026-04-24T07:21:13Z"
       }
     }
   ]
@@ -564,7 +550,6 @@ Status Code **200**
 |»»»»» upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |»»»»»» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |»»»»»» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
-|»»»»» tls|object|false|none|Optional mutual-TLS presentation and trust for this backend. `identity` (string) names a gateway identity — a certificate uploaded to POST /certificates with usage: identity — to present on the connection. `trustedCAs` (array of string) lists usage: upstream certificates to trust for this backend in place of the gateway-wide trust bundle; omit to use the gateway bundle. `verifyHostName` (boolean, default true) controls SAN/hostname verification against the target. Every target in a definition carrying `tls` must use https://. Unknown keys are rejected at deploy time.|
 |»»»» upstream|any|true|none|The backend A2A agent and its auth configuration. Set exactly one of `url` (a direct backend URL) or `ref` (the name of an entry in `upstreamDefinitions`, resolved to that definition's first URL and `basePath`). The resolved URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
 
 *allOf*
@@ -575,7 +560,6 @@ Status Code **200**
 |»»»»»» url|string(uri)|false|none|Direct backend URL to route traffic to|
 |»»»»»» ref|string|false|none|Reference to a predefined upstreamDefinition|
 |»»»»»» hostRewrite|string|false|none|Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.|
-|»»»»»» tls|object|false|none|Not supported on an inline upstream (a `url`-based main/sandbox entry); a tls block placed here is rejected at deploy time. Put it on the upstreamDefinitions entry referenced via `ref`.|
 
 *oneOf*
 
@@ -651,10 +635,6 @@ Status Code **200**
 |»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
-|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
-|»»»»» code|string|false|none|none|
-|»»»»» field|string|false|none|none|
-|»»»»» message|string|false|none|none|
 
 #### Enumerated Values
 
@@ -690,15 +670,6 @@ Status Code **200**
 |mode|passthrough|
 |state|deployed|
 |state|undeployed|
-|code|MTLS_ACCEPT_INHERITS_POOL|
-|code|MTLS_ACCEPT_UNNARROWED|
-|code|MTLS_AUTH_NOT_FIRST|
-|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
-|code|MTLS_THUMBPRINT_NORMALISED|
-|code|HEADER_CERT_BYPASS_ACTIVE|
-|code|MTLS_HOSTNAME_NOT_SCOPED|
-|code|TLS_VERIFY_HOSTNAME_DISABLED|
-|code|TLS_IDENTITY_EXPIRED|
 
 ## Get Agent by id
 
@@ -873,14 +844,7 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ]
+    "deployedAt": "2026-04-24T07:21:13Z"
   }
 }
 ```
@@ -1211,14 +1175,7 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z",
-    "warnings": [
-      {
-        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
-        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
-        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
-      }
-    ]
+    "deployedAt": "2026-04-24T07:21:13Z"
   }
 }
 ```

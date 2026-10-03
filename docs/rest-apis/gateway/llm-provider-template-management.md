@@ -301,10 +301,6 @@ Status Code **200**
 |»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
-|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
-|»»»»» code|string|false|none|none|
-|»»»»» field|string|false|none|none|
-|»»»»» message|string|false|none|none|
 
 #### Enumerated Values
 
@@ -318,15 +314,6 @@ Status Code **200**
 |location|pathParam|
 |state|deployed|
 |state|undeployed|
-|code|MTLS_ACCEPT_INHERITS_POOL|
-|code|MTLS_ACCEPT_UNNARROWED|
-|code|MTLS_AUTH_NOT_FIRST|
-|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
-|code|MTLS_THUMBPRINT_NORMALISED|
-|code|HEADER_CERT_BYPASS_ACTIVE|
-|code|MTLS_HOSTNAME_NOT_SCOPED|
-|code|TLS_VERIFY_HOSTNAME_DISABLED|
-|code|TLS_IDENTITY_EXPIRED|
 
 ## Get LLM provider template by id
 

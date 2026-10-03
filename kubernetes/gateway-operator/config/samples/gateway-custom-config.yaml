@@ -77,11 +77,6 @@ data:
             minimum_protocol_version: TLS1_2
             maximum_protocol_version: TLS1_3
             ciphers: ""
-            # HTTPS connections asked for a client certificate while an API attaches mtls-auth:
-            # mtls_hostnames (default; every connection while one has no own hostname or a relay entry exists) | all_connections
-            client_certificate_request: mtls_hostnames
-            # Refuse (HTTP 400) to deploy an mtls-auth API without its own hostname. Only with mtls_hostnames. true | false (default)
-            mtls_requires_dedicated_hostname: false
           policy_engine:
             mode: uds
             host: ""
@@ -105,9 +100,6 @@ data:
               custom_certs_path: ./certificates
               verify_host_name: true
               disable_ssl_verification: false
-              # Present a client certificate to HTTPS backends whose upstream names no tls.identity:
-              # the role "default" identity, else the HTTPS listener certificate. true (default) | false
-              present_default_identity: true
             timeouts:
               route_timeout_ms: 60000
               route_idle_timeout_ms: 300000
