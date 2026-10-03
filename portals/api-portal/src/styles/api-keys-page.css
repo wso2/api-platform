@@ -99,6 +99,26 @@
   line-height: 1.2;
 }
 
+/* Environment badge. Same shape and colour as .ok-env-badge on the OAuth2 Keys
+   page and .cfg-env-badge in settings, so a sandbox key reads identically
+   wherever it appears. Only sandbox is marked — production is the default, and
+   badging it would label every row. */
+.ak-env-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 1.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--info, #0b6bcb);
+  background: color-mix(in srgb, var(--info, #0b6bcb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info, #0b6bcb) 28%, transparent);
+}
+
 /* ── Masked key pill ──────────────────────────────────────────── */
 .ak-key-masked {
   display: inline-flex;

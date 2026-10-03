@@ -28,6 +28,11 @@ const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge
 // Requires nothing from this module in return, so loading the grant table from the
 // startup validation below cannot cycle.
 const roleScopeMap = require('./roleScopeMap');
+// Both are kept free of a top-level dependency back on this module, so they can
+// participate in this bootstrap — see the note in keymanagers/core/httpClient.js.
+require('../keymanagers/drivers'); // fills the driver registry before `type` is checked
+const { validateKeyManagerConfig } = require('./keyManagerConfig');
+const { assertDialable } = require('../keymanagers/core/httpClient');
 // utils/constants.js has no imports of its own, so pulling the route constants in here
 // cannot create a cycle back through the config loader.
 const routeConstants = require('../utils/constants');
@@ -880,7 +885,86 @@ function validateAuthorizationConfig(cfg) {
     }
 }
 
+/**
+ * Fail-closed startup validation for the [[api_portal.key_manager]] entries that
+ * back OAuth2 key generation (GET /key-managers/metadata, POST /oauth2-keys).
+ *
+ * Everything checkable without I/O is checked here rather than on the first
+ * request: required fields, unknown driver `type`, duplicate ids, unknown
+ * auth.method, and — via assertDialable — that each endpoint's scheme and
+ * address range are permitted. A key manager the portal could never reach, or a
+ * secret whose {{ env }} reference is unset, should stop the boot while the
+ * cause is still nameable.
+ *
+ * Minting the provisioning token and reading mTLS certificates stay deferred to
+ * first use: both are async, and this bootstrap is synchronous.
+ */
+function validateKeyManagers(cfg) {
+    let instances;
+    try {
+        instances = validateKeyManagerConfig(cfg);
+    } catch (err) {
+        process.stderr.write(`[FATAL] key manager configuration: ${err.message}\n`);
+        process.exit(1);
+    }
+
+    if (instances.length === 0) {
+        // Not an error: a portal with no key manager configured simply offers no
+        // OAuth2 key generation. The endpoints answer with an empty list.
+        return;
+    }
+
+    for (const km of instances) {
+        for (const [field, url] of [
+            ['registration_endpoint', km.registrationEndpoint],
+            ['token_endpoint', km.tokenEndpoint],
+            ['authorize_endpoint', km.authorizeEndpoint],
+            /*
+             * The fourth URL. `auth.token_endpoint` overrides where the portal
+             * fetches its OWN provisioning token, and that request is the one
+             * carrying the provisioning credential — Basic by default, or in the
+             * form body under send_credentials_in_body. Either way, an http://
+             * override on a key manager configured with allow_http_endpoints =
+             * false would put that credential on the wire in the clear.
+             *
+             * Only ClientCredentials has one; every other authenticator leaves it
+             * undefined and the `!url` guard below skips it. Unset it defaults to
+             * km.tokenEndpoint, which is the line above — revalidating the same
+             * value under the same policy is a no-op, so there is no need to
+             * distinguish the two cases here.
+             *
+             * The request itself is already refused by the dial-time interceptor
+             * in buildClient. This is about WHEN: a mistake here should fail the
+             * boot like the other three, not the first key generation an hour
+             * later with an error that points at the key manager.
+             */
+            ['auth.token_endpoint', km.auth && km.auth.tokenEndpoint],
+        ]) {
+            if (!url) continue;
+            try {
+                assertDialable(url, `key_manager "${km.id}" ${field}`, km.clientPolicy);
+            } catch (err) {
+                process.stderr.write(`[FATAL] key manager configuration: ${err.message}\n`);
+                process.exit(1);
+            }
+        }
+        if (km.clientPolicy.insecureSkipVerify) {
+            process.stderr.write(
+                `[WARN] key manager "${km.id}" has insecure_skip_verify = true — its TLS ` +
+                'certificate is not verified, so the connection is open to interception. ' +
+                'Development only.\n'
+            );
+        }
+    }
+
+    process.stderr.write(
+        `[INFO] Key managers: ${instances.length} configured ` +
+        `(${instances.map(k => `${k.id} [${k.type}]`).join(', ')}).\n`
+    );
+}
+
 rejectRetiredAuthKeys(interpolatedTomlConfig.auth);
 validateAuthorizationConfig(config);
+validateKeyManagers(config);
 
 module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES };
