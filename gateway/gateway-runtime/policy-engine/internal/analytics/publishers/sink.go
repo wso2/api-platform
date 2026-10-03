@@ -19,7 +19,6 @@ package publishers
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -102,6 +101,11 @@ func (t *errThrottle) logError(msg, sink string, err error) {
 	}
 }
 
+// maxRetainedLineBuffer bounds the line buffer writerSink keeps between writes.
+// Typical lines are a few KiB; a line carrying a large payload is written once and
+// its buffer released instead of being held for the rest of the process.
+const maxRetainedLineBuffer = 64 << 10
+
 // writerSink writes each line to an io.Writer, serialized by a mutex so concurrent
 // ALS streams cannot interleave partial lines. It backs the stdout sink and is used
 // directly by tests to capture output.
@@ -113,6 +117,9 @@ type writerSink struct {
 	// for stdout, which this sink does not own and must not close.
 	closer   io.Closer
 	throttle errThrottle
+	// buf is reused across writes (guarded by mu) to append the trailing newline,
+	// so each line costs one Write call and no per-line allocation.
+	buf []byte
 }
 
 // newWriterSink wraps an io.Writer as a Sink. The writer is not closed by Close
@@ -139,7 +146,12 @@ func (s *writerSink) Name() string { return s.name }
 func (s *writerSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := fmt.Fprintln(s.w, string(line)); err != nil {
+	s.buf = append(append(s.buf[:0], line...), '\n')
+	_, err := s.w.Write(s.buf)
+	if cap(s.buf) > maxRetainedLineBuffer {
+		s.buf = nil // don't pin a large payload line's buffer for the process lifetime
+	}
+	if err != nil {
 		mDropped(s.name, dropReasonWriteFailed, 1)
 		mWriteError(s.name, errCodeWrite, 1)
 		s.throttle.logError("Failed to write traffic-log event", s.name, err)

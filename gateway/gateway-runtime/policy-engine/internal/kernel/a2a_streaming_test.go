@@ -62,7 +62,7 @@ import (
 func TestResponseStreamingEnabled_AgentSSEUpgrades(t *testing.T) {
 	kernel := NewKernel()
 	server := NewExternalProcessorServer(kernel, executor.NewChainExecutor(nil, nil, nil),
-		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	chain := &registry.PolicyChain{
 		RequiresResponseBody: true,
@@ -107,7 +107,7 @@ func TestResponseStreamingEnabled_AgentSSEUpgrades(t *testing.T) {
 func TestResponseStreamingEnabled_AgentBufferedErrorStaysBuffered(t *testing.T) {
 	kernel := NewKernel()
 	server := NewExternalProcessorServer(kernel, newTestExecutor(),
-		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	// A response-body policy that mutates, so a mode/handler disagreement would surface
 	// as a streamed-response mutation delivered into a buffered body callback — which is

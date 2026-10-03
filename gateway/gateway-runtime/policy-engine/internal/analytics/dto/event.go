@@ -23,6 +23,13 @@ import "time"
 // back by publishers (e.g. the Log publisher's masking and field-projection paths).
 // Both sides must use these constants so a rename stays in one place.
 const (
+	// PropKeyRequestHeaders / PropKeyResponseHeaders hold captured headers under
+	// EITHER of two shapes, and every reader must accept both (see
+	// internal/analytics/publishers/log.go's headersFromEventProperty):
+	//   - map[string]string: the correlation-store-hit path (internal/analytics/
+	//     correlation) -- already typed, no decoding needed.
+	//   - string: the metadata-decode fallback path (no store hit) -- a
+	//     JSON-encoded object, decoded via parseHeadersFromString.
 	PropKeyRequestHeaders  = "requestHeaders"
 	PropKeyResponseHeaders = "responseHeaders"
 	PropKeyRequestPayload  = "request_payload"

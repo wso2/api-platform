@@ -83,6 +83,12 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
+	// correlationToken keys this stream's correlation-store entry. It is unique
+	// per ext_proc stream (see correlationKey) rather than the request id, which a
+	// client can supply and repeat. Empty until the first captured field is
+	// offered to the store.
+	correlationToken string
+
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without
 	// contaminating the policy-visible metadata map.

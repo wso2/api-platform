@@ -3,8 +3,12 @@ version: v1.0.0
 description: |
   Collects analytics data from request and response flows. This gets attached even
   without any policies in the chain. Inspects headers and, optionally, bodies to
-  populate analytics metadata that is emitted via Envoy dynamic metadata and consumed
-  by the policy engine analytics pipeline and publishers.
+  populate analytics metadata consumed by the policy engine analytics pipeline and
+  publishers. Most fields (API identity, auth context, subscription, AI/MCP
+  metadata, payloads) are emitted via Envoy dynamic metadata; captured request/
+  response headers specifically travel in-process instead, from the ext_proc
+  handler directly to the ALS handler, keyed per request (see request_headers/
+  response_headers below).
 
 parameters:
   type: object
@@ -30,17 +34,23 @@ parameters:
       default: false
       description: >
         When true, the analytics system policy captures ALL request headers
-        into analytics metadata as request_headers, which is forwarded through
-        the analytics pipeline (including the stdout/log and Moesif publishers).
-        Sensitive values are not masked here; the log publisher's masked_headers
-        setting redacts them on output.
+        into analytics metadata as request_headers. This travels in-process
+        from the ext_proc handler to the ALS handler (an internal correlation
+        store keyed per request), not through Envoy dynamic metadata, and is
+        then forwarded through the analytics pipeline (including the
+        stdout/log and Moesif publishers). Sensitive values are not masked
+        here; the log publisher's masked_headers setting redacts them on
+        output.
     response_headers:
       type: boolean
       default: false
       description: >
         When true, the analytics system policy captures ALL response headers
-        into analytics metadata as response_headers, which is forwarded through
-        the analytics pipeline (including the stdout/log and Moesif publishers).
+        into analytics metadata as response_headers. This travels in-process
+        from the ext_proc handler to the ALS handler (an internal correlation
+        store keyed per request), not through Envoy dynamic metadata, and is
+        then forwarded through the analytics pipeline (including the
+        stdout/log and Moesif publishers).
     allow_payloads:
       type: boolean
       default: false

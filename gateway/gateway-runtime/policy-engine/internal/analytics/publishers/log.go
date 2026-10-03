@@ -58,6 +58,9 @@ type Log struct {
 	// always returns a usable, possibly-empty evaluator whose resolve() returns
 	// nil when nothing is configured.
 	globalProperties *globalPropertyEvaluator
+	// exclusions is traffic_logging.exclude_fields compiled for the struct-level
+	// fast path (see fieldExclusions). Nil when nothing is excluded.
+	exclusions *fieldExclusions
 	// sinks are the destinations each serialized line is written to, built from
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
@@ -90,6 +93,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
 		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
+		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -156,6 +160,7 @@ func (l *Log) Publish(event *dto.Event) {
 
 	dir := l.resolveGlobalDirective(event)
 	tl := l.toTrafficLogEvent(event, dir)
+	l.exclusions.applyToStruct(tl)
 
 	data, err := json.Marshal(tl)
 	if err != nil {
@@ -163,7 +168,9 @@ func (l *Log) Publish(event *dto.Event) {
 		return
 	}
 
-	if fields := dir.Fields; fields != nil && len(fields.Exclude) > 0 {
+	// Exclusions applied to the struct above never reach this point; only paths
+	// that need the JSON projection (e.g. into a nested properties object) do.
+	if fields := l.exclusions.residualFields(); fields != nil {
 		// Shallow-decode only the top level; untouched fields stay as raw JSON
 		// bytes and are never deep-decoded or re-encoded.
 		var m map[string]json.RawMessage
@@ -203,6 +210,31 @@ func (l *Log) Close(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// headersFromEventProperty extracts a header map attached to an analytics
+// event's Properties (dto.PropKeyRequestHeaders / dto.PropKeyResponseHeaders),
+// regardless of which of the two shapes it arrived in:
+//
+//   - map[string]string -- the steady-state path: a correlation-store hit handed
+//     the policy engine's ALS handler an already-typed header map (see
+//     internal/analytics/correlation and internal/analytics's prepareAnalyticEvent),
+//     so there is nothing to decode.
+//   - string -- the fallback path: no store hit (collector disabled in this test/
+//     caller, the request never had an ext_proc stream, or a genuine store miss),
+//     so the value is the JSON string decoded from the access-log entry's own
+//     metadata, exactly as it always has been. Decoded via parseHeadersFromString.
+//
+// Returns nil when the property is absent or neither shape.
+func headersFromEventProperty(v interface{}) map[string]string {
+	switch headers := v.(type) {
+	case map[string]string:
+		return headers
+	case string:
+		return parseHeadersFromString(headers)
+	default:
+		return nil
+	}
 }
 
 // parseHeadersFromString converts the JSON-encoded header value stored in
@@ -347,13 +379,28 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 // redacting it; like mask, that comparison is also case-insensitive (see
 // isHeaderField, used by deleteNestedPath), so any casing Envoy delivers matches.
 func maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
+	return filterAndMaskHeaders(headers, mask, nil)
+}
+
+// filterAndMaskHeaders is maskHeaders that also drops the headers named in exclude
+// (lower-cased names, matched case-insensitively), so header-level exclude_fields
+// entries cost nothing beyond the copy masking already makes. Returns nil when
+// every header is excluded, so the field is omitted like the JSON projection does.
+func filterAndMaskHeaders(headers map[string]string, mask, exclude map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
-		if mask[strings.ToLower(name)] {
+		lower := strings.ToLower(name)
+		if exclude[lower] {
+			continue
+		}
+		if mask[lower] {
 			result[name] = maskedHeaderValue
 		} else {
 			result[name] = value
 		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }

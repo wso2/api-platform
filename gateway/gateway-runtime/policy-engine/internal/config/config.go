@@ -129,6 +129,53 @@ type AnalyticsConfig struct {
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+	// Correlation tunes the in-process ext_proc→ALS correlation store (see
+	// internal/analytics/correlation) that carries captured request/response headers
+	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
+	// per-stream token, instead of round-tripping them through Envoy dynamic
+	// metadata and the ALS filter_metadata echo. Only consulted while the collector is active
+	// (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
+	Correlation CorrelationStoreConfig `koanf:"correlation"`
+}
+
+// CorrelationStoreConfig tunes the in-process, sharded store the ext_proc handler
+// writes captured headers and bodies into as each phase's response is built, and
+// the ALS handler reads at access-log-entry time, replacing their round trip
+// through Envoy dynamic metadata. A field is left out of metadata only once the
+// store has accepted it, and unread entries are never evicted, so sizing these
+// limits trades memory against how often fields fall back to metadata -- not
+// against losing them.
+type CorrelationStoreConfig struct {
+	// Capacity bounds the number of entries held across all shards combined: one
+	// per request from its first captured field until the ALS handler reads it.
+	// When a shard has no free slot, new requests keep their captured fields in
+	// Envoy metadata instead.
+	Capacity int `koanf:"capacity"`
+	// TTL is how long an entry whose request has finished waits for its
+	// access-log entry before its slot may be reclaimed for a new request. It only
+	// matters for entries that are never read -- e.g. paths filtered by
+	// collector.ignore_path_prefixes -- since the ALS handler normally reads an
+	// entry about a second after the request ends (Envoy's 1s/16KiB access-log
+	// buffer). Entries of in-flight requests are never reclaimed.
+	TTL time.Duration `koanf:"ttl"`
+	// Shards is the number of independently-locked partitions the store is split
+	// into, selected by hashing the request id. A single mutex would itself become
+	// a bottleneck at the request rates this store targets (several thousand
+	// req/s); splitting the lock lets concurrent writers/readers on different
+	// shards proceed without contending on each other. Rounded up to the next
+	// power of two if it is not one already.
+	Shards int `koanf:"shards"`
+	// MaxPayloadBytes is the largest captured request/response body carried
+	// in-process through the store; a larger body stays in Envoy dynamic metadata
+	// (the old path), so it is never lost. Bodies in metadata are re-serialized on
+	// every later ext_proc message and again in the access-log entry, so keeping
+	// them in-process matters most for exactly the large bodies body logging is
+	// configured for. 0 disables body storage.
+	MaxPayloadBytes int `koanf:"max_payload_bytes"`
+	// MaxBodyBytes bounds the body bytes held across all shards combined. Bodies are
+	// removed as soon as their access-log entry is processed; a body that does not
+	// fit stays in Envoy metadata. 0 disables body storage.
+	MaxBodyBytes int64 `koanf:"max_body_bytes"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -1131,6 +1178,18 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 	}
 }
 
+// defaultCorrelationStoreConfig returns the default ext_proc→ALS correlation-store
+// tuning. See CorrelationStoreConfig for the reasoning behind each default.
+func defaultCorrelationStoreConfig() CorrelationStoreConfig {
+	return CorrelationStoreConfig{
+		Capacity:        20000,
+		TTL:             30 * time.Second,
+		Shards:          32,
+		MaxPayloadBytes: 256 << 10,
+		MaxBodyBytes:    16 << 20,
+	}
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -1296,6 +1355,7 @@ func defaultConfig() *Config {
 			AllowPayloads:        false,
 			SendRequestBody:      false,
 			SendResponseBody:     false,
+			Correlation:          defaultCorrelationStoreConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
@@ -1504,6 +1564,14 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateTrafficLoggingConfig(); err != nil {
 		return err
+	}
+	// The correlation store is only ever consulted while the collector is active
+	// (see CorrelationStoreConfig doc comment) -- validating it unconditionally
+	// would force every deployment to size a knob that does nothing for them.
+	if c.IsCollectorEnabled() {
+		if err := c.validateCorrelationStoreConfig(); err != nil {
+			return err
+		}
 	}
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
@@ -1798,6 +1866,28 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 		&c.Collector.RequestBody,
 		&c.Collector.ResponseBody,
 	)
+}
+
+// validateCorrelationStoreConfig validates the ext_proc→ALS correlation-store
+// tuning. Only called while the collector is active (see call site in Validate).
+func (c *Config) validateCorrelationStoreConfig() error {
+	corr := c.Analytics.Correlation
+	if corr.Capacity <= 0 {
+		return fmt.Errorf("analytics.correlation.capacity must be positive, got %d", corr.Capacity)
+	}
+	if corr.TTL <= 0 {
+		return fmt.Errorf("analytics.correlation.ttl must be positive, got %s", corr.TTL)
+	}
+	if corr.Shards <= 0 {
+		return fmt.Errorf("analytics.correlation.shards must be positive, got %d", corr.Shards)
+	}
+	if corr.MaxPayloadBytes < 0 {
+		return fmt.Errorf("analytics.correlation.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)
+	}
+	if corr.MaxBodyBytes < 0 {
+		return fmt.Errorf("analytics.correlation.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
+	}
+	return nil
 }
 
 // validateAnalyticsConfig validates the analytics consumer configuration (publishers).

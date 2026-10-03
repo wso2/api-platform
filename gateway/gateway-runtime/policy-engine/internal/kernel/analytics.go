@@ -19,10 +19,16 @@
 package kernel
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"sync/atomic"
 
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 )
 
 // Constants for analytics metadata
@@ -67,6 +73,93 @@ const (
 	TerminalReasonKey = Wso2MetadataPrefix + "terminal-reason"
 )
 
+// analyticsRequestHeadersKey / analyticsResponseHeadersKey are the analytics-metadata
+// keys the analytics system policy (gateway/system-policies/analytics) uses to carry
+// captured request/response headers. They are excluded from what buildAnalyticsStruct
+// sends to Envoy -- see its doc comment -- so they must be spelled out here rather than
+// imported: the system policy is a separate Go module with no shared dependency on this
+// package, and the two sides agree on the key names only by (documented) convention.
+const (
+	analyticsRequestHeadersKey  = "request_headers"
+	analyticsResponseHeadersKey = "response_headers"
+	// analyticsRequestPayloadKey / analyticsResponsePayloadKey carry captured bodies
+	// (collector.request_body / collector.response_body), by the same convention.
+	analyticsRequestPayloadKey  = "request_payload"
+	analyticsResponsePayloadKey = "response_payload"
+	// analyticsInternalLoopbackKey is the marker the analytics system policy stamps
+	// on the LLM proxy's internal loopback hop, by the same convention.
+	analyticsInternalLoopbackKey = "x-wso2-internal-loopback"
+	// CorrelationTokenKey carries a stream's correlation-store key to the ALS
+	// handler in analytics_data. It must match the ALS side's constant of the same
+	// name in internal/analytics.
+	CorrelationTokenKey = Wso2MetadataPrefix + "correlation-token"
+)
+
+// correlationTokenPrefix makes tokens unique across policy-engine restarts, and
+// correlationTokenSeq unique within one process.
+var (
+	correlationTokenPrefix = func() string {
+		b := make([]byte, 6)
+		if _, err := rand.Read(b); err != nil {
+			panic(fmt.Sprintf("generating correlation token prefix: %v", err))
+		}
+		return hex.EncodeToString(b) + "-"
+	}()
+	correlationTokenSeq atomic.Uint64
+)
+
+// correlationKey returns this stream's correlation-store key, creating it on
+// first use. The request id cannot serve as the key: Envoy keeps a client-supplied
+// x-request-id, so concurrent requests can share one and would overwrite or
+// consume each other's entry.
+func (ec *PolicyExecutionContext) correlationKey() string {
+	if ec.correlationToken == "" {
+		ec.correlationToken = correlationTokenPrefix + strconv.FormatUint(correlationTokenSeq.Add(1), 36)
+	}
+	return ec.correlationToken
+}
+
+// correlatesInProcess reports whether this request may hand captured data to the
+// ALS handler through the correlation store: the store exists and the request is
+// not the LLM proxy's internal loopback hop, whose own access-log event is
+// suppressed, so it keeps its data in Envoy metadata. data is the analytics
+// metadata being built, which can carry the loopback marker before
+// execCtx.analyticsMetadata does (e.g. on a short-circuit); it may be nil.
+func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) bool {
+	if execCtx == nil || execCtx.server == nil || execCtx.server.correlationStore == nil {
+		return false
+	}
+	if _, ok := data[analyticsInternalLoopbackKey]; ok {
+		return false
+	}
+	_, loopback := execCtx.analyticsMetadata[analyticsInternalLoopbackKey]
+	return !loopback
+}
+
+// storeInProcess hands one captured header or body field to the correlation store
+// and reports whether the store accepted it; only then may the field be left out
+// of Envoy metadata. It runs while the ext_proc response for this phase is being
+// built, before that response is sent, so Envoy cannot emit the request's
+// access-log entry before the data is in the store. A field the store refuses (no
+// free slot, a body over the size or byte budget) or a header value of an
+// unrecognised shape stays in metadata, the pre-store path.
+func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool {
+	var p correlation.Payload
+	switch key {
+	case analyticsRequestHeadersKey:
+		p.RequestHeaders = normalizeAnalyticsHeaderValue(value)
+	case analyticsResponseHeadersKey:
+		p.ResponseHeaders = normalizeAnalyticsHeaderValue(value)
+	case analyticsRequestPayloadKey:
+		p.RequestBody, _ = value.(string)
+	case analyticsResponsePayloadKey:
+		p.ResponseBody, _ = value.(string)
+	default:
+		return false
+	}
+	return execCtx.server.correlationStore.Merge(execCtx.correlationKey(), p)
+}
+
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
 func convertToStructValue(value any) (*structpb.Value, error) {
 	// Try direct conversion first (works for simple types)
@@ -87,17 +180,40 @@ func convertToStructValue(value any) (*structpb.Value, error) {
 
 // buildAnalyticsStruct converts analytics metadata map to structpb.Struct
 // If execCtx is provided, adds system-level metadata (API name, version, etc.) to analytics_data.metadata
+//
+// Captured request/response headers and bodies are handed to the in-process
+// correlation store (internal/analytics/correlation, keyed by the stream's
+// correlation token) and left
+// out of the struct sent to Envoy, but only when the store accepts them (see
+// storeInProcess); the struct then carries the stream's correlation token
+// (CorrelationTokenKey) instead. They used to make a full round trip -- encoded here, forwarded
+// back on every later ext_proc message, echoed in the access-log entry's
+// filter_metadata, and decoded again on the ALS side -- purely to correlate them
+// back to their request, although the ext_proc and ALS handlers run in the same
+// process. Anything the store refuses stays in the struct, and every other
+// analytics_data field (API identity, auth context, subscription, AI/MCP metadata)
+// is unaffected.
 func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecutionContext) (*structpb.Struct, error) {
 	// Start with the analytics data from policies
 	fields := make(map[string]*structpb.Value)
 
 	// Add policy-provided analytics data
+	inProcess := correlatesInProcess(execCtx, analyticsData)
 	for key, value := range analyticsData {
+		if inProcess && storeInProcess(execCtx, key, value) {
+			continue
+		}
 		val, err := convertToStructValue(value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert analytics value for key %s: %w", key, err)
 		}
 		fields[key] = val
+	}
+	// Every phase repeats the token once the stream has one, so whichever
+	// analytics_data Envoy ends up with tells the ALS handler where this request's
+	// stored fields are.
+	if execCtx != nil && execCtx.correlationToken != "" {
+		fields[CorrelationTokenKey] = structpb.NewStringValue(execCtx.correlationToken)
 	}
 
 	// Add system-level metadata if context is provided
@@ -134,6 +250,74 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	}
 
 	return &structpb.Struct{Fields: fields}, nil
+}
+
+// normalizeAnalyticsHeaderValue converts a captured header value out of
+// analytics metadata into the flat map[string]string shape the correlation store
+// carries. Before this store existed, EVERY shape below reached the ALS side only
+// after a JSON-encode (here) -> Envoy echo -> JSON-decode round trip; this
+// reproduces that same flattening natively, so switching to the in-process store
+// is not a behavior change for any policy's contribution regardless of its shape:
+//
+//   - map[string]string -- the analytics system policy's own capture (see
+//     flattenHeaders in gateway/system-policies/analytics/analytics.go) and any
+//     third-party policy already producing this shape: used as-is.
+//   - map[string][]string -- finalizeAnalyticsHeaders' output (the
+//     AnalyticsHeaderFilter path in translator.go): flattened to each header's
+//     FIRST value only, matching what the old round trip produced (JSON-encoding
+//     a map[string][]string, then decoding it back, discarded every value but the
+//     first -- see parseHeadersFromString's multi-value fallback branch in
+//     internal/analytics/publishers/log.go).
+//   - string -- a policy that already JSON-encodes its own capture (e.g. a
+//     third-party/Python policy mirroring the pre-existing convention): decoded
+//     the same way parseHeadersFromString always has.
+//
+// Any other shape yields nil, exactly as today's metadata-decode path would
+// silently ignore a value it doesn't recognize.
+func normalizeAnalyticsHeaderValue(v any) map[string]string {
+	switch headers := v.(type) {
+	case nil:
+		return nil
+	case map[string]string:
+		return headers
+	case map[string][]string:
+		out := make(map[string]string, len(headers))
+		for k, vs := range headers {
+			if len(vs) > 0 {
+				out[k] = vs[0]
+			}
+		}
+		return out
+	case string:
+		return parseJSONHeaderString(headers)
+	default:
+		return nil
+	}
+}
+
+// parseJSONHeaderString mirrors internal/analytics/publishers/log.go's
+// parseHeadersFromString exactly (duplicated rather than imported: that package
+// depends on this one's sibling internal/analytics tree, and importing it here
+// would risk a cycle for a four-line helper).
+func parseJSONHeaderString(raw string) map[string]string {
+	if raw == "" {
+		return nil
+	}
+	var single map[string]string
+	if err := json.Unmarshal([]byte(raw), &single); err == nil {
+		return single
+	}
+	var multi map[string][]string
+	if err := json.Unmarshal([]byte(raw), &multi); err == nil {
+		out := make(map[string]string, len(multi))
+		for k, vs := range multi {
+			if len(vs) > 0 {
+				out[k] = vs[0]
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // extractMetadataFromRouteMetadata extracts the metadata from the route metadata
