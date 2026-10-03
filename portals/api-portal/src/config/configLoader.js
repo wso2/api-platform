@@ -868,6 +868,26 @@ function validateKeyManagers(cfg) {
             ['registration_endpoint', km.registrationEndpoint],
             ['token_endpoint', km.tokenEndpoint],
             ['authorize_endpoint', km.authorizeEndpoint],
+            /*
+             * The fourth URL. `auth.token_endpoint` overrides where the portal
+             * fetches its OWN provisioning token, and that request is the one
+             * carrying the provisioning credential — Basic by default, or in the
+             * form body under send_credentials_in_body. Either way, an http://
+             * override on a key manager configured with allow_http_endpoints =
+             * false would put that credential on the wire in the clear.
+             *
+             * Only ClientCredentials has one; every other authenticator leaves it
+             * undefined and the `!url` guard below skips it. Unset it defaults to
+             * km.tokenEndpoint, which is the line above — revalidating the same
+             * value under the same policy is a no-op, so there is no need to
+             * distinguish the two cases here.
+             *
+             * The request itself is already refused by the dial-time interceptor
+             * in buildClient. This is about WHEN: a mistake here should fail the
+             * boot like the other three, not the first key generation an hour
+             * later with an error that points at the key manager.
+             */
+            ['auth.token_endpoint', km.auth && km.auth.tokenEndpoint],
         ]) {
             if (!url) continue;
             try {
