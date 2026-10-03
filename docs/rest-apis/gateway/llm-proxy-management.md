@@ -212,12 +212,27 @@ Status Code **200**
 |»»»» version|string|true|none|Semantic version of the LLM proxy|
 |»»»» context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
-|»»»» provider|[LLMProxyProvider](schemas.md#schemallmproxyprovider)|true|none|none|
+|»»»» provider|[LLMProxyProvider](schemas.md#schemallmproxyprovider)|false|none|none|
 |»»»»» id|string|true|none|Unique id of a deployed llm provider|
+|»»»»» as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted.|
 |»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
-|»»»»»» type|string|true|none|none|
-|»»»»»» header|string|false|none|none|
-|»»»»»» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|»»»»»» type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
+|»»»»»» policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
+|»»»»»» policyVersion|string|false|none|Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.|
+|»»»»»» policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
+|»»»»»» header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
+|»»»»»» value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
+|»»»»» transformer|[LLMProxyTransformer](schemas.md#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+|»»»»»» type|string|true|none|Translator policy name (for example openai-to-anthropic).|
+|»»»»»» version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
+|»»»»»» params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
+|»»»» providers|[[LLMProxyProviderEntry](schemas.md#schemallmproxyproviderentry)]|false|none|Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`. Mutually exclusive with the legacy `provider` plus `additionalProviders` pair - supplying both is rejected. The legacy shape remains supported indefinitely.|
+|»»»»» id|string|true|none|Unique id of a deployed llm provider|
+|»»»»» alias|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.|
+|»»»»» isPrimary|boolean|true|none|Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true.|
+|»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
+|»»»»» transformer|[LLMProxyTransformer](schemas.md#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+|»»»» inboundTemplate|string|false|none|Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.|
 |»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |»»»»» name|string|true|none|Name of the policy|
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
@@ -236,9 +251,6 @@ Status Code **200**
 |»»»»» as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.|
 |»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
 |»»»»» transformer|[LLMProxyTransformer](schemas.md#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
-|»»»»»» type|string|true|none|Translator policy name (for example openai-to-anthropic).|
-|»»»»»» version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
-|»»»»»» params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
 |»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |»»»»» name|string|true|none|none|
 |»»»»» version|string|true|none|none|
@@ -262,6 +274,10 @@ Status Code **200**
 |»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
+|»»»»» code|string|false|none|none|
+|»»»»» field|string|false|none|none|
+|»»»»» message|string|false|none|none|
 
 #### Enumerated Values
 
@@ -270,12 +286,22 @@ Status Code **200**
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProxy|
 |type|api-key|
+|type|oauth2|
 |type|other|
 |type|none|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 |state|deployed|
 |state|undeployed|
+|code|MTLS_ACCEPT_INHERITS_POOL|
+|code|MTLS_ACCEPT_UNNARROWED|
+|code|MTLS_AUTH_NOT_FIRST|
+|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
+|code|MTLS_THUMBPRINT_NORMALISED|
+|code|HEADER_CERT_BYPASS_ACTIVE|
+|code|MTLS_HOSTNAME_NOT_SCOPED|
+|code|TLS_VERIFY_HOSTNAME_DISABLED|
+|code|TLS_IDENTITY_EXPIRED|
 
 ## Get LLM proxy by unique identifier
 
