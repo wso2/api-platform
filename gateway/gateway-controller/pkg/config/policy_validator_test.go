@@ -48,7 +48,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with valid policy
 	apiConfig := &api.RestAPI{
@@ -94,7 +94,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	// Empty policy definitions
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with non-existent policy
 	apiConfig := &api.RestAPI{
@@ -157,7 +157,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with invalid params (missing required field)
 	apiConfig := &api.RestAPI{
@@ -218,7 +218,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with operation-level policy
 	apiConfig := &api.RestAPI{
@@ -269,7 +269,7 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with multiple invalid policies
 	apiConfig := &api.RestAPI{
@@ -335,7 +335,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Create API config with wrong type (string instead of integer)
 	apiConfig := &api.RestAPI{
@@ -398,7 +398,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	// Test case 1: Policy with nil params (should fail validation for required field)
 	apiConfig := &api.RestAPI{
@@ -479,7 +479,7 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -531,7 +531,7 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -585,7 +585,7 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -632,7 +632,7 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -686,7 +686,7 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 		},
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -744,7 +744,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 		t.Fatalf("Expected latest resolved version v1.0.0, got %s", resolved)
 	}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -782,7 +782,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
 
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -865,7 +865,7 @@ func TestBuildLatestVersionIndex_EmptyDefinitions(t *testing.T) {
 
 func TestPolicyValidator_ValidateMCPProxyPolicies_NilPolicies(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
@@ -888,7 +888,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
 			Version: "v1.0.0",
 		},
 	}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "allow-all", Version: "v1"},
@@ -910,7 +910,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
 
 func TestPolicyValidator_ValidateMCPProxyPolicies_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]models.PolicyDefinition{}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "missing-policy", Version: "v1"},
@@ -938,7 +938,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_MultiplePoliciesWithErrors(t *
 			Version: "v1.0.0",
 		},
 	}
-	validator := NewPolicyValidator(policyDefs)
+	validator := NewPolicyValidator(policyDefs, nil)
 
 	policies := []api.Policy{
 		{Name: "good-policy", Version: "v1"},
@@ -979,18 +979,18 @@ func TestCoerceParamsBySchema_RenderedTemplateStrings(t *testing.T) {
 			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"limit": map[string]interface{}{"type": "integer"},
-					"burst": map[string]interface{}{"type": "integer"},
+					"limit":   map[string]interface{}{"type": "integer"},
+					"burst":   map[string]interface{}{"type": "integer"},
 					"enabled": map[string]interface{}{"type": "boolean"},
-					"ratio": map[string]interface{}{"type": "number"},
-					"name": map[string]interface{}{"type": "string"},
+					"ratio":   map[string]interface{}{"type": "number"},
+					"name":    map[string]interface{}{"type": "string"},
 				},
 				"required": []interface{}{"limit"},
 			},
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -1060,7 +1060,7 @@ func TestCoerceParamsBySchema_UnparseableStringStaysString(t *testing.T) {
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -1116,7 +1116,7 @@ func TestCoerceParamsBySchema_StringParamWithNumericValueIsUnchanged(t *testing.
 		},
 	}
 
-	pv := NewPolicyValidator(policyDefs)
+	pv := NewPolicyValidator(policyDefs, nil)
 
 	config := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,

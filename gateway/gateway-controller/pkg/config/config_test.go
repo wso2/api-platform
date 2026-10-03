@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,14 +38,15 @@ func validConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
-				APIPort:           8080,
-				XDSPort:           18000,
-				GatewayID:         constants.PlatformGatewayId,
-				ReadTimeout:       30 * time.Second,
-				ReadHeaderTimeout: 30 * time.Second,
-				WriteTimeout:      60 * time.Second,
-				IdleTimeout:       120 * time.Second,
-				MaxHeaderBytes:    1 << 20,
+				APIPort:                   8080,
+				XDSPort:                   18000,
+				GatewayID:                 constants.PlatformGatewayId,
+				ReadTimeout:               30 * time.Second,
+				ReadHeaderTimeout:         30 * time.Second,
+				WriteTimeout:              60 * time.Second,
+				IdleTimeout:               120 * time.Second,
+				MaxHeaderBytes:            1 << 20,
+				MaxCertificateUploadBytes: 1 << 20,
 			},
 			Storage: StorageConfig{
 				Type: "sqlite",
@@ -79,6 +81,9 @@ func validConfig() *Config {
 		Router: RouterConfig{
 			ListenerPort: 9090,
 			HTTPSEnabled: false,
+			DownstreamTLS: DownstreamTLS{
+				ClientCertificateRequest: ClientCertificateRequestMtlsHostnames,
+			},
 			AccessLogs: AccessLogsConfig{
 				Enabled:    true,
 				Format:     "json",
@@ -1073,6 +1078,73 @@ func TestDefaultConfig_AdminServerDefaults(t *testing.T) {
 	assert.True(t, cfg.Controller.AdminServer.Enabled)
 	assert.Equal(t, 9092, cfg.Controller.AdminServer.Port)
 	assert.Equal(t, []string{"*"}, cfg.Controller.AdminServer.AllowedIPs)
+}
+
+func TestDefaultConfig_PresentDefaultIdentityOn(t *testing.T) {
+	cfg := defaultConfig()
+	assert.True(t, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
+}
+
+func TestLoadConfig_PresentDefaultIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     bool
+	}{
+		{name: "omitted", contents: "[router.upstream.tls]\nverify_host_name = true\n", want: true},
+		{name: "on", contents: "[router.upstream.tls]\npresent_default_identity = true\n", want: true},
+		{name: "off", contents: "[router.upstream.tls]\npresent_default_identity = false\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(configPath, []byte(tt.contents), 0o644))
+
+			cfg, err := LoadConfig(configPath)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.Router.Upstream.TLS.PresentDefaultIdentity)
+		})
+	}
+}
+
+// Header names must be RFC 7230 tokens that carry no proxy or framing
+// semantics, whatever https_enabled says.
+func TestConfig_ValidateClientCertificateHeaderName(t *testing.T) {
+	tests := []struct {
+		name        string
+		headerName  string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "shipped default", headerName: "X-WSO2-CLIENT-CERTIFICATE", wantErr: false},
+		{name: "space is not a valid tchar", headerName: "X Bad", wantErr: true, errContains: "is not a valid HTTP header name"},
+		{name: "colon is not a valid tchar", headerName: "X:Y", wantErr: true, errContains: "is not a valid HTTP header name"},
+		{name: "reserved x-forwarded-client-cert", headerName: "x-forwarded-client-cert", wantErr: true, errContains: "x-forwarded-client-cert cannot be used as the client certificate header"},
+		{name: "reserved X-Forwarded-Client-Cert", headerName: "X-Forwarded-Client-Cert", wantErr: true, errContains: "X-Forwarded-Client-Cert cannot be used as the client certificate header"},
+		{name: "reserved Host", headerName: "Host", wantErr: true, errContains: "Host cannot be used as the client certificate header"},
+		{name: "reserved connection", headerName: "connection", wantErr: true, errContains: "connection cannot be used as the client certificate header"},
+		{name: "reserved Content-Length", headerName: "Content-Length", wantErr: true, errContains: "Content-Length cannot be used as the client certificate header"},
+		{name: "reserved Transfer-Encoding", headerName: "Transfer-Encoding", wantErr: true, errContains: "Transfer-Encoding cannot be used as the client certificate header"},
+		{name: "reserved TE", headerName: "TE", wantErr: true, errContains: "TE cannot be used as the client certificate header"},
+		{name: "reserved Upgrade", headerName: "Upgrade", wantErr: true, errContains: "Upgrade cannot be used as the client certificate header"},
+		{name: "reserved Keep-Alive", headerName: "Keep-Alive", wantErr: true, errContains: "Keep-Alive cannot be used as the client certificate header"},
+		{name: "reserved Proxy-Connection", headerName: "Proxy-Connection", wantErr: true, errContains: "Proxy-Connection cannot be used as the client certificate header"},
+		{name: "reserved Trailer", headerName: "Trailer", wantErr: true, errContains: "Trailer cannot be used as the client certificate header"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.DownstreamTLS.ClientCertificateHeader.Name = tt.headerName
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestConfig_Validate_HTTPSPort(t *testing.T) {
@@ -2369,4 +2441,87 @@ func TestValidate_CustomTextAccessLogWithoutTagIsNotFatal(t *testing.T) {
 
 	assert.False(t, textAccessLogStartsWithComponentTag(cfg.Router.AccessLogs.TextFormat))
 	assert.NoError(t, cfg.Validate())
+}
+
+func TestConfig_Validate_EmptyClientCertificateHeaderNameBecomesDefault(t *testing.T) {
+	cfg := validConfig()
+	cfg.Router.DownstreamTLS.ClientCertificateHeader.Name = ""
+	require.NoError(t, cfg.Validate())
+	assert.Equal(t, DefaultClientCertificateHeaderName, cfg.Router.DownstreamTLS.ClientCertificateHeader.Name)
+}
+
+func TestConfig_Validate_MaxCertificateUploadBytes(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   int64
+		wantErr string
+	}{
+		{name: "default is accepted", value: 1 << 20},
+		{name: "zero is rejected", value: 0, wantErr: "server.max_certificate_upload_bytes must be positive, got: 0"},
+		{name: "negative is rejected", value: -1, wantErr: "server.max_certificate_upload_bytes must be positive, got: -1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.Server.MaxCertificateUploadBytes = tt.value
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestLoadConfig_MtlsRequiresDedicatedHostname(t *testing.T) {
+	load := func(t *testing.T, toml string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("defaults to false", func(t *testing.T) {
+		assert.False(t, load(t, "").Router.DownstreamTLS.MtlsRequiresDedicatedHostname)
+	})
+	t.Run("parses true from toml", func(t *testing.T) {
+		cfg := load(t, "[router.downstream_tls]\nmtls_requires_dedicated_hostname = true\n")
+		assert.True(t, cfg.Router.DownstreamTLS.MtlsRequiresDedicatedHostname)
+	})
+}
+
+func TestLoadConfig_ClientCertificateRequest(t *testing.T) {
+	load := func(t *testing.T, toml string) (*Config, error) {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+		return LoadConfig(configPath)
+	}
+
+	t.Run("defaults to mtls_hostnames", func(t *testing.T) {
+		cfg, err := load(t, "")
+		require.NoError(t, err)
+		assert.Equal(t, ClientCertificateRequestMtlsHostnames, cfg.Router.DownstreamTLS.ClientCertificateRequest)
+		assert.False(t, cfg.Router.DownstreamTLS.AsksAllConnections())
+	})
+	for _, value := range []string{ClientCertificateRequestMtlsHostnames, ClientCertificateRequestAllConnections} {
+		t.Run("parses "+value, func(t *testing.T) {
+			cfg, err := load(t, "[router.downstream_tls]\nclient_certificate_request = \""+value+"\"\n")
+			require.NoError(t, err)
+			assert.Equal(t, value, cfg.Router.DownstreamTLS.ClientCertificateRequest)
+			assert.Equal(t, value == ClientCertificateRequestAllConnections, cfg.Router.DownstreamTLS.AsksAllConnections())
+		})
+	}
+	for _, value := range []string{"sni", "", "ALL_CONNECTIONS"} {
+		t.Run("refuses "+strconv.Quote(value), func(t *testing.T) {
+			_, err := load(t, "[router.downstream_tls]\nclient_certificate_request = \""+value+"\"\n")
+			require.Error(t, err)
+			assert.Equal(t, "invalid configuration: router.downstream_tls.client_certificate_request must be one of: "+
+				"mtls_hostnames, all_connections, got: "+value, err.Error())
+		})
+	}
 }

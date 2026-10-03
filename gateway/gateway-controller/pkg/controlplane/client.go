@@ -274,7 +274,7 @@ func NewClient(
 	}
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
-	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	policyValidator := config.NewPolicyValidator(policyDefinitions, nil)
 	client.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -306,7 +306,9 @@ func NewClient(
 		store,
 		db,
 		config.NewParser(),
-		config.NewAgentValidator().WithPolicyValidator(policyValidator),
+		config.NewAgentValidator().
+			WithPolicyValidator(policyValidator).
+			WithUpstreamTLSValidator(config.NewUpstreamTLSValidator(db, systemConfig.Router.Upstream.TLS.DisableSslVerification)),
 		logger,
 		eventHubInstance,
 		secretResolver,

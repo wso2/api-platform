@@ -22,6 +22,19 @@ const (
 	ExtProcFilterName = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	ExtProcFilter     = "envoy.filters.http.ext_proc"
 
+	// Connection-level ext_proc attributes carrying the mTLS verdict and peer
+	// certificate, read from req.Attributes[ExtProcFilter].Fields. The strings
+	// must match the controller's copies exactly: the modules share no type.
+	ExtProcAttrConnectionMTLS                   = "connection.mtls"
+	ExtProcAttrConnectionPeerCertificate        = "connection.peer_certificate"
+	ExtProcAttrConnectionPeerCertificateDigest  = "connection.sha256_peer_certificate_digest"
+	ExtProcAttrConnectionSubjectPeerCertificate = "connection.subject_peer_certificate"
+	ExtProcAttrConnectionURISANPeerCertificate  = "connection.uri_san_peer_certificate"
+	ExtProcAttrConnectionDNSSANPeerCertificate  = "connection.dns_san_peer_certificate"
+	ExtProcAttrConnectionTLSVersion             = "connection.tls_version"
+	ExtProcAttrConnectionRequestedServerName    = "connection.requested_server_name"
+	ExtProcAttrConnectionPeerCertificateValid   = "connection.peer_certificate_valid"
+
 	// Dynamic metadata key for target upstream/cluster routing
 	// Used by policies to dynamically select which upstream definition to route to
 	TargetUpstreamNameKey = "target_upstream_name"

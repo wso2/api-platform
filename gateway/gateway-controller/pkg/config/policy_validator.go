@@ -35,13 +35,16 @@ import (
 type PolicyValidator struct {
 	policyDefinitions map[string]models.PolicyDefinition
 	latestVersions    map[string]string // policyName -> latest full semver, pre-computed at construction
+	mtlsAuthValidator *MtlsAuthValidator
 }
 
-// NewPolicyValidator creates a new policy validator
-func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition) *PolicyValidator {
+// NewPolicyValidator creates a new policy validator. A nil mtlsAuthValidator
+// disables mtls-auth-specific validation.
+func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition, mtlsAuthValidator *MtlsAuthValidator) *PolicyValidator {
 	return &PolicyValidator{
 		policyDefinitions: policyDefinitions,
 		latestVersions:    BuildLatestVersionIndex(policyDefinitions),
+		mtlsAuthValidator: mtlsAuthValidator,
 	}
 }
 
@@ -70,7 +73,12 @@ func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfi
 	}
 
 	for i, policy := range *mcpConfig.Spec.Policies {
-		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+		fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+		if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+			errors = append(errors, err)
+			continue
+		}
+		errs := pv.validatePolicy(policy, fieldPath)
 		errors = append(errors, errs...)
 	}
 
@@ -80,12 +88,22 @@ func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfi
 // ValidateRestAPIPolicies validates all policies in a REST API configuration
 func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
 	var errors []ValidationError
+	// mtls-auth's schema errors are held back until its own validator has
+	// run, so a problem both report is reported once.
+	var mtlsAuthSchemaErrors []ValidationError
+	collect := func(policy api.Policy, fieldPath string) {
+		errs := pv.validatePolicy(policy, fieldPath)
+		if policy.Name == MtlsAuthPolicyName && pv.mtlsAuthValidator != nil {
+			mtlsAuthSchemaErrors = append(mtlsAuthSchemaErrors, errs...)
+			return
+		}
+		errors = append(errors, errs...)
+	}
 
 	// Validate API-level policies
 	if apiConfig.Spec.Policies != nil {
 		for i, policy := range *apiConfig.Spec.Policies {
-			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
-			errors = append(errors, errs...)
+			collect(policy, fmt.Sprintf("spec.policies[%d]", i))
 		}
 	}
 
@@ -93,10 +111,16 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 	for opIdx, operation := range apiConfig.Spec.Operations {
 		if operation.Policies != nil {
 			for pIdx, policy := range *operation.Policies {
-				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
-				errors = append(errors, errs...)
+				collect(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
 			}
 		}
+	}
+
+	// mtls-auth validation needs every policy chain of the API at once.
+	if pv.mtlsAuthValidator != nil {
+		mtlsAuthErrors := pv.mtlsAuthValidator.ValidateRestAPI(apiConfig)
+		errors = append(errors, mtlsAuthErrors...)
+		errors = append(errors, withoutDuplicatesOf(mtlsAuthSchemaErrors, mtlsAuthErrors)...)
 	}
 
 	return errors
@@ -118,8 +142,12 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 
 	if operationConfigs.Policies != nil {
 		for i, policy := range *operationConfigs.Policies {
-			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.operationConfigs.policies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.a2a.operationConfigs.policies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 		}
 	}
 
@@ -129,9 +157,12 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 				continue
 			}
 			for pIdx, policy := range *operation.Policies {
-				errs := pv.validatePolicy(policy,
-					fmt.Sprintf("spec.a2a.operationConfigs.operations[%d].policies[%d]", opIdx, pIdx))
-				errors = append(errors, errs...)
+				fieldPath := fmt.Sprintf("spec.a2a.operationConfigs.operations[%d].policies[%d]", opIdx, pIdx)
+				if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+					errors = append(errors, err)
+					continue
+				}
+				errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 			}
 		}
 	}
@@ -141,8 +172,12 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 	// than a missing scope to fail on.
 	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
 		for i, policy := range *cardPolicies {
-			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 		}
 	}
 
@@ -175,7 +210,12 @@ func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, o
 	// Global (api-level) policies carry params on the policy itself, so reuse validatePolicy.
 	if globalPolicies != nil {
 		for i, policy := range *globalPolicies {
-			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.globalPolicies[%d]", i))...)
+			fieldPath := fmt.Sprintf("spec.globalPolicies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 		}
 	}
 
@@ -183,6 +223,10 @@ func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, o
 	if operationPolicies != nil {
 		for i, policy := range *operationPolicies {
 			fieldPath := fmt.Sprintf("spec.operationPolicies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
 			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
 			if len(errs) > 0 {
 				errors = append(errors, errs...)
@@ -199,6 +243,10 @@ func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, o
 	if legacyPolicies != nil {
 		for i, policy := range *legacyPolicies {
 			fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
 			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
 			if len(errs) > 0 {
 				errors = append(errors, errs...)
@@ -229,7 +277,7 @@ func (pv *PolicyValidator) validateAttachedPolicyParams(policyDef *models.Policy
 	} else {
 		coerceParamsBySchema(params, *policyDef.Parameters)
 	}
-	return pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
+	return pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", nil)
 }
 
 // validatePolicy validates a single policy reference (name + version existence) and, when the
@@ -249,7 +297,11 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 			// already-resolved policyDef — avoids a second resolvePolicyVersion call.
 			coerceParamsBySchema(params, *policyDef.Parameters)
 		}
-		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
+		var keep func(gojsonschema.ResultError) bool
+		if policy.Name == MtlsAuthPolicyName && pv.mtlsAuthValidator != nil {
+			keep = keepMtlsAuthSchemaError
+		}
+		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", keep)
 		errors = append(errors, schemaErrs...)
 	}
 
@@ -545,8 +597,9 @@ func coerceScalarByType(val interface{}, expectedType string) interface{} {
 	return val
 }
 
-// validatePolicyParams validates policy parameters against a JSON schema
-func (pv *PolicyValidator) validatePolicyParams(params map[string]interface{}, schema map[string]interface{}, fieldPath string) []ValidationError {
+// validatePolicyParams validates policy parameters against a JSON schema.
+// keep, when set, decides which schema errors are reported; nil keeps them all.
+func (pv *PolicyValidator) validatePolicyParams(params map[string]interface{}, schema map[string]interface{}, fieldPath string, keep func(gojsonschema.ResultError) bool) []ValidationError {
 	var errors []ValidationError
 
 	// Create JSON schema loader
@@ -566,6 +619,9 @@ func (pv *PolicyValidator) validatePolicyParams(params map[string]interface{}, s
 	// Collect validation errors
 	if !result.Valid() {
 		for _, validationErr := range result.Errors() {
+			if keep != nil && !keep(validationErr) {
+				continue
+			}
 			// Extract field path from the error context
 			fieldName := validationErr.Field()
 			if fieldName == "(root)" {
@@ -584,4 +640,45 @@ func (pv *PolicyValidator) validatePolicyParams(params map[string]interface{}, s
 	}
 
 	return errors
+}
+
+// keepMtlsAuthSchemaError drops the schema's unknown-parameter errors for
+// mtls-auth: MtlsAuthValidator reports every unknown parameter itself.
+func keepMtlsAuthSchemaError(err gojsonschema.ResultError) bool {
+	return err.Type() != "additional_property_not_allowed"
+}
+
+// schemaIndexSegment matches a dotted array index in a gojsonschema field
+// path, such as the ".0" in "accept.0.ca".
+var schemaIndexSegment = regexp.MustCompile(`\.(\d+)\b`)
+
+// withoutDuplicatesOf returns schemaErrs, with array indexes in the
+// validator's bracket form, minus every error at a field that one of
+// specific already reports on: for one problem the specific message wins.
+func withoutDuplicatesOf(schemaErrs, specific []ValidationError) []ValidationError {
+	reported := make(map[string]bool, len(specific))
+	for _, e := range specific {
+		reported[e.Field] = true
+	}
+	var kept []ValidationError
+	for _, e := range schemaErrs {
+		e.Field = schemaIndexSegment.ReplaceAllString(e.Field, "[$1]")
+		if !reported[e.Field] {
+			kept = append(kept, e)
+		}
+	}
+	return kept
+}
+
+// refuseMtlsAuthOutsideRestAPI reports the validation error for an mtls-auth
+// reference on any kind but RestApi, the only kind that carries
+// client-certificate authentication.
+func refuseMtlsAuthOutsideRestAPI(policyName, fieldPath string) (ValidationError, bool) {
+	if policyName != MtlsAuthPolicyName {
+		return ValidationError{}, false
+	}
+	return ValidationError{
+		Field:   fieldPath,
+		Message: "mtls-auth is supported on RestApi only",
+	}, true
 }

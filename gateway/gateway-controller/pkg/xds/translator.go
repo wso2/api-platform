@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,6 +53,7 @@ import (
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	tlsinspectorv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/listener/tls_inspector/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -68,6 +70,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"google.golang.org/protobuf/proto"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -108,6 +111,48 @@ type Translator struct {
 	config            *config.Config
 	transformers      map[string]models.ConfigTransformer // kind → transformer (optional)
 	eventGatewayHooks EventGatewayXDSHooks                // optional, set by an event-gateway-controller binary
+
+	// tlsSecretRefs is the per-cluster mTLS wiring seen by the current
+	// TranslateConfigs call, so SDS builds exactly the secrets its clusters
+	// reference.
+	tlsSecretRefs []UpstreamTLSSecretRef
+
+	// lastClientCertRequest is the HTTPS listener's certificate request of
+	// the previous translation, so a change of mode is logged once.
+	lastClientCertRequest clientCertRequest
+
+	// defaultClientCert is the certificate the current TranslateConfigs call
+	// presents to HTTPS backends whose upstream definition names no tls
+	// identity.
+	defaultClientCert defaultClientCertificate
+	// loggedDefaultClientCertificate identifies the last logged choice of
+	// defaultClientCert, so a change is logged once.
+	loggedDefaultClientCertificate string
+}
+
+// GetUpstreamTLSSecretRefs returns the per-cluster mTLS wiring collected by
+// the most recent TranslateConfigs call.
+func (t *Translator) GetUpstreamTLSSecretRefs() []UpstreamTLSSecretRef {
+	return t.tlsSecretRefs
+}
+
+// collectUpstreamTLSSecretRefs records one UpstreamTLSSecretRef per cluster
+// in rdc whose tls block sets identity or trustedCAs.
+func (t *Translator) collectUpstreamTLSSecretRefs(rdc *models.RuntimeDeployConfig) {
+	for _, uc := range rdc.UpstreamClusters {
+		if uc.TLS == nil || !uc.TLS.HasTLSBlock {
+			continue
+		}
+		if uc.TLS.IdentityName == "" && len(uc.TLS.TrustedCANames) == 0 {
+			continue
+		}
+		t.tlsSecretRefs = append(t.tlsSecretRefs, UpstreamTLSSecretRef{
+			IdentityName:   uc.TLS.IdentityName,
+			APIHandle:      rdc.Metadata.Handle,
+			DefinitionName: uc.Name,
+			TrustedCANames: uc.TLS.TrustedCANames,
+		})
+	}
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
@@ -118,25 +163,24 @@ type resolvedTimeout struct {
 	Idle    *time.Duration
 }
 
-// NewTranslator creates a new translator
-func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
-	// Initialize certificate store if custom certs path is configured
-	var cs *certstore.CertStore
-	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
-		cs = certstore.NewCertStore(
-			logger,
-			db,
-			routerConfig.Upstream.TLS.CustomCertsPath,
-			routerConfig.Upstream.TLS.TrustedCertPath,
-		)
-
-		// Load certificates at initialization
-		if _, err := cs.LoadCertificates(); err != nil {
-			logger.Warn("Failed to initialize certificate store, will use system certs only",
-				slog.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
-				slog.Any("error", err))
-			cs = nil // Don't use cert store if initialization failed
-		}
+// NewTranslator creates a new translator. It returns an error when the
+// certificate store fails to load; the caller must refuse to start.
+func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) (*Translator, error) {
+	// The certificate store backs every SDS secret, so it always exists;
+	// custom_certs_path only adds file-based upstream trust.
+	cs := certstore.NewCertStore(
+		logger,
+		db,
+		routerConfig.Upstream.TLS.CustomCertsPath,
+		routerConfig.Upstream.TLS.TrustedCertPath,
+	)
+	// Without the store every upstream TLS context would silently lose its
+	// trust bundle and gateway identity, so a load failure is fatal.
+	if _, err := cs.LoadCertificates(); err != nil {
+		logger.Error("Failed to initialize certificate store",
+			slog.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to initialize certificate store: %w", err)
 	}
 
 	return &Translator{
@@ -144,7 +188,7 @@ func NewTranslator(logger *slog.Logger, routerConfig *config.RouterConfig, db st
 		routerConfig: routerConfig,
 		certStore:    cs,
 		config:       config,
-	}
+	}, nil
 }
 
 // convertServerHeaderTransformation converts string configuration values to Envoy enum values
@@ -257,6 +301,13 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		// upstreamDefinitions.timeout.connect; nil falls back to the router default
 		// inside createCluster/createWeightedCluster.
 		connectTimeout := uc.ConnectTimeout
+
+		// "" means the definition uses the gateway-wide trust bundle.
+		var validationSecretName string
+		if uc.TLS != nil && uc.TLS.HasTLSBlock && len(uc.TLS.TrustedCANames) > 0 {
+			validationSecretName = UpstreamCAValidationContextSecretName(rdc.Metadata.Handle, uc.Name)
+		}
+
 		if len(uc.Endpoints) == 1 {
 			ep := uc.Endpoints[0]
 			parsedURL := &url.URL{
@@ -267,11 +318,17 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if uc.TLS != nil && uc.TLS.Enabled {
 				parsedURL.Scheme = "https"
 			}
-			c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+			c, err := t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
+			if err != nil {
+				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
+			}
 			clusters = append(clusters, c)
 			continue
 		}
-		c := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout)
+		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+		if err != nil {
+			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
+		}
 		clusters = append(clusters, c)
 	}
 
@@ -369,6 +426,14 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// Strip target upstream header when using cluster_header routing
 	if rdcRoute.Upstream.UseClusterHeader {
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	}
+
+	// RequestHeadersToRemove applies after ext_proc, so the policy engine
+	// still sees both certificate headers; this decides only what the backend
+	// receives. With mtls-auth the policy decides, removing a relayed header it
+	// did not believe.
+	if !chainAttachesMTLSAuth(rdc.PolicyChains[routeKey]) {
+		t.stripClientCertificateHeaders(r)
 	}
 
 	// Build the request matchers (shared with direct-response routes so both kinds of
@@ -546,12 +611,15 @@ func (t *Translator) setMatchPathSpecifier(m *route.RouteMatch, fullPath, operat
 	}
 }
 
+// createWeightedCluster creates a weighted (multi-endpoint) Envoy cluster. validationSecretName
+// is the SDS secret for a non-empty tls.TrustedCANames, or "" when there is none.
 func (t *Translator) createWeightedCluster(
 	name string,
 	endpoints []models.Endpoint,
 	tls *models.UpstreamTLS,
 	connectTimeout *time.Duration,
-) *cluster.Cluster {
+	validationSecretName string,
+) (*cluster.Cluster, error) {
 	tlsEnabled := tls != nil && tls.Enabled
 
 	lbEndpoints := make([]*endpoint.LbEndpoint, 0, len(endpoints))
@@ -590,7 +658,10 @@ func (t *Translator) createWeightedCluster(
 		// as the single-endpoint RDC path, so TLS relies on SDS or the system trust store.
 		if tlsEnabled {
 			matchID := strconv.Itoa(i)
-			tlsContext := t.createUpstreamTLSContext(nil, ep.Host)
+			tlsContext, err := t.createUpstreamTLSContext(nil, ep.Host, tls, validationSecretName)
+			if err != nil {
+				return nil, fmt.Errorf("cluster %q endpoint %q: %w", name, ep.Host, err)
+			}
 			marshalledTLSContext, err := anypb.New(tlsContext)
 			if err != nil {
 				t.logger.Error("internal error while marshalling the weighted upstream TLS context",
@@ -643,7 +714,7 @@ func (t *Translator) createWeightedCluster(
 	if len(transportSocketMatches) > 0 {
 		c.TransportSocketMatches = transportSocketMatches
 	}
-	return c
+	return c, nil
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -719,6 +790,15 @@ func (t *Translator) TranslateConfigs(
 	}
 	resources := make(map[resource.Type][]types.Resource)
 
+	t.tlsSecretRefs = nil
+
+	defaultClientCert, err := t.resolveDefaultClientCertificate()
+	if err != nil {
+		return nil, err
+	}
+	t.defaultClientCert = defaultClientCert
+	t.logDefaultClientCertificate(defaultClientCert)
+
 	var listeners []types.Resource
 	var clusters []types.Resource
 
@@ -759,7 +839,7 @@ func (t *Translator) TranslateConfigs(
 		if ok {
 			rdc, transformErr := transformer.Transform(cfg)
 			if transformErr != nil {
-				log.Error("Failed to transform config via RuntimeDeployConfig, falling back to legacy path",
+				log.Error("Failed to transform config via RuntimeDeployConfig, falling back to legacy path; tls settings and the default identity are not applied on that path",
 					slog.String("id", cfg.UUID),
 					slog.String("kind", cfg.Kind),
 					slog.Any("error", transformErr))
@@ -772,6 +852,7 @@ func (t *Translator) TranslateConfigs(
 						slog.Any("error", err))
 					continue
 				}
+				t.collectUpstreamTLSSecretRefs(rdc)
 			}
 		}
 
@@ -901,11 +982,17 @@ func (t *Translator) TranslateConfigs(
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
+	certRequest, err := t.clientCertificateRequest(configs)
+	if err != nil {
+		return nil, err
+	}
+	requestClientCert := certRequest.mode != clientCertOff
+
 	// Variable to hold the shared route configuration (created once, used by both listeners)
 	var sharedRouteConfig *route.RouteConfiguration
 
 	// Always create the HTTP listener, even with no APIs deployed
-	httpListener, routeConfig, err := t.createListener(virtualHosts, false)
+	httpListener, routeConfig, err := t.createListener(virtualHosts, false, requestClientCert)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
@@ -915,14 +1002,16 @@ func (t *Translator) TranslateConfigs(
 	// Create HTTPS listener if enabled
 	if t.routerConfig.HTTPSEnabled {
 		log.Info("HTTPS is enabled, creating HTTPS listener",
-			slog.Int("https_port", t.routerConfig.HTTPSPort))
-		httpsListener, _, err := t.createListener(virtualHosts, true)
+			slog.Int("https_port", t.routerConfig.HTTPSPort),
+			slog.Bool("requires_client_cert_validation", requestClientCert))
+		httpsListener, _, err := t.createListenerWithCertRequest(virtualHosts, true, certRequest)
 		if err != nil {
 			log.Error("Failed to create HTTPS listener", slog.Any("error", err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
 		}
 		log.Info("HTTPS listener created successfully",
 			slog.String("listener_name", httpsListener.GetName()))
+		t.logClientCertRequestChange(log, certRequest)
 		listeners = append(listeners, httpsListener)
 	} else {
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
@@ -976,6 +1065,15 @@ func (t *Translator) TranslateConfigs(
 		}
 	}
 
+	// The default identity is named by no tls block, so its secret is
+	// requested here, first, and only when a cluster presents it.
+	if defaultClientCert.IdentityName != "" && SnapshotReferencesSDSSecret(clusters, nil, defaultClientCert.SecretName) {
+		t.tlsSecretRefs = append([]UpstreamTLSSecretRef{{
+			IdentityName: defaultClientCert.IdentityName,
+			material:     defaultClientCert.material,
+		}}, t.tlsSecretRefs...)
+	}
+
 	resources[resource.ListenerType] = listeners
 	// Add route configuration for RDS (Route Discovery Service)
 	// This allows sharing route config between HTTP and HTTPS listeners
@@ -1025,25 +1123,12 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 		return expanded
 	}
 
-	mainVHost := t.config.Router.VHosts.Main
-	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
-		if expanded := expand(mainVHost.Domains); len(expanded) > 0 {
-			return expanded
-		}
-	}
-
-	sandboxVHost := t.config.Router.VHosts.Sandbox
-	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
-		if expanded := expand(sandboxVHost.Domains); len(expanded) > 0 {
-			return expanded
-		}
-	}
-
-	out := make([]string, 0, 2)
-	return appendDomainPatterns(out, effectiveVHost)
+	return expand(t.config.Router.VHosts.Domains(effectiveVHost))
 }
 
-// translateAPIConfig translates a single API configuration
+// translateAPIConfig translates a single API configuration. It does not
+// honour tls blocks, so its clusters present no client certificate: the
+// default one must never stand in for a tls.identity it cannot see.
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	restCfg, ok := cfg.Configuration.(api.RestAPI)
 	if !ok {
@@ -1065,7 +1150,10 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		mainUpstreamClusterConnectTimeout = mainTimeout.Connect
 	}
 
-	mainCluster := t.createCluster(mainClusterName, parsedMainURL, nil, mainUpstreamClusterConnectTimeout)
+	mainCluster, err := t.createCluster(mainClusterName, parsedMainURL, nil, mainUpstreamClusterConnectTimeout, nil, "")
+	if err != nil {
+		return nil, nil, fmt.Errorf("main cluster %q: %w", mainClusterName, err)
+	}
 	clusters = append(clusters, mainCluster)
 
 	// Create routes for each operation (default to main cluster)
@@ -1148,7 +1236,10 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			sbUpstreamClusterConnectTimeout = sbTimeout.Connect
 		}
 
-		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
+		sandboxCluster, err := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout, nil, "")
+		if err != nil {
+			return nil, nil, fmt.Errorf("sandbox cluster %q: %w", sbClusterName, err)
+		}
 		clusters = append(clusters, sandboxCluster)
 
 		// Create sandbox routes. Mirrors main's useClusterHeader (dynamic cluster selection
@@ -1210,7 +1301,10 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			}
 
 			// Create the cluster for this upstream definition
-			defCluster := t.createCluster(defClusterName, parsedURL, nil, defConnectTimeout)
+			defCluster, err := t.createCluster(defClusterName, parsedURL, nil, defConnectTimeout, nil, "")
+			if err != nil {
+				return nil, nil, fmt.Errorf("upstream definition %q: %w", def.Name, err)
+			}
 			clusters = append(clusters, defCluster)
 
 			t.logger.Debug("Created cluster for upstream definition",
@@ -1312,7 +1406,20 @@ func convertPathWithEscapedSlashesAction(action string) hcm.HttpConnectionManage
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
 // Uses RDS (Route Discovery Service) to share route configuration between listeners
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, *route.RouteConfiguration, error) {
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool, requireDownstreamClientCA bool) (*listener.Listener, *route.RouteConfiguration, error) {
+	req := clientCertRequest{mode: clientCertOff}
+	if requireDownstreamClientCA {
+		req.mode = clientCertEverywhere
+	}
+	return t.createListenerWithCertRequest(virtualHosts, isHTTPS, req)
+}
+
+// createListenerWithCertRequest creates the HTTP or HTTPS listener. On HTTPS,
+// certRequest decides which connections are asked for a client certificate:
+// none, all, or only those whose SNI is one of its server names. Every filter
+// chain carries the same network filters, so routing and policy do not depend
+// on the chain a connection lands on.
+func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.VirtualHost, isHTTPS bool, certRequest clientCertRequest) (*listener.Listener, *route.RouteConfiguration, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
@@ -1382,6 +1489,16 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
+		// SANITIZE_SET, never APPEND_FORWARD: a caller-sent
+		// x-forwarded-client-cert must never survive as this connection's.
+		ForwardClientCertDetails: hcm.HttpConnectionManager_SANITIZE_SET,
+		SetCurrentClientCertDetails: &hcm.HttpConnectionManager_SetCurrentClientCertDetails{
+			Subject: wrapperspb.Bool(true),
+			Cert:    true,
+			Chain:   true,
+			Uri:     true,
+			Dns:     true,
+		},
 	}
 
 	// Add access logs if either consumer needs a sink: the operator-facing stdout
@@ -1432,24 +1549,48 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		}},
 	}
 
+	filterChains := []*listener.FilterChain{filterChain}
+
 	// Add TLS configuration if HTTPS
+	var listenerFilters []*listener.ListenerFilter
 	if isHTTPS {
-		tlsContext, err := t.createDownstreamTLSContext()
+		transportSocket, err := t.downstreamTransportSocket(certRequest.mode != clientCertOff)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+			return nil, nil, err
+		}
+		filterChain.TransportSocket = transportSocket
+
+		if certRequest.mode == clientCertScoped {
+			// The asking chain matches the SNI of mtls-auth hostnames; every
+			// other connection, including one without SNI, lands on the
+			// default chain, which never asks and keeps session resumption.
+			filterChain.Name = askingFilterChainName
+			filterChain.FilterChainMatch = &listener.FilterChainMatch{
+				ServerNames: certRequest.serverNames,
+			}
+			defaultSocket, err := t.downstreamTransportSocket(false)
+			if err != nil {
+				return nil, nil, err
+			}
+			filterChains = append(filterChains, &listener.FilterChain{
+				Name:            defaultFilterChainName,
+				Filters:         cloneFilters(filterChain.Filters),
+				TransportSocket: defaultSocket,
+			})
 		}
 
-		tlsContextAny, err := anypb.New(tlsContext)
+		// The TLS Inspector reads the SNI, which selects the filter chain and
+		// populates connection.requested_server_name.
+		tlsInspectorAny, err := anypb.New(&tlsinspectorv3.TlsInspector{})
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+			return nil, nil, fmt.Errorf("failed to marshal TLS inspector listener filter: %w", err)
 		}
-
-		filterChain.TransportSocket = &core.TransportSocket{
-			Name: "envoy.transport_sockets.tls",
-			ConfigType: &core.TransportSocket_TypedConfig{
-				TypedConfig: tlsContextAny,
+		listenerFilters = append(listenerFilters, &listener.ListenerFilter{
+			Name: "envoy.filters.listener.tls_inspector",
+			ConfigType: &listener.ListenerFilter_TypedConfig{
+				TypedConfig: tlsInspectorAny,
 			},
-		}
+		})
 	}
 
 	return &listener.Listener{
@@ -1465,7 +1606,8 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 				},
 			},
 		},
-		FilterChains:                  []*listener.FilterChain{filterChain},
+		ListenerFilters:               listenerFilters,
+		FilterChains:                  filterChains,
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }
@@ -1773,6 +1915,10 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
+	// Routes built here never carry a policy chain that evaluates the
+	// client-certificate headers, so no backend behind them may see one.
+	t.stripClientCertificateHeaders(r)
+
 	r.Match = &route.RouteMatch{
 		Headers: []*route.HeaderMatcher{{
 			Name: ":method",
@@ -1926,17 +2072,25 @@ func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, me
 
 	r.GetRoute().PrefixRewrite = "/hub"
 
+	t.stripClientCertificateHeaders(r)
 	return r
 }
 
-// createCluster creates an Envoy cluster
+// createCluster creates an Envoy cluster. tlsOpts/validationSecretName carry a definition's mTLS
+// wiring; pass nil/"" for a cluster that does not honour tls blocks, in which case the error is
+// always nil and no client certificate is presented.
 func (t *Translator) createCluster(
 	name string,
 	upstreamURL *url.URL,
 	upstreamCerts map[string][]byte,
 	connectTimeout *time.Duration,
-) *cluster.Cluster {
-	endpoints, transportSocketMatch := t.processEndpoint(upstreamURL, upstreamCerts)
+	tlsOpts *models.UpstreamTLS,
+	validationSecretName string,
+) (*cluster.Cluster, error) {
+	endpoints, transportSocketMatch, err := t.processEndpoint(upstreamURL, upstreamCerts, tlsOpts, validationSecretName)
+	if err != nil {
+		return nil, err
+	}
 
 	var effectiveConnectTimeout time.Duration
 	if connectTimeout != nil {
@@ -1964,7 +2118,7 @@ func (t *Translator) createCluster(
 		c.TransportSocketMatches = []*cluster.Cluster_TransportSocketMatch{transportSocketMatch}
 	}
 
-	return c
+	return c, nil
 }
 
 // createPolicyEngineCluster creates an Envoy cluster for the policy engine ext_proc service
@@ -2257,8 +2411,13 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 	return c
 }
 
-// createUpstreamTLSContext creates an upstream TLS context for secure connections
-func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
+// createUpstreamTLSContext creates an upstream TLS context. tlsOpts carries a
+// cluster's mTLS wiring and is nil for a cluster that does not honour tls
+// blocks. Only a tlsOpts with APITraffic set presents the default client
+// certificate. validationSecretName is the SDS secret for a non-empty
+// tlsOpts.TrustedCANames. It errors when a tls block has no trust source, since
+// a context without one would silently skip chain and hostname validation.
+func (t *Translator) createUpstreamTLSContext(certificate []byte, address string, tlsOpts *models.UpstreamTLS, validationSecretName string) (*tlsv3.UpstreamTlsContext, error) {
 	// Create TLS context with base configuration
 	upstreamTLSContext := &tlsv3.UpstreamTlsContext{
 		CommonTlsContext: &tlsv3.CommonTlsContext{
@@ -2281,15 +2440,73 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		upstreamTLSContext.Sni = address
 	}
 
+	hasTLSBlock := tlsOpts != nil && tlsOpts.HasTLSBlock
+
+	// The client certificate, in order: the definition's tls.identity, then
+	// the default client certificate. Delivered via SDS so the private key is
+	// never inlined in the Cluster.
+	clientCertSecretName := ""
+	switch {
+	case hasTLSBlock && tlsOpts.IdentityName != "":
+		clientCertSecretName = GatewayIdentitySecretName(tlsOpts.IdentityName)
+	case tlsOpts != nil && tlsOpts.APITraffic:
+		clientCertSecretName = t.defaultClientCert.SecretName
+	}
+	if clientCertSecretName != "" {
+		upstreamTLSContext.CommonTlsContext.TlsCertificateSdsSecretConfigs = []*tlsv3.SdsSecretConfig{
+			{
+				Name: clientCertSecretName,
+				SdsConfig: &core.ConfigSource{
+					ResourceApiVersion: core.ApiVersion_V3,
+					ConfigSourceSpecifier: &core.ConfigSource_Ads{
+						Ads: &core.AggregatedConfigSource{},
+					},
+				},
+			},
+		}
+	}
+
+	effectiveVerifyHostName := t.routerConfig.Upstream.TLS.VerifyHostName
+	if hasTLSBlock {
+		effectiveVerifyHostName = tlsOpts.VerifyHostName
+	}
+
 	// Configure SSL verification unless disabled
 	if !t.routerConfig.Upstream.TLS.DisableSslVerification {
-		// Priority order for trusted CA certificates:
-		// 1. SDS secret reference (if cert store is available) - Uses dynamic secret discovery
-		// 2. Certificate parameter (per-upstream cert, currently unused but kept for future)
-		// 3. Configured trusted cert path (system certs only)
-		// 4. If none provided, Envoy falls back to system default trust store
+		// Trust source, in order: per-upstream trustedCAs; an error for a tls
+		// block with no trust source; otherwise the gateway bundle via SDS.
+		// An empty bundle leaves an upstream without a tls block with no
+		// trusted authority, so its handshake fails until an upstream
+		// certificate is added.
+		switch {
+		case hasTLSBlock && len(tlsOpts.TrustedCANames) > 0 && validationSecretName != "":
+			sdsConfig := &core.ConfigSource{
+				ResourceApiVersion: core.ApiVersion_V3,
+				ConfigSourceSpecifier: &core.ConfigSource_Ads{
+					Ads: &core.AggregatedConfigSource{},
+				},
+			}
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_CombinedValidationContext{
+				CombinedValidationContext: &tlsv3.CommonTlsContext_CombinedCertificateValidationContext{
+					DefaultValidationContext: &tlsv3.CertificateValidationContext{},
+					ValidationContextSdsSecretConfig: &tlsv3.SdsSecretConfig{
+						Name:      validationSecretName,
+						SdsConfig: sdsConfig,
+					},
+				},
+			}
+			t.logger.Debug("Using per-upstream trust bundle for upstream TLS validation",
+				slog.String("upstream", address),
+				slog.String("secret_name", validationSecretName))
 
-		if t.certStore != nil {
+		case hasTLSBlock && len(t.certStore.GetCombinedCertificates()) == 0:
+			// A cluster with no trusted authority would skip chain validation,
+			// so fail this API's translation instead.
+			return nil, fmt.Errorf(
+				"upstream %q: tls block requires a trust source (trustedCAs, or at least one upstream certificate in the gateway bundle) but none is configured",
+				address)
+
+		default:
 			// Use SDS to dynamically fetch certificates, riding the same ADS
 			// stream Envoy already has open for LDS/CDS/RDS (bootstrap
 			// xds_cluster, see envoy-bootstrap.yaml's dynamic_resources).
@@ -2301,10 +2518,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 			// connection's own TLS is entirely gateway-runtime's concern,
 			// configured in its own bootstrap (docker-entrypoint.sh +
 			// config-override.yaml's xds_cluster), independent of this
-			// process. A prior version of this pushed a second CDS cluster
-			// ("sds_cluster") that duplicated xds_cluster's host:port and
-			// required this process to embed gateway-runtime-local file
-			// paths -- removed in favor of this ADS-based reference.
+			// process.
 			sdsConfig := &core.ConfigSource{
 				ResourceApiVersion: core.ApiVersion_V3,
 				ConfigSourceSpecifier: &core.ConfigSource_Ads{
@@ -2326,32 +2540,11 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 			t.logger.Debug("Using SDS for upstream TLS certificates",
 				slog.String("upstream", address),
 				slog.String("secret_name", SecretNameUpstreamCA))
-		} else if len(certificate) > 0 {
-			// Use per-upstream certificate if provided
-			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
-				ValidationContext: &tlsv3.CertificateValidationContext{
-					TrustedCa: &core.DataSource{
-						Specifier: &core.DataSource_InlineBytes{
-							InlineBytes: certificate,
-						},
-					},
-				},
-			}
-		} else if t.routerConfig.Upstream.TLS.TrustedCertPath != "" {
-			// Fall back to system cert path
-			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
-				ValidationContext: &tlsv3.CertificateValidationContext{
-					TrustedCa: &core.DataSource{
-						Specifier: &core.DataSource_Filename{
-							Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
-						},
-					},
-				},
-			}
 		}
 
-		// Add hostname verification if enabled
-		if t.routerConfig.Upstream.TLS.VerifyHostName {
+		// Every branch reachable with a tls block sets a
+		// CombinedValidationContext, so verifyHostName always takes effect.
+		if effectiveVerifyHostName {
 			sanType := tlsv3.SubjectAltNameMatcher_DNS
 			if isIP {
 				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
@@ -2381,18 +2574,14 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		}
 	}
 
-	return upstreamTLSContext
+	return upstreamTLSContext, nil
 }
 
-// ClusterResourcesReferenceUpstreamCASecret reports whether any cluster in
-// clusters attaches the upstream CA bundle via SDS (ValidationContextSdsSecretConfig
-// named SecretNameUpstreamCA). Envoy only issues a watch for the Secret type URL
-// once a Cluster it has actually accepted references that secret name, so the
-// snapshot manager uses this to decide whether including the Secret resource in
-// a given snapshot version is warranted, rather than pushing it unconditionally
-// and having Envoy log "Ignoring unwatched type URL ... Secret" when no
-// HTTPS-scheme upstream is configured.
-func ClusterResourcesReferenceUpstreamCASecret(clusters []types.Resource) bool {
+// SnapshotReferencesSDSSecret reports whether any cluster or listener
+// references the SDS secret named secretName, as a validation context or a
+// TLS certificate. Envoy watches only referenced secrets, so an unreferenced
+// one is left out of the snapshot.
+func SnapshotReferencesSDSSecret(clusters, listeners []types.Resource, secretName string) bool {
 	for _, res := range clusters {
 		c, ok := res.(*cluster.Cluster)
 		if !ok {
@@ -2407,45 +2596,56 @@ func ClusterResourcesReferenceUpstreamCASecret(clusters []types.Resource) bool {
 			if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
 				continue
 			}
+			for _, tc := range tlsCtx.GetCommonTlsContext().GetTlsCertificateSdsSecretConfigs() {
+				if tc.GetName() == secretName {
+					return true
+				}
+			}
 			combined, ok := tlsCtx.GetCommonTlsContext().GetValidationContextType().(*tlsv3.CommonTlsContext_CombinedValidationContext)
 			if !ok {
 				continue
 			}
-			if combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == SecretNameUpstreamCA {
+			if combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == secretName {
 				return true
 			}
 		}
 	}
+
+	for _, res := range listeners {
+		l, ok := res.(*listener.Listener)
+		if !ok {
+			continue
+		}
+		for _, fc := range l.GetFilterChains() {
+			typedConfig := fc.GetTransportSocket().GetTypedConfig()
+			if typedConfig == nil {
+				continue
+			}
+			var tlsCtx tlsv3.DownstreamTlsContext
+			if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
+				continue
+			}
+			common := tlsCtx.GetCommonTlsContext()
+			if common.GetValidationContextSdsSecretConfig().GetName() == secretName {
+				return true
+			}
+			for _, tc := range common.GetTlsCertificateSdsSecretConfigs() {
+				if tc.GetName() == secretName {
+					return true
+				}
+			}
+		}
+	}
+
 	return false
 }
 
-// createDownstreamTLSContext creates a downstream TLS context for HTTPS listeners
-func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, error) {
-	// Read certificate and key files
-	certBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.CertPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read certificate file: %w", err)
-	}
-
-	keyBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key file: %w", err)
-	}
-
-	// Create TLS certificate configuration
-	tlsCert := &tlsv3.TlsCertificate{
-		CertificateChain: &core.DataSource{
-			Specifier: &core.DataSource_InlineBytes{
-				InlineBytes: certBytes,
-			},
-		},
-		PrivateKey: &core.DataSource{
-			Specifier: &core.DataSource_InlineBytes{
-				InlineBytes: keyBytes,
-			},
-		},
-	}
-
+// createDownstreamTLSContext creates a downstream TLS context for HTTPS
+// listeners. The certificate and key come via SDS so the Listener never
+// carries private key material. When requireDownstreamClientCA is true the
+// listener requests a client certificate and validates it against the
+// client-CA pool, leaving the verdict for mtls-auth to act on.
+func (t *Translator) createDownstreamTLSContext(requireDownstreamClientCA bool) (*tlsv3.DownstreamTlsContext, error) {
 	// Parse cipher suites
 	var cipherSuites []string
 	if t.routerConfig.DownstreamTLS.Ciphers != "" {
@@ -2458,25 +2658,286 @@ func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, 
 		ecdhCurves = t.parseCipherSuites(t.routerConfig.DownstreamTLS.EcdhCurves)
 	}
 
-	// Create downstream TLS context
-	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
-		CommonTlsContext: &tlsv3.CommonTlsContext{
-			TlsCertificates: []*tlsv3.TlsCertificate{tlsCert},
-			TlsParams: &tlsv3.TlsParameters{
-				TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
-					t.routerConfig.DownstreamTLS.MinimumProtocolVersion,
-				),
-				TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
-					t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
-				),
-				CipherSuites: cipherSuites,
-				EcdhCurves:   ecdhCurves,
-			},
-			AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
+	sdsConfigSource := &core.ConfigSource{
+		ResourceApiVersion: core.ApiVersion_V3,
+		ConfigSourceSpecifier: &core.ConfigSource_Ads{
+			Ads: &core.AggregatedConfigSource{},
 		},
 	}
 
+	commonTLSContext := &tlsv3.CommonTlsContext{
+		TlsCertificateSdsSecretConfigs: []*tlsv3.SdsSecretConfig{
+			{
+				Name:      SecretNameDownstreamListenerCert,
+				SdsConfig: sdsConfigSource,
+			},
+		},
+		TlsParams: &tlsv3.TlsParameters{
+			TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
+				t.routerConfig.DownstreamTLS.MinimumProtocolVersion,
+			),
+			TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
+				t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
+			),
+			CipherSuites: cipherSuites,
+			EcdhCurves:   ecdhCurves,
+		},
+		AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
+	}
+
+	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
+		CommonTlsContext: commonTLSContext,
+	}
+
+	if requireDownstreamClientCA {
+		commonTLSContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContextSdsSecretConfig{
+			ValidationContextSdsSecretConfig: &tlsv3.SdsSecretConfig{
+				Name:      SecretNameDownstreamClientCA,
+				SdsConfig: sdsConfigSource,
+			},
+		}
+		// Request, never require: a caller with no or a bad certificate must
+		// still reach mtls-auth rather than have the connection closed.
+		downstreamTLSContext.RequireClientCertificate = wrapperspb.Bool(false)
+		// A resumed session presents no client certificate to mtls-auth, so
+		// an accepted caller would be refused on its next connection. Every
+		// connection runs a full handshake instead.
+		downstreamTLSContext.SessionTicketKeysType = &tlsv3.DownstreamTlsContext_DisableStatelessSessionResumption{
+			DisableStatelessSessionResumption: true,
+		}
+		downstreamTLSContext.DisableStatefulSessionResumption = true
+	}
+
 	return downstreamTLSContext, nil
+}
+
+// downstreamTransportSocket wraps createDownstreamTLSContext in the TLS
+// transport socket of an HTTPS filter chain.
+func (t *Translator) downstreamTransportSocket(requestClientCertificate bool) (*core.TransportSocket, error) {
+	tlsContext, err := t.createDownstreamTLSContext(requestClientCertificate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+	}
+	tlsContextAny, err := anypb.New(tlsContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+	}
+	return &core.TransportSocket{
+		Name: "envoy.transport_sockets.tls",
+		ConfigType: &core.TransportSocket_TypedConfig{
+			TypedConfig: tlsContextAny,
+		},
+	}, nil
+}
+
+func cloneFilters(filters []*listener.Filter) []*listener.Filter {
+	out := make([]*listener.Filter, 0, len(filters))
+	for _, f := range filters {
+		out = append(out, proto.Clone(f).(*listener.Filter))
+	}
+	return out
+}
+
+// Filter chain names of an HTTPS listener that asks only some hostnames for a
+// client certificate.
+const (
+	askingFilterChainName  = "client_certificate_requested"
+	defaultFilterChainName = "default"
+)
+
+// clientCertMode is which HTTPS connections are asked for a client
+// certificate.
+type clientCertMode int
+
+const (
+	// clientCertOff asks no connection.
+	clientCertOff clientCertMode = iota
+	// clientCertScoped asks only connections whose SNI is a hostname of an
+	// API that attaches mtls-auth.
+	clientCertScoped
+	// clientCertEverywhere asks every connection.
+	clientCertEverywhere
+)
+
+func (m clientCertMode) String() string {
+	switch m {
+	case clientCertScoped:
+		return "SCOPED"
+	case clientCertEverywhere:
+		return "EVERYWHERE"
+	default:
+		return "OFF"
+	}
+}
+
+// clientCertRequest is the HTTPS listener's client certificate request.
+// serverNames is sorted and set only in clientCertScoped mode.
+type clientCertRequest struct {
+	mode        clientCertMode
+	serverNames []string
+}
+
+func (r clientCertRequest) equal(o clientCertRequest) bool {
+	return r.mode == o.mode && slices.Equal(r.serverNames, o.serverNames)
+}
+
+// clientCertificateRequest decides which HTTPS connections are asked for a
+// client certificate.
+//
+// No connection is asked unless some deployed API attaches mtls-auth and the
+// client-CA pool holds at least one certificate. With an empty pool the
+// listener names no downstream_client_ca secret, so it never waits on a
+// secret that is not served, and mtls-auth denies for lack of a certificate.
+//
+// With client_certificate_request all_connections, every connection is
+// asked. With mtls_hostnames, asking is scoped to the SNI of the hostnames of
+// those APIs; every connection is asked instead when one of those APIs is
+// served on a default hostname or on one that cannot be matched on SNI, or
+// when the pool holds a relay entry, whose front proxy connects on any
+// hostname.
+//
+// A pool that cannot be read fails the translation, as it fails the SDS
+// secrets.
+func (t *Translator) clientCertificateRequest(configs []*models.StoredConfig) (clientCertRequest, error) {
+	off := clientCertRequest{mode: clientCertOff}
+	if t.certStore == nil {
+		return off, nil
+	}
+
+	anyMTLSAuth := false
+	scopable := true
+	nameSet := make(map[string]struct{})
+	for _, cfg := range configs {
+		if cfg.DesiredState == models.StateUndeployed || !configAttachesMTLSAuth(cfg) {
+			continue
+		}
+		anyMTLSAuth = true
+		names, ok := t.mtlsAuthServerNames(cfg)
+		if !ok {
+			scopable = false
+			continue
+		}
+		for _, n := range names {
+			nameSet[n] = struct{}{}
+		}
+	}
+	if !anyMTLSAuth {
+		return off, nil
+	}
+
+	bundle, hasRelay, err := t.certStore.GetClientCAPool()
+	if err != nil {
+		return off, fmt.Errorf("failed to load client-CA pool: %w", err)
+	}
+	if len(bundle) == 0 {
+		return off, nil
+	}
+	if hasRelay || !scopable || t.routerConfig.DownstreamTLS.AsksAllConnections() {
+		return clientCertRequest{mode: clientCertEverywhere}, nil
+	}
+
+	names := make([]string, 0, len(nameSet))
+	for n := range nameSet {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return clientCertRequest{mode: clientCertScoped, serverNames: names}, nil
+}
+
+// mtlsAuthServerNames returns the SNI server names of every vhost an API
+// attaching mtls-auth is served on. ok is false when some vhost cannot be
+// matched on SNI.
+func (t *Translator) mtlsAuthServerNames(cfg *models.StoredConfig) (names []string, ok bool) {
+	restCfg, isRest := cfg.Configuration.(api.RestAPI)
+	if !isRest {
+		return nil, false
+	}
+	vhosts := t.config.Router.VHosts
+	mainVhosts, sandbox, hasSandbox := config.RestAPIVhosts(restCfg.Spec, vhosts)
+	if hasSandbox {
+		mainVhosts = append(mainVhosts, sandbox)
+	}
+	for _, vh := range mainVhosts {
+		n, ok := vhosts.ServerName(vh)
+		if !ok {
+			return nil, false
+		}
+		names = append(names, n)
+	}
+	return names, true
+}
+
+// logClientCertRequestChange logs the client certificate request of a built
+// HTTPS listener when it differs from the previous one.
+func (t *Translator) logClientCertRequestChange(log *slog.Logger, req clientCertRequest) {
+	if req.equal(t.lastClientCertRequest) {
+		return
+	}
+	t.lastClientCertRequest = req
+	log.Info("HTTPS listener client certificate request changed",
+		slog.String("mode", req.mode.String()),
+		slog.Int("hostname_count", len(req.serverNames)),
+		slog.String("client_certificate_request", t.routerConfig.DownstreamTLS.ClientCertificateRequest))
+}
+
+// configAttachesMTLSAuth reports whether cfg's RestAPI representation
+// attaches mtls-auth at API level or on any operation. A config that is not
+// an api.RestAPI never matches.
+func configAttachesMTLSAuth(cfg *models.StoredConfig) bool {
+	restCfg, ok := cfg.Configuration.(api.RestAPI)
+	if !ok {
+		return false
+	}
+	if policiesAttachMTLSAuth(restCfg.Spec.Policies) {
+		return true
+	}
+	for _, op := range restCfg.Spec.Operations {
+		if policiesAttachMTLSAuth(op.Policies) {
+			return true
+		}
+	}
+	return false
+}
+
+func policiesAttachMTLSAuth(policies *[]api.Policy) bool {
+	if policies == nil {
+		return false
+	}
+	for _, p := range *policies {
+		if p.Name == config.MtlsAuthPolicyName {
+			return true
+		}
+	}
+	return false
+}
+
+// xfccHeaderName is the forwarded-client-certificate header Envoy sets on the
+// HTTP and HTTPS listeners.
+const xfccHeaderName = "x-forwarded-client-cert"
+
+// stripClientCertificateHeaders removes both certificate-bearing headers
+// before the backend of a route whose policy chain never evaluates them:
+// Envoy's forwarded-certificate header and the operator-named header a front
+// proxy relays a certificate in.
+func (t *Translator) stripClientCertificateHeaders(r *route.Route) {
+	r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, xfccHeaderName)
+	if name := t.routerConfig.DownstreamTLS.ClientCertificateHeader.Name; name != "" {
+		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, strings.ToLower(name))
+	}
+}
+
+// chainAttachesMTLSAuth reports whether a route's policy chain contains
+// mtls-auth. A nil chain does not.
+func chainAttachesMTLSAuth(chain *models.PolicyChain) bool {
+	if chain == nil {
+		return false
+	}
+	for _, p := range chain.Policies {
+		if p.Name == config.MtlsAuthPolicyName {
+			return true
+		}
+	}
+	return false
 }
 
 // createTLSProtocolVersion converts string TLS version to Envoy TLS version enum
@@ -2508,11 +2969,15 @@ func (t *Translator) parseCipherSuites(ciphers string) []string {
 	return ciphersList
 }
 
-// processEndpoint creates locality load endpoints for the given upstream URL and returns both endpoints and transport socket match if TLS is enabled
+// processEndpoint creates locality load endpoints for the given upstream URL and returns both
+// endpoints and transport socket match if TLS is enabled. tlsOpts/validationSecretName carry a
+// cluster's mTLS wiring; pass nil/"" for a cluster that does not honour tls blocks.
 func (t *Translator) processEndpoint(
 	upstreamURL *url.URL,
 	upstreamCerts map[string][]byte,
-) ([]*endpoint.LocalityLbEndpoints, *cluster.Cluster_TransportSocketMatch) {
+	tlsOpts *models.UpstreamTLS,
+	validationSecretName string,
+) ([]*endpoint.LocalityLbEndpoints, *cluster.Cluster_TransportSocketMatch, error) {
 	port := constants.HTTPDefaultPort
 	if upstreamURL.Scheme == constants.SchemeHTTPS {
 		port = constants.HTTPSDefaultPort
@@ -2554,11 +3019,14 @@ func (t *Translator) processEndpoint(
 			epCert = defaultCerts
 		}
 
-		upstreamtlsContext := t.createUpstreamTLSContext(epCert, upstreamURL.Hostname())
+		upstreamtlsContext, err := t.createUpstreamTLSContext(epCert, upstreamURL.Hostname(), tlsOpts, validationSecretName)
+		if err != nil {
+			return nil, nil, fmt.Errorf("endpoint %q: %w", upstreamURL.Hostname(), err)
+		}
 		marshalledTLSContext, err := anypb.New(upstreamtlsContext)
 		if err != nil {
 			t.logger.Error("internal Error while marshalling the upstream TLS Context", slog.Any("error", err))
-			return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
+			return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil, nil
 		}
 
 		// Create transport socket match with a unique identifier
@@ -2585,10 +3053,10 @@ func (t *Translator) processEndpoint(
 		// This metadata links the endpoint to its transport socket configuration
 		setEndpointTransportSocketMatchID(localityLbEndpoints.LbEndpoints[0], matchID)
 
-		return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, transportSocketMatch
+		return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, transportSocketMatch, nil
 	}
 
-	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
+	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil, nil
 }
 
 // pathToRegex converts a path with parameters to a regex pattern
@@ -3234,7 +3702,18 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		// Always allow mode override: the policy engine sets the per-request body mode
 		// (skip/buffered/streamed); without this Envoy would ignore it and never send bodies.
 		AllowModeOverride: true,
-		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+		RequestAttributes: []string{
+			constants.ExtProcRequestAttributeRouteName,
+			constants.ExtProcRequestAttributeConnectionMTLS,
+			constants.ExtProcRequestAttributeConnectionPeerCertificate,
+			constants.ExtProcRequestAttributeConnectionPeerCertificateDigest,
+			constants.ExtProcRequestAttributeConnectionSubjectPeerCertificate,
+			constants.ExtProcRequestAttributeConnectionURISANPeerCertificate,
+			constants.ExtProcRequestAttributeConnectionDNSSANPeerCertificate,
+			constants.ExtProcRequestAttributeConnectionTLSVersion,
+			constants.ExtProcRequestAttributeConnectionRequestedServerName,
+			constants.ExtProcRequestAttributeConnectionPeerCertificateValid,
+		},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,
 		},

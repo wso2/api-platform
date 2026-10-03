@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 5
+-- Version: 6
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -116,13 +116,33 @@ CREATE TABLE IF NOT EXISTS certificates (
     not_after TIMESTAMP NOT NULL,
     cert_count INTEGER NOT NULL DEFAULT 1,
 
+    -- Usage separates backend/upstream trust (the original purpose of this
+    -- table), a pooled client certificate authority used for mutual TLS, and
+    -- (usage: identity) a gateway identity — a certificate chain plus its
+    -- encrypted private key the gateway presents to a backend requiring
+    -- mutual TLS on outbound connections. The three purposes never share a
+    -- trust bundle. Role client and relay apply to usage: downstream, and
+    -- role default to usage: identity. match_json narrows a
+    -- role: relay entry to the connections it vouches for (JSON-encoded
+    -- {"dnsSANs": [...], "uriSANs": [...]}); NULL means unnarrowed, and it is
+    -- only meaningful for role: relay. private_key_ciphertext (the
+    -- encryption package's marshalled payload) and key_algorithm are only
+    -- meaningful for usage: identity and stay NULL for every other usage.
+    -- All five added in schema version 6; already-provisioned databases get
+    -- them via the ALTER TABLE path in sqlite.go's initSchema.
+    usage TEXT NOT NULL DEFAULT 'upstream',
+    role TEXT NOT NULL DEFAULT 'client',
+    match_json TEXT,
+    private_key_ciphertext TEXT,
+    key_algorithm TEXT,
+
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (gateway_id, uuid),
 
-    -- Certificate names must be unique per gateway
+    -- Certificate names are one namespace across usages, unique per gateway
     UNIQUE(gateway_id, name)
 );
 
@@ -304,4 +324,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

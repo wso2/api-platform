@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -329,6 +330,10 @@ type ServerConfig struct {
 	WriteTimeout      time.Duration `koanf:"write_timeout"`
 	IdleTimeout       time.Duration `koanf:"idle_timeout"`
 	MaxHeaderBytes    int           `koanf:"max_header_bytes"`
+
+	// MaxCertificateUploadBytes bounds the request body of POST /certificates
+	// and PUT /certificates/{id}. Must be non-zero.
+	MaxCertificateUploadBytes int64 `koanf:"max_certificate_upload_bytes"`
 }
 
 // ServerTLSConfig holds configuration for an additional TLS listener for the
@@ -652,6 +657,11 @@ type UpstreamTLS struct {
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
+	// PresentDefaultIdentity makes the gateway present a client certificate
+	// to an HTTPS backend whose upstream definition names no tls identity:
+	// the role: default gateway identity, else the HTTPS listener
+	// certificate. Envoy sends it only when the backend requests one.
+	PresentDefaultIdentity bool `koanf:"present_default_identity"`
 }
 
 // UpstreamTimeouts holds upstream timeout configurations (values in milliseconds).
@@ -686,6 +696,92 @@ type DownstreamTLS struct {
 	// instance out of any further config changes until the operator fixes it. Confirm the
 	// deployed Envoy/BoringSSL build supports the group before enabling it.
 	EcdhCurves string `koanf:"ecdh_curves"`
+
+	// MtlsRequiresDedicatedHostname refuses to deploy an API attaching
+	// mtls-auth whose own hostname the HTTPS listener cannot scope its client
+	// certificate request to, so no such API makes the listener ask every
+	// connection for a certificate.
+	MtlsRequiresDedicatedHostname bool `koanf:"mtls_requires_dedicated_hostname"`
+
+	// ClientCertificateRequest chooses which connections the HTTPS listener
+	// asks for a client certificate while asking is needed:
+	// ClientCertificateRequestMtlsHostnames or
+	// ClientCertificateRequestAllConnections.
+	ClientCertificateRequest string `koanf:"client_certificate_request"`
+
+	// ClientCertificateHeader configures the header carrying a client
+	// certificate relayed by a front proxy that terminates TLS.
+	ClientCertificateHeader ClientCertificateHeader `koanf:"client_certificate_header"`
+}
+
+// Values of router.downstream_tls.client_certificate_request.
+const (
+	// ClientCertificateRequestMtlsHostnames asks only connections for the
+	// hostnames of APIs attaching mtls-auth, when every such hostname can be
+	// matched on SNI.
+	ClientCertificateRequestMtlsHostnames = "mtls_hostnames"
+	// ClientCertificateRequestAllConnections asks every connection.
+	ClientCertificateRequestAllConnections = "all_connections"
+)
+
+// AsksAllConnections reports whether client_certificate_request is
+// all_connections.
+func (d DownstreamTLS) AsksAllConnections() bool {
+	return d.ClientCertificateRequest == ClientCertificateRequestAllConnections
+}
+
+// ClientCertificateHeader configures how the mtls-auth policy treats a client
+// certificate relayed in an HTTP header. By default the header is believed
+// only when the connection authenticated as a role: relay pool entry.
+type ClientCertificateHeader struct {
+	// Name is the HTTP header carrying the relayed client certificate as PEM
+	// or base64-encoded PEM. It must be a valid HTTP header token.
+	Name string `koanf:"name"`
+
+	// TrustAny believes the header on any connection without consulting the
+	// connection. It is safe only when nothing but a trusted front proxy can
+	// reach this gateway. Off by default.
+	TrustAny bool `koanf:"trust_any"`
+}
+
+// httpHeaderTokenPattern matches an HTTP header field-name token (RFC 7230
+// tchar).
+var httpHeaderTokenPattern = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
+
+// DefaultClientCertificateHeaderName is the header a front proxy relays a
+// client certificate in when the operator names none. The mtls-auth policy
+// falls back to the same name.
+const DefaultClientCertificateHeaderName = "X-WSO2-CLIENT-CERTIFICATE"
+
+// reservedClientCertificateHeaderNames are header names, lower-cased, that
+// carry proxy or framing semantics and so cannot relay a client certificate.
+var reservedClientCertificateHeaderNames = map[string]bool{
+	"x-forwarded-client-cert": true,
+	"host":                    true,
+	"connection":              true,
+	"content-length":          true,
+	"transfer-encoding":       true,
+	"te":                      true,
+	"upgrade":                 true,
+	"keep-alive":              true,
+	"proxy-connection":        true,
+	"trailer":                 true,
+}
+
+// ValidateClientCertificateHeaderName reports whether name is a valid HTTP
+// header token that is free to relay a client certificate. An empty name is
+// accepted as not set.
+func ValidateClientCertificateHeaderName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if !httpHeaderTokenPattern.MatchString(name) {
+		return fmt.Errorf("router.downstream_tls.client_certificate_header.name %q is not a valid HTTP header name", name)
+	}
+	if reservedClientCertificateHeaderNames[strings.ToLower(name)] {
+		return fmt.Errorf("%s cannot be used as the client certificate header", name)
+	}
+	return nil
 }
 
 // VHostsConfig for vhosts configuration
@@ -1063,6 +1159,7 @@ func defaultConfig() *Config {
 				WriteTimeout:                    60 * time.Second,
 				IdleTimeout:                     120 * time.Second,
 				MaxHeaderBytes:                  1 << 20, // 1 MiB
+				MaxCertificateUploadBytes:       1 << 20, // 1 MiB
 				TLS: ServerTLSConfig{
 					Enabled:                false,
 					Port:                   9093,
@@ -1250,6 +1347,11 @@ func defaultConfig() *Config {
 					"respTxDur":  "%RESPONSE_TX_DURATION%",
 					"reqDur":     "%REQUEST_DURATION%",
 					"respDur":    "%RESPONSE_DURATION%",
+					"sni":        "%REQUESTED_SERVER_NAME%",
+					"tlsVer":     "%DOWNSTREAM_TLS_VERSION%",
+					"peerSubj":   "%DOWNSTREAM_PEER_SUBJECT%",
+					"peerFp":     "%DOWNSTREAM_PEER_FINGERPRINT_256%",
+					"upTlsFail":  "%UPSTREAM_TRANSPORT_FAILURE_REASON%",
 				},
 				// routerLogComponentTag identifies the router on the container's shared
 				// stdout; keep it when overriding. The JSON variant uses the "component"
@@ -1271,12 +1373,18 @@ func defaultConfig() *Config {
 			},
 			LuaScriptPath: DefaultLuaScriptPath,
 			DownstreamTLS: DownstreamTLS{
-				CertPath:               "./listener-certs/default-listener.crt",
-				KeyPath:                "./listener-certs/default-listener.key",
-				MinimumProtocolVersion: "TLS1_2",
-				MaximumProtocolVersion: "TLS1_3",
-				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
-				EcdhCurves:             "X25519,P-256",
+				CertPath:                      "./listener-certs/default-listener.crt",
+				KeyPath:                       "./listener-certs/default-listener.key",
+				MinimumProtocolVersion:        "TLS1_2",
+				MaximumProtocolVersion:        "TLS1_3",
+				Ciphers:                       "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+				EcdhCurves:                    "X25519,P-256",
+				MtlsRequiresDedicatedHostname: false,
+				ClientCertificateRequest:      ClientCertificateRequestMtlsHostnames,
+				ClientCertificateHeader: ClientCertificateHeader{
+					Name:     DefaultClientCertificateHeaderName,
+					TrustAny: false,
+				},
 			},
 			GatewayHost: "*",
 			Upstream: RouterUpstream{
@@ -1289,6 +1397,7 @@ func defaultConfig() *Config {
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,
 					DisableSslVerification: false,
+					PresentDefaultIdentity: true,
 				},
 				Timeouts: UpstreamTimeouts{
 					RouteTimeoutMs:     60000,
@@ -1666,6 +1775,9 @@ func (c *Config) Validate() error {
 	if c.Controller.Server.MaxHeaderBytes <= 0 {
 		return fmt.Errorf("server.max_header_bytes must be positive, got: %d", c.Controller.Server.MaxHeaderBytes)
 	}
+	if c.Controller.Server.MaxCertificateUploadBytes <= 0 {
+		return fmt.Errorf("server.max_certificate_upload_bytes must be positive, got: %d", c.Controller.Server.MaxCertificateUploadBytes)
+	}
 
 	// Validate REST API TLS config
 	if c.Controller.Server.TLS.Enabled {
@@ -1748,6 +1860,24 @@ func (c *Config) Validate() error {
 		if c.Router.HTTPSPort < 1 || c.Router.HTTPSPort > 65535 {
 			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.Router.HTTPSPort)
 		}
+	}
+
+	// Validated regardless of https_enabled, since trust_any lets the header
+	// arrive over plaintext. An empty name becomes the default so the router
+	// and the policy agree on it.
+	if c.Router.DownstreamTLS.ClientCertificateHeader.Name == "" {
+		c.Router.DownstreamTLS.ClientCertificateHeader.Name = DefaultClientCertificateHeaderName
+	}
+	if err := ValidateClientCertificateHeaderName(c.Router.DownstreamTLS.ClientCertificateHeader.Name); err != nil {
+		return err
+	}
+
+	switch c.Router.DownstreamTLS.ClientCertificateRequest {
+	case ClientCertificateRequestMtlsHostnames, ClientCertificateRequestAllConnections:
+	default:
+		return fmt.Errorf("router.downstream_tls.client_certificate_request must be one of: %s, %s, got: %s",
+			ClientCertificateRequestMtlsHostnames, ClientCertificateRequestAllConnections,
+			c.Router.DownstreamTLS.ClientCertificateRequest)
 	}
 
 	// Validate EventHub configuration

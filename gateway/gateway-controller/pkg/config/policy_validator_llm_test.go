@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -36,7 +37,7 @@ func ratelimitDefs() map[string]models.PolicyDefinition {
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_Valid(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -54,7 +55,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_Valid(t *testing.T) {
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_NonExistentName(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -71,7 +72,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_NonExistentName(t *testing.
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_NonExistentMajorVersion(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	// The reproduction from issue #2466: a policy that exists but at a non-existent major version.
 	cfg := &api.LLMProviderConfiguration{
@@ -89,7 +90,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_NonExistentMajorVersion(t *
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_EmptyVersionResolvesToLatest(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	// An empty version is a valid input: it resolves to the latest available version.
 	cfg := &api.LLMProviderConfiguration{
@@ -105,7 +106,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_EmptyVersionResolvesToLates
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_LegacyAndOperationErrors(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -127,7 +128,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_LegacyAndOperationErrors(t 
 }
 
 func TestPolicyValidator_ValidateLLMProxyPolicies_Valid(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	cfg := &api.LLMProxyConfiguration{
 		Spec: api.LLMProxyConfigData{
@@ -142,7 +143,7 @@ func TestPolicyValidator_ValidateLLMProxyPolicies_Valid(t *testing.T) {
 }
 
 func TestPolicyValidator_ValidateLLMProxyPolicies_NonExistentMajorVersion(t *testing.T) {
-	validator := NewPolicyValidator(ratelimitDefs())
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
 
 	cfg := &api.LLMProxyConfiguration{
 		Spec: api.LLMProxyConfigData{
@@ -155,6 +156,26 @@ func TestPolicyValidator_ValidateLLMProxyPolicies_NonExistentMajorVersion(t *tes
 	errors := validator.ValidateLLMProxyPolicies(cfg)
 	assert.Len(t, errors, 1, "expected one error for a non-existent major version")
 	assert.Contains(t, errors[0].Message, "major version 'v999' not found")
+}
+
+func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
+
+	llm := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+		GlobalPolicies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}},
+	}}
+	errs := validator.ValidateLLMProxyPolicies(llm)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.globalPolicies[0]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
+
+	mcp := &api.MCPProxyConfiguration{Spec: api.MCPProxyConfigData{
+		Policies: &[]api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}},
+	}}
+	errs = validator.ValidateMCPProxyPolicies(mcp)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.policies[0]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
 }
 
 // paramDefs returns definitions whose "token-based-ratelimit" policy declares a parameter
@@ -177,7 +198,7 @@ func paramDefs() map[string]models.PolicyDefinition {
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsValid(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -193,7 +214,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsValid(
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsInvalid(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -224,7 +245,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsInvali
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyMissingParamsFailsRequired(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -243,7 +264,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyMissingParam
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsCoerced(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	// A rendered template ({{ env "LIMIT" }}) always produces a string; coercion must run
 	// before schema validation so "100" satisfies the integer param.
@@ -263,7 +284,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyParamsCoerce
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyNoSchemaSkipsParams(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -280,7 +301,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_OperationPolicyNoSchemaSkip
 }
 
 func TestPolicyValidator_ValidateLLMProviderPolicies_BadRefSkipsParamValidation(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -298,7 +319,7 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_BadRefSkipsParamValidation(
 }
 
 func TestPolicyValidator_ValidateLLMProxyPolicies_LegacyPolicyParamsInvalid(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProxyConfiguration{
 		Spec: api.LLMProxyConfigData{
@@ -321,7 +342,7 @@ func TestPolicyValidator_ValidateLLMProxyPolicies_LegacyPolicyParamsInvalid(t *t
 // are declared by no policy schema, and most schemas set additionalProperties:false — so
 // validation must run against the user-authored params, never the post-merge result.
 func TestPolicyValidator_ValidateLLMProviderPolicies_TemplateExtractionParamsNotRequired(t *testing.T) {
-	validator := NewPolicyValidator(paramDefs())
+	validator := NewPolicyValidator(paramDefs(), nil)
 
 	cfg := &api.LLMProviderConfiguration{
 		Spec: api.LLMProviderConfigData{
@@ -342,5 +363,5 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_TemplateExtractionParamsNot
 		"requestModel": map[string]interface{}{"location": "payload", "identifier": "$.model"},
 	}
 	def := paramDefs()["token-based-ratelimit|v1.0.0"]
-	assert.NotEmpty(t, validator.validatePolicyParams(merged, *def.Parameters, "p"))
+	assert.NotEmpty(t, validator.validatePolicyParams(merged, *def.Parameters, "p", nil))
 }
