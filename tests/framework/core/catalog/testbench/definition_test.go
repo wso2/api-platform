@@ -19,9 +19,14 @@
 package testbench
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 )
 
 func TestTestbenchDefinition(t *testing.T) {
@@ -33,4 +38,28 @@ func TestTestbenchDefinition(t *testing.T) {
 		_, ok := definition.Endpoint(endpoint)
 		require.True(t, ok, endpoint)
 	}
+}
+
+func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
+	definition := Testbench()
+	endpoint, ok := definition.Endpoint("oidc")
+	require.True(t, ok)
+	require.Equal(t, oidc.Port, endpoint.Port)
+	require.Equal(t, "https", endpoint.Scheme)
+
+	pair := shared.IdentityProviderTLS()
+	require.Equal(t, string(pair.CertPEM), definition.Env[oidc.EnvTLSCert])
+	require.Equal(t, string(pair.PrivateKeyPEM), definition.Env[oidc.EnvTLSKey])
+	require.Equal(t, "https://testbench:3014/oauth2/token", definition.Env[oidc.EnvIssuer])
+	require.Equal(t, OIDCIssuer, definition.Env[oidc.EnvIssuer])
+
+	block, _ := pem.Decode(pair.CertPEM)
+	require.NotNil(t, block)
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	require.NoError(t, certificate.VerifyHostname(shared.IdentityProviderHost))
+	require.Same(t, pair, shared.IdentityProviderTLS(), "the certificate must be generated once per run")
+
+	_, err = oidc.New(pair.CertPEM, pair.PrivateKeyPEM, OIDCIssuer)
+	require.NoError(t, err, "the identity provider must accept the certificate it is given")
 }

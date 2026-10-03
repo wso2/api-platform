@@ -208,6 +208,26 @@ func TestSourceProductsResolveVersionsForEveryBlock(t *testing.T) {
 		resolved.Blocks[1].Components[0].Version)
 }
 
+func TestSourceProductsBuildAComponentFromItsSourceProduct(t *testing.T) {
+	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{
+		{Components: []topology.ResolvedComponent{
+			{Def: &components.Definition{Name: "api-portal-multi-organization", SourceProduct: "api-portal"}},
+			{Def: &components.Definition{Name: "api-portal-other-variant", SourceProduct: "api-portal"}},
+			{Def: &components.Definition{Name: "testbench"}},
+		}},
+	}}
+
+	products, err := sourceProducts(resolved)
+	require.NoError(t, err)
+	require.Len(t, products, 1, "components sharing a source product build it once")
+	require.Equal(t, "api-portal", products[0].Spec.Component)
+	version, ok := shared.SourceVersion("api-portal")
+	require.True(t, ok)
+	require.Equal(t, version, resolved.Blocks[0].Components[0].Version)
+	require.Equal(t, version, resolved.Blocks[0].Components[1].Version)
+	require.Empty(t, resolved.Blocks[0].Components[2].Version)
+}
+
 func TestPolicyProductsResolveSourceAndVersionedBuilds(t *testing.T) {
 	source := "../gateway-controllers/policies"
 	t.Run("source build", func(t *testing.T) {

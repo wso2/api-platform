@@ -157,6 +157,15 @@ const DEFAULTS = {
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
+            // Optional claim carrying the organization's human-readable name. Used only
+            // when an organization is provisioned from a claim (multi-organization mode):
+            // its URL handle and display name are derived from it. Empty — or absent from
+            // the token — derives both from the organization claim above instead.
+            orgName: '',
+            // Optional claim carrying the organization's URL handle (e.g. WSO2 IS's
+            // org_handle). Provisioning uses it as the handle as-is when it is a valid,
+            // unreserved one; otherwise the handle is derived as above.
+            orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
         },
@@ -266,13 +275,12 @@ const DEFAULTS = {
         authenticated: [],
         authorized: [],
     },
-    // The single organization this portal instance serves. The database schema is
-    // still multi-org (one shared database can hold many organizations, each served
-    // by its own portal instance), but a given instance is pinned to exactly one:
-    // every page route, REST request, and background worker is scoped to `handle`,
-    // and anything resolving to a different organization is rejected. See
-    // src/utils/orgContext.js. The organization is seeded on first startup if it
-    // doesn't exist yet (src/services/seederService.js).
+    // The single organization this portal instance serves. One shared database can
+    // hold many organizations, each served by its own portal instance, but a given
+    // instance is pinned to exactly one: every page route, REST request, and
+    // background worker is scoped to `handle`, and anything resolving to a different
+    // organization is rejected. See src/utils/orgContext.js. The organization is
+    // seeded on first startup if it doesn't exist yet (src/services/seederService.js).
     organization: {
         // Handle (URL slug) of this instance's organization — the {orgHandle}
         // segment of /{orgHandle}/views/{viewName}. Mirrors platform-api's
@@ -303,6 +311,20 @@ const DEFAULTS = {
         // organization.portal_id in a local config file for on-premise. When neither
         // is set the template resolves to 'portal_id'.
         portalId: '',
+    },
+    // Multi-organization mode. Off (the default) — the portal serves only the
+    // organization above, exactly as described there. On — one portal serves every
+    // organization under its portal_id: page URLs, org claims and the organization APIs
+    // resolve to whichever organization they name, not only the configured one (which
+    // stays the default and fallback). Takes effect in auth.mode = "idp" only; local
+    // auth stays single-organization.
+    //
+    // Assumes this deployment owns its portal_id: several instances may share it only
+    // as replicas with identical configuration, since any instance may serve any
+    // organization under it. Other deployments may share the database under a
+    // different portal_id. See src/utils/orgContext.js.
+    multiOrganization: {
+        enabled: false,
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here
     // gets no nav entry, no landing-page section, and 404s on its routes. Any

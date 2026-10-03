@@ -222,12 +222,31 @@ mode = "local"          # local | idp
 # claim value must log in again after a change.
 # idp_org_id = "default"
 
+# How an IDP credential's organization claim (claim_mappings.organization) is
+# handled. Fixed behaviour, not a setting:
+#   this portal's organization     — admitted.
+#   another existing organization  — 403; in multi-organization mode, admitted as
+#                                    that organization.
+#   an organization that doesn't   — 403; in multi-organization mode, the organization
+#   exist yet                        is created from the claim, then admitted.
+#   no organization claim          — admitted to organization.handle, with the
+#                                    credential's own roles. Make sure the IDP puts the
+#                                    claim on every user's tokens.
+# See docs/administer/authentication.md#organization-claims.
+
 # JWT claim name mappings — which token claim carries each field.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").
 [api_portal.auth.claim_mappings]
 organization = "org_name"   # claim carrying the org ID
 roles = "roles"             # claim carrying the user's roles
 groups = "groups"
+# Optional: the claim carrying the organization's name, used to name organizations
+# provisioned in multi-organization mode. Unset, they are named from the org claim.
+# org_name = "org_name"
+# Optional: the claim carrying the organization's URL handle (WSO2 IS: org_handle).
+# A provisioned organization takes it as its handle when it is a valid, unreserved,
+# unused one; otherwise the handle is derived from the name as above.
+# org_handle = "org_handle"
 
 # Local auth backend (the Platform API control plane) — used when auth.mode =
 # "local". Leave platform_api_url empty to disable local auth entirely.
@@ -273,6 +292,9 @@ token_url = ""
 user_info_url = ""
 client_id = ""
 client_secret = ""
+# Audience bearer tokens must be issued for (usually the client id). Several may be
+# given, comma-separated or as an array. REQUIRED when
+# [api_portal.multi_organization] is enabled.
 audience = ""
 callback_url = ""
 scope = "openid profile email"
@@ -360,12 +382,12 @@ subscriber = "ap_subscriber"
 # =============================================================================
 # ORGANIZATION CONFIGURATION
 # =============================================================================
-# This portal instance serves exactly ONE organization. The database schema is
-# still multi-organization — one shared database can hold many, each served by its
-# own portal instance — but this instance is pinned to `handle`: every page route,
-# REST request, and background worker is scoped to it, and anything resolving to a
-# different organization is rejected. The organization is seeded on startup if it
-# doesn't exist yet (idempotent).
+# By default this portal instance serves exactly ONE organization (see MULTI-ORGANIZATION
+# MODE below for the alternative). One shared database can hold many organizations,
+# each served by its own portal instance, but this instance is pinned to `handle`:
+# every page route, REST request, and background worker is scoped to it, and anything
+# resolving to a different organization is rejected. The organization is seeded on
+# startup if it doesn't exist yet (idempotent).
 #
 # `handle` is REQUIRED: the portal refuses to start without it (design mode
 # excepted, since it renders from disk and has no organization to pin).
@@ -385,6 +407,22 @@ display_name = "Default"                 # Used only when first seeding the orga
 portal_id = "portal_id"                    # Unique portal identifier within this org
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 # default_name = "default"               # DEPRECATED alias for `handle` — rename it
+
+# =============================================================================
+# MULTI-ORGANIZATION MODE
+# =============================================================================
+# Off (default): this portal serves only organization.handle, as described above.
+# On: it serves every organization under organization.portal_id — page URLs, IDP organization
+# claims and the organization APIs resolve to whichever organization they name, and
+# webhooks are delivered for all of them. organization.handle stays the default and
+# fallback. Needs auth.mode = "idp".
+#
+# Assumes this deployment owns its portal_id: other instances may use the same
+# portal_id only as replicas with identical configuration (including
+# security.encryption_key). Other portals may share the database under their own
+# portal_id. See docs/administer/multi-organization.md.
+# [api_portal.multi_organization]
+# enabled = false
 
 # =============================================================================
 # ARTIFACTS
