@@ -8,7 +8,7 @@
     <span style="font-size:13px;color:#8a93a0;">No endpoints available</span>
   </div>
   {{else}}
-  {{#unless (eq resources.serverDetails.productionURL "")}}
+  {{#if resources.serverDetails.productionURL}}
   <div class="aov-endpoint-card">
     <div class="aov-endpoint-label-row">
       <span class="aov-endpoint-dot aov-endpoint-dot--prod"></span>
@@ -23,9 +23,9 @@
       </button>
     </div>
   </div>
-  {{/unless}}
+  {{/if}}
   {{#unless (eq apiMetadata.type "Mcp")}}
-  {{#unless (eq resources.serverDetails.sandboxURL "")}}
+  {{#if resources.serverDetails.sandboxURL}}
   <div class="aov-endpoint-card">
     <div class="aov-endpoint-label-row">
       <span class="aov-endpoint-dot aov-endpoint-dot--sandbox"></span>
@@ -40,7 +40,7 @@
       </button>
     </div>
   </div>
-  {{/unless}}
+  {{/if}}
   {{/unless}}
   {{/if}}
 </div>
