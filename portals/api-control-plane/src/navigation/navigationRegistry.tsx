@@ -27,7 +27,6 @@ import {
   FileText,
   Gauge,
   Home,
-  Layers,
   Megaphone,
   Network,
   Rocket,
@@ -35,6 +34,7 @@ import {
   Settings,
   ShieldCheck,
   FlaskConical,
+  Box,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -61,18 +61,30 @@ const CLUSTER = {
   global: 'global',
 } as const;
 
+/** Escapes regex metacharacters, then turns each `:param` into a single-segment wildcard. */
+const escapeRoutePattern = (pattern: string): string =>
+  pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+');
+
 /**
- * Turns a route pattern into an anchored full-path regex: regex metacharacters
- * are escaped, then each `:param` becomes a single-segment wildcard. So
+ * Turns a route pattern into an anchored full-path regex. So
  * `/organizations/:orgHandle/projects/:projectHandler/settings` yields
  * `^/organizations/[^/]+/projects/[^/]+/settings$`.
  */
-const toRouteRegex = (pattern: string): RegExp =>
-  new RegExp(
-    `^${pattern
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`,
-  );
+const toRouteRegex = (pattern: string): RegExp => new RegExp(`^${escapeRoutePattern(pattern)}$`);
+
+/**
+ * Like `toRouteRegex`, but also matches any path nested one or more segments
+ * below it — for an item whose page has its own sub-navigation one level
+ * deeper (Settings' tabs; see `SettingsLayout`/`useSettingsTabs`), so the
+ * sidebar item stays highlighted while browsing any of them.
+ */
+const toRouteRegexWithSubpaths = (pattern: string): RegExp =>
+  new RegExp(`^${escapeRoutePattern(pattern)}(?:/.*)?$`);
+
+const buildMatch = (patterns: string[], toRegex: (pattern: string) => RegExp) => {
+  const regexes = patterns.map(toRegex);
+  return (pathname: string) => regexes.some((regex) => regex.test(pathname));
+};
 
 /**
  * Builds a `match` predicate from the same `routes.*` builders an item links to,
@@ -85,10 +97,7 @@ const toRouteRegex = (pattern: string): RegExp =>
  * org/project segments at all. Deriving both from one builder makes that class
  * of drift impossible — a renamed route updates the highlight for free.
  */
-const matchRoutes = (...patterns: string[]) => {
-  const regexes = patterns.map(toRouteRegex);
-  return (pathname: string) => regexes.some((regex) => regex.test(pathname));
-};
+const matchRoutes = (...patterns: string[]) => buildMatch(patterns, toRouteRegex);
 
 /** `to` for an org-level item — always linkable inside the app shell. */
 const orgLevelTo =
@@ -206,14 +215,24 @@ const tierPattern = ({ level, to }: ScopeTier): string => {
  * ```tsx
  * { id: 'overview', ...adaptive([{ level: 'api', to: routes.api }, ...]) }
  * ```
+ *
+ * Pass `{ matchSubpaths: true }` for an item whose page owns its own
+ * sub-navigation one segment deeper (Settings' tabs), so `match` covers those
+ * routes too instead of only the bare tier paths.
  */
-const adaptive = (tiers: ScopeTier[]): Pick<NavigationDefinition, 'match' | 'to'> => {
+const adaptive = (
+  tiers: ScopeTier[],
+  options: { matchSubpaths?: boolean } = {},
+): Pick<NavigationDefinition, 'match' | 'to'> => {
   const deepestFirst = [...tiers].sort(
     (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level],
   );
 
   return {
-    match: matchRoutes(...tiers.map(tierPattern)),
+    match: buildMatch(
+      tiers.map(tierPattern),
+      options.matchSubpaths ? toRouteRegexWithSubpaths : toRouteRegex,
+    ),
     to: ({ params }) => {
       if (!params.orgHandle) return undefined;
       const tier = deepestFirst.find((candidate) => isLevelInScope(candidate.level, params));
@@ -260,7 +279,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Projects',
     group: CLUSTER.place,
     order: 20,
-    icon: <Layers />,
+    icon: <Box />,
     // Inside a project this is redundant with Overview, and switching projects
     // is the header switcher's job.
     isVisible: ({ isProjectScope }) => !isProjectScope,
@@ -382,10 +401,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     order: 55,
     icon: <Megaphone />,
     to: apiLevelTo(routes.apiPortals),
-    match: matchRoutes(
-      ...apiScopedPaths(routes.apiPortals),
-      routes.apiPortalPublish(),
-    ),
+    match: matchRoutes(...apiScopedPaths(routes.apiPortals), routes.apiPortalPublish()),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.
@@ -397,9 +413,14 @@ export const navigationRegistry: NavigationDefinition[] = [
     // Follows you down one level: the organization's settings while browsing the
     // org, that project's settings once you are inside one — one pinned link at a
     // time, never both. Same page either way; only the scope it reads differs.
-    ...adaptive([
-      { level: 'project', to: routes.projectSettings },
-      { level: 'organization', to: routes.settings },
-    ]),
+    // matchSubpaths: true keeps this highlighted on Settings' own tabs (General,
+    // Subscription plans, ...), one segment below the bare route it links to.
+    ...adaptive(
+      [
+        { level: 'project', to: routes.projectSettings },
+        { level: 'organization', to: routes.settings },
+      ],
+      { matchSubpaths: true },
+    ),
   },
 ];

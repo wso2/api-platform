@@ -44,8 +44,9 @@ import { Braces, Download, Pencil, Plus, Upload } from '@wso2/oxygen-ui-icons-re
 import yaml from 'js-yaml';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { ApiError } from '@/api/core/errors';
+import { ApiError, isApiError } from '@/api/core/errors';
 import {
+  formatValidationError,
   usePutRestApiOpenApi,
   useRestApi,
   useRestApiOpenApi,
@@ -162,9 +163,17 @@ const messages = defineMessages({
     id: 'develop.definition.DefinitionPanel.dialogFetchError',
     defaultMessage: 'Failed to fetch specification from the provided URL.',
   },
+  urlImportInvalidSpec: {
+    id: 'develop.definition.DefinitionPanel.urlImportInvalidSpec',
+    defaultMessage: 'Not a valid OpenAPI definition. Please provide a URL to a valid OpenAPI 3.x specification.',
+  },
   dialogParseError: {
     id: 'develop.definition.DefinitionPanel.dialogParseError',
     defaultMessage: 'The fetched content is not a valid OpenAPI/Swagger spec.',
+  },
+  dialogSpecTooLarge: {
+    id: 'develop.definition.DefinitionPanel.dialogSpecTooLarge',
+    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
   },
   formatLabel: {
     id: 'develop.definition.DefinitionPanel.formatLabel',
@@ -173,13 +182,15 @@ const messages = defineMessages({
   },
   saveSpecInvalid: {
     id: 'develop.definition.DefinitionPanel.saveSpecInvalid',
-    defaultMessage: 'Failed to save the specification. Fix the following issues:',
-    description: 'Heading above spec validation errors shown when Save is clicked.',
+    defaultMessage: 'The specification is not a valid OpenAPI document:',
+    description:
+      'Heading above spec validation errors shown either after an import or when Save is clicked.',
   },
   saveValidationUnavailable: {
     id: 'develop.definition.DefinitionPanel.saveValidationUnavailable',
-    defaultMessage: 'Spec validation is currently unavailable. Please try again.',
-    description: 'Error shown when the validation service itself fails (network/auth error).',
+    defaultMessage: 'The specification could not be validated. Please try again.',
+    description:
+      'Shown in the save-bar error list when the backend validation call itself fails (network / server error), so the user knows the save was blocked but not by their spec content.',
   },
   discard: {
     id: 'develop.definition.DefinitionPanel.discard',
@@ -313,6 +324,36 @@ function filenameFromUrl(urlStr: string): string {
   }
 }
 
+/**
+ * Substring the backend uses in the client-facing message when the OpenAPI
+ * spec it fetched from the caller-supplied URL exceeds the configured limit.
+ */
+const SPEC_TOO_LARGE_MESSAGE_MARKER = 'exceeds the maximum allowed size';
+
+/**
+ * Turns a mutation failure from `POST /rest-apis/validate-openapi` into the
+ * dialog copy the user should see. Any recognised "too large" outcome (413
+ * for an uploaded file, 400 + size marker for a URL fetch) collapses to one
+ * message; everything else falls back to a source-appropriate generic one.
+ */
+function classifyImportFailure(
+  err: unknown,
+  input: { file: File } | { url: string },
+): { id: string; defaultMessage: string } {
+  if (isApiError(err)) {
+    if (err.status === 413 || err.code === 'PAYLOAD_TOO_LARGE') {
+      return messages.dialogSpecTooLarge;
+    }
+    if (
+      typeof err.message === 'string' &&
+      err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)
+    ) {
+      return messages.dialogSpecTooLarge;
+    }
+  }
+  return 'url' in input ? messages.dialogFetchError : messages.fileReadError;
+}
+
 export function DefinitionPanel() {
   const intl = useIntl();
   const canUpdateRESTApiSpec = useCan('UpdateRESTAPISpec');
@@ -338,7 +379,6 @@ export function DefinitionPanel() {
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
 
   const [saveValidationErrors, setSaveValidationErrors] = useState<string[] | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   // true = Monaco editor (Source), false = operations list.
@@ -355,6 +395,7 @@ export function DefinitionPanel() {
   const [specUrl, setSpecUrl] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [urlImportInvalidMessage, setUrlImportInvalidMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const content = openApiData?.content ?? '';
@@ -371,10 +412,6 @@ export function DefinitionPanel() {
     setPendingFileName(null);
     setFormat(fmt);
   }, [openApiData?.content]);
-
-  useEffect(() => {
-    setSaveValidationErrors(null);
-  }, [editorText]);
 
   const isDirty = useMemo(() => {
     const savedParsed = parseSpec(savedContent);
@@ -412,12 +449,7 @@ export function DefinitionPanel() {
     return savedContent;
   }, [savedContent, format]);
 
-  const isSaving = isValidating || putOpenApi.isPending;
-
-  const isSavingRef = useRef(false);
-  useEffect(() => {
-    isSavingRef.current = isSaving;
-  }, [isSaving]);
+  const isSaving = putOpenApi.isPending;
 
   const handleFormatToggle = useCallback(
     (newFormat: 'yaml' | 'json') => {
@@ -439,9 +471,20 @@ export function DefinitionPanel() {
   );
 
   const closeDialog = () => {
+    importTokenRef.current++;
+    setIsFetchingSpec(false);
     setDialogOpen(false);
     setSpecUrl('');
     setFetchError(null);
+    // NB: do not clear urlImportInvalidMessage here — closeDialog is also
+    // called after a URL import that returned an invalid spec (to dismiss the
+    // dialog), and we need the message to survive that close. It's cleared
+    // when the user opens the dialog again (openDialog) or clicks Reset.
+  };
+
+  const openDialog = () => {
+    setUrlImportInvalidMessage(null);
+    setDialogOpen(true);
   };
 
   const closeAddModal = () => {
@@ -451,19 +494,54 @@ export function DefinitionPanel() {
     setNewDescription('');
   };
 
-  const applyFileContent = (file: File) => {
-    void file
-      .text()
-      .then((text) => {
-        const parsedSpec = parseSpec(text);
-        setEditorText(parsedSpec ? yaml.dump(parsedSpec) : text);
-        setPendingFileName(file.name.replace(/\.json$/i, '.yaml'));
+  /**
+   * Runs the backend validator against `input` and hands its outcome to the
+   * editor. The backend echoes `content` on every outcome.
+   */
+  const importTokenRef = useRef(0);
+  const importSpecViaValidator = async (
+    input: { file: File } | { url: string },
+    fileName: string,
+  ): Promise<boolean> => {
+    const token = ++importTokenRef.current;
+    setIsFetchingSpec(true);
+    setFetchError(null);
+    setUrlImportInvalidMessage(null);
+    try {
+      const validation = await validateSpec.mutateAsync(input);
+      if (token !== importTokenRef.current) return false;
+      if ('url' in input && !validation.isValid) {
+        setUrlImportInvalidMessage(intl.formatMessage(messages.urlImportInvalidSpec));
+        setEditorText('');
+        setPendingFileName(null);
         setFormat('yaml');
         setIsEditing(true);
-      })
-      .catch(() => {
-        setFetchError(intl.formatMessage(messages.fileReadError));
-      });
+        setSaveValidationErrors(validation.errors.map(formatValidationError));
+        return true;
+      }
+      const rawContent = validation.content ?? '';
+      if (!rawContent) {
+        setFetchError(
+          intl.formatMessage('url' in input ? messages.dialogFetchError : messages.fileReadError),
+        );
+        return false;
+      }
+      const parsedSpecContent = parseSpec(rawContent);
+      setEditorText(parsedSpecContent ? yaml.dump(parsedSpecContent) : rawContent);
+      setPendingFileName(fileName.replace(/\.json$/i, '.yaml'));
+      setFormat('yaml');
+      setIsEditing(true);
+      setSaveValidationErrors(
+        validation.isValid ? null : validation.errors.map(formatValidationError),
+      );
+      return true;
+    } catch (err) {
+      if (token !== importTokenRef.current) return false;
+      setFetchError(intl.formatMessage(classifyImportFailure(err, input)));
+      return false;
+    } finally {
+      if (token === importTokenRef.current) setIsFetchingSpec(false);
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -471,54 +549,16 @@ export function DefinitionPanel() {
     if (!file) return;
     event.target.value = '';
     if (isSaving) return;
-    applyFileContent(file);
-    closeDialog();
+    void importSpecViaValidator({ file }, file.name).then((ok) => {
+      if (ok) closeDialog();
+    });
   };
 
   const handleFetchSpec = async () => {
     const url = specUrl.trim();
     if (!url) return;
-    setIsFetchingSpec(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('fetch failed');
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('fetch failed');
-      const chunks: Uint8Array[] = [];
-      let totalBytes = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        totalBytes += value.length;
-        chunks.push(value);
-      }
-      const combined = new Uint8Array(totalBytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, offset);
-        offset += chunk.length;
-      }
-      const text = new TextDecoder().decode(combined);
-      if (isSavingRef.current) {
-        setFetchError(intl.formatMessage(messages.dialogFetchError));
-        return;
-      }
-      const parsedSpecContent = parseSpec(text);
-      if (!parsedSpecContent) {
-        setFetchError(intl.formatMessage(messages.dialogParseError));
-        return;
-      }
-      setEditorText(yaml.dump(parsedSpecContent));
-      setPendingFileName(filenameFromUrl(url).replace(/\.json$/i, '.yaml'));
-      setFormat('yaml');
-      setIsEditing(true);
-      closeDialog();
-    } catch {
-      setFetchError(intl.formatMessage(messages.dialogFetchError));
-    } finally {
-      setIsFetchingSpec(false);
-    }
+    const ok = await importSpecViaValidator({ url }, filenameFromUrl(url));
+    if (ok) closeDialog();
   };
 
   const handleDownload = () => {
@@ -548,24 +588,22 @@ export function DefinitionPanel() {
 
   const handleSave = async () => {
     if (!restApiId || isSaving) return;
+    importTokenRef.current++;
 
     const content = editorText;
     const isEmpty = !content.trim();
 
     if (!isEmpty) {
-      setIsValidating(true);
       setSaveValidationErrors(null);
       try {
-        const validation = await validateSpec.mutateAsync(content);
+        const validation = await validateSpec.mutateAsync({ text: content });
         if (!validation.isValid) {
-          setSaveValidationErrors(validation.errors.map((e) => e.message));
+          setSaveValidationErrors(validation.errors.map(formatValidationError));
           return;
         }
       } catch {
         setSaveValidationErrors([intl.formatMessage(messages.saveValidationUnavailable)]);
         return;
-      } finally {
-        setIsValidating(false);
       }
     }
 
@@ -578,6 +616,20 @@ export function DefinitionPanel() {
     const formData = new FormData();
     formData.append('file', file);
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
+  };
+
+  const handleValidateAndSave = async () => {
+    try {
+      const result = await validateSpec.mutateAsync({ text: editorText });
+      if (!result.isValid && result.errors.length > 0) {
+        setSaveValidationErrors(result.errors.map(formatValidationError));
+        return;
+      }
+      setSaveValidationErrors(null);
+      setConfirmSaveOpen(true);
+    } catch {
+      setConfirmSaveOpen(true);
+    }
   };
 
   /** Adds a new operation to the spec (editorText) and enters edit mode. */
@@ -599,6 +651,7 @@ export function DefinitionPanel() {
     spec.paths = paths;
     const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
     setEditorText(newText);
+    setSaveValidationErrors(null);
     setIsEditing(true);
     closeAddModal();
   };
@@ -617,6 +670,7 @@ export function DefinitionPanel() {
     if (Object.keys(paths[path]).length === 0) delete paths[path];
     const newText = format === 'json' ? JSON.stringify(spec, null, 2) : yaml.dump(spec);
     setEditorText(newText);
+    setSaveValidationErrors(null);
     setIsEditing(true);
   };
 
@@ -795,7 +849,7 @@ export function DefinitionPanel() {
         </DialogActions>
       </Dialog>
 
-      {hasSpec || editorText ? (
+      {hasSpec || editorText || urlImportInvalidMessage ? (
         <Stack spacing={2}>
           {/* Definition summary and primary actions. */}
           <Stack
@@ -848,7 +902,7 @@ export function DefinitionPanel() {
                     <Button
                       aria-label={intl.formatMessage(messages.updateOpenApi)}
                       disabled={isSaving || !canUpdateRESTApiSpec}
-                      onClick={() => setDialogOpen(true)}
+                      onClick={openDialog}
                       sx={{ minWidth: 40, px: 1 }}
                     >
                       <Upload size={18} />
@@ -941,14 +995,34 @@ export function DefinitionPanel() {
 
             {/* Panel content */}
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
-              {showSource ? (
+              {urlImportInvalidMessage ? (
+                /* URL fetch returned an invalid spec — backend redacted the
+                   bytes, so we show a message here instead of the editor. */
+                <Box
+                  sx={{
+                    alignItems: 'center',
+                    display: 'flex',
+                    flex: 1,
+                    justifyContent: 'center',
+                    minHeight: 0,
+                    p: 3,
+                  }}
+                >
+                  <Typography color="text.secondary" sx={{ maxWidth: 480, textAlign: 'center' }}>
+                    {urlImportInvalidMessage}
+                  </Typography>
+                </Box>
+              ) : showSource ? (
                 /* Raw spec editor */
                 <Box sx={{ flex: 1, minHeight: 0, p: 1 }}>
                   <Editor
                     height="100%"
                     language={format}
                     loading={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}
-                    onChange={(value) => setEditorText(value ?? '')}
+                    onChange={(value) => {
+                      setEditorText(value ?? '');
+                      setSaveValidationErrors(null);
+                    }}
                     options={{
                       automaticLayout: true,
                       fontSize: 12,
@@ -977,15 +1051,15 @@ export function DefinitionPanel() {
             {showSaveBar && (
               <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
                 {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
-                  <Alert severity="error" sx={{ borderRadius: 0, m: 0 }}>
+                  <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
                     <FormattedMessage {...messages.saveSpecInvalid} />
-                    <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
-                      {saveValidationErrors.map((msg, i) => (
-                        <Typography component="li" key={i} variant="body2">
-                          {msg}
-                        </Typography>
-                      ))}
-                    </Box>
+                      <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
+                        {saveValidationErrors.map((msg, i) => (
+                          <Typography component="li" key={i} variant="body2">
+                            {msg}
+                          </Typography>
+                        ))}
+                      </Box>
                   </Alert>
                 )}
                 <Box
@@ -1010,6 +1084,7 @@ export function DefinitionPanel() {
                       }
                       setPendingFileName(null);
                       setSaveValidationErrors(null);
+                      setUrlImportInvalidMessage(null);
                     }}
                     size="small"
                     variant="outlined"
@@ -1019,9 +1094,13 @@ export function DefinitionPanel() {
                       : intl.formatMessage(messages.discard)}
                   </Button>
                   <Button
-                    disabled={!isDirty || (!editorText.trim() && hasSpec)}
-                    loading={isSaving}
-                    onClick={() => setConfirmSaveOpen(true)}
+                    disabled={
+                      !isDirty ||
+                      (!editorText.trim() && hasSpec) ||
+                      (saveValidationErrors !== null && saveValidationErrors.length > 0)
+                    }
+                    loading={isSaving || validateSpec.isPending}
+                    onClick={() => void handleValidateAndSave()}
                     size="small"
                     variant="contained"
                   >
@@ -1055,7 +1134,7 @@ export function DefinitionPanel() {
             </Typography>
             <Button
               disabled={isSaving}
-              onClick={() => setDialogOpen(true)}
+              onClick={openDialog}
               startIcon={<Upload size={16} />}
               sx={{ mt: 1 }}
               variant="contained"

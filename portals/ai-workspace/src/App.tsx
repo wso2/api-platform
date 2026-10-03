@@ -27,6 +27,7 @@ import {
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
 import { AppShellProvider } from './contexts/AppShellContext';
+import { ResourceLimitsProvider } from './hooks/useResourceLimits';
 import { RoleProvider } from './contexts/RoleContext';
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
@@ -299,14 +300,21 @@ function ProtectedAppShell() {
   const { user } = useAppAuth();
   const userName = user?.name ?? undefined;
   const userEmail = user?.email ?? undefined;
+  const userPicture = user?.picture ?? undefined;
 
   return (
     <PostSignInInit>
       <ProductActivation />
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
-          <AppShellProvider userName={userName} userEmail={userEmail}>
-            <AppShellMain />
+          <AppShellProvider
+            userName={userName}
+            userEmail={userEmail}
+            userPicture={userPicture}
+          >
+            <ResourceLimitsProvider>
+              <AppShellMain />
+            </ResourceLimitsProvider>
           </AppShellProvider>
         </AIWorkspaceSnackbarProvider>
       </RoleProvider>

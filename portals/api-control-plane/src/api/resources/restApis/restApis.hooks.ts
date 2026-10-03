@@ -42,6 +42,7 @@ import {
   type RestApiListResponse,
   type UpdateRestApiBody,
   type ValidateOpenAPIResponse,
+  type ValidateOpenApiSpecInput,
 } from './restApis.endpoints';
 import { restApiKeys, restApiQueries } from './restApis.queries';
 
@@ -433,18 +434,18 @@ export const usePutRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
 };
 
 /**
- * Validates an OpenAPI spec string against the backend validator (kin-openapi).
+ * Validates an OpenAPI spec against the backend validator (libopenapi).
  *
- * Errors are handled locally — the caller decides how to show them, so the
- * global snackbar doesn't fire on a failed validation call.
+ * Accepts a discriminated input: `{ file }` uploads the raw bytes, `{ url }`
+ * has the backend fetch the URL server-side.
  */
 export const useValidateOpenApiSpec = () => {
-  return useMutation<ValidateOpenAPIResponse, ApiError, string>({
+  return useMutation<ValidateOpenAPIResponse, ApiError, ValidateOpenApiSpecInput>({
     meta: HANDLED_LOCALLY,
-    mutationFn: (inlineDefinition) => validateOpenApiSpec(inlineDefinition),
+    mutationFn: (input) => validateOpenApiSpec(input),
   });
 };
 
 /** Re-export so consumers can type validation errors without reaching into endpoints. */
-export type { OpenAPIValidationError, ValidateOpenAPIResponse };
+export type { OpenAPIValidationError, ValidateOpenAPIResponse, ValidateOpenApiSpecInput };
 

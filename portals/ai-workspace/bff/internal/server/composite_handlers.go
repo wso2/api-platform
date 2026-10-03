@@ -33,6 +33,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -109,6 +111,21 @@ func (s *Server) platformClient() *http.Client {
 	return &http.Client{
 		Transport: s.proxy.Transport,
 		Timeout:   platformAPITimeout,
+		// Requests made with this client carry the user's bearer token. Go strips
+		// Authorization when a redirect crosses hosts, but not when it merely drops
+		// the scheme, so an https upstream answering 302 to http://<same host>/…
+		// would put the token on the wire in cleartext. Everything else about
+		// redirect handling is left as the default.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) > 0 && via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+				return fmt.Errorf("refusing redirect from https to %s://%s (would send credentials in cleartext)",
+					req.URL.Scheme, req.URL.Host)
+			}
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return nil
+		},
 	}
 }
 

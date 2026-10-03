@@ -354,6 +354,7 @@ org_handle    = "org_handle"      # org URL slug
 organizations = "organizations"  # claim listing every org id/handle the user belongs to
 username      = "username"
 email         = "email"
+picture       = "picture"
 scope         = "scope"                # space-separated scope string
 roles         = "roles"
 
@@ -387,7 +388,7 @@ post_logout_redirect_url = "https://localhost:9643/ai-workspace/login"
 # Scopes requested at login (space-separated). Defaults to the full ap:* set the
 # Platform API authorizes against (recommended) — trim only what you need to
 # restrict, and always keep offline_access or token refresh breaks.
-scope = "openid profile email offline_access ap:api_key:read ap:organization:read ap:organization:manage ap:organization:subscription:read ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read ap:gateway:manifest:read ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
+scope = "openid profile email offline_access ap:api_key:read ap:organization:read ap:organization:manage ap:organization:subscription:read ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read ap:gateway:manifest:read ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 # ====================================================================
 # Token exchange (RFC 8693 / RFC 7523 on-behalf-of)
@@ -494,6 +495,40 @@ cache_enabled = true
 # positive when cache_enabled = true.
 min_validity = "60s"
 
+
+
+# ====================================================================
+# Claim names in the ISSUED token
+#
+# An STS commonly re-shapes what it received — nesting the org as an object, parking
+# the originating IDP's profile claims under their own key — so these are separate
+# from [ai_workspace.auth.claim_mappings] above, which names the LOGIN token's
+# claims. One mapping cannot be right for both: the login token's user would resolve
+# empty, or the exchanged token's org would.
+#
+# Every key falls back to its parent value when unset, so an STS that preserves the
+# login shape needs nothing here. A value may be a dot-separated path into a nested
+# claim.
+#
+# Example, for an issued token carrying
+#   "organization": { "handle": "...", "uuid": "..." }
+#   "idp_claims":   { "name": "...", "email": "..." }
+# set organization = "organization.uuid", org_handle = "organization.handle",
+# username = "idp_claims.name", email = "idp_claims.email".
+#
+# There is deliberately no `organizations` key: the org LIST is read from the login
+# token only. Which orgs a user belongs to is a property of the user, not of a token
+# minted for one of them.
+# ====================================================================
+[ai_workspace.auth.oidc.token_exchange.claim_mappings]
+
+organization = ""
+org_name     = ""
+org_handle   = ""
+username     = ""
+email        = ""
+scope        = ""
+roles        = ""
 
 # ====================================================================
 # Settings with no config key

@@ -19,13 +19,14 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"log/slog"
-	"time"
 )
 
 // ProjectDeletionGuard is implemented by plugins that need to block project
@@ -39,6 +40,7 @@ type ProjectService struct {
 	orgRepo        repository.OrganizationRepository
 	apiRepo        repository.APIRepository
 	mcpProxyRepo   repository.MCPProxyRepository
+	agentProxyRepo repository.AgentProxyRepository
 	appRepo        repository.ApplicationRepository
 	deletionGuards []ProjectDeletionGuard
 	auditRepo      repository.AuditRepository
@@ -48,17 +50,19 @@ type ProjectService struct {
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
+	agentProxyRepo repository.AgentProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
 	identity *IdentityService, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
-		projectRepo:  projectRepo,
-		orgRepo:      orgRepo,
-		apiRepo:      apiRepo,
-		mcpProxyRepo: mcpProxyRepo,
-		appRepo:      appRepo,
-		auditRepo:    auditRepo,
-		identity:     identity,
-		slogger:      slogger,
+		projectRepo:    projectRepo,
+		orgRepo:        orgRepo,
+		apiRepo:        apiRepo,
+		mcpProxyRepo:   mcpProxyRepo,
+		agentProxyRepo: agentProxyRepo,
+		appRepo:        appRepo,
+		auditRepo:      auditRepo,
+		identity:       identity,
+		slogger:        slogger,
 	}
 }
 
@@ -284,6 +288,16 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 	if mcpProxiesCount > 0 {
 		return apperror.ValidationFailed.New("Project has associated MCP proxies")
+	}
+
+	if s.agentProxyRepo != nil {
+		agentProxiesCount, err := s.agentProxyRepo.CountByProject(orgId, project.ID)
+		if err != nil {
+			return err
+		}
+		if agentProxiesCount > 0 {
+			return apperror.ValidationFailed.New("Project has associated Agent proxies")
+		}
 	}
 
 	// applications no longer cascade-delete with the project (the project_uuid foreign key was

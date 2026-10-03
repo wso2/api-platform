@@ -395,6 +395,26 @@ type APIPortalRepository interface {
 	// GET /api-publications rollup, which lists only these; a portal still
 	// provisioning or failed is absent entirely.
 	ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error)
+	// UpdateStatus mutates only the status column for one portal; used by
+	// the cloud plugin's provisioning poller for pending -> active/failed
+	// transitions without touching the whitelisted mutable-metadata fields
+	// Update covers.
+	UpdateStatus(portalID, orgUUID, updatedBy, status string) error
+	// GetStatusByHandle returns just the status column for one portal.
+	GetStatusByHandle(handle, orgUUID string) (string, error)
+	// ListStatusesByOrg returns handle -> status for every portal in the org
+	// so the plugin's List projection can stamp status per row without an
+	// N+1 fanout.
+	ListStatusesByOrg(orgUUID string) (map[string]string, error)
+	// ListLoginEnvironmentsByOrg returns handle -> loginEnvironment for
+	// portals in the org whose metadata blob carries the key. Companion to
+	// ListStatusesByOrg so the plugin can hydrate list-view rows without
+	// exposing this cloud-plugin-specific field on ApiPortalListItem.
+	ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error)
+	// ListByStatus returns every portal across every org whose status matches.
+	// Cross-org by design: the cloud plugin's provisioning poller resumes
+	// tracking on startup without an org list.
+	ListByStatus(status string) ([]*model.APIPortal, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -407,6 +427,21 @@ type MCPProxyRepository interface {
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
 	Update(p *model.MCPProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
+// AgentProxyRepository defines the interface for Agent proxy persistence
+type AgentProxyRepository interface {
+	Create(p *model.AgentProxy) error
+	GetByHandle(handle, orgUUID string) (*model.AgentProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.AgentProxy, error)
+	List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error)
+	Count(orgUUID string, opts AgentProxyListOptions) (int, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.AgentProxy, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(p *model.AgentProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)

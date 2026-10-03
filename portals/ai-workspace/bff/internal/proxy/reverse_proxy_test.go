@@ -121,10 +121,10 @@ func TestReverseProxy_StripsBasePathAndPrefix(t *testing.T) {
 	}
 }
 
-// Cloud analytics hop: browser calls /ai-workspace/proxy/cloud/analytics/id-token;
-// CloudURL is http://host/cloud, so after stripping <base>/proxy/cloud the upstream
-// path must be /cloud/analytics/id-token.
-func TestReverseProxy_CloudPrefixJoinsTargetPath(t *testing.T) {
+// Moesif hop: browser calls /ai-workspace/proxy/moesif/id_token; MoesifURL is
+// http://host/moesif-key/0.1.0, so after stripping <base>/proxy/moesif the upstream
+// path must be /moesif-key/0.1.0/id_token.
+func TestReverseProxy_MoesifPrefixJoinsTargetPath(t *testing.T) {
 	var gotPath string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -132,17 +132,17 @@ func TestReverseProxy_CloudPrefixJoinsTargetPath(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	target, _ := url.Parse(backend.URL + "/cloud")
-	rp := ReverseProxy(target, "/ai-workspace/proxy/cloud", backend.Client().Transport)
+	target, _ := url.Parse(backend.URL + "/moesif-key/0.1.0")
+	rp := ReverseProxy(target, "/ai-workspace/proxy/moesif", backend.Client().Transport)
 
-	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/cloud/analytics/id-token", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/moesif/id_token", nil)
 	rec := httptest.NewRecorder()
 	rp.ServeHTTP(rec, WithToken(req, "tok"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	if gotPath != "/cloud/analytics/id-token" {
+	if gotPath != "/moesif-key/0.1.0/id_token" {
 		t.Errorf("upstream path = %q, want /cloud/analytics/id-token", gotPath)
 	}
 }

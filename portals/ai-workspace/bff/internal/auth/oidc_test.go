@@ -19,11 +19,14 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"ai-workspace-bff/internal/session"
+	"net/url"
 )
 
 // TestCallbackReasonsAreDistinct pins that the four ways a callback fails to match a
@@ -138,4 +141,115 @@ func TestRefreshKeepsIDTokenOnlyProfileClaims(t *testing.T) {
 				"falling back to sub is correct", s.User.Name)
 		}
 	})
+}
+
+// A login that takes longer than the transaction lives must say so. Swept on
+// expiry, it would report "no such transaction" instead — indistinguishable from a
+// restart or a replay, which is the difference between a one-line diagnosis and an
+// afternoon of guessing.
+func TestCallbackReportsExpiredRatherThanMissing(t *testing.T) {
+	o := &OIDC{txs: map[string]*txn{}, done: make(chan struct{})}
+	defer o.Close()
+
+	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(-time.Minute)}
+
+	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	var mismatch ErrStateMismatch
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("err = %v, want ErrStateMismatch", err)
+	}
+	if mismatch.Reason != ReasonExpired {
+		t.Errorf("reason = %q, want %q", mismatch.Reason, ReasonExpired)
+	}
+}
+
+// The tx cookie and the transaction must expire together: a cookie that outlives
+// the transaction reports a slow login as "no transaction for this id", and one that
+// dies first reports the same event as "no cookie at all".
+func TestTxTTLIsGenerousEnoughForAnInteractiveLogin(t *testing.T) {
+	// MFA, an account picker and a mistyped password fit inside this; ten minutes
+	// does not, which is what this guards against being quietly reduced to.
+	if TxTTL < 20*time.Minute {
+		t.Errorf("TxTTL = %s, too short for an interactive IDP login", TxTTL)
+	}
+	if expiredRetention <= TxTTL {
+		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or expired transactions "+
+			"are swept before they can be reported as expired", expiredRetention, TxTTL)
+	}
+}
+
+// A consumed transaction is gone: replaying the callback URL must not log anyone in
+// a second time.
+func TestCallbackConsumesTheTransaction(t *testing.T) {
+	// The code exchange is expected to fail — this is about the transaction, not the
+	// IDP — but it must reach a real endpoint rather than a nil client.
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer idp.Close()
+
+	o := &OIDC{
+		client: idp.Client(),
+		disco:  discoveryDoc{TokenEndpoint: idp.URL},
+		txs:    map[string]*txn{},
+		done:   make(chan struct{}),
+	}
+	defer o.Close()
+	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(time.Hour)}
+
+	// First use fails at the code exchange, but must still consume the transaction.
+	_, _, _ = o.Callback(context.Background(), "tx-1", "st", "code")
+	if n := o.PendingTransactions(); n != 0 {
+		t.Fatalf("pending transactions = %d after use, want 0", n)
+	}
+
+	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	var mismatch ErrStateMismatch
+	if !errors.As(err, &mismatch) || mismatch.Reason != ReasonNoTransaction {
+		t.Errorf("replay err = %v, want %s", err, ReasonNoTransaction)
+	}
+}
+
+// AuthCodeURL writes the protocol parameters after the caller's extras. This pins that
+// ordering: it is the guard that stops a forwarded parameter from widening the request
+// even if the server's allowlist were ever loosened.
+func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
+	o := &OIDC{
+		clientID:    "ai-workspace",
+		redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
+		scopes:      "openid profile email",
+		txs:         make(map[string]*txn),
+		done:        make(chan struct{}),
+		disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
+	}
+
+	authURL, _, err := o.AuthCodeURL("/", url.Values{
+		"fidp":          {"google"},
+		"scope":         {"openid admin"},
+		"redirect_uri":  {"https://evil.example.com/steal"},
+		"response_type": {"token"},
+		"client_id":     {"another-client"},
+	})
+	if err != nil {
+		t.Fatalf("AuthCodeURL: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	q := parsed.Query()
+
+	if q.Get("fidp") != "google" {
+		t.Errorf("fidp = %q, want it forwarded", q.Get("fidp"))
+	}
+	for name, want := range map[string]string{
+		"response_type": "code",
+		"client_id":     o.clientID,
+		"redirect_uri":  o.redirectURL,
+		"scope":         o.scopes,
+	} {
+		if got := q.Get(name); got != want {
+			t.Errorf("%s = %q, want %q — an extra parameter overrode a protocol one", name, got, want)
+		}
+	}
 }

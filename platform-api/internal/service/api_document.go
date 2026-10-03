@@ -234,10 +234,23 @@ func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]ap
 	return extractOperations(sd), nil
 }
 
-// NormalizeSpecFileName strips the directory component from an uploaded filename,
-// storing only the bare name (file-access rule: filename only in storage).
+// maxSpecFileNameLen is the DB column ceiling (file_name VARCHAR(255)).
+const maxSpecFileNameLen = 255
+
+// NormalizeSpecFileName strips the directory component from an uploaded filename
+// and caps the result to the DB column ceiling, preserving the extension and
+// UTF-8 boundaries so a cap never splits a multi-byte character.
 func (s *APIDocumentService) NormalizeSpecFileName(name string) string {
-	return filepath.Base(name)
+	base := filepath.Base(name)
+	if len(base) <= maxSpecFileNameLen {
+		return base
+	}
+	ext := filepath.Ext(base)
+	stem := base[:len(base)-len(ext)]
+	if maxStem := maxSpecFileNameLen - len(ext); maxStem > 0 {
+		return utils.TruncateAtRuneBoundary(stem, maxStem) + ext
+	}
+	return utils.TruncateAtRuneBoundary(base, maxSpecFileNameLen)
 }
 
 // ExtractAndMergeOperations validates the spec, extracts its operations, and

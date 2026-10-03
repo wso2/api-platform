@@ -47,6 +47,7 @@ export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION',
 // calling a route that does not exist. The billing URL itself never reaches the browser.
 export const BILLING_PROXY_ENABLED = getEnvOrDefault('APIP_AIW_BILLING_PROXY_ENABLED', false);
 
+
 // Auth mode: 'basic' (default) posts credentials to /api/portal/v0.9/auth/login; 'oidc' uses react-oidc-context.
 export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';
 
@@ -64,6 +65,9 @@ export const ORG_IDS_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_ORGAN
 // Common alternatives: 'name', 'given_name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
 export const USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_USERNAME', 'username');
 export const EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_EMAIL', 'email');
+// Absolute URL to the user's avatar. Standard OIDC name; configurable for an IDP
+// that releases it under another claim. Empty/absent renders initials instead.
+export const PICTURE_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_PICTURE', 'picture');
 
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
@@ -96,6 +100,9 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore' +
   ' ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage' +
   ' ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore' +
+  ' ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage' +
+  ' ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage' +
+  ' ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore' +
   ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 

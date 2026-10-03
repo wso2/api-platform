@@ -22,7 +22,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,12 +33,41 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 )
+
+func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/testbench/health", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	definition := &components.Definition{
+		Name:  "testbench",
+		Alias: "testbench",
+		Endpoints: []components.Endpoint{{
+			Name: "capture", Port: capture.Port, Scheme: "http",
+		}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{capture.Port: port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	gateway := &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: time.Second}), 0, 0),
+	}
+	require.NoError(t, gateway.awaitMappedTestbenchService(context.Background(), "capture"))
+}
 
 func TestServiceUpstreamURLPreservesServiceBasePath(t *testing.T) {
 	definition := &components.Definition{
@@ -690,4 +721,27 @@ func TestServiceUnhealthy(t *testing.T) {
 
 	local.Set(healthResultsKey, map[string]bool{"policy-engine": false})
 	require.ErrorContains(t, steps.serviceUnhealthy(ctx, "policy-engine"), "stored as map[string]bool")
+}
+
+// Every controller collection a step can create into has a cleanup kind, so a created resource
+// is always registered; the Agent collection maps to the gateway's own Agent kind.
+func TestControllerResourceKindsHaveCleanupKinds(t *testing.T) {
+	for stepKind, spec := range resourceKinds {
+		if spec.collection == "" {
+			continue // the API handlers register and deregister their own cleanup
+		}
+		_, ok := cleanupKindForCollection(spec.collection)
+		require.Truef(t, ok, "resource kind %q (collection %q) has no cleanup kind", stepKind, spec.collection)
+	}
+
+	agent, ok := resourceKinds["Agent"]
+	require.True(t, ok, "the Agent step kind is registered")
+	require.Equal(t, "Agent", agent.declared)
+	require.Equal(t, "/agents", agent.collection)
+	kind, ok := cleanupKindForCollection(agent.collection)
+	require.True(t, ok)
+	require.Equal(t, cleanup.KindAgent, kind)
+
+	_, ok = cleanupKindForCollection("/not-a-collection")
+	require.False(t, ok)
 }

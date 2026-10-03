@@ -65,6 +65,9 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 
+# Pinned so every developer and CI run generates byte-identical models.
+OAPI_CODEGEN_VERSION := v2.8.0
+
 .PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
@@ -152,13 +155,10 @@ cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIME
 		.
 
 generate: ## Generate API server code from OpenAPI spec
-	@echo "Adding bindings to OpenAPI spec..."
-	@command -v yq >/dev/null 2>&1 || { echo "Error: yq is not installed. Install it via 'brew install yq' or 'go install github.com/mikefarah/yq/v4@latest'"; exit 1; }
-	@yq '.components.schemas[].properties |= (. as $$props | (parent | .required[]) as $$req_field | select($$props | has($$req_field)) | .[$$req_field]."x-oapi-codegen-extra-tags".binding = "required")' resources/openapi.yaml > resources/openapi_with_binding.yaml
-	@echo "Generating API server code from OpenAPI spec with bindings..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml resources/openapi_with_binding.yaml
+	@echo "Generating API models from the Platform API OpenAPI spec..."
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config=oapi-codegen.yaml resources/openapi.yaml
 	@echo "Generating API models for the eventgateway plugin spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
 
 generate-apidocs: ## Generate REST API docs (Markdown) from the Platform API OpenAPI spec
 	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }

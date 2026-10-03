@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { AppPage } from '@/components/AppPage';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
@@ -28,12 +29,14 @@ import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
  */
 export function PortalsPage() {
   return (
-    <ScopeGate
-      prompt="Publish an API to a portal at the API level."
-      requires="api"
-      to={routes.apiPortals}
-    >
-      <ApiPortalPublicationsList />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Publish an API to a portal at the API level."
+        requires="api"
+        to={routes.apiPortals}
+      >
+        <ApiPortalPublicationsList />
+      </ScopeGate>
+    </AppPage>
   );
 }

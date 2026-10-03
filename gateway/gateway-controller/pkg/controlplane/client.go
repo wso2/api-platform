@@ -29,6 +29,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/workerpool"
@@ -1052,14 +1054,36 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// apiKeyBulkSyncKinds lists, in fetch order, the artifact kinds whose API keys are bulk-synced
+// from the control plane on connect. It is the single list both halves of
+// syncAPIKeysForExistingArtifacts read — the local-config filter and the per-kind fetch loop —
+// so the two cannot drift: a kind fetched but not filtered would have its keys reconciled
+// against an empty artifact set, and a kind filtered but not fetched would never be synced.
+// Each entry must have a path arm in utils.APIUtilsService.FetchAPIKeysByKind.
+var apiKeyBulkSyncKinds = []string{
+	models.KindRestApi,
+	models.KindWebSubApi,
+	models.KindWebBrokerApi,
+	models.KindLlmProvider,
+	models.KindLlmProxy,
+	models.KindAgent,
+}
+
+// isAPIKeyBulkSyncKind reports whether kind is in apiKeyBulkSyncKinds.
+func isAPIKeyBulkSyncKind(kind string) bool {
+	return slices.Contains(apiKeyBulkSyncKinds, kind)
+}
+
 // onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
-// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+// exposes an API-key backfill endpoint. LLM, WebSub, WebBroker, and Agent kinds are cloud-only:
+// carbon-apimgt has no /agents/api-keys route, so an on-prem gateway receives Agent keys through
+// the apikey.* event path only.
 var onPremSupportedAPIKeyKinds = map[string]bool{
 	models.KindRestApi: true,
 }
 
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
-// currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
+// currently known artifacts of the kinds in apiKeyBulkSyncKinds after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
 // For on-prem control planes only KindRestApi is synced; other kinds are skipped because
@@ -1091,8 +1115,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		if cfg == nil {
 			continue
 		}
-		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy &&
-			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi && cfg.Kind != models.KindWebBrokerApi {
+		if !isAPIKeyBulkSyncKind(cfg.Kind) {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
@@ -1111,7 +1134,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
-	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+	for _, kind := range apiKeyBulkSyncKinds {
 		// On-prem APIM only exposes backfill endpoints for RestApi keys.
 		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
 			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
@@ -2994,7 +3017,75 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 	)
 }
 
-const ackResourceTypeAgent = "agentproxy"
+// ackResourceTypeAgent is the resourceType the Agent handlers acknowledge with.
+// It is the gateway's artifact kind, not the control plane's AgentProxy: the
+// control plane resolves the ack to its AgentProxy artifact by artifactId, and
+// the kind name is the gateway vocabulary that crosses the boundary.
+const ackResourceTypeAgent = models.KindAgent
+
+// Failure codes the Agent handlers acknowledge with. The control plane stores
+// the code as the deployment's statusReason (VARCHAR(50)) and records anything
+// not shaped like a code as GATEWAY_PROCESSING_ERROR. Codes are sent, never
+// error text: an error message can carry configuration values, and the reason
+// is shown to every reader of the deployment.
+const (
+	ackCodeGatewayProcessingError   = "GATEWAY_PROCESSING_ERROR"
+	ackCodeDeploymentIDMismatch     = "DEPLOYMENT_ID_MISMATCH"
+	ackCodeAgentArtifactFetchFailed = "AGENT_ARTIFACT_FETCH_FAILED"
+	ackCodeAgentValidationFailed    = "AGENT_VALIDATION_FAILED"
+	ackCodeAgentRenderFailed        = "AGENT_CONFIG_RENDER_FAILED"
+	ackCodeAgentConflict            = "AGENT_CONFLICT"
+)
+
+// agentAckFailureCode classifies an Agent apply failure into the code the
+// deployment ack reports, so a definition the gateway rejects is distinguishable
+// from a gateway fault. Unclassified errors are GATEWAY_PROCESSING_ERROR.
+func agentAckFailureCode(err error) string {
+	var (
+		validationErr *agent.ValidationError
+		parseErr      *agent.ParseError
+		kindErr       *agent.KindMismatchError
+		handleErr     *agent.HandleMismatchError
+		renderErr     *templateengine.RenderError
+	)
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &validationErr), errors.As(err, &parseErr),
+		errors.As(err, &kindErr), errors.As(err, &handleErr):
+		return ackCodeAgentValidationFailed
+	case errors.As(err, &renderErr):
+		return ackCodeAgentRenderFailed
+	case errors.Is(err, storage.ErrConflict):
+		return ackCodeAgentConflict
+	default:
+		return ackCodeGatewayProcessingError
+	}
+}
+
+// errAgentKindMismatch reports that an agent.* event names an artifact UUID the
+// gateway holds under another kind.
+var errAgentKindMismatch = errors.New("artifact is stored under another kind")
+
+// resolveLocalAgentID maps the artifact UUID carried by an agent.* event to the
+// UUID of the local row it addresses (see resolveLocalArtifactID), refusing a
+// row of another kind. An entity id is unique across kinds, so a mismatch means
+// the event and the gateway disagree, and applying it through the Agent lane
+// would overwrite or take down another kind's artifact. An id with no local row
+// resolves to itself.
+func (c *Client) resolveLocalAgentID(agentID string) (string, error) {
+	existing, err := c.findAPIConfig(agentID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			return agentID, nil
+		}
+		return "", err
+	}
+	if existing.Kind != models.KindAgent {
+		return "", fmt.Errorf("%w: %s", errAgentKindMismatch, existing.Kind)
+	}
+	return existing.UUID, nil
+}
 
 func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 	c.logger.Debug("Agent Deployment Event",
@@ -3038,21 +3129,37 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.String("correlation_id", deployedEvent.CorrelationID),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
-	// Fetch the Agent definition from the control plane. FetchResourceZip is the
-	// size-bounded generic primitive; there is no Agent-specific fetch method
-	// because the path is the only thing that differs.
-	zipData, err := c.apiUtilsService.FetchResourceZip("/agents/"+agentID, "agent definition")
+	// Resolve before fetching: an event naming another kind's artifact is refused
+	// without a round trip, and a storage failure is reported rather than papered
+	// over with the control-plane UUID.
+	deployAgentID, err := c.resolveLocalAgentID(agentID)
+	if err != nil {
+		c.logger.Error("Failed to resolve local agent for deployment",
+			slog.String("agent_id", agentID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
+		return
+	}
+
+	// Fetch the Agent's deployment artifact — the immutable snapshot the control
+	// plane serves for this gateway — addressed by the artifact UUID from the
+	// event. Nothing below writes local state until the artifact has been fetched,
+	// verified, parsed and validated, so a failed or malformed fetch leaves no
+	// partial configuration behind.
+	zipData, err := c.apiUtilsService.FetchAgentDefinition(agentID)
 	if err != nil {
 		c.logger.Error("Failed to fetch agent definition",
 			slog.String("agent_id", agentID),
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeAgentArtifactFetchFailed)
 		return
 	}
 
@@ -3064,7 +3171,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, ackCodeAgentArtifactFetchFailed)
 		return
 	}
 
@@ -3072,10 +3179,8 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 	// storage before rendering.
 	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
 
-	// Reuse the existing local UUID for a bottom-up (DP->CP) synced agent so the
-	// control-plane deploy is an in-place update
-	deployAgentID := c.resolveLocalArtifactID(agentID)
-
+	// deployAgentID reuses the existing local UUID for a bottom-up (DP->CP)
+	// synced agent, so the control-plane deploy is an in-place update.
 	agentPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if agentPerformedAt.IsZero() {
 		agentPerformedAt = time.Now().Truncate(time.Millisecond)
@@ -3089,7 +3194,7 @@ func (c *Client) handleAgentDeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, agentAckFailureCode(err))
 		return
 	}
 
@@ -3149,12 +3254,27 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 			slog.String("correlation_id", undeployedEvent.CorrelationID),
 		)
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
+	localAgentID, err := c.resolveLocalAgentID(agentID)
+	if err != nil {
+		c.logger.Error("Failed to resolve local agent for undeployment",
+			slog.String("agent_id", agentID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
+		return
+	}
+
+	// Undeploy keeps the configuration and the Agent's API keys for a later
+	// redeploy. Taking its routes out of the Envoy snapshot and its chains out of
+	// the policy snapshot happens on every replica, this one included, when the
+	// UPDATE event it publishes is consumed (eventlistener.handleAgentUndeployed).
 	_, err = c.agentService.Undeploy(agent.UndeployParams{
-		ID:            c.resolveLocalArtifactID(agentID),
+		ID:            localAgentID,
 		DeploymentID:  undeployedEvent.Payload.DeploymentID,
 		PerformedAt:   &undeployedEvent.Payload.PerformedAt,
 		CorrelationID: undeployedEvent.CorrelationID,
@@ -3175,7 +3295,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 				slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
 			)
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+				undeployedEvent.Payload.PerformedAt, ackCodeDeploymentIDMismatch)
 			return
 		}
 		if errors.Is(err, agent.ErrUndeployStale) {
@@ -3191,7 +3311,7 @@ func (c *Client) handleAgentUndeployedEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, agentID, ackResourceTypeAgent, "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			undeployedEvent.Payload.PerformedAt, ackCodeGatewayProcessingError)
 		return
 	}
 
@@ -3252,6 +3372,18 @@ func (c *Client) handleAgentDeletedEvent(event map[string]any) {
 		return
 	}
 
+	// Delete is addressed by handle within the Agent kind, so a row of another
+	// kind sharing this UUID must stop here: its handle could name an unrelated
+	// Agent, which would then be deleted in its place.
+	if agentConfig.Kind != models.KindAgent {
+		c.logger.Warn("Ignoring agent deletion event for an artifact of another kind",
+			slog.String("agent_id", agentID),
+			slog.String("kind", agentConfig.Kind),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
 	if c.agentService == nil {
 		c.logger.Error("Agent service not available",
 			slog.String("agent_id", agentID),
@@ -3260,6 +3392,8 @@ func (c *Client) handleAgentDeletedEvent(event map[string]any) {
 		return
 	}
 
+	// Delete removes the row and the Agent's API keys, then publishes the DELETE
+	// event that drops its routes and chains on every replica.
 	_, err = c.agentService.Delete(agent.DeleteParams{
 		Handle:        agentConfig.Handle,
 		CorrelationID: deletedEvent.CorrelationID,

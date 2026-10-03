@@ -129,6 +129,12 @@ Before adding a helper, step, or dependency:
   template and renderer tests pass.
 - `resources/apis/` is not a second template catalogue. Do not add runtime
   fixtures there when the canonical template can express the resource.
+- A control-plane resource authored through the Platform API, such as
+  `agent-proxy.yaml`, has a canonical template too. Its envelope is the
+  publisher-API payload rather than the gateway `apiVersion`/`kind`/`spec`
+  envelope; the step renders it and sends it as JSON. The same rules apply:
+  one template per resource kind, variation through the values table, and
+  omission preserved for every field the table does not supply.
 
 ## Version-Aware Product Contracts
 
@@ -467,6 +473,13 @@ duplicating it.
   shared block overlay. Malformed selectors, a missing Godog expression after
   `;`, or more than one `;` are configuration errors and must not be worked
   around with looser tags.
+- `-gateway-version` selects the Gateway release and its version-specific
+  configuration and management contracts. When the same release images are
+  published under another repository prefix, `-host` may be supplied with
+  `-gateway-version` to replace `ghcr.io/wso2/api-platform` for the Gateway
+  controller and runtime images only. The value is an image repository prefix,
+  such as `registry.example/test-gateway`, not a URL and not the Testcontainers host
+  override. Do not use `-host` without `-gateway-version`.
 - Use `defaults.components.platform-gateway.dbCompatibility` for Gateway database
   support boundaries shared by matrix blocks, for example
   `sqlserver: "gateway-version>=1.2.0"`. Its values use the same strict selector

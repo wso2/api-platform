@@ -39,6 +39,7 @@ import { DEFAULT_ORG_REGION } from '../config.env';
 export interface AppShellContextType {
   userName: string | null;
   userEmail: string | null;
+  userPicture: string | null;
   currentOrganization: Organization | null;
   organizations: Organization[];
   isOrganizationsLoading: boolean;
@@ -58,6 +59,7 @@ export interface AppShellContextType {
 const defaultContextValue: AppShellContextType = {
   userName: null,
   userEmail: null,
+  userPicture: null,
   currentOrganization: null,
   organizations: [],
   isOrganizationsLoading: false,
@@ -80,6 +82,7 @@ interface AppShellProviderProps {
   children: ReactNode;
   userName?: string;
   userEmail?: string;
+  userPicture?: string;
 }
 
 /**
@@ -107,6 +110,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   children,
   userName: initialUserName,
   userEmail: initialUserEmail,
+  userPicture: initialUserPicture,
 }) => {
   const { setIsTokenExchanged, getOrganizations, exchangeOrgToken } = usePlatformUser();
   const { user } = useAppAuth();
@@ -118,6 +122,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   const userName: string | null = initialUserName || null;
   const userEmail: string | null = initialUserEmail || null;
+  const userPicture: string | null = initialUserPicture || null;
 
   const [currentOrganization, setCurrentOrganizationState] = useState<Organization | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -306,6 +311,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const contextValue: AppShellContextType = {
     userName,
     userEmail,
+    userPicture,
     currentOrganization,
     organizations,
     isOrganizationsLoading,

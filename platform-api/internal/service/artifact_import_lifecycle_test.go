@@ -702,6 +702,33 @@ func TestImport_MCPProxy_Lifecycle_LastInWins(t *testing.T) {
 	}
 }
 
+// TestImport_MCPProxy_MapsSpecVersions verifies a gateway pushing the specVersions list is
+// stored canonically, alongside the deprecated-scalar case covered below. The importer writes
+// through the repository directly, so this exercises the fold in the mapper rather than in the
+// service layer.
+func TestImport_MCPProxy_MapsSpecVersions(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := dpMCPReq("dp-mcp-2", "multi-version-mcp", "Multi Version MCP v1")
+	req.Configuration.Spec["specVersions"] = []interface{}{"2025-06-18", "2026-07-28"}
+	req.Configuration.Spec["upstream"] = map[string]interface{}{
+		"url": "https://mcp.example.com/mcp",
+	}
+	mustImport(t, d, req)
+
+	proxy, err := repository.NewMCPProxyRepo(d.db).GetByHandle("multi-version-mcp", importTestOrgID)
+	if err != nil || proxy == nil {
+		t.Fatalf("load MCP proxy: (%v, %v)", proxy, err)
+	}
+	want := []string{"2025-06-18", "2026-07-28"}
+	if got := proxy.Configuration.SpecVersions; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("SpecVersions = %v, want %v", got, want)
+	}
+	if proxy.Configuration.SpecVersion != "" {
+		t.Errorf("SpecVersion = %q, want empty: the deprecated field is never stored", proxy.Configuration.SpecVersion)
+	}
+}
+
 // TestImport_MCPProxy_MapsFlatUpstream verifies the gateway's flat MCP upstream
 // ({url, auth}) plus specVersion are reverse-mapped into the stored configuration
 // (the single endpoint becomes the main endpoint), rather than being dropped.
@@ -724,8 +751,8 @@ func TestImport_MCPProxy_MapsFlatUpstream(t *testing.T) {
 	if err != nil || proxy == nil {
 		t.Fatalf("load MCP proxy: (%v, %v)", proxy, err)
 	}
-	if proxy.Configuration.SpecVersion != "2025-06-18" {
-		t.Errorf("SpecVersion = %q, want '2025-06-18'", proxy.Configuration.SpecVersion)
+	if got := proxy.Configuration.SpecVersions; len(got) != 1 || got[0] != "2025-06-18" {
+		t.Errorf("SpecVersions = %v, want ['2025-06-18'] (the deprecated scalar folded on import)", got)
 	}
 	main := proxy.Configuration.Upstream.Main
 	if main == nil {

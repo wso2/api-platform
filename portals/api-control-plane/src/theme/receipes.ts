@@ -188,9 +188,11 @@ const SEGMENT_SHADOW = '0 1px 2px rgba(0, 0, 0, 0.12)';
  * Styles a pill-shaped segmented switch for mutually exclusive views.
  * Uses `theme.vars` tokens so track, active-segment, and text colours follow
  * the active colour scheme. Grouped-button borders are removed to preserve
- * the pill shape.
+ * the pill shape. `accent` is the palette colour of the active segment's label,
+ * for a control whose current choice is meant to say something (success for
+ * "live"); it is the primary colour otherwise.
  */
-export const segmentedSwitchSx = (theme: Theme) => {
+export const segmentedSwitchSx = (theme: Theme, accent: 'primary' | 'success' = 'primary') => {
   const palette = theme.vars?.palette ?? theme.palette;
 
   return {
@@ -215,7 +217,7 @@ export const segmentedSwitchSx = (theme: Theme) => {
         backgroundColor: palette.background.paper,
         borderRadius: PILL_RADIUS,
         boxShadow: SEGMENT_SHADOW,
-        color: palette.primary.main,
+        color: palette[accent].main,
         fontWeight: theme.typography.fontWeightBold,
         ...theme.applyStyles('dark', { boxShadow: 'none' }),
         // Without this the active pill loses its fill on hover and the control

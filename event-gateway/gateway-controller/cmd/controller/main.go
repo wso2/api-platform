@@ -576,15 +576,13 @@ func main() {
 	restAPIService.SetWebSubTopicDeregistrar(hubtopic.New(apiSvc, httpClient, eventGatewayCfg).Deregister)
 
 	// Agents are core-kind artifacts, so this binary serves them exactly as the
-	// gateway-controller does, including the DP->CP push wiring that stays off
-	// until the control plane models the Agent kind.
+	// gateway-controller does, including the DP->CP push wiring.
 	agentSvc := agentservice.NewAgentService(
 		configStore, db, coreconfig.NewParser(),
 		coreconfig.NewAgentValidator().WithPolicyValidator(coreconfig.NewPolicyValidator(policyDefinitions, nil)),
 		log, eventHubInstance, secretsService, gatewayID,
 	)
-	agentSvc.SetControlPlanePusher(cpClient,
-		agentservice.ControlPlanePushSupported && cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 

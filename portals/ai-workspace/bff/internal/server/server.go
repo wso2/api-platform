@@ -53,7 +53,7 @@ type Server struct {
 	fileBased    *auth.FileBased
 	oidc         *auth.OIDC
 	proxy        *httputil.ReverseProxy
-	cloudProxy   *httputil.ReverseProxy
+	moesifProxy  *httputil.ReverseProxy
 	billingProxy *httputil.ReverseProxy
 	handler      http.Handler
 
@@ -65,6 +65,9 @@ type Server struct {
 
 	exchangeMu    sync.Mutex
 	exchangeLocks map[string]*exchangeLock
+
+	discoverMu    sync.Mutex
+	discoverLocks map[string]*discoverLock
 
 	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
 	// against the rekey/delete in doRefresh for the same token. Without this, the
@@ -83,6 +86,22 @@ type exchangeLock struct {
 	result *auth.Result
 	err    error
 }
+
+// discoverLock single-flights one session's org lookup, for the same reason
+// exchangeLock exists: the SPA's page-load burst arrives before any of it has been
+// recorded on the session, so without this every request in the burst would run its
+// own lookup against the Platform API.
+type discoverLock struct {
+	sync.Mutex
+	done   bool
+	handle string
+	err    error
+}
+
+// processStart is when this process came up, reported alongside a failed OIDC
+// callback: login transactions live in memory, so "did we restart mid-login" is the
+// first question such a failure raises and the one the error itself cannot answer.
+var processStart = time.Now()
 
 // New builds a Server from config. It creates the upstream HTTP client, the
 // session store, the file-based authenticator, and (when enabled) the OIDC
@@ -127,23 +146,31 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			proxy.WithPathMapper(cfg.ControlPlane.UpstreamPath)),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
+		discoverLocks: make(map[string]*discoverLock),
 		sessionLocks:  make(map[string]*sessionLock),
 	}
 
-	if cfg.ControlPlane.CloudURL != "" {
-		cloudTarget, err := url.Parse(cfg.ControlPlane.CloudURL)
+	if cfg.ControlPlane.MoesifURL != "" {
+		moesifTarget, err := url.Parse(cfg.ControlPlane.MoesifURL)
 		if err != nil {
 			return nil, err
 		}
-		cloudTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
-			CAFile:     cfg.ControlPlane.CloudCAFile,
-			SkipVerify: cfg.ControlPlane.CloudTLSSkipVerify,
+		moesifTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.MoesifCAFile,
+			SkipVerify: cfg.ControlPlane.MoesifTLSSkipVerify,
 		})
 		if err != nil {
 			return nil, err
 		}
-		// Strip <base>/proxy/cloud so /analytics/id-token joins onto CloudURL's /cloud.
-		s.cloudProxy = proxy.ReverseProxy(cloudTarget, paths.Base+paths.Proxy+"/cloud", cloudTransport)
+		// Strip <base>/proxy/moesif so /analytics/id-token joins onto MoesifURL.
+		// A deployment whose Moesif upstream publishes those routes under other
+		// names (Choreo's moesif-key API serves the viewer token at /id_token)
+		// supplies moesif_path_mappings; without it this hop forwards unchanged.
+		moesifOpts := []proxy.Option{}
+		if mapPath := cfg.ControlPlane.MoesifPathMapper(); mapPath != nil {
+			moesifOpts = append(moesifOpts, proxy.WithPathMapper(mapPath))
+		}
+		s.moesifProxy = proxy.ReverseProxy(moesifTarget, paths.Base+paths.Proxy+"/moesif", moesifTransport, moesifOpts...)
 	}
 
 	if cfg.ControlPlane.BillingURL != "" {
@@ -152,7 +179,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		// Its own transport, so a per-upstream TLS trust setting never leaks onto
-		// the control plane or the cloud hop.
+		// the control plane or the Moesif hop.
 		billingTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
 			CAFile:     cfg.ControlPlane.BillingCAFile,
 			SkipVerify: cfg.ControlPlane.BillingTLSSkipVerify,
@@ -273,6 +300,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	}
 	if c.Email != "" {
 		m.Email = c.Email
+	}
+	if c.Picture != "" {
+		m.Picture = c.Picture
 	}
 	if c.Roles != "" {
 		m.Roles = c.Roles

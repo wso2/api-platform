@@ -23,10 +23,6 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import {
   REST_API_TYPE,
-  useApiPublication,
-  useApiPublicationDefinition,
-  useApiPublicationDraft,
-  useApiPublicationDraftDefinition,
   useDeprecateRestApiOnApiPortal,
   usePublishRestApiToApiPortal,
   useSaveApiPublicationDraft,
@@ -34,19 +30,25 @@ import {
   useUnpublishRestApiFromApiPortal,
   type DraftDefinitionDocument,
 } from '@/api/resources/apiPublications';
-import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { isApiError, isErrorCode } from '@/api/core/errors';
+import { AppPage } from '@/components/AppPage';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
+import { useFrozenWhile } from '@/hooks/useFrozenWhile';
+import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
 import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { parseSpecText, serializeSpec, type SpecFormat } from '../apis/create/utils/specText';
+import { parseSpecText, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
+import { PublicationVersionCard } from './components/PublicationVersionCard';
+import { PublicationVersionToggle } from './components/PublicationVersionToggle';
 import { PublishActionsBar } from './components/PublishActionsBar';
+import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
 import { SpecificationTab } from './components/SpecificationTab';
+import { usePublishPageData } from './usePublishPageData';
 import {
   draftFormValuesToInput,
   emptyDraftFormValues,
@@ -58,6 +60,9 @@ import {
 
 /** Below this the window is too short to fit the page without scrolling, so it scrolls instead. */
 const MIN_PAGE_HEIGHT = 420;
+
+/** The action bar's row, held open while it is hidden. */
+const ACTION_BAR_HEIGHT = 40;
 
 const messages = defineMessages({
   back: {
@@ -105,6 +110,31 @@ const messages = defineMessages({
   tabLandingPage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
     defaultMessage: 'Landing Page',
+  },
+  draftBannerTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerTitle',
+    defaultMessage: 'Draft version',
+    description: 'Banner over the fields being edited: this is the working copy, not what is live.',
+  },
+  draftBannerMeta: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta',
+    defaultMessage: 'v{version} · edited {time}',
+    description: 'Banner byline. {version} is user-supplied; {time} is a relative time such as "5 minutes ago".',
+  },
+  publishedBannerTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerTitle',
+    defaultMessage: 'Published version',
+    description: 'Banner over the read-only fields showing what is live on the portal.',
+  },
+  deprecatedBannerTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerTitle',
+    defaultMessage: 'Deprecated version',
+    description: 'Banner over the read-only fields when the live listing is flagged as deprecated.',
+  },
+  publishedBannerMeta: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta',
+    defaultMessage: 'v{version} · updated {time}',
+    description: 'Banner byline. {version} is user-supplied; {time} is a relative time such as "2 days ago".',
   },
   draftMissing: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
@@ -174,34 +204,6 @@ type PublishTab = 'details' | 'specification';
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
-/** A stored definition as the editor shows it. */
-type StoredDefinition = { format: SpecFormat; text: string };
-
-/**
- * A stored definition's serialization: the content type the server labelled it
- * with, or, where there isn't one (the API's own spec), what the text looks like.
- */
-const formatOf = (text: string, contentType = ''): SpecFormat => {
-  if (/ya?ml/i.test(contentType)) return 'yaml';
-  if (/json/i.test(contentType)) return 'json';
-  return text.trimStart().startsWith('{') ? 'json' : 'yaml';
-};
-
-/**
- * Reads a definition delivered as text: the draft and publication definitions
- * come back in whichever serialization they were saved in, and
- * `GET /rest-apis/{id}/openapi` (`useRestApiOpenApi`) returns the raw spec. It
- * is shown in that same format — YAML as stored, JSON pretty-printed — so what
- * the user opens is what was saved. Text that doesn't read as an object is
- * treated as "nothing to pre-fill from".
- */
-const readStoredDefinition = (text: string, contentType?: string): StoredDefinition | undefined => {
-  const format = formatOf(text, contentType);
-  const parsed = parseSpecText(text, format);
-  if (parsed.status !== 'parsed') return undefined;
-  return { format, text: format === 'json' ? serializeSpec(parsed.spec, 'json') : text };
-};
-
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal.
  *
@@ -217,10 +219,19 @@ const readStoredDefinition = (text: string, contentType?: string): StoredDefinit
  * which is already fully API-scoped.
  */
 export function PortalPublishPage() {
+  return (
+    <AppPage hideBreadcrumbs>
+      <PortalPublishPageContent />
+    </AppPage>
+  );
+}
+
+function PortalPublishPageContent() {
   const { apiPortalId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const intl = useIntl();
+  const { relativeTime } = useFormatters();
   // The page fills the visible area and only its middle scrolls, so switching tabs
   // or opening the editor never moves the header or the action buttons.
   const fill = useFillScrollArea<HTMLDivElement>(MIN_PAGE_HEIGHT);
@@ -234,32 +245,9 @@ export function PortalPublishPage() {
   // direct link or refresh, where there is no navigation state.
   const portalName = (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
 
-  const apiQuery = useRestApi(apiHandler);
-  // The draft and the publication load in parallel: a portal can be live and
-  // have a draft edit in progress, and the publication decides whether
-  // Unpublish is enabled either way.
-  const draftQuery = useApiPublicationDraft(apiPortalId, REST_API_TYPE, apiHandler);
-  const publicationQuery = useApiPublication(apiPortalId, REST_API_TYPE, apiHandler);
-
-  // The Specification tab's three definition tiers only pre-fill that tab, so
-  // each is fetched once the tier before it is confirmed absent. Passing
-  // `undefined` for the API handle keeps a tier's query disabled.
-  const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
-  const draftDefinitionAbsent = isApiError(draftDefinitionQuery.error) && draftDefinitionQuery.error.isNotFound;
-
-  const publicationDefinitionQuery = useApiPublicationDefinition(
-    apiPortalId,
-    REST_API_TYPE,
-    draftDefinitionAbsent ? apiHandler : undefined,
-  );
-  const publicationDefinitionAbsent =
-    draftDefinitionAbsent &&
-    isApiError(publicationDefinitionQuery.error) &&
-    publicationDefinitionQuery.error.isNotFound;
-
-  // Last fallback tier: the API's own stored definition, which 404s when none
-  // has ever been uploaded.
-  const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
+  const [tab, setTab] = useState<PublishTab>('details');
+  const [viewingPublished, setViewingPublished] = useState(false);
+  const data = usePublishPageData(apiPortalId, apiHandler, viewingPublished && tab === 'specification');
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
@@ -267,87 +255,47 @@ export function PortalPublishPage() {
   const unpublishMutation = useUnpublishRestApiFromApiPortal();
   const deprecateMutation = useDeprecateRestApiOnApiPortal();
 
-  const [tab, setTab] = useState<PublishTab>('details');
   const [values, setValues] = useState<DraftFormValues>(emptyDraftFormValues);
   const [touched, setTouched] = useState<Partial<Record<DraftFormField, boolean>>>({});
   const [definitionText, setDefinitionText] = useState('');
   const [definitionFormat, setDefinitionFormat] = useState<SpecFormat>('json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
+  // An action saves in steps, each refetching these; they are shown once, when it ends.
+  const draft = useFrozenWhile(data.draft, pendingAction !== 'idle');
+  const publication = useFrozenWhile(data.publication, pendingAction !== 'idle');
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   const [confirmingDeprecate, setConfirmingDeprecate] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  // A disabled query stays `isPending` forever, so a definition tier only blocks
-  // the page once its predecessor is confirmed absent and it is actually running.
-  const initialLoadPending =
-    apiQuery.isPending ||
-    draftQuery.isPending ||
-    publicationQuery.isPending ||
-    draftDefinitionQuery.isPending ||
-    (draftDefinitionAbsent && publicationDefinitionQuery.isPending) ||
-    (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
-
-  // Seeds the form once, when every tier has settled (success or the expected
+  // Seeds the editor once, when every tier has settled (success or the expected
   // 404), so a later refetch can't overwrite edits in progress.
   useEffect(() => {
-    if (initialized || initialLoadPending) return;
-
-    setValues(resolveDraftFormValues(draftQuery.data, publicationQuery.data, apiQuery.data));
-
-    const stored =
-      (draftDefinitionQuery.data &&
-        readStoredDefinition(draftDefinitionQuery.data.text, draftDefinitionQuery.data.contentType)) ??
-      (publicationDefinitionQuery.data &&
-        readStoredDefinition(publicationDefinitionQuery.data.text, publicationDefinitionQuery.data.contentType)) ??
-      (apiOpenApiQuery.data ? readStoredDefinition(apiOpenApiQuery.data.content) : undefined);
-    setDefinitionText(stored?.text ?? '');
-    setDefinitionFormat(stored?.format ?? 'json');
-
+    if (initialized || !data.seed) return;
+    setValues(data.seed.values);
+    setDefinitionText(data.seed.definition?.text ?? '');
+    setDefinitionFormat(data.seed.definition?.format ?? 'json');
     setInitialized(true);
-  }, [
-    initialized,
-    initialLoadPending,
-    apiQuery.data,
-    draftQuery.data,
-    publicationQuery.data,
-    draftDefinitionQuery.data,
-    publicationDefinitionQuery.data,
-    apiOpenApiQuery.data,
-  ]);
+  }, [initialized, data.seed]);
 
-  // A 404 on these tiers just means nothing is saved yet; only another error,
-  // or the API itself not resolving, is worth an error screen.
-  const unexpectedError =
-    apiQuery.error ??
-    [
-      draftQuery,
-      publicationQuery,
-      draftDefinitionQuery,
-      publicationDefinitionQuery,
-      apiOpenApiQuery,
-    ].find((query) => isApiError(query.error) && !query.error.isNotFound)?.error;
-
-  if (initialLoadPending) {
+  if (data.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
-  if (unexpectedError || !apiQuery.data) {
+  if (data.error || !data.api) {
     return (
       <PublicationLoadError
-        error={unexpectedError}
+        error={data.error}
         fallbackMessage={intl.formatMessage(messages.errorMessage)}
       />
     );
   }
 
-  const api = apiQuery.data;
-  // A refetch that 404s (after an unpublish) keeps the previous `data` beside
-  // the error, so the 404 itself marks the listing as gone. Any other failure
-  // says nothing about the listing, so the last known state is kept.
-  const publicationGone = isApiError(publicationQuery.error) && publicationQuery.error.isNotFound;
-  const livePublication = publicationGone ? undefined : publicationQuery.data;
-  const isPublished = Boolean(livePublication);
-  const canDeprecate = livePublication?.status === 'PUBLISHED';
+  const { api } = data;
+  const isPublished = Boolean(publication);
+  const canDeprecate = publication?.status === 'PUBLISHED';
+  // The switch is off while there is nothing live, so an unpublish that lands
+  // while the published version is on screen falls back to the draft.
+  const showingPublished = viewingPublished && isPublished;
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -497,15 +445,73 @@ export function PortalPublishPage() {
     });
   };
 
+  const publishedValues = resolveDraftFormValues(undefined, publication, undefined);
+  // A draft that was never saved has nothing to describe, so it gets no banner.
+  const banner = showingPublished
+    ? {
+        meta: intl.formatMessage(messages.publishedBannerMeta, {
+          time: relativeTime(publication?.updatedAt),
+          version: publication?.version,
+        }),
+        title: intl.formatMessage(
+          canDeprecate ? messages.publishedBannerTitle : messages.deprecatedBannerTitle,
+        ),
+      }
+    : draft && {
+        meta: intl.formatMessage(messages.draftBannerMeta, {
+          time: relativeTime(draft.updatedAt),
+          version: draft.version,
+        }),
+        title: intl.formatMessage(messages.draftBannerTitle),
+      };
+
+  const renderContent = () => {
+    if (showingPublished) {
+      return tab === 'details' ? (
+        <ApiDetailsTab readOnly values={publishedValues} />
+      ) : (
+        <PublishedSpecificationTab
+          definition={data.publishedDefinition.definition}
+          failed={data.publishedDefinition.failed}
+          isLoading={data.publishedDefinition.isLoading}
+        />
+      );
+    }
+    return tab === 'details' ? (
+      <ApiDetailsTab
+        disabled={pendingAction !== 'idle'}
+        errors={{
+          displayName: errorFor('displayName'),
+          version: errorFor('version'),
+          productionUrl: errorFor('productionUrl'),
+          sandboxUrl: errorFor('sandboxUrl'),
+        }}
+        onBlurField={markTouched}
+        onChange={setValues}
+        values={values}
+      />
+    ) : (
+      <SpecificationTab
+        disabled={pendingAction !== 'idle'}
+        format={definitionFormat}
+        onFormatChange={setDefinitionFormat}
+        onChange={(text) => {
+          setDefinitionText(text);
+          if (definitionParseError) setDefinitionParseError(undefined);
+        }}
+        parseError={definitionParseError}
+        text={definitionText}
+      />
+    );
+  };
+
   return (
     <>
       <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
         <PageTitle>
-          <Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)}>
-            <PageTitle.BackButton>
-              <FormattedMessage {...messages.back} />
-            </PageTitle.BackButton>
-          </Link>
+          <PageTitle.BackButton component={<Link to={routes.apiPortals(orgHandle, projectHandler, apiHandler)} />}>
+            <FormattedMessage {...messages.back} />
+          </PageTitle.BackButton>
           <PageTitle.Header>
             <FormattedMessage {...messages.title} values={{ portalName }} />
           </PageTitle.Header>
@@ -518,59 +524,56 @@ export function PortalPublishPage() {
         </PageTitle>
 
         <Stack spacing={3} sx={{ flex: 1, minHeight: 0 }}>
-          <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', minHeight: 0 }}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
-              <Tabs onChange={(_event, next: PublishTab) => setTab(next)} value={tab}>
-                <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
-                <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-                <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
-                <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
-                <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
-              </Tabs>
-            </Box>
+          <Stack
+            alignItems="flex-end"
+            direction="row"
+            justifyContent="space-between"
+            sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}
+          >
+            {/* Takes the row's spare width and scrolls within it, so the version toggle is never pushed off. */}
+            <Tabs
+              allowScrollButtonsMobile
+              onChange={(_event, next: PublishTab) => setTab(next)}
+              scrollButtons="auto"
+              sx={{ flex: 1, minWidth: 0 }}
+              value={tab}
+              variant="scrollable"
+            >
+              <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
+              <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
+              <Tab disabled label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+              <Tab disabled label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
+              <Tab disabled label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
+            </Tabs>
+            <PublicationVersionToggle
+              disabled={pendingAction !== 'idle'}
+              onChange={(version) => setViewingPublished(version === 'published')}
+              publishedAvailable={isPublished}
+              value={showingPublished ? 'published' : 'draft'}
+            />
+          </Stack>
 
-            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', pt: 3 }}>
-              {tab === 'details' ? (
-                <ApiDetailsTab
-                  disabled={pendingAction !== 'idle'}
-                  errors={{
-                    displayName: errorFor('displayName'),
-                    version: errorFor('version'),
-                    productionUrl: errorFor('productionUrl'),
-                    sandboxUrl: errorFor('sandboxUrl'),
-                  }}
-                  onBlurField={markTouched}
-                  onChange={setValues}
-                  values={values}
-                />
-              ) : (
-                <SpecificationTab
-                  disabled={pendingAction !== 'idle'}
-                  format={definitionFormat}
-                  onFormatChange={setDefinitionFormat}
-                  onChange={(text) => {
-                    setDefinitionText(text);
-                    if (definitionParseError) setDefinitionParseError(undefined);
-                  }}
-                  parseError={definitionParseError}
-                  text={definitionText}
-                />
-              )}
-            </Box>
+          <PublicationVersionCard banner={banner} tone={showingPublished ? 'published' : 'draft'}>
+            {renderContent()}
+          </PublicationVersionCard>
+
+          {/* Reserves the bar's row while the published version is on screen, so the card doesn't resize. */}
+          <Box sx={{ minHeight: ACTION_BAR_HEIGHT }}>
+            {!showingPublished && (
+              <PublishActionsBar
+                canDeprecate={canDeprecate}
+                deprecating={pendingAction === 'deprecating'}
+                isPublished={isPublished}
+                onDeprecate={() => setConfirmingDeprecate(true)}
+                onPublish={handlePublish}
+                onSaveDraft={handleSaveDraft}
+                onUnpublish={() => setConfirmingUnpublish(true)}
+                publishing={pendingAction === 'publishing'}
+                savingDraft={pendingAction === 'saving'}
+                unpublishing={pendingAction === 'unpublishing'}
+              />
+            )}
           </Box>
-
-          <PublishActionsBar
-            canDeprecate={canDeprecate}
-            deprecating={pendingAction === 'deprecating'}
-            isPublished={isPublished}
-            onDeprecate={() => setConfirmingDeprecate(true)}
-            onPublish={handlePublish}
-            onSaveDraft={handleSaveDraft}
-            onUnpublish={() => setConfirmingUnpublish(true)}
-            publishing={pendingAction === 'publishing'}
-            savingDraft={pendingAction === 'saving'}
-            unpublishing={pendingAction === 'unpublishing'}
-          />
         </Stack>
       </Box>
 

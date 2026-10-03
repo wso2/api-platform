@@ -18,21 +18,28 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function LifeCyclePage() {
   return (
-    <ScopeGate prompt="The lifecycle applies to a single API." requires="api" to={routes.apiManageLifecycle}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.lifeCyclePage.feature"
-            defaultMessage="Lifecycle management for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="The lifecycle applies to a single API."
+        requires="api"
+        to={routes.apiManageLifecycle}
+      >
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.lifeCyclePage.feature"
+              defaultMessage="Lifecycle management for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }
