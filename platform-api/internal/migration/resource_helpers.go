@@ -87,14 +87,14 @@ func runResource[T any](ctx context.Context, rc *RunContext, items []T,
 // handleExistsChecker returns an existsCheck for GenerateHandle that probes the
 // target table's handle column (org-scoped). Returns nil when there is no target
 // (dry-run) — GenerateHandle then returns the bare slug.
-func (rc *RunContext) handleExistsChecker(table, orgCol, orgVal string) func(string) bool {
+func (rc *RunContext) handleExistsChecker(ctx context.Context, table, orgCol, orgVal string) func(string) bool {
 	if rc.Tgt == nil || !rc.writes() {
 		return nil
 	}
 	q := fmt.Sprintf("SELECT 1 FROM %s WHERE handle = $1 AND %s = $2 LIMIT 1", table, orgCol)
 	return func(h string) bool {
 		var one int
-		err := rc.Tgt.QueryRowContext(context.Background(), q, h, orgVal).Scan(&one)
+		err := rc.Tgt.QueryRowContext(ctx, q, h, orgVal).Scan(&one)
 		return err == nil // a row found (err==nil) means the handle is taken
 	}
 }

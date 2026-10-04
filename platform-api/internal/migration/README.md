@@ -190,7 +190,6 @@ Unit tests cover the deterministic kernels — timestamp zone conversion, the
 the LLM policy split, transport parsing, credential-less skip, and end-to-end
 config secret externalization (all DB-free). Full row-level correctness requires a
 live v1/v2 pair — run `--dry-run` then `--verify-only` against real databases.
-```
 
 ## Handles & display names — organizations and projects (§B.14)
 

@@ -297,3 +297,42 @@ func TestTransformArtifactConfig_SkipsCredentialLess(t *testing.T) {
 		t.Fatalf("credential-less value should be left untouched")
 	}
 }
+
+func TestMintScopedHandle_UniqueWithinScopeForThisRun(t *testing.T) {
+	k := testKernels(t)
+	// Dry-run: no target probe. Two plans with one name in one org must still
+	// get distinct handles; the same name in another org keeps the base slug.
+	h1, err := k.mintScopedHandle("subscription_plans", "org-A", "p1", "Gold", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := k.mintScopedHandle("subscription_plans", "org-A", "p2", "Gold", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h3, err := k.mintScopedHandle("subscription_plans", "org-B", "p3", "Gold", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h1 != "gold" || h3 != "gold" || h2 == h1 || !strings.HasPrefix(h2, "gold-") {
+		t.Fatalf("unexpected handles: h1=%q h2=%q h3=%q", h1, h2, h3)
+	}
+	// The same row asking again keeps its handle.
+	if again, err := k.mintScopedHandle("subscription_plans", "org-A", "p1", "Gold", nil); err != nil || again != h1 {
+		t.Fatalf("re-mint for same row = %q, %v; want %q", again, err, h1)
+	}
+}
+
+func TestMintScopedHandle_StaleCheckpointCollisionFails(t *testing.T) {
+	k := testKernels(t)
+	if _, err := k.mintScopedHandle("gateways", "org-A", "g1", "edge", nil); err != nil {
+		t.Fatal(err)
+	}
+	// A checkpoint from another run says g2's handle is "edge" too.
+	if err := k.cp.PutHandle("gateways", "g2", "edge"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.mintScopedHandle("gateways", "org-A", "g2", "edge", nil); err == nil || !strings.Contains(err.Error(), "checkpoint") {
+		t.Fatalf("expected a stale-checkpoint collision error, got %v", err)
+	}
+}

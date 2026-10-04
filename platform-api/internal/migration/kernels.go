@@ -52,6 +52,9 @@ type Kernels struct {
 	actorMu    sync.Mutex
 	actorCache map[string]string // v1 actor string -> resolved v2 user uuid
 	actorSeed  bool              // migration-actor idp ref seeded this run
+
+	claimMu sync.Mutex
+	claims  map[string]map[string]string // resource+scope -> handle -> owning sourceID, this run
 }
 
 // NewKernels builds the kernel set. vault may be nil when no encryption key is
@@ -62,6 +65,7 @@ func NewKernels(cfg *Config, log *slog.Logger, cp *Checkpoint) (*Kernels, error)
 		log:        log,
 		cp:         cp,
 		actorCache: map[string]string{},
+		claims:     map[string]map[string]string{},
 	}
 	if len(cfg.EncryptionKey) == 32 {
 		v, err := vault.NewInHouseVault(cfg.EncryptionKey)
@@ -181,6 +185,41 @@ func (k *Kernels) mintHandle(resource, sourceID, source string, existsCheck func
 	if err := k.cp.PutHandle(resource, sourceID, h); err != nil {
 		return "", err
 	}
+	return h, nil
+}
+
+// mintScopedHandle mints (or reuses the checkpointed) handle for a row whose
+// handle must be unique within scope (an org, or an artifact for api_keys). The
+// target probe cannot see rows still uncommitted in the open batch, and is nil
+// in a dry-run, so handles claimed earlier in this run are tracked in memory and
+// treated as taken. A checkpointed handle already claimed by another row is a
+// hard error, never re-minted: rows may already be inserted under it (§B.2).
+func (k *Kernels) mintScopedHandle(resource, scope, sourceID, source string, dbExists func(string) bool) (string, error) {
+	k.claimMu.Lock()
+	defer k.claimMu.Unlock()
+	key := resource + "\x00" + scope
+	owners := k.claims[key]
+	if owners == nil {
+		owners = map[string]string{}
+		k.claims[key] = owners
+	}
+	taken := func(h string) bool {
+		if owner, ok := owners[h]; ok && owner != sourceID {
+			return true
+		}
+		return dbExists != nil && dbExists(h)
+	}
+	h, err := k.mintHandle(resource, sourceID, source, taken)
+	if err != nil {
+		return "", err
+	}
+	if owner, ok := owners[h]; ok && owner != sourceID {
+		return "", fmt.Errorf("handle %q for %s %s is already assigned to %s in scope %s — "+
+			"it came from the checkpoint (fresh mints never collide), so the checkpoint belongs to another run: "+
+			"use a NEW --checkpoint-file for a new migration (§B.2)",
+			h, resource, sourceID, owner, scope)
+	}
+	owners[h] = sourceID
 	return h, nil
 }
 

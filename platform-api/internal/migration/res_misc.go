@@ -20,6 +20,7 @@ package migration
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -73,6 +74,10 @@ func (m *apiKeysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resourc
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -87,8 +92,8 @@ func (m *apiKeysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resourc
 				return err
 			}
 		}
-		handle, err := rc.Kernels.mintHandle("api_keys", r.uuid, r.name,
-			rc.handleExistsChecker("api_keys", "artifact_uuid", r.artifactUUID))
+		handle, err := rc.Kernels.mintScopedHandle("api_keys", r.artifactUUID, r.uuid, r.name,
+			rc.handleExistsChecker(ctx, "api_keys", "artifact_uuid", r.artifactUUID))
 		if err != nil {
 			return err
 		}
@@ -118,7 +123,7 @@ func (m *apiKeysMigrator) Verify(ctx context.Context, rc *RunContext) (*Resource
 
 // ---------------------------------------------------------------------------
 // deployments — id->uuid rename; content BYTEA passthrough; metadata TEXT->BYTEA
-// opaque; created_by v2-NEW. Insert in created_at ASC for base_deployment_uuid.
+// opaque; created_by v2-NEW. Inserted parent-first on base_deployment_uuid.
 // ---------------------------------------------------------------------------
 
 type deploymentsMigrator struct{ baseMigrator }
@@ -153,8 +158,15 @@ func (m *deploymentsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Res
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
+	if items, err = orderDeploymentsParentFirst(items); err != nil {
+		return nil, err
+	}
 
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r deploymentRow) error {
 		actor, err := rc.Kernels.resolveActor(ctx, q, "") // created_by v2-NEW
@@ -171,6 +183,50 @@ func (m *deploymentsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Res
 			conflictUUIDNothing)
 	})
 	return rep, err
+}
+
+// orderDeploymentsParentFirst reorders items so every base deployment precedes
+// the deployments built on it, keeping the created_at order otherwise. A base
+// outside the set (an orphan, or a row migrated earlier) imposes no order. A
+// base_deployment_id cycle is an error: no insert order can satisfy it.
+func orderDeploymentsParentFirst(items []deploymentRow) ([]deploymentRow, error) {
+	const (
+		unvisited = iota
+		visiting
+		done
+	)
+	idx := make(map[string]int, len(items))
+	for i, r := range items {
+		idx[r.deploymentID] = i
+	}
+	state := make([]int, len(items))
+	out := make([]deploymentRow, 0, len(items))
+	var visit func(i int) error
+	visit = func(i int) error {
+		switch state[i] {
+		case done:
+			return nil
+		case visiting:
+			return fmt.Errorf("base_deployment_id cycle through deployment %s", items[i].deploymentID)
+		}
+		state[i] = visiting
+		if b := items[i].baseDeploymentID; b.Valid {
+			if j, ok := idx[b.String]; ok {
+				if err := visit(j); err != nil {
+					return err
+				}
+			}
+		}
+		state[i] = done
+		out = append(out, items[i])
+		return nil
+	}
+	for i := range items {
+		if err := visit(i); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (m *deploymentsMigrator) Verify(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
@@ -215,6 +271,10 @@ func (m *deploymentStatusMigrator) Migrate(ctx context.Context, rc *RunContext) 
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -274,6 +334,10 @@ func (m *artifactGatewayMappingsMigrator) Migrate(ctx context.Context, rc *RunCo
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -331,6 +395,10 @@ func (m *appArtifactMappingsMigrator) Migrate(ctx context.Context, rc *RunContex
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -381,6 +449,10 @@ func (m *appAPIKeyMappingsMigrator) Migrate(ctx context.Context, rc *RunContext)
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))

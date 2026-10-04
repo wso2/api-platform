@@ -143,10 +143,18 @@ func (c DBConn) DSN() (string, error) {
 	}
 	// key=value DSN form; pgx stdlib parses it. TimeZone is deliberately NOT set
 	// here — the v1 zone handling is done in Go (tsToTstz), not by the session.
+	// Every string value is quoted so whitespace, quotes and backslashes in a
+	// password (or user/db name) stay part of the value.
 	return fmt.Sprintf(
 		"host=%s port=%d dbname=%s user=%s password=%s sslmode=%s",
-		c.Host, c.Port, c.Name, c.User, pw, ssl,
+		dsnQuote(c.Host), c.Port, dsnQuote(c.Name), dsnQuote(c.User), dsnQuote(pw), dsnQuote(ssl),
 	), nil
+}
+
+// dsnQuote renders v as a single-quoted libpq key/value DSN value, escaping
+// backslashes and single quotes.
+func dsnQuote(v string) string {
+	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "'"
 }
 
 // Redacted returns a log-safe description of the endpoint (no password).

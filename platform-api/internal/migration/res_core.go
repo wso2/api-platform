@@ -85,6 +85,10 @@ func (m *userIdpMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resourc
 				actors = append(actors, a)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		rows.Close()
 	}
 	rep.SrcCount = int64(len(actors))
@@ -165,6 +169,10 @@ func (m *organizationsMigrator) Migrate(ctx context.Context, rc *RunContext) (*R
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -259,6 +267,10 @@ func (m *projectsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -268,7 +280,7 @@ func (m *projectsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 	var dbExists func(orgUUID, h string) bool
 	if rc.Tgt != nil && rc.writes() {
 		dbExists = func(orgUUID, h string) bool {
-			return rc.handleExistsChecker("projects", "organization_uuid", orgUUID)(h)
+			return rc.handleExistsChecker(ctx, "projects", "organization_uuid", orgUUID)(h)
 		}
 	}
 	plan, err := rc.Kernels.planProjectHandles(items, rc.Cfg.ProjectHandles, dbExists)
@@ -359,6 +371,10 @@ func (m *applicationsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -424,12 +440,16 @@ func (m *subscriptionPlansMigrator) Migrate(ctx context.Context, rc *RunContext)
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r planRow) error {
-		handle, err := rc.Kernels.mintHandle("subscription_plans", r.uuid, r.planName,
-			rc.handleExistsChecker("subscription_plans", "organization_uuid", r.orgUUID))
+		handle, err := rc.Kernels.mintScopedHandle("subscription_plans", r.orgUUID, r.uuid, r.planName,
+			rc.handleExistsChecker(ctx, "subscription_plans", "organization_uuid", r.orgUUID))
 		if err != nil {
 			return err
 		}
@@ -502,6 +522,10 @@ func (m *subscriptionsMigrator) Migrate(ctx context.Context, rc *RunContext) (*R
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))

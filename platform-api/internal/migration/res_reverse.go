@@ -92,6 +92,10 @@ func (m *organizationsMigrator) migrateReverse(ctx context.Context, rc *RunConte
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r row) error {
@@ -127,6 +131,10 @@ func (m *projectsMigrator) migrateReverse(ctx context.Context, rc *RunContext, r
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -168,6 +176,10 @@ func (m *applicationsMigrator) migrateReverse(ctx context.Context, rc *RunContex
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -211,6 +223,10 @@ func (m *subscriptionsMigrator) migrateReverse(ctx context.Context, rc *RunConte
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))

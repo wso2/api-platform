@@ -20,8 +20,14 @@ package migration
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// pgUndefinedTable is the Postgres SQLSTATE for a missing relation.
+const pgUndefinedTable = "42P01"
 
 func init() {
 	register(&gatewaysMigrator{baseMigrator{name: "gateways", dependsOn: []string{"user_idp_references", "organizations"}}})
@@ -73,13 +79,17 @@ func (m *gatewaysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r gatewayRow) error {
 		// v1 name (machine name) -> v2 handle (VARCHAR(40)); mint + checkpoint.
-		handle, err := rc.Kernels.mintHandle("gateways", r.uuid, r.name,
-			rc.handleExistsChecker("gateways", "organization_uuid", r.orgUUID))
+		handle, err := rc.Kernels.mintScopedHandle("gateways", r.orgUUID, r.uuid, r.name,
+			rc.handleExistsChecker(ctx, "gateways", "organization_uuid", r.orgUUID))
 		if err != nil {
 			return err
 		}
@@ -160,6 +170,10 @@ func (m *gatewayTokensMigrator) Migrate(ctx context.Context, rc *RunContext) (*R
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -227,6 +241,10 @@ func (m *customPoliciesMigrator) Migrate(ctx context.Context, rc *RunContext) (*
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -239,9 +257,12 @@ func (m *customPoliciesMigrator) Migrate(ctx context.Context, rc *RunContext) (*
 			return nil
 		}
 		desc := nullOrString(r.description)
-		if r.description.Valid && len(r.description.String) > 1023 {
-			desc = r.description.String[:1023] // tier ③ clip-safe (purely descriptive)
+		// VARCHAR(1023) counts characters, so measure and clip by rune to keep
+		// the value valid UTF-8.
+		if runes := []rune(r.description.String); r.description.Valid && len(runes) > 1023 {
+			desc = string(runes[:1023]) // tier ③ clip-safe (purely descriptive)
 			rc.Log.Warn("clipped gateway_custom_policies.description to 1023", "uuid", r.uuid)
+			rep.warn("gateway_custom_policies %s: description clipped to 1023 characters", r.uuid)
 		}
 		return insertRow(ctx, q, "gateway_custom_policies",
 			[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_by", "updated_by", "created_at", "updated_at"},
@@ -265,8 +286,15 @@ type policyUsageRow struct{ policyUUID, apiUUID string }
 func (m *customPoliciesMigrator) migrateUsages(ctx context.Context, rc *RunContext, rep *ResourceReport) error {
 	rows, err := rc.Src.QueryContext(ctx, `SELECT policy_uuid, api_uuid FROM gateway_custom_policy_usages`)
 	if err != nil {
-		rc.Log.Warn("gateway_custom_policy_usages read skipped", "error", err.Error())
-		return nil
+		// The table is absent on older v1 schemas; any other failure must not
+		// silently drop every policy usage.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUndefinedTable {
+			rc.Log.Warn("gateway_custom_policy_usages read skipped: table absent")
+			rep.warn("gateway_custom_policy_usages absent in v1; no policy usages migrated")
+			return nil
+		}
+		return err
 	}
 	var items []policyUsageRow
 	for rows.Next() {
@@ -276,6 +304,10 @@ func (m *customPoliciesMigrator) migrateUsages(ctx context.Context, rc *RunConte
 			return err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	rows.Close()
 	rep.addf("gateway_custom_policy_usages: %d rows", len(items))

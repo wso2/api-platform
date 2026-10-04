@@ -65,6 +65,10 @@ func (m *artifactsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resou
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -141,6 +145,10 @@ func (m *restApisMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -212,6 +220,10 @@ func (m *llmTemplatesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -276,6 +288,10 @@ func (m *llmProvidersMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -343,6 +359,10 @@ func (m *llmProxiesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Reso
 		}
 		items = append(items, r)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
 
@@ -406,6 +426,10 @@ func (m *mcpProxiesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Reso
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
@@ -493,6 +517,10 @@ func migratePluginArtifact(ctx context.Context, rc *RunContext, rep *ResourceRep
 			return nil, err
 		}
 		items = append(items, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	rows.Close()
 	rep.SrcCount = int64(len(items))
