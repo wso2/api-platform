@@ -734,13 +734,14 @@ func (d DownstreamTLS) AsksAllConnections() bool {
 // certificate relayed in an HTTP header. By default the header is believed
 // only when the connection authenticated as a role: relay pool entry.
 type ClientCertificateHeader struct {
-	// Name is the HTTP header carrying the relayed client certificate as PEM
-	// or base64-encoded PEM. It must be a valid HTTP header token.
+	// Name is the HTTP header carrying the relayed client certificate as PEM,
+	// URL-encoded PEM, or base64-encoded DER. It must be a valid HTTP header token.
 	Name string `koanf:"name"`
 
-	// TrustAny believes the header on any connection without consulting the
-	// connection. It is safe only when nothing but a trusted front proxy can
-	// reach this gateway. Off by default.
+	// TrustAny believes the header on any connection whose own certificate
+	// wasn't rejected, not only on a role: relay connection. It is safe only
+	// when nothing but a trusted front proxy can reach this gateway. Off by
+	// default.
 	TrustAny bool `koanf:"trust_any"`
 }
 

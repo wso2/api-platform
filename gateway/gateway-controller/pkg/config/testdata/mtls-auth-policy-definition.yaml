@@ -89,7 +89,7 @@ systemParameters:
   properties:
     headerName:
       type: string
-      description: HTTP header in which a trusted front proxy relays the client certificate as PEM or base64-encoded PEM.
+      description: HTTP header in which a trusted front proxy relays the client certificate as PEM, URL-encoded PEM, or base64-encoded DER.
       default: "X-WSO2-CLIENT-CERTIFICATE"
       "wso2/defaultValue": "${config.router.downstream_tls.client_certificate_header.name}"
 

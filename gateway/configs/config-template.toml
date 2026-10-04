@@ -436,11 +436,11 @@ mtls_requires_dedicated_hostname = false
 
 [router.downstream_tls.client_certificate_header]
 # HTTP header carrying a client certificate relayed by a front proxy that
-# terminates TLS ahead of this gateway (PEM or base64-encoded PEM). Must be a
-# valid HTTP header token.
+# terminates TLS ahead of this gateway (PEM, URL-encoded PEM, or base64-encoded
+# DER). Must be a valid HTTP header token.
 name = "X-WSO2-CLIENT-CERTIFICATE"
-# When true, the header is believed from ANY connection -- the connection
-# presenting it is never consulted, not even for a role: relay pool entry.
+# When true, the header is believed on ANY connection whose own certificate
+# wasn't rejected, not only on one matching a role: relay pool entry.
 # Only safe when this gateway is reachable from nothing but a trusted front
 # proxy. Off by default; every mtls-auth deployment carries a
 # HEADER_CERT_BYPASS_ACTIVE warning and a startup WARN is logged while true.
