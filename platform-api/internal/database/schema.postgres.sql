@@ -824,3 +824,55 @@ CREATE TABLE IF NOT EXISTS user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Service accounts: non-human identities that exchange a client ID and secret
+-- for a short-lived platform JWT. client_id is globally unique because the
+-- token endpoint receives no organization. Roles are expanded at each exchange.
+CREATE TABLE IF NOT EXISTS service_accounts (
+    uuid                   VARCHAR(40)   PRIMARY KEY,
+    organization_uuid      VARCHAR(40)   NOT NULL,
+    handle                 VARCHAR(40)   NOT NULL,
+    name                   VARCHAR(255)  NOT NULL,
+    version                VARCHAR(30)   NOT NULL DEFAULT 'v1.0',
+    owner                  VARCHAR(255)  NOT NULL,
+    description            VARCHAR(1023) NOT NULL,
+    client_id              VARCHAR(255)  NOT NULL,
+    client_secret_hash     VARCHAR(255)  NOT NULL,
+    masked_secret          VARCHAR(8)    NOT NULL,
+    identity_uuid          VARCHAR(40)   NOT NULL,
+    roles                  VARCHAR(1023) NOT NULL DEFAULT '',
+    status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
+    token_version          INTEGER       NOT NULL DEFAULT 1,
+    last_used_at           TIMESTAMPTZ,
+    last_used_ip           VARCHAR(45),
+    secret_regenerated_at  TIMESTAMPTZ,
+    secret_regenerated_by  VARCHAR(200),
+    data_version           VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by             VARCHAR(200),
+    created_at             TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    updated_by             VARCHAR(200),
+    updated_at             TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    UNIQUE(client_id),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_accounts_org    ON service_accounts(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_service_accounts_status ON service_accounts(status);
+
+-- Revocation watermarks for service-account tokens: one row per account, not
+-- per token. Every revoke bumps service_accounts.token_version, and a token
+-- carrying a version below min_token_version is rejected.
+-- DELIBERATE: no FOREIGN KEY to service_accounts or organizations. The row must
+-- outlive a hard delete of either, or a token minted just before the delete
+-- would pass on any replica that loaded its cache afterwards. Pruned by expires_at.
+CREATE TABLE IF NOT EXISTS service_account_revocations (
+    account_uuid       VARCHAR(40)  PRIMARY KEY,
+    organization_uuid  VARCHAR(40)  NOT NULL,
+    min_token_version  INTEGER       NOT NULL,
+    expires_at         TIMESTAMPTZ  NOT NULL,
+    revoked_by         VARCHAR(200),
+    revoked_at         TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_account_revocations_expires_at ON service_account_revocations(expires_at);
