@@ -177,7 +177,7 @@ func (m *IssuerKeyMap) VerifyServiceAccountToken(tokenString string) (jwt.MapCla
 	return claims, nil
 }
 
-// checkServiceAccountClaims requires aud, iat and the token version. Login
+// checkServiceAccountClaims requires aud, iat, exp and the token version. Login
 // tokens carry no aud and no version, so this runs on SA tokens only.
 func (m *IssuerKeyMap) checkServiceAccountClaims(claims jwt.MapClaims) error {
 	aud, err := claims.GetAudience()
@@ -186,6 +186,10 @@ func (m *IssuerKeyMap) checkServiceAccountClaims(claims jwt.MapClaims) error {
 	}
 	if iat, err := claims.GetIssuedAt(); err != nil || iat == nil {
 		return fmt.Errorf("service-account token has no iat")
+	}
+	// The parser checks exp only when present; without it the token never expires.
+	if exp, err := claims.GetExpirationTime(); err != nil || exp == nil {
+		return fmt.Errorf("service-account token has no exp")
 	}
 	if _, ok := ServiceAccountTokenVersion(claims); !ok {
 		return fmt.Errorf("service-account token has no token version")
