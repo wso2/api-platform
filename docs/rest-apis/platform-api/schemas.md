@@ -5430,7 +5430,7 @@ Secret metadata — never includes the plaintext value.
   "clientId": "sa_acme_ci-deployer_3f9a1c",
   "maskedSecret": "***9f2c1",
   "roles": [
-    "ap_operator"
+    "ap_sa_reader"
   ],
   "status": "active",
   "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -5456,7 +5456,7 @@ A service account. Never carries the plaintext secret.
 |description|string|true|none|What the account is for|
 |clientId|string|true|read-only|none|
 |maskedSecret|string|true|read-only|none|
-|roles|[string]|true|none|none|
+|roles|[string]|true|none|The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file|
 |status|string|true|none|none|
 |lastUsedAt|string(date-time)|false|read-only|none|
 |lastUsedIp|string|false|read-only|none|
@@ -5492,7 +5492,7 @@ A service account. Never carries the plaintext secret.
       "clientId": "sa_acme_ci-deployer_3f9a1c",
       "maskedSecret": "***9f2c1",
       "roles": [
-        "ap_operator"
+        "ap_sa_reader"
       ],
       "status": "active",
       "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -5535,7 +5535,7 @@ A service account. Never carries the plaintext secret.
   "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_operator"
+    "ap_sa_reader"
   ]
 }
 
@@ -5549,7 +5549,7 @@ A service account. Never carries the plaintext secret.
 |displayName|string|true|none|none|
 |owner|string|true|none|none|
 |description|string|true|none|none|
-|roles|[string]|true|none|Roles from the role-to-scope mapping file|
+|roles|[string]|true|none|Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.|
 
 ## ServiceAccountUpdateRequest
 
@@ -5564,7 +5564,7 @@ A service account. Never carries the plaintext secret.
   "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_operator"
+    "ap_sa_reader"
   ],
   "status": "disabled"
 }
@@ -5580,7 +5580,7 @@ Every field is optional. Owner and description may change but not be blanked.
 |displayName|string|false|none|none|
 |owner|string|false|none|none|
 |description|string|false|none|none|
-|roles|[string]|false|none|none|
+|roles|[string]|false|none|Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens<br>already issued; adding one does not.|
 |status|string|false|none|none|
 
 ##### Enumerated Values
@@ -5607,7 +5607,7 @@ Every field is optional. Owner and description may change but not be blanked.
     "clientId": "sa_acme_ci-deployer_3f9a1c",
     "maskedSecret": "***9f2c1",
     "roles": [
-      "ap_operator"
+      "ap_sa_reader"
     ],
     "status": "active",
     "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -5646,7 +5646,8 @@ regenerate. The secret is shown once and cannot be recovered.
 {
   "grant_type": "client_credentials",
   "client_id": "string",
-  "client_secret": "string"
+  "client_secret": "string",
+  "scope": "ap:rest_api:read ap:gateway:read"
 }
 
 ```
@@ -5658,6 +5659,7 @@ regenerate. The secret is shown once and cannot be recovered.
 |grant_type|string|true|none|none|
 |client_id|string|true|none|none|
 |client_secret|string|true|write-only|none|
+|scope|string|false|none|Space-separated scopes. Required when the server's<br>`auth.authorization.mode` is `scope`; ignored when it is `role`.|
 
 ##### Enumerated Values
 
