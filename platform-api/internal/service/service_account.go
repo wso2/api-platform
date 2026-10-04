@@ -27,7 +27,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -60,6 +63,8 @@ type ServiceAccountService struct {
 	roleScopeMap map[string][]string
 	signer       *SATokenSigner // nil when no signing key is configured
 	tokenTTL     time.Duration
+	authzMode    string // auth.authorization.mode: picks the token's one authorization claim
+	claims       config.ClaimMappings
 	revocations  *RevocationCache // optional; applies local revokes at once
 	slogger      *slog.Logger
 }
@@ -72,10 +77,11 @@ func (s *ServiceAccountService) SetRevocationCache(c *RevocationCache) { s.revoc
 // in which case every exchange fails with the uniform 401.
 func NewServiceAccountService(repo repository.ServiceAccountRepository, orgRepo repository.OrganizationRepository,
 	auditRepo repository.AuditRepository, identity *IdentityService, roleScopeMap map[string][]string,
-	signer *SATokenSigner, tokenTTL time.Duration, slogger *slog.Logger) *ServiceAccountService {
+	signer *SATokenSigner, tokenTTL time.Duration, authzMode string, claims config.ClaimMappings,
+	slogger *slog.Logger) *ServiceAccountService {
 	return &ServiceAccountService{
 		repo: repo, orgRepo: orgRepo, auditRepo: auditRepo, identity: identity, roleScopeMap: roleScopeMap,
-		signer: signer, tokenTTL: tokenTTL, slogger: slogger,
+		signer: signer, tokenTTL: tokenTTL, authzMode: authzMode, claims: claims, slogger: slogger,
 	}
 }
 
@@ -125,14 +131,11 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 		ClientID:         "sa_" + org.Handle + "_" + req.Id + "_" + suffix[:6],
 		ClientSecretHash: hashServiceAccountSecret(secret),
 		MaskedSecret:     maskServiceAccountSecret(secret),
-		// The identity row shares the account's UUID; the startup reservation
-		// check relies on that.
-		IdentityUUID: accountUUID,
-		Roles:        strings.Join(roles, " "),
-		Status:       model.ServiceAccountStatusActive,
-		TokenVersion: 1,
-		CreatedBy:    actor,
-		UpdatedBy:    actor,
+		Roles:            strings.Join(roles, " "),
+		Status:           model.ServiceAccountStatusActive,
+		TokenVersion:     1,
+		CreatedBy:        actor,
+		UpdatedBy:        actor,
 	}
 	if err := s.repo.Create(sa, sa.Subject(org.Handle)); err != nil {
 		return nil, err
@@ -303,12 +306,14 @@ func (s *ServiceAccountService) RegenerateSecret(orgID, handle, actor string) (*
 type ExchangeRequest struct {
 	ClientID     string
 	ClientSecret string
+	Scope        string // space-separated; required in scope mode, ignored in role mode
 	ClientIP     string
 	UserAgent    string
 }
 
-// Exchange swaps client credentials for a token. Every failure is the same
-// 401; the cause is logged, never returned.
+// Exchange swaps client credentials for a token. Every authentication failure
+// is the same 401; the cause is logged, never returned. Only an authenticated
+// client reaches the scope check, so a 400 reveals nothing to a stranger.
 func (s *ServiceAccountService) Exchange(req ExchangeRequest) (*api.ServiceAccountTokenResponse, error) {
 	fail := func(cause string, sa *model.ServiceAccount) error {
 		// An unmatched client ID is not logged: callers paste secrets into it.
@@ -347,6 +352,15 @@ func (s *ServiceAccountService) Exchange(req ExchangeRequest) (*api.ServiceAccou
 	// hash and status just checked, so it can never outrank the revoke that
 	// replaced them.
 	scope := expandRoles(sa.RoleList(), s.roleScopeMap)
+	if s.authzMode == config.AuthzModeScope {
+		requested, ok := requestedScopes(req.Scope, strings.Fields(scope))
+		if !ok {
+			s.slogger.Warn("service account token exchange refused: invalid scope",
+				"accountUuid", sa.UUID, "orgUuid", sa.OrganizationID, "requestedScope", req.Scope)
+			return nil, apperror.ServiceAccountInvalidScope.New()
+		}
+		scope = requested
+	}
 	tok, err := s.signer.Sign(sa, org, scope)
 	if err != nil {
 		return nil, apperror.Internal.Wrap(err).WithLogMessage("failed to sign service-account token")
@@ -358,7 +372,8 @@ func (s *ServiceAccountService) Exchange(req ExchangeRequest) (*api.ServiceAccou
 	}
 	s.slogger.Info("service account token issued",
 		"accountUuid", sa.UUID, "orgUuid", sa.OrganizationID, "clientIp", req.ClientIP,
-		"userAgent", req.UserAgent, "scope", scope, "jti", tok.JTI, "exp", tok.ExpiresAt.Unix())
+		"userAgent", req.UserAgent, "authzMode", s.authzMode, "requestedScope", req.Scope, "scope", scope,
+		"jti", tok.JTI, "exp", tok.ExpiresAt.Unix())
 
 	return &api.ServiceAccountTokenResponse{
 		AccessToken: tok.Token,
@@ -398,8 +413,27 @@ func (s *ServiceAccountService) audit(action string, sa *model.ServiceAccount, a
 	}
 }
 
-// validateRoles rejects a role missing from the mapping file: the account
-// would authenticate and then 403 on everything.
+// TokenScope is what a verified SA token authorizes: its scope claim in scope
+// mode, its roles expanded through the mapping in role mode.
+func (s *ServiceAccountService) TokenScope(claims jwt.MapClaims) string {
+	if s.authzMode != config.AuthzModeRole {
+		v, _ := utils.GetClaim(claims, utils.ClaimKey(s.claims.Scope, "scope"))
+		scope, _ := v.(string)
+		return scope
+	}
+	v, _ := utils.GetClaim(claims, utils.ClaimKey(s.claims.Roles, "roles"))
+	raw, _ := v.([]any)
+	roles := make([]string, 0, len(raw))
+	for _, r := range raw {
+		if role, ok := r.(string); ok {
+			roles = append(roles, role)
+		}
+	}
+	return expandRoles(roles, s.roleScopeMap)
+}
+
+// validateRoles accepts one or more ap_sa_* roles from the mapping file. Any
+// other role is a person's, and one missing from the file would authorize nothing.
 func (s *ServiceAccountService) validateRoles(roles []string) ([]string, error) {
 	if len(roles) == 0 {
 		return nil, apperror.ValidationFailed.New("roles must name at least one role")
@@ -407,6 +441,10 @@ func (s *ServiceAccountService) validateRoles(roles []string) ([]string, error) 
 	out := make([]string, 0, len(roles))
 	for _, role := range roles {
 		role = strings.TrimSpace(role)
+		if !strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("role %q is not a service-account role (%q prefix)",
+				role, constants.ServiceAccountRolePrefix))
+		}
 		if _, ok := s.roleScopeMap[role]; !ok {
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf("role %q is not defined in the role-to-scope mapping", role))
 		}
@@ -414,7 +452,28 @@ func (s *ServiceAccountService) validateRoles(roles []string) ([]string, error) 
 			out = append(out, role)
 		}
 	}
+	if len(strings.Join(out, " ")) > rolesMaxLength {
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf("roles must total at most %d bytes", rolesMaxLength))
+	}
 	return out, nil
+}
+
+// rolesMaxLength is the roles column width.
+const rolesMaxLength = 1023
+
+// requestedScopes checks a scope-mode request: at least one scope, each
+// granted. Returns them deduplicated, in request order.
+func requestedScopes(raw string, granted []string) (string, bool) {
+	var out []string
+	for _, sc := range strings.Fields(raw) {
+		if !slices.Contains(granted, sc) {
+			return "", false
+		}
+		if !slices.Contains(out, sc) {
+			out = append(out, sc)
+		}
+	}
+	return strings.Join(out, " "), len(out) > 0
 }
 
 func (s *ServiceAccountService) toAPI(sa *model.ServiceAccount) (*api.ServiceAccount, error) {
@@ -478,10 +537,21 @@ func expandRoles(roles []string, roleScopeMap map[string][]string) string {
 	return strings.Join(scopes, " ")
 }
 
+// textFieldMaxLength matches the column widths, so an overlong value is a 400,
+// not a database error.
+var textFieldMaxLength = map[string]int{"displayName": 255, "owner": 255, "description": 1023}
+
 func requireText(fields map[string]string) error {
 	for _, name := range []string{"displayName", "owner", "description"} {
-		if v, ok := fields[name]; ok && v == "" {
+		v, ok := fields[name]
+		if !ok {
+			continue
+		}
+		if v == "" {
 			return apperror.ValidationFailed.New(name + " must not be blank")
+		}
+		if limit := textFieldMaxLength[name]; len(v) > limit {
+			return apperror.ValidationFailed.New(fmt.Sprintf("%s must be at most %d bytes", name, limit))
 		}
 	}
 	return nil

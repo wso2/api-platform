@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -332,7 +333,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 				Scope:            scope,
 				Audience:         aud,
 				JTI:              jti,
-				RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
+				RegisteredClaims: jwt.RegisteredClaims{Subject: sub, Issuer: getStringClaim(mapClaims, "iss")},
 			}
 
 			firstName := getStringClaim(mapClaims, "given_name")
@@ -345,6 +346,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			}
 
 			platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, claimNames.RoleScopeMap)
+			warnServiceAccountRoles(extractClaimByPath(mapClaims, claimNames.RolesClaimPath))
 
 			ctx := r.Context()
 			ctx = context.WithValue(ctx, keyUserID, userID)
@@ -362,6 +364,21 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
+	}
+}
+
+// warnedSARoles holds the ap_sa_* roles already warned about, so each is logged once.
+var warnedSARoles sync.Map
+
+// warnServiceAccountRoles logs an ap_sa_* role on an IdP token. It is still
+// honoured: the IdP is trusted for its own roles.
+func warnServiceAccountRoles(idpRoles []string) {
+	for _, role := range idpRoles {
+		if strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
+			if _, seen := warnedSARoles.LoadOrStore(role, struct{}{}); !seen {
+				slog.Warn("IdP token carries a service-account role", "role", role)
+			}
+		}
 	}
 }
 
