@@ -32,8 +32,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
@@ -44,6 +46,10 @@ type revokeSet map[string]bool
 func (s revokeSet) IsRevoked(id string, _ int64) bool { return s[id] }
 
 func newSAHandlerForTest(t *testing.T, revoked revokeSet) (*ServiceAccountHandler, *rsa.PrivateKey, *http.ServeMux) {
+	return newSAHandlerForTestMode(t, revoked, config.AuthzModeScope)
+}
+
+func newSAHandlerForTestMode(t *testing.T, revoked revokeSet, mode string) (*ServiceAccountHandler, *rsa.PrivateKey, *http.ServeMux) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -54,7 +60,10 @@ func newSAHandlerForTest(t *testing.T, revoked revokeSet) (*ServiceAccountHandle
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := NewServiceAccountHandler(nil, nil, keyMap, revoked, []*rsa.PublicKey{&key.PublicKey}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := service.NewServiceAccountService(nil, nil, nil, nil,
+		map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}}, nil, time.Minute, mode, config.ClaimMappings{}, logger)
+	h := NewServiceAccountHandler(svc, nil, keyMap, revoked, []*rsa.PublicKey{&key.PublicKey}, logger)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 	return h, key, mux
@@ -131,7 +140,21 @@ func TestIntrospectActive(t *testing.T) {
 	if err := json.Unmarshal([]byte(introspect(mux, saToken(t, key, nil, true))), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp["active"] != true || resp["client_id"] != "sa_acme_ci-bot_abc123" || resp["aud"] != "platform-api" {
+	if resp["active"] != true || resp["client_id"] != "sa_acme_ci-bot_abc123" || resp["aud"] != "platform-api" ||
+		resp["scope"] != "ap:rest_api:read" {
+		t.Fatalf("active response: %v", resp)
+	}
+}
+
+// A role-mode token has no scope claim; introspection expands its roles.
+func TestIntrospectActiveRoleMode(t *testing.T) {
+	_, key, mux := newSAHandlerForTestMode(t, revokeSet{}, config.AuthzModeRole)
+	tok := saToken(t, key, func(c jwt.MapClaims) { delete(c, "scope"); c["roles"] = []string{"ap_sa_reader"} }, true)
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(introspect(mux, tok)), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["active"] != true || resp["scope"] != "ap:rest_api:read ap:gateway:read" {
 		t.Fatalf("active response: %v", resp)
 	}
 }
