@@ -745,3 +745,92 @@ func TestControllerResourceKindsHaveCleanupKinds(t *testing.T) {
 	_, ok = cleanupKindForCollection("/not-a-collection")
 	require.False(t, ok)
 }
+
+func TestControllerMCPRequestBodyCarriesProtocolEnvelope(t *testing.T) {
+	params := map[string]any{"name": toolDeployAPI, "arguments": map[string]any{"kind": "RestApi"}}
+	body, err := controllerMCPRequestBody("tools/call", params)
+	require.NoError(t, err)
+
+	var message map[string]any
+	require.NoError(t, json.Unmarshal(body, &message))
+	require.Equal(t, "2.0", message["jsonrpc"])
+	require.Equal(t, float64(1), message["id"])
+	require.Equal(t, "tools/call", message["method"])
+	sent := message["params"].(map[string]any)
+	require.Equal(t, toolDeployAPI, sent["name"])
+	require.Equal(t, map[string]any{"kind": "RestApi"}, sent["arguments"])
+	meta := sent["_meta"].(map[string]any)
+	require.Equal(t, controllerMCPProtocolVersion, meta["io.modelcontextprotocol/protocolVersion"])
+	require.Contains(t, meta, "io.modelcontextprotocol/clientInfo")
+	require.Contains(t, meta, "io.modelcontextprotocol/clientCapabilities")
+	require.NotContains(t, params, "_meta", "the caller's params must not be modified")
+
+	body, err = controllerMCPRequestBody("tools/list", nil)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &message))
+	require.Contains(t, message["params"].(map[string]any), "_meta")
+
+	_, err = controllerMCPRequestBody(" ", nil)
+	require.ErrorContains(t, err, "JSON-RPC method")
+}
+
+func TestControllerMCPHeaders(t *testing.T) {
+	scenario := map[string]string{"Authorization": "Basic abc", "Content-Type": "text/plain"}
+	headers := controllerMCPHeaders(scenario, "tools/call", toolDeployAPI)
+	require.Equal(t, "Basic abc", headers["Authorization"])
+	require.Equal(t, "application/json", headers["Content-Type"])
+	require.Equal(t, "application/json, text/event-stream", headers["Accept"])
+	require.Equal(t, controllerMCPProtocolVersion, headers["MCP-Protocol-Version"])
+	require.Equal(t, "tools/call", headers["Mcp-Method"])
+	require.Equal(t, toolDeployAPI, headers["Mcp-Name"])
+	require.Equal(t, "text/plain", scenario["Content-Type"], "the scenario headers must not be modified")
+
+	headers = controllerMCPHeaders(nil, "tools/list", "")
+	require.Equal(t, "tools/list", headers["Mcp-Method"])
+	require.NotContains(t, headers, "Mcp-Name")
+	require.NotContains(t, controllerMCPHeaders(nil, "tools/list", toolDeployAPI), "Mcp-Name")
+}
+
+func TestDecodeMCPStream(t *testing.T) {
+	message := `{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`
+	stream := &httpx.Response{
+		StatusCode: http.StatusOK,
+		Headers:    http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       []byte("event: message\ndata: " + message + "\n\n"),
+	}
+	decodeMCPStream(stream)
+	require.Equal(t, message, string(stream.Body))
+	require.Equal(t, "text/event-stream", stream.Headers.Get("Content-Type"))
+
+	jsonError := `{"code":"forbidden","message":"data: not a stream"}`
+	plain := &httpx.Response{
+		StatusCode: http.StatusForbidden,
+		Headers:    http.Header{"Content-Type": {"application/json"}},
+		Body:       []byte(jsonError),
+	}
+	decodeMCPStream(plain)
+	require.Equal(t, jsonError, string(plain.Body), "a non-SSE body must never be reinterpreted")
+
+	empty := &httpx.Response{StatusCode: http.StatusAccepted, Headers: http.Header{}}
+	decodeMCPStream(empty)
+	require.Empty(t, empty.Body)
+
+	decodeMCPStream(nil)
+}
+
+func TestMCPToolSucceeded(t *testing.T) {
+	response := func(status int, body string) *httpx.Response {
+		return &httpx.Response{StatusCode: status, Body: []byte(body)}
+	}
+	require.True(t, mcpToolSucceeded(response(http.StatusOK,
+		`{"jsonrpc":"2.0","id":1,"result":{"structuredContent":{"status":"success"}}}`)))
+	require.False(t, mcpToolSucceeded(response(http.StatusOK,
+		`{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[{"type":"text","text":"failed"}]}}`)))
+	require.False(t, mcpToolSucceeded(response(http.StatusOK,
+		`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"unknown tool"}}`)))
+	require.False(t, mcpToolSucceeded(response(http.StatusForbidden,
+		`{"code":"insufficient_scope","message":"denied"}`)))
+	require.False(t, mcpToolSucceeded(response(http.StatusOK, `event: message`)))
+	require.False(t, mcpToolSucceeded(response(http.StatusOK, `{"jsonrpc":"2.0","id":1}`)))
+	require.False(t, mcpToolSucceeded(nil))
+}

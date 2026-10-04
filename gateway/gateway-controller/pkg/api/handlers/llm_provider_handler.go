@@ -245,9 +245,6 @@ func (s *APIServer) DeleteLLMProvider(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	// Notify the control plane so the artifact is marked undeployed (not deleted).
-	s.pushArtifactUndeploy(cfg, log)
-
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
