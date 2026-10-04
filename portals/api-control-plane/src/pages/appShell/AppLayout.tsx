@@ -21,6 +21,7 @@ import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Suspense } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
+import { getBillingOrganization } from '../../billing/organization';
 import { AppPage } from '../../components/AppPage';
 import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
@@ -57,6 +58,7 @@ export default function AppLayout() {
     navigate,
     notify,
     apiFetch: extensionApiFetch,
+    billing: { organization: getBillingOrganization },
   };
 
   return (
