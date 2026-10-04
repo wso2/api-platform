@@ -597,20 +597,59 @@ const createOAuth2Key = async (req, res) => {
         // here declares it under that name — so one lookup covers all of them rather
         // than a per-driver mapping. Stored because a consumer key is not something a
         // person can pick out of a list; it is not used for anything else.
-        const record = await oauth2KeyDao.create({
-            orgId,
-            keyManagerId: issued.keyManagerId,
-            consumerKey: issued.consumerKey,
-            name: (issued.properties && issued.properties.client_name) || '',
+        let record;
+        try {
+            record = await oauth2KeyDao.create({
+                orgId,
+                keyManagerId: issued.keyManagerId,
+                consumerKey: issued.consumerKey,
+                name: (issued.properties && issued.properties.client_name) || '',
+                /*
+                 * Inherited from the key manager, resolved here and nowhere else.
+                 * When a per-key choice is added later this one expression becomes
+                 * `req.body.keyType ?? km.keyType` and nothing else moves.
+                 */
+                keyType: km.keyType || constants.KEY_TYPE.PRODUCTION,
+                createdBy: actor,
+                registration: issued.registration,
+            });
+        } catch (error) {
             /*
-             * Inherited from the key manager, resolved here and nowhere else.
-             * When a per-key choice is added later this one expression becomes
-             * `req.body.keyType ?? km.keyType` and nothing else moves.
+             * The client is already live at the key manager and the row that was
+             * going to record it did not get written, so nothing here can reach
+             * it any more: it is absent from every list, and delete has no row to
+             * start from. Left alone it is a credential the portal issued, cannot
+             * see, and cannot revoke.
+             *
+             * So undo the half that did succeed. The registration credentials the
+             * key manager just issued are still in hand — they were never stored,
+             * which is the whole problem — and they are exactly what RFC 7592
+             * delete authenticates with.
+             *
+             * If the compensating delete fails too, the client really is orphaned
+             * and only an operator can clear it: log the consumer key (the handle
+             * for it at the key manager, not a credential) so there is something
+             * to act on. The caller gets the same 500 either way — from their side
+             * the key was not created.
              */
-            keyType: km.keyType || constants.KEY_TYPE.PRODUCTION,
-            createdBy: actor,
-            registration: issued.registration,
-        });
+            logger.error('Failed to record a newly registered OAuth client; rolling it back at '
+                + 'the key manager', {
+                orgId, keyManagerId: km.id, consumerKey: issued.consumerKey, error: error.message,
+            });
+            try {
+                await km.deleteKey(issued.consumerKey, issued.registration || null);
+            } catch (rollbackError) {
+                logger.error('ORPHANED OAUTH CLIENT: registered at the key manager, not recorded '
+                    + 'by the portal, and could not be rolled back. It must be deleted at the key '
+                    + 'manager by hand.', {
+                    orgId,
+                    keyManagerId: km.id,
+                    consumerKey: issued.consumerKey,
+                    rollbackError: rollbackError.message,
+                });
+            }
+            throw error;
+        }
 
         logUserAction('OAUTH2_KEY_CREATED', req, {
             orgId,
@@ -847,10 +886,28 @@ const deleteOAuth2Key = async (req, res) => {
 
         // Upstream first: dropping the row before the key manager confirms would
         // leave a live OAuth client that nothing here can reach or delete.
-        await _withRegistration(
-            { orgId, keyId, actor },
-            (registration) => km.deleteKey(record.consumerKey, registration)
-        );
+        try {
+            await _withRegistration(
+                { orgId, keyId, actor },
+                (registration) => km.deleteKey(record.consumerKey, registration)
+            );
+        } catch (error) {
+            /*
+             * The client is already gone from the key manager — deleted there
+             * directly, or lost with the tenant it lived in. The upstream half of
+             * this operation is therefore already in the state it was asked to
+             * reach, so the local row is dropped and the caller gets its 204.
+             *
+             * Propagating the 404 instead would be the worst of both: the row
+             * survives, every later delete repeats the same 404, and the key is
+             * permanently stuck in the list with no way to remove it.
+             */
+            if (!(error instanceof KeyManagerCallError) || error.publicReason !== 'client_not_found') {
+                throw error;
+            }
+            logger.warn('Key manager reported the client as already absent; removing the local '
+                + 'record only', { orgId, keyId, keyManagerId: km.id });
+        }
         await oauth2KeyDao.remove(orgId, keyId, actor);
 
         logUserAction('OAUTH2_KEY_DELETED', req, {

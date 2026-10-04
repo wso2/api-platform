@@ -150,10 +150,18 @@
                     <i class="bi bi-three-dots-vertical"></i>
                   </button>
                   <div class="ok-dropdown" role="menu">
+                    {{!-- Update is omitted when the key manager is disabled: the
+                          server answers 409 for an update through one, so offering
+                          the control would only produce an error. Delete stays —
+                          the server still allows it, and it is the only way to
+                          retire credentials that are still live at the identity
+                          server. The key remains viewable either way. --}}
+                    {{#if this.keyManagerEnabled}}
                     <button type="button" class="ok-dropdown-item ok-row-edit" role="menuitem">
                       <i class="bi bi-pencil"></i> Update
                     </button>
                     <div class="ok-dropdown-divider"></div>
+                    {{/if}}
                     <button type="button" class="ok-dropdown-item ok-dropdown-item--danger ok-row-delete"
                       role="menuitem">
                       <i class="bi bi-trash"></i> Delete

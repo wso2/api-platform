@@ -426,14 +426,19 @@ CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON api_key_app_mapp
 -- OAuth2 consumer keys — one row per OAuth application this portal registered
 -- on a key manager via Dynamic Client Registration (RFC 7591).
 --
--- Only the identity of the registered client is kept. Deliberately absent:
+-- Only the identity of the registered client, plus whatever RFC 7592 gave the
+-- portal to manage it with. Deliberately absent:
 --   * the client secret — the key manager returns it once and never again;
 --   * the client metadata (redirect_uris, grant_types, …) — it lives at the
---     key manager and is re-read from there, so there is one copy;
---   * the RFC 7592 registration access token — not stored, so follow-up calls
---     authenticate with the portal's provisioning credential instead;
---   * the client configuration URI — constructed as
---     <registration_endpoint>/<consumer_key> from config plus this row.
+--     key manager and is re-read from there, so there is one copy.
+--
+-- The RFC 7592 registration access token and client configuration URI ARE kept,
+-- in registration_access_token_enc (encrypted at rest) and
+-- registration_client_uri — see the notes on those columns. Both are NULL for a
+-- key manager that issues no such token, and a key in that state is managed with
+-- the portal's provisioning credential against a constructed
+-- <registration_endpoint>/<consumer_key>, which is what every key did before
+-- these columns existed.
 --
 -- key_manager_id is deliberately NOT a foreign key: key managers are declared
 -- in configuration ([[api_portal.key_manager]]), not rows in key_managers, so

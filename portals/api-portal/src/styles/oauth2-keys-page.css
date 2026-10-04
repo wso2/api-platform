@@ -291,6 +291,34 @@
   border: 1px solid color-mix(in srgb, var(--info, #0b6bcb) 28%, transparent);
 }
 
+/* Shown when a key is opened without its field descriptors — the key manager is
+   disabled, so GET /key-managers/metadata omits it while the key itself still
+   reads. Weighted enough to be read first: it explains why the dialog looks
+   plainer than usual, which otherwise reads as a rendering fault. */
+.ok-fields-notice {
+  margin: 0 0 1rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--info, #0b6bcb) 28%, transparent);
+  background: color-mix(in srgb, var(--info, #0b6bcb) 8%, transparent);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-strong);
+}
+
+/* A property with no descriptor: its value as text, not as a disabled input. An
+   input would imply the form could be unlocked, and there is nothing here to
+   submit it to. `break-all` because these are URIs and client ids. */
+.ok-raw-value {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-strong);
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
 /* ── Row overflow menu ───────────────────────────────────────
    Update and Delete moved in here, matching the settings API table. The panel
    is `position: fixed` and placed by script: .ok-tablewrap sets overflow-x,

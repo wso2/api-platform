@@ -341,7 +341,12 @@
      * changing is a deliberate choice, from the row menu or from this dialog's own
      * Update button.
      */
-    function setMode(mode, km) {
+    /*
+     * `fallbackKmName` is used only when `km` is null — a view of a key whose key
+     * manager is disabled, where there are no descriptors but the selector must
+     * still say which key manager issued it.
+     */
+    function setMode(mode, km, fallbackKmName) {
         var editing = mode === 'edit';
         var viewing = mode === 'view';
         _editKeyId = (editing || viewing) ? _editKeyId : null;
@@ -355,7 +360,17 @@
 
         var sel = document.getElementById('ok-km-select');
         sel.disabled = editing || viewing;
-        if ((editing || viewing) && km) {
+        if (viewing && !km && fallbackKmName) {
+            // No metadata entry to read a display name from, so the name travels
+            // with the key itself. The selector is disabled either way.
+            sel.textContent = '';
+            var fb = el('option', null, fallbackKmName);
+            fb.value = '';
+            sel.appendChild(fb);
+            sel.value = '';
+            var hint = document.getElementById('ok-km-hint');
+            if (hint) hint.textContent = '';
+        } else if ((editing || viewing) && km) {
             sel.textContent = '';
             var opt = el('option', null, km.displayName || km.id);
             opt.value = km.id;
@@ -415,10 +430,32 @@
         for (var i = 0; i < meta.length; i++) {
             if (meta[i].id === key.keyManagerId) { km = meta[i]; break; }
         }
+
+        /*
+         * No descriptors for this key's key manager. The common cause is that an
+         * admin disabled it: GET /key-managers/metadata lists only enabled ones,
+         * while GET /oauth2-keys/{id} deliberately still answers for a disabled one.
+         *
+         * That asymmetry is intentional on the server — disabling does not revoke
+         * anything, so the credentials are still live, and the key has to stay
+         * visible and deletable or a developer is left holding working credentials
+         * they cannot see or retire. So reading falls back to the raw properties
+         * rather than refusing.
+         *
+         * Editing is a different matter: the server answers 409 for an update
+         * through a disabled key manager, so there is nothing to render a form for.
+         */
         if (!km) {
-            // The key outlived its key manager's configuration. Its properties cannot
-            // be rendered without the descriptors that describe them.
-            await alertMsg('The key manager for this key is no longer available, so its details cannot be shown.', 'error');
+            if (mode !== 'view') {
+                await alertMsg(
+                    'This key manager is disabled or no longer available, so this key cannot be updated. '
+                    + 'It can still be viewed and deleted.', 'error');
+                return;
+            }
+            _editKeyId = keyId;
+            setMode('view', null, key.keyManagerName || key.keyManagerId);
+            renderRawProperties(key.properties || {});
+            show('ok-add-modal');
             return;
         }
 
@@ -429,6 +466,46 @@
         renderFields(key.properties || {});
         if (mode === 'view') freezeFields();
         show('ok-add-modal');
+    }
+
+    /*
+     * Render a key's properties with no descriptors to lay them out.
+     *
+     * Only reachable from the view above. Without the metadata there is no label,
+     * type or ordering for any property, so each one is shown under its own wire
+     * name with its value as text. Deliberately not inputs: there is nothing to
+     * submit them to, and a disabled input would imply the form could be unlocked.
+     *
+     * The notice is the point — a plainer layout with no explanation reads as a
+     * rendering fault rather than as the state it actually is.
+     */
+    function renderRawProperties(values) {
+        var host = document.getElementById('ok-fields');
+        if (!host) return;
+        host.textContent = '';
+        host.classList.add('ok-fields--readonly');
+
+        host.appendChild(el('p', 'ok-fields-notice',
+            'This key manager is disabled, so this key is shown read-only and without '
+            + 'its field descriptions. The key itself still works; it can be deleted '
+            + 'from the row menu.'));
+
+        var names = Object.keys(values || {});
+        if (!names.length) {
+            host.appendChild(el('p', 'ok-form-hint', 'The key manager returned no properties for this key.'));
+            return;
+        }
+        names.sort();
+        names.forEach(function (name) {
+            var group = el('div', 'ok-form-group');
+            group.appendChild(el('label', null, name));
+            var raw = values[name];
+            var text = Array.isArray(raw) ? raw.join(', ')
+                : (raw === null || raw === undefined) ? ''
+                    : (typeof raw === 'object' ? JSON.stringify(raw) : String(raw));
+            group.appendChild(el('p', 'ok-raw-value', text || '—'));
+            host.appendChild(group);
+        });
     }
 
     /** Open one key read-only. Selecting a row lands here. */
@@ -1091,7 +1168,10 @@
         // stopPropagation on the cell: this listener is on `document`, so stopping
         // the event at the cell would prevent it reaching the button branches above
         // and kill every row action.
-        if (e.target.closest('.ok-actions')) return;
+        // `.ok-copy` sits in the consumer-key cell rather than in `.ok-actions`, so
+        // it needs excluding too — otherwise copying a key also opened the view,
+        // firing a GET and dropping a modal over the page the user was reading.
+        if (e.target.closest('.ok-actions') || e.target.closest('.ok-copy')) return;
         var row = e.target.closest('tr.ok-row');
         if (row) openView(row.getAttribute('data-key-id'));
     });

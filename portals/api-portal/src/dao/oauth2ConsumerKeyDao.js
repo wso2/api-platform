@@ -22,18 +22,25 @@
  * Data access for `oauth2_consumer_keys` — the portal's record of each OAuth
  * application it registered on a key manager over RFC 7591.
  *
- * The row holds the identity of the registered client and nothing else. Four
- * things are deliberately not stored:
+ * The row holds the identity of the registered client, plus whatever RFC 7592
+ * gave the portal to manage it with. Two things are deliberately not stored:
  *
  *   - The client secret. The key manager returns it once, at registration, and
  *     never again, so the create response is the only place it can appear.
  *   - The client metadata (redirect_uris, grant_types, …). It lives at the key
  *     manager and is re-read from there, so there is one copy of it.
- *   - The RFC 7592 registration access token. Follow-up calls therefore
- *     authenticate with the portal's own provisioning credential instead — see
- *     the note in oauth2KeyService.js about what that costs.
- *   - The client configuration URI. The driver constructs
- *     <registration_endpoint>/<consumer_key> from config plus this row.
+ *
+ * The RFC 7592 registration access token and client configuration URI are kept:
+ * `registration_access_token_enc` (encrypted at rest with
+ * security.encryption_key) and `registration_client_uri`. Neither rides along on
+ * an ordinary read — they are outside COLUMNS, and `getWithRegistration` is the
+ * one path that opts in — so a list or detail response never carries a
+ * credential it has no use for.
+ *
+ * Both are NULL for a key manager that issues no such token. A key in that state
+ * is managed with the portal's own provisioning credential against a constructed
+ * <registration_endpoint>/<consumer_key>, which is how every key behaved before
+ * these columns existed and remains the fallback when a stored token is rejected.
  *
  * The key↔application association lives in oauth2_consumer_key_app_mappings, not
  * as a column here.

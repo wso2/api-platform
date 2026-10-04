@@ -59,6 +59,7 @@ const loadOAuth2Keys = async (req, res, next) => {
         // Key manager names first: a key row is labelled from this, so resolving it
         // before the keys keeps the mapping in one place below.
         const keyManagerNames = new Map();
+        const keyManagerEnabled = new Map();
         let generationAvailable = false;
         try {
             /*
@@ -73,6 +74,11 @@ const loadOAuth2Keys = async (req, res, next) => {
             const keyManagers = await kmRegistry.list(orgId, { includeDisabled: true });
             for (const km of keyManagers) {
                 keyManagerNames.set(km.handle, km.display_name || km.handle);
+                // Whether this key manager is still enabled, so a row can say what
+                // its key can still do. Disabling revokes nothing — the credentials
+                // stay live — but the portal refuses updates and token requests
+                // through it, so the row must not offer them.
+                keyManagerEnabled.set(km.handle, Boolean(km.enabled));
             }
             // Any key manager at all means a key can be made here. It used to mean a
             // config-declared one, because nothing else could register a client — but
@@ -122,6 +128,12 @@ const loadOAuth2Keys = async (req, res, next) => {
                     // not from the key manager now — it says what this credential is,
                     // not what that key manager issues today.
                     keyType: k.keyType || 'PRODUCTION',
+                    // Defaults to true for a key manager that is no longer listed at
+                    // all: the row then offers Update and the server decides, which
+                    // is better than hiding a control on a guess.
+                    keyManagerEnabled: keyManagerEnabled.has(k.keyManagerId)
+                        ? keyManagerEnabled.get(k.keyManagerId)
+                        : true,
                     keyManagerId: k.keyManagerId,
                     keyManagerName: keyManagerNames.get(k.keyManagerId) || k.keyManagerId,
                     consumerKey: k.consumerKey,

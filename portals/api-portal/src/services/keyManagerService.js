@@ -360,13 +360,25 @@ function _validateApiKeyHeader(headerName) {
 }
 
 /**
- * The key manager's own token endpoint is dialled too — ClientCredentials mints
- * the provisioning token from it — so it is held to the same guard as the
- * endpoints inside `provisioning`. Only checked when provisioning is present: a
- * key manager that merely proxies token requests never has the portal connect
- * to it, so the stricter rule would be gratuitous there.
+ * The token endpoint is held to the same guard as the endpoints inside
+ * `provisioning`, on every key manager rather than only the provisioning ones.
+ *
+ * It was previously checked only alongside a provisioning block, on the reading
+ * that a key manager which merely proxies token requests is never dialled by the
+ * portal. That is not so: `KeyManager.requestToken` POSTs to this endpoint from
+ * the portal for every key manager type — it is how the "generate access token"
+ * action works — and a provision-type key manager, which has no registration
+ * endpoint at all, reaches it by exactly that path.
+ *
+ * The runtime is not the exposure here: every driver call goes through
+ * `buildClient`, whose request interceptor runs `assertDialable` against the
+ * resolved address at dial time, so an endpoint pointing somewhere it shouldn't
+ * is refused on the wire regardless of what was saved. What the check buys is
+ * telling the admin at save time, instead of leaving a key manager that looks
+ * configured and fails as "unreachable" the first time a developer asks it for
+ * a token.
  */
-function _validateTokenEndpointForProvisioning(tokenEndpoint) {
+function _validateTokenEndpoint(tokenEndpoint) {
     try {
         assertDialable(tokenEndpoint, 'tokenEndpoint', DB_CLIENT_POLICY);
         return null;
@@ -432,10 +444,13 @@ const createKeyManager = async (req, res) => {
 
         // Validated before any write: a rejected provisioning payload must not leave
         // a key manager behind that the caller then has to clean up by hand.
+        // tokenEndpoint is checked for every type, not just the provisioning ones
+        // — `requestToken` dials it from here whatever the driver is.
+        const endpointError = _validateTokenEndpoint(payload.tokenEndpoint.trim());
+        if (endpointError) return util.sendError(res, 400, endpointError);
+
         let provisioningCfg = null;
         if (payload.provisioning) {
-            const endpointError = _validateTokenEndpointForProvisioning(payload.tokenEndpoint.trim());
-            if (endpointError) return util.sendError(res, 400, endpointError);
             const checked = _validateProvisioning(payload.provisioning);
             if (checked.error) return util.sendError(res, 400, checked.error);
             provisioningCfg = checked.cfg;
@@ -526,6 +541,32 @@ const updateKeyManager = async (req, res) => {
         }
 
         /*
+         * Renaming is refused while keys still reference the old handle — the same
+         * guard, and the same reason, as the delete path below.
+         *
+         * `oauth2_consumer_keys.key_manager_id` stores the handle as a plain string
+         * with no foreign key, so a rename does not cascade: every existing key is
+         * left pointing at an id that resolves to nothing, and its read, delete and
+         * token operations all fail.
+         *
+         * It also reopens the bypass the delete guard exists to close. Rename a key
+         * manager, then create a new one under the old handle with a provisioning
+         * block, and the orphaned keys silently attach to a DCR driver — whose
+         * delete would issue a real DCR delete for a client this portal never
+         * created.
+         */
+        const newHandle = typeof payload?.handle === 'string' ? payload.handle.trim() : '';
+        if (newHandle && newHandle !== kmHandle) {
+            const referencing = await oauth2KeyDao.countByKeyManager(orgId, kmHandle);
+            if (referencing > 0) {
+                return util.sendError(res, 409,
+                    `This key manager still has ${referencing} key${referencing === 1 ? '' : 's'} `
+                    + 'recorded against its current id. Delete them before changing it — a rename '
+                    + 'would leave them pointing at a key manager that no longer exists.');
+            }
+        }
+
+        /*
          * A key manager's type is fixed when it is created, and this is where
          * that is enforced.
          *
@@ -555,6 +596,23 @@ const updateKeyManager = async (req, res) => {
             }
         }
 
+        /*
+         * Only an actual change is checked. A round-trip that sends the stored
+         * value back unaltered has to keep working, or a key manager saved before
+         * this guard existed could never be edited again — not even to correct the
+         * endpoint that is the reason it fails.
+         */
+        const submittedEndpoint = typeof payload.tokenEndpoint === 'string'
+            ? payload.tokenEndpoint.trim()
+            : '';
+        if (submittedEndpoint) {
+            const stored = await kmDao.get(orgId, kmId);
+            if (submittedEndpoint !== ((stored && stored.token_endpoint) || '')) {
+                const changedEndpointError = _validateTokenEndpoint(submittedEndpoint);
+                if (changedEndpointError) return util.sendError(res, 400, changedEndpointError);
+            }
+        }
+
         let provisioningCfg = null;
         const existingCfg = await kmConfigDao.get(orgId, kmId);
         if (payload.provisioning && !existingCfg) {
@@ -566,9 +624,6 @@ const updateKeyManager = async (req, res) => {
             return util.sendError(res, 409, TYPE_IMMUTABLE_CHANGE_MESSAGE);
         }
         if (payload.provisioning) {
-            const endpoint = (payload.tokenEndpoint || '').trim() || (await kmDao.get(orgId, kmId)).token_endpoint;
-            const endpointError = _validateTokenEndpointForProvisioning(endpoint);
-            if (endpointError) return util.sendError(res, 400, endpointError);
             const checked = _validateProvisioning(payload.provisioning, {
                 isUpdate: true, existing: existingCfg,
             });
