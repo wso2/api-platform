@@ -32,6 +32,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import type { BillingOrganization } from './billing/organization';
 import { runtimeConfig } from './config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './contexts/auth/authConstants';
 
@@ -49,6 +50,19 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T>;
 
+/**
+ * The organization's billing record as an extension reads it. The host owns the
+ * call (see `billing/organization`) because it is not a plain read — it performs
+ * first-login subscription activation as a side effect — so an extension asks
+ * for the record rather than fetching it, and every caller shares one request.
+ *
+ * Resolves `null` when the BFF has no billing upstream, so an extension needs no
+ * deployment config of its own to know billing is unavailable.
+ */
+export type BillingPort = {
+  organization: () => Promise<BillingOrganization | null>;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -57,6 +71,7 @@ export type CloudHostPort = {
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  billing: BillingPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

@@ -131,7 +131,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'trial-status',
         slot: HEADER_ACTIONS_SLOT,
         order: 10,
-        render: () => <TrialStatusFeature />,
+        render: (port) => <TrialStatusFeature port={port} />,
       },
     ],
   }),

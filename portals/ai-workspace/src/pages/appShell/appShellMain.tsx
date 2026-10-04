@@ -55,6 +55,7 @@ import {
   type AIWorkspaceExtension,
 } from '../../extensions';
 import { useSlot } from '../../slots';
+import { getBillingOrganization } from '../../billing/organization';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
@@ -129,6 +130,7 @@ export default function AppLayout(): JSX.Element {
       notify,
       apiFetch: extensionApiFetch,
       resourceLimits,
+      billing: { organization: getBillingOrganization },
     }),
     [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
