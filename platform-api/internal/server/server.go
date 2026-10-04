@@ -586,8 +586,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if saEnabled {
 		revocations = service.NewRevocationCache(serviceAccountRepo, slogger)
 		// Loaded before serving: a cold cache must never read as "nothing revoked".
+		// Postgres and SQL Server schemas are operator-provisioned, so a missing
+		// table surfaces here on upgrade.
 		if err := revocations.Load(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to load service-account revocations (on Postgres or SQL Server, apply "+
+				"the service_accounts and service_account_revocations tables from the schema file, or set "+
+				"auth.service_account.enabled = false): %w", err)
 		}
 		var saSigner *service.SATokenSigner
 		var saPublicKeys []*rsa.PublicKey
