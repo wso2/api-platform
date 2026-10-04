@@ -993,8 +993,7 @@ CREATE TABLE dbo.service_accounts (
     client_id              VARCHAR(255)  NOT NULL,
     client_secret_hash     VARCHAR(255)  NOT NULL,
     masked_secret          VARCHAR(8)    NOT NULL,
-    identity_uuid          VARCHAR(40)   NOT NULL,
-    roles                  VARCHAR(1023) NOT NULL DEFAULT '',
+    roles                  VARCHAR(1023) NOT NULL,
     status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
     token_version          INTEGER       NOT NULL DEFAULT 1,
     last_used_at           DATETIME2(7),
@@ -1013,8 +1012,6 @@ CREATE TABLE dbo.service_accounts (
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_service_accounts_org' AND object_id = OBJECT_ID(N'dbo.service_accounts'))
 CREATE INDEX idx_service_accounts_org ON dbo.service_accounts(organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_service_accounts_status' AND object_id = OBJECT_ID(N'dbo.service_accounts'))
-CREATE INDEX idx_service_accounts_status ON dbo.service_accounts(status);
 
 -- Revocation watermarks for service-account tokens: one row per account, not
 -- per token. Every revoke bumps service_accounts.token_version, and a token

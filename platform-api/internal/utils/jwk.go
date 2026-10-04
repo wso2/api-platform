@@ -75,6 +75,24 @@ func SetClaim(claims map[string]interface{}, path string, value interface{}) {
 	current[parts[len(parts)-1]] = value
 }
 
+// GetClaim reads a claim written by SetClaim.
+func GetClaim(claims map[string]interface{}, path string) (interface{}, bool) {
+	if path == "" {
+		return nil, false
+	}
+	parts := strings.Split(path, ".")
+	current := claims
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := current[part].(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	v, ok := current[parts[len(parts)-1]]
+	return v, ok
+}
+
 // ClaimKey returns name, or def when the claim mapping is unset.
 func ClaimKey(name, def string) string {
 	if name == "" {

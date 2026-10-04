@@ -47,8 +47,7 @@ type ServiceAccount struct {
 	ClientID            string     `db:"client_id"`
 	ClientSecretHash    string     `db:"client_secret_hash"`
 	MaskedSecret        string     `db:"masked_secret"`
-	IdentityUUID        string     `db:"identity_uuid"`
-	Roles               string     `db:"roles"` // space-separated, expanded at each exchange
+	Roles               string     `db:"roles"` // space-separated ap_sa_* roles, expanded at each exchange
 	Status              string     `db:"status"`
 	TokenVersion        int64      `db:"token_version"` // bumped by every revoke; each token carries it
 	LastUsedAt          *time.Time `db:"last_used_at"`
