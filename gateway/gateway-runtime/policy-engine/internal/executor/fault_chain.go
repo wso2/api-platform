@@ -115,7 +115,7 @@ func (c *ChainExecutor) ExecuteFaultPolicy(
 	}
 
 	if !spec.Enabled {
-		return skipped(constants.AttrSkipReasonDisabled)
+		return skipped("disabled")
 	}
 
 	// Evaluated against the FaultContext itself. EvaluateFaultCondition emits the same
