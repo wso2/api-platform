@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -60,6 +61,8 @@ type CustomClaims struct {
 	Organization string `json:"organization"`
 	Scope        string `json:"scope"`
 	Username     string `json:"username"`
+	// ServiceAccountTokenVersion is set only on a service-account token.
+	ServiceAccountTokenVersion *int64 `json:"-"`
 	jwt.RegisteredClaims
 }
 
@@ -76,6 +79,10 @@ type AuthConfig struct {
 	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
 	// signs tokens — one mapping shared by issuance and validation.
 	ClaimMappings ClaimMappings
+	// KeyMap, when set, replaces PublicKey/TokenIssuer: each token is verified
+	// with the key registered for its iss, and SA tokens are always verified,
+	// even under SkipValidation.
+	KeyMap *IssuerKeyMap
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
@@ -162,7 +169,12 @@ func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*http.Request, error) {
 	mapClaims := jwt.MapClaims{}
 
-	if config.SkipValidation {
+	if config.KeyMap != nil {
+		var err error
+		if mapClaims, err = verifyWithKeyMap(tokenString, config); err != nil {
+			return nil, err
+		}
+	} else if config.SkipValidation {
 		parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 		token, _, parseErr := parser.ParseUnverified(tokenString, mapClaims)
 		if parseErr != nil {
@@ -224,7 +236,14 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		JTI:          getStringClaim(mapClaims, "jti"),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: sub,
+			Issuer:  getStringClaim(mapClaims, "iss"),
 		},
+	}
+	if iat, err := mapClaims.GetIssuedAt(); err == nil {
+		claimsObj.IssuedAt = iat
+	}
+	if v, ok := ServiceAccountTokenVersion(mapClaims); ok {
+		claimsObj.ServiceAccountTokenVersion = &v
 	}
 
 	platformRoles := resolvePlatformRoles(mapClaims, config.ClaimMappings.RolesClaimPath, config.ClaimMappings.RoleScopeMap)
@@ -243,6 +262,24 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
 	ctx = context.WithValue(ctx, keyRoles, platformRoles)
 	return r.WithContext(ctx), nil
+}
+
+// verifyWithKeyMap verifies through the issuer map. Under SkipValidation a
+// token is decoded unverified unless it is an SA token, which the platform
+// mints itself and so always verifies.
+func verifyWithKeyMap(tokenString string, config AuthConfig) (jwt.MapClaims, error) {
+	if config.SkipValidation {
+		claims := jwt.MapClaims{}
+		if _, _, err := jwt.NewParser().ParseUnverified(tokenString, claims); err != nil {
+			return nil, fmt.Errorf("invalid JWT format: %v", err)
+		}
+		iss, _ := claims["iss"].(string)
+		sub, _ := claims["sub"].(string)
+		if !config.KeyMap.IsServiceAccountToken(iss, sub) {
+			return claims, nil
+		}
+	}
+	return config.KeyMap.verify(tokenString)
 }
 
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
@@ -283,6 +320,11 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			jti, _ := mapClaims["jti"].(string)
 
 			sub, _ := mapClaims["sub"].(string)
+			// Only the platform mints the service-account prefix.
+			if strings.HasPrefix(sub, constants.ServiceAccountSubPrefix) {
+				writeAuthError(w, "IdP token uses the reserved service-account subject prefix")
+				return
+			}
 			claimsObj := &CustomClaims{
 				Organization:     org,
 				Username:         username,
