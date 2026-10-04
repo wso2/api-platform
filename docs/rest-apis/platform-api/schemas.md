@@ -5349,6 +5349,404 @@ Secret metadata — never includes the plaintext value.
 |list|[[SecretSummary](#schemasecretsummary)]|true|none|[Secret metadata — never includes the plaintext value.]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
+## ServiceAccount
+
+<a id="schemaserviceaccount"></a>
+<a id="schema_ServiceAccount"></a>
+<a id="tocSserviceaccount"></a>
+<a id="tocsserviceaccount"></a>
+
+```json
+{
+  "id": "ci-deployer",
+  "displayName": "CI deployer",
+  "owner": "platform-team@example.com",
+  "description": "Deploys REST APIs from the release pipeline",
+  "clientId": "sa_acme_ci-deployer_3f9a1c",
+  "maskedSecret": "***9f2c1",
+  "roles": [
+    "ap_operator"
+  ],
+  "status": "active",
+  "lastUsedAt": "2019-08-24T14:15:22Z",
+  "lastUsedIp": "203.0.113.7",
+  "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+  "createdBy": "john.doe",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedBy": "john.doe",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+A service account. Never carries the plaintext secret.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Service account handle, unique within the organization|
+|displayName|string|true|none|none|
+|owner|string|true|none|Who is accountable for this account — a team, person or mailing list|
+|description|string|true|none|What the account is for|
+|clientId|string|true|read-only|none|
+|maskedSecret|string|true|read-only|none|
+|roles|[string]|true|none|none|
+|status|string|true|none|none|
+|lastUsedAt|string(date-time)|false|read-only|none|
+|lastUsedIp|string|false|read-only|none|
+|secretRegeneratedAt|string(date-time)|false|read-only|none|
+|createdBy|string|false|read-only|none|
+|createdAt|string(date-time)|false|read-only|none|
+|updatedBy|string|false|read-only|none|
+|updatedAt|string(date-time)|false|read-only|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|disabled|
+
+## ServiceAccountListResponse
+
+<a id="schemaserviceaccountlistresponse"></a>
+<a id="schema_ServiceAccountListResponse"></a>
+<a id="tocSserviceaccountlistresponse"></a>
+<a id="tocsserviceaccountlistresponse"></a>
+
+```json
+{
+  "count": 1,
+  "list": [
+    {
+      "id": "ci-deployer",
+      "displayName": "CI deployer",
+      "owner": "platform-team@example.com",
+      "description": "Deploys REST APIs from the release pipeline",
+      "clientId": "sa_acme_ci-deployer_3f9a1c",
+      "maskedSecret": "***9f2c1",
+      "roles": [
+        "ap_operator"
+      ],
+      "status": "active",
+      "lastUsedAt": "2019-08-24T14:15:22Z",
+      "lastUsedIp": "203.0.113.7",
+      "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+      "createdBy": "john.doe",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedBy": "john.doe",
+      "updatedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|Number of service accounts in current response|
+|list|[[ServiceAccount](#schemaserviceaccount)]|true|none|[A service account. Never carries the plaintext secret.]|
+|pagination|[Pagination](#schemapagination)|true|none|none|
+
+## ServiceAccountCreateRequest
+
+<a id="schemaserviceaccountcreaterequest"></a>
+<a id="schema_ServiceAccountCreateRequest"></a>
+<a id="tocSserviceaccountcreaterequest"></a>
+<a id="tocsserviceaccountcreaterequest"></a>
+
+```json
+{
+  "id": "ci-deployer",
+  "displayName": "CI deployer",
+  "owner": "platform-team@example.com",
+  "description": "Deploys REST APIs from the release pipeline",
+  "roles": [
+    "ap_operator"
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Service account handle. `token` is reserved.|
+|displayName|string|true|none|none|
+|owner|string|true|none|none|
+|description|string|true|none|none|
+|roles|[string]|true|none|Roles from the role-to-scope mapping file|
+
+## ServiceAccountUpdateRequest
+
+<a id="schemaserviceaccountupdaterequest"></a>
+<a id="schema_ServiceAccountUpdateRequest"></a>
+<a id="tocSserviceaccountupdaterequest"></a>
+<a id="tocsserviceaccountupdaterequest"></a>
+
+```json
+{
+  "displayName": "CI deployer",
+  "owner": "platform-team@example.com",
+  "description": "Deploys REST APIs from the release pipeline",
+  "roles": [
+    "ap_operator"
+  ],
+  "status": "disabled"
+}
+
+```
+
+Every field is optional. Owner and description may change but not be blanked.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|false|none|none|
+|owner|string|false|none|none|
+|description|string|false|none|none|
+|roles|[string]|false|none|none|
+|status|string|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|disabled|
+
+## ServiceAccountCredentials
+
+<a id="schemaserviceaccountcredentials"></a>
+<a id="schema_ServiceAccountCredentials"></a>
+<a id="tocSserviceaccountcredentials"></a>
+<a id="tocsserviceaccountcredentials"></a>
+
+```json
+{
+  "serviceAccount": {
+    "id": "ci-deployer",
+    "displayName": "CI deployer",
+    "owner": "platform-team@example.com",
+    "description": "Deploys REST APIs from the release pipeline",
+    "clientId": "sa_acme_ci-deployer_3f9a1c",
+    "maskedSecret": "***9f2c1",
+    "roles": [
+      "ap_operator"
+    ],
+    "status": "active",
+    "lastUsedAt": "2019-08-24T14:15:22Z",
+    "lastUsedIp": "203.0.113.7",
+    "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+    "createdBy": "john.doe",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "updatedBy": "john.doe",
+    "updatedAt": "2019-08-24T14:15:22Z"
+  },
+  "clientId": "sa_acme_ci-deployer_3f9a1c",
+  "clientSecret": "string"
+}
+
+```
+
+The only response that carries a plaintext secret. Returned on create and on
+regenerate. The secret is shown once and cannot be recovered.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|serviceAccount|[ServiceAccount](#schemaserviceaccount)|true|none|A service account. Never carries the plaintext secret.|
+|clientId|string|true|none|none|
+|clientSecret|string|true|none|apsa_ followed by 64 hex characters|
+
+## ServiceAccountTokenRequest
+
+<a id="schemaserviceaccounttokenrequest"></a>
+<a id="schema_ServiceAccountTokenRequest"></a>
+<a id="tocSserviceaccounttokenrequest"></a>
+<a id="tocsserviceaccounttokenrequest"></a>
+
+```json
+{
+  "grant_type": "client_credentials",
+  "client_id": "string",
+  "client_secret": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|grant_type|string|true|none|none|
+|client_id|string|true|none|none|
+|client_secret|string|true|write-only|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|grant_type|client_credentials|
+
+## ServiceAccountTokenResponse
+
+<a id="schemaserviceaccounttokenresponse"></a>
+<a id="schema_ServiceAccountTokenResponse"></a>
+<a id="tocSserviceaccounttokenresponse"></a>
+<a id="tocsserviceaccounttokenresponse"></a>
+
+```json
+{
+  "access_token": "string",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "scope": "ap:rest_api:read ap:rest_api:deployment:manage"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|access_token|string|true|none|none|
+|token_type|string|true|none|none|
+|expires_in|integer|true|none|Lifetime in seconds|
+|scope|string|false|none|none|
+
+## IntrospectionRequest
+
+<a id="schemaintrospectionrequest"></a>
+<a id="schema_IntrospectionRequest"></a>
+<a id="tocSintrospectionrequest"></a>
+<a id="tocsintrospectionrequest"></a>
+
+```json
+{
+  "token": "string",
+  "token_type_hint": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|token|string|true|none|none|
+|token_type_hint|string|false|none|none|
+
+## IntrospectionResponse
+
+<a id="schemaintrospectionresponse"></a>
+<a id="schema_IntrospectionResponse"></a>
+<a id="tocSintrospectionresponse"></a>
+<a id="tocsintrospectionresponse"></a>
+
+```json
+{
+  "active": true,
+  "scope": "string",
+  "client_id": "string",
+  "sub": "string",
+  "aud": "string",
+  "iss": "string",
+  "exp": 0,
+  "iat": 0,
+  "jti": "string",
+  "token_type": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|active|boolean|true|none|none|
+|scope|string|false|none|none|
+|client_id|string|false|none|none|
+|sub|string|false|none|none|
+|aud|string|false|none|none|
+|iss|string|false|none|none|
+|exp|integer|false|none|none|
+|iat|integer|false|none|none|
+|jti|string|false|none|none|
+|token_type|string|false|none|none|
+
+## JWKSResponse
+
+<a id="schemajwksresponse"></a>
+<a id="schema_JWKSResponse"></a>
+<a id="tocSjwksresponse"></a>
+<a id="tocsjwksresponse"></a>
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "string",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "string",
+      "e": "AQAB"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|keys|[[JWK](#schemajwk)]|true|none|[An RSA public key (RFC 7517)]|
+
+## JWK
+
+<a id="schemajwk"></a>
+<a id="schema_JWK"></a>
+<a id="tocSjwk"></a>
+<a id="tocsjwk"></a>
+
+```json
+{
+  "kty": "RSA",
+  "kid": "string",
+  "use": "sig",
+  "alg": "RS256",
+  "n": "string",
+  "e": "AQAB"
+}
+
+```
+
+An RSA public key (RFC 7517)
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|kty|string|true|none|none|
+|kid|string|true|none|RFC 7638 thumbprint of the key|
+|use|string|false|none|none|
+|alg|string|false|none|none|
+|n|string|true|none|none|
+|e|string|true|none|none|
+
 ## GatewayTokenListResponse
 
 <a id="schemagatewaytokenlistresponse"></a>
