@@ -91,6 +91,8 @@ func TestIssuerKeyMap_Verify(t *testing.T) {
 
 	wrongAud := saClaims("platform-api-sa")
 	wrongAud["aud"] = "other-service"
+	noExp := saClaims("platform-api-sa")
+	delete(noExp, "exp")
 
 	tests := []struct {
 		name  string
@@ -105,6 +107,7 @@ func TestIssuerKeyMap_Verify(t *testing.T) {
 		{"SA token with no kid", signToken(t, sa, "", saClaims("platform-api-sa")), false},
 		{"SA token with an unknown kid", signToken(t, sa, "nope", saClaims("platform-api-sa")), false},
 		{"SA token with the wrong aud", signToken(t, sa, "auto", wrongAud), false},
+		{"SA token with no exp", signToken(t, sa, "auto", noExp), false},
 		{"unknown issuer never falls through to another key", signToken(t, local, "", humanClaims("somebody-else")), false},
 		{"SA issuer's key cannot sign for the local issuer", signToken(t, sa, "", humanClaims("platform-api")), false},
 		{"key not registered anywhere", signToken(t, stranger, "auto", saClaims("platform-api-sa")), false},
