@@ -176,6 +176,12 @@ const (
 	CodeSecretInUse    = "SECRET_IN_USE"
 )
 
+// Service account domain codes.
+const (
+	CodeServiceAccountNotFound = "SERVICE_ACCOUNT_NOT_FOUND"
+	CodeServiceAccountExists   = "SERVICE_ACCOUNT_EXISTS"
+)
+
 // Artifact domain codes. Used by flows that operate on a generic artifact
 // reference (REST API / LLM provider / LLM proxy / MCP proxy) — API keys,
 // subscriptions, and application associations — where the caller shouldn't

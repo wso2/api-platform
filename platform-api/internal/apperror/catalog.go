@@ -218,6 +218,12 @@ var (
 	SecretInUse    = def(CodeSecretInUse, http.StatusConflict, "The secret is in use and cannot be deleted.")
 )
 
+// Service account entries.
+var (
+	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")
+	ServiceAccountExists   = def(CodeServiceAccountExists, http.StatusConflict, "A service account with this ID already exists.")
+)
+
 // Artifact entries — generic artifact-reference flows and the
 // data-plane-origin guard. The guard produces client-appropriate messages at
 // the call site, so these are passthrough templates.
