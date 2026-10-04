@@ -679,6 +679,10 @@ curl -X POST https://localhost:9243/api/v0.9/service-accounts/token \
 OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
 token yet. Every authentication failure returns the same 401.
 
+The client authenticates either with HTTP Basic (`Authorization: Basic`, client ID
+and secret form-urlencoded first) or with `client_id` and `client_secret` in the
+body, not both (RFC 6749 section 2.3.1).
+
 The token carries one authorization claim, chosen by the server's
 `auth.authorization.mode`. In `scope` mode, `scope` is required and the token
 carries exactly the requested scopes; a missing scope, or one the account's

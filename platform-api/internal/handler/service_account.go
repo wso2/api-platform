@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -190,7 +191,8 @@ func (h *ServiceAccountHandler) RegenerateSecret(w http.ResponseWriter, r *http.
 	return nil
 }
 
-// Token is the OAuth2 client credentials grant, form-encoded.
+// Token is the OAuth2 client credentials grant, form-encoded. The client may
+// authenticate with HTTP Basic or with form fields (RFC 6749 section 2.3.1).
 func (h *ServiceAccountHandler) Token(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return apperror.ValidationFailed.New("the request body must be form-encoded")
@@ -198,9 +200,13 @@ func (h *ServiceAccountHandler) Token(w http.ResponseWriter, r *http.Request) er
 	if r.PostForm.Get("grant_type") != string(api.ClientCredentials) {
 		return apperror.ValidationFailed.New("grant_type must be client_credentials")
 	}
+	clientID, clientSecret, err := clientCredentials(r)
+	if err != nil {
+		return err
+	}
 	resp, err := h.svc.Exchange(service.ExchangeRequest{
-		ClientID:     r.PostForm.Get("client_id"),
-		ClientSecret: r.PostForm.Get("client_secret"),
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Scope:        r.PostForm.Get("scope"),
 		ClientIP:     clientIP(r),
 		UserAgent:    r.UserAgent(),
@@ -271,6 +277,25 @@ func activeIntrospection(claims jwt.MapClaims) api.IntrospectionResponse {
 		resp.Aud = &aud[0]
 	}
 	return resp
+}
+
+// clientCredentials reads the client ID and secret from HTTP Basic or from the
+// form. Basic values are form-urlencoded first (RFC 6749 section 2.3.1). Using
+// both methods at once is refused (section 2.3).
+func clientCredentials(r *http.Request) (string, string, error) {
+	user, pass, basic := r.BasicAuth()
+	if !basic {
+		return r.PostForm.Get("client_id"), r.PostForm.Get("client_secret"), nil
+	}
+	if r.PostForm.Has("client_id") || r.PostForm.Has("client_secret") {
+		return "", "", apperror.ValidationFailed.New("use one client authentication method: HTTP Basic or form fields, not both")
+	}
+	id, err1 := url.QueryUnescape(user)
+	secret, err2 := url.QueryUnescape(pass)
+	if err1 != nil || err2 != nil {
+		return "", "", apperror.Unauthorized.New().WithLogMessage("malformed HTTP Basic client credentials")
+	}
+	return id, secret, nil
 }
 
 // clientIP is RemoteAddr without the port. Behind a load balancer this is the

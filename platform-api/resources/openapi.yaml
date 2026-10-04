@@ -7476,6 +7476,10 @@ paths:
         OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
         token yet. Every authentication failure returns the same 401.
 
+        The client authenticates either with HTTP Basic (`Authorization: Basic`, client ID
+        and secret form-urlencoded first) or with `client_id` and `client_secret` in the
+        body, not both (RFC 6749 section 2.3.1).
+
         The token carries one authorization claim, chosen by the server's
         `auth.authorization.mode`. In `scope` mode, `scope` is required and the token
         carries exactly the requested scopes; a missing scope, or one the account's
@@ -12072,10 +12076,9 @@ components:
     # RFC 7662 wire formats that OAuth2 client libraries already parse.
     ServiceAccountTokenRequest:
       type: object
+      description: Send client_id and client_secret here, or with HTTP Basic instead.
       required:
         - grant_type
-        - client_id
-        - client_secret
       properties:
         grant_type:
           type: string

@@ -4748,9 +4748,9 @@ type ServiceAccountListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
-// ServiceAccountTokenRequest defines model for ServiceAccountTokenRequest.
+// ServiceAccountTokenRequest Send client_id and client_secret here, or with HTTP Basic instead.
 type ServiceAccountTokenRequest struct {
-	ClientId     string                              `json:"client_id" yaml:"client_id"`
+	ClientId     *string                             `json:"client_id,omitempty" yaml:"client_id,omitempty"`
 	ClientSecret *string                             `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
 	GrantType    ServiceAccountTokenRequestGrantType `json:"grant_type" yaml:"grant_type"`
 

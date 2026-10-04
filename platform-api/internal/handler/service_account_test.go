@@ -193,3 +193,38 @@ func TestJWKSPublishesTheSigningKey(t *testing.T) {
 		t.Fatalf("jwks = %v", jwks)
 	}
 }
+
+func TestClientCredentials(t *testing.T) {
+	form := func(v url.Values) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(v.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	r := form(url.Values{"grant_type": {"client_credentials"}, "client_id": {"id-1"}, "client_secret": {"s-1"}})
+	if id, secret, err := clientCredentials(r); err != nil || id != "id-1" || secret != "s-1" {
+		t.Fatalf("form: %q %q %v", id, secret, err)
+	}
+
+	// Basic values are form-urlencoded first: "a%3Ab" is the ID "a:b".
+	r = form(url.Values{"grant_type": {"client_credentials"}})
+	r.SetBasicAuth("a%3Ab", "s+1")
+	if id, secret, err := clientCredentials(r); err != nil || id != "a:b" || secret != "s 1" {
+		t.Fatalf("basic: %q %q %v", id, secret, err)
+	}
+
+	r = form(url.Values{"grant_type": {"client_credentials"}, "client_id": {"id-1"}})
+	r.SetBasicAuth("id-1", "s-1")
+	if _, _, err := clientCredentials(r); err == nil {
+		t.Fatal("both methods at once must be refused")
+	}
+
+	r = form(url.Values{"grant_type": {"client_credentials"}})
+	r.SetBasicAuth("%zz", "s-1")
+	if _, _, err := clientCredentials(r); err == nil {
+		t.Fatal("a malformed Basic value must be refused")
+	}
+}
