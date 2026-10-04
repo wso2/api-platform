@@ -38,6 +38,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -336,6 +337,44 @@ type Auth struct {
 	// dot-separated path into a nested claim ("realm_access.org_id") — see
 	// resolveClaimPath in internal/middleware/auth.go.
 	ClaimMappings ClaimMappings `koanf:"claim_mappings"`
+	// ServiceAccount configures service-account token issue and verification.
+	ServiceAccount ServiceAccount `koanf:"service_account"`
+}
+
+// ServiceAccount groups the service-account settings.
+type ServiceAccount struct {
+	TokenTTL time.Duration `koanf:"token_ttl"`
+	// Audience is written to every SA token's aud and required back on it.
+	Audience   string                   `koanf:"audience"`
+	Revocation ServiceAccountRevocation `koanf:"revocation"`
+	// JWT is optional. Left zero, SA tokens are signed with auth.jwt.
+	JWT JWT `koanf:"jwt"`
+	// RetiredPublicKeyFiles still verify and are published in the JWKS, but
+	// never sign. Only valid alongside JWT.
+	RetiredPublicKeyFiles []string `koanf:"retired_public_key_files"`
+}
+
+// ServiceAccountRevocation tunes the revocation-watermark cache.
+type ServiceAccountRevocation struct {
+	PollInterval time.Duration `koanf:"poll_interval"`
+}
+
+// HasOwnKey reports whether a separate SA signing key pair is configured.
+func (s *ServiceAccount) HasOwnKey() bool {
+	return s.JWT.Issuer != "" || s.JWT.PublicKeyFile != "" || s.JWT.PrivateKeyFile != ""
+}
+
+// LoadRetiredPublicKeys reads every retired SA public key.
+func (s *ServiceAccount) LoadRetiredPublicKeys() ([]*rsa.PublicKey, error) {
+	keys := make([]*rsa.PublicKey, 0, len(s.RetiredPublicKeyFiles))
+	for _, f := range s.RetiredPublicKeyFiles {
+		k, err := (&JWT{PublicKeyFile: f}).LoadPublicKey()
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, nil
 }
 
 // Authorization modes selectable via auth.authorization.mode.
@@ -951,6 +990,10 @@ func validateAuthConfig(auth *Auth) error {
 		return err
 	}
 
+	if err := validateServiceAccountConfig(auth); err != nil {
+		return err
+	}
+
 	// Authorization is validated outside the mode switch, not inside any one
 	// mode's branch: it applies in every authentication mode.
 	return validateAuthorizationConfig(&auth.Authorization, &auth.ClaimMappings)
@@ -983,6 +1026,62 @@ func validateAuthModeConfig(auth *Auth) error {
 	default:
 		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeInternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
+}
+
+// validateServiceAccountConfig checks [auth.service_account]. A half-configured
+// signing key or a shared issuer would surface as a 401 long after startup.
+func validateServiceAccountConfig(auth *Auth) error {
+	sa := &auth.ServiceAccount
+	if sa.TokenTTL <= 0 {
+		return fmt.Errorf("auth.service_account.token_ttl must be a positive duration")
+	}
+	if strings.TrimSpace(sa.Audience) == "" {
+		return fmt.Errorf("auth.service_account.audience must not be blank")
+	}
+	// The jitter adds rand.N(poll_interval/2), which panics on zero.
+	if sa.Revocation.PollInterval <= 0 || sa.Revocation.PollInterval/2 == 0 {
+		return fmt.Errorf("auth.service_account.revocation.poll_interval must be a positive duration of at least 2ns")
+	}
+
+	if !sa.HasOwnKey() {
+		if len(sa.RetiredPublicKeyFiles) > 0 {
+			return fmt.Errorf("auth.service_account.retired_public_key_files requires [auth.service_account.jwt]; " +
+				"the shared auth.jwt key cannot be changed without an outage")
+		}
+		return nil
+	}
+
+	if sa.JWT.Issuer == "" || sa.JWT.PublicKeyFile == "" || sa.JWT.PrivateKeyFile == "" {
+		return fmt.Errorf("[auth.service_account.jwt] needs issuer, public_key_file and private_key_file together")
+	}
+	if err := validateJWTConfig(&sa.JWT, true); err != nil {
+		return fmt.Errorf("[auth.service_account.jwt]: %w", err)
+	}
+	if sa.JWT.Issuer == auth.JWT.Issuer {
+		return fmt.Errorf("auth.service_account.jwt.issuer must differ from auth.jwt.issuer (%q)", auth.JWT.Issuer)
+	}
+	if auth.Mode == AuthModeIDP {
+		for _, iss := range auth.IDP.Issuer {
+			if iss == sa.JWT.Issuer {
+				return fmt.Errorf("auth.service_account.jwt.issuer must differ from every auth.idp.issuer (%q)", iss)
+			}
+		}
+	}
+
+	current, err := sa.JWT.LoadPublicKey()
+	if err != nil {
+		return err
+	}
+	retired, err := sa.LoadRetiredPublicKeys()
+	if err != nil {
+		return fmt.Errorf("invalid auth.service_account.retired_public_key_files: %w", err)
+	}
+	for i, k := range retired {
+		if k.Equal(current) {
+			return fmt.Errorf("auth.service_account.retired_public_key_files[%d] is the current signing key", i)
+		}
+	}
+	return nil
 }
 
 // ValidateAuthSkipPath rejects a skip-path entry that would widen the auth
@@ -1209,6 +1308,11 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 	for i, u := range cfg.Users {
 		if u.Username == "" {
 			return fmt.Errorf("auth.file.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+		}
+		// The prefix is reserved for service-account subjects.
+		if strings.HasPrefix(u.Username, constants.ServiceAccountSubPrefix) {
+			return fmt.Errorf("auth.file.users[%d]: username must not start with %q (reserved for service accounts)",
+				i, constants.ServiceAccountSubPrefix)
 		}
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
