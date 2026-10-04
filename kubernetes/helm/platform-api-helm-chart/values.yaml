@@ -171,6 +171,7 @@ config:
             - ap:subscription:manage
             - ap:subscription_plan:manage
             - ap:secret:manage
+            - ap:service_account:manage
             - ap:api_key:read
             # Ownership override — every user's API keys, not just the caller's.
             # Never implied by ap:api_key:read, so it is listed explicitly.

@@ -1045,6 +1045,57 @@ func (e SecretSummaryType) Valid() bool {
 	}
 }
 
+// Defines values for ServiceAccountStatus.
+const (
+	ServiceAccountStatusActive   ServiceAccountStatus = "active"
+	ServiceAccountStatusDisabled ServiceAccountStatus = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the ServiceAccountStatus enum.
+func (e ServiceAccountStatus) Valid() bool {
+	switch e {
+	case ServiceAccountStatusActive:
+		return true
+	case ServiceAccountStatusDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServiceAccountTokenRequestGrantType.
+const (
+	ClientCredentials ServiceAccountTokenRequestGrantType = "client_credentials"
+)
+
+// Valid indicates whether the value is a known member of the ServiceAccountTokenRequestGrantType enum.
+func (e ServiceAccountTokenRequestGrantType) Valid() bool {
+	switch e {
+	case ClientCredentials:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServiceAccountUpdateRequestStatus.
+const (
+	ServiceAccountUpdateRequestStatusActive   ServiceAccountUpdateRequestStatus = "active"
+	ServiceAccountUpdateRequestStatusDisabled ServiceAccountUpdateRequestStatus = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the ServiceAccountUpdateRequestStatus enum.
+func (e ServiceAccountUpdateRequestStatus) Valid() bool {
+	switch e {
+	case ServiceAccountUpdateRequestStatusActive:
+		return true
+	case ServiceAccountUpdateRequestStatusDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubscriptionKind.
 const (
 	SubscriptionKindLlmProvider SubscriptionKind = "LlmProvider"
@@ -3104,6 +3155,43 @@ type ImportOpenAPIRequest struct {
 	Version string  `json:"version" yaml:"version"`
 }
 
+// IntrospectionRequest defines model for IntrospectionRequest.
+type IntrospectionRequest struct {
+	Token         string  `json:"token" yaml:"token"`
+	TokenTypeHint *string `json:"token_type_hint,omitempty" yaml:"token_type_hint,omitempty"`
+}
+
+// IntrospectionResponse defines model for IntrospectionResponse.
+type IntrospectionResponse struct {
+	Active    bool    `json:"active" yaml:"active"`
+	Aud       *string `json:"aud,omitempty" yaml:"aud,omitempty"`
+	ClientId  *string `json:"client_id,omitempty" yaml:"client_id,omitempty"`
+	Exp       *int    `json:"exp,omitempty" yaml:"exp,omitempty"`
+	Iat       *int    `json:"iat,omitempty" yaml:"iat,omitempty"`
+	Iss       *string `json:"iss,omitempty" yaml:"iss,omitempty"`
+	Jti       *string `json:"jti,omitempty" yaml:"jti,omitempty"`
+	Scope     *string `json:"scope,omitempty" yaml:"scope,omitempty"`
+	Sub       *string `json:"sub,omitempty" yaml:"sub,omitempty"`
+	TokenType *string `json:"token_type,omitempty" yaml:"token_type,omitempty"`
+}
+
+// JWK An RSA public key (RFC 7517)
+type JWK struct {
+	Alg *string `json:"alg,omitempty" yaml:"alg,omitempty"`
+	E   string  `json:"e" yaml:"e"`
+
+	// Kid RFC 7638 thumbprint of the key
+	Kid string  `json:"kid" yaml:"kid"`
+	Kty string  `json:"kty" yaml:"kty"`
+	N   string  `json:"n" yaml:"n"`
+	Use *string `json:"use,omitempty" yaml:"use,omitempty"`
+}
+
+// JWKSResponse defines model for JWKSResponse.
+type JWKSResponse struct {
+	Keys []JWK `json:"keys" yaml:"keys"`
+}
+
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -4597,6 +4685,99 @@ type SecurityConfig struct {
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 }
 
+// ServiceAccount A service account. Never carries the plaintext secret.
+type ServiceAccount struct {
+	ClientId  *string    `json:"clientId,omitempty" yaml:"clientId,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description What the account is for
+	Description string `json:"description" yaml:"description"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Service account handle, unique within the organization
+	Id           string     `json:"id" yaml:"id"`
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty" yaml:"lastUsedAt,omitempty"`
+	LastUsedIp   *string    `json:"lastUsedIp,omitempty" yaml:"lastUsedIp,omitempty"`
+	MaskedSecret *string    `json:"maskedSecret,omitempty" yaml:"maskedSecret,omitempty"`
+
+	// Owner Who is accountable for this account — a team, person or mailing list
+	Owner               string               `json:"owner" yaml:"owner"`
+	Roles               []string             `json:"roles" yaml:"roles"`
+	SecretRegeneratedAt *time.Time           `json:"secretRegeneratedAt,omitempty" yaml:"secretRegeneratedAt,omitempty"`
+	Status              ServiceAccountStatus `json:"status" yaml:"status"`
+	UpdatedAt           *time.Time           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy           *string              `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+}
+
+// ServiceAccountStatus defines model for ServiceAccount.Status.
+type ServiceAccountStatus string
+
+// ServiceAccountCreateRequest defines model for ServiceAccountCreateRequest.
+type ServiceAccountCreateRequest struct {
+	Description string `json:"description" yaml:"description"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Service account handle. `token` is reserved.
+	Id    string `json:"id" yaml:"id"`
+	Owner string `json:"owner" yaml:"owner"`
+
+	// Roles Roles from the role-to-scope mapping file
+	Roles []string `json:"roles" yaml:"roles"`
+}
+
+// ServiceAccountCredentials The only response that carries a plaintext secret. Returned on create and on
+// regenerate. The secret is shown once and cannot be recovered.
+type ServiceAccountCredentials struct {
+	ClientId string `json:"clientId" yaml:"clientId"`
+
+	// ClientSecret apsa_ followed by 64 hex characters
+	ClientSecret string `json:"clientSecret" yaml:"clientSecret"`
+
+	// ServiceAccount A service account. Never carries the plaintext secret.
+	ServiceAccount ServiceAccount `json:"serviceAccount" yaml:"serviceAccount"`
+}
+
+// ServiceAccountListResponse defines model for ServiceAccountListResponse.
+type ServiceAccountListResponse struct {
+	// Count Number of service accounts in current response
+	Count      int              `json:"count" yaml:"count"`
+	List       []ServiceAccount `json:"list" yaml:"list"`
+	Pagination Pagination       `json:"pagination" yaml:"pagination"`
+}
+
+// ServiceAccountTokenRequest defines model for ServiceAccountTokenRequest.
+type ServiceAccountTokenRequest struct {
+	ClientId     string                              `json:"client_id" yaml:"client_id"`
+	ClientSecret *string                             `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
+	GrantType    ServiceAccountTokenRequestGrantType `json:"grant_type" yaml:"grant_type"`
+}
+
+// ServiceAccountTokenRequestGrantType defines model for ServiceAccountTokenRequest.GrantType.
+type ServiceAccountTokenRequestGrantType string
+
+// ServiceAccountTokenResponse defines model for ServiceAccountTokenResponse.
+type ServiceAccountTokenResponse struct {
+	AccessToken string `json:"access_token" yaml:"access_token"`
+
+	// ExpiresIn Lifetime in seconds
+	ExpiresIn int     `json:"expires_in" yaml:"expires_in"`
+	Scope     *string `json:"scope,omitempty" yaml:"scope,omitempty"`
+	TokenType string  `json:"token_type" yaml:"token_type"`
+}
+
+// ServiceAccountUpdateRequest Every field is optional. Owner and description may change but not be blanked.
+type ServiceAccountUpdateRequest struct {
+	Description *string                            `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string                            `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Owner       *string                            `json:"owner,omitempty" yaml:"owner,omitempty"`
+	Roles       *[]string                          `json:"roles,omitempty" yaml:"roles,omitempty"`
+	Status      *ServiceAccountUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ServiceAccountUpdateRequestStatus defines model for ServiceAccountUpdateRequest.Status.
+type ServiceAccountUpdateRequestStatus string
+
 // Subscription defines model for Subscription.
 type Subscription struct {
 	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
@@ -5005,6 +5186,9 @@ type ProjectIdQ = string
 
 // QueryQ defines model for query-Q.
 type QueryQ = string
+
+// ServiceAccountId defines model for serviceAccountId.
+type ServiceAccountId = string
 
 // SortByQ defines model for sortBy-Q.
 type SortByQ string
@@ -5672,6 +5856,15 @@ type ListSecretsParams struct {
 	UpdatedAfter *time.Time `form:"updatedAfter,omitempty" json:"updatedAfter,omitempty" yaml:"updatedAfter,omitempty"`
 }
 
+// ListServiceAccountsParams defines parameters for ListServiceAccounts.
+type ListServiceAccountsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
 // ListSubscriptionPlansParams defines parameters for ListSubscriptionPlans.
 type ListSubscriptionPlansParams struct {
 	// Limit Maximum number of items to return per page.
@@ -5872,6 +6065,18 @@ type CreateSecretMultipartRequestBody = SecretCreateRequest
 
 // RotateSecretMultipartRequestBody defines body for RotateSecret for multipart/form-data ContentType.
 type RotateSecretMultipartRequestBody = SecretUpdateRequest
+
+// CreateServiceAccountJSONRequestBody defines body for CreateServiceAccount for application/json ContentType.
+type CreateServiceAccountJSONRequestBody = ServiceAccountCreateRequest
+
+// IntrospectServiceAccountTokenFormdataRequestBody defines body for IntrospectServiceAccountToken for application/x-www-form-urlencoded ContentType.
+type IntrospectServiceAccountTokenFormdataRequestBody = IntrospectionRequest
+
+// IssueServiceAccountTokenFormdataRequestBody defines body for IssueServiceAccountToken for application/x-www-form-urlencoded ContentType.
+type IssueServiceAccountTokenFormdataRequestBody = ServiceAccountTokenRequest
+
+// UpdateServiceAccountJSONRequestBody defines body for UpdateServiceAccount for application/json ContentType.
+type UpdateServiceAccountJSONRequestBody = ServiceAccountUpdateRequest
 
 // CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
 type CreateSubscriptionPlanJSONRequestBody = CreateSubscriptionPlanRequest

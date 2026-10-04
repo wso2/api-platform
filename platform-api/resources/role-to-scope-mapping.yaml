@@ -77,6 +77,10 @@ roles:
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:secret:manage
+      # Creating a service account creates privilege, so manage is admin-only.
+      - ap:service_account:manage
+      # ap:service_account:token:introspect is deliberately in no shipped role:
+      # it is meant for a validating component, not for people.
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage
@@ -136,6 +140,7 @@ roles:
       - ap:application:association:read
       - ap:subscription:read
       - ap:secret:read
+      - ap:service_account:read
       - ap:api_key:read
       - ap:api_portal:manage
       - ap:api_portal:publication:read

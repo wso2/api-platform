@@ -7307,6 +7307,281 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /service-accounts:
+    get:
+      summary: List service accounts
+      description: Returns the organization's service accounts. The client secret is never included, only its masked form.
+      operationId: listServiceAccounts
+      security:
+        - OAuth2Security:
+            - ap:service_account:read
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: List of service accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create a service account
+      description: |
+        Creates a service account and returns its client ID and secret. The secret is
+        shown only in this response and cannot be recovered later.
+      operationId: createServiceAccount
+      security:
+        - OAuth2Security:
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountCreateRequest'
+      responses:
+        '201':
+          description: Service account created. The response carries the only copy of the secret.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountCredentials'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/token:
+    post:
+      summary: Exchange client credentials for an access token
+      description: |
+        OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
+        token yet. Every failure returns the same 401.
+      operationId: issueServiceAccountToken
+      security: []
+      tags:
+        - Service Accounts
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountTokenRequest'
+      responses:
+        '200':
+          description: Access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/introspect:
+    post:
+      summary: Introspect a service-account token
+      description: |
+        RFC 7662 token introspection. Every inactive cause returns exactly
+        `{"active": false}`.
+      operationId: introspectServiceAccountToken
+      security:
+        - OAuth2Security:
+            - ap:service_account:token:introspect
+      tags:
+        - Service Accounts
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntrospectionRequest'
+      responses:
+        '200':
+          description: Introspection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/jwks.json:
+    get:
+      summary: Service-account signing keys
+      description: Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+      operationId: getServiceAccountJWKS
+      security: []
+      tags:
+        - Service Accounts
+      responses:
+        '200':
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/{serviceAccountId}:
+    get:
+      summary: Get a service account
+      operationId: getServiceAccount
+      security:
+        - OAuth2Security:
+            - ap:service_account:read
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      parameters:
+        - $ref: '#/components/parameters/serviceAccountId'
+      responses:
+        '200':
+          description: Service account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update a service account
+      description: |
+        Updates metadata, roles or status. Setting `status` to `disabled` stops every
+        exchange and invalidates tokens already issued. Removing a role also
+        invalidates tokens already issued; adding one does not. Returns 409 if the
+        account was changed by another request after this one read it; retry.
+      operationId: updateServiceAccount
+      security:
+        - OAuth2Security:
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      parameters:
+        - $ref: '#/components/parameters/serviceAccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountUpdateRequest'
+      responses:
+        '200':
+          description: Service account updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a service account
+      description: Deletes the account and invalidates tokens already issued.
+      operationId: deleteServiceAccount
+      security:
+        - OAuth2Security:
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      parameters:
+        - $ref: '#/components/parameters/serviceAccountId'
+      responses:
+        '204':
+          description: Service account deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/{serviceAccountId}/regenerate-secret:
+    post:
+      summary: Regenerate a service account's secret
+      description: |
+        Replaces the client secret. The old secret stops working at once, with no
+        overlap, and tokens already issued are invalidated. The new secret is shown
+        only in this response.
+      operationId: regenerateServiceAccountSecret
+      security:
+        - OAuth2Security:
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      parameters:
+        - $ref: '#/components/parameters/serviceAccountId'
+      responses:
+        '200':
+          description: Secret regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountCredentials'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   headers:
     Location:
@@ -7496,6 +7771,9 @@ components:
             ap:secret:manage: Full access to secrets
             ap:secret:read: Read secrets
             ap:secret:update: Update a secret
+            ap:service_account:manage: Full access to service accounts
+            ap:service_account:read: Read service accounts
+            ap:service_account:token:introspect: Introspect service-account tokens
             ap:subscription:create: Create a subscription
             ap:subscription:delete: Delete a subscription
             ap:subscription:manage: Full access to subscriptions
@@ -11592,6 +11870,304 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    ServiceAccount:
+      type: object
+      description: A service account. Never carries the plaintext secret.
+      required:
+        - id
+        - displayName
+        - owner
+        - description
+        - clientId
+        - maskedSecret
+        - roles
+        - status
+      properties:
+        id:
+          type: string
+          description: Service account handle, unique within the organization
+          minLength: 3
+          maxLength: 40
+          example: ci-deployer
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: CI deployer
+        owner:
+          type: string
+          description: Who is accountable for this account — a team, person or mailing list
+          minLength: 1
+          maxLength: 255
+          example: platform-team@example.com
+        description:
+          type: string
+          description: What the account is for
+          minLength: 1
+          maxLength: 1023
+          example: Deploys REST APIs from the release pipeline
+        clientId:
+          type: string
+          readOnly: true
+          example: sa_acme_ci-deployer_3f9a1c
+        maskedSecret:
+          type: string
+          readOnly: true
+          example: "***9f2c1"
+        roles:
+          type: array
+          items:
+            type: string
+          example: [ap_operator]
+        status:
+          type: string
+          enum: [active, disabled]
+          example: active
+        lastUsedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        lastUsedIp:
+          type: string
+          readOnly: true
+          example: 203.0.113.7
+        secretRegeneratedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        createdBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    ServiceAccountListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of service accounts in current response
+          example: 1
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceAccount'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ServiceAccountCreateRequest:
+      type: object
+      required:
+        - id
+        - displayName
+        - owner
+        - description
+        - roles
+      properties:
+        id:
+          type: string
+          description: Service account handle. `token` is reserved.
+          minLength: 3
+          maxLength: 40
+          example: ci-deployer
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: CI deployer
+        owner:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: platform-team@example.com
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1023
+          example: Deploys REST APIs from the release pipeline
+        roles:
+          type: array
+          description: Roles from the role-to-scope mapping file
+          minItems: 1
+          items:
+            type: string
+          example: [ap_operator]
+
+    ServiceAccountUpdateRequest:
+      type: object
+      description: Every field is optional. Owner and description may change but not be blanked.
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: CI deployer
+        owner:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: platform-team@example.com
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1023
+          example: Deploys REST APIs from the release pipeline
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: [ap_operator]
+        status:
+          type: string
+          enum: [active, disabled]
+          example: disabled
+
+    ServiceAccountCredentials:
+      type: object
+      description: |
+        The only response that carries a plaintext secret. Returned on create and on
+        regenerate. The secret is shown once and cannot be recovered.
+      required:
+        - serviceAccount
+        - clientId
+        - clientSecret
+      properties:
+        serviceAccount:
+          $ref: '#/components/schemas/ServiceAccount'
+        clientId:
+          type: string
+          example: sa_acme_ci-deployer_3f9a1c
+        clientSecret:
+          type: string
+          description: "apsa_ followed by 64 hex characters"
+    # ServiceAccountTokenRequest, ServiceAccountTokenResponse, IntrospectionRequest
+    # and IntrospectionResponse use snake_case on purpose: they are the RFC 6749 /
+    # RFC 7662 wire formats that OAuth2 client libraries already parse.
+    ServiceAccountTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          writeOnly: true
+
+    ServiceAccountTokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Lifetime in seconds
+          example: 900
+        scope:
+          type: string
+          example: ap:rest_api:read ap:rest_api:deployment:manage
+
+    IntrospectionRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+        token_type_hint:
+          type: string
+
+    IntrospectionResponse:
+      type: object
+      required:
+        - active
+      properties:
+        active:
+          type: boolean
+        scope:
+          type: string
+        client_id:
+          type: string
+        sub:
+          type: string
+        aud:
+          type: string
+        iss:
+          type: string
+        exp:
+          type: integer
+        iat:
+          type: integer
+        jti:
+          type: string
+        token_type:
+          type: string
+
+    JWKSResponse:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JWK'
+
+    JWK:
+      type: object
+      description: An RSA public key (RFC 7517)
+      required:
+        - kty
+        - kid
+        - n
+        - e
+      properties:
+        kty:
+          type: string
+          example: RSA
+        kid:
+          type: string
+          description: RFC 7638 thumbprint of the key
+        use:
+          type: string
+          example: sig
+        alg:
+          type: string
+          example: RS256
+        n:
+          type: string
+        e:
+          type: string
+          example: AQAB
+
     GatewayTokenListResponse:
       type: object
       required:
@@ -12946,6 +13522,16 @@ components:
         type: string
         example: "default-project"
 
+    serviceAccountId:
+      name: serviceAccountId
+      in: path
+      required: true
+      description: |
+        **Service account ID** consisting of the **handle** of the service account.
+      schema:
+        type: string
+        example: ci-deployer
+
     apiId:
       name: restApiId
       in: path
@@ -13301,5 +13887,7 @@ tags:
     description: Subscription plan management operations — rate-limit tiers that subscriptions are created against
   - name: Subscriptions
     description: Subscription management operations linking applications to APIs under a subscription plan
+  - name: Service Accounts
+    description: Non-human identities that exchange OAuth2 client credentials for a short-lived platform token
   - name: Secrets
     description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders

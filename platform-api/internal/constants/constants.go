@@ -175,6 +175,29 @@ const (
 // keep it out of self-service/developer roles.
 const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
 
+// Service-account scopes. Manage creates privilege (an account and its roles),
+// so keep it out of self-service roles, as with ScopeAPIKeyAllManage.
+const (
+	ScopeServiceAccountRead            = "ap:service_account:read"
+	ScopeServiceAccountManage          = "ap:service_account:manage"
+	ScopeServiceAccountTokenIntrospect = "ap:service_account:token:introspect"
+)
+
+// ServiceAccountSubPrefix namespaces a service account's sub claim so it cannot
+// collide with a real user in user_idp_references.idp_id (UNIQUE). Reserved at
+// startup, in file-mode config and in IdP-mode authentication.
+const ServiceAccountSubPrefix = "sa:"
+
+// ServiceAccountTokenVersionClaim carries the account's token version at mint
+// time. A token below the account's revocation watermark is rejected, which
+// needs no clock agreement between replicas.
+const ServiceAccountTokenVersionClaim = "sa_tv"
+
+// ServiceAccountReservedHandle is the public token endpoint's path segment. An
+// account with this handle would sit under that auth skip path, so every
+// management call on it would arrive unauthenticated and fail.
+const ServiceAccountReservedHandle = "token"
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"
