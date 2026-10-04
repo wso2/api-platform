@@ -1,8 +1,8 @@
 # Mutual TLS
 
-With ordinary TLS, only the server proves who it is. With mutual TLS, both sides of the connection present a certificate, so each side knows who is at the other end before any request is sent. The AI Gateway supports mutual TLS in both directions: from a client to the gateway, and from the gateway to a backend.
+With ordinary TLS, only the server proves who it is. With mutual TLS, both sides of the connection present a certificate, so each side knows who is at the other end before any request is sent. The gateway supports mutual TLS in both directions: from a client to the gateway, and from the gateway to a backend.
 
-This page is for the **platform administrator** who decides which certificates the gateway trusts and presents, and the **AI developer** who applies them to an API.
+This page is for the **platform administrator** who decides which certificates the gateway trusts and presents, and the **API developer** who applies them to an API.
 
 ## What each direction gives you
 
@@ -18,7 +18,7 @@ Client certificates work on the gateway's HTTPS listener, on port 8443 by defaul
 The certificates the gateway uses live in one pool on the gateway, managed through the management API.
 
 - **The platform administrator curates the pool.** Only an administrator can upload, rotate, or delete a certificate. The administrator decides which client authorities exist, which load balancers may relay client certificates, which identities the gateway can present, and which backend certificates it trusts.
-- **The AI developer selects from the pool.** A developer can list the pool, and names entries from it in an API: an authority in an `mtls-auth` `accept` list, or an identity and trusted certificates in an upstream definition's `tls` block. A developer never handles a private key.
+- **The API developer selects from the pool.** A developer can list the pool, and names entries from it in an API: an authority in an `mtls-auth` `accept` list, or an identity and trusted certificates in an upstream definition's `tls` block. A developer never handles a private key.
 
 Every pool entry has a name and a `usage`:
 
@@ -39,7 +39,7 @@ Names are one namespace across all three usages, so an authority and an identity
          │ mutual TLS                            mutual TLS │
          ▼                                                  │
 ┌─────────────────────────────────────────────────────────────────────┐
-│ AI Gateway                                                          │
+│ Gateway                                                             │
 │                                                                     │
 │  mtls-auth policy                  upstream definition tls block    │
 │    accept: partner-a                 identity: gateway-billing      │
@@ -85,7 +85,7 @@ Two gateway logs show what mutual TLS did with a request.
 
 `host` is the hostname the caller sent for a request the policy refused, and the host the gateway sent to the backend for a request it forwarded. To follow one API, filter on `sni`.
 
-**The policy engine's debug log** records why `mtls-auth` refused a request, such as `no_certificate`, `expired`, `not_yet_valid`, `untrusted_chain`, `invalid_certificate`, `authority_not_accepted`, `san_mismatch`, or `thumbprint_mismatch`. Set `level = "debug"` under `[policy_engine.logging]` to see it. The same reason is the `mtls_auth.reason` attribute of the request's trace span.
+**The policy engine's debug log** records why `mtls-auth` refused a request, such as `no_certificate`, `expired`, `not_yet_valid`, `untrusted_chain`, `invalid_certificate`, `authority_not_accepted`, `san_mismatch`, or `thumbprint_mismatch`. Set `level = "debug"` under `[policy_engine.logging]` to see it. The debug level also logs every request the policy engine handles in full, so turn it on only while you investigate a refusal. The same reason is the `mtls_auth.reason` attribute of the request's trace span.
 
 ## In this section
 

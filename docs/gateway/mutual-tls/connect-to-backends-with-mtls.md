@@ -2,7 +2,7 @@
 
 Some backends accept a connection only from a caller that presents a certificate they trust. This page shows you how to make the gateway present its own certificate to such a backend, choose which certificates the gateway trusts for it, and rotate the gateway's certificate without redeploying.
 
-This page is for the **platform administrator** who uploads the gateway's identity, and the **AI developer** who names it in an API's upstream definition.
+This page is for the **platform administrator** who uploads the gateway's identity, and the **API developer** who names it in an API's upstream definition.
 
 ## Before you start
 
@@ -85,7 +85,7 @@ After a successful deploy, the identity and trust certificates it names can't be
 
 ## Rotate the identity without redeploying
 
-Replace the identity's certificate and key in place with `PUT /certificates/{id}`. The name doesn't change, so every upstream definition that names it keeps working, and new connections to the backend present the new certificate. See [Rotate a gateway identity](manage-certificates.md#rotate-a-gateway-identity).
+Replace the identity's certificate and key in place with `PUT /certificates/{id}`. The name doesn't change, so every upstream definition that names it keeps working, and new connections to the backend present the new certificate. Connections already open keep the previous certificate until they close. See [Rotate a gateway identity](manage-certificates.md#rotate-a-gateway-identity).
 
 Upload the new certificate before the old one expires, and make sure the backend already trusts its issuer.
 
@@ -113,7 +113,7 @@ The gateway sends the certificate only to a backend that asks for one during the
 
 Uploading, rotating, or deleting the default identity takes effect without a redeploy. Deleting it falls back to the HTTPS listener certificate, or to none when the HTTPS listener is disabled. If the controller can't load the default identity's private key, it logs an error naming the identity and presents the next choice in the same way.
 
-At startup, and whenever the choice changes, the controller logs which certificate it presents. It logs a warning when it presents none.
+At startup, and whenever the choice changes, the controller logs which certificate it presents. It logs a warning when it presents none, which happens only when the HTTPS listener is disabled and no identity has `role: default`. With `present_default_identity` off, it logs nothing about the default identity.
 
 A listener certificate is usually issued for server authentication only. A backend that checks the extended key usage refuses a certificate that doesn't allow client authentication. The controller logs a warning at startup, and whenever the presented certificate changes, if its extended key usage leaves out client authentication. For that reason, upload a dedicated identity issued for client authentication and give it `role: default`, rather than relying on the listener certificate.
 
@@ -144,6 +144,8 @@ upstream connect error or disconnect/reset before headers. reset reason: remote 
 Common causes are a backend that doesn't trust the gateway's identity, a backend certificate outside `trustedCAs`, and a host name mismatch.
 
 The router's access log records the reason. In the JSON access log format it's in the `upTlsFail` field. See [Logs](index.md#logs).
+
+One failure leaves `upTlsFail` empty: a backend that refuses the gateway's certificate over TLS 1.3. In TLS 1.3 the backend checks the client certificate after the gateway's side of the handshake has finished, so the gateway sees a connection the backend closed rather than a failed handshake. The access log then shows `respFlg` `UC` and a `respCdDtl` that names a connection termination. Check the backend's own log for why it refused the certificate.
 
 ## Related topics
 
