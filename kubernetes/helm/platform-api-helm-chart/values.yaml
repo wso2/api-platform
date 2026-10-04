@@ -227,7 +227,7 @@ config:
     # Service accounts — machine identities that swap a client ID and secret for a
     # short-lived token at POST /api/v0.9/service-accounts/token.
     serviceAccount:
-      enabled: true              # false removes the endpoints and refuses every SA token
+      enabled: false             # true adds the endpoints; on Postgres apply the SA tables first
       tokenTtl: 15m
       audience: platform-api
       pollInterval: 5s           # how often each replica reloads revocations

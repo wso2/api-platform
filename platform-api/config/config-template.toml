@@ -292,9 +292,11 @@ skip_validation = false
 # by its roles, and the token carries exactly those; in "role" mode scope is
 # ignored and the token carries the roles.
 [platform_api.auth.service_account]
-# false removes the service-account endpoints and refuses every service-account
-# token. Accounts are kept and work again when this is set back to true.
-enabled = true
+# Off by default. Set to true to add the service-account endpoints; on Postgres
+# and SQL Server, apply the service_accounts and service_account_revocations
+# tables from the schema file first. Turning it off again refuses every
+# service-account token; accounts are kept and work again when turned back on.
+enabled = false
 # Lifetime of a service-account token.
 token_ttl = "15m"
 # Written to every service-account token's aud and required back on it.

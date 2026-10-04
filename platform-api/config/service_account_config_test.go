@@ -81,6 +81,7 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 				Authorization:  Authorization{Mode: AuthzModeScope},
 				ServiceAccount: defaultConfig().Auth.ServiceAccount,
 			}
+			auth.ServiceAccount.Enabled = true
 			tt.mutate(&auth)
 			err := validateAuthConfig(&auth)
 			if tt.wantErr == "" {
@@ -111,6 +112,6 @@ func TestFileUsersCannotHoldServiceAccountRoles(t *testing.T) {
 	assert.Contains(t, err.Error(), "service-account role")
 }
 
-func TestServiceAccountsEnabledByDefault(t *testing.T) {
-	assert.True(t, defaultConfig().Auth.ServiceAccount.Enabled)
+func TestServiceAccountsDisabledByDefault(t *testing.T) {
+	assert.False(t, defaultConfig().Auth.ServiceAccount.Enabled)
 }

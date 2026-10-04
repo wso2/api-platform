@@ -84,7 +84,9 @@ func defaultConfig() *Server {
 				TokenTTL: time.Hour,
 			},
 			ServiceAccount: ServiceAccount{
-				Enabled: true,
+				// Off by default: on Postgres and SQL Server the tables must be
+				// provisioned first.
+				Enabled: false,
 				// Shorter than auth.jwt.token_ttl: a workload re-exchanges in a loop anyway.
 				TokenTTL: 15 * time.Minute,
 				Audience: "platform-api",
