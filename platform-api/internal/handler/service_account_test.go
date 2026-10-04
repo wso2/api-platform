@@ -20,9 +20,11 @@ package handler
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -191,6 +193,12 @@ func TestJWKSPublishesTheSigningKey(t *testing.T) {
 	}
 	if len(jwks.Keys) != 1 || jwks.Keys[0]["kid"] != utils.RSAThumbprint(&key.PublicKey) || jwks.Keys[0]["kty"] != "RSA" {
 		t.Fatalf("jwks = %v", jwks)
+	}
+	n, errN := base64.RawURLEncoding.DecodeString(jwks.Keys[0]["n"])
+	e, errE := base64.RawURLEncoding.DecodeString(jwks.Keys[0]["e"])
+	if errN != nil || errE != nil || new(big.Int).SetBytes(n).Cmp(key.PublicKey.N) != 0 ||
+		new(big.Int).SetBytes(e).Int64() != int64(key.PublicKey.E) {
+		t.Fatalf("published n/e do not match the signing key")
 	}
 }
 
