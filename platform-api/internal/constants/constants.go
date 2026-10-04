@@ -198,6 +198,17 @@ const ServiceAccountTokenVersionClaim = "sa_tv"
 // management call on it would arrive unauthenticated and fail.
 const ServiceAccountReservedHandle = "token"
 
+// ServiceAccountRolePrefix marks the only roles a service account may hold.
+const ServiceAccountRolePrefix = "ap_sa_"
+
+// ServiceAccountRefusedScopes may never appear in an ap_sa_* role; the server
+// refuses to start otherwise. A constant, not config, so it cannot be switched off.
+var ServiceAccountRefusedScopes = []string{
+	ScopeServiceAccountManage,
+	ScopeServiceAccountRead,
+	ScopeAPIKeyAllManage,
+}
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"
