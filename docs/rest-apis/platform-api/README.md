@@ -205,12 +205,12 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [List service accounts](service-accounts.md#list-service-accounts)
 - [Create a service account](service-accounts.md#create-a-service-account)
-- [Exchange client credentials for an access token](service-accounts.md#exchange-client-credentials-for-an-access-token)
-- [Introspect a service-account token](service-accounts.md#introspect-a-service-account-token)
-- [Service-account signing keys](service-accounts.md#service-account-signing-keys)
 - [Get a service account](service-accounts.md#get-a-service-account)
 - [Update a service account](service-accounts.md#update-a-service-account)
 - [Delete a service account](service-accounts.md#delete-a-service-account)
+- [Exchange client credentials for an access token](service-accounts.md#exchange-client-credentials-for-an-access-token)
+- [Introspect a service-account token](service-accounts.md#introspect-a-service-account-token)
+- [Service-account signing keys](service-accounts.md#service-account-signing-keys)
 - [Regenerate a service account's secret](service-accounts.md#regenerate-a-service-accounts-secret)
 
 ### [Secrets](secrets.md)
