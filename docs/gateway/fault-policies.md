@@ -541,8 +541,6 @@ are the `error.*` variables:
 | `fault.OriginalStatus` | int | the status before a policy changed it, `0` if none did |
 | `fault.RouteKey` | string | the matched route |
 | `fault.ResponseCommitted` | bool | true only mid-stream |
-| `fault.Guardrail.InterveningGuardrail` | string | which guardrail acted |
-| `fault.Guardrail.Action` / `.ActionReason` | string | what it did, and why |
 
 ```yaml
 faultPolicies:
@@ -568,8 +566,8 @@ This is the one thing to get right when writing a condition, because getting it 
 **silence rather than an error**.
 
 `fault.Status`, `fault.Source` and `fault.RouteKey` are always set — the gateway derives them
-from the exchange itself. Everything under `fault.Code`, `fault.Type`, `fault.Direction`,
-`fault.Message` and `fault.Guardrail.*` comes from the *producing policy's* `Fault`, and is
+from the exchange itself. Everything under `fault.Code`, `fault.Type`, `fault.Direction`
+and `fault.Message` comes from the *producing policy's* `Fault`, and is
 empty whenever nothing described the failure. Three cases where that happens, and none of them
 is unusual:
 
@@ -595,7 +593,7 @@ executionCondition: 'fault.Code == "900902"'
 ```
 
 **Rule of thumb:** narrow on `Status` and `Source` when the entry must see every failure of a
-kind; narrow on `Code`, `Type` or `Guardrail` when you are picking *among described* failures
+kind; narrow on `Code` or `Type` when you are picking *among described* failures
 and skipping the rest is what you want.
 
 Worth noting this is not a regression from the previous contract. Under the explicit opt-in an
@@ -607,8 +605,8 @@ it either — the entry stayed silent then too. What changed is that uncondition
 
 - **`fault.Description` is deliberately absent.** For a guardrail rejection it holds the content
   that was blocked, which is why every renderer withholds it; it is available to a fault
-  *policy*, not to a condition. Use `fault.Guardrail.InterveningGuardrail` to branch on which
-  guardrail acted.
+  *policy*, not to a condition. `Fault.Guardrail` is likewise policy-only. Use `fault.Policy`
+  to branch on which guardrail acted, and `fault.Code` on what kind of intervention it was.
 - **These variables exist in every phase, zeroed.** A condition on a normal (non-fault) policy
   that mentions `fault.Type` reads empty rather than failing — which is what it means there.
   A missing variable would be an evaluation error, so they are always supplied.

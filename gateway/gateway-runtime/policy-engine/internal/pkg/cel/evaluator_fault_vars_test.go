@@ -105,8 +105,6 @@ func TestFaultCondition_ReadsTheDescription(t *testing.T) {
 		`fault.Status == 422`,
 		`fault.OriginalStatus == 200`,
 		`fault.ResponseCommitted == false`,
-		`fault.Guardrail.InterveningGuardrail == "word-count-guardrail"`,
-		`fault.Guardrail.Action == "GUARDRAIL_INTERVENED"`,
 		// The composite form an operator actually writes.
 		`fault.Type == "guardrail" && fault.Direction == "Response"`,
 	} {
@@ -173,19 +171,17 @@ func TestFaultVariablesEvaluateOnEveryPhase(t *testing.T) {
 	})
 }
 
-// fault.Guardrail must be reachable on a failure that is not a guardrail rejection. Testing
-// the nested field directly is the natural way to write "only this guardrail", and it has to
-// read false rather than fail when the failure came from somewhere else entirely.
-func TestFaultCondition_GuardrailFieldIsSafeOnANonGuardrailFailure(t *testing.T) {
+// fault.Guardrail is not a condition variable: which guardrail acted is fault.Policy. A
+// condition still naming it must be refused, not silently read as empty.
+func TestFaultCondition_GuardrailIsNotAVariable(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)
 
-	got, evalErr := evaluator.EvaluateFaultCondition(
+	_, evalErr := evaluator.EvaluateFaultCondition(
 		`fault.Guardrail.InterveningGuardrail == "url-guardrail"`,
-		errorCtxWithSource(policy.FaultSourceBackend))
+		errorCtxWithSource(policy.FaultSourceGateway))
 
-	require.NoError(t, evalErr, "a nil Guardrail must not make this an evaluation error")
-	assert.False(t, got)
+	assert.Error(t, evalErr)
 }
 
 // Both spellings resolve. The dotted variables are what conditions are written with; the
