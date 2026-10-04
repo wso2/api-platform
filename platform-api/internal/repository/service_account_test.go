@@ -169,3 +169,143 @@ func TestServiceAccountRepo_ForeignReservedIdentities(t *testing.T) {
 		t.Fatalf("want one foreign identity, got %v, %v", foreign, err)
 	}
 }
+
+func TestServiceAccountRepo_ListAndCount(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	createTestOrganizationAndProject(t, db, "org-sa", "proj-sa")
+	createTestOrganizationAndProject(t, db, "org-other", "proj-other")
+	repo := NewServiceAccountRepo(db)
+
+	for uuid, h := range map[string]string{
+		"11111111-0000-0000-0000-000000000100": "a-bot",
+		"11111111-0000-0000-0000-000000000101": "b-bot",
+		"11111111-0000-0000-0000-000000000102": "c-bot",
+	} {
+		sa := newTestServiceAccount("org-sa", uuid, h)
+		if err := repo.Create(sa, sa.Subject("org")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := newTestServiceAccount("org-other", "11111111-0000-0000-0000-000000000200", "z-bot")
+	if err := repo.Create(other, other.Subject("other")); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := repo.Count("org-sa"); err != nil || n != 3 {
+		t.Fatalf("Count = %d, %v", n, err)
+	}
+	page, err := repo.List("org-sa", 2, 0)
+	if err != nil || len(page) != 2 {
+		t.Fatalf("first page = %d, %v", len(page), err)
+	}
+	rest, err := repo.List("org-sa", 2, 2)
+	if err != nil || len(rest) != 1 {
+		t.Fatalf("second page = %d, %v", len(rest), err)
+	}
+	seen := map[string]bool{}
+	for _, sa := range append(page, rest...) {
+		if sa.OrganizationID != "org-sa" || seen[sa.Handle] {
+			t.Fatalf("unexpected row %+v", sa)
+		}
+		seen[sa.Handle] = true
+	}
+}
+
+func TestServiceAccountRepo_GetByClientIDUnknown(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	if _, err := NewServiceAccountRepo(db).GetByClientID("sa_org_nobody"); !apperror.ServiceAccountNotFound.Is(err) {
+		t.Fatalf("unknown client ID: want not found, got %v", err)
+	}
+}
+
+func TestServiceAccountRepo_PruneKeepsLiveRows(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewServiceAccountRepo(db)
+	now := time.Now().UTC()
+	if err := repo.Revoke(&model.ServiceAccountRevocation{AccountUUID: "acc", OrganizationID: "org-sa", MinTokenVersion: 2, ExpiresAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := repo.PruneExpired(now); err != nil || n != 0 {
+		t.Fatalf("PruneExpired removed a live row: %d, %v", n, err)
+	}
+}
+
+func TestServiceAccountRepo_SurfacesDatabaseErrors(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewServiceAccountRepo(db)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sa := newTestServiceAccount("org-sa", "11111111-0000-0000-0000-000000000001", "ci-bot")
+	rev := &model.ServiceAccountRevocation{AccountUUID: sa.UUID, OrganizationID: "org-sa", MinTokenVersion: 2, ExpiresAt: time.Now()}
+	checks := map[string]func() error{
+		"create":        func() error { return repo.Create(sa, sa.Subject("org")) },
+		"get by handle": func() error { _, err := repo.GetByHandle("org-sa", "ci-bot"); return err },
+		"get by client": func() error { _, err := repo.GetByClientID(sa.ClientID); return err },
+		"list":          func() error { _, err := repo.List("org-sa", 10, 0); return err },
+		"count":         func() error { _, err := repo.Count("org-sa"); return err },
+		"update":        func() error { return repo.Update(sa, 1, model.ServiceAccountStatusActive, rev) },
+		"update secret": func() error { return repo.UpdateSecret(sa, 1, rev) },
+		"delete":        func() error { return repo.Delete("org-sa", sa.UUID, 1, rev) },
+		"touch":         func() error { return repo.TouchLastUsed(sa.UUID, time.Now(), "203.0.113.7") },
+		"foreign":       func() error { _, err := repo.ForeignReservedIdentities(); return err },
+		"revoke":        func() error { return repo.Revoke(rev) },
+		"list active":   func() error { _, err := repo.ListActive(time.Now()); return err },
+		"prune":         func() error { _, err := repo.PruneExpired(time.Now()); return err },
+	}
+	for name, fn := range checks {
+		t.Run(name, func(t *testing.T) {
+			err := fn()
+			if err == nil {
+				t.Fatal("call on a closed database succeeded")
+			}
+			if apperror.ServiceAccountNotFound.Is(err) {
+				t.Fatalf("closed database reported as not-found: %v", err)
+			}
+		})
+	}
+}
+
+// Update and UpdateSecret write rev in the same transaction; other replicas
+// see a revoke only through this row.
+func TestServiceAccountRepo_WritesWatermarkWithChange(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	createTestOrganizationAndProject(t, db, "org-sa", "proj-sa")
+	repo := NewServiceAccountRepo(db)
+	sa := newTestServiceAccount("org-sa", "11111111-0000-0000-0000-000000000004", "ci-bot")
+	if err := repo.Create(sa, sa.Subject("org")); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	watermark := func() int64 {
+		t.Helper()
+		active, err := repo.ListActive(now)
+		if err != nil || len(active) != 1 {
+			t.Fatalf("ListActive = %v, %v", active, err)
+		}
+		return active[0].MinTokenVersion
+	}
+	rev := func(v int64) *model.ServiceAccountRevocation {
+		return &model.ServiceAccountRevocation{AccountUUID: sa.UUID, OrganizationID: "org-sa", MinTokenVersion: v, ExpiresAt: now.Add(time.Hour)}
+	}
+
+	sa.Status, sa.TokenVersion = model.ServiceAccountStatusDisabled, 2
+	if err := repo.Update(sa, 1, model.ServiceAccountStatusActive, rev(2)); err != nil {
+		t.Fatal(err)
+	}
+	if got := watermark(); got != 2 {
+		t.Fatalf("after Update: watermark %d, want 2", got)
+	}
+	sa.ClientSecretHash, sa.TokenVersion = "hash-new", 3
+	if err := repo.UpdateSecret(sa, 2, rev(3)); err != nil {
+		t.Fatal(err)
+	}
+	if got := watermark(); got != 3 {
+		t.Fatalf("after UpdateSecret: watermark %d, want 3", got)
+	}
+}
