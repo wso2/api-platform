@@ -2,7 +2,7 @@
 
 An API that attaches the `mtls-auth` policy authenticates each caller by the client certificate it presents. This page shows you how to require a certificate on an API, narrow which certificates it accepts, and keep working when a load balancer terminates TLS in front of the gateway.
 
-This page is for the **AI developer** who protects an API with client certificates, and the **platform administrator** who adds the authorities and relay entries it depends on.
+This page is for the **API developer** who protects an API with client certificates, and the **platform administrator** who adds the authorities and relay entries it depends on.
 
 ## Before you start
 
@@ -162,7 +162,7 @@ Hostnames are compared without regard to case. A port in `vhosts` plays no part 
 
 An entry can't name a relay entry. Deploying one returns `edge-lb is a relay (front proxy) entry and cannot be accepted as a client`.
 
-The policy reads the pool on every request, so a change to the pool, or to an API's `accept` list, applies from the caller's next request.
+A change to the pool, or to an API's `accept` list, reaches the gateway within a few seconds, without redeploying the API.
 
 ## Narrow an authority by SAN
 

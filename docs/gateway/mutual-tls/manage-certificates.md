@@ -2,11 +2,11 @@
 
 Every certificate the gateway uses for mutual TLS is an entry in its certificate pool. This page shows you how to add each kind of entry, list the pool, rotate a gateway identity, and delete an entry, and how to configure the header a load balancer relays client certificates in.
 
-This page is for the **platform administrator** who curates the pool. The **AI developer** can list the pool to find the names to use in an API, but can't change it.
+This page is for the **platform administrator** who curates the pool. The **API developer** can list the pool to find the names to use in an API, but can't change it.
 
 ## Before you start
 
-The examples send requests to the management API at `http://localhost:9090/api/management/v1` as the `admin` user. Replace *`<password>`* with that user's password. Uploading, rotating, and deleting require the `admin` role. Listing also accepts the `developer` role.
+The examples send requests to the management API at `http://localhost:9090/api/management/v1` as the `admin` user. Replace *`<password>`* with that user's password. Uploading, rotating, and deleting require the `admin` role. Listing also accepts the `developer` role. To add a user with the `developer` role, see [Authentication and authorization](../../rest-apis/gateway/authentication.md).
 
 Each upload is a JSON body, and PEM text has to be escaped to fit in a JSON string. The examples build the body with `jq --rawfile`, which reads a PEM file as it is, and pipe it into `curl`. That keeps certificates and private keys out of your shell history.
 
@@ -136,6 +136,8 @@ curl -s -X PUT "http://localhost:9090/api/management/v1/certificates/$ID" \
 ```
 
 The new certificate and key go through the same checks as an upload. New connections to the backend present the new identity.
+
+Connections already open to the backend keep presenting the previous certificate until they close, and the gateway doesn't close them when you rotate. If the old key must stop being used at once, for example because it was compromised, also restart the gateway runtime, or have the backend close its connections from the gateway.
 
 Only identities can be updated. A `PUT` to any other entry returns `400` with `only usage: identity certificates can be updated; delete and re-upload other certificates`. To replace a client authority or a trust certificate, upload the new one under a new name, point the APIs at it, and delete the old one.
 
