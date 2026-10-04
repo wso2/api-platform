@@ -5587,13 +5587,15 @@ regenerate. The secret is shown once and cannot be recovered.
 
 ```
 
+Send client_id and client_secret here, or with HTTP Basic instead.
+
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |grant_type|string|true|none|none|
-|client_id|string|true|none|none|
-|client_secret|string|true|write-only|none|
+|client_id|string|false|none|none|
+|client_secret|string|false|write-only|none|
 |scope|string|false|none|Space-separated scopes. Required when the server's<br>`auth.authorization.mode` is `scope`; ignored when it is `role`.|
 
 ##### Enumerated Values
