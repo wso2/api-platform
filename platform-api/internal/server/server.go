@@ -70,6 +70,8 @@ type Server struct {
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
+	revocations    *service.RevocationCache
+	revocationPoll time.Duration
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -148,6 +150,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 	publicationRepo := repository.NewPublicationRepo(db)
+	serviceAccountRepo := repository.NewServiceAccountRepo(db)
+
+	// The sa: sub prefix is reserved. Refuse to start rather than assume no
+	// existing identity already uses it.
+	if foreign, err := serviceAccountRepo.ForeignReservedIdentities(); err != nil {
+		return nil, fmt.Errorf("failed to check reserved service-account identities: %w", err)
+	} else if len(foreign) > 0 {
+		return nil, fmt.Errorf("%d existing identities use the reserved %q subject prefix (e.g. %q); "+
+			"rename them before enabling service accounts", len(foreign), model.ServiceAccountSubPrefix, foreign[0])
+	}
 
 	// Seed the file-based organization on startup if file auth mode is selected.
 	if cfg.Auth.Mode == config.AuthModeFile {
@@ -544,6 +556,37 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// middleware bypasses it via cfg.Auth.SkipPaths.
 	handler.NewAuthLoginHandler(cfg, roleScopeMap).RegisterPublicRoutes(core)
 
+	// Service accounts expand their roles through the same mapping, so they are
+	// wired here too.
+	saKeys, err := service.LoadServiceAccountKeys(cfg)
+	if errors.Is(err, service.ErrNoServiceAccountSigningKey) {
+		slogger.Warn("service-account token issue is disabled: no signing key", "reason", err)
+		saKeys = nil
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to load service-account signing key: %w", err)
+	}
+	keyMap, err := buildIssuerKeyMap(cfg, saKeys)
+	if err != nil {
+		return nil, err
+	}
+	saCfg := cfg.Auth.ServiceAccount
+	revocations := service.NewRevocationCache(serviceAccountRepo, slogger)
+	// Loaded before serving: a cold cache must never read as "nothing revoked".
+	if err := revocations.Load(); err != nil {
+		return nil, err
+	}
+	var saSigner *service.SATokenSigner
+	var saPublicKeys []*rsa.PublicKey
+	if saKeys != nil {
+		saSigner = service.NewSATokenSigner(saKeys, cfg)
+		saPublicKeys = saKeys.PublicKeys()
+	}
+	serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
+		roleScopeMap, saSigner, saCfg.TokenTTL, slogger)
+	serviceAccountService.SetRevocationCache(revocations)
+	handler.NewServiceAccountHandler(serviceAccountService, identityService, keyMap, revocations, saPublicKeys, slogger).
+		RegisterRoutes(core)
+
 	// The recorder defers registration errors (a duplicate or empty pattern, a
 	// nil handler) instead of panicking, so they are reported here, once, before
 	// anything is installed.
@@ -633,24 +676,23 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if cfg.Auth.Mode == config.AuthModeFile {
 		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
 		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
-		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
-		}
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-			PublicKey:      publicKey,
-			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
 			ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+			KeyMap:         keyMap,
 		}))
 	} else {
-		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
+		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap, keyMap)
 		if err != nil {
 			return nil, err
 		}
 		chain = append(chain, authenticator.Middleware()...)
 	}
+
+	// Runs straight after authentication, so every later layer sees only
+	// unrevoked service-account tokens.
+	chain = append(chain, middleware.ServiceAccountRevocationMiddleware(keyMap, revocations))
 
 	// Resolve the organization claim (the platform UUID in file-based mode, or
 	// the IDP's organization id in IDP mode) into the platform organization UUID
@@ -719,7 +761,52 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		eventHub:       eventHub,
 		logger:         slogger,
 		plugins:        plugins,
+		revocations:    revocations,
+		revocationPoll: saCfg.Revocation.PollInterval,
 	}, nil
+}
+
+// buildIssuerKeyMap registers every issuer this server verifies. In idp mode
+// the local entry exists only to verify SA tokens, so it is the SA kind.
+func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (*middleware.IssuerKeyMap, error) {
+	var keys []middleware.IssuerKeys
+	sharedKey := saKeys != nil && !saKeys.OwnIssuer
+
+	if cfg.Auth.Mode == config.AuthModeIDP {
+		for _, iss := range cfg.Auth.IDP.Issuer {
+			keys = append(keys, middleware.IssuerKeys{Issuer: iss, Kind: middleware.IssuerKindIDP})
+		}
+		if sharedKey {
+			keys = append(keys, middleware.IssuerKeys{Issuer: saKeys.Issuer,
+				Kind:    middleware.IssuerKindServiceAccount,
+				Current: saKeys.Current})
+		}
+	} else {
+		local := middleware.IssuerKeys{Issuer: cfg.Auth.JWT.Issuer, Kind: middleware.IssuerKindLocal}
+		if cfg.Auth.Mode == config.AuthModeInternalToken && cfg.Auth.InternalToken.SkipValidation {
+			// No auth.jwt key is required here; SA tokens on the shared key still verify.
+			if sharedKey {
+				local.Current = saKeys.Current
+			}
+		} else {
+			pub, err := cfg.Auth.JWT.LoadPublicKey()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+			}
+			local.Current = pub
+		}
+		keys = append(keys, local)
+	}
+
+	if saKeys != nil && saKeys.OwnIssuer {
+		keys = append(keys, middleware.IssuerKeys{
+			Issuer:  saKeys.Issuer,
+			Kind:    middleware.IssuerKindServiceAccount,
+			Current: saKeys.Current,
+			Retired: saKeys.Retired,
+		})
+	}
+	return middleware.NewIssuerKeyMap(cfg.Auth.ServiceAccount.Audience, keys...)
 }
 
 // buildClaimMappings adapts the config-level claim name mapping (shared by all
@@ -742,27 +829,21 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when the auth mode is "internal_token" or "idp" (file mode wires
 // its own local-JWT middleware).
-func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
+func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string,
+	keyMap *middleware.IssuerKeyMap) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
-		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
 			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
-				"tokens are trusted as minted by a trusted platform component)")
+				"tokens are trusted as minted by a trusted platform component; service-account tokens are still verified)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
-			var err error
-			publicKey, err = cfg.Auth.JWT.LoadPublicKey()
-			if err != nil {
-				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
-			}
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				PublicKey:      publicKey,
-				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
 				SkipValidation: cfg.Auth.InternalToken.SkipValidation,
 				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+				KeyMap:         keyMap,
 			}),
 		), nil
 	}
@@ -810,6 +891,17 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		slog.String("jwksUrl", cfg.Auth.IDP.JWKSUrl),
 		slog.Any("issuers", cfg.Auth.IDP.Issuer),
 	)
+	// Locally signed (service-account) tokens bypass the IdP verifier by iss.
+	// With none registered, the chain is exactly the IdP one.
+	if keyMap.IsLocal(cfg.Auth.JWT.Issuer) || keyMap.IsLocal(cfg.Auth.ServiceAccount.JWT.Issuer) {
+		return middleware.NewJWTAuthenticator(
+			middleware.IssuerRoutingMiddleware(keyMap, middleware.AuthConfig{
+				SkipPaths:     cfg.Auth.SkipPaths,
+				ClaimMappings: buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+				KeyMap:        keyMap,
+			}, authMiddleware, claimsMiddleware),
+		), nil
+	}
 	return middleware.NewJWTAuthenticator(
 		authMiddleware,
 		claimsMiddleware,
@@ -956,6 +1048,7 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 	defer cancel()
 
 	go s.timeoutService.Start(ctx)
+	go s.revocations.Run(ctx, s.revocationPoll)
 
 	// errCh is buffered for both listeners so a failing goroutine never blocks,
 	// even while the other listener is still being shut down.
