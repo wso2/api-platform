@@ -112,7 +112,6 @@ func createCELEnv() (*cel.Env, error) {
 		cel.Variable("fault.Status", cel.IntType),
 		cel.Variable("fault.OriginalStatus", cel.IntType),
 		cel.Variable("fault.ResponseCommitted", cel.BoolType),
-		cel.Variable("fault.Guardrail", cel.MapType(cel.StringType, cel.DynType)),
 	)
 }
 
@@ -123,8 +122,9 @@ func createCELEnv() (*cel.Env, error) {
 // mentioning fault.Type on a response policy would fail at request time. Zero values make it
 // read false, which is what it means.
 //
-// Fault.Description is deliberately absent: it carries the content a guardrail blocked. A
-// condition that needs to know WHICH guardrail acted reads fault.Guardrail.InterveningGuardrail.
+// Fault.Description is deliberately absent: it carries the content a guardrail blocked. So is
+// Fault.Guardrail: which guardrail acted is fault.Policy, which the engine stamps rather than
+// the policy self-reporting, and fault.Code says what kind of intervention it was.
 func faultEvalVars(ctx *policy.FaultContext) map[string]interface{} {
 	var (
 		src, code, faultType, direction, message string
@@ -132,7 +132,6 @@ func faultEvalVars(ctx *policy.FaultContext) map[string]interface{} {
 		routeKey                                 string
 		status, originalStatus                   int
 		committed                                bool
-		guardrail                                map[string]interface{}
 	)
 	if ctx != nil {
 		src, routeKey = ctx.Source, ctx.RouteKey
@@ -140,21 +139,6 @@ func faultEvalVars(ctx *policy.FaultContext) map[string]interface{} {
 		status, originalStatus, committed = ctx.ResponseStatus, ctx.OriginalStatus, ctx.ResponseCommitted
 		if e := ctx.Fault; e != nil {
 			code, faultType, direction, message = e.Code, e.Type, e.Direction, e.Message
-			if g := e.Guardrail; g != nil {
-				guardrail = map[string]interface{}{
-					"InterveningGuardrail": g.InterveningGuardrail,
-					"Action":               g.Action,
-					"ActionReason":         g.ActionReason,
-				}
-			}
-		}
-	}
-	// Always a map, never nil: a nil would make fault.Guardrail.InterveningGuardrail an
-	// evaluation error on every non-guardrail failure, and the natural way to write that
-	// condition is to test the field directly.
-	if guardrail == nil {
-		guardrail = map[string]interface{}{
-			"InterveningGuardrail": "", "Action": "", "ActionReason": "",
 		}
 	}
 
@@ -171,7 +155,6 @@ func faultEvalVars(ctx *policy.FaultContext) map[string]interface{} {
 		"Status":            status,
 		"OriginalStatus":    originalStatus,
 		"ResponseCommitted": committed,
-		"Guardrail":         guardrail,
 	}
 	vars := map[string]interface{}{"fault": flat}
 	for k, v := range flat {
