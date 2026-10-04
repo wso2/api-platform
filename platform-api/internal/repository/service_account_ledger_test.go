@@ -39,7 +39,7 @@ func TestServiceAccount_LifecycleAndLedger(t *testing.T) {
 	sa := &model.ServiceAccount{
 		UUID: accountUUID, OrganizationID: orgID, Handle: "ci-bot-" + accountUUID[:6], DisplayName: "CI bot",
 		Owner: "team", Description: "deploys", ClientID: "sa_it_" + accountUUID, ClientSecretHash: "h1",
-		MaskedSecret: "***abcde", IdentityUUID: accountUUID, Roles: "ap_operator",
+		MaskedSecret: "***abcde", Roles: "ap_sa_reader",
 	}
 	if err := repo.Create(sa, sa.Subject("it")); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -48,7 +48,7 @@ func TestServiceAccount_LifecycleAndLedger(t *testing.T) {
 		t.Fatalf("TouchLastUsed: %v", err)
 	}
 	got, err := repo.GetByClientID(sa.ClientID)
-	if err != nil || got.LastUsedIP != "2001:db8::1" || got.LastUsedAt == nil {
+	if err != nil || got.LastUsedIP != "2001:db8::1" || got.LastUsedAt == nil || got.Roles != "ap_sa_reader" {
 		t.Fatalf("GetByClientID = %+v, %v", got, err)
 	}
 

@@ -201,6 +201,7 @@ func (h *ServiceAccountHandler) Token(w http.ResponseWriter, r *http.Request) er
 	resp, err := h.svc.Exchange(service.ExchangeRequest{
 		ClientID:     r.PostForm.Get("client_id"),
 		ClientSecret: r.PostForm.Get("client_secret"),
+		Scope:        r.PostForm.Get("scope"),
 		ClientIP:     clientIP(r),
 		UserAgent:    r.UserAgent(),
 	})
@@ -233,7 +234,11 @@ func (h *ServiceAccountHandler) Introspect(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusOK, inactive)
 		return nil
 	}
-	httputil.WriteJSON(w, http.StatusOK, activeIntrospection(claims))
+	resp := activeIntrospection(claims)
+	if scope := h.svc.TokenScope(claims); scope != "" {
+		resp.Scope = &scope
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
 }
 
@@ -260,7 +265,7 @@ func activeIntrospection(claims jwt.MapClaims) api.IntrospectionResponse {
 	tokenType := "Bearer"
 	resp := api.IntrospectionResponse{
 		Active: true, Sub: str("sub"), Iss: str("iss"), Jti: str("jti"), ClientId: str("azp"),
-		Scope: str("scope"), Exp: num("exp"), Iat: num("iat"), TokenType: &tokenType,
+		Exp: num("exp"), Iat: num("iat"), TokenType: &tokenType,
 	}
 	if aud, err := claims.GetAudience(); err == nil && len(aud) > 0 {
 		resp.Aud = &aud[0]

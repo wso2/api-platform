@@ -39,7 +39,7 @@ func NewServiceAccountRepo(db *database.DB) *ServiceAccountRepo {
 }
 
 const serviceAccountCols = `SELECT uuid, organization_uuid, handle, name, version, owner, description,
-	       client_id, client_secret_hash, masked_secret, identity_uuid, roles, status, token_version,
+	       client_id, client_secret_hash, masked_secret, roles, status, token_version,
 	       last_used_at, last_used_ip, secret_regenerated_at, secret_regenerated_by,
 	       created_at, created_by, updated_at, updated_by FROM service_accounts`
 
@@ -49,7 +49,7 @@ func scanServiceAccount(row interface{ Scan(...any) error }) (*model.ServiceAcco
 	var lastUsedIP, regeneratedBy, createdBy, updatedBy sql.NullString
 	err := row.Scan(
 		&sa.UUID, &sa.OrganizationID, &sa.Handle, &sa.DisplayName, &sa.Version, &sa.Owner, &sa.Description,
-		&sa.ClientID, &sa.ClientSecretHash, &sa.MaskedSecret, &sa.IdentityUUID, &sa.Roles, &sa.Status, &sa.TokenVersion,
+		&sa.ClientID, &sa.ClientSecretHash, &sa.MaskedSecret, &sa.Roles, &sa.Status, &sa.TokenVersion,
 		&lastUsedAt, &lastUsedIP, &regeneratedAt, &regeneratedBy,
 		&sa.CreatedAt, &createdBy, &sa.UpdatedAt, &updatedBy,
 	)
@@ -93,11 +93,11 @@ func (r *ServiceAccountRepo) Create(sa *model.ServiceAccount, subject string) er
 	_, err = tx.Exec(r.db.Rebind(`
 		INSERT INTO service_accounts (
 			uuid, organization_uuid, handle, name, version, owner, description,
-			client_id, client_secret_hash, masked_secret, identity_uuid, roles, status, token_version,
+			client_id, client_secret_hash, masked_secret, roles, status, token_version,
 			created_at, created_by, updated_at, updated_by
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		sa.UUID, sa.OrganizationID, sa.Handle, sa.DisplayName, sa.Version, sa.Owner, sa.Description,
-		sa.ClientID, sa.ClientSecretHash, sa.MaskedSecret, sa.IdentityUUID, sa.Roles, sa.Status, sa.TokenVersion,
+		sa.ClientID, sa.ClientSecretHash, sa.MaskedSecret, sa.Roles, sa.Status, sa.TokenVersion,
 		sa.CreatedAt, sa.CreatedBy, sa.UpdatedAt, sa.UpdatedBy,
 	)
 	if err != nil {
@@ -110,7 +110,7 @@ func (r *ServiceAccountRepo) Create(sa *model.ServiceAccount, subject string) er
 	// The identity row's uuid is the account's own, which is how the startup
 	// check tells a minted sa: identity from a foreign one.
 	_, err = tx.Exec(r.db.Rebind(`INSERT INTO user_idp_references (uuid, idp_id, created_at) VALUES (?, ?, ?)`),
-		sa.IdentityUUID, subject, now)
+		sa.UUID, subject, now)
 	if err != nil {
 		return fmt.Errorf("failed to create service account identity: %w", err)
 	}
