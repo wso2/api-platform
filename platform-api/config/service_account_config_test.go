@@ -67,6 +67,11 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 			a.ServiceAccount.JWT = ownKey()
 			a.ServiceAccount.RetiredPublicKeyFiles = []string{saPubFile}
 		}, "is the current signing key"},
+		{"disabled skips every check", func(a *Auth) {
+			a.ServiceAccount.Enabled = false
+			a.ServiceAccount.TokenTTL = 0
+			a.ServiceAccount.JWT = JWT{Issuer: "platform-api-sa"}
+		}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,4 +100,17 @@ func TestFileUsersCannotUseTheServiceAccountPrefix(t *testing.T) {
 	}, &Authorization{RoleToScopeMapping: "/m.yaml"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reserved for service accounts")
+}
+
+func TestFileUsersCannotHoldServiceAccountRoles(t *testing.T) {
+	err := validateFileBasedConfig(&FileBased{
+		Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+		Users:        FileBasedUsers{{Username: "alice", PasswordHash: "h", Roles: []string{"ap_sa_reader"}}},
+	}, &Authorization{RoleToScopeMapping: "/m.yaml"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "service-account role")
+}
+
+func TestServiceAccountsEnabledByDefault(t *testing.T) {
+	assert.True(t, defaultConfig().Auth.ServiceAccount.Enabled)
 }

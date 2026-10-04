@@ -84,6 +84,7 @@ func defaultConfig() *Server {
 				TokenTTL: time.Hour,
 			},
 			ServiceAccount: ServiceAccount{
+				Enabled: true,
 				// Shorter than auth.jwt.token_ttl: a workload re-exchanges in a loop anyway.
 				TokenTTL: 15 * time.Minute,
 				Audience: "platform-api",

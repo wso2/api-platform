@@ -343,6 +343,9 @@ type Auth struct {
 
 // ServiceAccount groups the service-account settings.
 type ServiceAccount struct {
+	// Enabled false removes the routes, refuses every SA token and skips the
+	// startup checks. Accounts stay in the DB.
+	Enabled  bool          `koanf:"enabled"`
 	TokenTTL time.Duration `koanf:"token_ttl"`
 	// Audience is written to every SA token's aud and required back on it.
 	Audience   string                   `koanf:"audience"`
@@ -1032,6 +1035,9 @@ func validateAuthModeConfig(auth *Auth) error {
 // signing key or a shared issuer would surface as a 401 long after startup.
 func validateServiceAccountConfig(auth *Auth) error {
 	sa := &auth.ServiceAccount
+	if !sa.Enabled {
+		return nil
+	}
 	if sa.TokenTTL <= 0 {
 		return fmt.Errorf("auth.service_account.token_ttl must be a positive duration")
 	}
@@ -1313,6 +1319,12 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 		if strings.HasPrefix(u.Username, constants.ServiceAccountSubPrefix) {
 			return fmt.Errorf("auth.file.users[%d]: username must not start with %q (reserved for service accounts)",
 				i, constants.ServiceAccountSubPrefix)
+		}
+		for _, role := range u.Roles {
+			if strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
+				return fmt.Errorf("auth.file.users[%d] (%s): role %q is a service-account role (%q prefix)",
+					i, u.Username, role, constants.ServiceAccountRolePrefix)
+			}
 		}
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)

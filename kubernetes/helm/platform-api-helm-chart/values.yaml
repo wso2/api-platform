@@ -145,9 +145,10 @@ config:
       # elsewhere only if you supply your own file via extraVolumes/extraVolumeMounts.
       roleToScopeMapping: /etc/platform-api/role-to-scope-mapping.yaml
       # Roles the mapping file defines, each a name and the scopes it grants.
-      # Only ap_admin is shipped here — the file-mode admin below names it.
+      # ap_admin is shipped here because the file-mode admin below names it, and
+      # ap_sa_reader so a service account can be created out of the box.
       # platform-api/resources/role-to-scope-mapping.yaml is the full sample set (ap_admin,
-      # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
+      # ap_operator, ap_publisher, ap_subscriber, ap_viewer, ap_sa_reader); copy the entries you
       # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
       # fails startup; dp: scopes (API Portal) are checked for shape only.
       # A resource-level :manage already covers that resource's subresources
@@ -176,6 +177,27 @@ config:
             # Ownership override — every user's API keys, not just the caller's.
             # Never implied by ap:api_key:read, so it is listed explicitly.
             - ap:api_key:all:manage
+        # Service-account role. Must not grant ap:service_account:manage,
+        # ap:service_account:read or ap:api_key:all:manage. Kept in sync with
+        # platform-api/resources/role-to-scope-mapping.yaml.
+        - name: ap_sa_reader
+          scopes:
+            - ap:organization:read
+            - ap:project:read
+            - ap:gateway:read
+            - ap:gateway_custom_policy:read
+            - ap:rest_api:read
+            - ap:rest_api:deployment:read
+            - ap:application:read
+            - ap:subscription:read
+            - ap:subscription_plan:read
+            - ap:llm_template:read
+            - ap:llm_provider:read
+            - ap:llm_provider:deployment:read
+            - ap:llm_proxy:read
+            - ap:llm_proxy:deployment:read
+            - ap:mcp_proxy:read
+            - ap:mcp_proxy:deployment:read
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization
@@ -202,6 +224,20 @@ config:
       publicKeyFile: /etc/platform-api/keys/jwt_public.pem
       privateKeyFile: /etc/platform-api/keys/jwt_private.pem
       tokenTtl: 1h               # lifetime of file-mode login tokens (Go duration)
+    # Service accounts — machine identities that swap a client ID and secret for a
+    # short-lived token at POST /api/v0.9/service-accounts/token.
+    serviceAccount:
+      enabled: true              # false removes the endpoints and refuses every SA token
+      tokenTtl: 15m
+      audience: platform-api
+      pollInterval: 5s           # how often each replica reloads revocations
+      # Optional own key pair. Left empty, SA tokens are signed with auth.jwt.
+      # Set all three or none; mount the files yourself (extraVolumes).
+      jwt:
+        issuer: ""
+        publicKeyFile: ""
+        privateKeyFile: ""
+      retiredPublicKeyFiles: []  # only with jwt above; still verify, never sign
     # file mode — local username/password login (rendered only when mode=file).
     file:
       organization:

@@ -285,7 +285,16 @@ skip_validation = false
 # Client secrets look like apsa_<64 hex chars>. Add the pattern
 # apsa_[0-9a-f]{64} to your secret scanner (GitHub secret scanning,
 # GitGuardian, trufflehog) so a leaked secret is caught.
+#
+# An account holds one or more ap_sa_* roles from the role-to-scope mapping. Its
+# token carries one authorization claim, chosen by auth.authorization.mode: in
+# "scope" mode the client must send scope=<space-separated scopes>, all granted
+# by its roles, and the token carries exactly those; in "role" mode scope is
+# ignored and the token carries the roles.
 [platform_api.auth.service_account]
+# false removes the service-account endpoints and refuses every service-account
+# token. Accounts are kept and work again when this is set back to true.
+enabled = true
 # Lifetime of a service-account token.
 token_ttl = "15m"
 # Written to every service-account token's aud and required back on it.
