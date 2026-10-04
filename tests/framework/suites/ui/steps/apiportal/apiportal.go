@@ -1405,14 +1405,25 @@ func (u *Steps) applicationCRUD(ctx context.Context) error {
 // own page and a key manager is no longer bound to an application — so there is
 // no longer a key-manager-dependent state on this page to assert.
 func (u *Steps) applicationHasKeyAssociationSections(ctx context.Context) error {
-	page, _, _, err := u.applicationDetails(ctx)
+	page, _, name, err := u.applicationDetails(ctx)
 	if err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator(".ak-title")).ToBeAttached(); err != nil {
-		return err
+	// Establish that this IS the detail page before asserting anything inside it.
+	// Without this the step cannot tell "the key sections are missing" from "the
+	// document is not the application detail page at all" — a blank or error
+	// response fails on .ak-title with an empty snapshot, which reads as the
+	// former and is the latter.
+	if err := u.expect.Locator(page.Locator("#applicationName")).ToContainText(name); err != nil {
+		return fmt.Errorf("application detail page did not render for %q (url %s): %w", name, page.URL(), err)
 	}
-	return u.expect.Locator(page.Locator("#btn-open-associate-key")).ToBeAttached()
+	if err := u.expect.Locator(page.Locator(".ak-title")).ToBeAttached(); err != nil {
+		return fmt.Errorf("key association section heading is missing on %s: %w", page.URL(), err)
+	}
+	if err := u.expect.Locator(page.Locator("#btn-open-associate-key")).ToBeAttached(); err != nil {
+		return fmt.Errorf("key association control is missing on %s: %w", page.URL(), err)
+	}
+	return nil
 }
 
 func (u *Steps) searchAPIListing(ctx context.Context, query, mustContain, mustNotContain string) error {
