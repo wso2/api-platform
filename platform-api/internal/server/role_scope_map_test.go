@@ -198,3 +198,23 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 		t.Fatalf("expected ap_admin to grant Developer Portal scopes: %v", m["ap_admin"])
 	}
 }
+
+// The shipped mapping must load against the shipped spec, ap_sa_reader included.
+func TestLoadRoleScopeMap_ShippedFile(t *testing.T) {
+	m, err := loadRoleScopeMap(roleModeConfig("../../resources/role-to-scope-mapping.yaml"), loadMergedRegistry(t), testLogger())
+	if err != nil {
+		t.Fatalf("shipped role-to-scope-mapping.yaml: %v", err)
+	}
+	if len(m["ap_sa_reader"]) == 0 {
+		t.Fatal("shipped mapping has no ap_sa_reader role")
+	}
+}
+
+// An ap_sa_* role granting a refused scope stops startup.
+func TestLoadRoleScopeMap_RefusesServiceAccountRoleWithRefusedScope(t *testing.T) {
+	path := writeRolesFile(t, "ap_sa_admin", "ap:rest_api:read", "ap:service_account:manage")
+	_, err := loadRoleScopeMap(roleModeConfig(path), loadMergedRegistry(t), testLogger())
+	if err == nil || !strings.Contains(err.Error(), "ap_sa_admin") {
+		t.Fatalf("want a startup error naming the role, got %v", err)
+	}
+}

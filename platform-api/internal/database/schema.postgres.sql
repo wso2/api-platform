@@ -839,8 +839,7 @@ CREATE TABLE IF NOT EXISTS service_accounts (
     client_id              VARCHAR(255)  NOT NULL,
     client_secret_hash     VARCHAR(255)  NOT NULL,
     masked_secret          VARCHAR(8)    NOT NULL,
-    identity_uuid          VARCHAR(40)   NOT NULL,
-    roles                  VARCHAR(1023) NOT NULL DEFAULT '',
+    roles                  VARCHAR(1023) NOT NULL,
     status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
     token_version          INTEGER       NOT NULL DEFAULT 1,
     last_used_at           TIMESTAMPTZ,
@@ -858,7 +857,6 @@ CREATE TABLE IF NOT EXISTS service_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_accounts_org    ON service_accounts(organization_uuid);
-CREATE INDEX IF NOT EXISTS idx_service_accounts_status ON service_accounts(status);
 
 -- Revocation watermarks for service-account tokens: one row per account, not
 -- per token. Every revoke bumps service_accounts.token_version, and a token

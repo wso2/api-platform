@@ -36,6 +36,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -154,7 +155,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// The sa: sub prefix is reserved. Refuse to start rather than assume no
 	// existing identity already uses it.
-	if foreign, err := serviceAccountRepo.ForeignReservedIdentities(); err != nil {
+	saEnabled := cfg.Auth.ServiceAccount.Enabled
+	if !saEnabled {
+		slogger.Info("service accounts are disabled (auth.service_account.enabled = false)")
+	} else if foreign, err := serviceAccountRepo.ForeignReservedIdentities(); err != nil {
 		return nil, fmt.Errorf("failed to check reserved service-account identities: %w", err)
 	} else if len(foreign) > 0 {
 		return nil, fmt.Errorf("%d existing identities use the reserved %q subject prefix (e.g. %q); "+
@@ -558,34 +562,50 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Service accounts expand their roles through the same mapping, so they are
 	// wired here too.
-	saKeys, err := service.LoadServiceAccountKeys(cfg)
-	if errors.Is(err, service.ErrNoServiceAccountSigningKey) {
-		slogger.Warn("service-account token issue is disabled: no signing key", "reason", err)
-		saKeys = nil
-	} else if err != nil {
-		return nil, fmt.Errorf("failed to load service-account signing key: %w", err)
+	saCfg := cfg.Auth.ServiceAccount
+	if saEnabled && !hasServiceAccountRole(roleScopeMap) {
+		slogger.Warn("service accounts are enabled but the role-to-scope mapping defines no "+
+			constants.ServiceAccountRolePrefix+"* role; no service account can be created",
+			"roleToScopeMapping", cfg.Auth.Authorization.RoleToScopeMapping)
+	}
+	var saKeys *service.ServiceAccountKeys
+	if saEnabled {
+		saKeys, err = service.LoadServiceAccountKeys(cfg)
+		if errors.Is(err, service.ErrNoServiceAccountSigningKey) {
+			slogger.Warn("service-account token issue is disabled: no signing key", "reason", err)
+			saKeys = nil
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to load service-account signing key: %w", err)
+		}
 	}
 	keyMap, err := buildIssuerKeyMap(cfg, saKeys)
 	if err != nil {
 		return nil, err
 	}
-	saCfg := cfg.Auth.ServiceAccount
-	revocations := service.NewRevocationCache(serviceAccountRepo, slogger)
-	// Loaded before serving: a cold cache must never read as "nothing revoked".
-	if err := revocations.Load(); err != nil {
-		return nil, err
+	var revocations *service.RevocationCache
+	if saEnabled {
+		revocations = service.NewRevocationCache(serviceAccountRepo, slogger)
+		// Loaded before serving: a cold cache must never read as "nothing revoked".
+		if err := revocations.Load(); err != nil {
+			return nil, err
+		}
+		var saSigner *service.SATokenSigner
+		var saPublicKeys []*rsa.PublicKey
+		if saKeys != nil {
+			saSigner = service.NewSATokenSigner(saKeys, cfg)
+			saPublicKeys = saKeys.PublicKeys()
+		}
+		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
+			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, cfg.Auth.ClaimMappings, slogger)
+		serviceAccountService.SetRevocationCache(revocations)
+		handler.NewServiceAccountHandler(serviceAccountService, identityService, keyMap, revocations, saPublicKeys, slogger).
+			RegisterRoutes(core)
+	} else {
+		keyMap.DisableServiceAccounts()
+		cfg.Auth.SkipPaths = slices.DeleteFunc(cfg.Auth.SkipPaths, func(p string) bool {
+			return strings.HasPrefix(p, constants.APIBasePath+"/service-accounts/")
+		})
 	}
-	var saSigner *service.SATokenSigner
-	var saPublicKeys []*rsa.PublicKey
-	if saKeys != nil {
-		saSigner = service.NewSATokenSigner(saKeys, cfg)
-		saPublicKeys = saKeys.PublicKeys()
-	}
-	serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
-		roleScopeMap, saSigner, saCfg.TokenTTL, slogger)
-	serviceAccountService.SetRevocationCache(revocations)
-	handler.NewServiceAccountHandler(serviceAccountService, identityService, keyMap, revocations, saPublicKeys, slogger).
-		RegisterRoutes(core)
 
 	// The recorder defers registration errors (a duplicate or empty pattern, a
 	// nil handler) instead of panicking, so they are reported here, once, before
@@ -692,7 +712,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Runs straight after authentication, so every later layer sees only
 	// unrevoked service-account tokens.
-	chain = append(chain, middleware.ServiceAccountRevocationMiddleware(keyMap, revocations))
+	if revocations != nil {
+		chain = append(chain, middleware.ServiceAccountRevocationMiddleware(keyMap, revocations))
+	}
 
 	// Resolve the organization claim (the platform UUID in file-based mode, or
 	// the IDP's organization id in IDP mode) into the platform organization UUID
@@ -766,6 +788,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}, nil
 }
 
+// hasServiceAccountRole reports whether the mapping defines any ap_sa_* role.
+func hasServiceAccountRole(roleScopeMap map[string][]string) bool {
+	for role := range roleScopeMap {
+		if strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildIssuerKeyMap registers every issuer this server verifies. In idp mode
 // the local entry exists only to verify SA tokens, so it is the SA kind.
 func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (*middleware.IssuerKeyMap, error) {
@@ -777,11 +809,18 @@ func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (
 			keys = append(keys, middleware.IssuerKeys{Issuer: iss, Kind: middleware.IssuerKindIDP})
 		}
 		if sharedKey {
+			if saKeys.Issuer == "" {
+				return nil, fmt.Errorf("auth.jwt.issuer must not be empty when it signs service-account tokens")
+			}
 			keys = append(keys, middleware.IssuerKeys{Issuer: saKeys.Issuer,
 				Kind:    middleware.IssuerKindServiceAccount,
 				Current: saKeys.Current})
 		}
 	} else {
+		// The map keys on iss, so an empty issuer would accept only tokens with none.
+		if cfg.Auth.JWT.Issuer == "" {
+			return nil, fmt.Errorf("auth.jwt.issuer must not be empty")
+		}
 		local := middleware.IssuerKeys{Issuer: cfg.Auth.JWT.Issuer, Kind: middleware.IssuerKindLocal}
 		if cfg.Auth.Mode == config.AuthModeInternalToken && cfg.Auth.InternalToken.SkipValidation {
 			// No auth.jwt key is required here; SA tokens on the shared key still verify.
@@ -928,6 +967,9 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
 		return nil, fmt.Errorf("invalid role-to-scope-mapping.yaml: %w", err)
 	}
+	if err := middleware.ValidateServiceAccountRoles(m); err != nil {
+		return nil, err
+	}
 	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RoleToScopeMapping, "roles", len(m))
 
 	return m, nil
@@ -1048,7 +1090,9 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 	defer cancel()
 
 	go s.timeoutService.Start(ctx)
-	go s.revocations.Run(ctx, s.revocationPoll)
+	if s.revocations != nil {
+		go s.revocations.Run(ctx, s.revocationPoll)
+	}
 
 	// errCh is buffered for both listeners so a failing goroutine never blocks,
 	// even while the other listener is still being shut down.

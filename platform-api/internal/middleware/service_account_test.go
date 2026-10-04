@@ -18,10 +18,13 @@
 package middleware
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,6 +169,27 @@ func TestSkipValidationStillVerifiesServiceAccountTokens(t *testing.T) {
 	}
 }
 
+// With the feature off, an SA token on the shared key must not verify, even
+// under skip_validation; login tokens are unaffected.
+func TestDisabledKeyMapRefusesServiceAccountTokens(t *testing.T) {
+	local := mustKey(t)
+	m, _ := NewIssuerKeyMap("platform-api", IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey})
+	m.DisableServiceAccounts()
+	req := httptest.NewRequest(http.MethodGet, "/api/v0.9/x", nil)
+	for _, skip := range []bool{false, true} {
+		cfg := AuthConfig{SkipValidation: skip, KeyMap: m, ClaimMappings: ClaimMappings{OrganizationClaim: "organization"}}
+		if _, err := validateLocalJWT(req, signToken(t, local, "auto", saClaims("platform-api")), cfg); err == nil {
+			t.Fatalf("skip_validation=%v: SA token accepted with service accounts disabled", skip)
+		}
+		if _, err := validateLocalJWT(req, signToken(t, local, "", humanClaims("platform-api")), cfg); err != nil {
+			t.Fatalf("skip_validation=%v: login token rejected: %v", skip, err)
+		}
+	}
+	if _, err := m.VerifyServiceAccountToken(signToken(t, local, "auto", saClaims("platform-api"))); err == nil {
+		t.Fatal("introspection path accepted an SA token with service accounts disabled")
+	}
+}
+
 type fakeRevocations struct{ revoked map[string]int64 }
 
 func (f fakeRevocations) IsRevoked(id string, version int64) bool {
@@ -230,5 +254,41 @@ func TestPlatformClaimsRejectsReservedSubjectFromIdP(t *testing.T) {
 	}
 	if code := run("alice"); code != http.StatusOK {
 		t.Fatalf("ordinary IdP subject: code=%d", code)
+	}
+}
+
+// An ap_sa_* role on an IdP token is logged once per role.
+func TestWarnServiceAccountRolesOncePerRole(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prev)
+
+	warnServiceAccountRoles([]string{"ap_admin", "ap_sa_test_once"})
+	warnServiceAccountRoles([]string{"ap_sa_test_once"})
+	if got := strings.Count(buf.String(), "ap_sa_test_once"); got != 1 {
+		t.Fatalf("warned %d times, want once", got)
+	}
+	if strings.Contains(buf.String(), "ap_admin") {
+		t.Fatal("a non-SA role was warned about")
+	}
+}
+
+// IdP claims carry the real iss, so the revocation check never sees "".
+func TestPlatformClaimsCarriesIssuer(t *testing.T) {
+	var got string
+	h := PlatformClaimsMiddleware(ClaimMappings{OrganizationClaim: "organization"})(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if c, ok := GetClaimsFromRequest(r); ok {
+				got = c.Issuer
+			}
+		}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v0.9/x", nil)
+	ctx := authenticators.WithAuthContext(req.Context(), models.AuthContext{
+		Claims: jwt.MapClaims{"iss": "https://idp.example", "sub": "alice", "organization": "org-1"},
+	})
+	h.ServeHTTP(httptest.NewRecorder(), req.WithContext(ctx))
+	if got != "https://idp.example" {
+		t.Fatalf("issuer = %q", got)
 	}
 }

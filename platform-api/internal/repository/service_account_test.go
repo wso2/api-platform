@@ -29,7 +29,7 @@ func newTestServiceAccount(orgID, uuid, handle string) *model.ServiceAccount {
 	return &model.ServiceAccount{
 		UUID: uuid, OrganizationID: orgID, Handle: handle, DisplayName: handle, Owner: "team", Description: "test",
 		ClientID: "sa_org_" + handle, ClientSecretHash: "hash-" + handle, MaskedSecret: "***abcde",
-		IdentityUUID: uuid, Roles: "ap_operator",
+		Roles: "ap_sa_reader",
 	}
 }
 

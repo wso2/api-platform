@@ -7375,86 +7375,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /service-accounts/token:
-    post:
-      summary: Exchange client credentials for an access token
-      description: |
-        OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
-        token yet. Every failure returns the same 401.
-      operationId: issueServiceAccountToken
-      security: []
-      tags:
-        - Service Accounts
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ServiceAccountTokenRequest'
-      responses:
-        '200':
-          description: Access token issued
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceAccountTokenResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /service-accounts/introspect:
-    post:
-      summary: Introspect a service-account token
-      description: |
-        RFC 7662 token introspection. Every inactive cause returns exactly
-        `{"active": false}`.
-      operationId: introspectServiceAccountToken
-      security:
-        - OAuth2Security:
-            - ap:service_account:token:introspect
-      tags:
-        - Service Accounts
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/IntrospectionRequest'
-      responses:
-        '200':
-          description: Introspection result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IntrospectionResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /service-accounts/jwks.json:
-    get:
-      summary: Service-account signing keys
-      description: Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
-      operationId: getServiceAccountJWKS
-      security: []
-      tags:
-        - Service Accounts
-      responses:
-        '200':
-          description: JSON Web Key Set
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JWKSResponse'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /service-accounts/{serviceAccountId}:
     get:
       summary: Get a service account
@@ -7546,6 +7466,93 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/token:
+    post:
+      summary: Exchange client credentials for an access token
+      description: |
+        OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
+        token yet. Every authentication failure returns the same 401.
+
+        The token carries one authorization claim, chosen by the server's
+        `auth.authorization.mode`. In `scope` mode, `scope` is required and the token
+        carries exactly the requested scopes; a missing scope, or one the account's
+        roles do not grant, is a 400. In `role` mode, `scope` is ignored and the
+        token carries the account's roles. The response's `scope` is what the token
+        authorizes in either mode.
+      operationId: issueServiceAccountToken
+      security: []
+      tags:
+        - Service Accounts
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServiceAccountTokenRequest'
+      responses:
+        '200':
+          description: Access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/introspect:
+    post:
+      summary: Introspect a service-account token
+      description: |
+        RFC 7662 token introspection. Every inactive cause returns exactly
+        `{"active": false}`.
+      operationId: introspectServiceAccountToken
+      security:
+        - OAuth2Security:
+            - ap:service_account:token:introspect
+      tags:
+        - Service Accounts
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntrospectionRequest'
+      responses:
+        '200':
+          description: Introspection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /service-accounts/jwks.json:
+    get:
+      summary: Service-account signing keys
+      description: Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+      operationId: getServiceAccountJWKS
+      security: []
+      tags:
+        - Service Accounts
+      responses:
+        '200':
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -11916,9 +11923,10 @@ components:
           example: "***9f2c1"
         roles:
           type: array
+          description: The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
           items:
             type: string
-          example: [ap_operator]
+          example: [ap_sa_reader]
         status:
           type: string
           enum: [active, disabled]
@@ -12002,11 +12010,11 @@ components:
           example: Deploys REST APIs from the release pipeline
         roles:
           type: array
-          description: Roles from the role-to-scope mapping file
+          description: Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
           minItems: 1
           items:
             type: string
-          example: [ap_operator]
+          example: [ap_sa_reader]
 
     ServiceAccountUpdateRequest:
       type: object
@@ -12029,10 +12037,13 @@ components:
           example: Deploys REST APIs from the release pipeline
         roles:
           type: array
+          description: |
+            Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
+            already issued; adding one does not.
           minItems: 1
           items:
             type: string
-          example: [ap_operator]
+          example: [ap_sa_reader]
         status:
           type: string
           enum: [active, disabled]
@@ -12074,6 +12085,12 @@ components:
         client_secret:
           type: string
           writeOnly: true
+        scope:
+          type: string
+          description: |
+            Space-separated scopes. Required when the server's
+            `auth.authorization.mode` is `scope`; ignored when it is `role`.
+          example: ap:rest_api:read ap:gateway:read
 
     ServiceAccountTokenResponse:
       type: object

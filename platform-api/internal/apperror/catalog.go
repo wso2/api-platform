@@ -222,6 +222,9 @@ var (
 var (
 	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")
 	ServiceAccountExists   = def(CodeServiceAccountExists, http.StatusConflict, "A service account with this ID already exists.")
+	// Same body for a missing scope and an ungranted one, so it does not list the account's grants.
+	ServiceAccountInvalidScope = def(CodeServiceAccountInvalidScope, http.StatusBadRequest,
+		"The requested scope is missing, or is not granted to this service account.")
 )
 
 // Artifact entries — generic artifact-reference flows and the

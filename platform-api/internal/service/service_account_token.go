@@ -83,6 +83,7 @@ type SATokenSigner struct {
 	kid      string
 	ttl      time.Duration
 	audience string
+	roleMode bool // carry roles instead of scope
 	claims   config.ClaimMappings
 }
 
@@ -93,6 +94,7 @@ func NewSATokenSigner(keys *ServiceAccountKeys, cfg *config.Server) *SATokenSign
 		kid:      utils.RSAThumbprint(keys.Current),
 		ttl:      cfg.Auth.ServiceAccount.TokenTTL,
 		audience: cfg.Auth.ServiceAccount.Audience,
+		roleMode: cfg.Auth.Authorization.Mode == config.AuthzModeRole,
 		claims:   cfg.Auth.ClaimMappings,
 	}
 }
@@ -106,7 +108,8 @@ type SignedToken struct {
 
 // Sign mints the token through the same claim_mappings the login endpoint uses,
 // plus azp, aud, jti, the account's token version and a kid header, which
-// login tokens do not carry.
+// login tokens do not carry. Unlike login tokens it carries one authorization
+// claim, the one auth.authorization.mode reads: scope, or the account's roles.
 func (s *SATokenSigner) Sign(sa *model.ServiceAccount, org *model.Organization, scope string) (*SignedToken, error) {
 	now := time.Now()
 	exp := now.Add(s.ttl)
@@ -131,11 +134,14 @@ func (s *SATokenSigner) Sign(sa *model.ServiceAccount, org *model.Organization, 
 		constants.ServiceAccountTokenVersionClaim: sa.TokenVersion,
 	}
 	utils.SetClaim(claims, utils.ClaimKey(s.claims.Username, "username"), sub)
-	utils.SetClaim(claims, utils.ClaimKey(s.claims.Scope, "scope"), scope)
 	utils.SetClaim(claims, utils.ClaimKey(s.claims.Organization, "organization"), orgClaim)
 	utils.SetClaim(claims, utils.ClaimKey(s.claims.OrgName, "org_name"), org.Name)
 	utils.SetClaim(claims, utils.ClaimKey(s.claims.OrgHandle, "org_handle"), org.Handle)
-	utils.SetClaim(claims, utils.ClaimKey(s.claims.Roles, "roles"), sa.RoleList())
+	if s.roleMode {
+		utils.SetClaim(claims, utils.ClaimKey(s.claims.Roles, "roles"), sa.RoleList())
+	} else {
+		utils.SetClaim(claims, utils.ClaimKey(s.claims.Scope, "scope"), scope)
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = s.kid

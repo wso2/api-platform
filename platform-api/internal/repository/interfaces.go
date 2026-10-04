@@ -498,7 +498,7 @@ type SecretRepository interface {
 // ServiceAccountRepository persists service accounts. Every write that
 // revokes tokens takes the ledger row too, so both land in one transaction.
 type ServiceAccountRepository interface {
-	// Create inserts the account and its identity row (uuid = sa.IdentityUUID,
+	// Create inserts the account and its identity row (uuid = sa.UUID,
 	// idp_id = subject) together.
 	Create(sa *model.ServiceAccount, subject string) error
 	GetByHandle(orgID, handle string) (*model.ServiceAccount, error)

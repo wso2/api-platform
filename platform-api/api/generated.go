@@ -4702,7 +4702,9 @@ type ServiceAccount struct {
 	MaskedSecret *string    `json:"maskedSecret,omitempty" yaml:"maskedSecret,omitempty"`
 
 	// Owner Who is accountable for this account — a team, person or mailing list
-	Owner               string               `json:"owner" yaml:"owner"`
+	Owner string `json:"owner" yaml:"owner"`
+
+	// Roles The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
 	Roles               []string             `json:"roles" yaml:"roles"`
 	SecretRegeneratedAt *time.Time           `json:"secretRegeneratedAt,omitempty" yaml:"secretRegeneratedAt,omitempty"`
 	Status              ServiceAccountStatus `json:"status" yaml:"status"`
@@ -4722,7 +4724,7 @@ type ServiceAccountCreateRequest struct {
 	Id    string `json:"id" yaml:"id"`
 	Owner string `json:"owner" yaml:"owner"`
 
-	// Roles Roles from the role-to-scope mapping file
+	// Roles Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
 	Roles []string `json:"roles" yaml:"roles"`
 }
 
@@ -4751,6 +4753,10 @@ type ServiceAccountTokenRequest struct {
 	ClientId     string                              `json:"client_id" yaml:"client_id"`
 	ClientSecret *string                             `json:"client_secret,omitempty" yaml:"client_secret,omitempty"`
 	GrantType    ServiceAccountTokenRequestGrantType `json:"grant_type" yaml:"grant_type"`
+
+	// Scope Space-separated scopes. Required when the server's
+	// `auth.authorization.mode` is `scope`; ignored when it is `role`.
+	Scope *string `json:"scope,omitempty" yaml:"scope,omitempty"`
 }
 
 // ServiceAccountTokenRequestGrantType defines model for ServiceAccountTokenRequest.GrantType.
@@ -4768,11 +4774,14 @@ type ServiceAccountTokenResponse struct {
 
 // ServiceAccountUpdateRequest Every field is optional. Owner and description may change but not be blanked.
 type ServiceAccountUpdateRequest struct {
-	Description *string                            `json:"description,omitempty" yaml:"description,omitempty"`
-	DisplayName *string                            `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Owner       *string                            `json:"owner,omitempty" yaml:"owner,omitempty"`
-	Roles       *[]string                          `json:"roles,omitempty" yaml:"roles,omitempty"`
-	Status      *ServiceAccountUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Owner       *string `json:"owner,omitempty" yaml:"owner,omitempty"`
+
+	// Roles Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
+	// already issued; adding one does not.
+	Roles  *[]string                          `json:"roles,omitempty" yaml:"roles,omitempty"`
+	Status *ServiceAccountUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // ServiceAccountUpdateRequestStatus defines model for ServiceAccountUpdateRequest.Status.

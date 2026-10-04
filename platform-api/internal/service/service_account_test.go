@@ -139,7 +139,9 @@ type saFixture struct {
 	key   *rsa.PrivateKey
 }
 
-func newSAFixture(t *testing.T) *saFixture {
+func newSAFixture(t *testing.T) *saFixture { return newSAFixtureMode(t, config.AuthzModeScope) }
+
+func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -147,18 +149,23 @@ func newSAFixture(t *testing.T) *saFixture {
 	}
 	cfg := &config.Server{}
 	cfg.Auth.ServiceAccount = config.ServiceAccount{TokenTTL: 15 * time.Minute, Audience: "platform-api"}
+	cfg.Auth.Authorization.Mode = mode
 	signer := NewSATokenSigner(&ServiceAccountKeys{Issuer: "platform-api", PrivateKey: key, Current: &key.PublicKey}, cfg)
 
 	f := &saFixture{repo: newFakeSARepo(), audit: &fakeAudit{}, logs: &bytes.Buffer{}, key: key}
 	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	roles := map[string][]string{"ap_operator": {"ap:gateway:read", "ap:rest_api:read"}, "ap_reader": {"ap:rest_api:read"}}
+	roles := map[string][]string{
+		"ap_sa_operator": {"ap:gateway:read", "ap:rest_api:read"},
+		"ap_sa_reader":   {"ap:rest_api:read"},
+		"ap_operator":    {"ap:gateway:read"},
+	}
 	f.svc = NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(), roles, signer,
-		15*time.Minute, logger)
+		15*time.Minute, mode, config.ClaimMappings{}, logger)
 	return f
 }
 
 func createReq(handle string) *api.ServiceAccountCreateRequest {
-	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Owner: "team", Description: "deploys", Roles: []string{"ap_operator"}}
+	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Owner: "team", Description: "deploys", Roles: []string{"ap_sa_operator"}}
 }
 
 func TestServiceAccountCreate_SecretFormat(t *testing.T) {
@@ -180,9 +187,6 @@ func TestServiceAccountCreate_SecretFormat(t *testing.T) {
 	if stored.MaskedSecret != "***"+creds.ClientSecret[64:] || *creds.ServiceAccount.MaskedSecret != stored.MaskedSecret {
 		t.Fatalf("masked form: %q", stored.MaskedSecret)
 	}
-	if stored.IdentityUUID != stored.UUID {
-		t.Fatal("identity UUID must be the account UUID")
-	}
 }
 
 func TestServiceAccountCreate_Validation(t *testing.T) {
@@ -192,10 +196,20 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	blankDesc := createReq("b-bot")
 	blankDesc.Description = ""
 	badRole := createReq("c-bot")
-	badRole.Roles = []string{"ap_nope"}
+	badRole.Roles = []string{"ap_sa_nope"}
+	humanRole := createReq("d-bot")
+	humanRole.Roles = []string{"ap_sa_reader", "ap_operator"}
+	noRole := createReq("e-bot")
+	noRole.Roles = nil
 	reserved := createReq("token")
+	longOwner := createReq("f-bot")
+	longOwner.Owner = strings.Repeat("o", 256)
+	longDesc := createReq("g-bot")
+	longDesc.Description = strings.Repeat("d", 1024)
 	for name, req := range map[string]*api.ServiceAccountCreateRequest{
-		"blank owner": blankOwner, "blank description": blankDesc, "unknown role": badRole, "reserved id": reserved,
+		"owner too long": longOwner, "description too long": longDesc,
+		"blank owner": blankOwner, "blank description": blankDesc, "unknown role": badRole,
+		"non-ap_sa_ role": humanRole, "no role": noRole, "reserved id": reserved,
 	} {
 		if _, err := f.svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {
 			t.Errorf("%s: want validation error, got %v", name, err)
@@ -204,6 +218,10 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 
 	if _, err := f.svc.Create("org-1", "admin", createReq("ci-bot")); err != nil {
 		t.Fatal(err)
+	}
+	long := strings.Repeat("n", 256)
+	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{DisplayName: &long}); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("overlong display name on update: got %v", err)
 	}
 	blank := "   "
 	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Owner: &blank}); !apperror.ValidationFailed.Is(err) {
@@ -215,11 +233,12 @@ func TestServiceAccountExchange(t *testing.T) {
 	f := newSAFixture(t)
 	creds, _ := f.svc.Create("org-1", "admin", createReq("ci-bot"))
 
-	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, ClientIP: "10.0.0.1"})
+	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret,
+		Scope: "ap:rest_api:read ap:gateway:read ap:rest_api:read", ClientIP: "10.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *resp.Scope != "ap:gateway:read ap:rest_api:read" || resp.ExpiresIn != 900 || resp.TokenType != "Bearer" {
+	if *resp.Scope != "ap:rest_api:read ap:gateway:read" || resp.ExpiresIn != 900 || resp.TokenType != "Bearer" {
 		t.Fatalf("response: %+v", resp)
 	}
 
@@ -231,13 +250,16 @@ func TestServiceAccountExchange(t *testing.T) {
 	sa, _ := f.repo.GetByHandle("org-1", "ci-bot")
 	want := map[string]interface{}{
 		"sub": "sa:acme:ci-bot:" + sa.UUID, "iss": "platform-api", "aud": "platform-api", "azp": creds.ClientId,
-		"organization": "idp-org-1", "org_handle": "acme", "scope": "ap:gateway:read ap:rest_api:read",
+		"organization": "idp-org-1", "org_handle": "acme", "scope": "ap:rest_api:read ap:gateway:read",
 		"sa_tv": float64(1),
 	}
 	for k, v := range want {
 		if claims[k] != v {
 			t.Errorf("claim %s = %v, want %v", k, claims[k], v)
 		}
+	}
+	if _, ok := claims["roles"]; ok {
+		t.Error("a scope-mode token must not carry roles")
 	}
 	if jti, _ := claims["jti"].(string); len(jti) != 36 {
 		t.Errorf("jti = %q", jti)
@@ -256,9 +278,10 @@ func TestServiceAccountExchange_UniformFailure(t *testing.T) {
 	unmatched := "sa_pasted_" + creds.ClientSecret
 
 	cases := map[string]ExchangeRequest{
-		"unknown client":    {ClientID: unmatched, ClientSecret: creds.ClientSecret},
-		"wrong secret":      {ClientID: creds.ClientId, ClientSecret: "apsa_" + strings.Repeat("f", 64)},
-		"secret w/o prefix": {ClientID: creds.ClientId, ClientSecret: strings.TrimPrefix(creds.ClientSecret, "apsa_")},
+		"unknown client":     {ClientID: unmatched, ClientSecret: creds.ClientSecret},
+		"wrong secret":       {ClientID: creds.ClientId, ClientSecret: "apsa_" + strings.Repeat("f", 64)},
+		"bad secret + scope": {ClientID: creds.ClientId, ClientSecret: "apsa_" + strings.Repeat("f", 64), Scope: "ap:nope:read"},
+		"secret w/o prefix":  {ClientID: creds.ClientId, ClientSecret: strings.TrimPrefix(creds.ClientSecret, "apsa_")},
 	}
 	var first *apperror.Error
 	for name, req := range cases {
@@ -293,7 +316,7 @@ func TestServiceAccountLifecycle_AuditAndRevocation(t *testing.T) {
 	f.svc.Create("org-1", "admin", createReq("ci-bot")) //nolint:errcheck
 
 	disabled, active := api.ServiceAccountUpdateRequestStatusDisabled, api.ServiceAccountUpdateRequestStatusActive
-	roles := []string{"ap_reader"}
+	roles := []string{"ap_sa_reader"}
 	steps := []func() error{
 		func() error {
 			_, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &roles})
@@ -346,7 +369,7 @@ func TestServiceAccountRegenerate_NewTokenPassesWatermark(t *testing.T) {
 	cache.Load() //nolint:errcheck
 	cache.Remember(f.repo.revoked[0])
 
-	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret})
+	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: "ap:rest_api:read"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,12 +390,91 @@ func TestServiceAccountRegenerate_NewTokenPassesWatermark(t *testing.T) {
 func TestServiceAccountUpdate_AddingRoleDoesNotRevoke(t *testing.T) {
 	f := newSAFixture(t)
 	f.svc.Create("org-1", "admin", createReq("ci-bot")) //nolint:errcheck
-	roles := []string{"ap_operator", "ap_reader"}
-	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &roles}); err != nil {
+	roles := []string{"ap_sa_operator", "ap_sa_reader", "ap_sa_reader"}
+	resp, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &roles})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(f.repo.revoked) != 0 {
 		t.Fatalf("adding a role wrote %d revocations", len(f.repo.revoked))
+	}
+	if !slices.Equal(resp.Roles, []string{"ap_sa_operator", "ap_sa_reader"}) {
+		t.Fatalf("roles = %v, want deduplicated", resp.Roles)
+	}
+	mixed := []string{"ap_sa_operator", "ap_operator"}
+	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &mixed}); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("a non-ap_sa_ role on update: got %v", err)
+	}
+}
+
+func TestServiceAccountExchange_ScopeMode(t *testing.T) {
+	f := newSAFixture(t)
+	creds, _ := f.svc.Create("org-1", "admin", createReq("ci-bot"))
+	for name, scope := range map[string]string{
+		"no scope":        "",
+		"blank scope":     "   ",
+		"ungranted scope": "ap:rest_api:read ap:rest_api:manage",
+		"unknown scope":   "ap:nope:read",
+	} {
+		_, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: scope})
+		if !apperror.ServiceAccountInvalidScope.Is(err) {
+			t.Errorf("%s: want 400 invalid scope, got %v", name, err)
+		}
+	}
+	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: "ap:gateway:read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := jwt.MapClaims{}
+	if _, err := jwt.ParseWithClaims(resp.AccessToken, claims, func(*jwt.Token) (interface{}, error) { return &f.key.PublicKey, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if claims["scope"] != "ap:gateway:read" || f.svc.TokenScope(claims) != "ap:gateway:read" {
+		t.Fatalf("token scope = %v, want exactly the request", claims["scope"])
+	}
+}
+
+// In scope mode the request may draw on any of the account's roles.
+func TestServiceAccountExchange_ScopeModeAcrossRoles(t *testing.T) {
+	f := newSAFixture(t)
+	req := createReq("ci-bot")
+	req.Roles = []string{"ap_sa_reader", "ap_sa_extra"}
+	f.svc.roleScopeMap["ap_sa_extra"] = []string{"ap:project:read"}
+	creds, err := f.svc.Create("org-1", "admin", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret,
+		Scope: "ap:project:read ap:rest_api:read"})
+	if err != nil || *resp.Scope != "ap:project:read ap:rest_api:read" {
+		t.Fatalf("scope across roles: %v, %v", resp, err)
+	}
+}
+
+func TestServiceAccountExchange_RoleMode(t *testing.T) {
+	f := newSAFixtureMode(t, config.AuthzModeRole)
+	creds, _ := f.svc.Create("org-1", "admin", createReq("ci-bot"))
+	for _, scope := range []string{"", "ap:nope:read"} {
+		resp, err := f.svc.Exchange(ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: scope})
+		if err != nil {
+			t.Fatalf("scope %q: role mode must ignore it, got %v", scope, err)
+		}
+		if *resp.Scope != "ap:gateway:read ap:rest_api:read" {
+			t.Fatalf("response scope = %q, want the roles' scopes", *resp.Scope)
+		}
+		claims := jwt.MapClaims{}
+		if _, err := jwt.ParseWithClaims(resp.AccessToken, claims, func(*jwt.Token) (interface{}, error) { return &f.key.PublicKey, nil }); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := claims["scope"]; ok {
+			t.Fatal("a role-mode token must not carry scope")
+		}
+		if roles, _ := claims["roles"].([]any); len(roles) != 1 || roles[0] != "ap_sa_operator" {
+			t.Fatalf("roles claim = %v", claims["roles"])
+		}
+		if got := f.svc.TokenScope(claims); got != "ap:gateway:read ap:rest_api:read" {
+			t.Fatalf("TokenScope = %q", got)
+		}
 	}
 }
 
@@ -397,7 +499,7 @@ func TestServiceAccountRecreateGetsNewIdentity(t *testing.T) {
 	}
 	f.svc.Create("org-1", "admin", createReq("ci-bot")) //nolint:errcheck
 	second, _ := f.repo.GetByHandle("org-1", "ci-bot")
-	if first.IdentityUUID == second.IdentityUUID || first.Subject("acme") == second.Subject("acme") {
+	if first.UUID == second.UUID || first.Subject("acme") == second.Subject("acme") {
 		t.Fatal("re-created handle inherited the old identity")
 	}
 }

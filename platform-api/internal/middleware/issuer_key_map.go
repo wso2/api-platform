@@ -60,8 +60,9 @@ type issuerEntry struct {
 // is never tried against a key registered for another issuer, so adding an
 // entry cannot widen what an existing token can do.
 type IssuerKeyMap struct {
-	entries  map[string]*issuerEntry
-	audience string // required on SA tokens only
+	entries    map[string]*issuerEntry
+	audience   string // required on SA tokens only
+	saDisabled bool
 }
 
 // NewIssuerKeyMap fails when two entries claim the same issuer.
@@ -81,6 +82,11 @@ func NewIssuerKeyMap(saAudience string, keys ...IssuerKeys) (*IssuerKeyMap, erro
 	}
 	return m, nil
 }
+
+// DisableServiceAccounts makes verify refuse every SA token. Without it, a
+// token minted on the shared key before the feature was turned off would still
+// verify, with no revocation check.
+func (m *IssuerKeyMap) DisableServiceAccounts() { m.saDisabled = true }
 
 // IsLocal reports whether iss is verified by this map rather than by an IdP.
 func (m *IssuerKeyMap) IsLocal(iss string) bool {
@@ -147,6 +153,9 @@ func (m *IssuerKeyMap) verify(tokenString string) (jwt.MapClaims, error) {
 	iss, _ := claims["iss"].(string)
 	sub, _ := claims["sub"].(string)
 	if m.IsServiceAccountToken(iss, sub) {
+		if m.saDisabled {
+			return nil, fmt.Errorf("service accounts are disabled")
+		}
 		if err := m.checkServiceAccountClaims(claims); err != nil {
 			return nil, err
 		}
