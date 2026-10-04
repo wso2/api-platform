@@ -497,6 +497,11 @@ What the freeze covers, beyond the HTTP routes:
   frozen organizations.
 - **API Portal webhook** (`/api/internal/v0.9/webhook/events`): events for a frozen
   organization are refused with 503 so the portal can retry after maintenance.
+- **Requests without an organization** in the context pass the guard only on the auth skip
+  paths (gateway token, webhook signature, login), where the handler applies the check itself
+  once the organization is known; on any other route a write without an organization is
+  rejected (fail closed). In `internal_token` mode the auth middleware already refuses a token
+  without the organization claim, so this matters for IDP tokens that omit it.
 - **Read-style POSTs** that never write stay available: `rest-apis/validate-openapi`,
   `mcp-proxies/fetch-server-info`, `agent-proxies/fetch-agent-card`, the two gateway sync reads
   above, and login. The list is

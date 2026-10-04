@@ -40,6 +40,11 @@ const (
 	readOnlyTestOrgB = "22222222-2222-2222-2222-222222222222"
 )
 
+// readOnlyTestSkipPaths mirrors the shape of config.Auth.SkipPaths: the routes
+// authenticated by a gateway token or by the login endpoint itself, which
+// carry no organization in the context.
+var readOnlyTestSkipPaths = []string{"/api/internal/v1", "/api/portal/v0.9/auth/login"}
+
 // newReadOnlyTestMux registers routes under the exact patterns the guard's exempt
 // list names (so a rename there fails here), a few ordinary write routes, and a
 // gateway-token write route that carries no organization in the context.
@@ -71,9 +76,10 @@ func serveReadOnly(t *testing.T, ro *config.ReadOnly, setOrg bool, org, method, 
 	var reached bool
 	mux := newReadOnlyTestMux(&reached)
 	guard, err := ReadOnlyGuard(ReadOnlyGuardConfig{
-		ReadOnly: ro,
-		Routes:   mux,
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ReadOnly:  ro,
+		Routes:    mux,
+		SkipPaths: readOnlyTestSkipPaths,
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatalf("ReadOnlyGuard: %v", err)
@@ -117,8 +123,10 @@ func TestReadOnlyGuard(t *testing.T) {
 		{"frozen: exempt fetch-server-info passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/mcp-proxies/fetch-server-info", http.StatusOK, true},
 		{"frozen: exempt fetch-agent-card passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/agent-proxies/fetch-agent-card", http.StatusOK, true},
 		{"frozen: exempt gateway sync read passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, "/api/internal/v1/deployments/fetch-batch", http.StatusOK, true},
-		{"frozen: gateway-token write without org falls through to the handler", frozenExceptB, false, "", http.MethodPost, "/api/internal/v1/gateways/gw/manifest", http.StatusOK, true},
-		{"frozen: empty org claim falls through to the handler", frozenExceptB, true, "", http.MethodPost, base + "/projects", http.StatusOK, true},
+		{"frozen: gateway-token write without org (skip path) falls through to the handler", frozenExceptB, false, "", http.MethodPost, "/api/internal/v1/gateways/gw/manifest", http.StatusOK, true},
+		{"frozen: protected write without org is rejected (fail closed)", frozenExceptB, false, "", http.MethodPost, base + "/projects", http.StatusServiceUnavailable, false},
+		{"frozen: protected write with empty org claim is rejected (fail closed)", frozenExceptB, true, "", http.MethodPost, base + "/projects", http.StatusServiceUnavailable, false},
+		{"frozen: protected GET without org still passes", frozenExceptB, false, "", http.MethodGet, base + "/projects", http.StatusOK, true},
 		{"frozen: unknown path stays 404", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, "/nope", http.StatusNotFound, false},
 		{"frozen: unregistered method stays 405", frozenExceptB, true, readOnlyTestOrgA, http.MethodPatch, base + "/projects", http.StatusMethodNotAllowed, false},
 		{"all frozen: POST by any org rejected", allFrozen, true, readOnlyTestOrgB, http.MethodPost, base + "/projects", http.StatusServiceUnavailable, false},
@@ -152,17 +160,26 @@ func TestReadOnlyGuard(t *testing.T) {
 	}
 }
 
-// Enabled without a route matcher cannot recognise the exempt routes — refuse at
-// construction (GO-AUTH-011) rather than block the gateway sync reads at runtime.
-func TestReadOnlyGuard_EnabledRequiresRoutes(t *testing.T) {
-	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{ReadOnly: &config.ReadOnly{Enabled: true}}); err == nil {
+// Enabled without a route matcher cannot recognise the exempt routes, and
+// enabled without skip paths would reject every gateway-token write before its
+// handler — refuse both at construction (GO-AUTH-011) rather than fail at runtime.
+func TestReadOnlyGuard_EnabledRequiresRoutesAndSkipPaths(t *testing.T) {
+	enabled := &config.ReadOnly{Enabled: true}
+	mux := http.NewServeMux()
+	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{ReadOnly: enabled, SkipPaths: readOnlyTestSkipPaths}); err == nil {
 		t.Fatal("expected an error when read-only mode is enabled without a route matcher")
 	}
+	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{ReadOnly: enabled, Routes: mux}); err == nil {
+		t.Fatal("expected an error when read-only mode is enabled without auth skip paths")
+	}
+	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{ReadOnly: enabled, Routes: mux, SkipPaths: readOnlyTestSkipPaths}); err != nil {
+		t.Fatalf("complete config must construct, got: %v", err)
+	}
 	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{ReadOnly: &config.ReadOnly{Enabled: false}}); err != nil {
-		t.Fatalf("disabled mode must not need a route matcher, got: %v", err)
+		t.Fatalf("disabled mode must not need a route matcher or skip paths, got: %v", err)
 	}
 	if _, err := ReadOnlyGuard(ReadOnlyGuardConfig{}); err != nil {
-		t.Fatalf("nil config must not need a route matcher, got: %v", err)
+		t.Fatalf("nil config must not need a route matcher or skip paths, got: %v", err)
 	}
 }
 

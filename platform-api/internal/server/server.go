@@ -730,9 +730,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, err
 	}
 	readOnlyGuard, err := middleware.ReadOnlyGuard(middleware.ReadOnlyGuardConfig{
-		ReadOnly: &cfg.ReadOnly,
-		Routes:   mux,
-		Logger:   slogger,
+		ReadOnly:  &cfg.ReadOnly,
+		Routes:    mux,
+		SkipPaths: cfg.Auth.SkipPaths,
+		Logger:    slogger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build read-only guard: %w", err)

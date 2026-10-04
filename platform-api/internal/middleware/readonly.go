@@ -72,6 +72,15 @@ type ReadOnlyGuardConfig struct {
 	// lookup can only be keyed off a pattern resolved from the router itself.
 	// Pass the *http.ServeMux the routes are registered on.
 	Routes RouteMatcher
+	// SkipPaths are the auth skip-path prefixes: the routes authenticated by
+	// something other than a user JWT (gateway token, webhook signature, login),
+	// which therefore carry no organization in the request context. Only these
+	// may pass the guard without an organization — their writing handlers apply
+	// the check themselves once the organization is known. Required whenever
+	// ReadOnly is enabled. Pass config.Auth.SkipPaths, the same list the
+	// authentication middleware and ScopeEnforcer use, matched through the same
+	// hasPathPrefix, so the three cannot drift into exempting different requests.
+	SkipPaths []string
 	// Logger receives one Warn line per rejected request. Defaults to slog.Default().
 	Logger *slog.Logger
 }
@@ -86,13 +95,18 @@ type ReadOnlyGuardConfig struct {
 // succeeded is turned into a 503. The organization is read from the request
 // context (GO-AUTH-005), never from request input.
 //
-// Requests that carry no organization in the context pass through. Those are
-// the auth skip-path routes — the gateway-token routes under /api/internal/v1,
-// the webhook receiver, the login endpoint — where the organization is only
-// known inside the handler once the gateway token or webhook signature has been
-// verified; the handlers that write on those routes apply the same check
-// themselves. Requests the router matches nothing for also pass through, so an
-// unknown path keeps producing the router's 404/405 rather than a 503.
+// A request that carries no organization in the context passes through only
+// when it is on an auth skip path — the gateway-token routes under
+// /api/internal/v1, the webhook receiver, the login endpoint — where the
+// organization is only known inside the handler once the gateway token or
+// webhook signature has been verified; the handlers that write on those routes
+// apply the same check themselves. On any other route a missing organization
+// is treated as read-only (fail closed): the auth chain normally guarantees an
+// organization there, but an IDP token without the organization claim is
+// accepted by the claims middleware, and such a caller must not be able to
+// write during a freeze just because it could not be attributed. Requests the
+// router matches nothing for also pass through, so an unknown path keeps
+// producing the router's 404/405 rather than a 503.
 //
 // 503 is deliberate: the condition is temporary and operator-driven, and the
 // gateway-controller treats 401/403/404/409/422 from the control plane as
@@ -100,12 +114,21 @@ type ReadOnlyGuardConfig struct {
 //
 // It returns an error when the configuration cannot do what it claims
 // (GO-AUTH-011): read-only mode enabled with no route matcher, without which no
-// exempt route could be recognised.
+// exempt route could be recognised, or with no skip paths, without which every
+// gateway-token and webhook write would be rejected here, before its handler
+// could identify the organization, for writable organizations too.
 func ReadOnlyGuard(cfg ReadOnlyGuardConfig) (func(http.Handler) http.Handler, error) {
 	ro := cfg.ReadOnly
-	if ro != nil && ro.Enabled && cfg.Routes == nil {
-		return nil, errors.New("read-only mode is enabled but no route matcher was provided — " +
-			"without it the exempt read-only routes cannot be recognised")
+	if ro != nil && ro.Enabled {
+		if cfg.Routes == nil {
+			return nil, errors.New("read-only mode is enabled but no route matcher was provided — " +
+				"without it the exempt read-only routes cannot be recognised")
+		}
+		if len(cfg.SkipPaths) == 0 {
+			return nil, errors.New("read-only mode is enabled but no auth skip paths were provided — " +
+				"without them the gateway-token and webhook routes would be rejected before their " +
+				"handlers could identify the organization")
+		}
 	}
 	logger := cfg.Logger
 	if logger == nil {
@@ -146,10 +169,11 @@ func ReadOnlyGuard(cfg ReadOnlyGuardConfig) (func(http.Handler) http.Handler, er
 			}
 
 			org, ok := GetOrganizationFromRequest(r)
-			if !ok || org == "" {
+			if (!ok || org == "") && hasPathPrefix(r.URL.Path, cfg.SkipPaths) {
 				// A skip-path route (gateway token, webhook signature, login):
 				// the organization is resolved, and the check applied, inside
-				// the handler.
+				// the handler. Anywhere else a missing organization falls
+				// through to IsReadOnlyOrg, which treats it as read-only.
 				next.ServeHTTP(w, r)
 				return
 			}
