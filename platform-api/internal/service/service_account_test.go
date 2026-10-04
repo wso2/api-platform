@@ -21,8 +21,13 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -71,8 +76,22 @@ func (f *fakeSARepo) GetByHandle(orgID, handle string) (*model.ServiceAccount, e
 func (f *fakeSARepo) GetByClientID(id string) (*model.ServiceAccount, error) {
 	return f.find(func(e *model.ServiceAccount) bool { return e.ClientID == id })
 }
-func (f *fakeSARepo) List(string, int, int) ([]*model.ServiceAccount, error) { return nil, nil }
-func (f *fakeSARepo) Count(string) (int, error)                              { return 0, nil }
+func (f *fakeSARepo) List(orgID string, limit, offset int) ([]*model.ServiceAccount, error) {
+	var out []*model.ServiceAccount
+	for _, e := range f.byUUID {
+		if e.OrganizationID == orgID {
+			c := *e
+			out = append(out, &c)
+		}
+	}
+	// Sorted only to page deterministically; tests must not rely on the order.
+	slices.SortFunc(out, func(a, b *model.ServiceAccount) int { return strings.Compare(a.Handle, b.Handle) })
+	return out[min(offset, len(out)):min(offset+limit, len(out))], nil
+}
+func (f *fakeSARepo) Count(orgID string) (int, error) {
+	all, _ := f.List(orgID, len(f.byUUID), 0)
+	return len(all), nil
+}
 
 // check mirrors the real repository's conditional writes.
 func (f *fakeSARepo) check(uuid string, prevVersion int64, prevStatus string) error {
@@ -504,14 +523,232 @@ func TestServiceAccountRecreateGetsNewIdentity(t *testing.T) {
 	}
 }
 
-func TestAccountUUIDFromSubject(t *testing.T) {
-	sa := &model.ServiceAccount{UUID: "0198a1b2-0000-7000-8000-000000000001", Handle: "ci-bot"}
-	if got, ok := model.AccountUUIDFromSubject(sa.Subject("acme")); !ok || got != sa.UUID {
-		t.Fatalf("round trip: %q, %v", got, ok)
-	}
-	for _, sub := range []string{"alice", "sa:", "sa:acme:ci-bot:", "user:sa:x"} {
-		if _, ok := model.AccountUUIDFromSubject(sub); ok {
-			t.Errorf("AccountUUIDFromSubject(%q) must fail", sub)
+func TestServiceAccountListAndGet(t *testing.T) {
+	f := newSAFixture(t)
+	f.svc.identity = NewIdentityService(renamingIdentityRepo{})
+	for _, h := range []string{"a-bot", "b-bot", "c-bot"} {
+		if _, err := f.svc.Create("org-1", "admin", createReq(h)); err != nil {
+			t.Fatal(err)
 		}
+	}
+	page, err := f.svc.List("org-1", 2, 0)
+	if err != nil || page.Count != 2 || page.Pagination.Total != 3 || page.Pagination.Limit != 2 {
+		t.Fatalf("first page: %+v, %v", page, err)
+	}
+	if *page.List[0].CreatedBy != "resolved:admin" || *page.List[0].UpdatedBy != "resolved:admin" {
+		t.Fatalf("audit fields not resolved: %q", *page.List[0].CreatedBy)
+	}
+	rest, _ := f.svc.List("org-1", 2, 2)
+	seen := map[string]bool{}
+	for _, sa := range append(page.List, rest.List...) {
+		seen[sa.Id] = true
+	}
+	if rest.Count != 1 || len(seen) != 3 {
+		t.Fatalf("pages overlap or miss an account: %v", seen)
+	}
+	if page, _ := f.svc.List("org-2", 10, 0); page.Count != 0 || page.Pagination.Total != 0 {
+		t.Fatalf("another org sees accounts: %+v", page)
+	}
+
+	got, err := f.svc.Get("org-1", "b-bot")
+	if err != nil || got.Id != "b-bot" || got.Roles[0] != "ap_sa_operator" || *got.CreatedBy != "resolved:admin" {
+		t.Fatalf("get: %+v, %v", got, err)
+	}
+	if _, err := f.svc.Get("org-2", "b-bot"); !apperror.ServiceAccountNotFound.Is(err) {
+		t.Fatalf("get from another org: %v", err)
+	}
+}
+
+// renamingIdentityRepo resolves every UUID to a value unlike the input, so a
+// missing resolve shows.
+type renamingIdentityRepo struct{ passthroughIdentityRepo }
+
+func (renamingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range uuids {
+		out[id] = "resolved:" + id
+	}
+	return out, nil
+}
+
+// With a cache attached, a revoke on this replica applies before the next poll.
+func TestServiceAccountRevokeAppliesToLocalCache(t *testing.T) {
+	f := newSAFixture(t)
+	cache := NewRevocationCache(&fakeLedger{}, quietLogger())
+	if err := cache.Load(); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.SetRevocationCache(cache)
+	f.svc.Create("org-1", "admin", createReq("ci-bot")) //nolint:errcheck
+	sa, _ := f.repo.GetByHandle("org-1", "ci-bot")
+
+	disabled := api.ServiceAccountUpdateRequestStatusDisabled
+	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Status: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if !cache.IsRevoked(sa.UUID, 1) || cache.IsRevoked(sa.UUID, 2) {
+		t.Fatal("disable must raise the local watermark to version 2 at once")
+	}
+}
+
+func writeKeyPair(t *testing.T, dir, name string) (privFile, pubFile string, key *rsa.PrivateKey) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privFile, pubFile = filepath.Join(dir, name+".key"), filepath.Join(dir, name+".pub")
+	if err := os.WriteFile(privFile, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pubFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return privFile, pubFile, key
+}
+
+func TestLoadServiceAccountKeys(t *testing.T) {
+	dir := t.TempDir()
+	sharedPriv, _, shared := writeKeyPair(t, dir, "shared")
+	ownPriv, ownPub, own := writeKeyPair(t, dir, "own")
+	_, retiredPub, retired := writeKeyPair(t, dir, "retired")
+	missing := filepath.Join(dir, "missing.key")
+
+	t.Run("shared auth.jwt key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PrivateKeyFile: sharedPriv}
+		keys, err := LoadServiceAccountKeys(cfg)
+		if err != nil || keys.OwnIssuer || keys.Issuer != "platform-api" || !keys.Current.Equal(&shared.PublicKey) {
+			t.Fatalf("keys = %+v, %v", keys, err)
+		}
+		if pubs := keys.PublicKeys(); len(pubs) != 1 {
+			t.Fatalf("public keys = %d, want 1", len(pubs))
+		}
+	})
+	t.Run("no private key", func(t *testing.T) {
+		if _, err := LoadServiceAccountKeys(&config.Server{}); !errors.Is(err, ErrNoServiceAccountSigningKey) {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("unreadable shared key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.JWT = config.JWT{PrivateKeyFile: missing}
+		if _, err := LoadServiceAccountKeys(cfg); !errors.Is(err, ErrNoServiceAccountSigningKey) {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("own key with a retired key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PrivateKeyFile: sharedPriv}
+		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: ownPriv, PublicKeyFile: ownPub}
+		cfg.Auth.ServiceAccount.RetiredPublicKeyFiles = []string{retiredPub}
+		keys, err := LoadServiceAccountKeys(cfg)
+		if err != nil || !keys.OwnIssuer || keys.Issuer != "platform-api-sa" {
+			t.Fatalf("keys = %+v, %v", keys, err)
+		}
+		pubs := keys.PublicKeys()
+		if len(pubs) != 2 || !pubs[0].Equal(&own.PublicKey) || !pubs[1].Equal(&retired.PublicKey) {
+			t.Fatal("PublicKeys must list the current key first, then the retired ones")
+		}
+	})
+	t.Run("unreadable own key is not the soft error", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: missing}
+		if _, err := LoadServiceAccountKeys(cfg); err == nil || errors.Is(err, ErrNoServiceAccountSigningKey) {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("unreadable retired key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.ServiceAccount.JWT = config.JWT{Issuer: "platform-api-sa", PrivateKeyFile: ownPriv}
+		cfg.Auth.ServiceAccount.RetiredPublicKeyFiles = []string{missing}
+		if _, err := LoadServiceAccountKeys(cfg); err == nil {
+			t.Fatal("a missing retired key must fail startup")
+		}
+	})
+}
+
+// errLookupRepo fails every client ID lookup, as a database outage would.
+type errLookupRepo struct{ *fakeSARepo }
+
+func (errLookupRepo) GetByClientID(string) (*model.ServiceAccount, error) {
+	return nil, errors.New("connection refused")
+}
+
+// A lookup error and a missing signing key look like any other failed exchange.
+func TestServiceAccountExchange_InternalFailuresAreUniform(t *testing.T) {
+	f := newSAFixture(t)
+	creds, _ := f.svc.Create("org-1", "admin", createReq("ci-bot"))
+	req := ExchangeRequest{ClientID: creds.ClientId, ClientSecret: creds.ClientSecret, Scope: "ap:rest_api:read"}
+
+	noSigner := NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(),
+		map[string][]string{"ap_sa_operator": {"ap:rest_api:read"}}, nil, time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+	if _, err := noSigner.Exchange(req); !apperror.Unauthorized.Is(err) {
+		t.Fatalf("no signing key: got %v", err)
+	}
+	lookupFails := NewServiceAccountService(errLookupRepo{f.repo}, fakeOrgRepo{}, f.audit, newTestIdentityService(),
+		nil, nil, time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+	if _, err := lookupFails.Exchange(req); !apperror.Unauthorized.Is(err) {
+		t.Fatalf("lookup error: got %v", err)
+	}
+}
+
+func TestServiceAccountCreateAndUpdate_MoreValidation(t *testing.T) {
+	f := newSAFixture(t)
+	if _, err := f.svc.Create("org-1", "admin", createReq("Not A Handle!")); !apperror.ValidationFailed.Is(err) {
+		t.Fatal("invalid handle accepted")
+	}
+	if _, err := f.svc.Create("org-1", "admin", createReq("ci-bot")); err != nil {
+		t.Fatal(err)
+	}
+	bogus := api.ServiceAccountUpdateRequestStatus("paused")
+	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Status: &bogus}); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("unknown status: got %v", err)
+	}
+	desc := "  nightly deploys  "
+	got, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Description: &desc})
+	if err != nil || got.Description != "nightly deploys" {
+		t.Fatalf("description update: %+v, %v", got, err)
+	}
+	if _, err := f.svc.Update("org-1", "no-such-bot", "admin", &api.ServiceAccountUpdateRequest{Description: &desc}); !apperror.ServiceAccountNotFound.Is(err) {
+		t.Fatalf("update of a missing account: got %v", err)
+	}
+	if err := f.svc.Delete("org-1", "no-such-bot", "admin"); !apperror.ServiceAccountNotFound.Is(err) {
+		t.Fatalf("delete of a missing account: got %v", err)
+	}
+	if _, err := f.svc.RegenerateSecret("org-1", "no-such-bot", "admin"); !apperror.ServiceAccountNotFound.Is(err) {
+		t.Fatalf("regenerate of a missing account: got %v", err)
+	}
+}
+
+// The roles column is VARCHAR(1023); a longer list is a 400, not a DB error.
+func TestServiceAccountCreate_RolesTooLong(t *testing.T) {
+	mapping := map[string][]string{}
+	var roles []string
+	for i := 0; i < 60; i++ {
+		role := fmt.Sprintf("ap_sa_role_%010d", i)
+		mapping[role] = []string{"ap:rest_api:read"}
+		roles = append(roles, role)
+	}
+	f := newSAFixture(t)
+	svc := NewServiceAccountService(f.repo, fakeOrgRepo{}, f.audit, newTestIdentityService(), mapping, nil,
+		time.Minute, config.AuthzModeScope, config.ClaimMappings{}, quietLogger())
+	req := createReq("ci-bot")
+	req.Roles = roles
+	if _, err := svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("roles over 1023 bytes: got %v", err)
+	}
+}
+
+func TestToServiceAccountAPI_LastUsedIP(t *testing.T) {
+	if got := toServiceAccountAPI(&model.ServiceAccount{LastUsedIP: "203.0.113.7"}); got.LastUsedIp == nil || *got.LastUsedIp != "203.0.113.7" {
+		t.Fatalf("lastUsedIp = %v", got.LastUsedIp)
+	}
+	if got := toServiceAccountAPI(&model.ServiceAccount{}); got.LastUsedIp != nil {
+		t.Fatal("an unused account must have no lastUsedIp")
 	}
 }

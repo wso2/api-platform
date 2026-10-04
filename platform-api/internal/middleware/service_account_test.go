@@ -152,6 +152,11 @@ func TestIsServiceAccountToken(t *testing.T) {
 			t.Errorf("IsServiceAccountToken(%q, %q) = %v, want %v", c.iss, c.sub, got, c.want)
 		}
 	}
+	for iss, want := range map[string]bool{"local": true, "sa": true, "idp": false, "unknown": false} {
+		if got := m.IsLocal(iss); got != want {
+			t.Errorf("IsLocal(%q) = %v, want %v", iss, got, want)
+		}
+	}
 }
 
 // skip_validation trusts login tokens unverified, but never an SA token.
@@ -293,5 +298,72 @@ func TestPlatformClaimsCarriesIssuer(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), req.WithContext(ctx))
 	if got != "https://idp.example" {
 		t.Fatalf("issuer = %q", got)
+	}
+}
+
+// A local iss goes to local verification; any other token, or none, goes to
+// the IdP chain untouched.
+func TestIssuerRoutingMiddleware(t *testing.T) {
+	local := mustKey(t)
+	m, _ := NewIssuerKeyMap("platform-api",
+		IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey},
+		IssuerKeys{Issuer: "https://idp.example", Kind: IssuerKindIDP})
+	cfg := AuthConfig{KeyMap: m, ClaimMappings: ClaimMappings{OrganizationClaim: "organization"}}
+	idp := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Route", "idp")
+			next.ServeHTTP(w, r)
+		})
+	}
+	final := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if claims, ok := GetClaimsFromRequest(r); ok && claims != nil {
+			w.Header().Set("X-Sub", claims.Subject)
+		}
+	})
+	h := IssuerRoutingMiddleware(m, cfg, idp)(final)
+
+	send := func(auth string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v0.9/x", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := send("Bearer " + signToken(t, local, "auto", saClaims("platform-api")))
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Route") != "" || !strings.HasPrefix(rec.Header().Get("X-Sub"), "sa:") {
+		t.Fatalf("local SA token: %d route=%q sub=%q", rec.Code, rec.Header().Get("X-Route"), rec.Header().Get("X-Sub"))
+	}
+	// A forged local token is verified locally and refused, not handed to the IdP.
+	if rec := send("Bearer " + signToken(t, mustKey(t), "auto", saClaims("platform-api"))); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("forged local token: %d, want 401", rec.Code)
+	}
+	for name, auth := range map[string]string{
+		"IdP token":    "Bearer " + signToken(t, mustKey(t), "", humanClaims("https://idp.example")),
+		"unknown iss":  "Bearer " + signToken(t, mustKey(t), "", humanClaims("somebody")),
+		"not a JWT":    "Bearer not-a-jwt",
+		"not a Bearer": "Basic abc",
+		"no header":    "",
+	} {
+		if rec := send(auth); rec.Header().Get("X-Route") != "idp" {
+			t.Errorf("%s: not routed to the IdP chain", name)
+		}
+	}
+}
+
+// Introspection must refuse a valid login token: it is not an SA token.
+func TestVerifyServiceAccountTokenRefusesLoginTokens(t *testing.T) {
+	local := mustKey(t)
+	m, _ := NewIssuerKeyMap("platform-api", IssuerKeys{Issuer: "platform-api", Kind: IssuerKindLocal, Current: &local.PublicKey})
+	if _, err := m.VerifyServiceAccountToken(signToken(t, local, "", humanClaims("platform-api"))); err == nil {
+		t.Fatal("login token accepted as an SA token")
+	}
+	if _, err := m.VerifyServiceAccountToken("a.b.c"); err == nil {
+		t.Fatal("malformed token accepted")
+	}
+	if claims, err := m.VerifyServiceAccountToken(signToken(t, local, "auto", saClaims("platform-api"))); err != nil || claims["sub"] == nil {
+		t.Fatalf("genuine SA token: %v", err)
 	}
 }
