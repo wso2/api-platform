@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	eghandler "github.com/wso2/api-platform/platform-api/plugins/eventgateway/handler"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -160,6 +161,17 @@ func TestSecretsRoutesAreRegisteredOnTheBasePath(t *testing.T) {
 func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
 	registry := loadMergedRegistry(t)
 
+	raw, err := os.ReadFile(realSpecPath)
+	if err != nil {
+		t.Fatalf("read spec: %v", err)
+	}
+	var spec struct {
+		Paths map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("parse spec: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	registerAllRoutes(mux)
 
@@ -189,6 +201,13 @@ func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
 			continue
 		}
 		scopes, found := registry.Lookup(probe.method, matchedPath)
+		if probe.public {
+			// The registry omits unscoped operations, so check the spec directly.
+			specPath := strings.TrimPrefix(probe.wantPattern, constants.APIBasePath)
+			if _, ok := spec.Paths[specPath][strings.ToLower(probe.method)]; !ok {
+				t.Errorf("%s %s is not declared in the OpenAPI spec", probe.method, specPath)
+			}
+		}
 		if probe.public && found && len(scopes) > 0 {
 			t.Errorf("%s %s is public but declares scopes %v", probe.method, probe.path, scopes)
 		}
