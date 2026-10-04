@@ -119,6 +119,27 @@ data:
     token_ttl = {{ $auth.jwt.tokenTtl | quote }}
     {{- end }}
 
+    {{- with $auth.serviceAccount }}
+
+    [platform_api.auth.service_account]
+    enabled = {{ .enabled }}
+    token_ttl = {{ .tokenTtl | quote }}
+    audience = {{ .audience | quote }}
+    {{- with .retiredPublicKeyFiles }}
+    retired_public_key_files = {{ toJson . }}
+    {{- end }}
+
+    [platform_api.auth.service_account.revocation]
+    poll_interval = {{ .pollInterval | quote }}
+    {{- if .jwt.issuer }}
+
+    [platform_api.auth.service_account.jwt]
+    issuer = {{ .jwt.issuer | quote }}
+    public_key_file = {{ .jwt.publicKeyFile | quote }}
+    private_key_file = {{ .jwt.privateKeyFile | quote }}
+    {{- end }}
+    {{- end }}
+
     {{- if eq $auth.mode "idp" }}
 
     [platform_api.auth.idp]
