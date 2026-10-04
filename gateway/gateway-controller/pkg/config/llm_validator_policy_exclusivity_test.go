@@ -88,7 +88,7 @@ func proxyWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy, l
 		Spec: api.LLMProxyConfigData{
 			DisplayName:       "my-proxy",
 			Version:           "v1.0",
-			Provider:          api.LLMProxyProvider{Id: "openai"},
+			Provider:          &api.LLMProxyProvider{Id: "openai"},
 			GlobalPolicies:    global,
 			OperationPolicies: operation,
 			Policies:          legacy,

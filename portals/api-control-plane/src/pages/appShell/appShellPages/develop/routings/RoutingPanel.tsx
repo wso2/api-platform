@@ -49,6 +49,7 @@ import {
 
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { methodPalette } from '@/components/SwaggerOperationsView';
 import { useNotifications } from '@/components/Notifications';
 import {
   type BackendResource,
@@ -60,7 +61,6 @@ import {
   getBackendPath,
   HTTP_METHODS,
   isValidUrl,
-  methodColor,
   operationsValid,
   removeOperation,
   setBackendPath,
@@ -69,6 +69,7 @@ import {
   withRoutingEdits,
 } from '@/pages/appShell/appShellPages/apis/utils/developEdit';
 import { SaveBar } from '../SaveBar';
+import { useDirtyTracking } from '../useDirtyTracking';
 
 const messages = defineMessages({
   connectHint: {
@@ -325,17 +326,17 @@ function seedBackendResources(operations: EditableOperation[]): BackendResource[
 
 type Selection = { type: 'operation'; index: number } | { type: 'upstream' } | null;
 
-/** Resolves a method to a solid badge background + readable text from the theme. */
+/**
+ * Resolves a method to a solid badge background + readable text. The fill is
+ * the verb's Swagger colour, the same one the resource rows use, so a method
+ * reads identically on the canvas and in a listing.
+ */
 function useBadgeColor() {
   const theme = useTheme();
-  return (method: string) => {
-    const key = methodColor(method);
-    if (key === 'default') {
-      return { bg: theme.palette.grey[500], fg: theme.palette.common.white };
-    }
-    const swatch = theme.palette[key];
-    return { bg: swatch.main, fg: swatch.contrastText };
-  };
+  return (method: string) => ({
+    bg: methodPalette(method).badge,
+    fg: theme.palette.common.white,
+  });
 }
 
 /** A rounded "pill" node placed on the routing canvas. */
@@ -603,6 +604,23 @@ export function RoutingPanel({ api }: { api: RestApi }) {
   const restApiId = api.id;
   const canSave =
     Boolean(restApiId) && operationsValid(operations) && urlsValid && !update.isPending;
+  // Only the fields `save` actually submits count towards "unsaved" — not
+  // ephemeral UI state like the discovered-backend catalog or the current
+  // selection/connect-drag.
+  const { dirty, markSaved } = useDirtyTracking({ operations, prodUrl, sandboxUrl });
+
+  const cancelChanges = () => {
+    const initialOperations = toEditableOperations(api);
+    discoverAbort.current?.abort();
+    setOperations(initialOperations);
+    setBackendResources(seedBackendResources(initialOperations));
+    setProdUrl(api.upstream?.main?.url ?? '');
+    setSandboxUrl(api.upstream?.sandbox?.url ?? '');
+    setSelection(null);
+    setConnectingFrom(null);
+    setDisconnected(new Set());
+    setDiscovery({ status: 'idle' });
+  };
 
   const addRow = () => {
     setOperations(addOperation(operations));
@@ -721,7 +739,12 @@ export function RoutingPanel({ api }: { api: RestApi }) {
       { restApiId, body: withRoutingEdits(api, { operations, prodUrl, sandboxUrl }) },
       // No `onError`: the query client's `onMutationError` already notifies, and
       // a local handler would replace the optimistic rollback in `useUpdateRestApi`.
-      { onSuccess: () => notify(intl.formatMessage(messages.saved), 'success') },
+      {
+        onSuccess: () => {
+          markSaved();
+          notify(intl.formatMessage(messages.saved), 'success');
+        },
+      },
     );
   };
 
@@ -1175,7 +1198,13 @@ export function RoutingPanel({ api }: { api: RestApi }) {
         </Card>
       </Stack>
 
-      <SaveBar disabled={!canSave} onSave={save} saving={update.isPending} />
+      <SaveBar
+        dirty={dirty}
+        disabled={!canSave}
+        onCancel={cancelChanges}
+        onSave={save}
+        saving={update.isPending}
+      />
 
       <ConfirmDialog
         confirmLabel={confirm?.confirmLabel ?? intl.formatMessage(messages.confirmDefault)}

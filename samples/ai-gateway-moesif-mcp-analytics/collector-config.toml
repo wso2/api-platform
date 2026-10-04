@@ -1,0 +1,10 @@
+# Appended to the distribution's configs/config.toml by setup.sh.
+#
+# MCP analytics is built by reading the JSON-RPC request and response bodies:
+# that is where the method name and the tool name live. Body capture is off by
+# default, so without this the events still reach Moesif but carry no MCP
+# detail, and the MCP dashboard stays empty.
+
+[collector]
+request_body = true
+response_body = true

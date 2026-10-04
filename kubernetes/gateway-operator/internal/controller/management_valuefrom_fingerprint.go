@@ -32,6 +32,7 @@ const (
 	annLlmProviderPolicyValueFromFingerprint = "gateway.api-platform.wso2.com/last-applied-llmprovider-policy-valuefrom-fingerprint"
 	annLlmProxyPolicyValueFromFingerprint    = "gateway.api-platform.wso2.com/last-applied-llmproxy-policy-valuefrom-fingerprint"
 	annMcpPolicyValueFromFingerprint         = "gateway.api-platform.wso2.com/last-applied-mcp-policy-valuefrom-fingerprint"
+	annAgentPolicyValueFromFingerprint       = "gateway.api-platform.wso2.com/last-applied-agent-policy-valuefrom-fingerprint"
 )
 
 func computeBackingFingerprint(ctx context.Context, c client.Client, backing map[string]valueFromBackingID) (string, error) {
@@ -99,6 +100,19 @@ func mcpExternalDepsFingerprint(ctx context.Context, c client.Client, cr *apiv1.
 	}
 	for i := range cr.Spec.Policies {
 		if p := cr.Spec.Policies[i].Params; p != nil {
+			accumulateBackingFromRawParams(p.Raw, cr.Namespace, backing)
+		}
+	}
+	return computeBackingFingerprint(ctx, c, backing)
+}
+
+func agentExternalDepsFingerprint(ctx context.Context, c client.Client, cr *apiv1.Agent) (string, error) {
+	backing := map[string]valueFromBackingID{}
+	if cr.Spec.Upstream.Auth != nil && cr.Spec.Upstream.Auth.Value != nil {
+		accumulateBackingFromSecretValueSource(*cr.Spec.Upstream.Auth.Value, cr.Namespace, backing)
+	}
+	for _, ref := range agentPolicyRefs(&cr.Spec) {
+		if p := ref.Policy.Params; p != nil {
 			accumulateBackingFromRawParams(p.Raw, cr.Namespace, backing)
 		}
 	}

@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
@@ -72,7 +73,10 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 		return apperror.RESTAPIDeploymentValidationFailed.New("name is required")
 	}
 	if req.Base == "" {
-		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or a deploymentId)")
+		return apperror.RESTAPIDeploymentValidationFailed.New("base is required (use 'current' or 'build')")
+	}
+	if req.Base == "build" && utils.ValueOrEmpty(req.BuildId) == "" {
+		return apperror.RESTAPIDeploymentValidationFailed.New("buildId is required when base is 'build'")
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
 		return apperror.RESTAPIDeploymentValidationFailed.New("gatewayId is required")
@@ -281,4 +285,14 @@ func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+base+"/deployments", middleware.MapErrors(h.slogger, h.GetDeployments))
 	mux.HandleFunc("GET "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.GetDeployment))
 	mux.HandleFunc("DELETE "+base+"/deployments/{deploymentId}", middleware.MapErrors(h.slogger, h.DeleteDeployment))
+	// Builds are the same endpoints for every artifact kind, so REST APIs register
+	// the shared set rather than keeping their own copy of it.
+	BuildRoutes{
+		Service:   h.deploymentService,
+		Segment:   "rest-apis",
+		PathParam: "restApiId",
+		Subject:   "API",
+		Identity:  h.identity,
+		Slogger:   h.slogger,
+	}.Register(mux)
 }

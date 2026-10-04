@@ -53,6 +53,23 @@ Visit `https://localhost:3000`. Vite's dev server proxies `/api/*`,
 (hot reload, the app shell) is served by Vite itself. See `make help` for
 the full target list.
 
+## Policy Hub in deployed environments
+
+All builds default to the development Policy Hub URL below. Runtime configuration
+overrides `VITE_POLICY_HUB_BASE_URL`, which overrides the hardcoded default.
+To override the URL with `configs/config.toml` mounted, set this variable on the BFF:
+
+```bash
+APIP_ACP_POLICY_HUB_BASE_URL=https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0
+```
+
+For a custom mounted config, include the `[api_control_plane.policy_hub]`
+section and `base_url` environment template from `configs/config.toml`.
+Restart the BFF after changing configuration. It exposes the URL as
+`window.__RUNTIME_CONFIG__.POLICY_HUB_BASE_URL` through
+`/api-platform.env.config.js`; no frontend rebuild is needed for URL changes.
+If neither override supplies a non-empty URL, the hardcoded default is used.
+
 ## Validation
 
 ```bash

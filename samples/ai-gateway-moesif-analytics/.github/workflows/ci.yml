@@ -1,0 +1,112 @@
+name: AI Gateway Moesif Analytics Sample PR Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'samples/ai-gateway-moesif-analytics/**'
+
+permissions:
+  contents: read
+
+jobs:
+  pr-check:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: samples/ai-gateway-moesif-analytics
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3-yaml
+
+      - name: Shell syntax check
+        run: bash -n setup.sh load.sh test.sh teardown.sh
+
+      - name: Validate mappings and resource definitions
+        run: |
+          python3 - <<'PY'
+          import glob, json, sys, yaml
+
+          errors = []
+
+          for f in glob.glob('wiremock/mappings/*.json'):
+              json.load(open(f))
+
+          docs = {f: yaml.safe_load(open(f)) for f in glob.glob('*.yaml')}
+          resources = {f: d for f, d in docs.items()
+                       if isinstance(d, dict) and 'kind' in d}
+
+          providers = set()
+          for f, d in resources.items():
+              if not str(d.get('apiVersion', '')).startswith('gateway.api-platform.wso2.com/'):
+                  errors.append(f"{f}: unexpected apiVersion {d.get('apiVersion')!r}")
+              if d.get('kind') not in ('LlmProvider', 'LlmProxy'):
+                  errors.append(f"{f}: unexpected kind {d.get('kind')!r}")
+              if not (d.get('metadata') or {}).get('name'):
+                  errors.append(f"{f}: metadata.name is missing")
+              elif d.get('kind') == 'LlmProvider':
+                  providers.add(d['metadata']['name'])
+
+          # Every proxy must name a provider this sample actually deploys.
+          for f, d in resources.items():
+              if d.get('kind') == 'LlmProxy':
+                  pid = ((d.get('spec') or {}).get('provider') or {}).get('id')
+                  if pid not in providers:
+                      errors.append(f"{f}: provider.id {pid!r} matches no provider in this sample")
+
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          print(f'{len(resources)} resource definitions are consistent.')
+          PY
+
+      # The steps below need a Moesif account, so they run only where the
+      # secret is configured. Forks still get the checks above.
+      - name: Check for a Moesif Application ID
+        id: moesif
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: |
+          if [ -n "${MOESIF_APPLICATION_ID}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::MOESIF_APPLICATION_ID is not configured; live gateway checks were skipped."
+          fi
+
+      - name: Start the gateway
+        if: steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: ./setup.sh
+
+      - name: Generate traffic
+        if: steps.moesif.outputs.available == 'true'
+        run: ./load.sh 45
+
+      - name: Verify the analytics pipeline
+        if: steps.moesif.outputs.available == 'true'
+        run: ./test.sh
+
+      - name: Dump container logs on failure
+        if: failure() && steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: |
+          docker ps -a
+          (cd wso2apip-ai-gateway-1.2.0 && docker compose logs --tail 200) || true
+
+      - name: Teardown
+        if: always() && steps.moesif.outputs.available == 'true'
+        env:
+          MOESIF_APPLICATION_ID: ${{ secrets.MOESIF_APPLICATION_ID }}
+        run: ./teardown.sh --clean

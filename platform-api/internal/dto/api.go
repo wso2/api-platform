@@ -82,14 +82,6 @@ type Policy struct {
 	Version            string                  `json:"version" yaml:"version"`
 }
 
-// DeployAPIRequest represents a request to deploy an API
-type DeployAPIRequest struct {
-	Name      string                 `json:"name" yaml:"name"`                             // Deployment name
-	Base      string                 `json:"base" yaml:"base"`                             // "current" or a deploymentId
-	GatewayID string                 `json:"gatewayId" yaml:"gatewayId"`                   // Target gateway ID
-	Metadata  map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"` // Flexible key-value metadata
-}
-
 // DeploymentResponse represents a deployment artifact
 type DeploymentResponse struct {
 	DeploymentID     string                 `json:"deploymentId" yaml:"deploymentId"`
@@ -166,4 +158,3 @@ type APIListResponse struct {
 	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
-

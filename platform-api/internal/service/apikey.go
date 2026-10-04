@@ -41,6 +41,13 @@ const (
 	apiKeyNameMaxLength     = 63
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
+
+	// apiKeyIssuerMaxLength / apiKeyAllowedTargetsMaxLength bound the two free-form
+	// API-key fields to the width they are persisted in (VARCHAR(255)). Both are
+	// carried verbatim — issuer is an exact-match lookup key and allowedTargets is
+	// a parsed gateway allow-list — so an over-length value is rejected, not truncated.
+	apiKeyIssuerMaxLength         = 255
+	apiKeyAllowedTargetsMaxLength = 255
 )
 
 var (
@@ -49,6 +56,21 @@ var (
 	// consecutiveHyphensRegex collapses runs of hyphens into a single hyphen
 	consecutiveHyphensRegex = regexp.MustCompile(`-+`)
 )
+
+// validateAPIKeyIssuerAndTargets enforces the storage-width limit (VARCHAR(255))
+// on the issuer and allowedTargets fields of an API-key create/update request.
+// Returns a 400 validation error when either exceeds 255 characters; the values
+// are never truncated because both are matched exactly at gateway key-resolution
+// time (issuer via `AND k.issuer = ?`, allowedTargets as a parsed gateway allow-list).
+func validateAPIKeyIssuerAndTargets(issuer *string, allowedTargets string) error {
+	if issuer != nil && len(*issuer) > apiKeyIssuerMaxLength {
+		return apperror.ValidationFailed.New("issuer must be at most 255 characters.")
+	}
+	if len(allowedTargets) > apiKeyAllowedTargetsMaxLength {
+		return apperror.ValidationFailed.New("allowedTargets must be at most 255 characters.")
+	}
+	return nil
+}
 
 // APIKeyService handles API key management operations for external API key injection
 type APIKeyService struct {
@@ -363,6 +385,25 @@ func APIKeyCreatedEventFromModel(k *model.APIKey) *model.APIKeyCreatedEvent {
 	return event
 }
 
+// APIKeyItemFromModel projects a persisted API key onto its public metadata shape. It is the
+// one mapping every public key listing and metadata response goes through, and it carries no
+// key material: only the masked representation, never the hashes. CreatedBy is the stored
+// actor UUID; callers resolve it to an external identity with IdentityService.
+func APIKeyItemFromModel(k *model.APIKey) api.APIKeyItem {
+	return api.APIKeyItem{
+		Id:             &k.Name,
+		DisplayName:    k.DisplayName,
+		MaskedApiKey:   k.MaskedAPIKey,
+		Status:         api.APIKeyItemStatus(k.Status),
+		CreatedAt:      k.CreatedAt,
+		CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
+		UpdatedAt:      k.UpdatedAt,
+		ExpiresAt:      k.ExpiresAt,
+		Issuer:         k.Issuer,
+		AllowedTargets: k.AllowedTargets,
+	}
+}
+
 // BackfillAPIKeysToGateway (re)broadcasts an artifact's existing active API keys to a
 // gateway it has just been deployed/associated to. Keys are broadcast to their associated
 // gateways only once, at creation time (CreateAPIKey and the per-kind key services), so a
@@ -524,6 +565,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	allowedTargets := constants.APIKeyAllowedTargetsAll
 
+	if err := validateAPIKeyIssuerAndTargets(issuer, allowedTargets); err != nil {
+		return nil, err
+	}
+
 	displayName := strings.TrimSpace(req.DisplayName)
 	if displayName == "" {
 		displayName = keyName
@@ -650,6 +695,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if err != nil {
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
+	}
+
+	if err := validateAPIKeyIssuerAndTargets(req.Issuer, constants.APIKeyAllowedTargetsAll); err != nil {
+		return err
 	}
 
 	dbKey := &model.APIKey{
@@ -807,6 +856,73 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if failureCount > 0 {
 		s.slogger.Warn("Partial delivery of API key revocation", "apiHandle", apiId, "keyName", keyName, "failureCount", failureCount, "total", len(gateways))
+	}
+
+	return nil
+}
+
+// DeleteAPIKey removes the API key row from the database and broadcasts a revoke event to the
+// gateways the artifact is associated with. Unlike RevokeAPIKey the row is not kept with a
+// revoked status, and the delete does not need a gateway: an artifact associated with none has
+// nothing to notify, so the key is simply removed.
+// Only the key's creator may delete it, unless keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
+func (s *APIKeyService) DeleteAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin bool) error {
+	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
+	if err != nil {
+		s.slogger.Error("Failed to get API metadata for API key deletion", "apiHandle", apiHandle, "kind", kind, "error", err)
+		return fmt.Errorf("failed to get API by handle: %w", err)
+	}
+	if apiMetadata == nil {
+		return apperror.ArtifactNotFound.New()
+	}
+	apiId := apiMetadata.ID
+
+	// Ownership is checked before anything is removed or broadcast (GO-AUTH-007, GO-AUTH-020).
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for deletion", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return apperror.RESTAPIAPIKeyNotFound.New()
+	}
+	if !canManageAPIKey(existingKey.CreatedBy, userId, keyAdmin) {
+		return apperror.RESTAPIAPIKeyForbidden.New()
+	}
+
+	if err := s.apiKeyRepo.Delete(apiId, keyName); err != nil {
+		s.slogger.Error("Failed to delete API key from database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DELETE", existingKey.UUID, "api_key", orgId, userId)
+	}
+
+	s.slogger.Info("Successfully deleted API key", "apiHandle", apiHandle, "kind", kind, "keyName", keyName)
+
+	// Broadcast is best-effort: the key is already gone centrally, so a gateway that misses the
+	// event converges through the reconnect backfill, which no longer lists it.
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
+	if err != nil {
+		s.slogger.Error("Failed to get associated gateways for API key revoke broadcast", "apiHandle", apiHandle, "keyName", keyName, "error", err)
+		return nil
+	}
+	if len(gateways) == 0 {
+		s.slogger.Info("Artifact not associated with any gateway; skipping revoke broadcast", "apiHandle", apiHandle, "keyName", keyName)
+		return nil
+	}
+
+	event := &model.APIKeyRevokedEvent{
+		ApiId:   apiId,
+		KeyName: keyName,
+	}
+	for _, gateway := range filterAPIGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gateway.ID, userId, event); err != nil {
+			s.slogger.Error("Failed to broadcast API key revoked event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName, "error", err)
+		} else {
+			s.slogger.Info("Successfully broadcast API key revoked event", "apiHandle", apiHandle, "gatewayId", gateway.ID, "keyName", keyName)
+		}
 	}
 
 	return nil

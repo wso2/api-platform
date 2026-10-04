@@ -98,6 +98,7 @@ COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=python-executor . /api-platform/gateway/gateway-runtime/python-executor
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
+COPY --from=gateway-common . /api-platform/gateway/common
 COPY --from=httpkit . /api-platform/httpkit
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=sdk-python . /api-platform/sdk-python

@@ -17,9 +17,11 @@
  */
 
 import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
+import { openableProps } from '@/components/openable';
+import { focusRingSx } from '@/theme';
 import {
   apiDescriptionSx,
   ApiDeleteButton,
@@ -27,6 +29,7 @@ import {
   ApiKindChip,
   UpdatedLabel,
 } from './components/RestApiChips';
+import { useCan } from '@/permissions/useCan';
 
 const AVATAR_SIZE = 40;
 
@@ -57,11 +60,13 @@ type ApiRowProps = {
  * One API as a row.
  */
 function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
+  const intl = useIntl();
+  const canDelete = useCan('DeleteRESTAPI');
   const updated = api.updatedAt || api.createdAt;
 
   return (
     <Box
-      onClick={() => onOpen(api)}
+      {...openableProps(intl, api.displayName, () => onOpen(api))}
       sx={(theme) => ({
         borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
@@ -70,6 +75,7 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         py: 1.75,
         transition: theme.transitions.create('background-color'),
         ...rowGridSx,
+        ...focusRingSx(theme),
         '&:focus-within .api-delete-action, &:hover .api-delete-action': {
           opacity: 1,
         },
@@ -106,7 +112,7 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         sx={{ display: { md: 'flex', xs: 'none' } }}
       >
         <UpdatedLabel timestamp={updated} />
-        {onDelete && (
+        {onDelete && canDelete && (
           <Box sx={{ mr: -1 }}>
             <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
           </Box>
@@ -119,7 +125,9 @@ function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
         sx={{ display: { md: 'none', xs: 'flex' } }}
       >
         <UpdatedLabel timestamp={updated} />
-        {onDelete && <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />}
+        {onDelete && canDelete && (
+          <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+        )}
       </Stack>
     </Box>
   );

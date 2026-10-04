@@ -48,10 +48,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.projects.ProjectStatistics.selectType',
     defaultMessage: 'Filter APIs by {type}',
   },
-  statusSummary: {
-    id: 'apiControlPlane.projects.ProjectStatistics.statusSummary',
-    defaultMessage: '{published} published · {created} created',
-  },
 });
 
 function MetricCard({
@@ -138,8 +134,6 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
   const apis = apisQuery.data?.list;
   const countType = (type: ApiTypeFilter) =>
     apis?.filter((api) => matchesApiType(api.kind, type)).length;
-  const published = apis?.filter((api) => api.lifeCycleStatus === 'PUBLISHED').length;
-  const created = apis?.filter((api) => api.lifeCycleStatus === 'CREATED').length;
   const selectType = (type: ApiTypeFilter) =>
     onTypeFilterChange(selectedType === type ? null : type);
   const filterLabel = (label: string) => intl.formatMessage(messages.selectType, { type: label });
@@ -160,22 +154,13 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
           <Typography color="text.secondary" sx={{ textTransform: 'uppercase' }} variant="caption">
             <FormattedMessage {...messages.apis} />
           </Typography>
-          <Stack alignItems="baseline" direction="row" spacing={1}>
-            {total === undefined ? (
-              <Skeleton height={40} width={32} />
-            ) : (
-              <Typography sx={{ fontWeight: 700 }} variant="h2">
-                <FormattedNumber value={total} />
-              </Typography>
-            )}
-            {published === undefined || created === undefined ? (
-              <Skeleton height={20} width={112} />
-            ) : (
-              <Typography color="text.secondary" variant="caption">
-                <FormattedMessage {...messages.statusSummary} values={{ created, published }} />
-              </Typography>
-            )}
-          </Stack>
+          {total === undefined ? (
+            <Skeleton height={40} width={32} />
+          ) : (
+            <Typography sx={{ fontWeight: 700 }} variant="h2">
+              <FormattedNumber value={total} />
+            </Typography>
+          )}
         </Stack>
       </Grid>
 

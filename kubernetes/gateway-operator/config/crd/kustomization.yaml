@@ -2,6 +2,7 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
+- bases/gateway.api-platform.wso2.com_agents.yaml
 - bases/gateway.api-platform.wso2.com_apigateways.yaml
 - bases/gateway.api-platform.wso2.com_apikeys.yaml
 - bases/gateway.api-platform.wso2.com_apipolicies.yaml

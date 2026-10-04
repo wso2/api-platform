@@ -141,6 +141,187 @@ CREATE TABLE IF NOT EXISTS artifact_subscription_plans (
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 
+-- API Portals table (registration of an API Portal instance for an organization).
+-- Positioned here (before api_publications) rather than further down with the
+-- other artifact-adjacent tables, because api_publications' composite FK to
+-- this table requires it to already exist — kept consistent with postgres/
+-- sqlserver even though SQLite itself tolerates forward references.
+-- UNIQUE(organization_uuid, uuid) is that composite FK's target;
+-- api_portals' own single-column PK doesn't satisfy a composite FK.
+CREATE TABLE IF NOT EXISTS api_portals (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    description       VARCHAR(1023),
+    url               VARCHAR(500),
+    status            VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    internal_auth_key BLOB         NOT NULL,
+    metadata          BLOB,
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE (organization_uuid, handle)
+);
+
+-- A guarded index, not an inline UNIQUE: api_portals already exists on upgraded databases.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_portals_org_uuid ON api_portals(organization_uuid, uuid);
+
+-- =====================================================================
+-- api_publications: one API's publication state on one API Portal. Each
+-- (API, portal) pair has at most one live row (is_draft = 0) and one draft row
+-- (is_draft = 1). status is set only on live rows.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS api_publications (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    api_portal_uuid   VARCHAR(40)  NOT NULL,
+    is_draft          INTEGER      NOT NULL DEFAULT 0,  -- 0 = live row, 1 = draft row
+    status            VARCHAR(20),                       -- PUBLISHED | DEPRECATED; set only when is_draft = 0
+    display_name      VARCHAR(255) NOT NULL,
+    version           VARCHAR(30)  NOT NULL,
+    description       VARCHAR(1023),
+    tags              BLOB,                         -- serialized string array; no tag catalog exists
+    labels            BLOB,                         -- serialized array of API Portal label handles
+    agent_visibility  VARCHAR(20)  NOT NULL DEFAULT 'VISIBLE',    -- VISIBLE | HIDDEN
+    production_url    VARCHAR(255),
+    sandbox_url       VARCHAR(255),
+    -- Author-entered, like the two URLs above: Platform API stores no owner of
+    -- its own, and omitting them from a push would null the portal's columns.
+    business_owner        VARCHAR(255),
+    business_owner_email  VARCHAR(255),
+    technical_owner        VARCHAR(255),
+    technical_owner_email  VARCHAR(255),
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200) NOT NULL,
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200) NOT NULL,
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    -- At most one live row and one draft row per pairing.
+    UNIQUE (organization_uuid, artifact_uuid, api_portal_uuid, is_draft),
+    -- Lets the satellite tables prove their publication_uuid is in the same org.
+    UNIQUE (organization_uuid, uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (artifact_uuid, organization_uuid)
+        REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (api_portal_uuid, organization_uuid)
+        REFERENCES api_portals(uuid, organization_uuid) ON DELETE CASCADE
+);
+
+-- =====================================================================
+-- api_publication_contents: the definition, landing page and thumbnail of a
+-- publication row; one row per type (API_DEFINITION, MARKETING, IMAGE).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS api_publication_contents (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
+    type              VARCHAR(20)  NOT NULL,        -- IMAGE | API_DEFINITION | MARKETING
+    file_name         VARCHAR(255),                 -- API_DEFINITION: canonical name recording the serialization.
+                                                      -- IMAGE: the uploader's own file name. Null for MARKETING.
+    content_type      VARCHAR(100),                 -- sniffed at upload, not the client's declared type. Null for MARKETING.
+    content           BLOB         NOT NULL,
+    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_uuid, publication_uuid, type),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
+);
+
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+-- Positioned here, ahead of its original location further down this file, so
+-- api_publication_doc_mappings below (which references it) doesn't create
+-- before its FK target exists, matching the ordering required by the other
+-- dialects (Postgres/SQL Server validate that at CREATE TABLE time).
+CREATE TABLE IF NOT EXISTS api_documents (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    type              VARCHAR(20)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
+    content           BLOB         NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(255),
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(255),
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)      ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid)  ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_uuid, type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);
+
+-- =====================================================================
+-- api_publication_doc_mappings: the documents selected for a publication row.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS api_publication_doc_mappings (
+    organization_uuid VARCHAR(40)  NOT NULL,
+    publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
+    doc_uuid          VARCHAR(40)  NOT NULL,
+    created_by        VARCHAR(200) NOT NULL,
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
+    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
+    -- org match checked in the service layer, same exception as subscription_plans.
+    -- CASCADE: documents are authored outside this feature. Deleting one there
+    -- withdraws it from the selection here rather than blocking the deletion.
+    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+);
+
+-- =====================================================================
+-- api_publication_plan_mappings: the subscription plans selected for a
+-- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
+-- so the plan reference is single-column and the organization match is checked
+-- in the service layer.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS api_publication_plan_mappings (
+    organization_uuid      VARCHAR(40)  NOT NULL,
+    publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
+    subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    created_by             VARCHAR(200) NOT NULL,
+    created_at             DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (publication_uuid, organization_uuid)
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_plan_uuid)
+        REFERENCES subscription_plans(uuid) ON DELETE RESTRICT
+);
+
+-- API Publication indexes
+CREATE INDEX IF NOT EXISTS idx_api_publications_artifact
+    ON api_publications(artifact_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_portal
+    ON api_publications(api_portal_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_api_publication_contents_publication
+    ON api_publication_contents(publication_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_api_publication_doc_mappings_publication
+    ON api_publication_doc_mappings(publication_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publication_doc_mappings_doc
+    ON api_publication_doc_mappings(doc_uuid);
+
+CREATE INDEX IF NOT EXISTS idx_api_publication_plan_mappings_publication
+    ON api_publication_plan_mappings(publication_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publication_plan_mappings_plan
+    ON api_publication_plan_mappings(subscription_plan_uuid);
+
 -- Subscriptions table (application-level subscriptions for any artifact type)
 -- subscription_token: encrypted value (AES-256-GCM) for retrieval (legacy rows have hash)
 -- subscription_token_hash: SHA-256 hash for uniqueness and gateway sync
@@ -265,6 +446,23 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
+-- Builds table (immutable rendered snapshots of an API's definition)
+CREATE TABLE IF NOT EXISTS builds (
+    uuid VARCHAR(40) PRIMARY KEY,
+    build_id VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    content BLOB NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    metadata BLOB,
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (artifact_uuid, build_id),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -273,11 +471,13 @@ CREATE TABLE IF NOT EXISTS deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    build_uuid VARCHAR(40),
     content BLOB NOT NULL,
     metadata BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
@@ -399,6 +599,29 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- Agent Proxies table
+CREATE TABLE IF NOT EXISTS agent_proxies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    protocol VARCHAR(20) NOT NULL,
+    description VARCHAR(1023),
+    configuration BLOB NOT NULL,
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -472,6 +695,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_agent_proxies_project ON agent_proxies(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_portals_org ON api_portals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
@@ -488,6 +713,8 @@ CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(s
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(subscription_plan_uuid);
 
 CREATE INDEX IF NOT EXISTS idx_artifact_subscription_plans_plan ON artifact_subscription_plans(subscription_plan_uuid);
+CREATE INDEX IF NOT EXISTS idx_builds_artifact ON builds(artifact_uuid, organization_uuid, created_at);
+CREATE INDEX IF NOT EXISTS idx_deployments_build ON deployments(build_uuid);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (

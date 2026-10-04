@@ -25,7 +25,7 @@ import {
   FormControl,
   FormHelperText,
   Grid,
-  InputLabel,
+  FormLabel,
   OutlinedInput,
   Paper,
   Stack,
@@ -43,11 +43,26 @@ import {
   isHttpUrl,
   VERSION_PATTERN,
 } from '../../utils/basicInfoRules';
+import { PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
 import type { CreateApiFormErrors, CreateApiFormField } from '../utils/serverFieldErrors';
 import { ApiCreationWizardDraftState, GeneralApiCreationFormState } from '../types';
 
 export type GeneralCreateApiFormProps = {
+  formId?: string;
+  hideActions?: boolean;
   initialValues?: ApiCreationWizardDraftState;
+  /** Whether the user has manually edited the identifier, preserved across remounts. */
+  initialIdentifierEdited?: boolean;
+  /** Reports every edit-state change for the identifier so the parent stays in sync across remounts. */
+  onIdentifierEdited?: (edited: boolean) => void;
+  /** Whether the user has manually edited the base path (context), preserved across remounts. */
+  initialBasePathEdited?: boolean;
+  /** Reports every edit-state change for the base path so the parent stays in sync across remounts. */
+  onBasePathEdited?: (edited: boolean) => void;
+  /** Whether the user has edited the backend URL, preserved across remounts. */
+  initialUpstreamEdited?: boolean;
+  /** Reports the first edit of the backend URL, so it survives the remount. */
+  onUpstreamEdited?: () => void;
   onSubmit: (values: GeneralApiCreationFormState) => void;
   onBack: () => void;
   /**
@@ -110,6 +125,11 @@ const messages = defineMessages({
     id: 'api.create.generalForm.section.backendEndpoint',
     defaultMessage: 'Backend endpoint',
   },
+  placeholderBackendNotice: {
+    id: 'api.create.generalForm.targetUrl.placeholder.notice',
+    defaultMessage:
+      'This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying.',
+  },
   identifierErrorPattern: {
     id: 'api.create.generalForm.identifier.error.pattern',
     defaultMessage: 'Use lowercase letters and numbers, separated by single hyphens.',
@@ -147,10 +167,6 @@ const messages = defineMessages({
     id: 'api.create.generalForm.identifier.status.checking',
     defaultMessage: 'Checking whether this identifier is free…',
   },
-  subtitle: {
-    id: 'api.create.generalForm.subtitle',
-    defaultMessage: 'Provide the details to configure and expose your API proxy.',
-  },
   targetUrlErrorInvalid: {
     id: 'api.create.generalForm.targetUrl.error.invalid',
     defaultMessage: 'Enter a full URL, for example https://api.example.com.',
@@ -166,10 +182,6 @@ const messages = defineMessages({
   targetUrlLabel: {
     id: 'api.create.generalForm.targetUrl.label',
     defaultMessage: 'Target URL',
-  },
-  title: {
-    id: 'api.create.generalForm.title',
-    defaultMessage: 'Create an API Proxy',
   },
   versionErrorPattern: {
     id: 'api.create.generalForm.version.error.pattern',
@@ -188,16 +200,6 @@ const messages = defineMessages({
     defaultMessage: 'Version',
   },
 });
-
-/**
- * Small uppercase rule above a group of fields. `Form.Header` is fixed at `h4`,
- * so the size comes from the theme's `overline` typography rather than a
- * font-size literal.
- */
-const SECTION_LABEL_SX = {
-  color: 'text.secondary',
-  typography: 'overline',
-} as const;
 
 export const DEFAULT_FORM_STATE: GeneralApiCreationFormState = {
   id: '',
@@ -380,17 +382,16 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   // lets an edited field drop its server error without tracking dismissals.
   const [formState, setFormState] = useState<GeneralApiCreationFormState>(submittedState);
 
-  // Both fields are generated until the user takes them over. Clearing one
-  // hands it back, so there is always a way to return to the default. A draft
-  // that arrives with either already filled in is a restored submission, so
-  // the field starts out taken over — otherwise the next keystroke in the
-  // display name would generate over the top of what was restored.
-  const [identifierEdited, setIdentifierEdited] = useState(
-    () => (props.initialValues?.id ?? '').trim() !== '',
-  );
-  const [basePathEdited, setBasePathEdited] = useState(
-    () => (props.initialValues?.context ?? '').trim() !== '',
-  );
+  // Fields generate until edited; clearing one restores its default. Restored
+  // values start edited to prevent the next name change from overwriting them.
+  const [identifierEdited, setIdentifierEdited] = useState(props.initialIdentifierEdited ?? false);
+  const [basePathEdited, setBasePathEdited] = useState(props.initialBasePathEdited ?? false);
+
+  // The notice applies only to the untouched placeholder from the scratch
+  // skeleton. Focusing the field retires it, even if the user types the same
+  // URL — which is why this is seeded from the wizard rather than from the
+  // restored value, which cannot tell the two apart.
+  const [upstreamEdited, setUpstreamEdited] = useState(props.initialUpstreamEdited ?? false);
 
   // Errors are recomputed from state on every render; `touched` decides which
   // of them the user is ready to see, so nothing shouts before it is typed in.
@@ -459,7 +460,9 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
   const handleIdentifierChange = (id: string) => {
     // An emptied field goes back to following the display name.
-    setIdentifierEdited(id.trim() !== '');
+    const edited = id.trim() !== '';
+    setIdentifierEdited(edited);
+    props.onIdentifierEdited?.(edited);
     setFormState((current) => ({
       ...current,
       id,
@@ -476,11 +479,15 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   };
 
   const handleBasePathChange = (context: string) => {
-    setBasePathEdited(context.trim() !== '');
+    const edited = context.trim() !== '';
+    setBasePathEdited(edited);
+    props.onBasePathEdited?.(edited);
     setField('context', context);
   };
 
   const setMainUpstreamUrl = (url: string) => {
+    setUpstreamEdited(true);
+    props.onUpstreamEdited?.();
     setFormState((current) => ({
       ...current,
       upstream: {
@@ -521,6 +528,10 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       props.serverErrors.unmapped.length > 0 ||
       FIELD_ORDER.some((field) => serverErrorFor(field) !== undefined));
 
+  /** True while the backend remains the untouched placeholder. */
+  const usingPlaceholderBackend =
+    !upstreamEdited && submittedState.upstream.main.url.trim() === PLACEHOLDER_UPSTREAM_URL;
+
   const nameLabel = intl.formatMessage(messages.nameLabel);
   const identifierLabel = intl.formatMessage(messages.identifierLabel);
   const versionLabel = intl.formatMessage(messages.versionLabel);
@@ -529,16 +540,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const targetUrlLabel = intl.formatMessage(messages.targetUrlLabel);
 
   return (
-    <Stack component="form" noValidate spacing={3} onSubmit={onFormSubmit}>
-      <Box>
-        <Typography sx={{ fontWeight: 700 }} variant="h5">
-          <FormattedMessage {...messages.title} />
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-          <FormattedMessage {...messages.subtitle} />
-        </Typography>
-      </Box>
-
+    <Stack component="form" id={props.formId} noValidate spacing={3} onSubmit={onFormSubmit}>
       {/* `Alert` carries `role="alert"`, so this is announced when it appears
         ,the inputs themselves say which values to change. */}
       {showRejection && (
@@ -562,20 +564,20 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       )}
 
       <Paper component="section" sx={{ p: 3 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
+        <Typography sx={{ fontWeight: 600 }} variant="body2">
           <FormattedMessage {...messages.basicInformation} />
-        </Form.Header>
+        </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.displayName)} fullWidth required>
-                <InputLabel htmlFor="displayName">{nameLabel}</InputLabel>
+                <FormLabel htmlFor="displayName">{nameLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="displayName-error"
                   id="displayName"
-                  label={nameLabel}
                   name="displayName"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('displayName')}
                   onChange={(event) => handleDisplayNameChange(event.target.value)}
                   value={formState.displayName}
@@ -586,12 +588,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.id)} fullWidth required>
-                <InputLabel htmlFor="identifier">{identifierLabel}</InputLabel>
+                <FormLabel htmlFor="identifier">{identifierLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="identifier-error"
                   id="identifier"
-                  label={identifierLabel}
                   name="identifier"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('id')}
                   onChange={(event) => handleIdentifierChange(event.target.value)}
                   value={formState.id}
@@ -604,12 +606,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
             <Grid size={{ xs: 12, md: 4 }}>
               <FormControl error={Boolean(fieldErrors.version)} fullWidth required>
-                <InputLabel htmlFor="version">{versionLabel}</InputLabel>
+                <FormLabel htmlFor="version">{versionLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="version-error"
                   id="version"
-                  label={versionLabel}
                   name="version"
+                  sx={{ mt: 0.75 }}
                   onBlur={() => markTouched('version')}
                   onChange={(event) => handleVersionChange(event.target.value)}
                   value={formState.version}
@@ -620,12 +622,12 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
           </Grid>
 
           <FormControl error={Boolean(fieldErrors.context)} fullWidth required>
-            <InputLabel htmlFor="context">{contextLabel}</InputLabel>
+            <FormLabel htmlFor="context">{contextLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="context-error"
               id="context"
-              label={contextLabel}
               name="context"
+              sx={{ mt: 0.75 }}
               onBlur={() => markTouched('context')}
               onChange={(event) => handleBasePathChange(event.target.value)}
               value={formState.context}
@@ -634,14 +636,14 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
           </FormControl>
 
           <FormControl fullWidth>
-            <InputLabel htmlFor="description">{descriptionLabel}</InputLabel>
+            <FormLabel htmlFor="description">{descriptionLabel}</FormLabel>
             <OutlinedInput
               id="description"
-              label={descriptionLabel}
               multiline
               name="description"
               onChange={(event) => setField('description', event.target.value)}
               rows={3}
+              sx={{ mt: 0.75 }}
               value={formState.description ?? ''}
             />
           </FormControl>
@@ -649,18 +651,24 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       </Paper>
 
       <Paper component="section" sx={{ p: 3, mt: 1 }}>
-        <Form.Header sx={SECTION_LABEL_SX}>
+        <Typography sx={{ fontWeight: 600 }} variant="body2">
           <FormattedMessage {...messages.endpointSection} />
-        </Form.Header>
+        </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
+          {usingPlaceholderBackend ? (
+            <Alert severity="info">
+              <FormattedMessage {...messages.placeholderBackendNotice} />
+            </Alert>
+          ) : null}
+
           <FormControl error={Boolean(fieldErrors.targetUrl)} fullWidth required>
-            <InputLabel htmlFor="targetUrl">{targetUrlLabel}</InputLabel>
+            <FormLabel htmlFor="targetUrl">{targetUrlLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="targetUrl-error"
               id="targetUrl"
-              label={targetUrlLabel}
               name="targetUrl"
+              sx={{ mt: 0.75 }}
               onBlur={() => markTouched('targetUrl')}
               onChange={(event) => setMainUpstreamUrl(event.target.value)}
               value={formState.upstream.main.url}
@@ -670,18 +678,24 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
         </Form.Stack>
       </Paper>
 
-      <Divider />
+      {!props.hideActions && <Divider />}
 
       {/* Both buttons on the trailing edge, the same pairing as the step
           before this one. */}
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-        <Button variant="text" onClick={props.onBack}>
-          <FormattedMessage {...messages.back} />
-        </Button>
-        <Button type="submit" variant="contained">
-          <FormattedMessage {...messages.create} />
-        </Button>
-      </Stack>
+      {!props.hideActions && (
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{ alignItems: 'center', justifyContent: 'flex-end' }}
+        >
+          <Button onClick={props.onBack} type="button" variant="text">
+            <FormattedMessage {...messages.back} />
+          </Button>
+          <Button type="submit" variant="contained">
+            <FormattedMessage {...messages.create} />
+          </Button>
+        </Stack>
+      )}
     </Stack>
   );
 };

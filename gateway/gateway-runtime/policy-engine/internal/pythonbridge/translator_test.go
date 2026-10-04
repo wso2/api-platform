@@ -254,3 +254,102 @@ func TestTranslatorToProtoAuthContextCarriesNumbersAsDouble(t *testing.T) {
 	_, isNumber := fields["level"].GetKind().(*structpb.Value_NumberValue)
 	assert.True(t, isNumber)
 }
+
+// The resolved operation and its request facts have to cross the bridge, or a Python
+// policy reads empty defaults while the Go engine has both values — the SDK fields
+// would be declared and permanently dead for that whole class of policy.
+func TestTranslatorToProtoSharedContextCarriesTheResolvedOperation(t *testing.T) {
+	shared := &policy.SharedContext{
+		APIKind:           policy.APIKindAgent,
+		APIName:           "WeatherAgent",
+		OperationPath:     "/",
+		ResolvedOperation: "SendMessage",
+		ResolutionAttributes: policy.NewResolutionAttributes(map[string]string{
+			"a2a.operation":        "SendMessage",
+			"a2a.transport":        "JSONRPC",
+			"a2a.protocol.version": "1.0",
+			"a2a.context.id":       "ctx-1",
+			"a2a.task.id":          "task-1",
+		}),
+	}
+
+	result, err := NewTranslator().ToProtoSharedContext(shared)
+	require.NoError(t, err)
+
+	assert.Equal(t, "SendMessage", result.GetResolvedOperation())
+	assert.Equal(t, map[string]string{
+		"a2a.operation":        "SendMessage",
+		"a2a.transport":        "JSONRPC",
+		"a2a.protocol.version": "1.0",
+		"a2a.context.id":       "ctx-1",
+		"a2a.task.id":          "task-1",
+	}, result.GetResolutionAttributes())
+}
+
+// A JSON-RPC route serves every operation on one path, so OperationPath cannot tell
+// them apart. This is the case the plumbing exists for: same route, same path,
+// different operation on the wire.
+func TestTranslatorToProtoSharedContextDistinguishesOperationsOnOnePath(t *testing.T) {
+	protoFor := func(operation string) *proto.SharedContext {
+		result, err := NewTranslator().ToProtoSharedContext(&policy.SharedContext{
+			APIKind:           policy.APIKindAgent,
+			OperationPath:     "/",
+			ResolvedOperation: operation,
+			ResolutionAttributes: policy.NewResolutionAttributes(
+				map[string]string{"a2a.operation": operation}),
+		})
+		require.NoError(t, err)
+		return result
+	}
+
+	send, get := protoFor("SendMessage"), protoFor("GetTask")
+
+	assert.Equal(t, send.GetOperationPath(), get.GetOperationPath(),
+		"precondition: both operations share one path, which is why OperationPath cannot serve")
+	assert.NotEqual(t, send.GetResolvedOperation(), get.GetResolvedOperation())
+	assert.Equal(t, "SendMessage", send.GetResolutionAttributes()["a2a.operation"])
+	assert.Equal(t, "GetTask", get.GetResolutionAttributes()["a2a.operation"])
+}
+
+// Every API kind that shipped before Agent resolves its chain from the route, so it
+// sends no operation and no attributes at all. Nil rather than an empty map, so those
+// requests do not pay for a field they never populate.
+func TestTranslatorToProtoSharedContextOmitsResolutionForADirectRoute(t *testing.T) {
+	result, err := NewTranslator().ToProtoSharedContext(&policy.SharedContext{
+		APIKind:       policy.APIKindRestApi,
+		OperationPath: "/pets/{id}",
+	})
+	require.NoError(t, err)
+
+	assert.Empty(t, result.GetResolvedOperation())
+	assert.Nil(t, result.GetResolutionAttributes())
+}
+
+// The wire map must be the translator's own. If it aliased the resolver's map, a
+// route resolved at ingest — which shares one map across every request on it — could
+// have one request's serialization mutated by another's.
+func TestTranslatorToProtoSharedContextDoesNotAliasTheResolverMap(t *testing.T) {
+	source := map[string]string{"a2a.context.id": "ctx-1"}
+	shared := &policy.SharedContext{
+		APIKind:              policy.APIKindAgent,
+		ResolvedOperation:    "GetTask",
+		ResolutionAttributes: policy.NewResolutionAttributes(source),
+	}
+
+	result, err := NewTranslator().ToProtoSharedContext(shared)
+	require.NoError(t, err)
+
+	result.GetResolutionAttributes()["a2a.context.id"] = "tampered"
+	assert.Equal(t, "ctx-1", source["a2a.context.id"],
+		"the resolver's map must be unreachable through the wire form")
+}
+
+// A nil shared context still yields a usable message rather than panicking on the
+// attribute conversion.
+func TestTranslatorToProtoSharedContextNilIsSafe(t *testing.T) {
+	result, err := NewTranslator().ToProtoSharedContext(nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.GetResolvedOperation())
+	assert.Nil(t, result.GetResolutionAttributes())
+}

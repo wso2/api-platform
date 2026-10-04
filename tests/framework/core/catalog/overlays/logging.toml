@@ -1,0 +1,14 @@
+# Enable traffic logging for the logging-policy integration block.
+[collector]
+request_headers = true
+response_headers = true
+request_body = true
+response_body = true
+
+[traffic_logging]
+enabled = true
+outputs = ["stdout"]
+request_headers = true
+response_headers = true
+request_body = true
+response_body = true

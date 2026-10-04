@@ -117,9 +117,7 @@ describe('listRestApis', () => {
 
 describe('getRestApi', () => {
   it('GETs one API by handle', async () => {
-    server.use(
-      resource('/rest-apis/pizza-shack', aRestApi(), { record: requests })
-    );
+    server.use(resource('/rest-apis/pizza-shack', aRestApi(), { record: requests }));
 
     await getRestApi('pizza-shack');
 
@@ -130,15 +128,11 @@ describe('getRestApi', () => {
   it('percent-encodes a handle so it cannot alter the path', async () => {
     // Handles are user-supplied. An unencoded "a/b" would address a different
     // resource entirely, and "?x=1" would inject a query parameter.
-    server.use(
-      resource('/rest-apis/:restApiId', aRestApi(), { record: requests })
-    );
+    server.use(resource('/rest-apis/:restApiId', aRestApi(), { record: requests }));
 
     await getRestApi('weird/handle?x=1');
 
-    expect(requests.last()?.url.pathname).toBe(
-      '/api/v0.9/rest-apis/weird%2Fhandle%3Fx%3D1'
-    );
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/rest-apis/weird%2Fhandle%3Fx%3D1');
     expect(requests.last()?.params.get('x')).toBeNull();
   });
 
@@ -176,9 +170,7 @@ describe('createRestApi', () => {
 
 describe('updateRestApi', () => {
   it('PUTs to the resource path with the request body', async () => {
-    server.use(
-      accepts('put', '/rest-apis/pizza-shack', aRestApi(), { record: requests })
-    );
+    server.use(accepts('put', '/rest-apis/pizza-shack', aRestApi(), { record: requests }));
 
     await updateRestApi('pizza-shack', aRestApi({ displayName: 'Renamed' }));
 
@@ -190,21 +182,17 @@ describe('updateRestApi', () => {
   });
 
   it('returns the updated API', async () => {
-    server.use(
-      accepts('put', '/rest-apis/pizza-shack', aRestApi({ displayName: 'Renamed' }))
-    );
+    server.use(accepts('put', '/rest-apis/pizza-shack', aRestApi({ displayName: 'Renamed' })));
 
-    await expect(
-      updateRestApi('pizza-shack', aRestApi())
-    ).resolves.toMatchObject({ displayName: 'Renamed' });
+    await expect(updateRestApi('pizza-shack', aRestApi())).resolves.toMatchObject({
+      displayName: 'Renamed',
+    });
   });
 });
 
 describe('deleteRestApi', () => {
   it('DELETEs the resource path', async () => {
-    server.use(
-      noContent('delete', '/rest-apis/pizza-shack', { record: requests })
-    );
+    server.use(noContent('delete', '/rest-apis/pizza-shack', { record: requests }));
 
     await deleteRestApi('pizza-shack');
 
@@ -219,9 +207,7 @@ describe('deleteRestApi', () => {
   });
 
   it('sends no request body', async () => {
-    server.use(
-      noContent('delete', '/rest-apis/pizza-shack', { record: requests })
-    );
+    server.use(noContent('delete', '/rest-apis/pizza-shack', { record: requests }));
 
     await deleteRestApi('pizza-shack');
 
@@ -233,9 +219,7 @@ describe('failures', () => {
   it('labels the failing operation so a log line identifies it', async () => {
     // `operationName` is the only thing distinguishing one endpoint's failure
     // from another's once the error reaches telemetry.
-    server.use(
-      failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND')
-    );
+    server.use(failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND'));
 
     const error = await getRestApi('pizza-shack').catch((e: unknown) => e);
 
@@ -247,12 +231,10 @@ describe('failures', () => {
     server.use(
       failure('get', '/rest-apis/pizza-shack', 404, 'REST_API_NOT_FOUND', {
         message: 'The requested REST API could not be found.',
-      })
+      }),
     );
 
-    const error = (await getRestApi('pizza-shack').catch(
-      (e: unknown) => e
-    )) as ApiError;
+    const error = (await getRestApi('pizza-shack').catch((e: unknown) => e)) as ApiError;
 
     expect(error.code).toBe('REST_API_NOT_FOUND');
     expect(error.status).toBe(404);

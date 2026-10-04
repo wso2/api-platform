@@ -1,0 +1,94 @@
+# Arazzo describes workflows over an API. arazzo-mcp-gen turns each workflow
+# in this file into one MCP tool, so what you write here is exactly what an
+# AI agent will be offered.
+#
+# The descriptions matter: an agent reads them to decide which tool to call.
+# Write them the way you would explain the tool to a colleague.
+
+arazzo: "1.0.0"
+
+info:
+  title: Sample Service Echo Workflows
+  summary: Workflows over the sample-service echo backend, exposed as MCP tools.
+  description: |
+    Two workflows over samples/sample-service. The first is a single call.
+    The second chains two calls, which is the case a plain endpoint-to-tool
+    mapping cannot express.
+  version: "1.0.0"
+
+sourceDescriptions:
+  - name: sampleService
+    # Resolved relative to this folder.
+    url: sample-service-openapi.yaml
+    type: openapi
+
+workflows:
+  - workflowId: echoMessage
+    summary: Send a message to the echo service and return what it received.
+    description: |
+      Sends a message to the echo service and returns the request details it
+      saw - method, path, query, headers and body. Use this to check exactly
+      what the service receives for a given payload.
+    inputs:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The text to send to the echo service.
+    steps:
+      - stepId: sendEcho
+        description: POST the message to the echo endpoint.
+        operationId: echoRequest
+        requestBody:
+          contentType: application/json
+          payload:
+            message: $inputs.message
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          echoed: $response.body
+    outputs:
+      echoed: $steps.sendEcho.outputs.echoed
+
+  - workflowId: echoAndVerify
+    summary: Send a message, then read it back from the service to confirm it arrived.
+    description: |
+      Sends a message to the echo service, then separately asks the service for
+      the last request it captured. Returns both, so the caller can confirm the
+      message actually reached the backend rather than trusting a single reply.
+
+      This is one tool made of two API calls. The agent asks once; the workflow
+      handles the sequencing.
+    inputs:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The text to send, and then verify was received.
+    steps:
+      - stepId: sendEcho
+        description: POST the message to the echo endpoint.
+        operationId: echoRequest
+        requestBody:
+          contentType: application/json
+          payload:
+            message: $inputs.message
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          echoed: $response.body
+
+      - stepId: readCaptured
+        description: Ask the service for the last request it captured.
+        operationId: getCapturedRequest
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          captured: $response.body
+    outputs:
+      echoed: $steps.sendEcho.outputs.echoed
+      captured: $steps.readCaptured.outputs.captured

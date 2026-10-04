@@ -52,17 +52,43 @@ func (t *Translator) ToProtoSharedContext(shared *policy.SharedContext) (*proto.
 	}
 
 	return &proto.SharedContext{
-		ProjectId:     shared.ProjectID,
-		RequestId:     shared.RequestID,
-		Metadata:      metadata,
-		ApiId:         shared.APIId,
-		ApiName:       shared.APIName,
-		ApiVersion:    shared.APIVersion,
-		ApiKind:       string(shared.APIKind),
-		ApiContext:    shared.APIContext,
-		OperationPath: shared.OperationPath,
-		AuthContext:   authContext,
+		ProjectId:            shared.ProjectID,
+		RequestId:            shared.RequestID,
+		Metadata:             metadata,
+		ApiId:                shared.APIId,
+		ApiName:              shared.APIName,
+		ApiVersion:           shared.APIVersion,
+		ApiKind:              string(shared.APIKind),
+		ApiContext:           shared.APIContext,
+		OperationPath:        shared.OperationPath,
+		AuthContext:          authContext,
+		ResolvedOperation:    shared.ResolvedOperation,
+		ResolutionAttributes: toProtoResolutionAttributes(shared.ResolutionAttributes),
 	}, nil
+}
+
+// toProtoResolutionAttributes flattens the resolver's attributes for the wire.
+//
+// This is where the Go read-only wrapper stops and a plain map takes over, and the
+// asymmetry is deliberate. policy.ResolutionAttributes exists because a route resolved
+// at deploy time shares one live map with every request on it, so a Go policy holding
+// a reference could leak one request's data into the next. Across this boundary that
+// cannot happen: the map is serialized, so the Python side deserializes its own copy
+// per request, and nothing travels back — SharedContext only ever crosses outbound
+// (there is no FromProtoSharedContext, by design).
+//
+// Copying here is therefore not a defensive copy, it is the serialization itself. A nil
+// map yields nil rather than an empty one, so a route that inspected no request sends
+// no field at all instead of an empty map on every request.
+func toProtoResolutionAttributes(attrs policy.ResolutionAttributes) map[string]string {
+	if attrs.Len() == 0 {
+		return nil
+	}
+	out := make(map[string]string, attrs.Len())
+	attrs.Iterate(func(name, value string) {
+		out[name] = value
+	})
+	return out
 }
 
 // ToProtoHeaders converts read-only Go headers into the multi-value transport form.

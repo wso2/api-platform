@@ -76,14 +76,15 @@ export type ApiCreationStepsProps = {
 };
 
 /** Step circle diameter; connector offset is derived from this. */
-const STEP_ICON_SIZE = 32;
+const STEP_ICON_SIZE = 22;
 
 /**
  * Connector line between steps. Tints completed lines with primary color.
  */
 const ProgressConnector = styled(StepConnector)(({ theme }) => ({
   [`& .${stepConnectorClasses.line}`]: {
-    borderColor: theme.palette.divider,
+    borderColor: alpha(theme.palette.text.primary, 0.3),
+    borderTopWidth: 1,
   },
   [`&.${stepConnectorClasses.active} .${stepConnectorClasses.line}, &.${stepConnectorClasses.completed} .${stepConnectorClasses.line}`]:
     {
@@ -114,13 +115,12 @@ export const ApiCreationSteps = ({ activeStep, onStepClick }: ApiCreationStepsPr
           borderRadius: '50%',
           boxShadow: `0 0 0 ${theme.spacing(0.5)} ${alpha(theme.palette.primary.main, 0.16)}`,
         },
-        [`& .${stepLabelClasses.label}`]: { typography: 'body1' },
+        [`& .${stepLabelClasses.label}`]: { typography: 'body2' },
         [`& .${stepLabelClasses.label}.${stepLabelClasses.active}`]: {
           color: 'text.primary',
           fontWeight: theme.typography.fontWeightBold,
         },
-        maxWidth: theme.breakpoints.values.sm,
-        mx: 'auto',
+        maxWidth: 360,
         width: '100%',
       })}
     >

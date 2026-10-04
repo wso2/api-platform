@@ -160,3 +160,120 @@ func TestUserFromClaims_DottedUsernamePath(t *testing.T) {
 		t.Errorf("Name = %q, want Bob via dotted username path", u.Name)
 	}
 }
+
+func TestUserFromClaims_RoleMode(t *testing.T) {
+	claims := map[string]any{
+		"preferred_username": "user1@example.onmicrosoft.com",
+		"roles":              []any{"ap_admin"},
+		"scp":                "access",
+	}
+	m := DefaultClaimMapping()
+	m.Username = "preferred_username"
+	m.AuthzMode = AuthzModeRole
+	m.RoleScopeMap = map[string][]string{
+		"ap_admin": {"ap:organization:manage", "ap:project:manage"},
+	}
+
+	u := UserFromClaims(claims, nil, m)
+
+	want := []string{"ap:organization:manage", "ap:project:manage"}
+	if len(u.Scopes) != len(want) || u.Scopes[0] != want[0] || u.Scopes[1] != want[1] {
+		t.Errorf("Scopes = %v, want %v", u.Scopes, want)
+	}
+	// The token's own "access" scope must not leak through as an effective scope.
+	for _, s := range u.Scopes {
+		if s == "access" {
+			t.Errorf("Scopes = %v, want the scope claim ignored in role mode", u.Scopes)
+		}
+	}
+	if u.Role != "ap_admin" {
+		t.Errorf("Role = %q, want ap_admin", u.Role)
+	}
+}
+
+// Several roles union; the display Role carries all of them.
+func TestUserFromClaims_RoleModeSeveralRoles(t *testing.T) {
+	claims := map[string]any{"sub": "u1", "roles": []any{"ap_viewer", "ap_publisher"}}
+	m := DefaultClaimMapping()
+	m.AuthzMode = AuthzModeRole
+	m.RoleScopeMap = map[string][]string{
+		"ap_viewer":    {"ap:project:read"},
+		"ap_publisher": {"ap:rest_api:manage"},
+	}
+	u := UserFromClaims(claims, nil, m)
+	if len(u.Scopes) != 2 {
+		t.Errorf("Scopes = %v, want 2", u.Scopes)
+	}
+	if u.Role != "ap_viewer ap_publisher" {
+		t.Errorf("Role = %q, want both roles", u.Role)
+	}
+}
+
+// A role the operator never mapped grants nothing, and role mode must NOT fall back to
+// the scope claim — that would show actions as available which then fail with 403.
+func TestUserFromClaims_RoleModeUnmappedRoleGrantsNothing(t *testing.T) {
+	claims := map[string]any{
+		"sub":   "u1",
+		"roles": []any{"SomeAzureGroup"},
+		"scp":   "access",
+	}
+	m := DefaultClaimMapping()
+	m.AuthzMode = AuthzModeRole
+	m.RoleScopeMap = map[string][]string{"ap_admin": {"ap:organization:manage"}}
+
+	if u := UserFromClaims(claims, nil, m); len(u.Scopes) != 0 {
+		t.Errorf("Scopes = %v, want empty for an unmapped role", u.Scopes)
+	}
+}
+
+// Scope mode is unchanged by the role-mode addition: the scope claim still wins and the
+// roles claim is not expanded even when a map happens to be present.
+func TestUserFromClaims_ScopeModeIgnoresRoles(t *testing.T) {
+	claims := map[string]any{
+		"sub":   "u1",
+		"roles": []any{"ap_admin"},
+		"scope": "ap:project:read",
+	}
+	m := DefaultClaimMapping()
+	m.RoleScopeMap = map[string][]string{"ap_admin": {"ap:organization:manage"}}
+
+	u := UserFromClaims(claims, nil, m)
+	if len(u.Scopes) != 1 || u.Scopes[0] != "ap:project:read" {
+		t.Errorf("Scopes = %v, want [ap:project:read]", u.Scopes)
+	}
+}
+
+// A string-valued roles claim (Asgardeo) reads the same as an array one.
+func TestUserFromClaims_RolesAsString(t *testing.T) {
+	claims := map[string]any{"sub": "u1", "roles": "ap_admin ap_viewer"}
+	m := DefaultClaimMapping()
+	m.AuthzMode = AuthzModeRole
+	m.RoleScopeMap = map[string][]string{
+		"ap_admin":  {"ap:organization:manage"},
+		"ap_viewer": {"ap:project:read"},
+	}
+	if u := UserFromClaims(claims, nil, m); len(u.Scopes) != 2 {
+		t.Errorf("Scopes = %v, want 2", u.Scopes)
+	}
+}
+
+// Keycloak nests roles under realm_access; the dotted-path mapping this BFF supports
+// for every claim must reach them for the role-mode expansion too.
+func TestUserFromClaims_RoleModeDottedRolesPath(t *testing.T) {
+	claims := map[string]any{
+		"sub":          "u1",
+		"realm_access": map[string]any{"roles": []any{"ap_viewer"}},
+	}
+	m := DefaultClaimMapping()
+	m.Roles = "realm_access.roles"
+	m.AuthzMode = AuthzModeRole
+	m.RoleScopeMap = map[string][]string{"ap_viewer": {"ap:project:read"}}
+
+	u := UserFromClaims(claims, nil, m)
+	if len(u.Scopes) != 1 || u.Scopes[0] != "ap:project:read" {
+		t.Errorf("Scopes = %v, want [ap:project:read]", u.Scopes)
+	}
+	if u.Role != "ap_viewer" {
+		t.Errorf("Role = %q, want ap_viewer", u.Role)
+	}
+}

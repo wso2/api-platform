@@ -16,7 +16,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client", "node"]
+    "baseUrl": ".",
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@wso2-enterprise/apip-cloud-ui-insights": [
+        "../cloud-plugins/apip-cloud-ui-insights/src/index.ts"
+      ]
+    }
   },
   "include": ["src"]
 }

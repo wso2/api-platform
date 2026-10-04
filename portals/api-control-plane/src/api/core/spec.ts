@@ -104,3 +104,14 @@ export type ListEnvelope<T> = {
 /** The item type inside a list response, e.g. `ItemOf<'ListRESTAPIs'>` → RESTAPI. */
 export type ItemOf<Id extends OperationId> =
   ResponseOf<Id> extends { list?: (infer T)[] } ? T : never;
+
+/* -------------------------------------------------------------------------- */
+/* Authorization                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Re-exports generated authorization data from the sole permitted access point
+ * to `api/generated`. Scopes are interpreted by `src/permissions/evaluate.ts`;
+ * other modules must not access `OPERATION_SCOPES` directly.
+ */
+export { AP_SCOPES, OPERATION_SCOPES, type ApScope } from '../generated/operationScopes';

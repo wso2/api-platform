@@ -21,11 +21,14 @@ package v1
 // sigs.k8s.io/controller-runtime/pkg/conversion so that the served v1alpha1
 // spoke types can be converted to and from these canonical types by the
 // conversion webhook.
+//
+// Agent is served as v1 only — it has no v1alpha1 spoke, so it needs no Hub
+// marker.
 
 func (*RestApi) Hub()             {}
 func (*APIGateway) Hub()          {}
-func (*ApiKey) Hub()             {}
-func (*APIPolicy) Hub()          {}
+func (*ApiKey) Hub()              {}
+func (*APIPolicy) Hub()           {}
 func (*Certificate) Hub()         {}
 func (*LlmProvider) Hub()         {}
 func (*LlmProviderTemplate) Hub() {}

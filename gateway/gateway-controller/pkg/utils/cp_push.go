@@ -52,6 +52,13 @@ func cpSyncStatusForOrigin(origin models.Origin) models.CPSyncStatus {
 	return ""
 }
 
+// WaitForDeploymentAndPush is the exported form of waitForDeploymentAndPush, for
+// artifact services that live outside this package. It exists so there is one
+// implementation of the wait-then-push loop rather than a copy per kind.
+func WaitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher, configID, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
+	waitForDeploymentAndPush(store, pusher, configID, correlationID, minDeployedAt, log)
+}
+
 // waitForDeploymentAndPush waits for the artifact identified by configID to finish deploying
 // and then pushes it to the control plane (DP->CP). This is meant to be run in a goroutine.
 // The caller is responsible for gating on connectivity/push-enabled and gateway origin before invoking it.

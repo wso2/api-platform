@@ -19,6 +19,7 @@
 package resolver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,6 +116,17 @@ type PreparedRoute struct {
 	// a RequestView and calling Resolve at all.
 	StaticResolution *Resolution
 
+	// HeaderValidator is non-nil when the prepared resolver implements
+	// HeaderValidatingPreparedResolver.
+	//
+	// Held as the typed value rather than re-asserted per request, so the interface
+	// check is paid once at ingest, and a route without one costs a nil comparison.
+	// A static route may carry one: header validation is not resolution, so needing
+	// it does not contradict knowing the resolution already (see validateRequirements,
+	// which governs the request data Resolve needs and deliberately does not govern
+	// this).
+	HeaderValidator HeaderValidatingPreparedResolver
+
 	// DirectChainKey is the effective CanonicalChainKey for this route, and
 	// APIID/Vhost are its partition. Held here so key validation compares against
 	// captured values rather than re-deriving anything on the request path.
@@ -155,10 +167,17 @@ func PrepareRoute(reg ResolverRegistry, cfg ResolverRouteConfig) (*PreparedRoute
 			cfg.ResolverName, cfg.RouteKey, err)
 	}
 
+	// Checked once, here, so the request path never type-asserts. A resolver either
+	// validates headers for every request on this route or for none of them: making
+	// it a property of the prepared route is what keeps it from being something a
+	// request could influence.
+	validator, _ := prepared.(HeaderValidatingPreparedResolver)
+
 	pr := &PreparedRoute{
-		ResolverName: cfg.ResolverName,
-		Resolver:     prepared,
-		Requirements: reqs,
+		ResolverName:    cfg.ResolverName,
+		Resolver:        prepared,
+		Requirements:    reqs,
+		HeaderValidator: validator,
 		// Captured once, from the already-resolved effective value, so the binder's
 		// route-key check never re-derives the fallback.
 		DirectChainKey: cfg.CanonicalChainKey,
@@ -227,6 +246,29 @@ func (pr *PreparedRoute) IsStatic() bool {
 	return pr != nil && pr.StaticResolution != nil
 }
 
+// ValidatesHeaders reports whether this route's resolver added a header-validation
+// phase, so the kernel can skip building a header view for the routes that did not.
+func (pr *PreparedRoute) ValidatesHeaders() bool {
+	return pr != nil && pr.HeaderValidator != nil
+}
+
+// ValidateRequestHeaders runs the route's header-validation phase, if it has one, and
+// returns the classified refusal or nil.
+//
+// It normalises whatever the resolver returned, exactly as the operation-resolution
+// path does: a resolver that returns a bare error still produces a sterile response
+// rather than an unclassified one the kernel would have to guess a status for.
+//
+// A route with no validator returns nil without calling anything, so this is safe to
+// call unconditionally — though the kernel checks ValidatesHeaders first, to avoid
+// building the view at all.
+func (pr *PreparedRoute) ValidateRequestHeaders(ctx context.Context, view HeaderRequestView) *ResolutionError {
+	if pr == nil || pr.HeaderValidator == nil {
+		return nil
+	}
+	return NormalizeResolutionError(pr.HeaderValidator.ValidateHeaders(ctx, view))
+}
+
 // ValidateResolution checks a resolution's structure against this route: it names a key,
 // and that key passes the rules this route's own resolver implies. It touches no chain map,
 // so it is safe to run at ingest.
@@ -248,6 +290,39 @@ func (pr *PreparedRoute) ValidateResolution(res Resolution) *ResolutionError {
 		// resolver's own bug. There is nothing to fall back to — one resolution names one
 		// key — so an invalid key fails the whole resolution.
 		return &ResolutionError{Kind: FailureInternal, Cause: err}
+	}
+	if err := validateResolutionAttributes(res.Attributes); err != nil {
+		return &ResolutionError{Kind: FailureInternal, Cause: err}
+	}
+	return nil
+}
+
+// validateResolutionAttributes bounds what a resolver may carry alongside the key.
+//
+// This is a backstop against a resolver bug, not a request-validation step: a resolver
+// reading attacker-controlled values is expected to cap and drop them itself, so
+// tripping this means the resolver did not. It fails the whole resolution rather than
+// silently trimming, because a resolution carrying more than it should is not one whose
+// remaining contents can be trusted — and quietly dropping the excess would hide the bug
+// exactly where it matters, on the unauthenticated path.
+func validateResolutionAttributes(attrs map[string]string) error {
+	if len(attrs) == 0 {
+		return nil
+	}
+	if len(attrs) > MaxResolutionAttributes {
+		return fmt.Errorf("resolution carries %d attributes, more than the %d permitted",
+			len(attrs), MaxResolutionAttributes)
+	}
+	for name, value := range attrs {
+		if name == "" {
+			return errors.New("resolution carries an unnamed attribute")
+		}
+		if len(value) > MaxResolutionAttributeValueBytes {
+			// The value itself is never quoted: it is caller-controlled, and this
+			// error reaches the internal log.
+			return fmt.Errorf("resolution attribute %q is %d bytes, over the %d-byte limit",
+				name, len(value), MaxResolutionAttributeValueBytes)
+		}
 	}
 	return nil
 }
@@ -316,6 +391,9 @@ func selectChain[C any](pr *PreparedRoute, res Resolution, getChain func(string)
 		return BoundResolution{
 			ChainKey:  res.ChainKey,
 			Operation: pr.operationFor(res.ChainKey),
+			// Carried through as produced. A direct route inspected no request, so a
+			// route-key resolver contributes nothing here.
+			Attributes: res.Attributes,
 		}, chain, nil
 	}
 

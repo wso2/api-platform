@@ -45,6 +45,12 @@ import (
 // directive 2 / go-control-plane-xds-security.md directive 5) -- unbounded
 // defaults let one client (a misbehaving/compromised policy-engine) exhaust
 // memory or the stream-slot budget every other connection depends on.
+//
+// policyXDSMaxMessageSize is paired with maxRecvMsgSize in the policy engine's
+// internal/xdsclient: the engine has to raise its own receive limit off
+// gRPC-Go's 4 MiB default to accept a snapshot this size. Changing the value
+// here without changing it there leaves the engine rejecting snapshots this
+// server considers valid, so keep the two in step.
 const (
 	policyXDSMaxMessageSize       = 16 * 1024 * 1024
 	policyXDSMaxConcurrentStreams = 1000

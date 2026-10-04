@@ -38,6 +38,11 @@ import { BASE_PATH } from "./paths";
 import { BFFAuthProvider } from "./contexts/BFFAuthProvider";
 import { useAppAuth } from "./contexts/AppAuthContext";
 import BasicAuthLoginPage from "./pages/login/BasicAuthLoginPage";
+import AutoLoginPage from "./pages/login/AutoLoginPage";
+import {
+  BrandLogoProvider,
+  type BrandLogo,
+} from "./branding/BrandLogoProvider";
 import type { AIWorkspaceCloudEntry } from "./extensions";
 
 function LoadingScreen({ message }: { message?: string }) {
@@ -65,14 +70,6 @@ function LoadingScreen({ message }: { message?: string }) {
   );
 }
 
-function OIDCRedirect() {
-  const { login } = useAppAuth();
-  useEffect(() => {
-    void login();
-  }, [login]);
-  return <LoadingScreen message="Redirecting to sign in…" />;
-}
-
 function AppGate({
   extensions,
 }: {
@@ -98,7 +95,16 @@ function AppGate({
         />
       );
     }
-    return <OIDCRedirect />;
+    // The portal's own login page, not a bare redirect. It does everything the
+    // redirect did — kick off `GET /api/auth/login` when there is nothing to show —
+    // and additionally renders the `?error=` screen a failed callback bounces back
+    // to, instead of silently re-redirecting into a loop.
+    //
+    // Rendering the page rather than redirecting from here is also what lets a
+    // deployment put something ON it: an overlay that offers identity providers
+    // needs the page to actually mount. Redirecting from above the router meant it
+    // never could, whatever the route said.
+    return <AutoLoginPage />;
   }
   return (
     <IntlProvider locale="en" defaultLocale="en">
@@ -109,36 +115,43 @@ function AppGate({
 
 export type AIWorkspaceProps = {
   extensions?: readonly AIWorkspaceCloudEntry[];
+  /** Optional logo for the header, login, and register pages. */
+  brandLogo?: BrandLogo;
 };
 
-export default function AIWorkspace({ extensions = [] }: AIWorkspaceProps) {
+export default function AIWorkspace({
+  brandLogo,
+  extensions = [],
+}: AIWorkspaceProps) {
   return (
-    <OxygenUIThemeProvider
-      themes={[
-        {
-          key: "acrylicOrange",
-          label: "Acrylic Orange Theme",
-          theme: AcrylicOrangeTheme,
-        },
-        {
-          key: "acrylicPurple",
-          label: "Acrylic Purple Theme",
-          theme: AcrylicPurpleTheme,
-        },
-        {
-          key: "highContrast",
-          label: "High Contrast Theme",
-          theme: HighContrastTheme,
-        },
-        { key: "classic", label: "Classic Theme", theme: ClassicTheme },
-      ]}
-      initialTheme="acrylicOrange"
-    >
-      <BrowserRouter basename={BASE_PATH}>
-        <BFFAuthProvider>
-          <AppGate extensions={extensions} />
-        </BFFAuthProvider>
-      </BrowserRouter>
-    </OxygenUIThemeProvider>
+    <BrandLogoProvider brandLogo={brandLogo}>
+      <OxygenUIThemeProvider
+        themes={[
+          {
+            key: "acrylicOrange",
+            label: "Acrylic Orange Theme",
+            theme: AcrylicOrangeTheme,
+          },
+          {
+            key: "acrylicPurple",
+            label: "Acrylic Purple Theme",
+            theme: AcrylicPurpleTheme,
+          },
+          {
+            key: "highContrast",
+            label: "High Contrast Theme",
+            theme: HighContrastTheme,
+          },
+          { key: "classic", label: "Classic Theme", theme: ClassicTheme },
+        ]}
+        initialTheme="acrylicOrange"
+      >
+        <BrowserRouter basename={BASE_PATH}>
+          <BFFAuthProvider>
+            <AppGate extensions={extensions} />
+          </BFFAuthProvider>
+        </BrowserRouter>
+      </OxygenUIThemeProvider>
+    </BrandLogoProvider>
   );
 }

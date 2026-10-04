@@ -19,33 +19,51 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
-
 type APIHandler struct {
-	apiService *service.APIService
-	identity   *service.IdentityService
-	slogger    *slog.Logger
+	apiService   *service.APIService
+	identity     *service.IdentityService
+	apiDocumentService *service.APIDocumentService
+	slogger      *slog.Logger
+	cfg          *config.Server
 }
 
-func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, slogger *slog.Logger) *APIHandler {
+func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger,cfg *config.Server) *APIHandler {
 	return &APIHandler{
-		apiService: apiService,
-		identity:   identity,
-		slogger:    slogger,
+		apiService:   apiService,
+		identity:     identity,
+		apiDocumentService: apiDocumentService,
+		slogger:      slogger,
+		cfg:          cfg,
 	}
+}
+
+// getOpenAPISpecMaxBytes returns the configured max bytes, falling back to 5 MiB if unset.
+func (h *APIHandler) getOpenAPISpecMaxBytes() int64 {
+	if h.cfg.OpenAPISpecMaxFetchBytes <= 0 {
+		return constants.DefaultOpenAPISpecMaxBytes
+	}
+	return h.cfg.OpenAPISpecMaxFetchBytes
 }
 
 // CreateAPI handles POST /api/v0.9/rest-apis and creates a new API
@@ -86,7 +104,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
+	apiResponse, _, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
@@ -283,10 +301,364 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 	return nil
 }
 
+// ImportOpenAPI handles POST /api/v0.9/rest-apis/import-openapi.
+// Accepts multipart/form-data with either a spec `file` upload OR a `url`
+// only supports OpenApi 3.x and Swagger 2.x specs are rejected.
+func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	maxBytes := h.getOpenAPISpecMaxBytes()
+	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
+		return err
+	}
+
+	var req api.ImportOpenAPIRequest
+	req.DisplayName = strings.TrimSpace(r.FormValue("displayName"))
+	req.Version = strings.TrimSpace(r.FormValue("version"))
+	req.Context = strings.TrimSpace(r.FormValue("context"))
+	req.ProjectId = strings.TrimSpace(r.FormValue("projectId"))
+	if id := strings.TrimSpace(r.FormValue("id")); id != "" {
+		req.Id = &id
+	}
+	if desc := strings.TrimSpace(r.FormValue("description")); desc != "" {
+		req.Description = &desc
+	}
+	if upstreamStr := r.FormValue("upstream"); upstreamStr != "" {
+		if err := json.Unmarshal([]byte(upstreamStr), &req.Upstream); err != nil {
+			return apperror.ValidationFailed.New("upstream must be a valid JSON object")
+		}
+	}
+
+	if req.DisplayName == "" {
+		return apperror.ValidationFailed.New("displayName is required")
+	}
+	if req.Version == "" {
+		return apperror.ValidationFailed.New("version is required")
+	}
+	if req.Context == "" {
+		return apperror.ValidationFailed.New("context is required")
+	}
+	if req.ProjectId == "" {
+		return apperror.ValidationFailed.New("projectId is required")
+	}
+	if isEmptyUpstreamDefinition(req.Upstream.Main) && (req.Upstream.Sandbox == nil || isEmptyUpstreamDefinition(*req.Upstream.Sandbox)) {
+		return apperror.ValidationFailed.New("At least one upstream endpoint (main or sandbox) is required")
+	}
+	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
+		return err
+	}
+
+	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
+	if err != nil {
+		return err
+	}
+
+	specContent := spec.content
+	specFileName := spec.filename
+
+	// Validate and extract operations from spec
+	operations, err := h.apiDocumentService.ExtractOperationsFromSpec(specContent)
+	if err != nil {
+		return err
+	}
+
+	// Create the API with extracted operations
+	createdBy, err := resolveActorErr(r, h.identity, "import OpenAPI")
+	if err != nil {
+		return err
+	}
+
+	createReq := &api.CreateRESTAPIRequest{
+		Id:          req.Id,
+		DisplayName: req.DisplayName,
+		Version:     req.Version,
+		Context:     req.Context,
+		ProjectId:   req.ProjectId,
+		Description: req.Description,
+		Upstream:    req.Upstream,
+		Operations:  &operations,
+	}
+
+	apiResponse, artifactUUID, err := h.apiService.CreateAPI(createReq, orgId, createdBy)
+	if err != nil {
+		return serviceError(err, "failed to create API in org "+orgId)
+	}
+
+	// Persist the spec document
+	// If this fails, rollback the API creation
+	docReq := &dto.CreateAPIDocumentRequest{
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
+		FileName:         specFileName,
+		Content:		  specContent,
+	}
+
+	_, docErr := h.apiDocumentService.CreateDocument(docReq, orgId, createdBy, artifactUUID)
+	if docErr != nil {
+		h.slogger.Error("Failed to persist OpenAPI spec document; rolling back API", 
+			"apiId", artifactUUID, "error", docErr)
+		if rollbackErr := h.apiService.DeleteAPI(artifactUUID, orgId, createdBy); rollbackErr != nil {
+			h.slogger.Error("Rollback after document creation failure also failed", 
+				"apiId", artifactUUID, "error", rollbackErr)
+		}
+		return apperror.Internal.Wrap(docErr).WithLogMessage("failed to persist API specification")
+	}
+
+	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
+	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
+	return nil
+}
+
+// GetOpenAPISpec handles GET /rest-apis/{restApiId}/openapi.
+func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	restApiId := r.PathValue("restApiId")
+	if restApiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	// Resolve artifact UUID from API handle
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to resolve API "+restApiId+" in org "+orgId)
+	}
+
+	// Retrieve document
+	doc, err := h.apiDocumentService.GetDocument(artifactUUID, orgId)
+	if err != nil {
+		return serviceError(err, "failed to fetch openapi spec for API "+restApiId)
+	}
+
+	content := string(doc.Content)
+	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
+	return nil
+}
+
+// PutOpenAPISpec handles PUT /rest-apis/{restApiId}/openapi.
+// Replaces (or creates) the API definition spec for this API. Only OpenAPI 3.x
+// specs are accepted; Swagger 2.x is rejected.
+func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
+	}
+
+	restApiId := r.PathValue("restApiId")
+	if restApiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	maxBytes := h.getOpenAPISpecMaxBytes()
+	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
+	if err != nil {
+		return err
+	}
+	specContent := spec.content
+	specFileName := spec.filename
+
+	updatedBy, err := resolveActorErr(r, h.identity, "update API openapi spec")
+	if err != nil {
+		return err
+	}
+
+	// Fetch existing API before branching — needed to check read-only status and,
+	// in the non-read-only path, to merge existing operation policies.
+	existingAPI, err := h.apiService.GetAPIByHandle(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to fetch API "+restApiId+" to sync operations from spec")
+	}
+
+	// Resolve artifact UUID
+	artifactUUID, err := h.apiService.GetArtifactUUID(restApiId, orgId)
+	if err != nil {
+		return serviceError(err, "failed to resolve API "+restApiId+" in org "+orgId)
+	}
+
+	operationsUpdated := false
+	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
+		// Read-only API: validate the spec but do not update operations.
+		if result := h.apiDocumentService.ValidateOpenAPISpec(specContent); !result.IsValid {
+			msg := "invalid OpenAPI specification"
+			if len(result.Errors) > 0 {
+				msg = result.Errors[0].Message
+			}
+			return apperror.ValidationFailed.New(msg)
+		}
+	} else {
+		// Non-read-only: validate, extract operations, merge with existing policies.
+		syncedOps, err := h.apiDocumentService.ExtractAndMergeOperations(specContent, existingAPI.Operations)
+		if err != nil {
+			return err
+		}
+		if len(syncedOps) > 0 {
+			updatedAPI := *existingAPI
+			updatedAPI.Operations = &syncedOps
+			_, err = h.apiService.UpdateAPIByHandle(restApiId, &updatedAPI, orgId, updatedBy)
+			if err != nil {
+				return serviceError(err, "failed to update operations for API "+restApiId+" after spec change")
+			}
+			operationsUpdated = true
+		}
+	}
+
+	// Update document
+	docReq := &dto.PutAPIDocumentRequest{
+		Type:             constants.DocumentTypeDefinition,
+		Handle:           constants.DocumentHandleDefinition,
+		DisplayName:      constants.DocumentDisplayNameDefinition,
+		FileName:         specFileName,
+		Content:		  specContent,
+	}
+
+	if err := h.apiDocumentService.PutDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {
+		h.slogger.Error("Failed to persist spec", "api", restApiId, "error", err)
+		if operationsUpdated {
+			if _, rollbackErr := h.apiService.UpdateAPIByHandle(restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {
+				h.slogger.Error("Failed to restore operations after spec persist failure",
+					"api", restApiId, "error", rollbackErr)
+			}
+		}
+		return serviceError(err, "failed to persist API specification for API "+restApiId)
+	}
+
+	content := string(specContent)
+	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
+	return nil
+}
+
+// ValidateOpenAPI handles POST /api/v0.9/rest-apis/validate-openapi.
+// Validates an OpenAPI 3.x spec without creating or modifying any resource.
+func (h *APIHandler) ValidateOpenAPI(w http.ResponseWriter, r *http.Request) error {
+	maxBytes := h.getOpenAPISpecMaxBytes()
+	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
+	if err != nil {
+		return err
+	}
+
+	result := h.apiDocumentService.ValidateOpenAPISpec(spec.content)
+	if !spec.fromURL || result.IsValid {
+		content := string(spec.content)
+		result.Content = &content
+	}
+	httputil.WriteJSON(w, http.StatusOK, result)
+	return nil
+}
+
+// openAPISpecUpload is the resolved-spec form of a validate/import multipart request.
+type openAPISpecUpload struct {
+	content  []byte
+	filename string
+	fromURL bool
+}
+
+// Parses the incoming multipart form under a body cap.
+func (h *APIHandler) parseSpecMultipartForm(w http.ResponseWriter, r *http.Request, maxBytes int64) error {
+	// The body cap has to allow for multipart boundaries, part headers, and
+	// (for import) the sibling form fields (displayName, context, upstream, …)
+	// on top of the spec itself.
+	const multipartOverhead = 1 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+multipartOverhead)
+	if parseErr := r.ParseMultipartForm(maxBytes); parseErr != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(parseErr, &maxErr) {
+			return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+		}
+		return apperror.ValidationFailed.New("invalid multipart form")
+	}
+	return nil
+}
+
+// Extracts an OpenAPI spec from a multipart form that carries either a `file` upload or a `url` for the backend to fetch.
+func (h *APIHandler) readOpenAPISpecFromMultipart(w http.ResponseWriter, r *http.Request, maxBytes int64) (openAPISpecUpload, error) {
+	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
+		return openAPISpecUpload{}, err
+	}
+
+	specURL := strings.TrimSpace(r.FormValue("url"))
+	file, header, fileErr := r.FormFile("file")
+	hasFile := fileErr == nil
+	hasURL := specURL != ""
+
+	// Enforce exactly-one-of at the boundary so downstream never sees an
+	// ambiguous request. Reject BOTH-supplied outright rather than picking a
+	// silent winner, so a caller that sent both by mistake finds out.
+	if (hasFile && hasURL) || (!hasFile && !hasURL) {
+		if hasFile {
+			file.Close()
+		}
+		return openAPISpecUpload{}, apperror.ValidationFailed.New("provide either `file` or `url`")
+	}
+
+	if hasFile {
+		defer file.Close()
+		data, readErr := io.ReadAll(io.LimitReader(file, maxBytes+1))
+		if readErr != nil {
+			return openAPISpecUpload{}, apperror.ValidationFailed.New("failed to read spec file")
+		}
+		if int64(len(data)) > maxBytes {
+			return openAPISpecUpload{}, apperror.PayloadTooLarge.New("file exceeds maximum allowed size")
+		}
+		return openAPISpecUpload{
+			content:  data,
+			filename: h.apiDocumentService.NormalizeSpecFileName(header.Filename),
+			fromURL:  false,
+		}, nil
+	}
+
+	content, fetchErr := utils.FetchOpenAPISpecFromURL(r.Context(), specURL, maxBytes)
+	if fetchErr != nil {
+		h.slogger.Warn("failed to fetch OpenAPI spec from URL", "error", fetchErr)
+		var appErr *apperror.Error
+		if errors.As(fetchErr, &appErr) {
+			return openAPISpecUpload{}, fetchErr
+		}
+		return openAPISpecUpload{}, apperror.ValidationFailed.New("failed to fetch OpenAPI spec from the provided URL")
+	}
+	contentBytes := []byte(content)
+	return openAPISpecUpload{
+		content:  contentBytes,
+		filename: h.apiDocumentService.NormalizeSpecFileName(specFileNameFromURL(specURL, contentBytes)),
+		fromURL:  true,
+	}, nil
+}
+
+func specFileNameFromURL(rawURL string, content []byte) string {
+	ext := ".yaml"
+	if utils.IsJSONBytes(content) {
+		ext = ".json"
+	}
+	if parsed, err := url.Parse(rawURL); err == nil {
+		base := path.Base(parsed.Path)
+		if base != "" && base != "." && base != "/" {
+			lower := strings.ToLower(base)
+			if strings.HasSuffix(lower, ".json") ||
+				strings.HasSuffix(lower, ".yaml") ||
+				strings.HasSuffix(lower, ".yml") {
+				return base
+			}
+			return base + ext
+		}
+	}
+	if ext == ".json" {
+		return constants.DefaultOpenAPISpecJSONFileName
+	}
+	return constants.DefaultOpenAPISpecYAMLFileName
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
 	base := constants.APIBasePath + "/rest-apis"
+	mux.HandleFunc("POST "+base+"/validate-openapi", middleware.MapErrors(h.slogger, h.ValidateOpenAPI))
+	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))
@@ -294,6 +666,8 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.DeleteAPI))
 	mux.HandleFunc("GET "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.GetAPIGateways))
 	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.AddGatewaysToAPI))
+	mux.HandleFunc("GET "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.GetOpenAPISpec))
+	mux.HandleFunc("PUT "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.PutOpenAPISpec))
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

@@ -228,8 +228,23 @@ func inheritLLMProxyCredentials(incoming *api.LLMProxyConfiguration, storedSourc
 		return
 	}
 
-	if incoming.Spec.Provider.Id == stored.Spec.Provider.Id {
+	if incoming.Spec.Provider != nil && stored.Spec.Provider != nil &&
+		incoming.Spec.Provider.Id == stored.Spec.Provider.Id {
 		inheritLLMUpstreamAuth(&incoming.Spec.Provider.Auth, stored.Spec.Provider.Auth)
+	}
+
+	// The canonical shape carries the same credentials per entry, matched by id.
+	if incoming.Spec.Providers != nil && stored.Spec.Providers != nil {
+		storedEntryAuth := make(map[string]*api.LLMUpstreamAuth, len(*stored.Spec.Providers))
+		for _, entry := range *stored.Spec.Providers {
+			storedEntryAuth[entry.Id] = entry.Auth
+		}
+		incomingEntries := *incoming.Spec.Providers
+		for i := range incomingEntries {
+			if storedAuth, found := storedEntryAuth[incomingEntries[i].Id]; found {
+				inheritLLMUpstreamAuth(&incomingEntries[i].Auth, storedAuth)
+			}
+		}
 	}
 
 	if incoming.Spec.AdditionalProviders == nil || stored.Spec.AdditionalProviders == nil {

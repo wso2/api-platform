@@ -70,6 +70,15 @@ var (
 	TrafficLogFlushDurationSecond HistogramVec
 	TrafficLogWriteErrorsTotal    CounterVec
 
+	// Analytics publisher metrics, labelled by publisher so a second publisher
+	// (Moesif, or a future one) reports on the same series rather than its own.
+	AnalyticsPublishedTotal        CounterVec
+	AnalyticsDroppedTotal          CounterVec
+	AnalyticsQueueDepth            GaugeVec
+	AnalyticsQueueCapacity         GaugeVec
+	AnalyticsExportDurationSeconds HistogramVec
+	AnalyticsExportErrorsTotal     CounterVec
+
 	// ResolutionFailuresTotal counts requests whose logical operation could not be
 	// resolved to a policy chain, labelled by resolver name and FailureKind. It
 	// sits alongside RouteLookupFailuresTotal rather than replacing it: that one
@@ -364,6 +373,75 @@ func initMetrics() {
 		[]string{"sink", "code"},
 	)
 
+	// Analytics publisher metrics. An analytics event that never reaches its
+	// destination is invisible to the customer's own dashboards and billing
+	// views, so dropped_total is the series to alert on; the rest exist to
+	// diagnose it. Labelled by publisher rather than named per publisher, so
+	// "are we losing analytics?" is one query regardless of how many are enabled.
+	AnalyticsPublishedTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "analytics_published_total",
+			Help:      "Total number of analytics records successfully delivered, by publisher",
+		},
+		[]string{"publisher"},
+	)
+
+	AnalyticsDroppedTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "analytics_dropped_total",
+			Help: "Total number of analytics records dropped, by publisher and reason " +
+				"(queue_full, send_failed, backpressure, rejected, serialize_failed)",
+		},
+		[]string{"publisher", "reason"},
+	)
+
+	AnalyticsQueueDepth = newGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "analytics_queue_depth",
+			Help:      "Current number of analytics records queued for export, by publisher",
+		},
+		[]string{"publisher"},
+	)
+
+	// Published so an alert can compare depth against capacity as a RATIO. A
+	// fixed depth threshold is meaningless on its own: 1000 is 10% of the
+	// default 10000 queue (fires far too early) and unreachable on a queue
+	// configured smaller than that (never fires at all).
+	AnalyticsQueueCapacity = newGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "analytics_queue_capacity",
+			Help:      "Configured capacity of the analytics export queue, by publisher",
+		},
+		[]string{"publisher"},
+	)
+
+	// Covers the whole delivery of one batch including retries and backoff, not a
+	// single request: that total is what holds the export worker, and therefore
+	// what lets the queue fill behind it.
+	AnalyticsExportDurationSeconds = newHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "analytics_export_duration_seconds",
+			Help:      "Duration of an analytics batch delivery including retries, by publisher",
+			Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0},
+		},
+		[]string{"publisher"},
+	)
+
+	AnalyticsExportErrorsTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "analytics_export_errors_total",
+			Help: "Total number of analytics export errors, by publisher and code " +
+				"(HTTP status, or a short error class for non-HTTP failures)",
+		},
+		[]string{"publisher", "code"},
+	)
+
 	ResolutionFailuresTotal = newCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
@@ -487,6 +565,14 @@ func initRegistry() {
 	registerGaugeVec(TrafficLogQueueCapacity)
 	registerHistogramVec(TrafficLogFlushDurationSecond)
 	registerCounterVec(TrafficLogWriteErrorsTotal)
+
+	registerCounterVec(AnalyticsPublishedTotal)
+	registerCounterVec(AnalyticsDroppedTotal)
+	registerGaugeVec(AnalyticsQueueDepth)
+	registerGaugeVec(AnalyticsQueueCapacity)
+	registerHistogramVec(AnalyticsExportDurationSeconds)
+	registerCounterVec(AnalyticsExportErrorsTotal)
+
 	registerCounterVec(ResolutionFailuresTotal)
 	registerCounterVec(RouteResolutionIngestFailuresTotal)
 

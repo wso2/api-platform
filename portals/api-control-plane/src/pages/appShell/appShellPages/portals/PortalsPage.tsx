@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { AppPage } from '@/components/AppPage';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
+import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
+
+/**
+ * Mounted under `apiScopedPaths(routes.apiPortals)` so out of API scope the
+ * gate walks the user down to a project and API before rendering the list.
+ * Publishing an API is inherently API-scoped, and the org-level portal registry
+ * is a separate feature registered by the cloud plugin as "Portals".
+ */
+export function PortalsPage() {
+  return (
+    <AppPage>
+      <ScopeGate
+        prompt="Publish an API to a portal at the API level."
+        requires="api"
+        to={routes.apiPortals}
+      >
+        <ApiPortalPublicationsList />
+      </ScopeGate>
+    </AppPage>
+  );
+}

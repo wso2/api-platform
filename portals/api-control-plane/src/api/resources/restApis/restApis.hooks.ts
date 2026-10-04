@@ -30,12 +30,19 @@ import { useApiScope } from '../../core/scope';
 import {
   createRestApi,
   deleteRestApi,
+  importOpenApi,
+  putRestApiOpenApi,
   updateRestApi,
+  validateOpenApiSpec,
   type CreateRestApiBody,
   type ListRestApisQuery,
+  type OpenAPIContent,
+  type OpenAPIValidationError,
   type RestApi,
   type RestApiListResponse,
   type UpdateRestApiBody,
+  type ValidateOpenAPIResponse,
+  type ValidateOpenApiSpecInput,
 } from './restApis.endpoints';
 import { restApiKeys, restApiQueries } from './restApis.queries';
 
@@ -212,6 +219,34 @@ const useInvalidateRestApis = (orgId?: string) => {
 };
 
 /**
+ * Creates a REST API from an OpenAPI spec file or URL.
+ *
+ * The caller builds the `FormData` and passes it directly — field names must
+ * match what `POST /rest-apis/import-openapi` expects.
+ *
+ * When `handlesErrors` is true, errors are handled locally and won't trigger
+ * the global snackbar. Otherwise, errors reach the snackbar by default.
+ */
+export const useImportOpenApi = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
+  const { org, orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateRestApis(orgId);
+
+  return useMutation<RestApi, ApiError, FormData>({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
+    mutationFn: (formData) => importOpenApi(formData, { orgId }),
+    onSuccess: (created) => {
+      if (org && created.id) {
+        queryClient.setQueryData(restApiKeys.detail(org, created.id), created);
+      }
+      invalidate();
+    },
+  });
+};
+
+/**
  * When `handlesErrors` is true, errors are handled locally and won't trigger
  * the global snackbar. Otherwise, errors reach the snackbar by default.
  */
@@ -355,3 +390,62 @@ export const useRestApiOptions = (filters: RestApiListFilters = {}) => {
       })),
   });
 };
+
+/**
+ * The stored OpenAPI spec for the active API.
+ *
+ * `isError` with `error.status === 404` means the API exists but has no uploaded
+ * spec yet — the definition panel renders its empty state in that case.
+ * Any other error is an unexpected failure.
+ */
+export const useRestApiOpenApi = (
+  restApiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...restApiQueries.openApi(org!, restApiId!),
+    enabled: Boolean(org && restApiId),
+  });
+};
+
+/** Replaces (or creates) the API definition spec via a multipart file upload. */
+export const usePutRestApiOpenApi = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const queryClient = useQueryClient();
+  const { org } = useApiScope(overrides);
+
+  return useMutation<OpenAPIContent, ApiError, { restApiId: string; formData: FormData }>({
+    mutationFn: ({ restApiId, formData }) => putRestApiOpenApi(restApiId, formData, { orgId }),
+    onSuccess: (_result, { restApiId }) => {
+      if (org) {
+        void queryClient.invalidateQueries({
+          queryKey: restApiKeys.children(org, restApiId, 'openapi'),
+        });
+        // A spec PUT re-extracts operations on the backend, so the detail cache
+        // (which carries the operations list) is stale after a successful save.
+        void queryClient.invalidateQueries({
+          queryKey: restApiKeys.detail(org, restApiId),
+        });
+      }
+    },
+  });
+};
+
+/**
+ * Validates an OpenAPI spec against the backend validator (libopenapi).
+ *
+ * Accepts a discriminated input: `{ file }` uploads the raw bytes, `{ url }`
+ * has the backend fetch the URL server-side.
+ */
+export const useValidateOpenApiSpec = () => {
+  return useMutation<ValidateOpenAPIResponse, ApiError, ValidateOpenApiSpecInput>({
+    meta: HANDLED_LOCALLY,
+    mutationFn: (input) => validateOpenApiSpec(input),
+  });
+};
+
+/** Re-export so consumers can type validation errors without reaching into endpoints. */
+export type { OpenAPIValidationError, ValidateOpenAPIResponse, ValidateOpenApiSpecInput };
+

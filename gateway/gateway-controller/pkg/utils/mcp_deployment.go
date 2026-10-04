@@ -37,7 +37,9 @@ import (
 )
 
 const (
-	LATEST_SUPPORTED_MCP_SPEC_VERSION = "2025-06-18"
+	// MIN_SUPPORTED_MCP_SPEC_VERSION is the oldest MCP revision this gateway supports. A proxy
+	// that declares no version is treated as this revision.
+	MIN_SUPPORTED_MCP_SPEC_VERSION = "2025-06-18"
 )
 
 var ErrMCPDeploymentIDMismatch = errors.New("mcp proxy deployment id mismatch")

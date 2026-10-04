@@ -26,16 +26,20 @@ import type { AIWorkspaceCloudEntry } from "./extensions";
 // `portals/api-control-plane/src/main.tsx`. Wrapped in an async function
 // rather than a top-level `await` for broader build-target compatibility.
 async function bootstrap() {
-  const cloudExtensions: AIWorkspaceCloudEntry[] = await import("./cloud")
-    .then((module) => module.cloudExtensions)
-    .catch((error) => {
-      console.warn("Cloud extensions could not be loaded.", error);
-      return [];
-    });
+  // The cloud module provides extensions and, when available, the cloud logo.
+  const cloudModule = await import("./cloud").catch((error) => {
+    console.warn("Cloud extensions could not be loaded.", error);
+    return null;
+  });
+  const cloudExtensions: readonly AIWorkspaceCloudEntry[] =
+    cloudModule?.cloudExtensions ?? [];
 
   createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <AIWorkspace extensions={cloudExtensions} />
+      <AIWorkspace
+        brandLogo={cloudModule?.cloudBrandLogo}
+        extensions={cloudExtensions}
+      />
     </React.StrictMode>,
   );
 }

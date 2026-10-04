@@ -24,6 +24,10 @@ export type DeploymentStatusBarProps = {
   tone: StatusTone;
 };
 
+/*
+ * NOT WIRED YET. Kept for the design it already carries: the gateway row shows its
+ * state as a pill instead, so nothing renders this today.
+ */
 /**
  * The full-width "Deployment Status" row shown per gateway. Reuses `Alert`'s
  * built-in severity tinting for success/warning/error (adapts to light/dark

@@ -1,0 +1,240 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "compat-single-provider-auth"
+  },
+  "spec": {
+    "context": "/compat-single-auth",
+    "displayName": "compat-single-provider-auth",
+    "operations": [
+      {
+        "method": "DELETE",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/*",
+        "policies": [
+          {
+            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "Bearer primary"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          },
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      }
+    ],
+    "upstream": {
+      "main": {
+        "url": "http://127.0.0.1:8080/openai-provider"
+      }
+    },
+    "upstreamDefinitions": [
+      {
+        "basePath": "/openai-provider",
+        "name": "openai-provider",
+        "upstreams": [
+          {
+            "url": "http://127.0.0.1:8080"
+          }
+        ]
+      }
+    ],
+    "version": "v1.0"
+  }
+}

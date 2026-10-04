@@ -22,16 +22,18 @@ package apperror
 // the fallback used by NewErrorResponse when a handler hasn't been
 // migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed    = "VALIDATION_FAILED"
-	CodeCommonUnauthorized        = "UNAUTHORIZED"
-	CodeCommonForbidden           = "FORBIDDEN"
-	CodeCommonNotFound            = "NOT_FOUND"
-	CodeCommonConflict            = "CONFLICT"
-	CodeCommonNotAcceptable       = "NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity = "UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError       = "INTERNAL_ERROR"
-	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
+	CodeCommonValidationFailed     = "VALIDATION_FAILED"
+	CodeCommonUnauthorized         = "UNAUTHORIZED"
+	CodeCommonForbidden            = "FORBIDDEN"
+	CodeCommonNotFound             = "NOT_FOUND"
+	CodeCommonConflict             = "CONFLICT"
+	CodeCommonNotAcceptable        = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity  = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError        = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable   = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests      = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge      = "PAYLOAD_TOO_LARGE"
+	CodeCommonUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in
@@ -84,6 +86,9 @@ const (
 // Deployment domain codes, shared across REST API / LLM provider / LLM proxy /
 // MCP proxy deployment operations (identical conditions across all four).
 const (
+	CodeBuildNotFound             = "BUILD_NOT_FOUND"
+	CodeBuildLimitReached         = "BUILD_LIMIT_REACHED"
+	CodeBuildInUse                = "BUILD_IN_USE"
 	CodeDeploymentBaseNotFound    = "DEPLOYMENT_BASE_NOT_FOUND"
 	CodeDeploymentRestoreConflict = "DEPLOYMENT_RESTORE_CONFLICT"
 	CodeDeploymentNotFound        = "DEPLOYMENT_NOT_FOUND"
@@ -112,6 +117,15 @@ const (
 	CodeMCPProxyUpstreamUnauthorized       = "MCP_PROXY_UPSTREAM_UNAUTHORIZED"
 )
 
+// Agent proxy domain codes.
+const (
+	CodeAgentProxyNotFound                   = "AGENT_PROXY_NOT_FOUND"
+	CodeAgentProxyExists                     = "AGENT_PROXY_EXISTS"
+	CodeAgentProxyUpstreamUnreachable        = "AGENT_PROXY_UPSTREAM_UNREACHABLE"
+	CodeAgentProxyDeploymentValidationFailed = "AGENT_PROXY_DEPLOYMENT_VALIDATION_FAILED"
+	CodeAgentProxyDeploymentNotUndeployed    = "AGENT_PROXY_DEPLOYMENT_NOT_UNDEPLOYED"
+)
+
 // Organization domain codes.
 const (
 	CodeOrganizationNotFound = "ORGANIZATION_NOT_FOUND"
@@ -131,6 +145,12 @@ const (
 const (
 	CodeApplicationNotFound = "APPLICATION_NOT_FOUND"
 	CodeApplicationExists   = "APPLICATION_EXISTS"
+)
+
+// API Portal domain codes.
+const (
+	CodeAPIPortalNotFound = "API_PORTAL_NOT_FOUND"
+	CodeAPIPortalExists   = "API_PORTAL_EXISTS"
 )
 
 // Subscription domain codes.
@@ -201,4 +221,27 @@ const (
 	CodeHmacSecretExists        = "HMAC_SECRET_EXISTS"
 	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
 	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
+)
+
+// API Publication domain codes. CodeAPIPublicationAPINotFound covers an
+// unknown (apiType, apiId) pair or an apiType this build doesn't serve —
+// distinct from CodeArtifactNotFound (used elsewhere in the codebase for the
+// same resolution mechanism) because this feature documents API_NOT_FOUND as
+// part of its own client-facing contract.
+const (
+	CodeAPIPublicationAPINotFound       = "API_NOT_FOUND"
+	CodeAPIPublicationDraftNotFound     = "DRAFT_NOT_FOUND"
+	CodeAPIPublicationNotFound          = "PUBLICATION_NOT_FOUND"
+	CodeAPIPublicationValidationFailed  = "PUBLICATION_VALIDATION_FAILED"
+	CodeAPIPublicationTypeUnsupported   = "PUBLICATION_TYPE_UNSUPPORTED"
+	CodeAPIPublicationPortalConflict    = "PUBLICATION_PORTAL_CONFLICT"
+	CodeAPIPublicationPortalUnavailable = "PUBLICATION_PORTAL_UNAVAILABLE"
+	// CodeAPIPublicationStateConflict: the action (unpublish, deprecate) is not
+	// valid for the listing's current status. Distinct from
+	// CodeAPIPublicationNotFound (404, used by the live-listing reads) — this is
+	// a 409 on an action, not a missing-resource read.
+	CodeAPIPublicationStateConflict = "PUBLICATION_STATE_CONFLICT"
+	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
+	// was in flight, so the copy sent to the portal is no longer the draft.
+	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
 )

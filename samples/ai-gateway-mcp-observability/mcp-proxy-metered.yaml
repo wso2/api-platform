@@ -1,0 +1,39 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Mcp
+metadata:
+  name: metered-mcp
+spec:
+  displayName: Metered MCP
+  version: v1.0
+  context: /metered
+  specVersion: "2025-06-18"
+  upstream:
+    # The same MCP server as the toolbox proxy. Only the policies below differ.
+    url: http://mcp-everything:3001/mcp
+  policies:
+    - name: mcp-auth
+      version: v1
+      params:
+        issuers:
+          - sample-key-manager
+        userIdClaim: sub
+    # A narrower allowlist than the toolbox proxy: two tools instead of four.
+    - name: mcp-acl-list
+      version: v1
+      params:
+        tools:
+          mode: deny
+          exceptions:
+            - echo
+            - get-sum
+    # Fifteen calls per tool per minute. Each tool gets its own counter, and
+    # calls over the limit come back as HTTP 429. Part-way through load.sh this
+    # proxy starts being limited while the toolbox proxy keeps serving.
+    - name: mcp-ratelimit
+      version: v1
+      params:
+        tools:
+          - name: "*"
+            limits:
+              - limit: 15
+                duration: 1m

@@ -278,3 +278,137 @@ func assertNoSecretInJSON(t *testing.T, v any) {
 			"value must be omitted from the auth block, not present-but-empty")
 	}
 }
+
+// policySecret is a credential supplied through the policyParams bucket rather
+// than the deprecated `value` field. For "oauth2" and "other" auth this is the
+// only mechanism there is, so a response that keeps it discloses the credential
+// just as surely as one that keeps `value`.
+const policySecret = "sk-client-secret-must-never-be-returned-0123456789"
+
+// TestRematerializeLLMProxyConfig_RedactsPolicyParamsInEveryShape covers the
+// canonical providers[] list alongside the legacy pair, for the policyParams
+// mechanism. All three shapes reach the same auth type, so a credential must not
+// survive a read through any of them.
+func TestRematerializeLLMProxyConfig_RedactsPolicyParamsInEveryShape(t *testing.T) {
+	oauthAuth := func() map[string]any {
+		return map[string]any{
+			"type":       "oauth2",
+			"policyName": "oauth2-generator",
+			"policyParams": map[string]any{
+				"tokenEndpoint": "https://idp.example.com/token",
+				"clientId":      "proxy-client",
+				"clientSecret":  policySecret,
+			},
+		}
+	}
+
+	t.Run("legacy shape", func(t *testing.T) {
+		source := map[string]any{
+			"apiVersion": "gateway.api-platform.wso2.com/v1",
+			"kind":       "LlmProxy",
+			"metadata":   map[string]any{"name": "openai-proxy"},
+			"spec": map[string]any{
+				"displayName": "OpenAI Proxy",
+				"version":     "v1.0",
+				"provider":    map[string]any{"id": "openai-provider", "auth": oauthAuth()},
+				"additionalProviders": []any{
+					map[string]any{"id": "anthropic-provider", "as": "claude", "auth": oauthAuth()},
+				},
+			},
+		}
+
+		proxy, err := rematerializeLLMProxyConfig(slog.Default(), "id-legacy", "OpenAI Proxy", source)
+		require.NoError(t, err)
+
+		require.NotNil(t, proxy.Spec.Provider.Auth)
+		assert.Nil(t, proxy.Spec.Provider.Auth.PolicyParams, "primary policyParams must be cleared")
+		additional := *proxy.Spec.AdditionalProviders
+		require.NotNil(t, additional[0].Auth)
+		assert.Nil(t, additional[0].Auth.PolicyParams, "additionalProviders[] policyParams must be cleared")
+		assert.Equal(t, "anthropic-provider", additional[0].Id, "non-secret fields preserved")
+
+		assertNoPolicySecretInJSON(t, proxy)
+	})
+
+	t.Run("canonical shape", func(t *testing.T) {
+		source := map[string]any{
+			"apiVersion": "gateway.api-platform.wso2.com/v1",
+			"kind":       "LlmProxy",
+			"metadata":   map[string]any{"name": "openai-proxy"},
+			"spec": map[string]any{
+				"displayName": "OpenAI Proxy",
+				"version":     "v1.0",
+				"providers": []any{
+					map[string]any{"id": "openai-provider", "isPrimary": true, "auth": oauthAuth()},
+					map[string]any{"id": "anthropic-provider", "isPrimary": false, "alias": "claude", "auth": oauthAuth()},
+				},
+			},
+		}
+
+		proxy, err := rematerializeLLMProxyConfig(slog.Default(), "id-canonical", "OpenAI Proxy", source)
+		require.NoError(t, err)
+
+		require.NotNil(t, proxy.Spec.Providers)
+		entries := *proxy.Spec.Providers
+		require.Len(t, entries, 2)
+		for i := range entries {
+			require.NotNil(t, entries[i].Auth)
+			assert.Nil(t, entries[i].Auth.PolicyParams, "providers[%d] policyParams must be cleared", i)
+		}
+		assert.Equal(t, "anthropic-provider", entries[1].Id, "non-secret fields preserved")
+
+		assertNoPolicySecretInJSON(t, proxy)
+	})
+}
+
+// TestRematerializeLLMProviderConfig_RedactsPolicyParams covers the provider
+// kind, which reaches the same auth type through its own upstream block.
+func TestRematerializeLLMProviderConfig_RedactsPolicyParams(t *testing.T) {
+	source := map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1",
+		"kind":       "LlmProvider",
+		"metadata":   map[string]any{"name": "openai-provider"},
+		"spec": map[string]any{
+			"displayName": "OpenAI",
+			"version":     "v1.0",
+			"template":    "openai",
+			"upstream": map[string]any{
+				"url": "https://api.openai.com/v1",
+				"auth": map[string]any{
+					"type":         "other",
+					"policyName":   "custom-auth",
+					"policyParams": map[string]any{"bearerToken": policySecret},
+				},
+			},
+		},
+	}
+
+	provider, err := rematerializeLLMProviderConfig(slog.Default(), "id-prov", "OpenAI", source)
+	require.NoError(t, err)
+
+	require.NotNil(t, provider.Spec.Upstream.Auth)
+	assert.Nil(t, provider.Spec.Upstream.Auth.PolicyParams, "provider policyParams must be cleared")
+	assertNoPolicySecretInJSON(t, provider)
+}
+
+// TestRedactAuthCredential_ClearsBothMechanisms pins the shared helper directly:
+// whichever mechanism carried the credential, neither survives.
+func TestRedactAuthCredential_ClearsBothMechanisms(t *testing.T) {
+	value := strPtr(secretValue)
+	params := &map[string]interface{}{"clientSecret": policySecret}
+
+	redactAuthCredential(&value, &params)
+
+	assert.Nil(t, value, "value must be cleared")
+	assert.Nil(t, params, "policyParams must be cleared")
+}
+
+func assertNoPolicySecretInJSON(t *testing.T, v any) {
+	t.Helper()
+	out, err := json.Marshal(v)
+	require.NoError(t, err)
+	assert.False(t, strings.Contains(string(out), policySecret),
+		"credential leaked into the response body: %s", string(out))
+	assert.False(t, strings.Contains(string(out), "policyParams"),
+		"policyParams must be absent from the response entirely: %s", string(out))
+}

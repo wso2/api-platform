@@ -20,32 +20,38 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'user_idp_references';
 const DELETED_USER = 'deleted_user';
 
 /**
  * Find-or-create the idp reference row for this idp_id, returning its uuid.
- * user_idp_references is not portal-scoped — one row per IdP sub claim shared
- * across all portals of the same org. Falls back to a plain lookup on a
- * unique-constraint race between concurrent requests for the same idp_id.
+ * Portal-scoped: each portal maintains its own view of an IdP sub claim; the
+ * same idp_id used across two portals yields two rows, one per portal. Falls
+ * back to a plain lookup on a unique-constraint race between concurrent
+ * requests for the same (portal_id, idp_id) pair.
  */
 const resolveUuid = async (idpId) => {
+    const portalId = getPortalId();
     const reference = await findOrCreateSafe(
         TABLE,
-        { idp_id: idpId },
-        { uuid: crypto.randomUUID(), idp_id: idpId }
+        { portal_id: portalId, idp_id: idpId },
+        { portal_id: portalId, uuid: crypto.randomUUID(), idp_id: idpId }
     );
     return reference.uuid;
 };
 
 /**
  * Resolve a single created_by/updated_by-style uuid for display, returning
- * "deleted_user" when the reference no longer exists.
+ * "deleted_user" when the reference no longer exists in this portal.
  */
 const resolveDisplay = async (uuid) => {
     if (!uuid) return DELETED_USER;
-    const reference = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [uuid]);
+    const reference = await db.queryOne(
+        `SELECT * FROM ${TABLE} WHERE portal_id = ? AND uuid = ?`,
+        [getPortalId(), uuid]
+    );
     return reference ? reference.idp_id : DELETED_USER;
 };
 
@@ -59,7 +65,10 @@ const resolveMany = async (uuids) => {
     if (distinctUuids.length === 0) return result;
 
     const placeholders = distinctUuids.map(() => '?').join(', ');
-    const references = await db.query(`SELECT * FROM ${TABLE} WHERE uuid IN (${placeholders})`, distinctUuids);
+    const references = await db.query(
+        `SELECT * FROM ${TABLE} WHERE portal_id = ? AND uuid IN (${placeholders})`,
+        [getPortalId(), ...distinctUuids]
+    );
     for (const reference of references) {
         result.set(reference.uuid, reference.idp_id);
     }

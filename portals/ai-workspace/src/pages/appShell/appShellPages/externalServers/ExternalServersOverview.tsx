@@ -58,8 +58,11 @@ import {
   Clock,
   Copy,
   Edit,
+  ExternalLink,
   Eye,
   EyeOff,
+  Info,
+  Plus,
   Trash2,
 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
@@ -70,6 +73,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { API_PORTAL_ENABLED, DEFAULT_API_PORTAL_ID } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import * as mcpServerValidationApis from '../../../../apis/MCP/mcpServerValidationApis';
 import {
@@ -85,17 +89,22 @@ import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
-import { getErrorMessage } from '../../../../utils/apiError';
+import { getErrorMessage, getHttpStatus } from '../../../../utils/apiError';
+import { parseMCPServerCapabilities } from '../../../../utils/mcpCapabilities';
 import type {
   DeploymentResponse,
   MCPServer,
   MCPServerCapabilities,
   MCPServerInfoFetchRequest,
+  MCPServerInfoFetchResponse,
+  PublicationDraftDetails,
+  PublicationDraftDetailsInput,
 } from '../../../../utils/types';
 import type { ParameterValues } from '../../PolicyParameterEditor/types';
 import PolicyMapper from './PolicyMapper';
 import type { SelectedPolicy } from './PolicyMapper';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
+import CapabilitiesDrawer from './CapabilitiesDrawer';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
@@ -248,6 +257,8 @@ export default function ExternalServersOverview(): JSX.Element {
   const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
   const canDeployMcpProxy = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_CREATE);
   const canViewDeployments = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_READ);
+  const canPublishToAPIPortal = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_PUBLISH);
+  const canUnpublishFromAPIPortal = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_UNPUBLISH);
   const [server, setServer] = useState<MCPServer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
@@ -263,6 +274,19 @@ export default function ExternalServersOverview(): JSX.Element {
   const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
   const isReadOnlyServer = Boolean(server?.readOnly);
 
+  // API Portal publish state. isAPIPortalAvailable depends only on local
+  // state (feature flag + at least one active gateway deployment), never on
+  // a network round trip — a status-check failure must not hide the action.
+  const [isAPIPortalAvailable, setIsAPIPortalAvailable] = useState(false);
+  const [isPublished, setIsPublished] = useState(false)
+  const [isPublishStatusUnknown, setIsPublishStatusUnknown] = useState(true);
+  const [apiPortalUrl, setApiPortalUrl] = useState<string | undefined>();
+  const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
+  const [isPublishActionLoading, setIsPublishActionLoading] = useState(false);
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+  const [isUnpublishConfirmOpen, setIsUnpublishConfirmOpen] = useState(false);
+  const [publishDialogGatewayId, setPublishDialogGatewayId] = useState('');
+
   // Backend Connection tab
   const [endpointUrl, setEndpointUrl] = useState('');
   const [authHeaderName, setAuthHeaderName] = useState('');
@@ -276,6 +300,17 @@ export default function ExternalServersOverview(): JSX.Element {
   // successful save, since the newly saved server's own capabilities are then current.
   const [refetchedCapabilities, setRefetchedCapabilities] =
     useState<MCPServerCapabilities | null>(null);
+  // MCP protocol versions the upstream reported on the last successful Refetch Server
+  // Info, staged pending Save (mirrors refetchedCapabilities).
+  const [refetchedSupportedVersions, setRefetchedSupportedVersions] =
+    useState<string[] | undefined>(undefined);
+  // Name and version the upstream reported for itself on that same refetch. Display
+  // only — nothing persists it, so it is the proxy's own fields that would otherwise
+  // stand in for it, and those describe the proxy rather than the server.
+  const [refetchedServerInfo, setRefetchedServerInfo] =
+    useState<MCPServerInfoFetchResponse['serverInfo'] | null>(null);
+  const [isCapabilitiesDrawerOpen, setIsCapabilitiesDrawerOpen] =
+    useState(false);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -476,32 +511,39 @@ export default function ExternalServersOverview(): JSX.Element {
     }
   };
 
-  const selectedGateway = useMemo(
-    () =>
-      deployedGateways.find((gateway) => gateway.id === selectedGatewayId) ??
-      null,
-    [deployedGateways, selectedGatewayId]
+  // Shared by the Overview's "invoke URL" display/copy and by the publish flow,
+  // which writes the chosen gateway's URL into the publication draft. Returns
+  // the final, client-facing MCP endpoint URL (including the /mcp path) so
+  // every surface — displayed, copied and published — shows the same value.
+  const buildGatewayInvokeUrl = useCallback(
+    (gatewayId: string) => {
+      const gateway = deployedGateways.find((candidate) => candidate.id === gatewayId);
+      const vhost = (gateway?.endpoints?.[0] || gateway?.vhost)?.trim();
+      if (!vhost) return '';
+
+      const normalizedBase = /^https?:\/\//i.test(vhost)
+        ? vhost.replace(/\/+$/, '')
+        : `https://${vhost.replace(/\/+$/, '')}`;
+      const context = (server?.context || '/').trim();
+      const normalizedContext = context
+        ? context.startsWith('/')
+          ? context
+          : `/${context}`
+        : '/';
+      const contextWithoutTrailingSlash = normalizedContext.replace(/\/+$/, '');
+      return `${normalizedBase}${contextWithoutTrailingSlash}/mcp`;
+    },
+    [deployedGateways, server?.context]
   );
 
-  const generatedInvokeUrl = useMemo(() => {
-    const vhost = (selectedGateway?.endpoints?.[0] || selectedGateway?.vhost)?.trim();
-    if (!vhost) return '';
-
-    const normalizedBase = /^https?:\/\//i.test(vhost)
-      ? vhost.replace(/\/+$/, '')
-      : `https://${vhost.replace(/\/+$/, '')}`;
-    const context = (server?.context || '/').trim();
-    const normalizedContext = context
-      ? context.startsWith('/')
-        ? context
-        : `/${context}`
-      : '/';
-    return `${normalizedBase}${normalizedContext}`;
-  }, [server?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
+  const generatedInvokeUrl = useMemo(
+    () => buildGatewayInvokeUrl(selectedGatewayId),
+    [buildGatewayInvokeUrl, selectedGatewayId]
+  );
 
   const handleCopyInvokeUrl = async () => {
     if (!generatedInvokeUrl) return;
-    const fullUrl = `${generatedInvokeUrl}${generatedInvokeUrl.endsWith('/') ? 'mcp' : '/mcp'}`;
+    const fullUrl = generatedInvokeUrl;
     try {
       await navigator.clipboard.writeText(fullUrl);
       showSnackbar('URL copied to clipboard.', 'success');
@@ -567,6 +609,8 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
     setRefetchedCapabilities(null);
+    setRefetchedSupportedVersions(undefined);
+    setRefetchedServerInfo(null);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -608,8 +652,27 @@ export default function ExternalServersOverview(): JSX.Element {
     );
   }, [refetchedCapabilities, server]);
 
+  // Its own term rather than part of hasCapabilitiesChanges: a refetch can report a
+  // version set the proxy has not recorded while the tools, resources and prompts are
+  // unchanged, and that is still something to save.
+  const hasUpstreamVersionsChanges = useMemo(() => {
+    // An empty result counts as a change, not as "nothing learnt". Every path in the API
+    // that cannot determine the versions returns an error, so a successful response
+    // carrying none means the server named none — a fact about whatever this endpoint now
+    // points at. Treating it as no-change left the previous server's versions recorded
+    // against a backend that does not report them.
+    if (!refetchedSupportedVersions) return false;
+    return (
+      JSON.stringify(refetchedSupportedVersions) !==
+      JSON.stringify(server?.upstreamMcpSpecVersions ?? [])
+    );
+  }, [refetchedSupportedVersions, server]);
+
   const hasUnsavedChanges =
-    hasPolicyChanges || hasBackendConnectionChanges || hasCapabilitiesChanges;
+    hasPolicyChanges ||
+    hasBackendConnectionChanges ||
+    hasCapabilitiesChanges ||
+    hasUpstreamVersionsChanges;
 
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
@@ -623,6 +686,8 @@ export default function ExternalServersOverview(): JSX.Element {
       setHasCredentialChanged(false);
     }
     setRefetchedCapabilities(null);
+    setRefetchedSupportedVersions(undefined);
+    setRefetchedServerInfo(null);
   };
 
   const handleSaveChanges = async () => {
@@ -712,6 +777,13 @@ export default function ExternalServersOverview(): JSX.Element {
       ? (refetchedCapabilities ?? undefined)
       : updatePayload.capabilities;
 
+    // Same rule as capabilities: a staged refetch replaces the recorded set, otherwise
+    // the stored one is resent. Resending matters — the API's update is a full replace,
+    // so omitting this would clear what the proxy already recorded.
+    const upstreamVersionsPayload = hasUpstreamVersionsChanges
+      ? refetchedSupportedVersions
+      : updatePayload.upstreamMcpSpecVersions;
+
     try {
       setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
@@ -721,6 +793,7 @@ export default function ExternalServersOverview(): JSX.Element {
           policies: policiesPayload,
           upstream: upstreamPayload,
           capabilities: capabilitiesPayload,
+          upstreamMcpSpecVersions: upstreamVersionsPayload,
         },
         apimBaseUrl
       );
@@ -824,16 +897,38 @@ export default function ExternalServersOverview(): JSX.Element {
         prompts: response.prompts ?? [],
       };
       setRefetchedCapabilities(discoveredCapabilities);
-      // Only prompt to Save when the refetch actually found something different —
-      // hasCapabilitiesChanges won't reflect the state just set above until the next
-      // render, so this mirrors that same comparison directly against the response.
+      // Coerced so the display can tell "the probe found none" from "no probe ran" — the
+      // API omits the field in both cases, and only this side knows one happened.
+      const discoveredVersions = response.supportedVersions ?? [];
+      setRefetchedSupportedVersions(discoveredVersions);
+      // A server may omit its own identity, so this is optional in practice whatever the
+      // response type says.
+      setRefetchedServerInfo(response.serverInfo ?? null);
+      // Only prompt to Save when the refetch actually found something different — the
+      // hasCapabilitiesChanges/hasUpstreamVersionsChanges memos won't reflect the state
+      // just set above until the next render, so this mirrors both comparisons directly
+      // against the response.
       const capabilitiesChanged =
         JSON.stringify(discoveredCapabilities) !==
         JSON.stringify(normalizeCapabilities(server.capabilities));
+      const versionsChanged =
+        JSON.stringify(discoveredVersions) !==
+        JSON.stringify(server.upstreamMcpSpecVersions ?? []);
+      // Counted alongside the capabilities: a version set changing is the one discovery
+      // the other counts cannot show, so without it the message offers Save while every
+      // number in it appears unchanged. The card below lists which versions they are.
+      //
+      // Dropped entirely at zero, unlike the capability counts. A legacy server naming no
+      // version is ordinary, so "0 MCP versions found" would read as a failure; an empty
+      // tool list is worth stating.
+      const versionsTerm =
+        discoveredVersions.length > 0
+          ? `, ${discoveredVersions.length} MCP versions`
+          : '';
       showSnackbar(
-        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts found.` +
-          (capabilitiesChanged
-            ? " Click Save to update the proxy's stored capabilities."
+        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts${versionsTerm} found.` +
+          (capabilitiesChanged || versionsChanged
+            ? ' Click Save to update what the proxy has recorded about this server.'
             : ''),
         'success'
       );
@@ -841,6 +936,182 @@ export default function ExternalServersOverview(): JSX.Element {
       showSnackbar(getErrorMessage(err, 'Failed to fetch server info'), 'error');
     } finally {
       setIsRefetching(false);
+    }
+  };
+
+  // What the drawer opens with: the currently staged (refetched/manually-edited)
+  // capabilities if there are any, otherwise the server's last-saved capabilities.
+  const capabilitiesDrawerInitialValue = useMemo(
+    () =>
+      JSON.stringify(
+        refetchedCapabilities ?? normalizeCapabilities(server?.capabilities),
+        null,
+        2
+      ),
+    [refetchedCapabilities, server]
+  );
+
+  const handleOpenCapabilitiesDrawer = () => {
+    if (isReadOnlyServer) return;
+    setIsCapabilitiesDrawerOpen(true);
+  };
+
+  // Applying the drawer's edited JSON stages it the same way a Refetch result is
+  // staged, so it flows through the existing hasCapabilitiesChanges/Save machinery
+  // rather than a second, parallel capabilities-tracking mechanism.
+  const handleApplyCapabilities = (value: string) => {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      setRefetchedCapabilities(parseMCPServerCapabilities(parsed));
+      // Anything an earlier refetch learned about the server itself is left staged: a
+      // hand-edited capability list replaces the capabilities and says nothing about what
+      // the server reported it is or which protocol versions it speaks. Dropping the
+      // versions here also lost them silently — where a refetch had found only new
+      // versions, clearing them left nothing unsaved and greyed out Save.
+      setIsCapabilitiesDrawerOpen(false);
+    } catch (err) {
+      showSnackbar(
+        getErrorMessage(err, 'Invalid JSON in capabilities editor. Fix errors before applying.'),
+        'error'
+      );
+    }
+  };
+
+  // Button visibility depends only on local state — a feature flag plus at
+  // least one active gateway deployment — never on the status check below,
+  // so a failed/not-yet-implemented publish backend can't hide the action.
+  useEffect(() => {
+    setIsAPIPortalAvailable(API_PORTAL_ENABLED && deployedGateways.length > 0);
+  }, [deployedGateways]);
+
+  useEffect(() => {
+    if (!isAPIPortalAvailable || isLoading || !server || !organizationId) return;
+    setIsPublishStatusUnknown(true);
+    setIsPublished(false);
+    setApiPortalUrl(undefined);
+    let cancelled = false;
+    void (async () => {
+      setIsPublishStatusLoading(true);
+      try {
+        const publication = await mcpProxiesApis.getMcpProxyApiPortalPublication(
+          DEFAULT_API_PORTAL_ID,
+          server.id,
+          apimBaseUrl
+        );
+        if (cancelled) return;
+        setIsPublished(true);
+        setApiPortalUrl(publication.endpoints?.productionUrl);
+        setIsPublishStatusUnknown(false);
+      } catch (err) {
+        if (cancelled) return;
+        if (getHttpStatus(err) === 404) {
+          // No publication record — not published, not an error.
+          setIsPublished(false);
+          setApiPortalUrl(undefined);
+          setIsPublishStatusUnknown(false);
+        } else {
+          // Status is genuinely unknown (e.g. the publish backend for this
+          // contract isn't wired up yet) — keep the action disabled rather
+          // than defaulting to "not published", which could let a Publish
+          // click race an actual, already-published state.
+          setIsPublishStatusUnknown(true);
+          logger.error('Failed to check API Portal publish status', err);
+          showSnackbar(
+            getErrorMessage(err, 'Failed to check API Portal publish status'),
+            'error'
+          );
+        }
+      } finally {
+        if (!cancelled) setIsPublishStatusLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAPIPortalAvailable, isLoading, server, organizationId, apimBaseUrl]);
+
+  const handleOpenPublishDialog = () => {
+    setPublishDialogGatewayId(selectedGatewayId || deployedGateways[0]?.id || '');
+    setIsPublishDialogOpen(true);
+  };
+
+  const handleConfirmPublish = async () => {
+    if (!server || !publishDialogGatewayId) return;
+    setIsPublishActionLoading(true);
+    setIsPublishDialogOpen(false);
+    try {
+      // The BFF saves this as the publication draft and then publishes it:
+      // publish itself takes no body, so the gateway picked in the dialog
+      // reaches the listing as the draft's production endpoint.
+      //
+      // Saving a draft replaces it wholesale, so send the full intended state:
+      // start from the draft already stored (when one exists) and overlay only
+      // the fields this dialog controls. Sending just those fields would clear
+      // tags, labels, owners, agent visibility, subscription plans and
+      // documents that were set elsewhere.
+      let existingDraft: PublicationDraftDetails | undefined;
+      try {
+        existingDraft = await mcpProxiesApis.getMcpProxyApiPortalDraft(
+          DEFAULT_API_PORTAL_ID,
+          server.id,
+          apimBaseUrl
+        );
+      } catch (err) {
+        if (getHttpStatus(err) !== 404) throw err;
+        // 404 — publishing for the first time, nothing to preserve.
+      }
+
+      // Read-only audit/asset fields on the fetched draft aren't part of the
+      // input schema — drop them rather than echoing them back on the PUT.
+      const {
+        createdAt: _createdAt,
+        createdBy: _createdBy,
+        updatedAt: _updatedAt,
+        updatedBy: _updatedBy,
+        hasThumbnail: _hasThumbnail,
+        hasLandingPage: _hasLandingPage,
+        ...existingDraftInput
+      }: Partial<PublicationDraftDetails> = existingDraft ?? {};
+
+      const draft: PublicationDraftDetailsInput = {
+        ...existingDraftInput,
+        displayName: server.displayName,
+        version: server.version || '1.0.0',
+        description: server.description,
+        endpoints: {
+          ...existingDraftInput.endpoints,
+          productionUrl: buildGatewayInvokeUrl(publishDialogGatewayId),
+        },
+      };
+
+      const publication = await mcpProxiesApis.publishMcpProxyToApiPortal(
+        DEFAULT_API_PORTAL_ID,
+        server.id,
+        draft
+      );
+      setIsPublished(true);
+      setApiPortalUrl(publication.endpoints?.productionUrl);
+      showSnackbar('MCP Proxy published to the API Portal.', 'success');
+    } catch (err) {
+      showSnackbar(getErrorMessage(err, 'Failed to publish MCP Proxy.'), 'error');
+    } finally {
+      setIsPublishActionLoading(false);
+    }
+  };
+
+  const handleConfirmUnpublish = async () => {
+    if (!server) return;
+    setIsPublishActionLoading(true);
+    setIsUnpublishConfirmOpen(false);
+    try {
+      await mcpProxiesApis.unpublishMcpProxyFromApiPortal(DEFAULT_API_PORTAL_ID, server.id, apimBaseUrl);
+      setIsPublished(false);
+      setApiPortalUrl(undefined);
+      showSnackbar('MCP Proxy unpublished from the API Portal.', 'success');
+    } catch (err) {
+      showSnackbar(getErrorMessage(err, 'Failed to unpublish MCP Proxy.'), 'error');
+    } finally {
+      setIsPublishActionLoading(false);
     }
   };
 
@@ -928,6 +1199,31 @@ export default function ExternalServersOverview(): JSX.Element {
         []) as unknown as EndpointValidationResponse['prompts'],
     };
   }, [server]);
+
+  // Preview of a staged (not-yet-saved) refetch result, shown in the Backend Connection
+  // tab so a discovered tool/resource/prompt can be reviewed before Save.
+  const refetchedValidationResult: EndpointValidationResponse | null = useMemo(() => {
+    if (!refetchedCapabilities) return null;
+    return {
+      endpointUrl: endpointUrl.trim(),
+      // What the upstream said about itself, not what this proxy is called. Falling back
+      // to the proxy's own displayName and artifact version would put two unrelated
+      // values under a heading that claims they came from the server.
+      serverInfo: {
+        name: refetchedServerInfo?.name ?? '',
+        version: refetchedServerInfo?.version ?? '',
+      },
+      supportedVersions: refetchedSupportedVersions,
+      tools: refetchedCapabilities.tools as unknown as EndpointValidationResponse['tools'],
+      resources: refetchedCapabilities.resources as unknown as EndpointValidationResponse['resources'],
+      prompts: refetchedCapabilities.prompts as unknown as EndpointValidationResponse['prompts'],
+    };
+  }, [
+    refetchedCapabilities,
+    refetchedSupportedVersions,
+    refetchedServerInfo,
+    endpointUrl,
+  ]);
 
   if (isLoading) {
     return (
@@ -1089,6 +1385,7 @@ export default function ExternalServersOverview(): JSX.Element {
               direction="column"
               justifyContent="space-between"
               alignItems="flex-end"
+              spacing={1.5}
               sx={{ alignSelf: 'stretch' }}
             >
               {/* For gateway-created (read-only) proxies, and for users holding only
@@ -1121,6 +1418,68 @@ export default function ExternalServersOverview(): JSX.Element {
                   )}
                 </Button>
               </DisabledActionTooltip>
+              {isAPIPortalAvailable ? (
+                <Stack spacing={0.5} alignItems="flex-end">
+                  <DisabledActionTooltip
+                    disabled={
+                      deployedGateways.length === 0 ||
+                      isPublishStatusUnknown ||
+                      (isPublished ? !canUnpublishFromAPIPortal : !canPublishToAPIPortal)
+                    }
+                    title={
+                      deployedGateways.length === 0
+                        ? 'Deploy to a gateway before publishing'
+                        : isPublishStatusUnknown
+                          ? 'Unable to verify publish status'
+                          : NO_PERMISSION_TOOLTIP
+                    }
+                  >
+                    <Button
+                      variant="outlined"
+                      color={isPublished ? 'error' : 'primary'}
+                      disabled={
+                        deployedGateways.length === 0 ||
+                        isPublishStatusLoading ||
+                        isPublishActionLoading ||
+                        isPublishStatusUnknown ||
+                        (isPublished ? !canUnpublishFromAPIPortal : !canPublishToAPIPortal)
+                      }
+                      onClick={
+                        isPublished
+                          ? () => setIsUnpublishConfirmOpen(true)
+                          : handleOpenPublishDialog
+                      }
+                      startIcon={
+                        isPublishStatusLoading || isPublishActionLoading ? (
+                          <CircularProgress size={14} color="inherit" />
+                        ) : undefined
+                      }
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      {isPublished ? 'Unpublish from API Portal' : 'Publish to API Portal'}
+                    </Button>
+                  </DisabledActionTooltip>
+                  {isPublished && apiPortalUrl ? (
+                    <Box
+                      component="a"
+                      href={apiPortalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        fontSize: '0.75rem',
+                        color: 'primary.main',
+                        textDecoration: 'none',
+                        '&:hover': { textDecoration: 'underline' },
+                      }}
+                    >
+                      View in API Portal <ExternalLink size={12} />
+                    </Box>
+                  ) : null}
+                </Stack>
+              ) : null}
               <DisabledActionTooltip
                 disabled={!canDeleteMcpProxy || Boolean(deleteBlockedReason)}
                 title={
@@ -1211,15 +1570,7 @@ export default function ExternalServersOverview(): JSX.Element {
                         <TextField
                           size="small"
                           fullWidth
-                          value={
-                            generatedInvokeUrl
-                              ? `${generatedInvokeUrl}${
-                                  generatedInvokeUrl.endsWith('/')
-                                    ? 'mcp'
-                                    : '/mcp'
-                                }`
-                              : ''
-                          }
+                          value={generatedInvokeUrl}
                           slotProps={{
                             input: {
                               readOnly: true,
@@ -1249,6 +1600,46 @@ export default function ExternalServersOverview(): JSX.Element {
                   </Grid>
                 </Stack>
               ) : null}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{ mb: 1.5 }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                  Capabilities
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {!isReadOnlyServer ? (
+                    <Tooltip
+                      title="Use this if the MCP server's URL can't be reached to automatically fetch its tools, resources, and prompts."
+                      placement="top"
+                      arrow
+                    >
+                      <Info
+                        size={14}
+                        color="#8D91A3"
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </Tooltip>
+                  ) : null}
+                  <DisabledActionTooltip
+                    disabled={isReadOnlyServer}
+                    title="Capabilities are managed by the gateway that created this MCP proxy and are read-only here."
+                  >
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Plus size={16} />}
+                      onClick={handleOpenCapabilitiesDrawer}
+                      disabled={isReadOnlyServer}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      Add Capabilities
+                    </Button>
+                  </DisabledActionTooltip>
+                </Stack>
+              </Stack>
               {validationResult ? (
                 <ExternalServersValidationDetails
                   validationResult={validationResult}
@@ -1379,6 +1770,14 @@ export default function ExternalServersOverview(): JSX.Element {
                     {isRefetching ? 'Refetching...' : 'Refetch Server Info'}
                   </Button>
                 </Box>
+                {refetchedValidationResult ? (
+                  <ExternalServersValidationDetails
+                    validationResult={refetchedValidationResult}
+                    variant="upstreamInfo"
+                    showHeader={false}
+                    showInputSchema
+                  />
+                ) : null}
               </Stack>
             </TabPanel>
           </Box>
@@ -1467,6 +1866,92 @@ export default function ExternalServersOverview(): JSX.Element {
             data-cyid="delete-mcp-proxy-confirm-button"
           >
             {isDeleting ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <CapabilitiesDrawer
+        open={isCapabilitiesDrawerOpen}
+        initialValue={capabilitiesDrawerInitialValue}
+        onClose={() => setIsCapabilitiesDrawerOpen(false)}
+        onApply={handleApplyCapabilities}
+      />
+
+      <Dialog
+        open={isPublishDialogOpen}
+        onClose={() => setIsPublishDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Publish to API Portal</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Select the gateway endpoint that clients will use to connect to this MCP
+              proxy in the API Portal.
+            </Typography>
+            <FormControl fullWidth>
+              <FormLabel>Gateway</FormLabel>
+              <Select
+                size="small"
+                value={publishDialogGatewayId}
+                onChange={(e) => setPublishDialogGatewayId(String(e.target.value))}
+              >
+                {deployedGateways.map((gateway) => (
+                  <MenuItem key={gateway.id} value={gateway.id}>
+                    {gateway.displayName || gateway.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setIsPublishDialogOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!publishDialogGatewayId || isPublishActionLoading}
+            onClick={() => void handleConfirmPublish()}
+          >
+            Publish
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={isUnpublishConfirmOpen}
+        onClose={() => setIsUnpublishConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Unpublish from API Portal</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Are you sure you want to unpublish <strong>{server.displayName}</strong> from
+            the API Portal? Clients will no longer be able to discover it.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setIsUnpublishConfirmOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={isPublishActionLoading}
+            onClick={() => void handleConfirmUnpublish()}
+          >
+            Unpublish
           </Button>
         </DialogActions>
       </Dialog>

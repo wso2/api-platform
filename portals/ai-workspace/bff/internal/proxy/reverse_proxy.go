@@ -45,9 +45,31 @@ func tokenFromContext(r *http.Request) string {
 	return ""
 }
 
+// Option customises a ReverseProxy. Options exist so the hops that need none
+// (cloud analytics, billing) read exactly as they did before path mapping was
+// configurable.
+type Option func(*options)
+
+type options struct {
+	mapPath func(string) string
+}
+
+// WithPathMapper rewrites the forwarded path after the same-origin prefix has been
+// stripped and before it is joined onto the target. It is how a deployment whose
+// upstream republishes the API under a different base path is served: the BFF still
+// composes the API's own prefix everywhere, and this is the single point that maps
+// it to what the upstream exposes.
+func WithPathMapper(f func(string) string) Option {
+	return func(o *options) { o.mapPath = f }
+}
+
 // ReverseProxy builds an httputil.ReverseProxy targeting the Platform API.
 // prefix (e.g. "/proxy") is stripped from the path before forwarding.
-func ReverseProxy(target *url.URL, prefix string, transport http.RoundTripper) *httputil.ReverseProxy {
+func ReverseProxy(target *url.URL, prefix string, transport http.RoundTripper, opts ...Option) *httputil.ReverseProxy {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	rp := &httputil.ReverseProxy{
 		Transport: transport,
 		// FlushInterval > 0 streams responses (SSE / streamed LLM output) instead
@@ -61,6 +83,9 @@ func ReverseProxy(target *url.URL, prefix string, transport http.RoundTripper) *
 			p := strings.TrimPrefix(pr.In.URL.Path, prefix)
 			if p == "" {
 				p = "/"
+			}
+			if o.mapPath != nil {
+				p = o.mapPath(p)
 			}
 			pr.Out.URL.Path = singleJoin(target.Path, p)
 			pr.Out.URL.RawPath = ""

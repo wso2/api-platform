@@ -161,3 +161,43 @@ func TestRoutesPathTraversalContainedUnderBasePath(t *testing.T) {
 		})
 	}
 }
+
+// oidcRoutesTestServer is routesTestServer in OIDC mode with the given redirect_url,
+// which is what decides whether an extra callback route is registered.
+func oidcRoutesTestServer(t *testing.T, redirectURL string) *Server {
+	t.Helper()
+	s := &Server{cfg: &config.Config{
+		Server: config.ServerConfig{StaticDir: newStaticTestDir(t)},
+		Auth: config.AuthConfig{
+			Mode: config.AuthModeOIDC,
+			OIDC: config.OIDCConfig{
+				Issuer:       "https://idp.example.com",
+				ClientID:     "login-client",
+				ClientSecret: "login-secret",
+				RedirectURL:  redirectURL,
+			},
+		},
+		RuntimeConfig: map[string]string{"APIP_AIW_AUTH_MODE": "oidc"},
+	}}
+	s.handler = s.routes()
+	return s
+}
+
+// An unconfigured Moesif hop must answer for itself. Left to the catch-all
+// /proxy/ handler, a Moesif call would be forwarded to the control plane as
+// /moesif/... and come back 404 from there — indistinguishable from a bad path,
+// and the reason this was confusing to debug in a real deployment.
+func TestRoutesMoesifHopReportsMissingConfig(t *testing.T) {
+	s := routesTestServer(t) // no moesif_url, so s.moesifProxy stays nil
+
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/moesif/id_token", nil)
+	rec := httptest.NewRecorder()
+	s.handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (not a 404 from the control plane)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "MOESIF_NOT_CONFIGURED") {
+		t.Errorf("body = %q, want the MOESIF_NOT_CONFIGURED code", rec.Body.String())
+	}
+}

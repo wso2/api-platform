@@ -28,7 +28,7 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects, createDefaultProject } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { useChoreoUser } from './ChoreoUserContext';
+import { usePlatformUser, type OrgSwitchFailure } from './PlatformUserContext';
 import { useAppAuth } from './AppAuthContext';
 import { registerOrganization, getOrganizationById } from '../apis/platformApis';
 import type { PlatformOrganization } from '../apis/platformApis';
@@ -39,7 +39,10 @@ import { DEFAULT_ORG_REGION } from '../config.env';
 export interface AppShellContextType {
   userName: string | null;
   userEmail: string | null;
+  userPicture: string | null;
   currentOrganization: Organization | null;
+  organizations: Organization[];
+  isOrganizationsLoading: boolean;
   currentProject: ProjectBase | null;
   projectsForCurrentOrganization: ProjectBase[];
   isProjectsLoading: boolean;
@@ -50,12 +53,16 @@ export interface AppShellContextType {
   error: string | null;
   setCurrentProject: (project: ProjectBase | null) => void;
   refetchProjects: () => Promise<void>;
+  switchOrganization: (organization: Organization) => Promise<void>;
 }
 
 const defaultContextValue: AppShellContextType = {
   userName: null,
   userEmail: null,
+  userPicture: null,
   currentOrganization: null,
+  organizations: [],
+  isOrganizationsLoading: false,
   currentProject: null,
   projectsForCurrentOrganization: [],
   isProjectsLoading: false,
@@ -66,6 +73,7 @@ const defaultContextValue: AppShellContextType = {
   error: null,
   setCurrentProject: () => {},
   refetchProjects: async () => {},
+  switchOrganization: async () => {},
 };
 
 const AppShellContext = createContext<AppShellContextType>(defaultContextValue);
@@ -74,14 +82,37 @@ interface AppShellProviderProps {
   children: ReactNode;
   userName?: string;
   userEmail?: string;
+  userPicture?: string;
+}
+
+/**
+ * Turns an org-switch failure into user-facing words. One place, so the two causes
+ * cannot drift back into a single message: `rejected` is a verdict about this user
+ * that retrying will not change, while `unavailable` is a platform outage that
+ * usually clears on its own. Telling someone to contact their administrator about a
+ * blip — or telling someone genuinely without access to try again — is the failure
+ * this function exists to prevent.
+ */
+function orgSwitchErrorMessage(reason: OrgSwitchFailure, orgName: string): string {
+  switch (reason) {
+    case 'rejected':
+      return `You do not have access to ${orgName}. If you believe this is a mistake, `
+        + 'contact your administrator.';
+    case 'unavailable':
+      return `${orgName} could not be opened because sign-in is temporarily unavailable. `
+        + 'Please try again in a moment.';
+    default:
+      return `Could not open ${orgName}. Please try again.`;
+  }
 }
 
 export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   children,
   userName: initialUserName,
   userEmail: initialUserEmail,
+  userPicture: initialUserPicture,
 }) => {
-  const { setIsTokenExchanged, getOrganizations } = useChoreoUser();
+  const { setIsTokenExchanged, getOrganizations, exchangeOrgToken } = usePlatformUser();
   const { user } = useAppAuth();
 
   const isInitializedRef = useRef(false);
@@ -91,8 +122,11 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   const userName: string | null = initialUserName || null;
   const userEmail: string | null = initialUserEmail || null;
+  const userPicture: string | null = initialUserPicture || null;
 
   const [currentOrganization, setCurrentOrganizationState] = useState<Organization | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isOrganizationsLoading, setIsOrganizationsLoading] = useState(false);
   const [projectsForCurrentOrganization, setProjectsForCurrentOrganization] = useState<ProjectBase[]>([]);
   const [currentProject, setCurrentProjectState] = useState<ProjectBase | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -103,7 +137,13 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
   // ── Project fetching ────────────────────────────────────────────────────────
 
+  // Guards against an earlier, slower fetchProjectsForOrg call (e.g. from a
+  // superseded organization switch) overwriting state with stale results
+  // after a later call has already resolved.
+  const fetchGenerationRef = useRef(0);
+
   const fetchProjectsForOrg = useCallback(async (): Promise<ProjectBase[]> => {
+    const generation = ++fetchGenerationRef.current;
     setIsProjectsLoading(true);
     try {
       let projectList = await getProjects();
@@ -111,15 +151,21 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         await createDefaultProject();
         projectList = await getProjects();
       }
-      setProjectsForCurrentOrganization(projectList);
-      setCurrentProjectState(null);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization(projectList);
+        setCurrentProjectState(null);
+      }
       return projectList;
     } catch (err) {
       logger.error('Failed to fetch projects:', err);
-      setProjectsForCurrentOrganization([]);
+      if (generation === fetchGenerationRef.current) {
+        setProjectsForCurrentOrganization([]);
+      }
       return [];
     } finally {
-      setIsProjectsLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setIsProjectsLoading(false);
+      }
     }
   }, []);
 
@@ -145,6 +191,8 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const initialize = useCallback(async () => {
     try {
       const tokenOrg = userRef.current?.org;
+
+      const orgsPromise = getOrganizations();
 
       if (tokenOrg?.handle) {
         // Primary path: fetch org by handle from the token (works for both OIDC and file-based auth).
@@ -178,20 +226,48 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
           return;
         }
 
-        setCurrentOrganizationState(toOrganization(platformOrg));
+        const resolvedOrg = toOrganization(platformOrg);
+        setCurrentOrganizationState(resolvedOrg);
+
+        setIsOrganizationsLoading(true);
+        try {
+          const orgs = await orgsPromise;
+          setOrganizations(
+            orgs.some((o) => o.handle === resolvedOrg.handle) ? orgs : [...orgs, resolvedOrg]
+          );
+        } finally {
+          setIsOrganizationsLoading(false);
+        }
+
+        const resolvedExchange = await exchangeOrgToken(resolvedOrg.handle);
+        if (!resolvedExchange.ok) {
+          setError(orgSwitchErrorMessage(resolvedExchange.reason, resolvedOrg.name));
+          return;
+        }
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
         return;
       }
 
-      // Fallback: no org id in token — use list endpoint.
-      const orgs = await getOrganizations();
+      setIsOrganizationsLoading(true);
+      let orgs: Organization[];
+      try {
+        orgs = await orgsPromise;
+      } finally {
+        setIsOrganizationsLoading(false);
+      }
       if (orgs.length === 0) {
         logger.warn('[AppShellContext] No organization found');
         setError('Organization not found. Please contact your administrator.');
         return;
       }
+      setOrganizations(orgs);
       setCurrentOrganizationState(orgs[0]);
+      const firstOrgExchange = await exchangeOrgToken(orgs[0].handle);
+      if (!firstOrgExchange.ok) {
+        setError(orgSwitchErrorMessage(firstOrgExchange.reason, orgs[0].name));
+        return;
+      }
       setIsTokenExchanged(true);
       await fetchProjectsForOrg();
     } catch (err: any) {
@@ -201,7 +277,28 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
+  }, [getOrganizations, fetchProjectsForOrg, setIsTokenExchanged, exchangeOrgToken]);
+
+  const switchOrganization = useCallback(
+    async (organization: Organization) => {
+      if (organization.handle === currentOrganization?.handle) {
+        return;
+      }
+      const switched = await exchangeOrgToken(organization.handle);
+      if (!switched.ok) {
+        setError(orgSwitchErrorMessage(switched.reason, organization.name));
+        return;
+      }
+      // Nothing else clears this, so a message left by an earlier failed switch would
+      // outlive the condition that caused it: the user retries after an outage clears,
+      // the switch succeeds, and they are still reading "sign-in is temporarily
+      // unavailable" over the org they are now actually in.
+      setError(null);
+      setCurrentOrganizationState(organization);
+      await fetchProjectsForOrg();
+    },
+    [currentOrganization?.handle, fetchProjectsForOrg, exchangeOrgToken]
+  );
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -214,7 +311,10 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   const contextValue: AppShellContextType = {
     userName,
     userEmail,
+    userPicture,
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
     currentProject,
     projectsForCurrentOrganization,
     isProjectsLoading,
@@ -225,6 +325,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
     error,
     setCurrentProject,
     refetchProjects,
+    switchOrganization,
   };
 
   return (

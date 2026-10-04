@@ -210,3 +210,53 @@ class TranslatorTest(unittest.TestCase):
             "request_body_chunk",
             self.translator.phase_from_proto(proto.PHASE_REQUEST_BODY_CHUNK).value,
         )
+
+    def test_shared_context_translation_carries_the_resolved_operation(self):
+        """The Go engine resolves the operation and its request facts; without this
+        the bridge drops both and a Python policy reads empty defaults while the
+        values exist upstream."""
+        shared_proto = proto.SharedContext(
+            api_kind="Agent",
+            api_name="WeatherAgent",
+            operation_path="/",
+            resolved_operation="SendMessage",
+        )
+        shared_proto.resolution_attributes["a2a.operation"] = "SendMessage"
+        shared_proto.resolution_attributes["a2a.transport"] = "JSONRPC"
+        shared_proto.resolution_attributes["a2a.context.id"] = "ctx-1"
+
+        shared = Translator.to_python_shared_context(shared_proto)
+
+        self.assertEqual("SendMessage", shared.resolved_operation)
+        self.assertEqual(
+            {
+                "a2a.operation": "SendMessage",
+                "a2a.transport": "JSONRPC",
+                "a2a.context.id": "ctx-1",
+            },
+            shared.resolution_attributes,
+        )
+
+    def test_shared_context_resolution_attributes_are_a_plain_detached_dict(self):
+        """A policy should get an ordinary dict, not the proto message's own map
+        container: the container's lifetime is the message's, and its type would
+        surprise a policy author expecting a dict."""
+        shared_proto = proto.SharedContext(resolved_operation="GetTask")
+        shared_proto.resolution_attributes["a2a.task.id"] = "task-1"
+
+        shared = Translator.to_python_shared_context(shared_proto)
+
+        self.assertIs(type(shared.resolution_attributes), dict)
+        shared.resolution_attributes["a2a.task.id"] = "tampered"
+        self.assertEqual("task-1", shared_proto.resolution_attributes["a2a.task.id"])
+
+    def test_shared_context_direct_route_reports_no_resolution(self):
+        """Every API kind released before Agent resolves its chain from the route,
+        so it sends neither value and a policy has to read the defaults as "not
+        applicable" rather than as a failure."""
+        shared = Translator.to_python_shared_context(
+            proto.SharedContext(api_kind="RestApi", operation_path="/pets/{id}")
+        )
+
+        self.assertEqual("", shared.resolved_operation)
+        self.assertEqual({}, shared.resolution_attributes)

@@ -72,6 +72,12 @@ var ValidGatewayFunctionalityType = map[string]bool{
 // DefaultGatewayFunctionalityType Default gateway functionality type for new gateways
 const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
+// PublicationAPITypeRestAPI is the type-agnostic path value for RestApi
+// in API Publication routes (/api-portals/{apiPortalId}/apis/{apiType}/...).
+// Distinct from the RestApi artifact-kind constant below: that one names the
+// artifact's kind column, this one is the lowercase-hyphenated URL segment.
+const PublicationAPITypeRestAPI = "rest-api"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"
@@ -81,7 +87,14 @@ const (
 	LLMProviderTemplate = "LlmProviderTemplate"
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
+	AgentProxy          = "AgentProxy"
 )
+
+// GatewayKindAgent is the gateway artifact kind an AgentProxy is deployed as.
+// Every other kind uses the same name on both sides of the CP↔gateway boundary;
+// AgentProxy is the one kind that does not, so the gateway's vocabulary is named
+// here and translated explicitly rather than stored as the CP kind.
+const GatewayKindAgent = "Agent"
 
 // Artifact origin values. Origin distinguishes control-plane created artifacts
 // (control_plane) from artifacts pushed up by a data-plane gateway (gateway_api).
@@ -207,6 +220,36 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
+// API Portal provisioning status constants.
+//
+// The OSS-native lifecycle only ever writes APIPortalStatusActive - portals
+// created via the standard REST path skip straight to active because OSS has
+// no intermediate provisioning workflow of its own.
+//
+// The cloud plugin's managed-portals feature owns the pending -> active/failed
+// state machine: Create writes pending, a poller flips to active on RRB.Ready
+// + external HEAD success, and to failed on timeout. Only the cloud plugin
+// consumes the pending and failed states.
+//
+// APIPortalStatusActive is the only value the API Publication feature's
+// ListActiveByOrg rollup considers eligible: pending or failed portals are
+// deliberately excluded from the publish picker.
+const (
+	APIPortalStatusPending = "pending"
+	APIPortalStatusActive  = "active"
+	APIPortalStatusFailed  = "failed"
+)
+
+// API Portal outbound-auth constants. The scheme is a custom RFC 7235 name,
+// not OAuth 2.0 Bearer; the portal middleware sha256s the raw for verification.
+const (
+	// APIPortalSharedKeyAuthScheme is the Authorization-header scheme name; matched case-insensitively by the portal.
+	APIPortalSharedKeyAuthScheme = "SharedKey"
+
+	// APIPortalSharedKeyHexLength is the required raw-key length in hex chars (32 bytes of entropy).
+	APIPortalSharedKeyHexLength = 64
+)
+
 // ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
 // artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
 // into the ArtifactTableRegistry during plugin Init.
@@ -215,6 +258,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProvider: true,
 	LLMProxy:    true,
 	MCPProxy:    true,
+	AgentProxy:  true,
 }
 
 // Throttle limit unit constants
@@ -243,6 +287,24 @@ var ValidThrottleLimitUnits = map[string]bool{
 	ThrottleLimitUnitMonth:  true,
 }
 
+// DefaultOpenAPISpecMaxBytes is the fallback maximum size for an OpenAPI specification
+// upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
+const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
+
+// DefaultOpenAPISpecFileName is the filename persisted for a spec that was
+// fetched by URL but whose URL has no usable last path segment to name the
+// file after.
+const DefaultOpenAPISpecYAMLFileName = "openapi.yaml"
+const DefaultOpenAPISpecJSONFileName = "openapi.json"
+
+// API document type and handle constants for the singleton doc types
+// Currently only the OpenAPI definition is a singleton doc type
+const (
+	DocumentTypeDefinition   = "DEFINITION"
+	DocumentHandleDefinition = "api-definition"
+	DocumentDisplayNameDefinition = "OpenAPI Definition"
+)
+
 // Metadata key constants for deployment metadata
 const (
 	// MetadataKeyEndpointUrl is the metadata key for the per-deployment endpoint URL override.
@@ -251,6 +313,15 @@ const (
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhostSandbox"
+	// MetadataKeyUpstreamAuthValue is the metadata key for the per-deployment upstream
+	// credential of an LLM provider — the value it authenticates to its upstream with.
+	// It carries a {{ secret "handle" }} reference rather than the credential itself,
+	// because deployment metadata is returned with every read of a deployment.
+	MetadataKeyUpstreamAuthValue = "upstreamAuthValue"
+	// MetadataKeyUpstreamAuthHeader is the metadata key for the per-deployment header an
+	// LLM provider's upstream credential is sent in. It only applies where the upstream
+	// authenticates with an api-key, which is the only type whose header is a choice.
+	MetadataKeyUpstreamAuthHeader = "upstreamAuthHeader"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.

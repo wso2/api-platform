@@ -19,6 +19,14 @@
 import { createContext, useContext } from 'react';
 import type { PlatformRole } from '../auth/permissions';
 
+/** Optional hints forwarded to the IDP on an OIDC login. */
+export type LoginOptions = {
+  /** Federated identity provider id, e.g. `google`. */
+  fidp?: string;
+  /** Account to prefill at the provider, typically an email address. */
+  loginHint?: string;
+};
+
 export interface AppOrg {
   id: string;
   name: string;
@@ -28,27 +36,57 @@ export interface AppOrg {
 export interface AppUser {
   name: string | null;
   email: string | null;
+  picture: string | null;
   role: PlatformRole | null;
   scopes: string[];
   org: AppOrg | null;
+  organizations: string[];
 }
 
 export interface AppAuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
+  // True when the BFF answered GET /api/session with 502: the session cookie is
+  // valid and the session is alive, but the BFF cannot currently mint the token it
+  // forwards upstream (the IDP is unreachable, or the exchange is misconfigured).
+  //
+  // Distinct from `!isAuthenticated`, and the distinction is the point: treating
+  // this as "logged out" sends the user to /login over a transient blip, and the
+  // login they then attempt fails identically, because the OIDC callback runs the
+  // very same exchange. Route guards must hold the route, not redirect.
+  sessionUnavailable: boolean;
+  // Re-reads the session from the BFF and updates `user` from it. Awaitable, because
+  // both callers need to know the context has caught up before they continue:
+  //
+  //  - the sessionUnavailable retry, which the provider also drives on a timer;
+  //  - an org switch, after which the exchanged token — and therefore the caller's
+  //    scopes AND which org they are in — has changed server-side. Re-reading the
+  //    session is what brings those into the UI; the switch response alone reports
+  //    scopes, and would leave the org stale.
+  refreshSession: () => Promise<void>;
   user: AppUser | null;
   // Fetches the current raw JWT on demand. Unlike a cached snapshot, this stays
   // correct after the BFF proxy rotates the cookie token, so call-sites that
   // need the raw token always get the live value.
   getAccessToken: () => Promise<string | null>;
   hasPermission: (scope: string) => boolean;
-  login: () => Promise<void>;
+  /**
+   * Starts a login. In OIDC mode this is a full-page redirect through the BFF.
+   *
+   * `fidp` names a federated identity provider and `loginHint` an account; both are
+   * forwarded to the IDP (allowlisted by the BFF) so a login page can offer its own
+   * provider buttons and skip the IDP's chooser. Omit them for the default flow,
+   * where the IDP asks.
+   */
+  login: (options?: LoginOptions) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 export const AppAuthContext = createContext<AppAuthContextType>({
   isAuthenticated: false,
   isLoading: true,
+  sessionUnavailable: false,
+  refreshSession: async () => {},
   user: null,
   getAccessToken: async () => null,
   hasPermission: () => false,

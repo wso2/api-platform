@@ -19,6 +19,7 @@ package publishers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"sync"
@@ -360,6 +361,215 @@ func TestPublish_McpAPIType(t *testing.T) {
 	assert.Equal(t, "search", mcpAnalytics["toolName"])
 }
 
+// Total latency has to reach the publisher, not just the event: the other four
+// latencies are all partial spans, so a percentile computed from them measures a phase
+// rather than what the caller waited.
+func TestPublish_ForwardsTotalDuration(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Latencies = &dto.Latencies{
+		Duration:                 250,
+		BackendLatency:           100,
+		ResponseLatency:          100,
+		RequestMediationLatency:  50,
+		ResponseMediationLatency: 50,
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, int64(250), metadata["duration"],
+		"total request duration must be forwarded, not only its component spans")
+	assert.Equal(t, int64(100), metadata["backendLatency"])
+}
+
+// The published A2A contract, asserted at its actual boundary: what Moesif ingests is
+// the serialized event, so the whole block is checked as JSON rather than field by
+// field through Go accessors. It pins the three things the move to the schema block
+// changed — snake_case names, the request/response nesting, and the two response
+// identifiers losing the `response` prefix the flat model needed to keep them apart.
+func TestPublish_A2ABlockShape(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	partCount := 2
+	returnImmediately, isError, terminal := false, false, true
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{
+		RequestType:     "operation",
+		Operation:       "SendMessage",
+		Transport:       "JSONRPC",
+		ProtocolVersion: "1.0",
+		A2ARequestAnalytics: dto.A2ARequestAnalytics{
+			MessageID:         "msg-1",
+			TaskID:            "task-existing",
+			InputPartCount:    &partCount,
+			ReturnImmediately: &returnImmediately,
+		},
+		A2AResponseAnalytics: dto.A2AResponseAnalytics{
+			IsError:           &isError,
+			PayloadType:       "task",
+			ResponseTaskID:    "task-9",
+			ResponseContextID: "ctx-9",
+			TaskState:         "TASK_STATE_COMPLETED",
+		},
+		Terminal: &terminal,
+		Outcome:  "SUCCESS",
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	require.NotNil(t, moesif.events[0].A2a, "an Agent event must carry the a2a block")
+
+	encoded, err := json.Marshal(moesif.events[0].A2a)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"request_type": "operation",
+		"operation": "SendMessage",
+		"transport": "JSONRPC",
+		"protocol_version": "1.0",
+		"agent_id": "api-123",
+		"agent_name": "test-api",
+		"request": {
+			"message_id": "msg-1",
+			"task_id": "task-existing",
+			"input_part_count": 2,
+			"return_immediately": false
+		},
+		"response": {
+			"is_error": false,
+			"payload_type": "task",
+			"task_id": "task-9",
+			"context_id": "ctx-9",
+			"task_state": "TASK_STATE_COMPLETED"
+		},
+		"terminal": true,
+		"outcome": "SUCCESS"
+	}`, string(encoded))
+}
+
+// The block is the schema's field, not a metadata key. Neither the `agentAnalytics`
+// envelope it replaced nor the flat `a2aAnalytics` key before that may be published
+// alongside it: a consumer finding the same event in two shapes would pick one, and
+// whichever it picked would go stale silently when the other stopped being written.
+func TestPublish_A2ADimensionsAreNotAlsoPublishedAsMetadata(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{
+		RequestType: "operation", Operation: "SendMessage",
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.NotContains(t, metadata, "a2aAnalytics")
+	assert.NotContains(t, metadata, "agentAnalytics")
+	assert.NotNil(t, moesif.events[0].A2a, "the dimensions travel in the schema block instead")
+}
+
+// A card fetch carries only its request type. Operation and transport are required by
+// the schema, so they carry the catch-alls rather than being sent absent — requestType
+// is what keeps the fetch distinguishable from an invocation, out at the consumer and
+// not only inside the gateway.
+func TestPublish_AgentCardEventCarriesRequestTypeAndCatchAlls(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{RequestType: "agentCard"}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	encoded, err := json.Marshal(moesif.events[0].A2a)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"request_type": "agentCard",
+		"operation": "Unknown",
+		"transport": "UNKNOWN",
+		"agent_id": "api-123",
+		"agent_name": "test-api"
+	}`, string(encoded))
+}
+
+// The block is gated on the API kind, the way the MCP block is: an Agent's dimensions
+// are meaningless on any other kind, and building it unconditionally would put an
+// empty object on every event the gateway publishes. Non-A2A traffic must ingest
+// exactly as it did before the field existed.
+func TestPublish_A2ABlockNotForwardedForOtherKinds(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties[a2aAnalyticsProperty] = &dto.A2AAnalytics{Operation: "SendMessage"}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	assert.Nil(t, moesif.events[0].A2a)
+	assert.NotContains(t, getMetadata(moesif.events[0]), "a2aAnalytics")
+}
+
+// The fault taxonomy reaches Moesif, not only the OTLP publisher: both read the
+// same classification off the canonical event. Exactly three keys, matching what
+// API Manager's Moesif integration already reads.
+func TestPublish_WithFaultClassification(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
+	event.Error = &dto.Error{ErrorCode: 504, ErrorMessage: dto.TargetConnectivityConnectionTimeout}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, "TARGET_CONNECTIVITY", metadata["errorType"])
+	assert.Equal(t, 504, metadata["errorCode"])
+	assert.Equal(t, "CONNECTION_TIMEOUT", metadata["errorMessage"])
+	// The category/event-category enums belong to the in-development fault flow
+	// and must not be published from here.
+	for _, absent := range []string{"eventCategory", "faultCategory", "faultSubCategory"} {
+		assert.NotContains(t, metadata, absent)
+	}
+}
+
+// A request that was not a gateway fault carries none of the three keys, so a
+// consumer can filter on presence.
+func TestPublish_SuccessOmitsFaultFields(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+	moesif.Publish(createBaseEvent())
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	for _, key := range []string{"errorType", "errorCode", "errorMessage"} {
+		assert.NotContains(t, metadata, key, "%s must be absent on a successful event", key)
+	}
+}
+
+// Every value errorType can take is one of the four categories API Manager
+// expects — never an Envoy flag name or a status code.
+func TestPublish_ErrorTypeIsAlwaysAFaultCategory(t *testing.T) {
+	for _, category := range []dto.FaultCategory{
+		dto.FaultCategoryAuth, dto.FaultCategoryThrottled,
+		dto.FaultCategoryTargetConnectivity, dto.FaultCategoryOther,
+	} {
+		moesif := createTestMoesifWithoutAPI()
+		event := createBaseEvent()
+		event.ErrorType = string(category)
+		moesif.Publish(event)
+
+		metadata := getMetadata(moesif.events[0])
+		assert.Equal(t, string(category), metadata["errorType"])
+	}
+}
+
 func TestPublish_WithPayloads(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
@@ -574,6 +784,9 @@ func (f *fakeMoesifAPI) QueueSubscriptions([]*models.SubscriptionModel) error { 
 func (f *fakeMoesifAPI) CreateEvent(*models.EventModel) (http.Header, error)  { return nil, nil }
 func (f *fakeMoesifAPI) CreateEventsBatch([]*models.EventModel) (http.Header, error) {
 	return nil, nil
+}
+func (f *fakeMoesifAPI) CreateEventSync(*models.EventModel) (int, http.Header, error) {
+	return 0, nil, nil
 }
 func (f *fakeMoesifAPI) UpdateUser(*models.UserModel) error                         { return nil }
 func (f *fakeMoesifAPI) UpdateUsersBatch([]*models.UserModel) error                 { return nil }

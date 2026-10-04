@@ -38,9 +38,6 @@ func TestNewMCPValidator(t *testing.T) {
 	if v.urlFriendlyNameRegex == nil {
 		t.Error("urlFriendlyNameRegex should not be nil")
 	}
-	if len(v.supportedSpecVersions) == 0 {
-		t.Error("supportedSpecVersions should not be empty")
-	}
 }
 
 func TestMCPValidator_Validate_UnsupportedType(t *testing.T) {
@@ -280,6 +277,146 @@ func TestMCPValidator_ValidateVersion(t *testing.T) {
 	}
 }
 
+func TestMCPValidator_MalformedSpecVersionMessage(t *testing.T) {
+	v := NewMCPValidator()
+	rule := "(expected a revision date, YYYY-MM-DD)"
+
+	tests := []struct {
+		name     string
+		versions []string
+		wantMsg  string
+	}{
+		{
+			// Every consumer compares revisions as strings, where these sort above any date.
+			name:     "two malformed versions share one error",
+			versions: []string{"invalid-version", constants.SPEC_VERSION_2025_JUNE, "2025-6-18"},
+			wantMsg:  `Invalid MCP spec versions "invalid-version", "2025-6-18" ` + rule,
+		},
+		{
+			name:     "a date-shaped value that is not a date",
+			versions: []string{"2025-13-45"},
+			wantMsg:  `Invalid MCP spec version "2025-13-45" ` + rule,
+		},
+		{
+			name:     "an empty version is named as empty",
+			versions: []string{""},
+			wantMsg:  `Invalid MCP spec version "" ` + rule,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := v.validateSpecVersionFormat("spec.specVersions", tt.versions)
+			if len(got) != 1 {
+				t.Fatalf("expected exactly one error, got %d", len(got))
+			}
+			if got[0].Message != tt.wantMsg {
+				t.Errorf("message = %q, want %q", got[0].Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+// A revision this gateway does not support deploys: which revision an endpoint speaks is
+// negotiated per session, so refusing the proxy would make a gateway limitation the operator's
+// problem. Both ends of the range are covered.
+func TestMCPValidator_UnsupportedSpecVersionsAreAccepted(t *testing.T) {
+	declared := []string{
+		"2024-11-05",
+		"2025-03-26",
+		constants.SPEC_VERSION_2025_JUNE,
+		constants.SPEC_VERSION_2025_NOVEMBER,
+		constants.SPEC_VERSION_2026_JULY,
+		"2099-01-01",
+	}
+
+	v := NewMCPValidator()
+	if got := v.validateSpecVersionFormat("spec.specVersions", declared); len(got) > 0 {
+		t.Fatalf("well-formed revisions must not be rejected, got %v", got)
+	}
+}
+
+func TestMCPValidator_ValidateSpecVersions(t *testing.T) {
+	v := NewMCPValidator()
+
+	tests := []struct {
+		name         string
+		specVersion  *string
+		specVersions *[]string
+		wantField    string
+	}{
+		{
+			name:         "Every listed version supported",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2026_JULY},
+		},
+		{
+			// A revision this build does not implement is a gateway limitation, not a bad
+			// configuration: it deploys and is warned about instead.
+			name:         "An unimplemented revision is accepted",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, "2025-03-26"},
+		},
+		{
+			name:         "One listed version malformed",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, "2025-3-26"},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:         "Empty list",
+			specVersions: &[]string{},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:         "Both forms declared",
+			specVersion:  stringPtr(constants.SPEC_VERSION_2025_JUNE),
+			specVersions: &[]string{constants.SPEC_VERSION_2026_JULY},
+			wantField:    "spec.specVersions",
+		},
+		{
+			name:        "Deprecated form alone still accepted",
+			specVersion: stringPtr(constants.SPEC_VERSION_2025_NOVEMBER),
+		},
+		{
+			name: "Neither form declared",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "http://backend:8080"
+			config := &api.MCPProxyConfiguration{
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+				Kind:       "Mcp",
+				Metadata:   api.Metadata{Name: "test"},
+				Spec: api.MCPProxyConfigData{
+					DisplayName:  "Test",
+					Version:      "v1.0",
+					Context:      stringPtr("/test"),
+					SpecVersion:  tt.specVersion,
+					SpecVersions: tt.specVersions,
+					Upstream:     api.MCPProxyConfigData_Upstream{Url: &url},
+				},
+			}
+
+			var gotFields []string
+			for _, e := range v.Validate(config) {
+				if e.Field == "spec.specVersion" || e.Field == "spec.specVersions" {
+					gotFields = append(gotFields, e.Field)
+				}
+			}
+
+			if tt.wantField == "" {
+				if len(gotFields) > 0 {
+					t.Errorf("unexpected spec version errors on %v", gotFields)
+				}
+				return
+			}
+			if len(gotFields) != 1 || gotFields[0] != tt.wantField {
+				t.Errorf("expected one error on %s, got %v", tt.wantField, gotFields)
+			}
+		})
+	}
+}
+
 func TestMCPValidator_ValidateSpecVersion(t *testing.T) {
 	v := NewMCPValidator()
 
@@ -290,8 +427,11 @@ func TestMCPValidator_ValidateSpecVersion(t *testing.T) {
 	}{
 		{name: "Valid June 2025", specVersion: stringPtr(constants.SPEC_VERSION_2025_JUNE), wantError: false},
 		{name: "Valid November 2025", specVersion: stringPtr(constants.SPEC_VERSION_2025_NOVEMBER), wantError: false},
+		{name: "Valid July 2026", specVersion: stringPtr(constants.SPEC_VERSION_2026_JULY), wantError: false},
 		{name: "Nil spec version", specVersion: nil, wantError: false},
+		{name: "Unimplemented revision accepted", specVersion: stringPtr("2025-03-26"), wantError: false},
 		{name: "Invalid spec version", specVersion: stringPtr("invalid-version"), wantError: true},
+		{name: "Empty spec version", specVersion: stringPtr(""), wantError: true},
 	}
 
 	for _, tt := range tests {

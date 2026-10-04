@@ -1,0 +1,11 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "LlmProxy",
+  "metadata": { "name": "compat-single-provider" },
+  "spec": {
+    "displayName": "compat-single-provider",
+    "version": "v1.0",
+    "context": "/compat-single",
+    "provider": { "id": "openai-provider" }
+  }
+}

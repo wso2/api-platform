@@ -44,7 +44,14 @@ describe('ApiCreationProgress', () => {
       />,
     );
 
-    expect(screen.getByText('Orders API', { exact: false })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        name: 'We are in the process of creating your Orders API API Proxy',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('will be ready in a moment.', { exact: false }),
+    ).not.toBeInTheDocument();
 
     // Far longer than the flow could plausibly take: the bar must still be
     // short of 100, because only the server's answer may claim completion.

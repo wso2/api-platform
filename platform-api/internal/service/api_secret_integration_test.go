@@ -143,7 +143,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 			},
 		},
 	}
-	created, err := apiSvc.CreateAPI(createReq, apiSecretITOrgUUID, "alice")
+	created, _, err := apiSvc.CreateAPI(createReq, apiSecretITOrgUUID, "alice")
 	if err != nil {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}

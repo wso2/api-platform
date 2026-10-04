@@ -646,10 +646,20 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 // substitution is applied. Envoy uses "\1" substitution syntax; Go's regexp uses "$1".
 func applyEnvoyRewrite(t *testing.T, r *route.Route, requestPath string) string {
 	t.Helper()
-	spec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
-	require.True(t, ok, "expected SafeRegex path specifier")
-	require.True(t, regexp.MustCompile(spec.SafeRegex.Regex).MatchString(requestPath),
-		"match regex %q should match request %q", spec.SafeRegex.Regex, requestPath)
+	// Either matcher kind is accepted: an Exact path match is emitted as Envoy's
+	// native matcher rather than a regex (see TestTranslator_ExactPathUsesNativeMatcher),
+	// and a rewrite assertion against a route that would never have been selected
+	// proves nothing either way.
+	switch spec := r.Match.PathSpecifier.(type) {
+	case *route.RouteMatch_SafeRegex:
+		require.True(t, regexp.MustCompile(spec.SafeRegex.Regex).MatchString(requestPath),
+			"match regex %q should match request %q", spec.SafeRegex.Regex, requestPath)
+	case *route.RouteMatch_Path:
+		require.Equal(t, spec.Path, requestPath,
+			"exact matcher %q should match request %q", spec.Path, requestPath)
+	default:
+		t.Fatalf("route %q has no path matcher", r.GetName())
+	}
 
 	rw := r.GetRoute().GetRegexRewrite()
 	require.NotNil(t, rw, "route should have a RegexRewrite")
@@ -946,6 +956,73 @@ func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
 				Upstream:        models.RouteUpstream{ClusterKey: "main"},
 			}
 			r := translator.createRouteFromRDC("POST|"+tt.context+mcpPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// A route carrying UpstreamPathOverride forwards to exactly that path under its
+// upstream's base path, whatever it matched downstream. It is the shape a route
+// whose gateway-facing path is configurable but whose upstream path is fixed by a
+// protocol needs — a proxied A2A Agent Card being the case it exists for.
+//
+// Getting this wrong is silent whenever the two paths happen to be equal, so each
+// case below configures a gateway path that differs from the upstream one.
+func TestTranslator_UpstreamPathOverride(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const override = "/.well-known/agent-card.json"
+
+	tests := []struct {
+		name          string
+		context       string
+		operationPath string
+		upstreamPath  string
+		request       string
+		wantUpstream  string
+	}{
+		{
+			name:          "root upstream",
+			context:       "/weather",
+			operationPath: "/card",
+			request:       "/weather/card",
+			wantUpstream:  override,
+		},
+		{
+			name:          "base-path upstream",
+			context:       "/weather",
+			operationPath: "/card",
+			upstreamPath:  "/a2a/v1",
+			request:       "/weather/card",
+			wantUpstream:  "/a2a/v1" + override,
+		},
+		{
+			name:          "the gateway path already being the upstream one changes nothing",
+			context:       "/weather",
+			operationPath: override,
+			request:       "/weather" + override,
+			wantUpstream:  override,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.upstreamPath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:               "GET",
+				Path:                 tt.context + tt.operationPath,
+				OperationPath:        tt.operationPath,
+				PathMatchType:        "Exact",
+				UpstreamPathOverride: override,
+				Upstream:             models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|"+tt.context+tt.operationPath+"|", rdcRoute, rdc)
 			require.NotNil(t, r)
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
@@ -1533,6 +1610,7 @@ func TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle(t *testing.T) {
 			gotNames := make([]string, 0, len(logs))
 			for _, l := range logs {
 				gotNames = append(gotNames, l.Name)
+				assert.NotNil(t, l.Filter, "sink %q must carry the reserved health-path suppression filter", l.Name)
 			}
 			assert.Equal(t, tt.wantSinkNames, nilIfEmpty(gotNames), "access log sinks")
 
@@ -1613,6 +1691,37 @@ func TestTranslator_CreateAccessLogConfig_JSONMissingFields(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, logs)
 	assert.Contains(t, err.Error(), "json_fields not configured")
+}
+
+// TestTranslator_CreateFileAccessLog_SuppressesHealthProbes pins the invariant
+// that the stdout access log sink suppresses the reserved /_gateway-health
+// prefix, mirroring the ALS sink's suppression (TestTranslator_CreateGRPCAccessLog),
+// so kubernetes readiness/liveness probes never reach the operator's log.
+func TestTranslator_CreateFileAccessLog_SuppressesHealthProbes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.AccessLogs = config.AccessLogsConfig{
+		Enabled:    true,
+		Format:     "text",
+		TextFormat: "[%START_TIME%] %RESPONSE_CODE%",
+	}
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createFileAccessLog()
+	assert.NoError(t, err)
+	require.NotNil(t, accessLog)
+	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "gateway healthy-check path is suppressed")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "gateway ready-check path is suppressed")
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": "/orders",
+	}), "non-health path is still logged")
 }
 
 func TestTranslator_CreatePolicyEngineCluster(t *testing.T) {
@@ -1806,11 +1915,20 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		assert.Equal(t, constants.GatewayHealthyPath, healthyRoute.GetMatch().GetPath())
 		assert.Equal(t, uint32(200), healthyRoute.GetDirectResponse().GetStatus())
 
+		assert.Equal(t, uint32(0), readyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-ready must force tracing sampling to zero")
+		assert.Equal(t, uint32(0), healthyRoute.GetTracing().GetOverallSampling().GetNumerator(),
+			"gateway-healthy must force tracing sampling to zero")
+
 		require.NotEqual(t, -1, catchAllIdx, "virtual host %q missing no-api-found catch-all", vh.Name)
 		assert.Less(t, readyIdx, catchAllIdx,
 			"gateway-ready must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
 		assert.Less(t, healthyIdx, catchAllIdx,
 			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
+
+		catchAllRoute := vh.Routes[catchAllIdx]
+		assert.Nil(t, catchAllRoute.GetTracing(),
+			"tracing suppression must be scoped to the health routes only, not the no-api-found catch-all")
 	}
 
 	t.Run("present on the wildcard vhost with zero deployed artifacts", func(t *testing.T) {

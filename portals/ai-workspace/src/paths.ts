@@ -63,6 +63,12 @@ export const PLATFORM_API_BASE_URL = `${PROXY_BASE_URL}/api/v0.9`;
 export const PORTAL_API_BASE_URL = `${PROXY_BASE_URL}/api/portal/v0.9`;
 
 /**
+ * Billing API base URL — a second upstream the BFF proxies same-origin, present only
+ * where one is configured. Matches the prefix the BFF strips for its billing hop.
+ */
+export const BILLING_API_BASE_URL = `${PROXY_BASE_URL}/billing`;
+
+/**
  * Base URL for the BFF's own API — the routes it answers itself instead of forwarding:
  * session/login/logout, and the handful of creates that span two Platform API calls
  * (secret + resource) and need server-side compensation when the second fails. Callers

@@ -1,0 +1,459 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package repository
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+)
+
+// ErrAPIPortalNotPending is re-exported from the api package so plugin
+// callers can detect the state-guard rejection via errors.Is without
+// importing this internal package. See api.ErrAPIPortalNotPending for the
+// contract.
+var ErrAPIPortalNotPending = api.ErrAPIPortalNotPending
+
+// APIPortalRepo implements APIPortalRepository.
+type APIPortalRepo struct {
+	db *database.DB
+}
+
+// NewAPIPortalRepo creates a new API Portal repository.
+func NewAPIPortalRepo(db *database.DB) APIPortalRepository {
+	return &APIPortalRepo{db: db}
+}
+
+// apiPortalSelectColumns are the api_portals columns selected in every query, in scan order.
+const apiPortalSelectColumns = `
+	uuid, organization_uuid, handle, display_name, description, url,
+	status, internal_auth_key, metadata,
+	created_by, updated_by, created_at, updated_at
+`
+
+// scanAPIPortalRow scans one api_portals row using the column order in apiPortalSelectColumns.
+func scanAPIPortalRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*model.APIPortal, error) {
+	portal := &model.APIPortal{}
+	var description, url, createdBy, updatedBy sql.NullString
+	var metadataBytes []byte
+	if err := scanner.Scan(
+		&portal.ID, &portal.OrganizationID, &portal.Handle, &portal.Name, &description, &url,
+		&portal.Status, &portal.InternalAuthKey, &metadataBytes,
+		&createdBy, &updatedBy, &portal.CreatedAt, &portal.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	portal.Description = description.String
+	portal.URL = url.String
+	portal.CreatedBy = createdBy.String
+	portal.UpdatedBy = updatedBy.String
+	metadata, err := unmarshalAPIPortalBlob(metadataBytes, "metadata")
+	if err != nil {
+		return nil, err
+	}
+	portal.Metadata = metadata
+	return portal, nil
+}
+
+// marshalAPIPortalBlob serializes a JSON blob column value; nil/empty map becomes nil bytes so the driver stores SQL NULL.
+func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error) {
+	if len(m) == 0 {
+		return nil, nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal %s: %w", field, err)
+	}
+	return b, nil
+}
+
+// unmarshalAPIPortalBlob deserializes a JSON blob; NULL/empty becomes nil so `omitempty` elides the field on wire.
+func unmarshalAPIPortalBlob(b []byte, field string) (map[string]interface{}, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	m := map[string]interface{}{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal %s: %w", field, err)
+	}
+	return m, nil
+}
+
+// Create inserts a new API Portal row.
+func (r *APIPortalRepo) Create(portal *model.APIPortal) error {
+	now := time.Now().UTC()
+	portal.CreatedAt = now
+	portal.UpdatedAt = now
+	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
+	if err != nil {
+		return err
+	}
+	query := `
+		INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, description, url,
+		                          status, internal_auth_key, metadata,
+		                          created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = r.db.Exec(r.db.Rebind(query),
+		portal.ID, portal.OrganizationID, portal.Handle, portal.Name, portal.Description, portal.URL,
+		portal.Status, portal.InternalAuthKey, metadataBytes,
+		portal.CreatedBy, portal.UpdatedBy, portal.CreatedAt, portal.UpdatedAt,
+	)
+	return err
+}
+
+// GetByUUID retrieves an API Portal by its internal UUID, scoped to the organization.
+func (r *APIPortalRepo) GetByUUID(portalID, orgUUID string) (*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE uuid = ? AND organization_uuid = ?
+	`, apiPortalSelectColumns)
+	row := r.db.QueryRow(r.db.Rebind(query), portalID, orgUUID)
+	portal, err := scanAPIPortalRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return portal, nil
+}
+
+// GetByHandleAndOrgID retrieves an API Portal by its handle within an organization.
+func (r *APIPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE handle = ? AND organization_uuid = ?
+	`, apiPortalSelectColumns)
+	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
+	portal, err := scanAPIPortalRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return portal, nil
+}
+
+// ListActiveByOrg returns every api_portals row for orgUUID whose status is
+// "active" — the API Publication feature's GET /api-publications rollup
+// lists only these; a portal still provisioning or failed is absent
+// entirely. Ordered by registration time for a deterministic default order.
+func (r *APIPortalRepo) ListActiveByOrg(orgUUID string) ([]*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE organization_uuid = ? AND status = ?
+		ORDER BY created_at, uuid
+	`, apiPortalSelectColumns)
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, constants.APIPortalStatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active API Portals: %w", err)
+	}
+	defer rows.Close()
+
+	var portals []*model.APIPortal
+	for rows.Next() {
+		portal, err := scanAPIPortalRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		portals = append(portals, portal)
+	}
+	return portals, rows.Err()
+}
+
+// ListPaginated returns a page of API Portals scoped to the organization.
+func (r *APIPortalRepo) ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error) {
+	var args []interface{}
+	conditions := []string{`organization_uuid = ?`}
+	args = append(args, orgUUID)
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	args = append(args, pageArgs...)
+
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE %s
+		ORDER BY %s %s, handle ASC
+		%s
+	`, apiPortalSelectColumns, strings.Join(conditions, ` AND `), col, dir, pageClause)
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var portals []*model.APIPortal
+	for rows.Next() {
+		portal, err := scanAPIPortalRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		portals = append(portals, portal)
+	}
+	return portals, rows.Err()
+}
+
+// Count returns the total matching the org (and optional search), independent of pagination.
+func (r *APIPortalRepo) Count(orgUUID string, search string) (int, error) {
+	var args []interface{}
+	conditions := []string{`organization_uuid = ?`}
+	args = append(args, orgUUID)
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
+		args = append(args, searchArgs...)
+	}
+	query := `SELECT COUNT(*) FROM api_portals WHERE ` + strings.Join(conditions, ` AND `)
+	var total int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// Update mutates only whitelisted fields; uuid, organization_uuid, handle, created_by, created_at are immutable. Caller must set UpdatedBy.
+func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
+	portal.UpdatedAt = time.Now().UTC()
+	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
+	if err != nil {
+		return err
+	}
+	query := `
+		UPDATE api_portals
+		SET display_name = ?, description = ?, url = ?, status = ?,
+		    internal_auth_key = ?, metadata = ?,
+		    updated_by = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query),
+		portal.Name, portal.Description, portal.URL, portal.Status,
+		portal.InternalAuthKey, metadataBytes,
+		portal.UpdatedBy, portal.UpdatedAt,
+		portal.ID, portal.OrganizationID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portal.ID, portal.OrganizationID)
+	}
+	return nil
+}
+
+// Delete removes an API Portal row, scoped to orgUUID.
+func (r *APIPortalRepo) Delete(portalID, orgUUID string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// SQL Server's foreign key from api_publications is NO ACTION, so the
+	// portal's drafts and listings must be removed before the portal itself.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE api_portal_uuid = ? AND organization_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), portalID, orgUUID); err != nil {
+		return err
+	}
+	query := `DELETE FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
+	result, err := tx.Exec(r.db.Rebind(query), portalID, orgUUID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+	}
+	return tx.Commit()
+}
+
+// Exists reports whether an API Portal with the given handle exists in the organization.
+func (r *APIPortalRepo) Exists(handle, orgUUID string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM api_portals WHERE handle = ? AND organization_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// UpdateStatus mutates only the status column, scoped to (portalID, orgUUID),
+// and stamps updated_by / updated_at. Kept separate from Update so a poller
+// tick does not accidentally rewrite the whitelisted mutable-metadata fields
+// Update covers.
+//
+// The WHERE predicate includes `status = 'pending'` so the write is atomic
+// with the transition guard: no two callers can race each other into a
+// terminal state, and no caller can flip a terminal state back or across
+// (e.g. active -> failed). Zero rows affected means either the portal no
+// longer exists or its status is no longer pending; a follow-up existence
+// probe disambiguates so callers can distinguish "not found" (surfacing as
+// APIPortalNotFound) from "someone got here first" (ErrAPIPortalNotPending).
+func (r *APIPortalRepo) UpdateStatus(portalID, orgUUID, updatedBy, status string) error {
+	now := time.Now().UTC()
+	query := `
+		UPDATE api_portals
+		SET status = ?, updated_by = ?, updated_at = ?
+		WHERE uuid = ? AND organization_uuid = ? AND status = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), status, updatedBy, now, portalID, orgUUID, constants.APIPortalStatusPending)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		exists, err := r.existsByUUID(portalID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("api portal not found: uuid=%q organization_uuid=%q", portalID, orgUUID)
+		}
+		return ErrAPIPortalNotPending
+	}
+	return nil
+}
+
+// existsByUUID reports whether a row exists for the given (uuid, org) pair.
+// Used by UpdateStatus to disambiguate a zero-rows-affected update between
+// "row missing" and "status was not pending".
+func (r *APIPortalRepo) existsByUUID(portalID, orgUUID string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(1) FROM api_portals WHERE uuid = ? AND organization_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), portalID, orgUUID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// GetStatusByHandle returns the status column for one portal. Cheaper than a
+// full GetByHandleAndOrgID when the caller only needs the status field
+// (plugin's per-portal Get projection). ErrNoRows is normalized to a nil model
+// caller-side; here a missing row surfaces as sql.ErrNoRows so the caller can
+// distinguish "not found" from "empty status".
+func (r *APIPortalRepo) GetStatusByHandle(handle, orgUUID string) (string, error) {
+	var status string
+	query := `SELECT status FROM api_portals WHERE handle = ? AND organization_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&status); err != nil {
+		return "", err
+	}
+	return status, nil
+}
+
+// ListStatusesByOrg returns handle -> status for every portal in the org. Used
+// by the plugin's List projection so status is available for every row without
+// N+1 GetStatusByHandle calls. Empty org returns an empty map, not an error.
+func (r *APIPortalRepo) ListStatusesByOrg(orgUUID string) (map[string]string, error) {
+	query := `SELECT handle, status FROM api_portals WHERE organization_uuid = ?`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var handle, status string
+		if err := rows.Scan(&handle, &status); err != nil {
+			return nil, err
+		}
+		out[handle] = status
+	}
+	return out, rows.Err()
+}
+
+// ListLoginEnvironmentsByOrg returns handle -> loginEnvironment for every
+// portal in the org whose metadata blob carries the key. Plugin-facing (not
+// on the REST surface): keeps cloud-plugin-specific metadata fields out of
+// ApiPortalListItem while still letting the plugin hydrate list-view rows in
+// one round trip. Portals whose metadata does not include the key are
+// omitted from the map.
+func (r *APIPortalRepo) ListLoginEnvironmentsByOrg(orgUUID string) (map[string]string, error) {
+	query := `SELECT handle, metadata FROM api_portals WHERE organization_uuid = ?`
+	rows, err := r.db.Query(r.db.Rebind(query), orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var handle string
+		var metadataBytes []byte
+		if err := rows.Scan(&handle, &metadataBytes); err != nil {
+			return nil, err
+		}
+		metadata, err := unmarshalAPIPortalBlob(metadataBytes, "metadata")
+		if err != nil {
+			return nil, err
+		}
+		if v, ok := metadata["loginEnvironment"].(string); ok && v != "" {
+			out[handle] = v
+		}
+	}
+	return out, rows.Err()
+}
+
+// ListByStatus returns every portal across every org whose status matches.
+// Cross-org by design: the cloud plugin's provisioning poller does not have an
+// org list at startup and needs to re-track every pending portal to survive a
+// crash mid-provisioning. Ordered by created_at for deterministic replay.
+func (r *APIPortalRepo) ListByStatus(status string) ([]*model.APIPortal, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM api_portals
+		WHERE status = ?
+		ORDER BY created_at, uuid
+	`, apiPortalSelectColumns)
+	rows, err := r.db.Query(r.db.Rebind(query), status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var portals []*model.APIPortal
+	for rows.Next() {
+		portal, err := scanAPIPortalRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		portals = append(portals, portal)
+	}
+	return portals, rows.Err()
+}

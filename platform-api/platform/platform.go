@@ -66,6 +66,12 @@ func New(opts ...Option) (*App, error) {
 		})
 	}
 
+	// Every entry point must build the shared outbound HTTP client before the server
+	// starts; cmd/main.go does the same.
+	if err := server.InitSharedHTTPClient(a.cfg); err != nil {
+		return nil, err
+	}
+
 	return a, nil
 }
 

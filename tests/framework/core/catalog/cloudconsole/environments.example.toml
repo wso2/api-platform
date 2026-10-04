@@ -1,0 +1,5 @@
+# Copy this file to environments.toml and set each cloud environment's base domain.
+# Select an environment with -cloud-env.
+
+[environments.development]
+cloud_base_domain = "development.example"

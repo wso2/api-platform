@@ -86,6 +86,23 @@ type Route struct {
 	// ascending Order so the stable route sorter preserves rule order for ties.
 	Order int
 
+	// UpstreamPathOverride is the path this route forwards to, relative to its
+	// upstream cluster's base path, when that is not simply OperationPath.
+	//
+	// It exists for a route whose gateway-facing path is an operator's choice but
+	// whose upstream path is fixed by a protocol. The public Agent Card is the
+	// case: an Agent may serve its card at any path under its context, but a
+	// proxied card is always fetched from the upstream's standard
+	// /.well-known/agent-card.json. Without this the gateway would forward the
+	// operator's custom path to an upstream that does not serve it.
+	//
+	// Empty means the normal rewrite applies: the context is stripped and the
+	// upstream base path prepended, leaving OperationPath to travel upstream.
+	// This is an Envoy-side concern only — it changes where a matched request is
+	// sent, not which policy chain runs — so it is deliberately not carried to
+	// the policy engine over policy-xDS.
+	UpstreamPathOverride string
+
 	// ─── Policy chain resolution ─────────────────────────────────────────────
 
 	// CanonicalChainKey is the key of the policy chain this route's requests use

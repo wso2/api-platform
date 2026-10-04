@@ -1,0 +1,26 @@
+suite: cloud
+
+defaults:
+  parallel: 1
+  timeouts:
+    boot: 5m
+    propagation: 60s
+
+blocks:
+  - name: apip-cloud
+    parallel: 1
+    components:
+      - name: cloud-console
+    runners:
+      - name: apip-basic
+        features:
+          - features/apip_basic.feature
+      - name: apip-project
+        features:
+          - features/apip_project.feature
+      - name: apip-environment
+        features:
+          - features/apip_environment.feature
+      - name: apip-gateway
+        features:
+          - features/apip_gateway.feature

@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -138,11 +139,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
+	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
-	secretRepo := repository.NewSecretRepo(db)
+	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
+	apiPortalRepo := repository.NewAPIPortalRepo(db)
+	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
+	publicationRepo := repository.NewPublicationRepo(db)
 
 	// Seed the file-based organization on startup if file auth mode is selected.
 	if cfg.Auth.Mode == config.AuthModeFile {
@@ -245,22 +250,34 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
 		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo, identityService)
+	apiDocumentService := service.NewAPIDocumentService(documentRepo, auditRepo, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	// One definition per artifact kind, indexed by the kind the artifact row
+	// carries. Builds and deployments are shared across kinds; rendering is the
+	// one thing that is not, so this is where each kind supplies its own.
+	artifactDefinitions := service.NewArtifactDefinitions(
+		service.NewRestAPIDefinition(apiRepo, apiUtil),
+		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
+		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
+	)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -273,11 +290,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
 	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	agentProxyAPIKeyService := service.NewAgentProxyAPIKeyService(agentProxyRepo, apiKeyRepo, identityService)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
@@ -286,6 +306,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		orgRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactRepo,
+		artifactDefinitions,
 		cfg,
 		slogger,
 	)
@@ -297,8 +319,29 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		artifactRepo,
 		apiKeyRepo,
 		gatewayEventsService,
+		artifactDefinitions,
 		cfg,
 		slogger,
+	)
+	agentDeploymentService := service.NewAgentDeploymentService(
+		agentProxyRepo,
+		deploymentRepo,
+		gatewayRepo,
+		artifactRepo,
+		apiKeyRepo,
+		gatewayEventsService,
+		artifactDefinitions,
+		cfg,
+		slogger,
+	)
+	// One place that knows which service serves which artifact kind, so plugins and
+	// the per-kind paths reach the same code.
+	deploymentsByKind := service.NewDeploymentsByKind(
+		deploymentService,
+		mcpDeploymentService,
+		llmProxyDeploymentService,
+		llmProviderDeploymentService,
+		agentDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -306,6 +349,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmTemplateRepo,
 		llmProxyRepo,
 		mcpProxyRepo,
+		agentProxyRepo,
 		artifactRepo,
 		deploymentRepo,
 		gatewayRepo,
@@ -313,6 +357,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 		mcpProxyService,
+		agentProxyService,
 	)
 
 	// Initialize secret vault and service using the single configured encryption key.
@@ -325,15 +370,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
+	}
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, slogger)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
-	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
+	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
@@ -345,11 +399,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
+	agentProxyHandler := handler.NewAgentProxyHandler(agentProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
+	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
+	agentProxyAPIKeyHandler := handler.NewAgentProxyAPIKeyHandler(apiKeyService, agentProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
+	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
+	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
@@ -389,10 +448,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler.RegisterRoutes(core)
 	projectHandler.RegisterRoutes(core)
 	appHandler.RegisterRoutes(core)
+	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
+	publicationHandler.RegisterRoutes(core)
 	wsHandler.RegisterRoutes(core)
 	internalGatewayHandler.RegisterRoutes(core)
 	apiKeyHandler.RegisterRoutes(core)
@@ -405,6 +466,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProxyDeploymentHandler.RegisterRoutes(core)
 	mcpProxyHandler.RegisterRoutes(core)
 	mcpProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyHandler.RegisterRoutes(core)
+	agentProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyAPIKeyHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
@@ -436,10 +500,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways: gatewayService,
-		Projects: projectService,
-		Config:   cfg,
-		Logger:   slogger,
+		Gateways:   gatewayService,
+		Projects:   projectService,
+		APIPortals: apiPortalService,
+		// Kind-routed, so a plugin names the artifact kind alongside the handle and
+		// reaches the same services the platform's own per-kind paths do.
+		Deployments:   deploymentsByKind,
+		Organizations: orgService,
+		Config:        cfg,
+		Logger:        slogger,
 	}
 
 	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
@@ -677,7 +746,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
-			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
+			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
+				"tokens are trusted as minted by a trusted platform component)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
 			var err error
@@ -1033,4 +1103,16 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 	ba.Organization.UUID = uuid
 	slogger.Info("Seeded file-based organization", "uuid", org.ID, "handle", org.Handle)
 	return nil
+}
+
+// newPortalPublisher builds the real API Portal publisher. Each portal's
+// shared key is resolved per-call from its own api_portals row via
+// authRegistry — there is no server-wide key to read at startup.
+func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, slogger *slog.Logger) (service.PortalPublisher, error) {
+	retryClient, err := client.NewRetryableHTTPClient(3, 10*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
+	}
+	slogger.Info("Initialized the real HTTP publisher for API Publication")
+	return service.NewHTTPPortalPublisher(authRegistry, retryClient), nil
 }

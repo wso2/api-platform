@@ -29,16 +29,18 @@ loadRuntimeConfigScripts()
   })
   .finally(async () => {
     const { default: App } = await import('./App');
-    const cloudExtensions = await import('./cloud')
-      .then((module) => module.cloudExtensions)
-      .catch((error) => {
-        console.warn('Cloud extensions could not be loaded.', error);
-        return [];
-      });
+    // The stub leaves `cloudBrandLogo` undefined for on-prem builds.
+    const cloudModule = await import('./cloud').catch((error) => {
+      console.warn('Cloud extensions could not be loaded.', error);
+      return null;
+    });
 
     root.render(
       <React.StrictMode>
-        <App extensions={cloudExtensions} />
-      </React.StrictMode>
+        <App
+          brandLogo={cloudModule?.cloudBrandLogo}
+          extensions={cloudModule?.cloudExtensions ?? []}
+        />
+      </React.StrictMode>,
     );
   });

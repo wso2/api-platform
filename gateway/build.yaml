@@ -1,6 +1,6 @@
 version: v1
 gateway:
-  version: 1.2.0-SNAPSHOT
+  version: 1.2.1
 policies:
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
@@ -14,6 +14,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
   - name: azure-content-safety-content-moderation
     gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
+  - name: azure-llm-cost
+    gomodule: github.com/wso2/gateway-controllers/policies/azure-llm-cost@v1
   - name: backend-jwt
     gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
   - name: basic-auth
@@ -56,6 +58,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
   - name: mcp-rewrite
     gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1
+  - name: mcp-spec-validation
+    gomodule: github.com/wso2/gateway-controllers/policies/mcp-spec-validation@v0
   - name: model-round-robin
     gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v1
   - name: model-weighted-round-robin
@@ -108,6 +112,16 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
   - name: token-based-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
+  - name: typesafe-jev-content-safety
+    gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-content-safety@v0
+  - name: typesafe-jev-mcp-tool-intent-verification
+    gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-intent-verification@v0
+  - name: typesafe-jev-mcp-tool-result-screening
+    gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-result-screening@v0
+  - name: typesafe-jev-model-routing
+    gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-model-routing@v0
+  - name: typesafe-jev-tool-filtering
+    gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-tool-filtering@v0
   - name: url-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
   - name: word-count-guardrail

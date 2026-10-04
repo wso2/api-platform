@@ -103,16 +103,64 @@ type Server struct {
 	// responses (internal/utils/mcp.go). <= 0 falls back to the fetcher's built-in 10 MiB
 	// default — mirroring OpenAPISpecMaxFetchBytes's own zero-means-default convention.
 	MCPResponseMaxBytes int64 `koanf:"mcp_response_max_fetch_bytes"`
+	// PublicationContentMaxBytes bounds an API Publication draft/publication definition
+	// or landing-page upload (internal/handler/api_publication.go). <= 0 falls back to
+	// a 10 MiB default — same zero-means-default convention as the two fields above.
+	PublicationContentMaxBytes int64 `koanf:"publication_content_max_bytes"`
+	// PublicationThumbnailMaxBytes bounds an API Publication draft/publication thumbnail
+	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
+	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
+	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// AgentCardMaxFetchBytes bounds the body read from an upstream agent's Agent Card
+	// endpoint (internal/utils/agent_card.go). <= 0 falls back to the fetcher's built-in
+	// 1 MiB default, which is the contract's per-card ceiling — mirroring
+	// OpenAPISpecMaxFetchBytes's own zero-means-default convention.
+	AgentCardMaxFetchBytes int64 `koanf:"agent_card_max_fetch_bytes"`
 
-	Database    Database         `koanf:"database"`
-	Auth        Auth             `koanf:"auth"`
-	Deployments Deployments      `koanf:"deployments"`
-	Listeners   ServerListeners  `koanf:"server"`
-	Security    Security         `koanf:"security"`
-	Gateway     Gateway          `koanf:"gateway"`
-	EventHub    EventHub         `koanf:"event_hub"`
-	Webhook     Webhook          `koanf:"webhook"`
-	HTTPClient  HTTPClientConfig `koanf:"http_client"`
+	Database       Database         `koanf:"database"`
+	Auth           Auth             `koanf:"auth"`
+	Deployments    Deployments      `koanf:"deployments"`
+	Listeners      ServerListeners  `koanf:"server"`
+	Security       Security         `koanf:"security"`
+	Gateway        Gateway          `koanf:"gateway"`
+	EventHub       EventHub         `koanf:"event_hub"`
+	Webhook        Webhook          `koanf:"webhook"`
+	HTTPClient     HTTPClientConfig `koanf:"http_client"`
+	AgentCardCache AgentCardCache   `koanf:"agent_card_cache"`
+}
+
+// AgentCardCache configures the in-process cache sitting in front of the
+// stored-handle Agent Card display fetch (POST /agent-proxies/fetch-agent-card
+// with an agentProxyId).
+//
+// The public Agent Card of a passthrough Agent proxy is not stored, so the
+// control plane fetches it from the upstream every time that page is viewed.
+// Without a cache that is one outbound request per page view per viewer, which
+// is load the upstream never agreed to carry. Failures are cached too, at a
+// shorter TTL: caching only successes would leave a down upstream re-contacted
+// on every single view — the exact load the cache exists to remove.
+//
+// The cache is per replica and holds nothing durable: two replicas may report
+// different Age values for the same Agent proxy, and a restart empties it. It
+// is display-only and never a source of truth — builders, importers and the
+// deployment path all read stored configuration, never a cached card.
+type AgentCardCache struct {
+	// PositiveTTL is how long a successfully fetched card is served from cache.
+	// Zero disables caching of successes entirely; every call then fetches, and
+	// the response reports Cache-Control: max-age=0.
+	PositiveTTL time.Duration `koanf:"positive_ttl"`
+	// NegativeTTL is how long a fetch failure is served from cache. Zero disables
+	// caching of failures, which re-contacts an unreachable upstream on every view.
+	NegativeTTL time.Duration `koanf:"negative_ttl"`
+	// MaxEntries caps how many Agent proxies may hold a cached result at once.
+	// The least recently used entry is evicted at the cap. Zero or less means
+	// the cache holds nothing.
+	MaxEntries int `koanf:"max_entries"`
+	// MaxBytes caps the total encoded size of the cached cards. A single card may
+	// be up to 1 MiB, so an unbounded map keyed per Agent proxy is a memory
+	// exhaustion vector for an organization with many passthrough Agent proxies.
+	// Zero or less means the cache holds nothing.
+	MaxBytes int64 `koanf:"max_bytes"`
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -457,23 +505,47 @@ type CORS struct {
 
 // InternalToken holds settings specific to the "internal_token" auth mode.
 type InternalToken struct {
-	// SkipValidation bypasses all JWT validation — signature, expiry, and
-	// issuer checks are skipped and auth.jwt.public_key_file is not required.
-	// Intended for local development where the signing keypair is unavailable.
-	// Must be false in production.
+	// SkipValidation disables all JWT validation on the internal-token path,
+	// including signature, exp/nbf/iat, and issuer checks. The token must still
+	// be a well-formed JWT containing the configured organization claim.
+	// Claims are decoded and mapped as usual, so authorization still applies
+	// to the scopes and roles presented by the token.
+	//
+	// This is a supported trust-boundary configuration for internally minted
+	// tokens, not a development-only escape hatch. Authentication relies
+	// entirely on the upstream component that establishes the trust.
+	// Disabled by default; enabling it requires an explicit operator decision
+	// (GO-AUTH-011).
 	SkipValidation bool `koanf:"skip_validation"`
 }
 
-// JWT holds configuration for local asymmetric (RS256) JWT authentication.
-// Active when Auth.Mode is AuthModeInternalToken (verify-only; tokens minted by
+// JWTAlgorithmRS256 is the only value JWT.Algorithm currently accepts. RS256
+// is quantum-vulnerable; migrating to a config-gated ML-DSA-65 (FIPS 204)
+// alternative per post-quantum-cryptography.md directive 1 is tracked in
+// https://github.com/wso2/api-platform/issues/3450, which also covers the
+// separate work of getting an ML-DSA Go library through this repo's
+// dependency-vetting process (dependency-management.md) before it can be
+// used here, and updating the openssl-based key-generation tooling
+// (scripts/setup-local-dev.sh, kubernetes/helm/*/generate-secrets.sh, the
+// docker-compose jwtkeygen init-containers, and others) that currently mints
+// only RSA-2048 keypairs. JWT.Algorithm exists now so that migration lands as
+// a new accepted value here plus an EffectiveAlgorithm branch in
+// LoadPublicKey/LoadPrivateKey, rather than a breaking change to this struct.
+const JWTAlgorithmRS256 = "RS256"
+
+// JWT holds configuration for local asymmetric JWT authentication. Active
+// when Auth.Mode is AuthModeInternalToken (verify-only; tokens minted by
 // another platform component) or AuthModeFile (file mode also issues these
-// tokens). Signature
-// validation is always on and strictly asymmetric — symmetric (HMAC) and
-// unsigned ("none") algorithms are rejected.
-//
-// TODO(pqc): migrate — RS256 is quantum-vulnerable. Move to an ML-DSA (FIPS 204)
-// signature once a Go JWT library exposes it. See post-quantum-cryptography.md.
+// tokens). Signature validation is always on and strictly asymmetric —
+// symmetric (HMAC) and unsigned ("none") algorithms are rejected.
 type JWT struct {
+	// Algorithm selects the signing/verification scheme. Only
+	// JWTAlgorithmRS256 is accepted today (see its doc comment); empty is
+	// treated as RS256 so existing deployments' config keeps working
+	// unchanged. Startup fails closed on any other value rather than
+	// silently falling back to RS256, so a config typo or a request for an
+	// algorithm this version doesn't yet support is never silently ignored.
+	Algorithm string `koanf:"algorithm"`
 	// PublicKeyFile is the path to a mounted PEM-encoded RSA public key file,
 	// used to verify token signatures. Required in both "internal_token" and
 	// "file" modes. The key is read from disk at the point of use rather than
@@ -487,6 +559,16 @@ type JWT struct {
 	PrivateKeyFile string        `koanf:"private_key_file"`
 	Issuer         string        `koanf:"issuer"`
 	TokenTTL       time.Duration `koanf:"token_ttl"`
+}
+
+// EffectiveAlgorithm returns the configured algorithm, defaulting to
+// JWTAlgorithmRS256 when unset so existing deployments' config keeps working
+// unchanged.
+func (j *JWT) EffectiveAlgorithm() string {
+	if j.Algorithm == "" {
+		return JWTAlgorithmRS256
+	}
+	return j.Algorithm
 }
 
 // LoadPublicKey reads and parses the PEM-encoded RSA public key from
@@ -554,10 +636,15 @@ type Database struct {
 
 // Deployments holds deployment-specific configuration.
 type Deployments struct {
-	MaxPerAPIGateway int  `koanf:"max_per_api_gateway"`
-	TimeoutEnabled   bool `koanf:"timeout_enabled"`
-	TimeoutInterval  int  `koanf:"timeout_interval"`
-	TimeoutDuration  int  `koanf:"timeout_duration"`
+	MaxPerAPIGateway int `koanf:"max_per_api_gateway"`
+	// MaxBuildsPerAPI caps how many builds are stored per API. Preparing another
+	// one at the cap first removes the API's oldest builds that no deployment
+	// holds; if every build is held, the prepare is refused rather than taking a
+	// build something can still be restored from. Zero or less keeps every build.
+	MaxBuildsPerAPI int  `koanf:"max_builds_per_api"`
+	TimeoutEnabled  bool `koanf:"timeout_enabled"`
+	TimeoutInterval int  `koanf:"timeout_interval"`
+	TimeoutDuration int  `koanf:"timeout_duration"`
 }
 
 // APIKey holds API key-specific configuration.
@@ -929,6 +1016,10 @@ func ValidateAuthSkipPath(path string) error {
 // asymmetric RSA keys are accepted, so symmetric (HMAC) verification is
 // structurally impossible.
 func validateJWTConfig(jwtCfg *JWT, requireSigningKey bool) error {
+	if jwtCfg.EffectiveAlgorithm() != JWTAlgorithmRS256 {
+		return fmt.Errorf("Auth.JWT.Algorithm must be %q (got %q) — see JWTAlgorithmRS256's doc comment "+
+			"for the tracked PQC migration adding further accepted values", JWTAlgorithmRS256, jwtCfg.Algorithm)
+	}
 	if jwtCfg.PublicKeyFile == "" {
 		return fmt.Errorf("Auth.JWT.PublicKeyFile is required when auth.mode is %q or %q "+
 			"(set auth.jwt.public_key_file to the path of a mounted PEM-encoded RSA public key)",

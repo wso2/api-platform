@@ -27,6 +27,7 @@ import {
   Form,
   FormControl,
   FormHelperText,
+  FormLabel,
   Grid,
   IconButton,
   InputAdornment,
@@ -42,7 +43,16 @@ import {
   alpha,
   type Theme,
 } from '@wso2/oxygen-ui';
-import { FileText, GitHub, Pencil, RefreshCw, Upload, X } from '@wso2/oxygen-ui-icons-react';
+import {
+  Eraser as Broom,
+  FileText,
+  GitHub,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Zap,
+} from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
 import {
   useEffect,
@@ -78,8 +88,19 @@ import {
   swaggerHubSpecUrl,
   type SwaggerHubApi,
 } from '../utils/swaggerHub';
+import {
+  formatValidationError,
+  useValidateOpenApiSpec,
+  type OpenAPIValidationError,
+} from '@/api/resources/restApis';
+import { isApiError } from '@/api/core/errors';
 import { isValidUrl } from '../../utils/developEdit';
-import { validateApiSpec, type SpecDialect, type SpecIssue } from '../utils/specValidation';
+import {
+  collectSpecWarnings,
+  readDialectFromSpec,
+  type SpecDialect,
+  type SpecIssue,
+} from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
 import { type ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
@@ -182,6 +203,11 @@ const SAMPLE_CONTRACT_URLS: Record<string, string> = {
 const SAMPLE_REPOSITORY_URL = 'https://github.com/wso2/bijira-samples';
 
 const messages = defineMessages({
+  clearUrl: {
+    id: 'api.create.fromContract.action.clearUrl',
+    defaultMessage: 'Clear URL',
+    description: 'Clears the API contract URL field and its loaded preview.',
+  },
   fetching: {
     id: 'api.create.fromContract.status.fetching',
     defaultMessage: 'Reading the contract…',
@@ -281,22 +307,17 @@ const messages = defineMessages({
     id: 'api.create.fromContract.source.url',
     defaultMessage: 'URL',
   },
-  specOversized: {
-    id: 'api.create.fromContract.spec.oversized',
-    defaultMessage: 'That file is too large to validate in the browser.',
-  },
   specUnsupportedSource: {
     id: 'api.create.fromContract.spec.unsupportedSource',
     defaultMessage: 'Importing from this source is not available yet.',
   },
-  specUnreachable: {
-    id: 'api.create.fromContract.spec.unreachable',
-    defaultMessage:
-      'That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests.',
+  specTooLarge: {
+    id: 'api.create.fromContract.spec.tooLarge',
+    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
   },
-  specUnreadable: {
-    id: 'api.create.fromContract.spec.unreadable',
-    defaultMessage: 'That contract could not be read as YAML or JSON.',
+  specValidationFailed: {
+    id: 'api.create.fromContract.spec.validationFailed',
+    defaultMessage: 'Failed to validate the OpenAPI specification. Please try again.',
   },
   swaggerHubApiLabel: {
     id: 'api.create.fromContract.swaggerHub.apiLabel',
@@ -374,11 +395,12 @@ const messages = defineMessages({
   },
   uploadAction: {
     id: 'api.create.fromContract.upload.action',
-    defaultMessage: 'Select file',
+    defaultMessage: 'Upload',
   },
   uploadHint: {
     id: 'api.create.fromContract.upload.hint',
-    defaultMessage: 'One file \u00b7 {extensions}',
+    defaultMessage:
+      'Drag & drop your file or click to select \u00b7 Accepted file types: {extensions}',
     description: 'Sits under the drop-zone heading; {extensions} is a list such as ".json, .yaml".',
   },
   uploadRemove: {
@@ -386,10 +408,10 @@ const messages = defineMessages({
     defaultMessage: 'Remove {fileName}',
     description: 'Accessible name for the button that discards the chosen file.',
   },
-  uploadReplace: {
-    id: 'api.create.fromContract.upload.replace',
-    defaultMessage: 'Replace file',
-    description: 'Reopens the file picker so the chosen contract can be swapped for another.',
+  uploadedFile: {
+    id: 'api.create.fromContract.upload.uploadedFile',
+    defaultMessage: 'Uploaded file',
+    description: 'Heading above the selected API contract file.',
   },
   uploadRequired: {
     id: 'api.create.fromContract.upload.required',
@@ -397,7 +419,7 @@ const messages = defineMessages({
   },
   uploadTitle: {
     id: 'api.create.fromContract.upload.title',
-    defaultMessage: 'Drag and drop your contract here',
+    defaultMessage: 'Upload API Contract',
   },
   uploadUnsupported: {
     id: 'api.create.fromContract.upload.unsupported',
@@ -418,6 +440,12 @@ const messages = defineMessages({
   urlRequired: {
     id: 'api.create.fromContract.url.required',
     defaultMessage: 'The URL for the API contract cannot be empty',
+  },
+  specInvalidByBackend: {
+    id: 'api.create.fromContract.spec.invalidByBackend',
+    defaultMessage: 'Validation failed:',
+    description:
+      'Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid',
   },
 });
 
@@ -558,6 +586,7 @@ const SampleLink = ({ onClick }: { onClick: () => void }) => (
   <Button
     onClick={onClick}
     size="small"
+    startIcon={<Zap size={16} />}
     sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
     type="button"
     variant="text"
@@ -580,9 +609,6 @@ type ContractFileControlProps = {
   onReject: (reason: ContractFileRejection) => void;
   onSelect: (file: File) => void;
 };
-
-/** Ceiling for in-browser parsing — a huge document would freeze the tab. */
-const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
 
 /** Bytes rendered as a locale-aware "13 kB" / "1.4 MB". */
 const formatFileSize = (intl: IntlShape, bytes: number): string => {
@@ -679,15 +705,7 @@ const ContractFileControl = ({
         <FormattedMessage {...messages.uploadUnsupported} values={{ extensions: extensionList }} />
       );
     }
-    return (
-      <FormattedMessage
-        {...messages.uploadAccepted}
-        values={{
-          extensions: extensionList,
-          maxSize: formatFileSize(intl, MAX_CONTRACT_BYTES),
-        }}
-      />
-    );
+    return undefined;
   })();
 
   return (
@@ -707,91 +725,93 @@ const ContractFileControl = ({
         type="file"
       />
 
-      <Box
+      <Card
         onClick={file === null ? openPicker : undefined}
         onDragLeave={() => setDraggedOver(false)}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         sx={(theme) => ({
-          alignItems: 'center',
           bgcolor: draggedOver ? 'action.hover' : 'background.default',
           border: hairline(theme),
           borderColor: draggedOver ? 'primary.main' : 'divider',
           borderRadius: 2,
           borderStyle: 'dashed',
           cursor: file === null ? 'pointer' : 'default',
-          display: 'flex',
-          justifyContent: 'center',
-          px: 3,
-          py: file === null ? 5 : 3,
+          minHeight: 300,
         })}
+        variant="outlined"
       >
-        {file === null ? (
-          <Stack spacing={1} sx={{ alignItems: 'center', textAlign: 'center' }}>
-            <Box sx={iconTileSx(7)}>
-              <Upload size={24} />
-            </Box>
-            <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
-              <FormattedMessage {...messages.uploadTitle} />
-            </Typography>
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />
-            </Typography>
-            <Button onClick={openPicker} sx={{ mt: 2 }} variant="contained">
-              <FormattedMessage {...messages.uploadAction} />
-            </Button>
-          </Stack>
-        ) : (
-          <Stack spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
-            <Stack
-              direction="row"
-              spacing={2}
-              sx={(theme) => ({
-                alignItems: 'center',
-                bgcolor: 'background.paper',
-                border: hairline(theme),
-                borderColor: 'divider',
-                borderRadius: 2,
-                maxWidth: theme.spacing(60),
-                px: 2,
-                py: 1.5,
-                width: '100%',
-              })}
-            >
-              <Box sx={iconTileSx(5)}>
-                <FileText size={20} />
+        <CardContent
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            justifyContent: 'center',
+            minHeight: 300,
+            p: 3,
+            '&:last-child': { pb: 3 },
+          }}
+        >
+          {file === null ? (
+            <Stack spacing={1} sx={{ alignItems: 'center', textAlign: 'center' }}>
+              <Box sx={iconTileSx(7)}>
+                <Upload size={24} />
               </Box>
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                  <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">
-                    {file.name}
-                  </Typography>
-                  {fileExtensionLabel(file.name) === '' ? null : (
-                    <Chip label={fileExtensionLabel(file.name)} size="small" />
-                  )}
-                </Stack>
-                <Typography color="text.secondary" variant="caption">
-                  {formatFileSize(intl, file.size)}
-                </Typography>
-              </Box>
-              <IconButton
-                aria-label={intl.formatMessage(messages.uploadRemove, {
-                  fileName: file.name,
-                })}
-                onClick={() => onReject('removed')}
-                size="small"
-              >
-                <X size={16} />
-              </IconButton>
+              <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
+                <FormattedMessage {...messages.uploadTitle} />
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />
+              </Typography>
+              <Button onClick={openPicker} sx={{ mt: 2 }} type="button" variant="contained">
+                <FormattedMessage {...messages.uploadAction} />
+              </Button>
             </Stack>
-            <Button onClick={openPicker} sx={{ mt: 1 }} variant="text">
-              <FormattedMessage {...messages.uploadReplace} />
-            </Button>
-          </Stack>
-        )}
-      </Box>
+          ) : (
+            <Stack spacing={2} sx={{ alignItems: 'center', width: '100%' }}>
+              <Typography sx={{ fontWeight: 700 }} variant="h6">
+                <FormattedMessage {...messages.uploadedFile} />
+              </Typography>
+              <Card sx={{ maxWidth: 480, width: '100%' }}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                    <Box sx={iconTileSx(5)}>
+                      <FileText size={20} />
+                    </Box>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
+                        <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">
+                          {file.name}
+                        </Typography>
+                        {fileExtensionLabel(file.name) === '' ? null : (
+                          <Chip label={fileExtensionLabel(file.name)} size="small" />
+                        )}
+                      </Stack>
+                      <Typography color="text.secondary" variant="caption">
+                        {formatFileSize(intl, file.size)}
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.uploadRemove, {
+                        fileName: file.name,
+                      })}
+                      color="error"
+                      onClick={() => onReject('removed')}
+                      size="small"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
 
-      <FormHelperText id={helperId}>{helperText}</FormHelperText>
+      {helperText === undefined ? null : (
+        <FormHelperText id={helperId}>{helperText}</FormHelperText>
+      )}
     </FormControl>
   );
 };
@@ -815,6 +835,13 @@ export type FetchedContract = {
    * has something to show in both cases.
    */
   spec: SpecDocument;
+  /**
+   * The original text exactly as uploaded or downloaded. Preserved so the
+   * source view shows what the user actually gave us (comments, anchors,
+   * original format) and so draft submission can send the same bytes to the
+   * backend without a lossy round-trip through the parsed object.
+   */
+  rawText: string;
   /** The source it came from, for whoever consumes this step. */
   values: ContractValues;
   /** Things worth saying about it that didn't stop the import. */
@@ -823,17 +850,17 @@ export type FetchedContract = {
 
 /** Why a fetch produced nothing to preview. */
 export type ContractFetchFailure =
-  | 'oversized'
-  | 'unreachable'
-  | 'unreadable'
   /** The source has no fetching behind it yet, GitHub, SwaggerHub. */
-  | 'unsupportedSource';
+  | 'unsupportedSource'
+  /** The spec exceeded the backend's configured maximum size (413 for a file upload, or the OPENAPI_SPEC_URL_TOO_LARGE code for a URL fetch). */
+  | 'tooLarge'
+  /** Generic "we couldn't validate" fallback — the validator crashed, the network dropped, we got an unrecognized 4xx, or the spec source produced no bytes to preview. */
+  | 'validationFailed';
+
+type PreviewFetchFailure = ContractFetchFailure | 'unreachable' | 'unreadable';
 
 export type ContractFetchResult =
-  | { contract: FetchedContract; status: 'fetched' }
-  /** Read and parsed, but not a definition this step can use. */
-  | { issues: SpecIssue[]; status: 'invalidSpec' }
-  | { status: ContractFetchFailure };
+  { contract: FetchedContract; status: 'fetched' } | { status: PreviewFetchFailure };
 
 /**
  * The file's text. `Blob.text()` where it exists, `FileReader` otherwise —
@@ -865,25 +892,25 @@ const parseContractText = (text: string): SpecDocument | null => {
 };
 
 /**
- * The last gate a parsed document passes: is it an OpenAPI definition this
- * step can preview and create from?
+ * Wraps a parsed document into a fetched contract ready for preview.
  *
- * Applied to every source, so a file dropped on the upload tab is held to the
- * same standard as one downloaded from a URL.
+ * Dialect is read from the spec but validation is deferred entirely to the
+ * backend validate-openapi call; warnings are filled in there and merged in
+ * once that response arrives. Warnings start empty here so the preview renders
+ * immediately while the backend call is still in-flight.
  */
-const acceptSpec = (spec: SpecDocument, values: ContractValues): ContractFetchResult => {
-  const validation = validateApiSpec(spec);
-  return validation.status === 'valid'
-    ? {
-        contract: {
-          dialect: validation.dialect,
-          spec,
-          values,
-          warnings: validation.warnings,
-        },
-        status: 'fetched',
-      }
-    : { issues: validation.issues, status: 'invalidSpec' };
+const acceptSpec = (
+  rawText: string,
+  spec: SpecDocument,
+  values: ContractValues,
+): ContractFetchResult => {
+  const dialectResult = readDialectFromSpec(spec);
+  const dialect: SpecDialect =
+    dialectResult === null || dialectResult === 'unsupported' ? 'openapi-3.0' : dialectResult;
+  return {
+    contract: { dialect, rawText, spec, values, warnings: [] },
+    status: 'fetched',
+  };
 };
 
 /**
@@ -906,23 +933,14 @@ const fetchDocumentFrom = async (
     if (!response.ok) {
       return { status: 'unreachable' };
     }
-    // Check length before reading; chunked responses are backstopped later.
-    const declaredBytes = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_CONTRACT_BYTES) {
-      return { status: 'oversized' };
-    }
     text = await response.text();
   } catch {
     // Network failure, a timeout, or the host refused the cross-origin read.
     // The reason is developer-facing, so it stays in the console, not the UI.
     return { status: 'unreachable' };
   }
-  // Backstop for responses with no declared length.
-  if (text.length > MAX_CONTRACT_BYTES) {
-    return { status: 'oversized' };
-  }
   const spec = parseContractText(text);
-  return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+  return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
 };
 
 /**
@@ -947,12 +965,10 @@ export const fetchContractForPreview = async (
       if (values.file === undefined) {
         return { status: 'unreadable' };
       }
-      if (values.file.size > MAX_CONTRACT_BYTES) {
-        return { status: 'oversized' };
-      }
       try {
-        const spec = parseContractText(await readContractText(values.file));
-        return spec === null ? { status: 'unreadable' } : acceptSpec(spec, values);
+        const text = await readContractText(values.file);
+        const spec = parseContractText(text);
+        return spec === null ? { status: 'unreadable' } : acceptSpec(text, spec, values);
       } catch {
         // Malformed YAML/JSON — js-yaml's own message is developer-facing.
         return { status: 'unreadable' };
@@ -1030,6 +1046,21 @@ const isSameContractSource = (
   }
 };
 
+/**
+ * Substring the backend uses in the client-facing message when the OpenAPI
+ * spec it fetched from the caller-supplied URL exceeds the configured cap.
+ */
+const SPEC_TOO_LARGE_MESSAGE_MARKER = 'exceeds the maximum allowed size';
+
+const classifyValidateFailure = (err: unknown): ContractFetchFailure => {
+  if (!isApiError(err)) return 'validationFailed';
+  if (err.status === 413) return 'tooLarge';
+  if (typeof err.message === 'string' && err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)) {
+    return 'tooLarge';
+  }
+  return 'validationFailed';
+};
+
 /** API types this step offers, in the order the map declares them. */
 const CONTRACT_API_TYPES: ApiType[] = Object.keys(CONTRACT_SOURCES_BY_API_TYPE)
   .map((key) => API_TYPES.find((apiType) => apiType.key === key))
@@ -1050,6 +1081,7 @@ export const ContractSourceForm = ({
   onRefreshSwaggerHubOrganizations,
 }: ContractSourceFormProps) => {
   const intl = useIntl();
+  const validateSpec = useValidateOpenApiSpec();
 
   const [apiTypeKey] = useState(() => initialApiTypeKey ?? apiTypes[0]?.key ?? '');
   const [sourceKey, setSourceKey] = useState<ContractSourceKey>(
@@ -1102,11 +1134,15 @@ export const ContractSourceForm = ({
    * whole verdict rather than a code, because an invalid definition carries the
    * list of what is wrong with it.
    */
-  const [fetchError, setFetchError] = useState<Exclude<
-    ContractFetchResult,
-    { status: 'fetched' }
-  > | null>(null);
+  // Only the panel-level failure statuses (unsupportedSource, tooLarge) land
+  // here — the wider PreviewFetchFailure alphabet stays internal to
+  // fetchContractForPreview; its unreachable/unreadable outcomes are folded
+  // into specValidationFailed at the call site.
+  const [fetchError, setFetchError] = useState<{ status: ContractFetchFailure } | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [backendValidationErrors, setBackendValidationErrors] = useState<
+    OpenAPIValidationError[] | null
+  >(null);
   /**
    * The source a fetch has been asked for, or `null` while none has. Held as
    * state so the request is made by an effect rather than inside the handler
@@ -1295,11 +1331,20 @@ export const ContractSourceForm = ({
 
   const handleSourceChange = (next: ContractSourceKey) => {
     setSourceKey(next);
+    // Reset every source's input so the previous tab's values don't persist
+    contractUrl.setValue('');
+    setFile(null);
+    setFileError(null);
+    setFetched(null);
+    setRequest(null);
+    setFetching(false);
     setFetchError(null);
+    setBackendValidationErrors(null);
   };
 
   /** An accepted file is a finished selection, so it is read straight away. */
   const handleFileSelect = (next: File) => {
+    setFetched(null);
     setFileError(null);
     setFetchError(null);
     setFile(next);
@@ -1416,24 +1461,116 @@ export const ContractSourceForm = ({
 
     let current = true;
     setFetchError(null);
+    setBackendValidationErrors(null);
     setFetching(true);
-    void fetchContractForPreview(request).then((result) => {
-      if (!current) {
-        return;
-      }
+
+    // Fold every non-specific failure into a single generic error.
+    const showValidationFailed = () => {
       setFetching(false);
-      if (result.status !== 'fetched') {
-        setFetchError(result);
-        return;
+      setFetched(null);
+      setFetchError({ status: 'validationFailed' });
+    };
+
+    void (async () => {
+      const isRest = request.apiTypeKey === 'rest';
+      try {
+        let rawText: string;
+
+        if (isRest && request.sourceKey === 'url') {
+          if (request.url === undefined || request.url === '') {
+            showValidationFailed();
+            return;
+          }
+          const validation = await validateSpec.mutateAsync({ url: request.url });
+          if (!current) return;
+          if (!validation.isValid) {
+            setFetching(false);
+            setBackendValidationErrors(validation.errors);
+            setFetched(null);
+            return;
+          }
+          rawText = validation.content ?? '';
+          if (rawText === '') {
+            showValidationFailed();
+            return;
+          }
+        } else if (isRest && request.sourceKey === 'file') {
+          if (request.file === undefined) {
+            showValidationFailed();
+            return;
+          }
+          const validation = await validateSpec.mutateAsync({ file: request.file });
+          if (!current) return;
+          if (!validation.isValid) {
+            setFetching(false);
+            setBackendValidationErrors(validation.errors);
+            setFetched(null);
+            return;
+          }
+          rawText = validation.content ?? '';
+          if (rawText === '') {
+            showValidationFailed();
+            return;
+          }
+        } else {
+          // GitHub / SwaggerHub / non-REST — client-side fetch and, for REST
+          // dialects, send the fetched text through the same backend validator.
+          const result = await fetchContractForPreview(request);
+          if (!current) return;
+          if (result.status !== 'fetched') {
+            if (result.status === 'unsupportedSource') {
+              setFetching(false);
+              setFetched(null);
+              setFetchError({ status: 'unsupportedSource' });
+              return;
+            }
+            showValidationFailed();
+            return;
+          }
+          if (isRest) {
+            const validation = await validateSpec.mutateAsync({ text: result.contract.rawText });
+            if (!current) return;
+            if (!validation.isValid) {
+              setFetching(false);
+              setBackendValidationErrors(validation.errors);
+              setFetched(null);
+              return;
+            }
+          }
+          rawText = result.contract.rawText;
+        }
+
+        const spec = parseContractText(rawText);
+        if (spec === null) {
+          showValidationFailed();
+          return;
+        }
+        const accepted = acceptSpec(rawText, spec, request);
+        // acceptSpec always returns 'fetched'; the narrow keeps TS happy.
+        if (accepted.status !== 'fetched') {
+          showValidationFailed();
+          return;
+        }
+        // FE warning check: missingTitle, missingVersion, noServers.
+        // Structural errors (noPaths, noOperations, badPathKeys) and external
+        // $refs are handled by BE.
+        const warnings: SpecIssue[] = collectSpecWarnings(accepted.contract.spec);
+        if (!current) return;
+        setFetching(false);
+        setFetched({ ...accepted.contract, warnings });
+      } catch (err) {
+        if (!current) return;
+        setFetching(false);
+        setFetched(null);
+        setFetchError({ status: classifyValidateFailure(err) });
       }
-      // Fetched: the effect further down hands it to the panel, which renders
-      // it in the preview and unlocks Next.
-      setFetched(result.contract);
-    });
+    })();
 
     return () => {
       current = false;
     };
+    // validateSpec.mutateAsync is stable across renders (TanStack Query guarantee).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request]);
 
   /**
@@ -1480,6 +1617,7 @@ export const ContractSourceForm = ({
    */
   useEffect(() => {
     setFetchError(null);
+    setBackendValidationErrors(null);
   }, [
     branch,
     contractFile,
@@ -1494,18 +1632,13 @@ export const ContractSourceForm = ({
 
   /** Why the last fetch came back empty, as a sentence; `null` when it didn't. */
   const fetchErrorText = (() => {
-    if (fetchError?.status === 'invalidSpec') {
-      return <SpecIssueList issues={fetchError.issues} />;
-    }
     switch (fetchError?.status) {
-      case 'oversized':
-        return <FormattedMessage {...messages.specOversized} />;
-      case 'unreachable':
-        return <FormattedMessage {...messages.specUnreachable} />;
-      case 'unreadable':
-        return <FormattedMessage {...messages.specUnreadable} />;
       case 'unsupportedSource':
         return <FormattedMessage {...messages.specUnsupportedSource} />;
+      case 'tooLarge':
+        return <FormattedMessage {...messages.specTooLarge} />;
+      case 'validationFailed':
+        return <FormattedMessage {...messages.specValidationFailed} />;
       default:
         return null;
     }
@@ -1570,7 +1703,7 @@ export const ContractSourceForm = ({
           value={sourceKey}
         >
           {availableSources.map((candidate) => (
-            <ToggleButton key={candidate} value={candidate}>
+            <ToggleButton key={candidate} type="button" value={candidate}>
               {intl.formatMessage(SOURCE_LABELS[candidate])}
             </ToggleButton>
           ))}
@@ -1579,17 +1712,61 @@ export const ContractSourceForm = ({
 
       {sourceKey === 'url' ? (
         <Form.Stack spacing={1}>
-          <ContractTextControl
-            field={contractUrl}
-            id="contractUrl"
-            invalidMessage={messages.urlInvalid}
-            label={intl.formatMessage(messages.urlLabel)}
-            // Leaving a valid URL is the whole gesture: the contract is read
-            // then, rather than on a button afterwards.
-            onCommitted={(url) => requestFetch({ apiTypeKey, sourceKey: 'url', url })}
-            placeholder={intl.formatMessage(messages.urlPlaceholder)}
-            requiredMessage={messages.urlRequired}
-          />
+          <FormControl error={contractUrl.error !== null} fullWidth required>
+            <FormLabel htmlFor="contractUrl">{intl.formatMessage(messages.urlLabel)}</FormLabel>
+            <OutlinedInput
+              aria-describedby="contractUrl-helper"
+              endAdornment={
+                contractUrl.value === '' ? undefined : (
+                  <InputAdornment position="end">
+                    <Tooltip title={intl.formatMessage(messages.clearUrl)}>
+                      <IconButton
+                        aria-label={intl.formatMessage(messages.clearUrl)}
+                        onClick={() => {
+                          contractUrl.setValue('');
+                          setFetched(null);
+                          setRequest(null);
+                          setFetching(false);
+                          setFetchError(null);
+                        }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        size="small"
+                        type="button"
+                      >
+                        <Broom size={18} />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                )
+              }
+              id="contractUrl"
+              name="contractUrl"
+              onBlur={() => {
+                // Leaving a valid URL is the whole gesture: the contract is
+                // read then, rather than on a button afterwards.
+                if (contractUrl.commit()) {
+                  requestFetch({
+                    apiTypeKey,
+                    sourceKey: 'url',
+                    url: contractUrl.value.trim(),
+                  });
+                }
+              }}
+              onChange={(event) => contractUrl.handleChange(event.target.value)}
+              placeholder={intl.formatMessage(messages.urlPlaceholder)}
+              sx={{ mt: 0.75 }}
+              value={contractUrl.value}
+            />
+            {contractUrl.error === null ? null : (
+              <FormHelperText id="contractUrl-helper">
+                <FormattedMessage
+                  {...(contractUrl.error === 'required'
+                    ? messages.urlRequired
+                    : messages.urlInvalid)}
+                />
+              </FormHelperText>
+            )}
+          </FormControl>
           <SampleLink onClick={fillWithSampleUrl} />
         </Form.Stack>
       ) : null}
@@ -1677,6 +1854,7 @@ export const ContractSourceForm = ({
                                 edge="end"
                                 onClick={() => setDirectoryDialogOpen(true)}
                                 size="small"
+                                type="button"
                               >
                                 <Pencil size={16} />
                               </IconButton>
@@ -1781,10 +1959,15 @@ export const ContractSourceForm = ({
             sx={{ alignSelf: 'flex-start' }}
             value="public"
           >
-            <ToggleButton sx={{ px: 3, textTransform: 'none' }} value="public">
+            <ToggleButton sx={{ px: 3, textTransform: 'none' }} type="button" value="public">
               <FormattedMessage {...messages.swaggerHubPublic} />
             </ToggleButton>
-            <ToggleButton disabled sx={{ px: 3, textTransform: 'none' }} value="authorized">
+            <ToggleButton
+              disabled
+              sx={{ px: 3, textTransform: 'none' }}
+              type="button"
+              value="authorized"
+            >
               <Tooltip title={intl.formatMessage(messages.swaggerHubAuthorizedHint)}>
                 <Box component="span">
                   <FormattedMessage {...messages.swaggerHubAuthorized} />
@@ -1837,6 +2020,7 @@ export const ContractSourceForm = ({
                   aria-label={intl.formatMessage(messages.swaggerHubRefresh)}
                   onClick={onRefreshSwaggerHubOrganizations}
                   size="small"
+                  type="button"
                 >
                   <RefreshCw size={18} />
                 </IconButton>
@@ -1908,6 +2092,20 @@ export const ContractSourceForm = ({
 
       {/* Fetch errors appear under the active source panel. */}
       {fetchErrorText === null ? null : <Alert severity="error">{fetchErrorText}</Alert>}
+
+      {/* Backend validation errors — shown when kin-openapi rejects the spec. */}
+      {backendValidationErrors !== null && backendValidationErrors.length > 0 ? (
+        <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
+          <FormattedMessage {...messages.specInvalidByBackend} />
+          <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
+            {backendValidationErrors.map((e, i) => (
+              <Typography component="li" key={i} variant="body2">
+                {formatValidationError(e)}
+              </Typography>
+            ))}
+          </Box>
+        </Alert>
+      ) : null}
 
       {/* Definition warnings; cleared with the contract, and withdrawn once
           the definition has been edited past the one they were raised on. */}

@@ -16,7 +16,47 @@
 
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestLoadRejectsInvalidPolicyHubURL(t *testing.T) {
+	for name, baseURL := range map[string]string{
+		"missing slash":      strings.Replace(defaultPolicyHubBaseURL, "https://", "https:/", 1),
+		"relative URL":       strings.TrimPrefix(defaultPolicyHubBaseURL, "https://"),
+		"unsupported scheme": strings.Replace(defaultPolicyHubBaseURL, "https://", "ftp://", 1),
+		"missing host":       "https:///api-platform/policy-hub-api/policy-hub-public/v1.0",
+		"invalid escape":     defaultPolicyHubBaseURL + "%",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("APIP_ACP_POLICY_HUB_BASE_URL", baseURL)
+			cfg, err := Load("../../../configs/config.toml")
+			if err == nil || !strings.Contains(err.Error(), "[policy_hub] base_url") {
+				t.Fatalf("Load error = %v, want Policy Hub URL validation error", err)
+			}
+			if cfg != nil {
+				t.Fatal("Load must not return runtime configuration for an invalid URL")
+			}
+		})
+	}
+}
+
+func TestLoadPolicyHubRuntimeConfig(t *testing.T) {
+	for _, baseURL := range []string{"", "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0/"} {
+		t.Run(baseURL, func(t *testing.T) {
+			t.Setenv("APIP_ACP_POLICY_HUB_BASE_URL", baseURL)
+			cfg, err := Load("../../../configs/config.toml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := cfg.RuntimeConfig["POLICY_HUB_BASE_URL"]
+			if got != defaultPolicyHubBaseURL {
+				t.Fatalf("Policy Hub runtime URL = %q, want normalized configured URL", got)
+			}
+		})
+	}
+}
 
 func TestBuildRuntimeConfig_KeysMatchFrontendVocabulary(t *testing.T) {
 	cfg := &Config{
@@ -48,6 +88,39 @@ func TestBuildRuntimeConfig_BillingProxyEnabledWhenUpstreamConfigured(t *testing
 
 	if out["billingProxyEnabled"] != "true" {
 		t.Errorf(`out["billingProxyEnabled"] = %q, want "true"`, out["billingProxyEnabled"])
+	}
+}
+
+func TestBuildRuntimeConfig_CloudProxyEnabledWhenUpstreamConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth: AuthConfig{Mode: "basic"},
+		ControlPlane: ControlPlaneConfig{
+			ProxyPrefix: "/proxy",
+			Upstreams:   []UpstreamConfig{{Name: "cloud", URL: "https://platform-api.example.com"}},
+		},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["cloudProxyEnabled"] != "true" {
+		t.Errorf(`out["cloudProxyEnabled"] = %q, want "true"`, out["cloudProxyEnabled"])
+	}
+	if _, present := out["billingProxyEnabled"]; present {
+		t.Error(`out["billingProxyEnabled"] should be absent when only "cloud" upstream is configured`)
+	}
+}
+
+func TestBuildRuntimeConfig_MoesifAppUrlWhenConfigured(t *testing.T) {
+	cfg := &Config{
+		Auth: AuthConfig{Mode: "basic"},
+		ControlPlane: ControlPlaneConfig{
+			ProxyPrefix:  "/proxy",
+			MoesifAppURL: "https://www.moesif.com",
+		},
+	}
+	out := buildRuntimeConfig(cfg)
+
+	if out["moesifAppUrl"] != "https://www.moesif.com" {
+		t.Errorf(`out["moesifAppUrl"] = %q, want "https://www.moesif.com"`, out["moesifAppUrl"])
 	}
 }
 

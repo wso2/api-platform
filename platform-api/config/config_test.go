@@ -186,6 +186,7 @@ func TestLoadConfig_SkipPathsDefaultsSurvive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, cfg.Auth.SkipPaths, "/health")
 	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/secrets")
+	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/agents")
 }
 
 // The encryption key is required and never generated — a config that omits it fails startup.
@@ -333,6 +334,14 @@ func TestValidateAuthConfig(t *testing.T) {
 			name:    "internal_token mode without public key",
 			auth:    Auth{Mode: AuthModeInternalToken},
 			wantErr: "Auth.JWT.PublicKeyFile is required",
+		},
+		{
+			name: "internal_token mode with an unsupported algorithm is rejected",
+			auth: Auth{Mode: AuthModeInternalToken, JWT: JWT{
+				Algorithm:     "ML-DSA-65",
+				PublicKeyFile: validJWTPublicKeyFile,
+			}},
+			wantErr: "Auth.JWT.Algorithm must be",
 		},
 		{
 			name:    "file mode without private key",
@@ -522,6 +531,43 @@ func TestValidateAuthorizationConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// skip_validation turns off signature, expiry and issuer checks, so there is no
+// key to verify with — requiring auth.jwt.public_key_file anyway would block the
+// dev setup the flag exists for. The flag is off by default (GO-AUTH-011), so the
+// omitted-flag case must still demand the key; both directions are asserted here
+// because only the pair proves the exemption is scoped to the opt-in.
+func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
+	t.Run("no public key needed when validation is skipped", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeInternalToken,
+			InternalToken: InternalToken{SkipValidation: true},
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		assert.NoError(t, validateAuthConfig(&auth))
+	})
+
+	t.Run("public key still required when the flag is absent", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeInternalToken,
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		err := validateAuthConfig(&auth)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Auth.JWT.PublicKeyFile is required")
+	})
+
+	t.Run("file mode ignores the flag and still requires the key pair", func(t *testing.T) {
+		auth := Auth{
+			Mode:          AuthModeFile,
+			InternalToken: InternalToken{SkipValidation: true},
+			Authorization: Authorization{Mode: AuthzModeScope},
+		}
+		err := validateAuthConfig(&auth)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Auth.JWT.PublicKeyFile is required")
+	})
 }
 
 // Role-based authorization is configured independently of the authentication
@@ -750,4 +796,14 @@ roles         = ['{{ env "APIP_CP_USER_ROLE" "ap_admin" }}', "ap_viewer"]
 	require.NoError(t, err)
 	require.Len(t, cfg.Auth.File.Users, 1)
 	assert.Equal(t, []string{"ap_operator", "ap_viewer"}, cfg.Auth.File.Users[0].Roles)
+}
+
+// JWT.EffectiveAlgorithm defaults an unset Algorithm to RS256 so existing
+// deployments' config (predating the Algorithm field) keeps working
+// unchanged, while an explicitly-set value always passes through as-is —
+// including an unsupported one, which validateJWTConfig is what rejects it.
+func TestJWT_EffectiveAlgorithm(t *testing.T) {
+	assert.Equal(t, JWTAlgorithmRS256, (&JWT{}).EffectiveAlgorithm())
+	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
+	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
 }

@@ -46,8 +46,68 @@ func TestProtocolVersionComparator(t *testing.T) {
 	}
 }
 
+func TestAddMCPSpecificOperations_SpecVersionsList(t *testing.T) {
+	hasPRM := func(ops []api.Operation) bool {
+		for _, op := range ops {
+			if op.EffectivePath() == constants.MCP_PRM_RESOURCE_PATH &&
+				op.EffectiveMethod() == string(api.OperationMethodGET) {
+				return true
+			}
+		}
+		return false
+	}
+
+	tests := []struct {
+		name         string
+		specVersion  *string
+		specVersions *[]string
+		wantPRM      bool
+	}{
+		{
+			name:         "every listed version at or above the base",
+			specVersions: &[]string{constants.SPEC_VERSION_2025_JUNE, constants.SPEC_VERSION_2026_JULY},
+			wantPRM:      true,
+		},
+		{
+			name:         "one listed version below the base is enough",
+			specVersions: &[]string{"2025-03-26", constants.SPEC_VERSION_2026_JULY},
+			wantPRM:      true,
+		},
+		{
+			name:         "no listed version reaches the base",
+			specVersions: &[]string{"2024-11-05", "2025-03-26"},
+			wantPRM:      false,
+		},
+		{
+			name:        "deprecated single version still honoured",
+			specVersion: api.Ptr(constants.SPEC_VERSION_2025_NOVEMBER),
+			wantPRM:     true,
+		},
+		{
+			name:         "an empty list falls back to the deprecated version",
+			specVersion:  api.Ptr("2025-03-26"),
+			specVersions: &[]string{},
+			wantPRM:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &api.MCPProxyConfiguration{
+				Spec: api.MCPProxyConfigData{
+					SpecVersion:  tt.specVersion,
+					SpecVersions: tt.specVersions,
+				},
+			}
+			if got := hasPRM(addMCPSpecificOperations(cfg, false)); got != tt.wantPRM {
+				t.Fatalf("protected resource metadata route present = %v, want %v", got, tt.wantPRM)
+			}
+		})
+	}
+}
+
 func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
-	// SpecVersion nil should use LATEST_SUPPORTED_MCP_SPEC_VERSION
+	// No declared version should fall back to MIN_SUPPORTED_MCP_SPEC_VERSION
 	cfg := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			SpecVersion: nil,
@@ -55,10 +115,10 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 	}
 	ops := addMCPSpecificOperations(cfg, false)
 	// baseline operations count: GET, POST, DELETE on MCP_RESOURCE_PATH
-	// if latest >= 2025-06-01, metadata path GET should be present
+	// if the minimum supported version is >= 2025-06-18, metadata path GET should be present
 	wantBase := 3
 	want := wantBase
-	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, LATEST_SUPPORTED_MCP_SPEC_VERSION) {
+	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, MIN_SUPPORTED_MCP_SPEC_VERSION) {
 		want = wantBase + 1
 	}
 	if len(ops) != want {
@@ -81,7 +141,7 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 	if foundBase != wantBase {
 		t.Fatalf("expected %d base ops on %s, found %d", wantBase, basePath, foundBase)
 	}
-	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, LATEST_SUPPORTED_MCP_SPEC_VERSION) && !foundPRM {
+	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, MIN_SUPPORTED_MCP_SPEC_VERSION) && !foundPRM {
 		t.Fatalf("expected protected resources metadata GET operation to be present")
 	}
 }
@@ -117,14 +177,14 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	upstream := api.MCPProxyConfigData_Upstream{
 		Url: &url,
 	}
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 	var out api.RestAPI
@@ -190,14 +250,14 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 	}
 	policies := []api.Policy{existingPolicy}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Policies:    &policies,
 		},
 	}
@@ -258,14 +318,14 @@ func TestMCPTransformer_Transform_WithBearerUpstreamAuth_BackwardCompat(t *testi
 		},
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 
@@ -319,14 +379,14 @@ func TestMCPTransformer_Transform_WithOAuth2UpstreamAuth(t *testing.T) {
 		},
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 
@@ -357,13 +417,13 @@ func TestMCPTransformer_Transform_PolicyVersionOverride(t *testing.T) {
 	newConfig := func(policyVersion *string) *api.MCPProxyConfiguration {
 		context := "/petstore"
 		url := "http://backend:8080"
-		latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+		minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 		return &api.MCPProxyConfiguration{
 			Spec: api.MCPProxyConfigData{
 				DisplayName: "petstore",
 				Version:     "1.0.0",
 				Context:     &context,
-				SpecVersion: &latest,
+				SpecVersion: &minSupported,
 				Upstream: api.MCPProxyConfigData_Upstream{
 					Url: &url,
 					Auth: &struct {
@@ -426,14 +486,14 @@ func TestMCPTransformer_Transform_WithOAuth2UpstreamAuth_MissingPolicyParams(t *
 		},
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "petstore",
 			Version:     "1.0.0",
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 
@@ -465,14 +525,14 @@ func TestMCPTransformer_Transform_WithNoneUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "petstore",
 			Version:     "1.0.0",
 			Context:     &context,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 
@@ -520,14 +580,14 @@ func TestMCPTransformer_Transform_WithVhost(t *testing.T) {
 		Url: &url,
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Metadata: api.Metadata{Name: "vhost-test-proxy"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Vhost:       &vhost,
 		},
 	}
@@ -564,14 +624,14 @@ func TestMCPTransformer_Transform_WithCORSPolicy(t *testing.T) {
 	}
 	policies := []api.Policy{corsPolicy}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Metadata: api.Metadata{Name: "cors-test-proxy"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Policies:    &policies,
 		},
 	}
@@ -608,14 +668,14 @@ func TestMCPTransformer_Transform_WithoutContext(t *testing.T) {
 		Url: &url,
 	}
 
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Metadata: api.Metadata{Name: "no-context-proxy"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Upstream:    upstream,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Context:     nil, // No context
 		},
 	}
@@ -662,7 +722,7 @@ func TestMCPTransformer_Transform_WithEmptySpecVersion(t *testing.T) {
 		t.Fatalf("Transform returned an error: %v", err)
 	}
 
-	// Should use default/latest version
+	// Should use the minimum supported version
 	apiData := res.Spec
 
 	// Should have operations
@@ -672,10 +732,10 @@ func TestMCPTransformer_Transform_WithEmptySpecVersion(t *testing.T) {
 }
 
 func TestAddMCPSpecificOperations_WithOptions(t *testing.T) {
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	cfg := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 		},
 	}
 
@@ -759,13 +819,13 @@ func mcpOpResilience(ops []api.Operation, method api.OperationMethod, path strin
 // The local-response routes (OPTIONS, PRM) must carry no resilience. See mcp-timeout-divergence.md.
 func TestMCPTransform_Resilience_DefaultsRouteTimeoutDisabled(t *testing.T) {
 	context := "/everything"
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "everything",
 			Version:     "v1.0",
 			Context:     &context,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Upstream:    api.MCPProxyConfigData_Upstream{Url: stringPtr("http://backend:8080")},
 			// A cors policy makes the transformer emit the OPTIONS routes so we can assert they are skipped.
 			Policies: &[]api.Policy{{Name: "cors", Version: "v1"}},
@@ -794,13 +854,13 @@ func TestMCPTransform_Resilience_DefaultsRouteTimeoutDisabled(t *testing.T) {
 // on the forwarding routes only.
 func TestMCPTransform_Resilience_UserOverride(t *testing.T) {
 	context := "/everything"
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "everything",
 			Version:     "v1.0",
 			Context:     &context,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Upstream:    api.MCPProxyConfigData_Upstream{Url: stringPtr("http://backend:8080")},
 			Resilience:  &api.Resilience{Timeout: stringPtr("30s"), IdleTimeout: stringPtr("120s")},
 		},
@@ -824,13 +884,13 @@ func TestMCPTransform_Resilience_UserOverride(t *testing.T) {
 // A user timeout with no idle override: timeout is the user value, idle stays unset (global default).
 func TestMCPTransform_Resilience_TimeoutOnly(t *testing.T) {
 	context := "/everything"
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "everything",
 			Version:     "v1.0",
 			Context:     &context,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Upstream:    api.MCPProxyConfigData_Upstream{Url: stringPtr("http://backend:8080")},
 			Resilience:  &api.Resilience{Timeout: stringPtr("45s")},
 		},
@@ -854,7 +914,7 @@ func TestMCPTransform_Resilience_TimeoutOnly(t *testing.T) {
 // upstreamDefinitions through, so the per-upstream connect timeout resolves like it does for RestApi.
 func TestMCPTransform_UpstreamRef_ThreadsDefinitions(t *testing.T) {
 	context := "/everything"
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	defs := []api.UpstreamDefinition{{
 		Name:    "mcp-backend",
 		Timeout: &api.UpstreamTimeout{Connect: stringPtr("6s")},
@@ -864,7 +924,7 @@ func TestMCPTransform_UpstreamRef_ThreadsDefinitions(t *testing.T) {
 			DisplayName:         "everything",
 			Version:             "v1.0",
 			Context:             &context,
-			SpecVersion:         &latest,
+			SpecVersion:         &minSupported,
 			UpstreamDefinitions: &defs,
 			Upstream:            api.MCPProxyConfigData_Upstream{Ref: stringPtr("mcp-backend")},
 		},
@@ -886,13 +946,13 @@ func TestMCPTransform_UpstreamRef_ThreadsDefinitions(t *testing.T) {
 
 func TestMCPTransform_UpstreamUrl_Unchanged(t *testing.T) {
 	context := "/everything"
-	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	minSupported := MIN_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "everything",
 			Version:     "v1.0",
 			Context:     &context,
-			SpecVersion: &latest,
+			SpecVersion: &minSupported,
 			Upstream:    api.MCPProxyConfigData_Upstream{Url: stringPtr("http://backend:8080")},
 		},
 	}

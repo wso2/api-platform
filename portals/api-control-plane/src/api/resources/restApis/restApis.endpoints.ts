@@ -117,3 +117,116 @@ export const deleteRestApi = async (restApiId: string, options?: RequestOptions)
     operationName: 'DeleteRESTAPI',
   });
 };
+
+/**
+ * Creates a REST API by importing an OpenAPI specification.
+ *
+ * The body must be a `FormData` instance containing:
+ *   - Exactly one of `file` (File — the spec bytes) OR `url` (string — a URL
+ *     the backend fetches server-side under the shared SSRF-hardened HTTP
+ *     client). Sending both, or neither, is rejected by the backend.
+ *   - `displayName`, `version`, `context`, `projectId`, `upstream` (string): required API metadata
+ *   - `id`, `description` (string): optional
+ *
+ * The browser sets the Content-Type header (including multipart boundary) automatically
+ * when a FormData body is supplied — do not set it manually.
+ */
+export const importOpenApi = async (body: FormData, options?: RequestOptions): Promise<RestApi> => {
+  return http.post<RestApi>(`${BASE}/import-openapi`, body, {
+    ...options,
+    operationName: 'ImportOpenAPI',
+  });
+};
+
+/** A single error entry from `POST /rest-apis/validate-openapi`. */
+export type OpenAPIValidationError = {
+  message: string;
+  path?: string;
+};
+
+/** `info` block extracted from the spec if validation passes. */
+export type OpenAPISpecInfo = {
+  title?: string;
+  version?: string;
+};
+
+export type ValidateOpenAPIResponse = {
+  isValid: boolean;
+  errors: OpenAPIValidationError[];
+  info?: OpenAPISpecInfo;
+  content?: string;
+};
+
+/**
+ * Discriminated input for `validateOpenApiSpec`:
+ *
+ *   - `{ file }`  — the raw spec bytes the user picked in the upload UI.
+ *   - `{ url }`   — a URL the backend fetches server-side; on success the
+ *                   response's `content` field carries the fetched bytes so
+ *                   the caller doesn't have to re-fetch.
+ *   - `{ text }`  — a spec string already in hand.
+ *
+ * Exactly one shape is accepted per call; the backend rejects the both-or-
+ * neither cases at the multipart boundary.
+ */
+export type ValidateOpenApiSpecInput =
+  | { file: File }
+  | { url: string }
+  | { text: string };
+
+/**
+ * Validates an OpenAPI 3.x or Swagger 2.x spec without creating or modifying
+ * any resource. The request body is a multipart form with exactly one of
+ * `file` or `url`; `text` is a convenience for callers holding a spec string,
+ * wrapped as a Blob and sent as `file`.
+ */
+export const validateOpenApiSpec = async (
+  input: ValidateOpenApiSpecInput,
+  options?: RequestOptions,
+): Promise<ValidateOpenAPIResponse> => {
+  const formData = new FormData();
+  if ('url' in input) {
+    formData.append('url', input.url);
+  } else if ('file' in input) {
+    formData.append('file', input.file, input.file.name);
+  } else {
+    const blob = new Blob([input.text], { type: 'application/yaml' });
+    formData.append('file', blob, 'openapi.yaml');
+  }
+  return http.post<ValidateOpenAPIResponse>(`${BASE}/validate-openapi`, formData, {
+    ...options,
+    operationName: 'ValidateOpenAPISpec',
+  });
+};
+
+export type OpenAPIContent = {
+  content: string;
+};
+
+/** Fetches the raw API definition spec. Throws (ApiError, status 404) when no spec exists. */
+export const getRestApiOpenApi = async (
+  restApiId: string,
+  options?: RequestOptions,
+): Promise<OpenAPIContent> => {
+  return http.get<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, {
+    ...options,
+    operationName: 'GetRESTAPISpec',
+  });
+};
+
+/**
+ * Replaces (or creates) the API definition spec.
+ *
+ * The body must be a `FormData` with a single `file` field holding the spec file.
+ * The browser sets the Content-Type header automatically — do not set it manually.
+ */
+export const putRestApiOpenApi = async (
+  restApiId: string,
+  body: FormData,
+  options?: RequestOptions,
+): Promise<OpenAPIContent> => {
+  return http.put<OpenAPIContent>(`${resourcePath(restApiId)}/openapi`, body, {
+    ...options,
+    operationName: 'UpdateRESTAPISpec',
+  });
+};

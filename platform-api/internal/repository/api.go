@@ -459,14 +459,18 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 	deleteQueries := []string{
 		// Delete API deployments
 		`DELETE FROM deployments WHERE artifact_uuid = ? AND organization_uuid = ?`,
+		// Then the builds they were made from: deployments reference builds, so the
+		// referencing rows have to go first.
+		`DELETE FROM builds WHERE artifact_uuid = ? AND organization_uuid = ?`,
 		// Delete from rest_apis table first, then artifacts
 		`DELETE FROM rest_apis WHERE uuid = ?`,
 	}
 
-	// Execute all delete statements
+	// Execute all delete statements. The first two are scoped by organization as
+	// well as artifact; the rest by artifact alone.
 	for i, query := range deleteQueries {
 		switch i {
-		case 0:
+		case 0, 1:
 			if _, err := tx.Exec(r.db.Rebind(query), apiUUID, orgUUID); err != nil {
 				return err
 			}

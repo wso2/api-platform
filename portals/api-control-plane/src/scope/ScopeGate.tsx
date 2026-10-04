@@ -26,7 +26,6 @@ import {
   FormControl,
   FormLabel,
   MenuItem,
-  PageContent,
   Select,
   Stack,
   Typography,
@@ -118,11 +117,7 @@ function ScopeSelection({
   const apis = apisQuery.data?.list ?? [];
 
   if (projectsError) {
-    return (
-      <PageContent>
-        <ErrorState message="Unable to load projects" />
-      </PageContent>
-    );
+    return <ErrorState message="Unable to load projects" />;
   }
   if (isLoading && projects.length === 0) {
     return <LoadingState label="Loading projects" />;
@@ -273,14 +268,14 @@ function ScopeSelection({
                     </FormLabel>
                     <Select
                       labelId="scope-gate-api-label"
-                      value={apisQuery.isPending ? '__loading__' : chosenApi}
+                      value={chosenProject && apisQuery.isPending ? '__loading__' : chosenApi}
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
                       disabled={!chosenProject || apisQuery.isPending}
                       MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
                       sx={SELECT_VALUE_SX}
                     >
-                      {apisQuery.isPending ? (
+                      {chosenProject &&apisQuery.isPending ? (
                         <MenuItem value="__loading__" disabled>
                           <FormattedMessage
                             id="scopeGate.loadingApis"

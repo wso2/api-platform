@@ -1,0 +1,12 @@
+{
+  "name": "websocket-notification-system-sample",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Companion sample for the Build a WebSocket-based real-time notification system guide",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

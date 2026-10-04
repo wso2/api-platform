@@ -1,0 +1,8 @@
+# Keep the shell scripts LF-only in the working tree on every platform.
+# Git on Windows often converts checked-out files to CRLF, and bash refuses a script
+# whose shebang line ends in CR: "/usr/bin/env: 'bash\r': No such file or directory".
+# Windows users run this sample inside WSL2, where that conversion would break it.
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf

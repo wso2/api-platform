@@ -1,0 +1,46 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# AI Workspace integration-test stack.
+# The framework supplies generated configuration, certificates, keys, and the network.
+
+services:
+  ai-workspace:
+    image: ${AIW_IMAGE:-ghcr.io/wso2/api-platform/ai-workspace:1.1.0-SNAPSHOT}
+    env_file:
+      - api-platform.env
+    environment:
+      - APIP_AIW_CONTROL_PLANE_URL=https://platform-api:9243
+      - APIP_AIW_GATEWAY_CONTROLPLANE_HOST=platform-api:9243
+      - APIP_AIW_DOMAIN=ai-workspace:9643
+      - GOCOVERDIR=${GOCOVERDIR:-}
+    volumes:
+      - ./config.toml:/etc/ai-workspace/config.toml:ro
+      - ./tls/cert.pem:/etc/ai-workspace/tls/cert.pem:ro
+      - ./tls/key.pem:/etc/ai-workspace/tls/key.pem:ro
+      - ./tls/cp-cert.pem:/etc/ai-workspace/tls/cp-cert.pem:ro
+      - ./role-to-scope-mapping.yaml:/etc/ai-workspace/role-to-scope-mapping.yaml:ro
+    ports:
+      - "9643"
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    external: true
+    name: ${PG_NETWORK}

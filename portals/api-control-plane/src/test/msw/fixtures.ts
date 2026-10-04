@@ -117,6 +117,47 @@ export const aDeployment = (
   ...overrides,
 });
 
+export type PublicationSummaryFixture = Schema<'PublicationSummaryItem'>;
+
+export const aPublicationSummary = (
+  overrides: Partial<PublicationSummaryFixture> = {}
+): PublicationSummaryFixture => ({
+  apiPortalId: 'acme-portal',
+  apiPortalName: 'API Portal 1',
+  apiPortalDescription: 'Default developer portal for external partner consumers.',
+  apiPortalUrl: 'https://apis.example.com',
+  status: 'NOT_PUBLISHED',
+  draftUpdatedAt: null,
+  publicationUpdatedAt: null,
+  ...overrides,
+});
+
+export type PublicationDraftDetailsFixture = Schema<'PublicationDraftDetails'>;
+
+export const aPublicationDraftDetails = (
+  overrides: Partial<PublicationDraftDetailsFixture> = {}
+): PublicationDraftDetailsFixture => ({
+  displayName: 'Loan Management Service',
+  version: '1.0.0',
+  description: 'Manage loan applications and repayments.',
+  endpoints: { productionUrl: 'https://api.example.com/loans', sandboxUrl: '' },
+  ...overrides,
+});
+
+export type PublicationFixture = Schema<'Publication'>;
+
+export const aPublication = (
+  overrides: Partial<PublicationFixture> = {}
+): PublicationFixture => ({
+  apiPortalId: 'acme-portal',
+  apiPortalName: 'API Portal 1',
+  displayName: 'Loan Management Service',
+  version: '1.0.0',
+  description: 'Manage loan applications and repayments.',
+  status: 'PUBLISHED',
+  ...overrides,
+});
+
 export type ApplicationFixture = Schema<'Application'>;
 export type SubscriptionFixture = Schema<'Subscription'>;
 export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;

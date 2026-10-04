@@ -35,7 +35,9 @@ Add a new MCPProxy to the Gateway.
     "displayName": "Everything",
     "version": "v1.0",
     "context": "/everything",
-    "specVersion": "2025-06-18",
+    "specVersions": [
+      "2025-06-18"
+    ],
     "upstream": {
       "url": "http://everything:3001"
     },
@@ -76,7 +78,9 @@ Required roles: `admin`, `developer`
     "displayName": "Everything",
     "version": "v1.0",
     "context": "/everything",
-    "specVersion": "2025-06-18",
+    "specVersions": [
+      "2025-06-18"
+    ],
     "upstream": {
       "url": "http://everything:3001"
     },
@@ -165,7 +169,9 @@ Required roles: `admin`, `developer`
         "displayName": "Everything",
         "version": "v1.0",
         "context": "/everything",
-        "specVersion": "2025-06-18",
+        "specVersions": [
+          "2025-06-18"
+        ],
         "upstream": {
           "url": "http://everything:3001"
         },
@@ -219,7 +225,8 @@ Status Code **200**
 |»»»» displayName|string|true|none|Human-readable MCP Proxy display name|
 |»»»» version|string|true|none|MCP Proxy version|
 |»»»» context|string|false|none|MCP Proxy context path|
-|»»»» specVersion|string|false|none|MCP specification version|
+|»»»» specVersion|string|false|none|DEPRECATED - use specVersions. Still honoured when specVersions is absent. Cannot be used together with specVersions.|
+|»»»» specVersions|[string]|false|none|MCP specification versions supported by this proxy. Versions not explicitly recognized by this gateway build are accepted and are not rejected solely on the basis of the version value. This gateway build explicitly supports MCP specification versions 2025-06-18, 2025-11-25, and 2026-07-28.|
 |»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |»»»» upstreamDefinitions|[[UpstreamDefinition](schemas.md#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |»»»»» name|string|true|none|Unique identifier for this upstream definition|
@@ -378,7 +385,9 @@ Required roles: `admin`, `developer`
     "displayName": "Everything",
     "version": "v1.0",
     "context": "/everything",
-    "specVersion": "2025-06-18",
+    "specVersions": [
+      "2025-06-18"
+    ],
     "upstream": {
       "url": "http://everything:3001"
     },
@@ -437,7 +446,9 @@ Update an existing MCPProxy in the Gateway.
     "displayName": "Everything",
     "version": "v1.0",
     "context": "/everything",
-    "specVersion": "2025-06-18",
+    "specVersions": [
+      "2025-06-18"
+    ],
     "upstream": {
       "url": "http://everything:3001"
     },
@@ -483,7 +494,9 @@ Required roles: `admin`, `developer`
     "displayName": "Everything",
     "version": "v1.0",
     "context": "/everything",
-    "specVersion": "2025-06-18",
+    "specVersions": [
+      "2025-06-18"
+    ],
     "upstream": {
       "url": "http://everything:3001"
     },

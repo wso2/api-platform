@@ -257,6 +257,23 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
 );
 
+-- Builds table (immutable rendered snapshots of an API's definition)
+CREATE TABLE IF NOT EXISTS builds (
+    uuid VARCHAR(40) PRIMARY KEY,
+    build_id VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    content BLOB NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    metadata BLOB,
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (artifact_uuid, build_id),
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
 -- Artifact Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS deployments (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -265,11 +282,13 @@ CREATE TABLE IF NOT EXISTS deployments (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     base_deployment_uuid VARCHAR(40),
+    build_uuid VARCHAR(40),
     content BLOB NOT NULL,
     metadata BLOB,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_uuid) REFERENCES builds(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
@@ -391,6 +410,29 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- Agent Proxies table
+CREATE TABLE IF NOT EXISTS agent_proxies (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    project_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    protocol VARCHAR(20) NOT NULL,
+    description VARCHAR(1023),
+    configuration BLOB NOT NULL,
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+
 
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -467,6 +509,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_agent_proxies_project ON agent_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
@@ -483,6 +526,8 @@ CREATE INDEX IF NOT EXISTS idx_subscription_plans_status ON subscription_plans(s
 CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(subscription_plan_uuid);
 
 CREATE INDEX IF NOT EXISTS idx_artifact_subscription_plans_plan ON artifact_subscription_plans(subscription_plan_uuid);
+CREATE INDEX IF NOT EXISTS idx_builds_artifact ON builds(artifact_uuid, organization_uuid, created_at);
+CREATE INDEX IF NOT EXISTS idx_deployments_build ON deployments(build_uuid);
 
 -- EventHub tables for multi-replica HA sync
 CREATE TABLE IF NOT EXISTS gateway_states (
@@ -591,3 +636,26 @@ CREATE TABLE IF NOT EXISTS user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
+CREATE TABLE IF NOT EXISTS api_documents (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    artifact_uuid     VARCHAR(40)  NOT NULL,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    type              VARCHAR(20)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    file_name         VARCHAR(255),
+    content_type      VARCHAR(100),
+    content           MEDIUMBLOB   NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(255),
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(255),
+    updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)      ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid)  ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_uuid, type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);

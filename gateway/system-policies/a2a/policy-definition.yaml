@@ -1,0 +1,258 @@
+name: wso2_apip_sys_a2a
+version: v1.0.0
+description: |
+  The gateway's internal A2A system policy: the parts of the A2A protocol the
+  gateway answers itself rather than proxying to the agent behind it. Attached by
+  the gateway controller to the routes that need it, never by an Agent author.
+
+  Each gateway-answered concern gets its own parameter block. An instance carries
+  exactly one, and which one it carries is the whole of what that instance does;
+  an instance carrying none fails closed with a 500 rather than forwarding.
+
+  agentCard — public Agent Card serving. Attached to the single public Agent Card
+  route of an Agent whose public card is `managed`, or whose passthrough public
+  card has interface URL rewriting enabled, which is the default.
+
+  With `content`, the card is served locally: the policy answers at the
+  request-header phase and the request never reaches the upstream agent. It
+  honours If-None-Match, replying 304 with no body when the client already holds
+  the card identified by `etag`. Both values are written by the controller from
+  the Agent's validated `spec.a2a.agentCard.public.content`.
+
+  With `rewriteUrls`, the request is forwarded and the upstream's own card comes
+  back with its advertised interface URLs replaced by the gateway endpoints named
+  in that block. Exactly one of the two is present; an instance carrying neither
+  fails closed.
+
+  protectedAgentCard — answers the protected (extended) Agent Card operation.
+  Attached to the canonical GetExtendedAgentCard chain of an Agent with an
+  explicit `spec.a2a.agentCard.protected` block, in either mode, and to no other
+  chain. It sits at the tail of that chain, after every policy the Agent author
+  attached at either scope, and answers at the request-body phase. It requires
+  that the request was authenticated — by whichever of the author's policies, in
+  whichever scope, since where authentication sits in the chain is the author's
+  decision — and answers a sterile 401 otherwise, never forwarding and never
+  carrying card bytes. With `content`, the card is served locally and
+  binding-correctly: the bare card on HTTP+JSON, and a JSON-RPC 2.0 result
+  envelope echoing the caller's request id on JSON-RPC. Without it, the mode is
+  passthrough and the authenticated request is forwarded to the upstream — with
+  the response's interface URLs rewritten if the block also carries
+  `rewriteUrls`.
+
+  Interface URL rewriting is configured per representation, defaults to enabled
+  by the controller, and applies only to a passthrough card, which the gateway
+  did not author. It replaces each advertised `supportedInterfaces[].url` with
+  the gateway endpoint for that entry's protocol binding, and removes the card's
+  `signatures` block, which no longer covers the returned bytes.
+
+  The URL an interface advertises is built from the request's own scheme, the
+  Agent's configured virtual host, and the port the request arrived on: the vhost
+  names the host the Agent was published under, while the port is only knowable
+  per request. A wildcard vhost names no dialable host, so the request's own
+  authority is used whole; a request carrying neither fails closed rather than
+  being answered with a guess. Nothing else in the document is touched, and nothing is signed: the
+  card's security declarations remain the upstream's unverifiable claim. Without
+  the block, no response is buffered and a proxied card is forwarded byte for
+  byte.
+
+  Only the bindings this gateway serves are rewritten. An interface whose
+  protocol binding no configured transport exposes keeps the URL the upstream
+  wrote, since there is no gateway endpoint to name for it — and a client that
+  selects that binding therefore reaches the agent directly, outside the
+  gateway's policies. A card whose interfaces are all on such bindings is
+  forwarded unchanged, signatures included.
+
+  A successful response the gateway cannot safely rewrite fails with a sterile
+  gateway error rather than being forwarded or partially rewritten: a body that
+  is not a card object, an absent or empty `supportedInterfaces`, an interface
+  advertising a protocol version the gateway does not serve on that binding, a
+  body over the size ceiling, or a request whose scheme or authority cannot be
+  established.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    agentCard:
+      type: object
+      additionalProperties: false
+      description: >
+        Public Agent Card serving. Present on the public card route of an Agent
+        whose public card is managed, or whose passthrough public card has
+        interface URL rewriting enabled — the default — and on no other route.
+
+        `content` and `rewriteUrls` are mutually exclusive and one of them is
+        always present: the first makes this a managed card the gateway answers,
+        the second a proxied card whose response it rewrites. Neither is declared
+        required here because either alone is a complete configuration; an
+        instance carrying neither is a controller defect and fails closed.
+      properties:
+        rewriteUrls:
+          type: object
+          additionalProperties: false
+          required: ["protocolVersion", "interfaces"]
+          description: >
+            Interface URL rewriting for this passthrough card. Its presence is
+            the switch: without it the response is neither buffered nor touched.
+
+            It carries the mapping rather than a bare boolean because the runtime
+            cannot derive one. The gateway path for a protocol binding is
+            spec.context joined with that transport's pathPrefix — controller
+            configuration the policy engine never sees — so sending a flag and
+            letting the runtime guess would put a second, weaker copy of the
+            route arithmetic in the data plane.
+          properties:
+            protocolVersion:
+              type: string
+              description: >
+                The A2A protocol version the gateway endpoints below serve, and
+                half of what an advertised interface must match to be rewritten:
+                an interface is rewritten when this gateway serves both its
+                binding and the version it advertises.
+
+                An interface on a served binding that advertises a different
+                version fails the response, because pointing it at the endpoint
+                would publish a protocol that endpoint does not implement. An
+                interface that states no version is rewritten, since it
+                contradicts nothing.
+              minLength: 1
+            interfaces:
+              type: array
+              minItems: 1
+              description: >
+                One entry per configured transport: the protocol binding and the
+                absolute gateway path serving it. Every configured transport is
+                listed, and the runtime selects by binding rather than by
+                position — a card advertises its interfaces in whatever order its
+                author wrote them.
+              items:
+                type: object
+                additionalProperties: false
+                required: ["protocolBinding", "path"]
+                properties:
+                  protocolBinding:
+                    type: string
+                    description: >
+                      The A2A protocol binding this entry maps, spelled as an
+                      Agent Card's own supportedInterfaces[].protocolBinding
+                      spells it, so the two compare without translation.
+                    enum: ["JSONRPC", "HTTP+JSON"]
+                  path:
+                    type: string
+                    description: >
+                      Absolute gateway path serving that binding, as the routes
+                      were generated from — so a rewritten card cannot advertise
+                      a path no route serves.
+                    minLength: 1
+        content:
+          type: string
+          description: >
+            The exact Agent Card bytes to serve, as a JSON string. Carried as
+            serialized bytes rather than as a structured object because the bytes
+            are what the controller validated, and what card signing will sign —
+            a re-serialization in the runtime would change them.
+          minLength: 1
+        etag:
+          type: string
+          description: >
+            Strong entity tag for `content`, already quoted, used verbatim in the
+            ETag response header and compared against If-None-Match. Derived by
+            the controller from the same bytes, so a card and its tag cannot
+            disagree.
+          minLength: 1
+
+    protectedAgentCard:
+      type: object
+      additionalProperties: false
+      description: >
+        Protected (extended) Agent Card serving. Present on the canonical
+        GetExtendedAgentCard chain of an Agent with an explicit protected card
+        block, in either mode, and on no other chain.
+
+        The authentication requirement is not represented here and is not
+        configurable: it applies whenever this block is present, because a
+        protected card whose protection depended on a parameter could be switched
+        off by editing one.
+
+        There is deliberately no `etag` beside `content` either. A protected card
+        response is authenticated and carries Cache-Control: no-store, and the
+        JSON-RPC binding is a POST, so there is no conditional-GET contract for a
+        validator to take part in.
+
+        `content` and `rewriteUrls` are mutually exclusive, and a block carrying
+        neither is a plain authenticated passthrough: the request is forwarded
+        and the response is returned untouched.
+      properties:
+        rewriteUrls:
+          type: object
+          additionalProperties: false
+          required: ["protocolVersion", "interfaces"]
+          description: >
+            Interface URL rewriting for this passthrough card. Its presence is
+            the switch: without it the response is neither buffered nor touched.
+
+            It carries the mapping rather than a bare boolean because the runtime
+            cannot derive one. The gateway path for a protocol binding is
+            spec.context joined with that transport's pathPrefix — controller
+            configuration the policy engine never sees — so sending a flag and
+            letting the runtime guess would put a second, weaker copy of the
+            route arithmetic in the data plane.
+          properties:
+            protocolVersion:
+              type: string
+              description: >
+                The A2A protocol version the gateway endpoints below serve, and
+                half of what an advertised interface must match to be rewritten:
+                an interface is rewritten when this gateway serves both its
+                binding and the version it advertises.
+
+                An interface on a served binding that advertises a different
+                version fails the response, because pointing it at the endpoint
+                would publish a protocol that endpoint does not implement. An
+                interface that states no version is rewritten, since it
+                contradicts nothing.
+              minLength: 1
+            interfaces:
+              type: array
+              minItems: 1
+              description: >
+                One entry per configured transport: the protocol binding and the
+                absolute gateway path serving it. Every configured transport is
+                listed, and the runtime selects by binding rather than by
+                position — a card advertises its interfaces in whatever order its
+                author wrote them.
+              items:
+                type: object
+                additionalProperties: false
+                required: ["protocolBinding", "path"]
+                properties:
+                  protocolBinding:
+                    type: string
+                    description: >
+                      The A2A protocol binding this entry maps, spelled as an
+                      Agent Card's own supportedInterfaces[].protocolBinding
+                      spells it, so the two compare without translation.
+                    enum: ["JSONRPC", "HTTP+JSON"]
+                  path:
+                    type: string
+                    description: >
+                      Absolute gateway path serving that binding, as the routes
+                      were generated from — so a rewritten card cannot advertise
+                      a path no route serves.
+                    minLength: 1
+        content:
+          type: string
+          description: >
+            The exact protected Agent Card bytes to serve, as a JSON string,
+            produced by the same encoder as the public card's `content` and for
+            the same reason. On HTTP+JSON these bytes are the whole response body;
+            on JSON-RPC they are placed under `result` without being re-encoded.
+
+            Present in managed mode only. Omitted, the mode is passthrough: the
+            authenticated request is forwarded and the upstream's own extended
+            card is proxied unparsed.
+          minLength: 1
+
+systemParameters:
+  type: object
+  properties: {}

@@ -16,9 +16,12 @@
  * under the License.
  */
 
+/** Placeholder backend URL used to detect an untouched endpoint. */
+export const PLACEHOLDER_UPSTREAM_URL = 'https://example.com';
+
 /**
- * The definition "design from scratch" starts from: one collection and one
- * item, with the four operations most APIs begin with. It is a document the
+ * The definition "start from scratch" starts with a wildcard resource and
+ * the four operations most APIs begin with. It is a document the
  * user goes on to edit (by hand, or by asking the AI to refine it), so its
  * text is content rather than UI copy and deliberately does not go through
  * `react-intl` — the same way a code sample or a backend payload doesn't.
@@ -30,36 +33,27 @@ export const DEFAULT_API_SKELETON: Record<string, unknown> = {
     version: '1.0.0',
     description: 'A starting point. Edit the operations, or ask AI to refine them.',
   },
+  servers: [{ url: PLACEHOLDER_UPSTREAM_URL }],
   paths: {
-    '/resources': {
+    '/*': {
       get: {
-        operationId: 'listResources',
-        summary: 'List or retrieve resources',
+        summary: 'Get Resource',
+        description: 'Retrieve all resources',
         responses: { '200': { description: 'A page of resources.' } },
       },
       post: {
-        operationId: 'createResource',
-        summary: 'Create a resource',
+        summary: 'POST Resource',
+        description: 'Create a new resource',
         responses: { '201': { description: 'The resource that was created.' } },
       },
-    },
-    '/resources/{resourceId}': {
-      parameters: [
-        {
-          in: 'path',
-          name: 'resourceId',
-          required: true,
-          schema: { type: 'string' },
-        },
-      ],
-      put: {
-        operationId: 'updateResource',
-        summary: 'Update a resource',
+      patch: {
+        summary: 'Update Resource',
+        description: 'Update an existing resource',
         responses: { '200': { description: 'The resource after the update.' } },
       },
       delete: {
-        operationId: 'deleteResource',
-        summary: 'Delete a resource',
+        summary: 'Delete Resource',
+        description: 'Delete an existing resource',
         responses: { '204': { description: 'The resource was deleted.' } },
       },
     },

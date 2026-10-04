@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -223,8 +224,8 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 // processSyncFetches fetches deployment artifacts in chunked batches, ordered by
 // dependency: LLM Providers first, then LLM Proxies, then REST APIs.
 func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment, gatewayID string) {
-	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies
-	var providers, proxies, restAPIs, mcpProxies []models.ControlPlaneDeployment
+	// Sort by dependency order: providers → proxies → REST APIs/MCP proxies/agents
+	var providers, proxies, restAPIs, mcpProxies, agents []models.ControlPlaneDeployment
 	for _, dep := range deployments {
 		switch dep.Kind {
 		case models.KindLlmProvider:
@@ -235,6 +236,8 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 			restAPIs = append(restAPIs, dep)
 		case models.KindMcp:
 			mcpProxies = append(mcpProxies, dep)
+		case models.KindAgent:
+			agents = append(agents, dep)
 		}
 	}
 
@@ -244,6 +247,7 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 	ordered = append(ordered, proxies...)
 	ordered = append(ordered, restAPIs...)
 	ordered = append(ordered, mcpProxies...)
+	ordered = append(ordered, agents...)
 
 	batchSize := c.config.SyncBatchSize
 	if batchSize <= 0 {
@@ -341,6 +345,19 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			}
 			_, err = c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.mcpDeploymentService)
+
+		case models.KindAgent:
+			if c.agentService == nil {
+				c.logger.Warn("Skipping agent sync: agentService is nil",
+					slog.String("artifact_id", dep.ArtifactID),
+				)
+				continue
+			}
+			// CreateFromYAML lives on the Agent service rather than on
+			// apiUtilsService like its counterparts, because that package imports
+			// pkg/utils. Same call shape either way.
+			_, err = c.agentService.CreateFromYAML(yamlData, dep.ArtifactID,
+				dep.DeploymentID, &deployedAt, correlationID, c.logger)
 		}
 
 		if err != nil {
@@ -451,7 +468,7 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 		kind string
 	}
 
-	var restAPIs, proxies, providers, mcpProxies, unknown []deletionEntry
+	var restAPIs, proxies, providers, mcpProxies, agents, unknown []deletionEntry
 
 	for _, id := range artifactIDs {
 		cfg, err := c.db.GetConfig(id)
@@ -476,11 +493,14 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 			restAPIs = append(restAPIs, entry)
 		case models.KindMcp:
 			mcpProxies = append(mcpProxies, entry)
+		case models.KindAgent:
+			agents = append(agents, entry)
 		}
 	}
 
-	// Reverse dependency order: MCP proxies/REST APIs → proxies → providers
+	// Reverse dependency order: agents/MCP proxies/REST APIs → proxies → providers
 	ordered := make([]deletionEntry, 0, len(artifactIDs))
+	ordered = append(ordered, agents...)
 	ordered = append(ordered, mcpProxies...)
 	ordered = append(ordered, restAPIs...)
 	ordered = append(ordered, unknown...)
@@ -571,6 +591,30 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 			_, err = c.mcpDeploymentService.DeleteMCPProxy(cfg.Handle, correlationID, c.logger)
 			if err != nil {
 				c.logger.Error("Failed to delete MCP proxy during sync",
+					slog.String("artifact_id", artifactID),
+					slog.Any("error", err),
+				)
+				return
+			}
+		}
+
+	case models.KindAgent:
+		if c.agentService != nil {
+			cfg, err := c.findAPIConfig(artifactID)
+			if err != nil {
+				c.logger.Error("Failed to find agent config for sync deletion",
+					slog.String("artifact_id", artifactID),
+					slog.Any("error", err),
+				)
+				return
+			}
+			_, err = c.agentService.Delete(agent.DeleteParams{
+				Handle:        cfg.Handle,
+				CorrelationID: correlationID,
+				Logger:        c.logger,
+			})
+			if err != nil {
+				c.logger.Error("Failed to delete agent during sync",
 					slog.String("artifact_id", artifactID),
 					slog.Any("error", err),
 				)
@@ -914,6 +958,8 @@ func syncEventType(kind string) eventhub.EventType {
 		return eventhub.EventTypeLLMProxy
 	case models.KindMcp:
 		return eventhub.EventTypeMCPProxy
+	case models.KindAgent:
+		return eventhub.EventTypeAgent
 	default:
 		return eventhub.EventTypeAPI
 	}

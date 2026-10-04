@@ -42,6 +42,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
+import { Can } from '@/permissions/Can';
 
 type ViewMode = 'grid' | 'list';
 
@@ -223,6 +224,7 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
           illustration={<MonitorIllustration />}
           onAction={createApi}
           title={intl.formatMessage(messages.emptyTitle)}
+          operationId="CreateRESTAPI"
         />
       ) : (
         <Stack spacing={2.5} sx={{ flexGrow: 1 }}>
@@ -260,9 +262,11 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
                 sx={{ minWidth: 320 }}
                 value={search}
               />
-              <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
-                <FormattedMessage {...messages.createApiButton} />
-              </Button>
+              <Can do="CreateRESTAPI" denied="hide">
+                <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
+                  <FormattedMessage {...messages.createApiButton} />
+                </Button>
+              </Can>
               <ToggleButtonGroup
                 exclusive
                 onChange={(_event, value: ViewMode | null) => {

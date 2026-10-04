@@ -108,6 +108,11 @@ var excludedScopeResources = []string{
 	"ap:subscription_plan:",
 	"ap:websub_api:",
 	"ap:webbroker_api:",
+	// Publishing a REST API to a portal, unlike the type-agnostic draft/publication
+	// scopes above, lives on dedicated rest-api-only endpoints and will never cover an
+	// MCP proxy — that gets its own scopes (see ap:api_portal:mcp_proxy: above) once it
+	// ships. Consistent with ap:rest_api: itself being excluded.
+	"ap:api_portal:rest_api:",
 }
 
 func isExcludedScope(scope string) bool {

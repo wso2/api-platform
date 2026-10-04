@@ -1,0 +1,150 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "compat-single-provider"
+  },
+  "spec": {
+    "context": "/compat-single",
+    "displayName": "compat-single-provider",
+    "operations": [
+      {
+        "method": "DELETE",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "OPTIONS",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      },
+      {
+        "method": "PUT",
+        "path": "/*",
+        "policies": [
+          {
+            "name": "set-headers",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-internal-loopback",
+                    "value": "1"
+                  }
+                ]
+              }
+            },
+            "version": "v9.9.9"
+          }
+        ]
+      }
+    ],
+    "upstream": {
+      "main": {
+        "url": "http://127.0.0.1:8080/openai-provider"
+      }
+    },
+    "upstreamDefinitions": [
+      {
+        "basePath": "/openai-provider",
+        "name": "openai-provider",
+        "upstreams": [
+          {
+            "url": "http://127.0.0.1:8080"
+          }
+        ]
+      }
+    ],
+    "version": "v1.0"
+  }
+}

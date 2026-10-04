@@ -214,6 +214,76 @@ func (r *SubscriptionPlanRepo) GetByIDs(planIDs []string, orgUUID string) (map[s
 	return m, rows.Err()
 }
 
+// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid, scoped to
+// the organization. A handle absent from the returned map does not exist in the
+// org's catalog. Returns an empty map for empty input.
+func (r *SubscriptionPlanRepo) GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error) {
+	if len(handles) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(handles))
+	args := make([]interface{}, 0, len(handles)+1)
+	for i, h := range handles {
+		placeholders[i] = "?"
+		args = append(args, h)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT handle, uuid
+		FROM subscription_plans
+		WHERE handle IN (%s) AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var handle, uuid string
+		if err := rows.Scan(&handle, &uuid); err != nil {
+			return nil, err
+		}
+		m[handle] = uuid
+	}
+	return m, rows.Err()
+}
+
+// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid to
+// handle, for reconstructing a subscriptionPlanIds response from stored mapping
+// rows. Returns an empty map for empty input.
+func (r *SubscriptionPlanRepo) GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error) {
+	if len(planUUIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := make([]string, len(planUUIDs))
+	args := make([]interface{}, 0, len(planUUIDs)+1)
+	for i, id := range planUUIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, orgUUID)
+	query := fmt.Sprintf(`
+		SELECT uuid, handle
+		FROM subscription_plans
+		WHERE uuid IN (%s) AND organization_uuid = ?
+	`, strings.Join(placeholders, ","))
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve subscription plan uuids: %w", err)
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var uuid, handle string
+		if err := rows.Scan(&uuid, &handle); err != nil {
+			return nil, err
+		}
+		m[uuid] = handle
+	}
+	return m, rows.Err()
+}
+
 // ListByOrganization returns subscription plans for an organization with pagination
 func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)

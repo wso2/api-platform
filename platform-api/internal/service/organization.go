@@ -19,13 +19,13 @@ package service
 
 import (
 	"fmt"
-	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"log/slog"
 	"time"
 )
 
@@ -205,33 +205,6 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	}
 
 	return org, nil
-}
-
-// ListOrganizations returns a paginated list of organizations along with the
-// total number of organizations available across all pages.
-func (s *OrganizationService) ListOrganizations(limit, offset int) ([]api.Organization, int, error) {
-	total, err := s.orgRepo.CountOrganizations()
-	if err != nil {
-		return nil, 0, err
-	}
-
-	orgModels, err := s.orgRepo.ListOrganizations(limit, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	orgs := make([]api.Organization, 0, len(orgModels))
-	identityFields := make([]**string, 0, len(orgModels)*2)
-	for _, orgModel := range orgModels {
-		orgs = append(orgs, *s.modelToAPIUnresolved(orgModel))
-		last := &orgs[len(orgs)-1]
-		identityFields = append(identityFields, &last.CreatedBy, &last.UpdatedBy)
-	}
-	if err := s.identity.ResolveIdentityFields(identityFields); err != nil {
-		return nil, 0, err
-	}
-
-	return orgs, total, nil
 }
 
 // ListOrganizationsForUser returns a paginated list of the organizations

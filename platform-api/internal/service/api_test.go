@@ -803,7 +803,7 @@ func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
 	}
 
-	_, err := service.CreateAPI(req, "org-1", "alice")
+	_, _, err := service.CreateAPI(req, "org-1", "alice")
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}

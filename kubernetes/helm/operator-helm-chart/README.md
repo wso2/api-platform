@@ -6,7 +6,7 @@ This Helm chart deploys the API Platform Gateway Operator, a Kubernetes operator
 
 The Gateway Operator is responsible for:
 - Managing `APIGateway` custom resources (gateway instances)
-- Managing `RestApi` and the other API-management custom resources (ApiKey, APIPolicy, Certificate, LlmProvider, LlmProviderTemplate, LlmProxy, ManagedSecret, Mcp, Subscription, SubscriptionPlan)
+- Managing `RestApi` and the other API-management custom resources (Agent, ApiKey, APIPolicy, Certificate, LlmProvider, LlmProviderTemplate, LlmProxy, ManagedSecret, Mcp, Subscription, SubscriptionPlan)
 - Automatically deploying and configuring gateway instances (via the gateway Helm chart)
 - Reconciling gateway state with desired configuration
 - Optionally reconciling Kubernetes Gateway API resources (Gateway, HTTPRoute) for managed gateway classes

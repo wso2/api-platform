@@ -32,7 +32,12 @@ import {
   http,
   resetHttpClient,
 } from './http';
-import { onSessionExpired, resetSessionExpiryNotice } from './sessionEvents';
+import {
+  onForbidden,
+  onSessionExpired,
+  resetForbiddenNotice,
+  resetSessionExpiryNotice,
+} from './sessionEvents';
 
 /**
  * Transport-level behaviour, exercised through MSW rather than by stubbing
@@ -289,6 +294,45 @@ describe('successful responses', () => {
   });
 });
 
+describe('text responses', () => {
+  const yamlDocument = 'openapi: 3.0.3\ninfo:\n  title: Pizza Shack\n';
+
+  it('returns a stored document exactly as sent, with its content type, instead of parsing it', async () => {
+    server.use(recording('get', '/documents/spec', () =>
+      new HttpResponse(yamlDocument, { headers: { 'Content-Type': 'application/yaml' } })
+    ));
+
+    await expect(http.getText('/documents/spec')).resolves.toEqual({
+      text: yamlDocument,
+      contentType: 'application/yaml',
+    });
+  });
+
+  it('leaves a JSON document as text too, so the caller reads every serialization the same way', async () => {
+    server.use(recording('get', '/documents/spec', ok({ openapi: '3.0.3' })));
+
+    const { text, contentType } = await http.getText('/documents/spec');
+
+    expect(typeof text).toBe('string');
+    expect(JSON.parse(text)).toEqual({ openapi: '3.0.3' });
+    expect(contentType).toContain('application/json');
+  });
+
+  it('still rejects with an ApiError carrying the stable code when the server answers an error', async () => {
+    server.use(recording('get', '/documents/spec', () =>
+      HttpResponse.json(
+        { status: 'error', code: 'DRAFT_NOT_FOUND', message: 'No draft.' },
+        { status: 404 }
+      )
+    ));
+
+    const error = await rejection(http.getText('/documents/spec'));
+
+    expect(error.isNotFound).toBe(true);
+    expect(error.code).toBe('DRAFT_NOT_FOUND');
+  });
+});
+
 describe('failure responses', () => {
   const failWith = (status: number, body: JsonBodyType) =>
     server.use(
@@ -499,5 +543,74 @@ describe('session expiry', () => {
     await http.get('/rest-apis').catch(() => undefined);
 
     expect(notified).not.toHaveBeenCalled();
+  });
+});
+
+describe('forbidden operations', () => {
+  beforeEach(resetForbiddenNotice);
+
+  const failWith403 = (path: string) =>
+    server.use(
+      mswHttp.get(`${BASE}${path}`, () =>
+        HttpResponse.json(
+          { status: 'error', code: 'FORBIDDEN', message: 'Insufficient scope.' },
+          { status: 403 }
+        )
+      )
+    );
+
+  it('publishes the operation that was refused, so drift can be detected', async () => {
+    failWith403('/projects');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await http
+      .get('/projects', { operationName: 'ListProjects' })
+      .catch(() => undefined);
+
+    expect(notified).toHaveBeenCalledWith({ operation: 'ListProjects' });
+    unsubscribe();
+  });
+
+  it('collapses a burst of 403s for the same operation into one report', async () => {
+    failWith403('/projects');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined)
+      )
+    );
+
+    expect(notified).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('reports two different refused operations separately', async () => {
+    // Unlike a 401, two 403s are two distinct facts: one may be a real denial
+    // and the other a stale scope map. Collapsing them would hide the latter.
+    failWith403('/projects');
+    failWith403('/gateways');
+    const notified = vi.fn();
+    const unsubscribe = onForbidden(notified);
+
+    await http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined);
+    await http.get('/gateways', { operationName: 'ListGateways' }).catch(() => undefined);
+
+    expect(notified).toHaveBeenCalledTimes(2);
+    expect(notified).toHaveBeenCalledWith({ operation: 'ListGateways' });
+    unsubscribe();
+  });
+
+  it('does not announce a 403 as a dead session', async () => {
+    failWith403('/projects');
+    const expired = vi.fn();
+    const unsubscribe = onSessionExpired(expired);
+
+    await http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined);
+
+    expect(expired).not.toHaveBeenCalled();
+    unsubscribe();
   });
 });

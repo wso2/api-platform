@@ -1,0 +1,22 @@
+{
+  // The same options as tsconfig.json with `paths` pointed at the API Control
+  // Plane's node_modules, because the console's image build is the only thing
+  // that ever typechecks this package (its `npm run build` is `tsc --noEmit &&
+  // vite build`, and the plugin is copied into node_modules with `types`
+  // pointing at TS source, so `skipLibCheck` does not skip it). Run BOTH
+  // configs — clean under one host's dependency versions is not clean under the
+  // other's. Also the config the tests typecheck and run under, since the
+  // console is the only portal with vitest installed.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@wso2/oxygen-ui": ["../../api-control-plane/node_modules/@wso2/oxygen-ui"],
+      "@wso2/oxygen-ui-icons-react": ["../../api-control-plane/node_modules/@wso2/oxygen-ui-icons-react"],
+      "react": ["../../api-control-plane/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../api-control-plane/node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-router-dom": ["../../api-control-plane/node_modules/react-router-dom/dist/index.d.ts"],
+      "vitest": ["../../api-control-plane/node_modules/vitest/dist/index.d.ts"]
+    }
+  },
+  "exclude": []
+}

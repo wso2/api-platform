@@ -28,14 +28,21 @@ import {
   SessionExpiredPage,
   UnauthorizedPage,
 } from '@/pages/appShell/appShellPages/system/SystemPages';
-import { ConsoleScopeProvider } from '@/scope/ConsoleScopeProvider';
+import { ConsoleScopeProvider, useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import AppLayout from '@/pages/appShell/AppLayout';
 import {
+  buildScopedExtensionPath,
+  childRoutePath,
   extensionScopedPaths,
+  hasRender,
   isSidebarExtension,
+  PAGE_API_DEPLOY_SLOT,
+  PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
   settingsTabExtensions,
   type ApiControlPlaneExtension,
+  type ApiControlPlaneExtensionChild,
+  type RenderableExtension,
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
@@ -84,7 +91,6 @@ const ApiCreatePage = lazy(() =>
   import('../pages/appShell/appShellPages/apis/create/ApiCreationWizard').then((m) => ({
     default: m.ApiCreationWizard,
   })),
-
 );
 const ApiDetailPage = lazy(() =>
   import('../pages/appShell/appShellPages/apis/overview').then((m) => ({
@@ -109,24 +115,14 @@ const PoliciesPage = lazy(() =>
     default: m.PoliciesPage,
   })),
 );
-const RoutingPage = lazy(() =>
-  import('../pages/appShell/appShellPages/develop/routings/RoutingPage').then((m) => ({
-    default: m.RoutingPage,
-  })),
-);
 const DocumentsPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/documents/DocumentsPage').then((m) => ({
     default: m.DocumentsPage,
   })),
 );
-const ApiConsolePage = lazy(() =>
-  import('../pages/appShell/appShellPages/test/ApiConsolePage').then((m) => ({
-    default: m.ApiConsolePage,
-  })),
-);
-const ApiChatPage = lazy(() =>
-  import('../pages/appShell/appShellPages/test/ApiChatPage').then((m) => ({
-    default: m.ApiChatPage,
+const DefinitionPage = lazy(() =>
+  import('../pages/appShell/appShellPages/develop/definition/DefinitionPage').then((m) => ({
+    default: m.DefinitionPage,
   })),
 );
 const AlertsPage = lazy(() =>
@@ -169,6 +165,16 @@ const RuntimeLogsPage = lazy(() =>
     default: m.RuntimeLogsPage,
   })),
 );
+const PortalsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalsPage').then((m) => ({
+    default: m.PortalsPage,
+  })),
+);
+const PortalPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/portals/PortalPublishPage').then((m) => ({
+    default: m.PortalPublishPage,
+  })),
+);
 const SettingsLayout = lazy(() =>
   import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
     default: m.SettingsLayout,
@@ -177,6 +183,11 @@ const SettingsLayout = lazy(() =>
 const GeneralSettingsPage = lazy(() =>
   import('../pages/appShell/appShellPages/settings/GeneralSettingsPage').then((m) => ({
     default: m.GeneralSettingsPage,
+  })),
+);
+const SubscriptionPlansSettingsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/settings/SubscriptionPlansSettingsPage').then((m) => ({
+    default: m.SubscriptionPlansSettingsPage,
   })),
 );
 
@@ -200,13 +211,71 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
  * from the registration site — an extension only ever receives it as a plain
  * value, so it never imports this portal's hooks itself (see `hostPort.tsx`).
  */
-function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) {
+function ExtensionRoute({ render }: { render: RenderableExtension['render'] }) {
   const port = usePort();
-  return <>{extension.render(port)}</>;
+  return <>{render(port)}</>;
+}
+
+/** Strips a trailing `/*` descendant marker off an extension `routePath`. */
+const withoutSplat = (routePath: string) => routePath.replace(/\/\*$/, '');
+
+/**
+ * A direct hit on a sidebar parent that has `children` but no `render` of its
+ * own: sends the reader to the first child visible in the current scope, so the
+ * URL always names the page shown and the sidebar highlights it. The parent's
+ * own path is recovered from the current URL (splat stripped, as in
+ * `GatewaysRoute`), which keeps the scope-less aliases working.
+ */
+function ExtensionParentRedirect({ pages }: { pages: readonly ApiControlPlaneExtensionChild[] }) {
+  const scope = useConsoleScope();
+  const { hash, pathname, search } = useLocation();
+  const splat = useParams()['*'] ?? '';
+  const base = (splat ? pathname.slice(0, pathname.length - splat.length) : pathname).replace(
+    /\/+$/,
+    '',
+  );
+  const first = pages.find((child) => child.isVisible?.(scope) ?? true);
+  if (!first) return null;
+  return (
+    <Navigate replace to={{ hash, pathname: `${base}/${withoutSplat(first.routePath)}`, search }} />
+  );
 }
 
 /**
- * The gateways route subtree. Renders a cloud override registered against
+ * One of a sidebar extension's `aliases`: redirects to the extension's own path
+ * at the same scope, carrying the query string and hash over.
+ */
+function ExtensionAliasRedirect({
+  level,
+  routePath,
+}: {
+  level: NavigationLevel;
+  routePath: string;
+}) {
+  const params = useParams();
+  const { hash, search } = useLocation();
+  const pathname = buildScopedExtensionPath(level, withoutSplat(routePath), {
+    apiHandler: params.apiHandler ?? null,
+    orgHandle: params.orgHandle ?? '',
+    projectHandler: params.projectHandler ?? null,
+  });
+  return <Navigate replace to={{ hash, pathname, search }} />;
+}
+
+/**
+ * A single built-in page a host may replace through a `page.*` slot: renders
+ * the first override registered against `slot` when there is one, otherwise the
+ * built-in page. For a page that owns nested routes see `GatewaysRoute`.
+ */
+function OverridablePage({ children, slot }: { children: ReactNode; slot: string }) {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
+  if (override) return <>{override.render(port)}</>;
+  return <Hideable name={slot}>{children}</Hideable>;
+}
+
+/**
+ * The gateways route subtree. Renders an override registered against
  * `PAGE_GATEWAYS_SLOT` when one is present, otherwise the built-in gateways
  * pages — the same Slot-adds / Hideable-suppresses split the ai-workspace host
  * uses, so the cloud build swaps in the managed-gateways plugin while the public
@@ -215,7 +284,7 @@ function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) 
  */
 function GatewaysRoute() {
   const port = usePort();
-  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT);
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT).filter(hasRender);
   // This route's own `gateways` path, derived by stripping the matched splat
   // off the current URL. Deliberately not `useResolvedPath('')`: from a splat
   // route react-router 7 resolves relative to the *full* matched pathname, so
@@ -260,23 +329,50 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
       <Route
         key={extension.id}
         path={extension.routePath.replace(/^settings\//, '')}
-        element={<ExtensionRoute extension={extension} />}
+        element={<ExtensionRoute render={extension.render} />}
       />
     ));
 
   // Only `sidebar.*` entries become top-level routes; a Settings tab extension
   // is routed by `settingsTabRoutes` above, nested under the Settings layout.
-  const extensionRoutes = extensions
-    .filter(isSidebarExtension)
-    .flatMap((extension) =>
-      extensionScopedPaths(extension.level, extension.routePath).map((path) => (
-        <Route
-          key={`${extension.id}:${path}`}
-          path={path}
-          element={<ExtensionRoute extension={extension} />}
-        />
-      )),
-    );
+  //
+  // A parent's `children` are pages in their own right, so each is routed here
+  // too — under the parent's path and at the parent's level. Without this the
+  // sidebar would offer a sub-item that leads nowhere. A parent with no `render`
+  // redirects to its first visible child; each of `aliases` redirects to the
+  // entry's own path.
+  const extensionRoutes = extensions.filter(isSidebarExtension).flatMap((extension) => {
+    const route = (id: string, routePath: string, element: ReactNode) =>
+      extensionScopedPaths(extension.level, routePath).map((path) => (
+        <Route key={`${id}:${path}`} path={path} element={element} />
+      ));
+    const children = extension.children ?? [];
+    return [
+      ...route(
+        extension.id,
+        extension.routePath,
+        extension.render ? (
+          <ExtensionRoute render={extension.render} />
+        ) : (
+          <ExtensionParentRedirect pages={children} />
+        ),
+      ),
+      ...children.flatMap((child) =>
+        route(
+          child.id,
+          childRoutePath(extension.routePath, child.routePath),
+          <ExtensionRoute render={child.render} />,
+        ),
+      ),
+      ...(extension.aliases ?? []).flatMap((alias) =>
+        route(
+          `${extension.id}:alias:${alias}`,
+          withoutSplat(alias),
+          <ExtensionAliasRedirect level={extension.level} routePath={extension.routePath} />,
+        ),
+      ),
+    ];
+  });
 
   return (
     <Routes>
@@ -322,17 +418,32 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             produced and are not registered.
           */}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDevelopRouting), <RoutingPage />)}
+
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiDeploy), <DeployPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiTest), <TestPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopDefinition), <DefinitionPage />)}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiDeploy),
+            <OverridablePage slot={PAGE_API_DEPLOY_SLOT}>
+              <DeployPage />
+            </OverridablePage>,
+          )}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiObservabilityLogs), <RuntimeLogsPage />)}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiObservabilityLogs),
+            <OverridablePage slot={PAGE_API_OBSERVABILITY_LOGS_SLOT}>
+              <RuntimeLogsPage />
+            </OverridablePage>,
+          )}
+          {scopedRoutes(apiScopedPaths(routes.apiPortals), <PortalsPage />)}
+          {/*
+            Reached only from a portal card on the page above — like `apiEdit`,
+            there is no sidebar link to it and so no scope-less alias to register.
+          */}
+          <Route path={routes.apiPortalPublish()} element={<PortalPublishPage />} />
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}
@@ -342,6 +453,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.settings()} element={<SettingsLayout level="organization" />}>
             <Route index element={<GeneralSettingsPage />} />
             <Route path="general" element={<GeneralSettingsPage />} />
+            {/* Organization-scoped only — platform-api has no project-level
+                subscription-plan endpoint, so this isn't registered below. */}
+            <Route path="subscription-plans" element={<SubscriptionPlansSettingsPage />} />
             {settingsTabRoutes('organization')}
           </Route>
           <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>

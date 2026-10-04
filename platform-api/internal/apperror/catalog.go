@@ -61,6 +61,13 @@ var (
 	Internal            = def(CodeCommonInternalError, http.StatusInternalServerError, "An unexpected error occurred.")
 	ServiceUnavailable  = def(CodeCommonServiceUnavailable, http.StatusServiceUnavailable, "The service is temporarily unavailable.")
 	TooManyRequests     = def(CodeCommonTooManyRequests, http.StatusTooManyRequests, "%s")
+	PayloadTooLarge     = def(CodeCommonPayloadTooLarge, http.StatusRequestEntityTooLarge, "%s")
+	// UnsupportedMediaType is the 415 a body-bearing operation returns when the
+	// request declares a media type it does not accept. It is distinct from
+	// NotAcceptable (406), which is about the media type the client asked to
+	// *receive*.
+	UnsupportedMediaType = def(CodeCommonUnsupportedMediaType, http.StatusUnsupportedMediaType,
+		"This operation accepts application/json only.")
 )
 
 // REST API entries.
@@ -121,6 +128,9 @@ var (
 // MCP proxy deployment operations. DeploymentNotActive's verb is the artifact
 // kind, e.g. "API", "LLM provider".
 var (
+	BuildNotFound             = def(CodeBuildNotFound, http.StatusNotFound, "The specified build could not be found.")
+	BuildLimitReached         = def(CodeBuildLimitReached, http.StatusConflict, "This API already has its maximum of %d builds, and every one is in use by a deployment. Undeploy one, or delete a build you no longer need, to make room for another.")
+	BuildInUse                = def(CodeBuildInUse, http.StatusConflict, "The build is on a gateway and cannot be deleted. Undeploy it first, then delete the build.")
 	DeploymentBaseNotFound    = def(CodeDeploymentBaseNotFound, http.StatusNotFound, "The specified base deployment could not be found.")
 	DeploymentRestoreConflict = def(CodeDeploymentRestoreConflict, http.StatusConflict, "Cannot restore the currently deployed deployment, or the deployment is invalid.")
 	DeploymentNotFound        = def(CodeDeploymentNotFound, http.StatusNotFound, "The specified deployment could not be found.")
@@ -143,6 +153,29 @@ var (
 		"The MCP server rejected the supplied credentials.")
 )
 
+// Agent proxy entries.
+var (
+	AgentProxyNotFound = def(CodeAgentProxyNotFound, http.StatusNotFound, "The specified Agent proxy could not be found.")
+	AgentProxyExists   = def(CodeAgentProxyExists, http.StatusConflict, "An Agent proxy with this ID already exists.")
+	// AgentProxyUpstreamUnreachable is deliberately a 503 rather than a 500 or a
+	// 404: the Agent proxy exists and the control plane is healthy — it simply
+	// could not reach the upstream to read its Agent Card. Collapsing it into
+	// 500 would leave a client unable to tell a down agent from a broken control
+	// plane, which is exactly the distinction the card-unavailable display state
+	// is built on. The call site supplies a sterile reason sentence; the upstream
+	// URL, its credentials and its raw body never appear in it.
+	AgentProxyUpstreamUnreachable = def(CodeAgentProxyUpstreamUnreachable, http.StatusServiceUnavailable, "%s")
+	// AgentProxyDeploymentValidationFailed is a malformed deployment request
+	// (base, buildId, gatewayId). The call site supplies the sentence.
+	AgentProxyDeploymentValidationFailed = def(CodeAgentProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	// AgentProxyDeploymentNotUndeployed refuses to delete a deployment record
+	// that is not UNDEPLOYED. An active one gets DeploymentActive instead, whose
+	// "undeploy it first" is the actionable answer; this entry covers the states
+	// where undeploying is not the fix (in progress, failed, superseded).
+	AgentProxyDeploymentNotUndeployed = def(CodeAgentProxyDeploymentNotUndeployed, http.StatusConflict,
+		"Only an undeployed deployment can be deleted.")
+)
+
 // Organization / project / application entries.
 var (
 	OrganizationNotFound = def(CodeOrganizationNotFound, http.StatusNotFound, "The specified organization could not be found.")
@@ -152,6 +185,12 @@ var (
 	ProjectExists        = def(CodeProjectExists, http.StatusConflict, "A project with this name already exists in the organization.")
 	ApplicationNotFound  = def(CodeApplicationNotFound, http.StatusNotFound, "The specified application could not be found.")
 	ApplicationExists    = def(CodeApplicationExists, http.StatusConflict, "An application with this name already exists.")
+)
+
+// API Portal entries.
+var (
+	APIPortalNotFound = def(CodeAPIPortalNotFound, http.StatusNotFound, "The specified API Portal could not be found.")
+	APIPortalExists   = def(CodeAPIPortalExists, http.StatusConflict, "An API Portal with this handle already exists in the organization.")
 )
 
 // Subscription entries.
@@ -212,4 +251,41 @@ var (
 	HmacSecretExists        = def(CodeHmacSecretExists, http.StatusConflict, "An HMAC secret with this name already exists.")
 	HmacSecretInvalidValue  = def(CodeHmacSecretInvalidValue, http.StatusBadRequest, "The secret value must be at least 32 characters.")
 	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
+)
+
+// API Publication entries: the per-portal draft and the live publication.
+var (
+	APIPublicationAPINotFound   = def(CodeAPIPublicationAPINotFound, http.StatusNotFound, "The specified API could not be found.")
+	APIPublicationDraftNotFound = def(CodeAPIPublicationDraftNotFound, http.StatusNotFound, "No draft has been saved for this API on this API Portal.")
+	APIPublicationNotFound      = def(CodeAPIPublicationNotFound, http.StatusNotFound, "This API is not published to this API Portal.")
+	// APIPublicationValidationFailed's message is call-site-specific (an
+	// unresolvable plan/document handle, or content over the configured size
+	// ceiling) — same "%s" pattern as RESTAPIDeploymentValidationFailed.
+	APIPublicationValidationFailed = def(CodeAPIPublicationValidationFailed, http.StatusBadRequest, "%s")
+	// APIPublicationTypeUnsupported: the API type has no projection onto the
+	// API Portal's own API types, so no listing can be created for it.
+	APIPublicationTypeUnsupported = def(CodeAPIPublicationTypeUnsupported, http.StatusBadRequest,
+		"APIs of this type cannot be published to an API Portal.")
+	// APIPublicationPortalConflict is a rejection the portal will keep making
+	// (a conflicting handle/display name, active subscriptions/API keys, or
+	// any other portal-side rejection) — never retried, distinct from the
+	// transient APIPublicationPortalUnavailable.
+	// %s carries a short, pre-approved reason phrase — e.g. "active
+	// subscriptions are removed" — resolved from a closed allowlist of known
+	// portal error codes (HTTPPortalPublisher.portalConflictReason), never
+	// the portal's own raw error text; falls back to "the conflict is
+	// resolved" (this entry's original, fixed wording) for anything else.
+	APIPublicationPortalConflict = def(CodeAPIPublicationPortalConflict, http.StatusConflict,
+		"The API Portal cannot accept this request until %s.")
+	APIPublicationPortalUnavailable = def(CodeAPIPublicationPortalUnavailable, http.StatusServiceUnavailable,
+		"The API Portal could not be reached. Please try again.")
+	// APIPublicationStateConflict: the action is not valid for the listing's
+	// current status. %s is the full user-facing sentence saying why, so the
+	// caller can name the state it found (e.g. "already unpublished").
+	APIPublicationStateConflict = def(CodeAPIPublicationStateConflict, http.StatusConflict, "%s")
+	// APIPublicationDraftChanged: the draft was saved during its own publish.
+	// The push is not undone, so the API Portal may hold the earlier copy until
+	// the next publish.
+	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
+		"The draft changed while publishing. Review it and publish again.")
 )

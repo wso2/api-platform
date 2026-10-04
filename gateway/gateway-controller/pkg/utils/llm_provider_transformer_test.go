@@ -8416,7 +8416,7 @@ func TestTransformProxy_ResilienceOnAllRoutes(t *testing.T) {
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "db-proxy",
 			Version:     "v1.0",
-			Provider:    api.LLMProxyProvider{Id: "db-provider"},
+			Provider:    &api.LLMProxyProvider{Id: "db-provider"},
 			Resilience:  &api.Resilience{Timeout: &timeout},
 		},
 	}

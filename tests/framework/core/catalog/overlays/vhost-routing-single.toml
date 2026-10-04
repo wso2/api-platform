@@ -1,0 +1,5 @@
+[router.vhosts.main]
+default = "*.wso2.com"
+
+[router.vhosts.sandbox]
+default = "*-sandbox.wso2.com"

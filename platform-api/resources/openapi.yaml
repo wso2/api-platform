@@ -418,6 +418,93 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/validate-openapi:
+    post:
+      summary: Validate an OpenAPI specification
+      description: |
+        Validates an OpenAPI 3.x specification without creating
+        or modifying any resource. The spec may be supplied either as a
+        multipart file upload (`file`) or as a URL (`url`) that the backend
+        fetches server-side. Exactly one of `file` or `url` is required.
+        Returns a structured result indicating whether the spec is valid and,
+        if not, the list of validation errors.
+      operationId: ValidateOpenAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpenAPISpecFileRequest'
+      responses:
+        '200':
+          description: Validation result (valid or invalid — both return 200)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateOpenAPIResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/import-openapi:
+    post:
+      summary: Create a REST API from an OpenAPI specification
+      description: |
+        Creates a new REST API by parsing an OpenAPI 3.x
+        specification. The spec may be supplied either as a multipart file
+        upload (`file`) or as a URL (`url`) that the backend fetches
+        server-side. Exactly one of `file` or `url` is required. The backend
+        extracts operations from the spec, creates the API, and persists the
+        raw spec as the API definition document.
+      operationId: ImportOpenAPI
+      security:
+        - OAuth2Security:
+            - ap:rest_api:create
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportOpenAPIRequest'
+      responses:
+        '201':
+          description: API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}:
     get:
       summary: Get REST API by ID
@@ -518,6 +605,77 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+
+  /rest-apis/{restApiId}/openapi:
+    get:
+      summary: Get API definition
+      description: |
+        Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+        has been uploaded yet. The `content` field carries the spec text.
+      operationId: GetRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API definition retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update API definition
+      description: |
+        Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+        multipart/form-data upload with a single `file` field containing the spec.
+      operationId: UpdateRESTAPISpec
+      security:
+        - OAuth2Security:
+            - ap:rest_api:update
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpenAPISpecFileRequest'
+      responses:
+        '200':
+          description: API definition updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /rest-apis/{restApiId}/gateways:
     get:
@@ -772,6 +930,186 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/{restApiId}/builds:
+    post:
+      summary: Prepare a build of a REST API
+      description: |
+        Renders the API's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        An API keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:create
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a REST API
+      description: |
+        Lists the API's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetBuilds
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{restApiId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:read
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the API's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteBuild
+      security:
+        - OAuth2Security:
+            - ap:rest_api:build:delete
+            - ap:rest_api:build:manage
+            - ap:rest_api:manage
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{restApiId}/deployments:
     post:
       summary: Create and deploy a new deployment
@@ -780,6 +1118,10 @@ paths:
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
         not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
+
+        Every deployment runs a build: `base: build` deploys one prepared earlier, and
+        `base: current` renders the API's definition into a build and deploys that, both in
+        one atomic operation. The deployment reports the build it runs as `buildId`.
       operationId: DeployAPI
       security:
         - OAuth2Security:
@@ -819,6 +1161,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1040,6 +1384,547 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: rollup across portals ---------------------------------
+
+  /api-publications:
+    get:
+      summary: List API publications across API Portals
+      description: Retrieves every API Portal whose registration has completed — id, name, description and URL — each annotated with this API's publication status and whether a draft exists. Portals still being provisioned, or whose provisioning failed, are not listed.
+      operationId: listApiPublications
+      security:
+        - OAuth2Security:
+            - ap:api_publication:read
+      tags:
+        - API Publications
+      parameters:
+        - $ref: '#/components/parameters/apiType-Q'
+        - $ref: '#/components/parameters/apiHandle-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationSummaryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: the live publication -----------------------------------
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get API publication
+      description: Retrieves the live listing's details, subscription plans and documents. 404 when the API is not published to this portal.
+      operationId: getApiPublication
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/definition:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published definition
+      description: Retrieves the definition stored in this publication. 404 when the publication has none.
+      operationId: getApiPublicationDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationDefinitionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/landing-page:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published landing page
+      description: Retrieves the landing page stored in this publication, as Markdown. 404 when the publication has none.
+      operationId: getApiPublicationLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationLandingPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/publication/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get published thumbnail
+      description: Retrieves the thumbnail stored in this publication, as raw image bytes. 404 when the publication has none.
+      operationId: getApiPublicationThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:publication:read
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationThumbnailImageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: the per-portal draft -----------------------------------
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get publication draft
+      description: Retrieves the draft's details, subscription plans and documents. 404 when no draft has been saved.
+      operationId: getApiPublicationDraft
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDraftDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save publication draft
+      description: Replaces the draft's details, subscription plans and documents, creating the draft on first save. Every plan handle and document handle must exist in the organization.
+      operationId: saveApiPublicationDraft
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationDraftDetailsInput'
+      responses:
+        '200':
+          description: Draft saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationDraftDetails'
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/definition:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft definition
+      description: Retrieves the definition stored in this draft. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationDefinitionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save draft definition
+      description: Replaces the draft definition. Requires the draft to exist.
+      operationId: saveApiPublicationDraftDefinition
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: >-
+          The definition as raw bytes. The request's Content-Type selects the stored serialization; no
+          other media type is accepted. Saving a draft never validates the content itself — including
+          whether the Content-Type matches what the API's type actually uses — only publish does.
+        content:
+          application/json:
+            schema:
+              type: string
+              format: binary
+          application/yaml:
+            schema:
+              type: string
+              format: binary
+          application/graphql:
+            schema:
+              type: string
+              format: binary
+          application/xml:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Definition saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/landing-page:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft landing page
+      description: Retrieves the landing page stored in this draft, as Markdown. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationLandingPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Save draft landing page
+      description: Replaces the draft landing page. Content is Markdown; embedded raw HTML is stripped before storage. Requires the draft to exist.
+      operationId: saveApiPublicationDraftLandingPage
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: The landing page as raw Markdown.
+        content:
+          text/markdown:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: Landing page saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/draft/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get draft thumbnail
+      description: Retrieves the thumbnail stored in this draft, as raw image bytes. 404 when the draft has not stored one.
+      operationId: getApiPublicationDraftThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:read
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          $ref: '#/components/responses/PublicationThumbnailImageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Upload draft thumbnail
+      description: Uploads or replaces the draft thumbnail. Accepts PNG and JPEG, determined by sniffing the uploaded bytes rather than the declared type or file name. Requires the draft to exist.
+      operationId: saveApiPublicationDraftThumbnail
+      security:
+        - OAuth2Security:
+            - ap:api_portal:draft:update
+            - ap:api_portal:draft:manage
+      tags:
+        - API Publications
+      requestBody:
+        required: true
+        description: >-
+          The thumbnail image. Accepted content is sniffed from the uploaded bytes (PNG or JPEG
+          only) rather than trusted from the declared type or file name.
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '204':
+          description: Thumbnail saved
+        '400':
+          $ref: '#/components/responses/PublicationBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- API Publication: lifecycle actions, per API type -------------------------
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish REST API to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishRestApiToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:publish
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationPublishBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish REST API from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishRestApiFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:unpublish
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/rest-api/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate REST API on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateRestApiOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:rest_api:deprecate
+            - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
 
   /llm-provider-templates:
     post:
@@ -1617,6 +2502,206 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{llmProviderId}/builds:
+    post:
+      summary: Prepare a build of a LLM provider
+      description: |
+        Renders the LLM provider's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM provider keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:create
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM provider
+      description: |
+        Lists the LLM provider's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{llmProviderId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:read
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM provider's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProviderBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_provider:build:delete
+            - ap:llm_provider:build:manage
+            - ap:llm_provider:manage
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: llmProviderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM provider
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2258,6 +3343,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /llm-proxies/{llmProxyId}/builds:
+    post:
+      summary: Prepare a build of a LLM proxy
+      description: |
+        Renders the LLM proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A LLM proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:create
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a LLM proxy
+      description: |
+        Lists the LLM proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{llmProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:read
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the LLM proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteLLMProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:llm_proxy:build:delete
+            - ap:llm_proxy:build:manage
+            - ap:llm_proxy:manage
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: llmProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the LLM proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-proxies/{llmProxyId}/deployments:
     post:
       summary: Create and deploy a new LLM proxy deployment
@@ -2856,6 +4141,206 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /mcp-proxies/{mcpProxyId}/builds:
+    post:
+      summary: Prepare a build of a MCP proxy
+      description: |
+        Renders the MCP proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A MCP proxy keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:create
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a MCP proxy
+      description: |
+        Lists the MCP proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{mcpProxyId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:read
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the MCP proxy's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteMCPProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:build:delete
+            - ap:mcp_proxy:build:manage
+            - ap:mcp_proxy:manage
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: mcpProxyId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the MCP proxy
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /mcp-proxies/{mcpProxyId}/deployments:
     post:
       summary: Create and deploy a new deployment for MCP proxy
@@ -3178,6 +4663,918 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies:
+    post:
+      summary: Create a new Agent proxy
+      description: |
+        Creates an Agent proxy in the organization resolved from the access token. `id` is the
+        public handle; when omitted the server derives it from `displayName`. `protocol` is
+        required and immutable, and the matching named configuration block (`a2a` for
+        `protocol: a2a`) is required alongside it.
+      operationId: createAgentProxy
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:create
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+      requestBody:
+        description: Agent proxy to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentProxy'
+      responses:
+        '201':
+          description: Agent proxy created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List Agent proxies
+      description: |
+        Lists the Agent proxies in the caller's organization. Items are the lightweight
+        `AgentProxyListItem` projection; read an individual Agent proxy for the full resource,
+        including its protocol configuration and any managed Agent Card content. The `protocol`
+        filter, when supplied, is applied to both the returned page and `pagination.total`.
+        Filtering by A2A protocol version is not supported.
+      operationId: listAgentProxies
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:read
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+      parameters:
+        - $ref: '#/components/parameters/agentProxyProtocol-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: List of Agent proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProxyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/fetch-agent-card:
+    post:
+      summary: Fetch an Agent Card for preview
+      description: |
+        Provide either `url` with optional `auth`, or `agentProxyId` alone to use the stored
+        upstream URL and stored credentials. Combining `agentProxyId` with `url` or `auth` is
+        rejected. The fetched card is returned for preview and is never persisted.
+
+        This operation has no side effects, so it is guarded by the read scope. Saving a
+        fetched card as managed content is a separate Agent proxy update that places it under
+        `a2a.agentCard.public.content` or `a2a.agentCard.protected.content`.
+
+        This is also the display path for a passthrough public Agent Card, which is not
+        stored, so it runs on ordinary page views and not only during authoring. It issues a
+        live outbound request: when the upstream is unreachable, times out, rejects the stored
+        credentials, or returns something that is not a parsable Agent Card, the response is
+        `503` with `AGENT_PROXY_UPSTREAM_UNREACHABLE` — distinct from `500`, so a client can
+        tell an unreachable agent from a control-plane failure and render the right state. A
+        managed public card needs no call here; it is already in the Agent proxy resource.
+      operationId: fetchAgentCard
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:read
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+        - Agent Cards
+      parameters:
+        - $ref: '#/components/parameters/cacheControl-H'
+      requestBody:
+        description: Either a direct `url` (with optional `auth`), or an `agentProxyId` to fetch using a stored Agent proxy's endpoint and credentials.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FetchAgentCardRequest'
+            examples:
+              direct:
+                summary: Fetch from a supplied URL
+                value:
+                  url: https://agent.example.com
+              stored:
+                summary: Fetch using a saved Agent proxy's stored endpoint and credentials
+                value:
+                  agentProxyId: weather-agent
+              directWithAuth:
+                summary: Fetch from a supplied URL with supplied credentials
+                value:
+                  url: https://agent.example.com
+                  auth:
+                    type: api-key
+                    header: X-API-Key
+                    value: example-preview-key
+      responses:
+        '200':
+          description: |
+            Parsed, transient Agent Card preview. Possibly served from the control plane's
+            short-lived cache — see `Age`. Freshness metadata is carried in headers, never
+            injected into the body: the card document is free-form and is returned exactly as
+            the upstream supplied it.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Age:
+              $ref: '#/components/headers/Age'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentCardDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/AgentProxyUpstreamUnreachable'
+
+  /agent-proxies/{agentProxyId}:
+    get:
+      summary: Get an Agent proxy by unique identifier
+      description: Returns the full Agent proxy, including its typed protocol configuration and any managed Agent Card content.
+      operationId: getAgentProxy
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:read
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      responses:
+        '200':
+          description: Agent proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProxy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Replace an existing Agent proxy
+      description: |
+        Full replacement of the writable Agent proxy configuration; idempotent. Omitted
+        optional fields reset to their documented default or absence — omitting
+        `a2a.agentCard` restores default card behaviour, omitting
+        `a2a.operationConfigs.policies` or `a2a.operationConfigs.operations` clears those user
+        additions, and omitting `associatedGateways` empties the association set (subject to
+        the existing deployment-integrity checks). `a2a.operationConfigs` itself is required,
+        since it carries the transports.
+
+        An omitted body `id` retains the path handle and is never regenerated; a body `id`
+        that disagrees with the path is a 400. `protocol` is immutable — changing it is a 400.
+        An omitted write-only credential value retains the stored credential for an unchanged
+        auth configuration, and `auth.type: none` removes auth; an auth configuration that
+        changes without complete credentials is rejected. There is no implicit PATCH
+        behaviour.
+
+        For a gateway-originated Agent proxy (`readOnly: true`), only `description` and
+        `associatedGateways` are replaced from the body; every other field keeps the value
+        imported from the gateway, and `readOnly` in the body is ignored.
+      operationId: updateAgentProxy
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:update
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      requestBody:
+        description: Replacement Agent proxy configuration
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentProxy'
+      responses:
+        '200':
+          description: Agent proxy replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an Agent proxy
+      description: |
+        Deletes the Agent proxy from the control plane and durably records the deletion event.
+        Gateway cleanup converges asynchronously, so a 204 is not a promise that every gateway
+        has already removed the routes.
+      operationId: deleteAgentProxy
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:delete
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxies
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      responses:
+        '204':
+          description: Agent proxy deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/deployments:
+    post:
+      summary: Create and deploy a new deployment for an Agent proxy
+      description: |
+        Creates the immutable deployment record synchronously and begins gateway processing.
+        Each deployment targets a single gateway. The 201 body reports the transitional
+        `DEPLOYING` status; poll the `Location` URI for the eventual status and `statusReason`.
+        This is not a completed gateway deployment. Access is validated against the
+        organization in the JWT token.
+
+        The gateway reports the outcome asynchronously:
+
+        - `DEPLOYED` means the gateway accepted, validated and stored the Agent. It does not
+          confirm that the gateway is serving the Agent's routes: route application happens
+          after the acknowledgement, and a policy engine that cannot resolve A2A routes is not
+          detected.
+        - `FAILED` carries a `statusReason` code: `AGENT_VALIDATION_FAILED` (the gateway
+          rejected the definition), `AGENT_CONFIG_RENDER_FAILED` (a template or secret reference
+          could not be resolved), `AGENT_CONFLICT` (the gateway already holds another Agent
+          with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
+          (the gateway could not retrieve the deployment artifact), or
+          `GATEWAY_PROCESSING_ERROR`.
+        - The control plane does not check the target gateway's version. A gateway that
+          predates Agent support never acknowledges the deployment, which ends `FAILED` with
+          `DEPLOYMENT_TIMEOUT`.
+      operationId: createAgentProxyDeployment
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:create
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: Immutable deployment record created; gateway processing is pending.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get deployments for an Agent proxy
+      description: |
+        Retrieves the Agent proxy's deployment records, optionally filtered by gateway handle
+        and deployment status. Access is validated against the organization in the JWT token.
+      operationId: listAgentProxyDeployments
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:read
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/deployments/{deploymentId}:
+    get:
+      summary: Get Agent proxy deployment by ID
+      description: |
+        Returns the deployment's current lifecycle state, gateway association, timestamps and,
+        on failure, its `statusReason`. Access is validated against the organization in the
+        JWT token.
+      operationId: getAgentProxyDeployment
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:read
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an Agent proxy deployment
+      description: |
+        Deletes the deployment record. Permitted only when the deployment is in `UNDEPLOYED`
+        status; any other state is a 409. Access is validated against the organization in the
+        JWT token.
+      operationId: deleteAgentProxyDeployment
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:delete
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/DeploymentActiveConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/deployments/{deploymentId}/undeploy:
+    post:
+      summary: Begin undeployment of an Agent proxy deployment
+      description: |
+        Accepts an undeployment request and returns the transitional deployment state
+        (`UNDEPLOYING`). Poll the `Location` URI for the terminal status (`UNDEPLOYED` or
+        `FAILED`) and `statusReason`; never retry the POST merely because it returned a
+        transitional state. The deployment artifact remains in the system and can be restored
+        later.
+
+        The `gatewayId` query parameter is validated against the deployment's bound gateway to
+        prevent unintended operations. Access is validated against the organization in the JWT
+        token.
+      operationId: undeployAgentProxyDeployment
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:undeploy
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/deploymentId'
+        - $ref: '#/components/parameters/deploymentGatewayId-Q'
+      responses:
+        '202':
+          description: Undeployment accepted. Returns the deployment with the transitional status UNDEPLOYING; poll the Location for the final status.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/deployments/{deploymentId}/restore:
+    post:
+      summary: Begin restoration of a previous Agent proxy deployment
+      description: |
+        Accepts a restoration request for a previous deployment (`ARCHIVED` or `UNDEPLOYED`)
+        and returns the transitional deployment state (`DEPLOYING`). Poll the `Location` URI
+        for the terminal status and `statusReason`. The target deployment must not already be
+        in `DEPLOYED` status. The gateway acknowledges a restore as a deployment, so the
+        terminal statuses and reason codes are those described for
+        `createAgentProxyDeployment`.
+
+        The `gatewayId` query parameter is validated against the deployment's bound gateway to
+        prevent unintended operations. Access is validated against the organization in the JWT
+        token.
+      operationId: restoreAgentProxyDeployment
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:deployment:restore
+            - ap:agent_proxy:deployment:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/deploymentId'
+        - $ref: '#/components/parameters/deploymentGatewayId-Q'
+      responses:
+        '202':
+          description: Restoration accepted. Returns the deployment with the transitional status DEPLOYING; poll the Location for the final status.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/builds:
+    post:
+      summary: Prepare a build of an Agent proxy
+      description: |
+        Renders the Agent proxy's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the Agent proxy since, and the same build can be deployed to
+        any number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        An Agent proxy keeps at most `deployments.max_builds_per_api` builds. Preparing
+        another first removes the oldest builds no current deployment is using; if every one
+        is in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: createAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:create
+            - ap:agent_proxy:build:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for an Agent proxy
+      description: |
+        Lists the Agent proxy's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: listAgentProxyBuilds
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:read
+            - ap:agent_proxy:build:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/builds/{buildId}:
+    get:
+      summary: Get Agent proxy build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: getAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:read
+            - ap:agent_proxy:build:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an Agent proxy build
+      description: |
+        Deletes one of the Agent proxy's builds, freeing a slot when the Agent proxy is at its
+        build limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: deleteAgentProxyBuild
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:build:delete
+            - ap:agent_proxy:build:manage
+            - ap:agent_proxy:manage
+      tags:
+        - Agent Proxy Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/api-keys:
+    get:
+      summary: List API keys for an Agent proxy
+      description: |
+        Returns API-key metadata for the specified Agent proxy. Key material is never returned by
+        this operation. Only keys the caller created are listed, unless the caller holds
+        `ap:api_key:all:manage`, which lists every key on the Agent proxy.
+      operationId: listAgentProxyAPIKeys
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:api_key:read
+            - ap:agent_proxy:api_key:manage
+            - ap:agent_proxy:manage
+            - ap:api_key:all:manage
+      tags:
+        - Agent Proxies
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: API-key metadata list retrieved successfully. Key material is never returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProxyAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create an API key for an Agent proxy
+      description: |
+        Creates an API key for the specified Agent proxy, with the same behavior as REST API
+        keys. Omit `apiKey` to have the server generate one; the generated value is returned
+        only in this response and can never be retrieved again. A supplied `apiKey` is
+        registered as-is and is not echoed back. The key is hashed before storage and
+        broadcast to the gateways the Agent proxy is deployed to; a gateway the Agent proxy is
+        deployed to later receives it at deployment time.
+
+        `id` is optional and derived from `displayName` when omitted. If the identifier is
+        already in use on this Agent proxy, a short random suffix is appended. The response's
+        `keyId` and the `Location` header carry the identifier actually stored.
+      operationId: createAgentProxyAPIKey
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:api_key:create
+            - ap:agent_proxy:api_key:manage
+            - ap:agent_proxy:manage
+            - ap:api_key:all:manage
+      tags:
+        - Agent Proxies
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+      requestBody:
+        description: API key creation request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully. Generated key material is returned only in this response.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /agent-proxies/{agentProxyId}/api-keys/{apiKeyId}:
+    put:
+      summary: Update an API key for an Agent proxy
+      description: |
+        Updates an existing API key for the specified Agent proxy, with the same behavior as
+        REST API keys: the supplied `apiKey` value replaces the key material, is hashed before
+        storage, and is broadcast to the gateways the Agent proxy is deployed to. Only the
+        key's creator may update it, unless the caller holds `ap:api_key:all:manage`. The
+        Agent proxy must be associated with at least one gateway; otherwise the update is
+        refused with 503.
+      operationId: updateAgentProxyAPIKey
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:api_key:update
+            - ap:agent_proxy:api_key:manage
+            - ap:agent_proxy:manage
+            - ap:api_key:all:manage
+      tags:
+        - Agent Proxies
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/agentProxyApiKeyId'
+      requestBody:
+        description: API key update request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
+      responses:
+        '200':
+          description: API key updated successfully. Key material is not returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an API key for an Agent proxy
+      description: |
+        Deletes the API key from the control plane and records the deletion in the audit log.
+        A revocation is then propagated to the gateways the
+        Agent proxy is associated with through the existing gateway event mechanism, so a 204
+        confirms the control-plane deletion, not that every gateway has already dropped the key.
+        An Agent proxy associated with no gateway has nothing to notify, and the key is still
+        deleted. Only the key's creator may delete it, unless the caller holds
+        `ap:api_key:all:manage`.
+      operationId: revokeAgentProxyAPIKey
+      security:
+        - OAuth2Security:
+            - ap:agent_proxy:api_key:delete
+            - ap:agent_proxy:api_key:manage
+            - ap:agent_proxy:manage
+            - ap:api_key:all:manage
+      tags:
+        - Agent Proxies
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/agentProxyId'
+        - $ref: '#/components/parameters/agentProxyApiKeyId'
+      responses:
+        '204':
+          description: API key deleted successfully (no content)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -4483,6 +6880,172 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api-portals:
+    post:
+      summary: Create an API Portal
+      description: |
+        Registers a new API Portal in the caller's organization against an
+        existing portal URL. The URL is required. Organization ID is extracted
+        from the JWT token.
+      operationId: CreateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:create
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      requestBody:
+        description: API Portal registration details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiPortalRequest'
+      responses:
+        '201':
+          description: API Portal created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API Portals
+      description: Lists API Portals in the org resolved from the JWT token.
+      operationId: ListApiPortals
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: API Portals retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}:
+    get:
+      summary: Get API Portal by ID
+      description: Reads a single API Portal by its handle. Access is validated against the org in the JWT token.
+      operationId: GetApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '200':
+          description: API Portal retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update API Portal
+      description: |
+        Updates mutable fields on an API Portal. The server ignores any immutable
+        field appearing in the body. Access is validated against the org in the JWT token.
+      operationId: UpdateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:update
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      requestBody:
+        description: API Portal fields to update
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiPortalRequest'
+      responses:
+        '200':
+          description: API Portal updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete API Portal
+      description: |
+        Deletes the API Portal registration and purges the encrypted shared key. The remote
+        portal instance is not touched; operators are responsible for its lifecycle. Access
+        is validated against the org in the JWT token.
+      operationId: DeleteApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:delete
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '204':
+          description: API Portal deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /me/api-keys:
     get:
       summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
@@ -4510,7 +7073,7 @@ paths:
             type: array
             items:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy]
           style: form
           explode: false
           example: LlmProxy,LlmProvider
@@ -4751,6 +7314,24 @@ components:
       schema:
         type: string
         format: uri
+    CacheControl:
+      description: |
+        Freshness of an Agent Card fetch result, as `max-age=<seconds>`. The control plane
+        caches the stored-handle form of the fetch for this long so routine page views do not
+        each issue an outbound request. `max-age=0` means caching is disabled.
+      schema:
+        type: string
+        example: max-age=60
+    Age:
+      description: |
+        Seconds since the control plane actually fetched this result from the upstream. `0` or
+        absent means it was fetched during this request; a positive value means it was served
+        from the cache. Present on a cached failure too, so a client can say how long the
+        upstream has been unreachable.
+      schema:
+        type: integer
+        minimum: 0
+        example: 12
   securitySchemes:
     OAuth2Security:
       type: oauth2
@@ -4758,8 +7339,42 @@ components:
         clientCredentials:
           tokenUrl: https://localhost:9243/oauth2/token
           scopes:
+            ap:agent_proxy:api_key:create: Create an API key for an Agent proxy
+            ap:agent_proxy:api_key:delete: Revoke an API key of an Agent proxy
+            ap:agent_proxy:api_key:manage: Full access to an Agent proxy's API keys
+            ap:agent_proxy:api_key:read: Read an Agent proxy's API key metadata
+            ap:agent_proxy:api_key:update: Update an API key of an Agent proxy
+            ap:agent_proxy:build:create: Prepare a build of an Agent proxy
+            ap:agent_proxy:build:delete: Delete a build of an Agent proxy
+            ap:agent_proxy:build:manage: Full access to an Agent proxy's builds
+            ap:agent_proxy:build:read: Read builds of an Agent proxy
+            ap:agent_proxy:create: Create an Agent proxy
+            ap:agent_proxy:delete: Delete an Agent proxy
+            ap:agent_proxy:deployment:create: Deploy an Agent proxy
+            ap:agent_proxy:deployment:delete: Delete an Agent proxy deployment
+            ap:agent_proxy:deployment:manage: Full access to Agent proxy deployments
+            ap:agent_proxy:deployment:read: Read Agent proxy deployments
+            ap:agent_proxy:deployment:restore: Restore an Agent proxy deployment
+            ap:agent_proxy:deployment:undeploy: Undeploy an Agent proxy deployment
+            ap:agent_proxy:manage: Full access to Agent proxies
+            ap:agent_proxy:read: Read Agent proxies
+            ap:agent_proxy:update: Update an Agent proxy
             ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
+            ap:api_portal:create: Create an API Portal
+            ap:api_portal:delete: Delete an API Portal
+            ap:api_portal:draft:manage: Read and write an API's draft for one portal
+            ap:api_portal:draft:read: Read an API's draft for one portal — the private workspace prepared before publishing
+            ap:api_portal:draft:update: Edit an API's draft for one portal
+            ap:api_portal:manage: Full access to API Portals
+            ap:api_portal:publication:read: Read an API's live listing on one portal
+            ap:api_portal:read: Read API Portals
+            ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
+            ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
+            ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
+            ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
+            ap:api_portal:update: Update an API Portal
+            ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key
             ap:application:api_key:manage: Full access to application API keys
@@ -4779,19 +7394,23 @@ components:
             ap:gateway:manage: Full access to gateways
             ap:gateway:manifest:read: Read a gateway manifest
             ap:gateway:read: Read gateways
-            ap:gateway_custom_policy:create: Create a gateway custom policy
-            ap:gateway_custom_policy:delete: Delete a gateway custom policy
-            ap:gateway_custom_policy:manage: Full access to gateway custom policies
-            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:gateway:token:create: Create a gateway token
             ap:gateway:token:delete: Delete a gateway token
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
+            ap:gateway_custom_policy:create: Create a gateway custom policy
+            ap:gateway_custom_policy:delete: Delete a gateway custom policy
+            ap:gateway_custom_policy:manage: Full access to gateway custom policies
+            ap:gateway_custom_policy:read: Read gateway custom policies
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
             ap:llm_provider:api_key:read: Read LLM provider API keys
+            ap:llm_provider:build:create: Prepare a build of an LLM provider
+            ap:llm_provider:build:delete: Delete a build of an LLM provider
+            ap:llm_provider:build:manage: Full access to an LLM provider's builds
+            ap:llm_provider:build:read: Read builds of an LLM provider
             ap:llm_provider:create: Create an LLM provider
             ap:llm_provider:delete: Delete an LLM provider
             ap:llm_provider:deployment:create: Deploy an LLM provider
@@ -4807,6 +7426,10 @@ components:
             ap:llm_proxy:api_key:delete: Delete an LLM proxy API key
             ap:llm_proxy:api_key:manage: Full access to LLM proxy API keys
             ap:llm_proxy:api_key:read: Read LLM proxy API keys
+            ap:llm_proxy:build:create: Prepare a build of an LLM proxy
+            ap:llm_proxy:build:delete: Delete a build of an LLM proxy
+            ap:llm_proxy:build:manage: Full access to an LLM proxy's builds
+            ap:llm_proxy:build:read: Read builds of an LLM proxy
             ap:llm_proxy:create: Create an LLM proxy
             ap:llm_proxy:delete: Delete an LLM proxy
             ap:llm_proxy:deployment:create: Deploy an LLM proxy
@@ -4823,6 +7446,10 @@ components:
             ap:llm_template:manage: Full access to LLM provider templates
             ap:llm_template:read: Read LLM provider templates
             ap:llm_template:update: Update an LLM provider template
+            ap:mcp_proxy:build:create: Prepare a build of an MCP proxy
+            ap:mcp_proxy:build:delete: Delete a build of an MCP proxy
+            ap:mcp_proxy:build:manage: Full access to an MCP proxy's builds
+            ap:mcp_proxy:build:read: Read builds of an MCP proxy
             ap:mcp_proxy:create: Create an MCP proxy
             ap:mcp_proxy:delete: Delete an MCP proxy
             ap:mcp_proxy:deployment:create: Deploy an MCP proxy
@@ -4846,6 +7473,10 @@ components:
             ap:rest_api:api_key:delete: Delete an API key of a REST API
             ap:rest_api:api_key:manage: Full access to a REST API's API keys
             ap:rest_api:api_key:update: Update an API key of a REST API
+            ap:rest_api:build:create: Prepare a build of a REST API
+            ap:rest_api:build:delete: Delete a build of a REST API
+            ap:rest_api:build:manage: Full access to a REST API's builds
+            ap:rest_api:build:read: Read builds of a REST API
             ap:rest_api:create: Create a REST API
             ap:rest_api:delete: Delete a REST API
             ap:rest_api:deployment:create: Deploy a REST API
@@ -4943,7 +7574,7 @@ components:
               example: wso2-openai-provider
             artifactType:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy]
               description: Type of the artifact this key belongs to
 
     UserAPIKeyListResponse:
@@ -5650,6 +8281,7 @@ components:
             - PATCH
             - HEAD
             - OPTIONS
+            - TRACE
           example: "GET"
         path:
           type: string
@@ -6210,6 +8842,139 @@ components:
             - version
             - projectId
 
+    ImportOpenAPIRequest:
+      type: object
+      description: |
+        Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+        `file` or `url` must be provided; the backend rejects requests that
+        supply both or neither.
+      required:
+        - displayName
+        - version
+        - context
+        - projectId
+        - upstream
+      properties:
+        file:
+          type: string
+          format: binary
+          description: OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+        url:
+          type: string
+          format: uri
+          description: |
+            HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+            from.
+          example: https://petstore3.swagger.io/api/v3/openapi.json
+        id:
+          type: string
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 3
+          maxLength: 40
+          example: my-rest-api-handle
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: PizzaShackAPI
+        description:
+          maxLength: 32766
+          type: string
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        context:
+          maxLength: 232
+          minLength: 1
+          type: string
+          example: /pizza
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: 1.0.0
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this API belongs to
+          example: default-project
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+
+    OpenAPISpecFileRequest:
+      type: object
+      description: |
+        Multipart form for `POST /rest-apis/validate-openapi` and
+        `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+        must be provided; the backend rejects requests that supply both or
+        neither.
+      properties:
+        file:
+          type: string
+          format: binary
+          description: OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
+        url:
+          type: string
+          format: uri
+          description: |
+            HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+            from. Mutually exclusive with `file`.
+          example: https://petstore3.swagger.io/api/v3/openapi.json
+
+    ValidateOpenAPIResponse:
+      type: object
+      required:
+        - isValid
+        - errors
+      properties:
+        isValid:
+          type: boolean
+          description: Whether the spec passed validation
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenAPIValidationError'
+          description: Validation errors; empty when isValid is true
+        info:
+          $ref: '#/components/schemas/OpenAPISpecInfo'
+        content:
+          type: string
+          description: |
+            The exact bytes the validator ran against. Always echoed for file
+            uploads; for URL sources it is echoed only when isValid is true.
+
+    OpenAPIValidationError:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Human-readable description of the validation error
+        path:
+          type: string
+          description: JSON Pointer path within the spec where the error was found
+
+    OpenAPISpecInfo:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Value of info.title from the spec
+        version:
+          type: string
+          description: Value of info.version from the spec
+
+    OpenAPIContent:
+      type: object
+      properties:
+        content:
+          type: string
+          description: Raw spec content
+
     TimeUnit:
       type: string
       description: Time unit for API key expiration duration
@@ -6279,6 +9044,7 @@ components:
         issuer:
           type: string
           description: Identifier of the API Portal that provisioned this API key. Null if not provided.
+          maxLength: 255
           nullable: true
           example: "api-platform-devportal"
 
@@ -6348,6 +9114,7 @@ components:
         issuer:
           type: string
           description: Identifies the portal that created this key
+          maxLength: 255
           example: "api-platform-devportal"
 
     UpdateAPIKeyResponse:
@@ -6699,8 +9466,27 @@ components:
           example: "v1.0-production"
         base:
           type: string
-          description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+          description: |
+            Where the artifact comes from:
+
+            - `current` — render the artifact from the definition as it stands now.
+            - `build` — deploy a build prepared earlier, named by `buildId`.
+
+            These are the only two values, for REST APIs, MCP proxies, LLM providers and
+            LLM proxies alike. Every deployment runs a build: `current` stores what it
+            renders as one, so a running deployment is always traceable to a stored
+            snapshot, and promoting carries that snapshot rather than re-rendering it.
+
+            A `deploymentId` is no longer accepted here — see the note on this
+            operation.
           example: "current"
+        buildId:
+          type: string
+          description: |
+            The build to deploy, such as `2026-01-31-2`. Required when `base` is `build`,
+            and rejected otherwise. Deploying a build ships that exact snapshot, so it
+            cannot pick up edits made since it was prepared.
+          example: "2026-01-31-2"
         gatewayId:
           type: string
           pattern: '^[a-z0-9-]+$'
@@ -6711,7 +9497,96 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+          description: >-
+            Optional metadata for the deployment. Supported keys are `endpointUrl`,
+            `vhostMain` and `vhostSandbox` for REST APIs. An LLM provider deployment takes
+            `endpointUrl` too, which replaces the backend it routes to, and
+            `upstreamAuthValue` — the credential that deployment authenticates to the
+            provider's upstream with, so one provider can run on several gateways
+            against different accounts with the same vendor. It must be given as a
+            `{{ secret "handle" }}` reference naming a secret of this organization,
+            never the credential itself. Like the provider's own `auth.value` it is
+            write-only: it is never returned by any read of a deployment, so replacing
+            it means giving a new one rather than editing what came back. Omitting it
+            leaves the provider's own credential in place.
+
+
+            `upstreamAuthHeader` names the header that credential is sent in. It is read
+            only alongside `upstreamAuthValue`, and only where the upstream authenticates
+            with an api-key — basic and bearer send `Authorization` by definition.
+
+    BuildRequest:
+      type: object
+      description: Optional details to record with a build.
+      properties:
+        description:
+          type: string
+          maxLength: 1023
+          description: |
+            Optional note recorded with the build, to tell one snapshot from another when
+            choosing what to deploy or which build to delete.
+          example: "Adds the /reports endpoint"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Free-form metadata to store with the build, such as the commit an API kept in a
+            repository was prepared from. It is returned with the build and is not
+            interpreted by the platform.
+          example:
+            commitId: "9f1c2ab"
+
+    BuildResponse:
+      type: object
+      description: An immutable, rendered snapshot of an API's definition, not bound to any gateway.
+      required:
+        - buildId
+        - uuid
+        - createdAt
+      properties:
+        buildId:
+          type: string
+          description: |
+            Identifier for the build, supplied as `buildId` when a deployment's `base` is
+            `build`. It is the date the build was prepared followed by that day's index for
+            the API, and is unique per API.
+          example: "2026-01-31-2"
+        uuid:
+          type: string
+          format: uuid
+          description: Globally unique identifier for the build, and what a deployment references
+        description:
+          type: string
+          description: Note recorded with the build when it was prepared
+        dataVersion:
+          type: string
+          description: Platform data version the artifact was rendered at; it is translated to the gateway's version when deployed
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Metadata recorded with the build, such as the commit it was prepared from
+        createdBy:
+          type: string
+          description: Who prepared the build
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the build was prepared
+
+    BuildListResponse:
+      type: object
+      required:
+        - count
+        - list
+      properties:
+        count:
+          type: integer
+          description: Number of builds in current response
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildResponse'
+          description: Builds, newest first
 
     DeploymentResponse:
       type: object
@@ -6759,6 +9634,19 @@ components:
           format: uuid
           nullable: true
           description: UUID of the base deployment this was created from
+        buildId:
+          type: string
+          nullable: true
+          description: |
+            Build this deployment runs, such as `2026-01-31-2`. REST API, LLM provider,
+            LLM proxy and MCP proxy deployments all have one: `base: build` runs the build
+            it names, and `base: current` stores what it renders as a build and runs that.
+
+            Null for artifact kinds that have no builds, and for a deployment promoted from
+            another, which reuses that deployment's rendered artifact. Also null once the
+            build it ran has been pruned. Null means only that no build can be named; the
+            deployment keeps its own rendered artifact either way.
+          example: "2026-01-31-2"
         metadata:
           type: object
           additionalProperties: true
@@ -6770,7 +9658,14 @@ components:
         statusReason:
           type: string
           nullable: true
-          description: Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
+          description: >-
+            Error code explaining the failure reason. Null unless status is FAILED (e.g.
+            DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text.
+            Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
+            AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
+            DEPLOYMENT_ID_MISMATCH.
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          maxLength: 50
         updatedAt:
           type: string
           format: date-time
@@ -8146,6 +11041,7 @@ components:
         issuer:
           type: string
           description: Identifier of the API Portal that provisioned this API key. Null if not provided.
+          maxLength: 255
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:
@@ -8153,6 +11049,7 @@ components:
           description: |
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
+          maxLength: 255
           nullable: true
           example: "dev_gateway,test_gateway"
     CreateLLMProviderAPIKeyResponse:
@@ -8205,6 +11102,7 @@ components:
         issuer:
           type: string
           description: Identifier of the API Portal that provisioned this API key. Null if not provided.
+          maxLength: 255
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:
@@ -8212,6 +11110,7 @@ components:
           description: |
             Comma-separated list of gateways this key is valid for.
             Use 'ALL' to allow all targets (default).
+          maxLength: 255
           nullable: true
           example: "dev_gateway,test_gateway"
     CreateLLMProxyAPIKeyResponse:
@@ -8311,11 +11210,32 @@ components:
         upstream:
           $ref: "#/components/schemas/Upstream"
         mcpSpecVersion:
+          deprecated: true
           type: string
-          description: MCP specification version supported by this proxy
-          enum:
+          description: DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        mcpSpecVersions:
+          type: array
+          description: >
+            MCP specification versions this proxy declares. Any MCP revision date is accepted.
+          items:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example:
             - "2025-06-18"
-            - "2025-11-25"
+            - "2026-07-28"
+        upstreamMcpSpecVersions:
+          type: array
+          description: >
+            MCP specification versions the upstream server reported when it was discovered by
+            /mcp-proxies/fetch-server-info. A snapshot of what the server said, recorded for
+            reference: it restricts nothing and is not sent to a gateway.
+          items:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         policies:
           type: array
           description: List of policies to be applied
@@ -8400,8 +11320,17 @@ components:
             - failed
           example: deployed
         mcpSpecVersion:
+          deprecated: true
           type: string
+          description: DEPRECATED - use mcpSpecVersions.
           example: 2025-11-25
+        mcpSpecVersions:
+          type: array
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         createdAt:
           type: string
           format: date-time
@@ -8471,6 +11400,17 @@ components:
       properties:
         serverInfo:
           type: object
+        supportedVersions:
+          type: array
+          description: |
+             MCP protocol versions the server reported. A modern server answers server/discover
+             with the full set; a legacy one yields the single version its initialize handshake
+             negotiated. Absent when neither could be determined.
+          items:
+            type: string
+          example:
+            - "2025-06-18"
+            - "2026-07-28"
         tools:
           type: array
           items:
@@ -8688,6 +11628,1009 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    PublicationDetailsCore:
+      type: object
+      properties:
+        displayName:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        labels:
+          type: array
+          items:
+            type: string
+          description: API Portal label handles controlling which portal views show this listing. Not validated here — an unknown handle is rejected by the portal at publish time.
+        agentVisibility:
+          type: string
+          enum: [VISIBLE, HIDDEN]
+        endpoints:
+          type: object
+          description: Author-entered; not derived from the API.
+          additionalProperties: false
+          properties:
+            productionUrl:
+              type: string
+              format: uri
+            sandboxUrl:
+              type: string
+              format: uri
+        owners:
+          type: object
+          description: Contacts published alongside the listing. Author-entered; omitting them on a publish clears the portal's own values.
+          additionalProperties: false
+          properties:
+            businessOwner:
+              type: string
+            businessOwnerEmail:
+              type: string
+              format: email
+            technicalOwner:
+              type: string
+            technicalOwnerEmail:
+              type: string
+              format: email
+
+    PublicationAuditFields:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        createdBy:
+          type: string
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: >-
+            When this record last changed in any way — the latest across its details, definition,
+            landing page and thumbnail, which are saved through separate calls. The same value the
+            portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt
+            on a publication.
+        updatedBy:
+          type: string
+          readOnly: true
+          description: Who made that most recent change.
+
+    SubscriptionPlanIdList:
+      type: array
+      items:
+        type: string
+        description: Subscription plan handle from GET /subscription-plans, not the database UUID.
+
+    DocIdList:
+      type: array
+      items:
+        type: string
+        description: Document handle from GET /apis/{apiType}/{apiId}/docs, not the database UUID.
+
+    PublicationDraftDetailsInput:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDetailsCore'
+        - type: object
+          required:
+            - displayName
+            - version
+          properties:
+            subscriptionPlanIds:
+              $ref: '#/components/schemas/SubscriptionPlanIdList'
+            docIds:
+              $ref: '#/components/schemas/DocIdList'
+
+    PublicationDraftDetails:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDraftDetailsInput'
+        - $ref: '#/components/schemas/PublicationAuditFields'
+        - type: object
+          properties:
+            hasThumbnail:
+              type: boolean
+              readOnly: true
+              description: Whether this draft stores a thumbnail of its own.
+            hasLandingPage:
+              type: boolean
+              readOnly: true
+              description: Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.
+
+    Publication:
+      allOf:
+        - $ref: '#/components/schemas/PublicationDetailsCore'
+        - $ref: '#/components/schemas/PublicationAuditFields'
+        - type: object
+          properties:
+            apiPortalId:
+              type: string
+              description: The API Portal's handle.
+            apiPortalName:
+              type: string
+            status:
+              type: string
+              enum: [PUBLISHED, DEPRECATED]
+            subscriptionPlanIds:
+              $ref: '#/components/schemas/SubscriptionPlanIdList'
+            docIds:
+              $ref: '#/components/schemas/DocIdList'
+            hasThumbnail:
+              type: boolean
+              readOnly: true
+              description: Whether this publication stores a thumbnail.
+            hasLandingPage:
+              type: boolean
+              readOnly: true
+              description: Whether this publication stores a landing page.
+
+    PublicationSummaryItem:
+      type: object
+      properties:
+        apiPortalId:
+          type: string
+          description: The API Portal's handle.
+        apiPortalName:
+          type: string
+          description: The API Portal's display name.
+        apiPortalDescription:
+          type: string
+          nullable: true
+          description: The API Portal's own description, as set at registration.
+        apiPortalUrl:
+          type: string
+          nullable: true
+          description: The API Portal's URL, as set at registration.
+        status:
+          type: string
+          enum: [NOT_PUBLISHED, PUBLISHED, DEPRECATED]
+          description: NOT_PUBLISHED covers both never published and unpublished since.
+        draftUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: The draft's own updatedAt; null when no draft exists.
+        publicationUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: The publication's own updatedAt; null when not published.
+
+    PublicationSummaryResponse:
+      type: object
+      required:
+        - list
+        - pagination
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicationSummaryItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ApiPortalMetadata:
+      title: API Portal metadata
+      type: object
+      description: >-
+        Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC
+        endpoints the portal uses for consumer login). Platform-API stores and
+        returns this as-is; it is not consumed by the outbound authentication
+        path.
+      additionalProperties: true
+
+    ApiPortalResponse:
+      title: API Portal detail
+      type: object
+      required:
+        - id
+        - name
+        - url
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "acme-portal"
+        name:
+          type: string
+          description: Display name.
+          minLength: 1
+          maxLength: 255
+          example: "Acme Developer Portal"
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          description: Public URL of the API Portal. Operator-supplied.
+          example: "https://acme-portal.example.com"
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+
+    ApiPortalListItem:
+      title: API Portal list projection
+      description: Lightweight projection returned in collection responses (excludes the metadata blob).
+      type: object
+      required:
+        - id
+        - name
+        - url
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: "acme-portal"
+          description: URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
+        name:
+          type: string
+          example: "Acme Developer Portal"
+        description:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateApiPortalRequest:
+      title: Create API Portal request
+      type: object
+      required:
+        - name
+        - handle
+        - url
+        - sharedKey
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        handle:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          description: URL-friendly slug. Must be unique within the org. Immutable after creation.
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 500
+          description: Public HTTPS URL of the API Portal to register. Operator-supplied.
+        sharedKey:
+          type: string
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            The raw shared key Platform-API will send as `Authorization: SharedKey <raw>` on
+            outbound publishing calls. The portal side stores only the sha256 hash of this
+            value (generated via portals/scripts/setup.sh). Persisted encrypted at rest here;
+            never returned on any read.
+          example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    UpdateApiPortalRequest:
+      title: Update API Portal request
+      description: All fields optional. Only mutable fields are accepted, see field permissions in the design doc.
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+          maxLength: 500
+        sharedKey:
+          type: string
+          writeOnly: true
+          pattern: '^[0-9a-fA-F]{64}$'
+          minLength: 64
+          maxLength: 64
+          description: >-
+            Rotate the shared key. When present, replaces the stored value. Same format as on
+            Create. Write-only; never returned.
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    ApiPortalListResponse:
+      title: API Portal list response
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in the current response page.
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiPortalListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AgentProxy:
+      title: Agent Proxy
+      description: |
+        An Agent proxy, as a discriminated union over its protocol. `protocol` selects the
+        variant and its matching named configuration block, and is immutable after creation.
+        `a2a` is the only protocol registered today; a further protocol adds its own
+        complete variant and named configuration block rather than widening this one.
+      oneOf:
+        - $ref: '#/components/schemas/A2AAgentProxy'
+      discriminator:
+        propertyName: protocol
+        mapping:
+          a2a: '#/components/schemas/A2AAgentProxy'
+
+    A2AAgentProxy:
+      title: A2A Agent Proxy
+      description: |
+        The complete Agent proxy variant for `protocol: a2a`. Shared Agent fields stay at the
+        top level; the A2A protocol version, operation configuration (including the
+        transports it is served on, under `a2a.operationConfigs.transports`) and Agent Cards
+        live inside `a2a`. Unknown properties are rejected.
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+        - version
+        - projectId
+        - upstream
+        - protocol
+        - a2a
+      properties:
+        kind:
+          type: string
+          description: Control-plane resource kind. The gateway's own artifact kind stays `Agent` and is mapped at the deployment boundary.
+          enum:
+            - AgentProxy
+          default: AgentProxy
+          example: AgentProxy
+        id:
+          type: string
+          description: |
+            Public handle, unique per organization. Optional on create — the server derives it
+            from `displayName` when omitted — and always present on responses. On update an
+            omitted `id` retains the path handle and is never regenerated; a conflicting one
+            is rejected. Supplying it explicitly as an empty string is not the same as
+            omitting it, and is rejected.
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          minLength: 3
+          maxLength: 40
+          example: weather-agent
+        displayName:
+          type: string
+          description: Human-readable Agent proxy name. Not required to be unique.
+          minLength: 1
+          maxLength: 128
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Weather Agent
+        description:
+          type: string
+          description: Free-text description of the Agent proxy.
+          maxLength: 1023
+          example: Provides forecasts and severe-weather alerts
+        version:
+          type: string
+          description: |
+            User-facing resource version label. Free text, and unrelated to
+            `a2a.protocolVersion` — it is not part of the resource's identity, and uniqueness
+            is on the handle alone.
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: Handle (URL-friendly slug) of the project this Agent proxy belongs to.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          example: default-project
+        context:
+          type: string
+          description: Base path under which every route of this Agent proxy is served. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: agents.gw.com
+        upstream:
+          $ref: '#/components/schemas/Upstream'
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: Agent-wide resilience defaults. Per-operation values under `a2a.operationConfigs.operations[].resilience` override these.
+        protocol:
+          type: string
+          description: Communication protocol of this Agent proxy. Required, and immutable after creation.
+          maxLength: 20
+          enum:
+            - a2a
+          example: a2a
+        a2a:
+          $ref: '#/components/schemas/A2AProtocolConfig'
+        associatedGateways:
+          type: array
+          description: >
+            Optional list of gateways this Agent proxy can be deployed to, along with
+            per-gateway configuration overrides. On update, an omitted array empties the
+            association set, subject to the existing deployment-integrity checks.
+          items:
+            $ref: '#/components/schemas/AssociatedGateway'
+          example:
+            - id: ai-gw-prod
+        createdBy:
+          type: string
+          description: User identifier of the user who created this resource
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource
+          example: "john.doe"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane. False for control-plane created Agent proxies.
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
+
+    A2AProtocolConfig:
+      title: A2A protocol configuration
+      description: |
+        Typed A2A configuration, required when `protocol` is `a2a`. Unknown properties are
+        rejected; free-form Agent Card content and policy parameters keep their own extension
+        behaviour.
+      type: object
+      additionalProperties: false
+      required:
+        - protocolVersion
+        - operationConfigs
+      properties:
+        protocolVersion:
+          type: string
+          description: |
+            A2A wire protocol version. Only registered versions are accepted — an unregistered
+            value is rejected at authoring time because it could never deploy. This is not a
+            supported list filter.
+          enum:
+            - '1.0'
+          example: '1.0'
+        operationConfigs:
+          $ref: '#/components/schemas/A2AOperationConfigs'
+        agentCard:
+          $ref: '#/components/schemas/AgentCardConfig'
+
+    A2ATransport:
+      title: A2A transport
+      type: object
+      additionalProperties: false
+      required:
+        - protocolBinding
+      properties:
+        protocolBinding:
+          type: string
+          description: A2A protocol binding served on this transport.
+          enum:
+            - JSONRPC
+            - HTTP+JSON
+          example: JSONRPC
+        pathPrefix:
+          type: string
+          description: Path prefix relative to `context`. The default `/` inserts no extra segment.
+          default: /
+          minLength: 1
+          maxLength: 200
+          pattern: '^/(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+(?:/[A-Za-z0-9._~!$&()*+,;=:@%-]+)*)?$'
+          example: /rpc
+
+    A2AOperationConfigs:
+      title: A2A operation configuration
+      description: |
+        Transport exposure plus Agent-wide and per-operation A2A configuration, matching the
+        gateway's `spec.a2a.operationConfigs`. The block is required because it carries the
+        required `transports`; omitting `policies` or `operations` means no user-supplied
+        policies and no per-operation additions. None of this applies to public Agent Card
+        serving.
+      type: object
+      additionalProperties: false
+      required:
+        - transports
+      properties:
+        transports:
+          type: array
+          description: |
+            Transports this Agent proxy is served on. `protocolBinding` must be unique across
+            the array; `uniqueItems` compares whole elements, so that uniqueness is enforced
+            in the service rather than by the schema.
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/A2ATransport'
+        policies:
+          type: array
+          description: Policies applied to every A2A operation. This is the agent-wide policy position for A2A; there is no top-level `policies` array.
+          items:
+            $ref: '#/components/schemas/Policy'
+        operations:
+          type: array
+          description: |
+            Per-operation configuration. This is not an allowlist — unlisted operations still
+            receive the common `policies`. `name` must be unique across the array, which the
+            service enforces.
+          items:
+            $ref: '#/components/schemas/A2AOperation'
+
+    A2AOperation:
+      title: A2A per-operation configuration
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: One of the canonical A2A operations for the selected protocol version.
+          enum:
+            - SendMessage
+            - SendStreamingMessage
+            - GetTask
+            - ListTasks
+            - CancelTask
+            - SubscribeToTask
+            - CreateTaskPushNotificationConfig
+            - GetTaskPushNotificationConfig
+            - ListTaskPushNotificationConfigs
+            - DeleteTaskPushNotificationConfig
+            - GetExtendedAgentCard
+          example: SendMessage
+        policies:
+          type: array
+          description: Policies appended after the common `policies`, by plain concatenation with no de-duplication — a policy attached in both places runs twice.
+          items:
+            $ref: '#/components/schemas/Policy'
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: Per-operation resilience values, overriding the Agent-wide defaults.
+
+    Resilience:
+      title: Resilience settings
+      description: Timeout settings applied to a request chain.
+      type: object
+      additionalProperties: false
+      properties:
+        timeout:
+          type: string
+          description: Overall request timeout, as a duration such as `30s` or `1m`.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 30s
+        idleTimeout:
+          type: string
+          description: Idle (no-data) timeout, as a duration such as `5s`.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 5s
+
+    AgentCardConfig:
+      title: A2A Agent Card configuration
+      description: |
+        A2A Agent Card serving configuration. Omitting this block, or omitting its `public`
+        block, means public passthrough at `/.well-known/agent-card.json` with
+        `rewriteUrls: true` and no card policies. Omitted blocks are preserved as omitted;
+        defaults never materialize an explicit stored configuration.
+      type: object
+      additionalProperties: false
+      properties:
+        public:
+          $ref: '#/components/schemas/PublicAgentCard'
+        protected:
+          $ref: '#/components/schemas/ProtectedAgentCard'
+
+    PublicAgentCard:
+      title: Public Agent Card configuration
+      description: |
+        Managed and passthrough are disjoint branches. Managed requires `content` and forbids
+        `rewriteUrls`; passthrough forbids `content` and may omit `mode`. A card-serving
+        `signing` option is not accepted on either branch.
+
+        `properties` below describes the shape common to both branches and carries each
+        property in its loosest form; `oneOf` does all the discriminating. Keeping both is
+        what lets code generators emit a usable object type while the branches still enforce
+        the mode-specific rules. A property added to a branch must be added here too, or it
+        will validate correctly but be missing from generated clients.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+            - passthrough
+        path:
+          $ref: '#/components/schemas/AgentCardPath'
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+        rewriteUrls:
+          type: boolean
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
+      oneOf:
+        - $ref: '#/components/schemas/ManagedPublicAgentCard'
+        - $ref: '#/components/schemas/PassthroughPublicAgentCard'
+
+    ManagedPublicAgentCard:
+      title: Managed public Agent Card
+      description: The control plane stores the card and the gateway serves exactly those bytes.
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - content
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+          example: managed
+        path:
+          $ref: '#/components/schemas/AgentCardPath'
+        policies:
+          type: array
+          description: Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth.
+          items:
+            $ref: '#/components/schemas/Policy'
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
+
+    PassthroughPublicAgentCard:
+      title: Passthrough public Agent Card
+      description: Nothing is stored; the gateway fetches the card from the upstream agent and optionally rewrites its URLs.
+      type: object
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum:
+            - passthrough
+          default: passthrough
+          example: passthrough
+        path:
+          $ref: '#/components/schemas/AgentCardPath'
+        policies:
+          type: array
+          description: Policies applied to the public-card discovery route only. Auth policies here are rejected by the gateway; the card route runs no auth.
+          items:
+            $ref: '#/components/schemas/Policy'
+        rewriteUrls:
+          type: boolean
+          description: Rewrite upstream-advertised URLs to the gateway's own. Passthrough only — rejected in managed mode.
+          default: true
+          example: true
+
+    ProtectedAgentCard:
+      title: Protected Agent Card configuration
+      description: |
+        The protected card is an A2A operation (`GetExtendedAgentCard`) rather than a
+        discovery route, so it carries no `path` and no `policies`. An explicit `mode` is
+        required whenever the block is present.
+
+        As with `PublicAgentCard`, `properties` describes the common shape in its loosest
+        form and `oneOf` does the discriminating.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+            - passthrough
+        rewriteUrls:
+          type: boolean
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
+      oneOf:
+        - $ref: '#/components/schemas/ManagedProtectedAgentCard'
+        - $ref: '#/components/schemas/PassthroughProtectedAgentCard'
+
+    ManagedProtectedAgentCard:
+      title: Managed protected Agent Card
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - content
+      properties:
+        mode:
+          type: string
+          enum:
+            - managed
+          example: managed
+        content:
+          $ref: '#/components/schemas/AgentCardDocument'
+
+    PassthroughProtectedAgentCard:
+      title: Passthrough protected Agent Card
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          enum:
+            - passthrough
+          example: passthrough
+        rewriteUrls:
+          type: boolean
+          description: Rewrite upstream-advertised URLs to the gateway's own. Independent of the public card's `rewriteUrls`.
+          default: true
+          example: true
+
+    AgentCardPath:
+      title: Agent Card discovery path
+      description: |
+        Path the public Agent Card is served on. A custom path replaces the default route
+        rather than aliasing it.
+      type: string
+      default: /.well-known/agent-card.json
+      minLength: 2
+      maxLength: 200
+      pattern: '^/[A-Za-z0-9._~!$&()*+,;=:@%-]+(?:/[A-Za-z0-9._~!$&()*+,;=:@%-]+)*$'
+      example: /.well-known/agent-card.json
+
+    AgentCardDocument:
+      title: A2A Agent Card document
+      description: |
+        A complete A2A Agent Card, carried as supplied. Managed content is stored and served
+        byte-for-byte and is never re-serialized or normalized, because re-serialization would
+        change the bytes a future signing implementation signs. Structure is the author's to
+        write: the gateway validates what it can contradict at deployment time, and the
+        encoded size limit (1 MiB) is enforced in the service, not by this schema.
+
+        Note that `securityRequirements` uses the A2A shape
+        `[{ "schemes": { "<name>": { "list": ["scope"] } } }]`, not the OpenAPI-style
+        `[{ "<name>": ["scope"] }]`.
+      type: object
+      additionalProperties: true
+
+    AgentProxyListItem:
+      title: Agent Proxy list item
+      description: |
+        Lightweight Agent proxy projection used in collection responses. Protocol
+        configuration, operation policies and Agent Card content are omitted — read the item
+        for those, since a managed card alone may be up to 1 MiB.
+      type: object
+      required:
+        - id
+        - displayName
+        - version
+        - projectId
+        - protocol
+      properties:
+        id:
+          type: string
+          description: Public handle of the Agent proxy
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          minLength: 3
+          maxLength: 40
+          example: weather-agent
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Weather Agent
+        description:
+          type: string
+          example: Provides forecasts and severe-weather alerts
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this Agent proxy belongs to
+          example: default-project
+        protocol:
+          type: string
+          enum:
+            - a2a
+          example: a2a
+        context:
+          type: string
+          example: /weather
+        vhost:
+          type: string
+          example: agents.gw.com
+        createdBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True when the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane.
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: 2026-01-31T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: 2026-01-31T10:30:00Z
+
+    AgentProxyListResponse:
+      title: AgentProxyListResponse for paginated Agent proxy results
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of Agent proxies in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentProxyListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AgentProxyAPIKeyListResponse:
+      title: AgentProxyAPIKeyListResponse for paginated Agent proxy API-key results
+      type: object
+      required:
+        - list
+        - count
+        - pagination
+      properties:
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyItem'
+          description: List of API keys. Key material is never included.
+        count:
+          type: integer
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    FetchAgentCardRequest:
+      title: Agent Card fetch request
+      description: |
+        Two mutually exclusive forms: a direct `url` with optional `auth`, or an
+        `agentProxyId` alone, which uses that Agent proxy's stored endpoint and stored
+        credentials. Supplying `url` or `auth` alongside `agentProxyId` is rejected, including
+        when their value is null — `required` is about key presence, so an explicitly null
+        `url` is still a supplied `url`.
+
+        `properties` describes the shape common to both forms; `oneOf` does the
+        discriminating. A property added to a branch must be added here too.
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          description: Endpoint of the agent to fetch the Agent Card from.
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+        agentProxyId:
+          type: string
+          minLength: 3
+          maxLength: 40
+          description: Public handle of the Agent proxy whose stored endpoint and credentials should be used.
+      oneOf:
+        - $ref: '#/components/schemas/FetchAgentCardByURL'
+        - $ref: '#/components/schemas/FetchAgentCardByAgentProxy'
+
+    FetchAgentCardByURL:
+      title: Agent Card fetch by URL
+      description: Fetch from a supplied endpoint, optionally with supplied credentials. Used to preview an endpoint that has not been saved yet.
+      type: object
+      additionalProperties: false
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          description: Endpoint of the agent to fetch the Agent Card from.
+          example: https://agent.example.com
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+          description: Credentials for this fetch only. Permitted solely with the direct-URL form; nothing is stored.
+
+    FetchAgentCardByAgentProxy:
+      title: Agent Card fetch by Agent proxy handle
+      description: Fetch using a saved Agent proxy's stored endpoint and stored credentials. The stored credential handle is never echoed back.
+      type: object
+      additionalProperties: false
+      required:
+        - agentProxyId
+      properties:
+        agentProxyId:
+          type: string
+          minLength: 3
+          maxLength: 40
+          description: Public handle of the Agent proxy whose stored endpoint and credentials should be used.
+          example: weather-agent
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -8753,6 +12696,16 @@ components:
             status: error
             code: DEPLOYMENT_ACTIVE
             message: Cannot delete an active deployment - undeploy it first.
+    PayloadTooLarge:
+      description: Payload Too Large. The uploaded file exceeds the maximum allowed size.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PAYLOAD_TOO_LARGE
+            message: The uploaded file exceeds the maximum allowed size.
     InternalServerError:
       description: Internal Server Error.
       content:
@@ -8786,6 +12739,151 @@ components:
             status: error
             code: GATEWAY_CONNECTION_UNAVAILABLE
             message: No gateway connections are currently available.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+    PublicationBadRequest:
+      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_VALIDATION_FAILED
+            message: The request could not be validated.
+            errors:
+              - field: "subscriptionPlanIds[0]"
+                message: does not exist in the organization's subscription plan catalog
+    PublicationPublishBadRequest:
+      description: >-
+        Either this API type has no projection onto the API Portal's own API types, so no listing can be
+        created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
+        one point definition validity is enforced; the draft itself may hold anything.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            typeUnsupported:
+              summary: API type unsupported
+              value:
+                status: error
+                code: PUBLICATION_TYPE_UNSUPPORTED
+                message: APIs of this type cannot be published to an API Portal.
+            validationFailed:
+              summary: Invalid definition
+              value:
+                status: error
+                code: PUBLICATION_VALIDATION_FAILED
+                message: "The definition is not a valid OpenAPI 3.x document: missing properties 'info', 'paths'"
+    PublicationConflict:
+      description: >-
+        Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
+        for the publication's current status (unpublish needs a published or deprecated listing,
+        deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a
+        publish of it was in flight (the API Portal may already hold the earlier copy while the
+        local listing is unchanged; review the draft and publish again to bring them in line),
+        or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
+        change — another API already holds this handle or display name and version, or the listing
+        still has subscriptions or active API keys and so cannot be removed. A portal conflict does
+        not clear on retry: the operator renames, removes the consumers, or deprecates instead. A
+        state conflict clears once the publication is in a status that allows the action. No local
+        state was changed by any of these; only a draft-changed conflict can leave the API Portal
+        ahead of it until the next publish.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_PORTAL_CONFLICT
+            message: The API Portal rejected this change.
+    PortalUnavailable:
+      description: The API Portal could not be reached, or failed while handling the request, after in-call retries. No local state was changed and the call is safe to repeat.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: PUBLICATION_PORTAL_UNAVAILABLE
+            message: The API Portal could not be reached. Try again later.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+    PublicationDefinitionResponse:
+      description: >-
+        The definition's raw content. Content-Type matches the serialization it was stored in:
+        application/json or application/yaml for an OpenAPI or AsyncAPI contract,
+        application/graphql for GraphQL SDL, application/xml for WSDL.
+      content:
+        application/json:
+          schema:
+            type: string
+            format: binary
+        application/yaml:
+          schema:
+            type: string
+            format: binary
+        application/graphql:
+          schema:
+            type: string
+            format: binary
+        application/xml:
+          schema:
+            type: string
+            format: binary
+    PublicationLandingPageResponse:
+      description: The landing page's raw Markdown content.
+      content:
+        text/markdown:
+          schema:
+            type: string
+            format: binary
+    PublicationThumbnailImageResponse:
+      description: The thumbnail's raw image bytes. Content-Type is the stored image's own type — only the two accepted on upload can occur.
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+
+    UnsupportedMediaType:
+      description: Unsupported Media Type. The request body media type is not supported by this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: UNSUPPORTED_MEDIA_TYPE
+            message: This operation accepts application/json only.
+
+    AgentProxyUpstreamUnreachable:
+      description: |
+        Service Unavailable. The control plane could not reach the Agent proxy's upstream to
+        retrieve its Agent Card — unreachable, timed out, credentials rejected, or an
+        unparsable response. This describes the control plane's own reachability of the
+        upstream: it is not a statement about whether a deployed gateway can serve the card,
+        and it is not a deployment status.
+
+        Failures are cached for a shorter interval than successes, so a persistently
+        unreachable upstream is not re-contacted on every page view. A positive `Age` means
+        this failure was served from that negative cache.
+      headers:
+        Age:
+          $ref: '#/components/headers/Age'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: AGENT_PROXY_UPSTREAM_UNREACHABLE
+            message: The control plane could not reach the upstream to fetch its Agent Card.
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
   examples:
@@ -9029,6 +13127,129 @@ components:
         type: string
         example: payment
 
+    apiType:
+      name: apiType
+      in: path
+      required: true
+      description: >-
+        The API's type, required alongside apiId because a handle is unique only within its own
+        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        so a type contributed by a plugin is accepted only on a build that includes it. An
+        unrecognised value returns 404.
+      schema:
+        type: string
+        example: rest-api
+
+    apiHandle:
+      name: apiId
+      in: path
+      required: true
+      description: The API's handle, unique per organization within its own type.
+      schema:
+        type: string
+        example: my-api-handle
+
+    apiType-Q:
+      name: apiType
+      in: query
+      required: true
+      description: >-
+        The API's type, required alongside apiId because a handle is unique only within its own
+        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        so a type contributed by a plugin is accepted only on a build that includes it. An
+        unrecognised value returns 404.
+      schema:
+        type: string
+        example: rest-api
+
+    apiHandle-Q:
+      name: apiId
+      in: query
+      required: true
+      description: The API's handle, unique per organization within its own type.
+      schema:
+        type: string
+        example: my-api-handle
+
+    apiPortalId:
+      name: apiPortalId
+      in: path
+      required: true
+      description: |
+        **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal.
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 40
+        example: "acme-portal"
+
+    agentProxyId:
+      name: agentProxyId
+      in: path
+      required: true
+      description: |
+        **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 40
+        example: weather-agent
+
+    agentProxyApiKeyId:
+      name: apiKeyId
+      in: path
+      required: true
+      description: |
+        **API Key ID** consisting of the **name** (unique identifier) of the API key.
+      schema:
+        type: string
+        minLength: 1
+        example: "my-api-key"
+
+    agentProxyProtocol-Q:
+      name: protocol
+      in: query
+      required: false
+      description: |
+        Filter Agent proxies by communication protocol. Omit to list every protocol variant.
+        An empty or unsupported value is rejected with 400. The filter applies to the returned
+        page and to `pagination.total` alike, always within the authenticated organization.
+      schema:
+        type: string
+        enum:
+          - a2a
+        example: a2a
+
+    deploymentGatewayId-Q:
+      name: gatewayId
+      in: query
+      required: true
+      description: |
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway
+        bound to the deployment. Required, and validated against the deployment's bound gateway.
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 63
+        example: "prod-gateway-01"
+
+    cacheControl-H:
+      name: Cache-Control
+      in: header
+      required: false
+      description: |
+        Send `no-cache` to bypass the control plane's cached Agent Card result and force a live
+        upstream fetch — the explicit "refresh" action in an authoring UI. Any other value, or
+        omission, allows a cached result. Per RFC 9110 this affects freshness only; it never
+        changes what is stored.
+      schema:
+        type: string
+        enum:
+          - no-cache
+        example: no-cache
+
 tags:
   - name: Health
     description: Health check endpoints
@@ -9042,10 +13263,10 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
-  - name: API Portal
-    description: API portal publishing and unpublishing operations
-  - name: DevPortals
-    description: DevPortal management operations
+  - name: API Publications
+    description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
+  - name: API Portals
+    description: API Portal registration and management
   - name: Gateways
     description: Gateway registration and management operations
   - name: Gateway Tokens
@@ -9068,6 +13289,12 @@ tags:
     description: MCP proxy management operations
   - name: MCP Proxy Deployments
     description: MCP proxy deployment operations
+  - name: Agent Proxies
+    description: Agent proxy management operations
+  - name: Agent Cards
+    description: Transient A2A Agent Card retrieval for authoring and display. Nothing is persisted.
+  - name: Agent Proxy Deployments
+    description: Agent proxy deployment operations
   - name: Deployments
     description: Deployment operations for various artifact types
   - name: SubscriptionPlans

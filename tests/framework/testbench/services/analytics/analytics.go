@@ -1,0 +1,391 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+// Package analytics provides a partitioned Moesif-compatible analytics collector
+// for integration tests.
+package analytics
+
+import (
+	"compress/gzip"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/wso2/api-platform/tests/framework/testbench"
+)
+
+// Port is the container port used by the testbench.
+const Port = 3007
+
+const maxRetainedEvents = 1024
+
+// maxBodyBytes bounds the decompressed size of one ingest request.
+const maxBodyBytes = 8 << 20
+
+// Event is the Moesif-shaped event buffered by the collector.
+type Event struct {
+	Request      RequestDetails  `json:"request"`
+	Response     ResponseDetails `json:"response"`
+	UserID       string          `json:"user_id,omitempty"`
+	CompanyID    string          `json:"company_id,omitempty"`
+	SessionToken string          `json:"session_token,omitempty"`
+	Metadata     interface{}     `json:"metadata,omitempty"`
+	Direction    string          `json:"direction,omitempty"`
+	Weight       int             `json:"weight,omitempty"`
+	Tags         string          `json:"tags,omitempty"`
+	A2A          any             `json:"a2a,omitempty"`
+}
+
+// RequestDetails is the request half of an event.
+type RequestDetails struct {
+	Time             time.Time    `json:"time"`
+	URI              string       `json:"uri"`
+	Verb             string       `json:"verb"`
+	Headers          HeaderValues `json:"headers,omitempty"`
+	APIVersion       string       `json:"api_version,omitempty"`
+	IPAddress        string       `json:"ip_address,omitempty"`
+	Body             interface{}  `json:"body,omitempty"`
+	TransferEncoding string       `json:"transfer_encoding,omitempty"`
+}
+
+// ResponseDetails is the response half of an event.
+type ResponseDetails struct {
+	Time             time.Time    `json:"time"`
+	Status           int          `json:"status"`
+	Headers          HeaderValues `json:"headers,omitempty"`
+	Body             interface{}  `json:"body,omitempty"`
+	IPAddress        string       `json:"ip_address,omitempty"`
+	TransferEncoding string       `json:"transfer_encoding,omitempty"`
+}
+
+// HeaderValues preserves all values associated with each HTTP header name.
+type HeaderValues map[string][]string
+
+// UnmarshalJSON accepts standard multi-valued headers and legacy scalar values.
+func (h *HeaderValues) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	values := make(HeaderValues, len(raw))
+	for name, encoded := range raw {
+		var list []string
+		if err := json.Unmarshal(encoded, &list); err == nil {
+			values[name] = list
+			continue
+		}
+
+		var value string
+		if err := json.Unmarshal(encoded, &value); err != nil {
+			return fmt.Errorf("header %q must be a string or string array: %w", name, err)
+		}
+		values[name] = []string{value}
+	}
+	*h = values
+	return nil
+}
+
+// Service implements testbench.Service and testbench.Partitioned.
+type Service struct {
+	// mu guards the partition map.
+	mu sync.RWMutex
+
+	partitions map[string]*partition
+}
+
+type partition struct {
+	mu     sync.RWMutex
+	events []Event
+}
+
+// New returns a new analytics service.
+func New() *Service { return &Service{partitions: map[string]*partition{}} }
+
+// Name returns the service registration name.
+func (s *Service) Name() string { return "analytics" }
+
+// Port returns the service's listening port.
+func (s *Service) Port() int { return Port }
+
+// Stateful reports whether the service keeps request-specific state.
+func (s *Service) Stateful() bool { return true }
+
+// PartitionKey returns the partitioning strategy used by this stateful service.
+func (s *Service) PartitionKey() string { return testbench.PartitionByBlock }
+
+// Handler serves the partitioned routes.
+func (s *Service) Handler() http.Handler {
+	routes := http.NewServeMux()
+	routes.HandleFunc("POST /v1/events", s.scoped(s.ingestOne))
+	routes.HandleFunc("POST /v1/events/batch", s.scoped(s.ingestBatch))
+	routes.HandleFunc("GET /test/events", s.scoped(s.readEvents))
+	routes.HandleFunc("GET /test/events/count", s.scoped(s.readCount))
+	routes.HandleFunc("POST /test/reset", s.scoped(s.reset))
+	routes.HandleFunc("GET /test/health", s.scoped(s.health))
+
+	return boundedGzipBodies(testbench.NormalizeMethod(testbench.PartitionRouter(routes)))
+}
+
+func (s *Service) events(key string) []Event {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p := s.partitions[key]
+	if p == nil {
+		return []Event{}
+	}
+	p.mu.RLock()
+	events := append([]Event(nil), p.events...)
+	p.mu.RUnlock()
+	return events
+}
+
+func (s *Service) count(key string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p := s.partitions[key]
+	if p == nil {
+		return 0
+	}
+	p.mu.RLock()
+	count := len(p.events)
+	p.mu.RUnlock()
+	return count
+}
+
+// scoped adapts a partition-aware handler to http.HandlerFunc.
+func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key, ok := testbench.PartitionKeyFromContext(r.Context())
+		if !ok || key == "" {
+			http.Error(w, "analytics collector: internal error: a request reached a handler "+
+				"with no partition", http.StatusInternalServerError)
+			return
+		}
+		fn(key, w, r)
+	}
+}
+
+// ingestOne is POST /<block>/v1/events.
+func (s *Service) ingestOne(key string, w http.ResponseWriter, r *http.Request) {
+	var event Event
+	if err := decodeJSONBody(r, &event); err != nil {
+		respondToDecodeError(w, err)
+		return
+	}
+
+	s.mu.Lock()
+	p := s.partitions[key]
+	if p == nil {
+		p = &partition{}
+		s.partitions[key] = p
+	}
+	p.mu.Lock()
+	p.events = appendRetained(p.events, []Event{event})
+	p.mu.Unlock()
+	s.mu.Unlock()
+
+	log.Printf("analytics[%s]: received single event: %s %q -> %d",
+		key, event.Request.Verb, uriPathOnly(event.Request.URI), event.Response.Status)
+
+	// Keep the ingest response compatible with the publisher.
+	writeJSONStatus(w, http.StatusCreated, map[string]string{"status": "success"})
+}
+
+// ingestBatch is POST /<block>/v1/events/batch.
+func (s *Service) ingestBatch(key string, w http.ResponseWriter, r *http.Request) {
+	var events []Event
+	if err := decodeJSONBody(r, &events); err != nil {
+		respondToDecodeError(w, err)
+		return
+	}
+
+	s.mu.Lock()
+	p := s.partitions[key]
+	if p == nil {
+		p = &partition{}
+		s.partitions[key] = p
+	}
+	p.mu.Lock()
+	p.events = appendRetained(p.events, events)
+	p.mu.Unlock()
+	s.mu.Unlock()
+
+	log.Printf("analytics[%s]: received batch of %d events", key, len(events))
+
+	writeJSONStatus(w, http.StatusCreated, map[string]interface{}{
+		"status": "success",
+		"count":  len(events),
+	})
+}
+
+// readEvents is GET /<block>/test/events.
+func (s *Service) readEvents(key string, w http.ResponseWriter, _ *http.Request) {
+	events := s.events(key)
+
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, events)
+}
+
+// readCount is GET /<block>/test/events/count.
+func (s *Service) readCount(key string, w http.ResponseWriter, _ *http.Request) {
+	count := s.count(key)
+
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]int{"count": count})
+}
+
+// reset clears the events for one block.
+func (s *Service) reset(key string, w http.ResponseWriter, _ *http.Request) {
+	s.mu.Lock()
+	delete(s.partitions, key)
+	s.mu.Unlock()
+
+	log.Printf("analytics[%s]: reset all events", key)
+
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]string{"status": "reset"})
+}
+
+func appendRetained(existing, incoming []Event) []Event {
+	if len(incoming) >= maxRetainedEvents {
+		retained := make([]Event, maxRetainedEvents)
+		copy(retained, incoming[len(incoming)-maxRetainedEvents:])
+		return retained
+	}
+
+	total := len(existing) + len(incoming)
+	if total <= maxRetainedEvents {
+		return append(existing, incoming...)
+	}
+
+	retained := make([]Event, maxRetainedEvents)
+	keepExisting := maxRetainedEvents - len(incoming)
+	copy(retained, existing[len(existing)-keepExisting:])
+	copy(retained[keepExisting:], incoming)
+	return retained
+}
+
+// health returns the partitioned service health status.
+func (s *Service) health(_ string, w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]string{
+		"status":  "ok",
+		"service": "analytics",
+	})
+}
+
+// boundedGzipBodies decompresses gzip requests and limits the readable body size.
+func boundedGzipBodies(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+			// Bound the compressed input itself, before it ever reaches gzip.NewReader,
+			// separately from the decompressed-output limit below.
+			boundedCompressed := http.MaxBytesReader(w, r.Body, maxBodyBytes)
+			zr, err := gzip.NewReader(boundedCompressed)
+			if err != nil {
+				log.Printf("analytics: error creating gzip reader: %v", err)
+				http.Error(w, "Failed to decompress gzip body", http.StatusBadRequest)
+				return
+			}
+			limited := http.MaxBytesReader(w, zr, maxBodyBytes)
+			r.Body = &bodyReadCloser{
+				Reader:  limited,
+				closers: []io.Closer{zr, limited, boundedCompressed, r.Body},
+			}
+			r.Header.Del("Content-Encoding")
+		} else {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type bodyReadCloser struct {
+	io.Reader
+	closers []io.Closer
+}
+
+func (b *bodyReadCloser) Close() error {
+	var firstErr error
+	for _, closer := range b.closers {
+		if err := closer.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func decodeJSONBody(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(dst); err != nil {
+		_ = r.Body.Close()
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		_ = r.Body.Close()
+		if err == nil {
+			return fmt.Errorf("request body must contain a single JSON value")
+		}
+		return err
+	}
+	return r.Body.Close()
+}
+
+// respondToDecodeError reports an oversized body as 413, distinct from other
+// malformed-JSON failures, which report as 400.
+func respondToDecodeError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		http.Error(w, "Request Entity Too Large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, "Invalid JSON", http.StatusBadRequest)
+}
+
+// uriPathOnly drops the query string from a caller-supplied event URI before it is
+// logged, since query parameters may carry credentials (e.g. "?token=...").
+func uriPathOnly(uri string) string {
+	path, _, _ := strings.Cut(uri, "?")
+	return path
+}
+
+func writeJSON(w http.ResponseWriter, payload any) {
+	writeJSONStatus(w, http.StatusOK, payload)
+}
+
+func writeJSONStatus(w http.ResponseWriter, status int, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("analytics: failed to encode response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(append(data, '\n')); err != nil {
+		log.Printf("analytics: failed to write response: %v", err)
+	}
+}

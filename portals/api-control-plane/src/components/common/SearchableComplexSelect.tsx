@@ -32,6 +32,16 @@ import { useIntl } from 'react-intl';
 const DEFAULT_MENU_MAX_HEIGHT = 320;
 const DEFAULT_MENU_MAX_WIDTH = 320;
 
+/** `IconComponent` is required by MUI, so a read-only field drops the chevron this way. */
+const NoDropdownIcon = () => null;
+
+const READ_ONLY_SX: SxProps<Theme> = {
+  // Oxygen's ComplexSelect reserves 42px on the right for the chevron. With no
+  // chevron to hold, that reads as a stray gap after the value.
+  '&.MuiInputBase-root .MuiSelect-select': { paddingRight: '14px' },
+  cursor: 'default',
+};
+
 export type SearchableComplexSelectOption = {
   id: string;
   name: string;
@@ -46,6 +56,8 @@ type Props<T extends SearchableComplexSelectOption> = {
   onChange: (value: string) => void | Promise<void>;
   renderOptionContent: (option: T) => ReactNode;
   disabled?: boolean;
+  /** Shows the selection without opening the menu or showing a chevron. */
+  readOnly?: boolean;
   loading?: boolean;
   error?: unknown;
   emptyMessage: string;
@@ -71,6 +83,7 @@ export default function SearchableComplexSelect<T extends SearchableComplexSelec
   onChange,
   renderOptionContent,
   disabled = false,
+  readOnly = false,
   loading = false,
   error,
   emptyMessage,
@@ -112,14 +125,17 @@ export default function SearchableComplexSelect<T extends SearchableComplexSelec
     setSearchQuery('');
   };
 
+  // Nothing to open in either mode, so an already-open menu is dismissed.
+  const isInert = disabled || readOnly;
+
   useEffect(() => {
-    if (!disabled) {
+    if (!isInert) {
       return;
     }
 
     setIsOpen(false);
     setSearchQuery('');
-  }, [disabled]);
+  }, [isInert]);
 
   const canSearch = !loading && options.length > 0;
   const effectiveValue = loading ? '__loading__' : value;
@@ -127,7 +143,7 @@ export default function SearchableComplexSelect<T extends SearchableComplexSelec
     Boolean(value) &&
     Boolean(selectedOption) &&
     !filteredOptions.some((option) => option.id === value);
-  const usesSplitTrigger = !disabled && (!openOnFieldClick || Boolean(onFieldClick));
+  const usesSplitTrigger = !isInert && (!openOnFieldClick || Boolean(onFieldClick));
 
   const selectNode = (
     <ComplexSelect
@@ -137,9 +153,11 @@ export default function SearchableComplexSelect<T extends SearchableComplexSelec
       onClose={handleClose}
       open={isOpen}
       size="small"
-      sx={sx}
+      sx={[sx ?? false, readOnly && READ_ONLY_SX] as SxProps<Theme>}
       label={label}
       disabled={disabled}
+      readOnly={readOnly}
+      IconComponent={readOnly ? NoDropdownIcon : undefined}
       MenuProps={{
         autoFocus: false,
         disableAutoFocusItem: true,

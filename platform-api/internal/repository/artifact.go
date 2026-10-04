@@ -27,6 +27,9 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
+// ErrUnknownArtifactKind is returned when a kind key matches no registered artifact table.
+var ErrUnknownArtifactKind = errors.New("invalid artifact kind")
+
 type ArtifactRepo struct {
 	db  *database.DB
 	reg *ArtifactTableRegistry
@@ -34,7 +37,7 @@ type ArtifactRepo struct {
 
 // NewArtifactRepo creates an ArtifactRepo. When reg is provided it is used for
 // dynamic UNION queries and kind validation; when omitted the core-only default
-// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies) is used.
+// registry (rest_apis, llm_providers, llm_proxies, mcp_proxies, agent_proxies) is used.
 func NewArtifactRepo(db *database.DB, reg ...*ArtifactTableRegistry) *ArtifactRepo {
 	r := NewArtifactTableRegistry()
 	if len(reg) > 0 && reg[0] != nil {
@@ -64,6 +67,12 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 	// Explicit delete, not relying on the FK cascade, so the policy's "in use"
 	// lock releases regardless of FK enforcement state or SQL dialect.
 	if err := deleteCustomPolicyUsagesTx(tx, r.db, uuid); err != nil {
+		return err
+	}
+	// SQL Server's foreign key from api_publications is NO ACTION, so the drafts
+	// and listings (and, by cascade, their content and mappings) go first.
+	deletePublicationsQuery := `DELETE FROM api_publications WHERE artifact_uuid = ?`
+	if _, err := tx.Exec(r.db.Rebind(deletePublicationsQuery), uuid); err != nil {
 		return err
 	}
 	query := `DELETE FROM artifacts WHERE uuid = ?`
@@ -133,7 +142,7 @@ func (r *ArtifactRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.AP
 func (r *ArtifactRepo) GetAPIMetadataByHandleAndKind(handle, kind, orgUUID string) (*model.APIMetadata, error) {
 	entry, ok := r.reg.TableByKindKey(kind)
 	if !ok {
-		return nil, fmt.Errorf("invalid artifact kind: %q", kind)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownArtifactKind, kind)
 	}
 	query := fmt.Sprintf(
 		"SELECT uuid, handle, display_name, version, '%s' AS type, organization_uuid FROM %s WHERE handle = ? AND organization_uuid = ?",

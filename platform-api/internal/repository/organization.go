@@ -258,3 +258,4 @@ func (r *OrganizationRepo) CountOrganizationsForUser(userUUID string) (int, erro
 	}
 	return total, nil
 }
+

@@ -31,6 +31,13 @@ export type RuntimeConfig = {
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
    */
   defaultLocale: string;
+  /**
+   * "onprem" for self-hosted deployments, where the build version is useful;
+   * "cloud" for the continuously deployed hosted console.
+   *
+   * Defaults to "onprem"; the cloud console sets "cloud" explicitly.
+   */
+  deploymentMode: 'onprem' | 'cloud';
   environmentName: string;
   featureFlags: string[];
   apiPlatformHomePage: string;
@@ -41,6 +48,23 @@ export type RuntimeConfig = {
    * (/proxy/billing/...) — the browser never learns the real billing URL.
    */
   billingProxyEnabled: boolean;
+  /**
+   * Region recorded on an organization this console registers. Only read when the
+   * platform does not have the organization yet, which the provisioning flow
+   * normally gets to first.
+   */
+  defaultOrgRegion: string;
+  /**
+   * Set when the BFF has a "cloud" named upstream configured (cloud only).
+   * When true, cloud Insights extensions may call it via the same-origin
+   * proxy (/proxy/cloud/...) — the browser never learns the real cloud URL.
+   */
+  cloudProxyEnabled: boolean;
+  /**
+   * Moesif wrap/basic iframe origin (HTTPS). Absent when Insights embed is
+   * not configured for this deployment.
+   */
+  moesifAppUrl: string;
   /**
    * Same-origin path the BFF proxies to the Platform API (typically
    * "/proxy") — the browser only ever calls this BFF's own origin, which
@@ -90,8 +114,16 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  DEFAULT_ORG_REGION: string;
+  defaultOrgRegion: string;
+  CLOUD_PROXY_ENABLED: string;
+  cloudProxyEnabled: boolean | string;
+  MOESIF_APP_URL: string;
+  moesifAppUrl: string;
   DEFAULT_LOCALE: string;
   defaultLocale: string;
+  DEPLOYMENT_MODE: string;
+  deploymentMode: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
   PLATFORM_API_VERSION: string;
@@ -138,6 +170,9 @@ const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolea
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
+const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
+  value === 'cloud' ? 'cloud' : 'onprem';
+
 const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
   value === 'oidc' ? 'oidc' : 'basic';
 
@@ -153,6 +188,9 @@ const resolvedPlatformApiBaseUrl =
   fromWindow().PLATFORM_API_BASE_URL ||
   fromWindow().platformApiBaseUrl ||
   '';
+
+const DEFAULT_POLICY_HUB_BASE_URL =
+  'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0';
 
 const hostFromUrl = (url: string) => {
   try {
@@ -183,6 +221,11 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().defaultLocale ||
     import.meta.env.VITE_DEFAULT_LOCALE ||
     '',
+  deploymentMode: readDeploymentMode(
+    fromWindow().DEPLOYMENT_MODE ||
+      fromWindow().deploymentMode ||
+      import.meta.env.VITE_DEPLOYMENT_MODE,
+  ),
   environmentName: fromWindow().environmentName || import.meta.env.VITE_ENVIRONMENT_NAME || 'local',
   featureFlags: splitCommaConfigList(
     fromWindow().FEATURE_FLAGS || import.meta.env.VITE_FEATURE_FLAGS,
@@ -202,6 +245,21 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  defaultOrgRegion:
+    fromWindow().DEFAULT_ORG_REGION ||
+    fromWindow().defaultOrgRegion ||
+    import.meta.env.VITE_DEFAULT_ORG_REGION ||
+    'us',
+  cloudProxyEnabled: readBoolean(
+    fromWindow().CLOUD_PROXY_ENABLED ||
+      fromWindow().cloudProxyEnabled ||
+      import.meta.env.VITE_CLOUD_PROXY_ENABLED,
+  ),
+  moesifAppUrl:
+    fromWindow().MOESIF_APP_URL ||
+    fromWindow().moesifAppUrl ||
+    import.meta.env.VITE_MOESIF_APP_URL ||
+    '',
   platformApiBaseUrl: resolvedPlatformApiBaseUrl,
   platformApiVersion:
     fromWindow().PLATFORM_API_VERSION ||
@@ -214,7 +272,9 @@ export const runtimeConfig: RuntimeConfig = {
     hostFromUrl(resolvedPlatformApiBaseUrl) ||
     'localhost:9243',
   policyHubBaseUrl:
-    fromWindow().POLICY_HUB_BASE_URL || import.meta.env.VITE_POLICY_HUB_BASE_URL || '',
+    fromWindow().POLICY_HUB_BASE_URL ||
+    import.meta.env.VITE_POLICY_HUB_BASE_URL ||
+    DEFAULT_POLICY_HUB_BASE_URL,
   policyHubWebUrl:
     fromWindow().POLICY_HUB_WEB_URL ||
     import.meta.env.VITE_POLICY_HUB_WEB_URL ||

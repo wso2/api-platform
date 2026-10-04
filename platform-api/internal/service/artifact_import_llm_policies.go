@@ -67,8 +67,15 @@ func liftLLMPolicies(policies []model.LLMPolicy, liftRateLimits bool) (*model.Se
 		}
 		switch p.Name {
 		case importPolicyAPIKeyAuth:
-			if s := liftAPIKeySecurity(p); s != nil {
-				security = s
+			// Only an api-level (global) api-key-auth is first-class Security
+			globalPaths, scopedPaths := partitionPolicyPathsByScope(p.Paths)
+			if len(globalPaths) > 0 {
+				if s := liftAPIKeySecurity(model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: globalPaths}); s != nil {
+					security = s
+				}
+			}
+			if len(scopedPaths) > 0 {
+				remaining = append(remaining, model.LLMPolicy{Name: p.Name, Version: p.Version, Paths: scopedPaths})
 			}
 		case importPolicyTokenRateLimit:
 			for _, path := range p.Paths {
@@ -93,6 +100,25 @@ func liftLLMPolicies(policies []model.LLMPolicy, liftRateLimits bool) (*model.Se
 	}
 
 	return security, rl.build(), remaining
+}
+
+// partitionPolicyPathsByScope splits a policy's path entries into the api-level ones
+// and the resource-scoped ones, preserving their relative order within each group.
+func partitionPolicyPathsByScope(paths []model.LLMPolicyPath) (global, scoped []model.LLMPolicyPath) {
+	for _, pe := range paths {
+		if isGlobalScopedPolicyPath(pe) {
+			global = append(global, pe)
+			continue
+		}
+		scoped = append(scoped, pe)
+	}
+	return global, scoped
+}
+
+// isGlobalScopedPolicyPath reports whether a flattened path entry is an api-level
+// (global) attachment rather than a resource-scoped one.
+func isGlobalScopedPolicyPath(pe model.LLMPolicyPath) bool {
+	return pe.Path == "/*" && isWildcardOnlyMethods(pe.Methods)
 }
 
 // liftAPIKeySecurity reconstructs the first-class API-key security config from an

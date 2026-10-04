@@ -18,18 +18,12 @@
 
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { RestApi } from '@/api/resources/restApis';
-import {
-  ExtensionsProvider,
-  type ApiControlPlaneExtension,
-} from '../extensions';
+import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { routes } from '@/routes/paths';
-import {
-  ConsoleScopeContext,
-  type ConsoleScope,
-} from '../scope/ConsoleScopeContext';
+import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderHook } from '@/test/utils';
 import { useNavigationItems } from './useNavigationItems';
@@ -68,9 +62,7 @@ const atApi = () =>
 const itemsAt = (scope: ConsoleScope, route: string) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>
-        {children}
-      </ConsoleScopeContext.Provider>
+      <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -89,7 +81,7 @@ const itemFor = (scope: ConsoleScope, route: string, id: string) => {
  * Oxygen treat the row as a link instead of a disclosure.
  */
 describe('submenu children follow API scope', () => {
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'insights', 'observability'])(
     '%s offers its children once an API is in scope',
     (id) => {
       const item = itemFor(atApi(), routes.api(ORG, PROJECT, API), id);
@@ -99,10 +91,10 @@ describe('submenu children follow API scope', () => {
       for (const child of item.children ?? []) {
         expect(child.to).toContain(`/apis/${API}/`);
       }
-    }
+    },
   );
 
-  it.each(['develop', 'test', 'insights', 'observability', 'manage'])(
+  it.each(['develop', 'test', 'insights', 'observability'])(
     '%s withholds them outside API scope, and links to the first instead',
     (id) => {
       const item = itemFor(atOrg(), routes.organizationHome(ORG), id);
@@ -110,7 +102,7 @@ describe('submenu children follow API scope', () => {
       expect(item.children).toBeUndefined();
       // The scope-less alias of the first child — where its ScopeGate prompts.
       expect(item.to).toContain('/select-scope/');
-    }
+    },
   );
 
   it('marks the child of the open page active, not its parent', () => {
@@ -118,14 +110,13 @@ describe('submenu children follow API scope', () => {
     const parent = itemFor(atApi(), route, 'observability');
 
     expect(parent.isActive).toBe(false);
-    expect(
-      parent.children?.find((child) => child.id === 'observability-logs')
-        ?.isActive
-    ).toBe(true);
+    expect(parent.children?.find((child) => child.id === 'observability-logs')?.isActive).toBe(
+      true,
+    );
   });
 
   it('marks the parent active while its scope gate is open', () => {
-    const route = routes.apiObservabilityAlerts(ORG, null, null);
+    const route = routes.apiObservabilityMetrics(ORG, null, null);
     const parent = itemFor(atOrg(), route, 'observability');
 
     expect(parent.isActive).toBe(true);
@@ -134,7 +125,7 @@ describe('submenu children follow API scope', () => {
 
   it('leaves items without children untouched', () => {
     const items = itemsAt(atApi(), routes.api(ORG, PROJECT, API));
-    const leaves = ['overview', 'gateways', 'deploy', 'admin'];
+    const leaves = ['overview', 'gateways', 'deploy', 'publish'];
 
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
@@ -150,14 +141,12 @@ describe('submenu children follow API scope', () => {
 const itemsWithExtensions = (
   scope: ConsoleScope,
   route: string,
-  extensions: ApiControlPlaneExtension[]
+  extensions: ApiControlPlaneExtension[],
 ) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
       <ConsoleScopeContext.Provider value={scope}>
-        <ExtensionsProvider extensions={extensions}>
-          {children}
-        </ExtensionsProvider>
+        <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
       </ConsoleScopeContext.Provider>
     </MemoryRouter>
   );
@@ -191,21 +180,17 @@ const PROJECT_BASE = `/organizations/${ORG}/projects/${PROJECT}`;
 
 describe('host-injected sidebar extensions', () => {
   it('is active at its own destination', () => {
-    const [item] = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/environments`,
-      [sidebarExtension]
-    ).filter((entry) => entry.id === sidebarExtension.id);
+    const [item] = itemsWithExtensions(atProject(), `${PROJECT_BASE}/environments`, [
+      sidebarExtension,
+    ]).filter((entry) => entry.id === sidebarExtension.id);
 
     expect(item?.isActive).toBe(true);
   });
 
   it('is not active on an unrelated route ending with the same segment', () => {
-    const [item] = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/settings/environments`,
-      [sidebarExtension]
-    ).filter((entry) => entry.id === sidebarExtension.id);
+    const [item] = itemsWithExtensions(atProject(), `${PROJECT_BASE}/settings/environments`, [
+      sidebarExtension,
+    ]).filter((entry) => entry.id === sidebarExtension.id);
 
     expect(item?.isActive).toBe(false);
   });
@@ -220,12 +205,210 @@ describe('host-injected sidebar extensions', () => {
       slot: 'settings.project.tabs',
     };
 
-    const items = itemsWithExtensions(
-      atProject(),
-      `${PROJECT_BASE}/settings/environments`,
-      [settingsTab]
-    );
+    const items = itemsWithExtensions(atProject(), `${PROJECT_BASE}/settings/environments`, [
+      settingsTab,
+    ]);
 
     expect(items.find((entry) => entry.id === settingsTab.id)).toBeUndefined();
+  });
+
+  it('drops built-in Insights while a visible extension claims it', () => {
+    const orgInsights: ApiControlPlaneExtension = {
+      id: 'organization-insights',
+      claims: 'insights',
+      label: 'Insights',
+      level: 'organization',
+      order: 60,
+      group: 'api',
+      render: () => <div>Extension Insights</div>,
+      routePath: 'insights',
+      slot: 'sidebar.organization',
+      isVisible: (scope) => {
+        const typed = scope as {
+          isOrganizationScope?: boolean;
+          isProjectScope?: boolean;
+          isApiScope?: boolean;
+        };
+        return Boolean(typed.isOrganizationScope) && !typed.isProjectScope && !typed.isApiScope;
+      },
+    };
+
+    const atOrg = () =>
+      makeConsoleScope({
+        isApiScope: false,
+        isProjectScope: false,
+        params: { orgHandle: ORG },
+        project: undefined,
+      });
+
+    const items = itemsWithExtensions(atOrg(), `/organizations/${ORG}/home`, [orgInsights]);
+    expect(items.find((entry) => entry.id === 'insights')).toBeUndefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeDefined();
+
+    const insightsIndex = items.findIndex((entry) => entry.id === 'organization-insights');
+    const observabilityIndex = items.findIndex((entry) => entry.id === 'observability');
+    expect(insightsIndex).toBeGreaterThan(-1);
+    expect(observabilityIndex).toBeGreaterThan(-1);
+    expect(insightsIndex).toBeLessThan(observabilityIndex);
+  });
+
+  it('keeps built-in Insights in API scope, where the claiming extension is hidden', () => {
+    const extensionInsights: ApiControlPlaneExtension = {
+      id: 'organization-insights',
+      claims: 'insights',
+      label: 'Insights',
+      level: 'organization',
+      order: 60,
+      group: 'api',
+      render: () => <div>Extension Insights</div>,
+      routePath: 'insights',
+      slot: 'sidebar.organization',
+      isVisible: (scope) => {
+        const typed = scope as {
+          isOrganizationScope?: boolean;
+          isProjectScope?: boolean;
+          isApiScope?: boolean;
+        };
+        return Boolean(typed.isOrganizationScope) && !typed.isProjectScope && !typed.isApiScope;
+      },
+    };
+
+    const atApi = () =>
+      makeConsoleScope({
+        isApiScope: true,
+        isProjectScope: true,
+        params: {
+          apiHandler: API,
+          orgHandle: ORG,
+          projectHandler: PROJECT,
+        },
+        component: COMPONENT,
+      });
+
+    const items = itemsWithExtensions(
+      atApi(),
+      `/organizations/${ORG}/projects/${PROJECT}/apis/${API}/insights/api`,
+      [extensionInsights],
+    );
+
+    expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+  });
+
+  it('keeps built-in Insights at org scope when no extension claims it', () => {
+    const items = itemsAt(atOrg(), routes.organizationHome(ORG));
+
+    expect(items.find((entry) => entry.id === 'insights')).toBeDefined();
+    expect(items.find((entry) => entry.id === 'organization-insights')).toBeUndefined();
+    expect(items.find((entry) => entry.id === 'project-insights')).toBeUndefined();
+  });
+
+  /*
+   * An extension that claims a built-in id stands in for it while it is itself
+   * visible, and hands it back otherwise. Both halves are asserted: either alone
+   * leaves the sidebar with two Observability rows, or with none.
+   */
+  const observabilityExtension: ApiControlPlaneExtension = {
+    id: 'observability',
+    claims: 'observability',
+    label: 'Observability',
+    level: 'organization',
+    order: 70,
+    group: 'api',
+    render: () => <div>Extension Observability</div>,
+    routePath: 'observability',
+    slot: 'sidebar.organization',
+    isVisible: (scope) => !scope.isApiScope,
+    children: [
+      { id: 'observability-logs', label: 'Logs', render: () => <div>Logs</div>, routePath: 'logs' },
+      {
+        id: 'observability-metrics',
+        label: 'Metrics',
+        render: () => <div>Metrics</div>,
+        routePath: 'metrics',
+      },
+    ],
+  };
+
+  it('renders an extension with children as a disclosure, at the parent level', () => {
+    const items = itemsWithExtensions(
+      atOrg(),
+      `/organizations/${ORG}/observability/logs`,
+      [observabilityExtension],
+    );
+    const parent = items.find((entry) => entry.id === 'observability');
+
+    // The built-in item of the same id gives way outside API scope, so the one
+    // left is the extension — with its children, not a second entry alongside.
+    expect(items.filter((entry) => entry.id === 'observability')).toHaveLength(1);
+    expect(parent?.children?.map((child) => child.id)).toEqual([
+      'observability-logs',
+      'observability-metrics',
+    ]);
+    // Children are routed at the PARENT's level: organization, not api.
+    expect(parent?.children?.[0]?.to).toBe(`/organizations/${ORG}/observability/logs`);
+    expect(parent?.children?.[0]?.isActive).toBe(true);
+    expect(parent?.children?.[1]?.isActive).toBe(false);
+  });
+
+  it('hands the id back to the built-in item inside API scope', () => {
+    const items = itemsWithExtensions(
+      atApi(),
+      routes.api(ORG, PROJECT, API),
+      [observabilityExtension],
+    );
+    const observability = items.filter((entry) => entry.id === 'observability');
+
+    expect(observability).toHaveLength(1);
+    // The built-in one: its children are the per-API pages, not the cloud pages.
+    expect(observability[0].children?.map((child) => child.id)).toEqual([
+      'observability-metrics',
+      'observability-logs',
+    ]);
+  });
+
+  it('leaves an extension without children as an ordinary link', () => {
+    const items = itemsWithExtensions(atProject(), `${PROJECT_BASE}/environments`, [
+      sidebarExtension,
+    ]);
+
+    expect(items.find((entry) => entry.id === sidebarExtension.id)?.children).toBeUndefined();
+  });
+
+  // Without this the claim could remove the built-in AND the claimant, leaving
+  // the sidebar with no entry of that name at all.
+  it('keeps the built-in when the claiming extension is itself hidden', () => {
+    const hidden: ApiControlPlaneExtension = {
+      ...observabilityExtension,
+      isVisible: () => false,
+    };
+    const items = itemsWithExtensions(atOrg(), routes.organizationHome(ORG), [hidden]);
+
+    expect(items.filter((entry) => entry.id === 'observability')).toHaveLength(1);
+    // The built-in one: outside API scope it withholds its children.
+    expect(items.find((entry) => entry.id === 'observability')?.children).toBeUndefined();
+  });
+
+  // An extension that claims nothing must not displace a built-in it happens to
+  // share a name with.
+  it('does not claim a built-in id without saying so, and warns about it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const unclaimed: ApiControlPlaneExtension = { ...observabilityExtension };
+    delete unclaimed.claims;
+    const items = itemsWithExtensions(atOrg(), routes.organizationHome(ORG), [unclaimed]);
+
+    expect(items.filter((entry) => entry.id === 'observability')).toHaveLength(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('shares its id with a built-in item'));
+    warn.mockRestore();
+  });
+
+  it('warns when a claim names no built-in item', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    itemsWithExtensions(atOrg(), routes.organizationHome(ORG), [
+      { ...sidebarExtension, claims: 'no-such-item' },
+    ]);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('claims "no-such-item"'));
+    warn.mockRestore();
   });
 });

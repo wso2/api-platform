@@ -29,6 +29,9 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  */
 export const AI_WORKSPACE_SIDEBAR_SLOT = 'sidebar.main';
 
+/** Cloud-only controls rendered in the header immediately before the theme toggle. */
+export const AI_WORKSPACE_HEADER_ACTIONS_SLOT = 'header.actions';
+
 /**
  * A host-injected feature: a sidebar item plus its route. `path` is relative
  * to the same route group the built-in pages live in (e.g. `"billing"`, not
@@ -47,6 +50,10 @@ export type AIWorkspaceExtension = SlotEntry & {
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
+export type AIWorkspaceHeaderAction = SlotEntry & {
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+};
+
 /**
  * Slot for overriding the built-in AI Gateways page (list + create/edit)
  * without changing anything under `pages/appShell/appShellPages/gateways`.
@@ -58,13 +65,26 @@ export type AIWorkspaceExtension = SlotEntry & {
 export const AI_WORKSPACE_GATEWAYS_SLOT = 'page.gateways';
 
 /**
+ * Slot for overriding the built-in Insights page (org + project `/insights`)
+ * with the shared cloud Moesif embed. Same Slot/Hideable split as gateways —
+ * the built-in sidebar item and routes stay; only the page body changes.
+ */
+export const AI_WORKSPACE_INSIGHTS_SLOT = 'page.insights';
+
+/**
  * A host-injected replacement for a specific built-in page. Unlike
  * `AIWorkspaceExtension`, this isn't a new sidebar item — the built-in
  * page's own route and sidebar entry stay in place; only what renders at
  * that route changes.
  */
 export type AIWorkspacePageOverride = SlotEntry & {
-  render: (port: AIWorkspaceHostPort) => ReactNode;
+  /**
+   * `artifactHandle` is given only for pages scoped to a single artifact — the
+   * per-kind Deploy pages. The route carries it (`:serverId`, `:proxyId`,
+   * `:providerId`) and the cloud plugins have no router of their own, so the portal
+   * reads it off the URL and hands it over. It is absent for every other override.
+   */
+  render: (port: AIWorkspaceHostPort, artifactHandle?: string) => ReactNode;
   /**
    * Optional nav placement for the built-in item this override replaces. When
    * `label` is given the sidebar renders the override alongside the sidebar
@@ -77,6 +97,54 @@ export type AIWorkspacePageOverride = SlotEntry & {
   path?: string;
   /** Built-in `Hideable` regions this entry suppresses (see `slots/index.tsx`). */
   hides?: readonly string[];
+};
+
+/**
+ * Slots for overriding the built-in per-artifact Deploy pages — an MCP server's, an
+ * LLM proxy's and an LLM provider's. Same Slot/Hideable split as the pages above:
+ * each built-in route and sidebar entry stays, only the body changes.
+ *
+ * There is one per kind rather than a single shared slot because the pages sit on
+ * different routes and deploy different kinds of artifact, and a replacement has to
+ * be registered for the kind it understands. A provider is a case in point: it
+ * belongs to the organization rather than to a project, so a replacement for it has
+ * a different notion of where a deployment goes than the other two do.
+ */
+export const AI_WORKSPACE_MCP_DEPLOY_SLOT = 'page.mcpDeploy';
+export const AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT = 'page.llmProxyDeploy';
+export const AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT = 'page.llmProviderDeploy';
+
+/**
+ * Slot for overriding the built-in onboarding wizard at the full-screen
+ * `organizations/:orgSlug/quickstart` route. Same Slot/Hideable split as the
+ * page overrides above — the route stays, only its body changes — but with one
+ * difference worth knowing: this route is deliberately rendered *outside* the
+ * app shell (no navbar, sidebar or footer; see `appShellMain.tsx`), because a
+ * first-run wizard has nothing to navigate to yet.
+ */
+export const AI_WORKSPACE_QUICKSTART_SLOT = 'page.quickstart';
+
+/**
+ * Slot for headless entries mounted on every in-shell route. They render no UI
+ * of their own — they exist so a deployment can run cross-cutting policy the
+ * portal itself has no opinion about, the first case being cloud's first-run
+ * onboarding gate: "this organization has no LLM provider and no connected
+ * gateway, so send the user to `quickstart`". That decision is a product
+ * policy, not portal behaviour, which is why it is a slot rather than a
+ * built-in redirect.
+ *
+ * Gates do NOT run on the full-screen quickstart route itself (it renders
+ * outside the shell), so a gate that redirects there cannot loop.
+ */
+export const AI_WORKSPACE_APP_GATE_SLOT = 'app.gate';
+
+/**
+ * A headless, host-mounted policy hook — see `AI_WORKSPACE_APP_GATE_SLOT`.
+ * `render` is called with the live Port on every in-shell route; returning
+ * `null` (after, say, a redirect) is the normal case.
+ */
+export type AIWorkspaceAppGate = SlotEntry & {
+  render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
 /**
@@ -94,7 +162,11 @@ export const hiddenRegionsOf = (
   entries.flatMap((entry) => ('hides' in entry ? (entry.hides ?? []) : []));
 
 /** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
-export type AIWorkspaceCloudEntry = AIWorkspaceExtension | AIWorkspacePageOverride;
+export type AIWorkspaceCloudEntry =
+  | AIWorkspaceExtension
+  | AIWorkspacePageOverride
+  | AIWorkspaceHeaderAction
+  | AIWorkspaceAppGate;
 
 export function ExtensionsProvider({
   extensions,

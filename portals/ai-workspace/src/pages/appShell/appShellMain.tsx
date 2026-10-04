@@ -17,7 +17,7 @@
  */
 
 import type { JSX } from 'react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 // import { useAuthContext } from '@asgardeo/auth-react'; // [standalone]
 import {
@@ -48,15 +48,22 @@ import {
 import { logger } from '../../utils/logger';
 import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
-import { AI_WORKSPACE_SIDEBAR_SLOT, type AIWorkspaceExtension } from '../../extensions';
+import {
+  AI_WORKSPACE_APP_GATE_SLOT,
+  AI_WORKSPACE_SIDEBAR_SLOT,
+  type AIWorkspaceAppGate,
+  type AIWorkspaceExtension,
+} from '../../extensions';
 import { useSlot } from '../../slots';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
 type SelectableOrg = {
   id: string;
   name: string;
   description?: string;
+  handle?: string;
 };
 
 type SelectableProject = {
@@ -75,8 +82,12 @@ export default function AppLayout(): JSX.Element {
   const {
     userName,
     userEmail,
+    userPicture,
 
     currentOrganization,
+    organizations,
+    isOrganizationsLoading,
+    switchOrganization,
 
     projectsForCurrentOrganization,
     currentProject,
@@ -101,16 +112,44 @@ export default function AppLayout(): JSX.Element {
     },
     [showSnackbar]
   );
+  // Read rather than owned here: ResourceLimitsProvider sits above this component
+  // (App.tsx) so the value can ride the Port. A cloud plugin mounted on app.gate
+  // supplies the numbers through `resourceLimits.set`; this portal only carries them.
+  const { canCreate, limitMessage, setResourceLimits } = useResourceLimits();
+  const resourceLimits = useMemo(
+    () => ({ canCreate, limitMessage, set: setResourceLimits }),
+    [canCreate, limitMessage, setResourceLimits]
+  );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
       orgHandle: getOrgSlug(currentOrganization),
+      orgUuid: currentOrganization?.uuid,
       projectHandle: currentProject ? getProjectSlug(currentProject) : undefined,
       navigate,
       notify,
       apiFetch: extensionApiFetch,
+      resourceLimits,
     }),
-    [currentOrganization, currentProject, navigate, notify]
+    [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
+
+  // The first-run wizard owns the whole viewport: a user with nothing set up yet
+  // has nothing to navigate to, so the shell's navbar/sidebar/footer would only
+  // be chrome around a dead end. Matching on the route (rather than a flag the
+  // page sets) keeps the decision in one place and out of the wizard itself.
+  const isFullScreenRoute = useMemo(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    return (
+      segments[0] === 'organizations' &&
+      Boolean(segments[1]) &&
+      segments[2] === 'quickstart'
+    );
+  }, [location.pathname]);
+
+  // Headless policy hooks, mounted on every in-shell route — see
+  // AI_WORKSPACE_APP_GATE_SLOT. Deliberately not mounted on the full-screen
+  // route above, so a gate that redirects there cannot bounce in a loop.
+  const appGates = useSlot<AIWorkspaceAppGate>(AI_WORKSPACE_APP_GATE_SLOT);
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,
@@ -126,6 +165,36 @@ export default function AppLayout(): JSX.Element {
   });
 
   const [tabIndex, setTabIndex] = useState(0);
+
+  const organizationOptions: SelectableOrg[] = useMemo(() => {
+    return Array.isArray(organizations)
+      ? organizations.map((org) => ({
+          id: String(org.id),
+          name: org.name,
+          handle: org.handle,
+        }))
+      : [];
+  }, [organizations]);
+
+  // Tracks the most recently requested org switch so an earlier, slower
+  // switchOrganization call can't navigate after a later selection already has.
+  const latestOrgSelectionRef = useRef<string | null>(null);
+
+  const handleOrganizationSelection = useCallback(
+    (org: SelectableOrg) => {
+      const matchedOrg = organizations.find(
+        (candidate) => String(candidate.id) === org.id
+      );
+      if (!matchedOrg) return;
+      latestOrgSelectionRef.current = matchedOrg.id;
+      void switchOrganization(matchedOrg).then(() => {
+        if (latestOrgSelectionRef.current === matchedOrg.id) {
+          navigate(buildOrgPath(matchedOrg, '/home'));
+        }
+      });
+    },
+    [organizations, switchOrganization, navigate]
+  );
 
   const projectOptions: SelectableProject[] = useMemo(() => {
     return Array.isArray(projectsForCurrentOrganization)
@@ -386,6 +455,16 @@ export default function AppLayout(): JSX.Element {
     );
   }
 
+  if (isFullScreenRoute) {
+    // Still inside PortProvider: the route's own element resolves the Port the
+    // same way every other extension-aware route does.
+    return (
+      <PortProvider value={port}>
+        <Outlet />
+      </PortProvider>
+    );
+  }
+
   return (
     <AppShell>
       <AppShell.Navbar>
@@ -395,6 +474,7 @@ export default function AppLayout(): JSX.Element {
           navigate={navigate}
           userName={userName ?? undefined}
           userEmail={userEmail ?? undefined}
+          userPicture={userPicture ?? undefined}
           currentOrganization={
             currentOrganization
               ? {
@@ -404,6 +484,9 @@ export default function AppLayout(): JSX.Element {
                 }
               : null
           }
+          organizationOptions={organizationOptions}
+          isOrganizationsLoading={isOrganizationsLoading}
+          onSelectOrganization={handleOrganizationSelection}
           projectOptions={projectOptions}
           currentProject={currentProjectOption}
           setCurrentProject={(p) => {
@@ -422,6 +505,7 @@ export default function AppLayout(): JSX.Element {
           selectedProjectId={selectedProjectId}
           setSelectedProjectId={setSelectedProjectId}
           onLogout={onLogout}
+          port={port}
         />
       </AppShell.Navbar>
 
@@ -435,6 +519,9 @@ export default function AppLayout(): JSX.Element {
 
       <AppShell.Main>
         <PortProvider value={port}>
+          {appGates.map((gate) => (
+            <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+          ))}
           <Outlet />
         </PortProvider>
       </AppShell.Main>

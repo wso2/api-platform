@@ -80,7 +80,7 @@ func TestRestApiConversionRoundTrip(t *testing.T) {
 
 // TestAllKindsConversionPlumbing verifies that every spoke kind implements the
 // Convertible interface, converts to the correct hub type, preserves
-// ObjectMeta, and converts back — for all 12 CRD kinds.
+// ObjectMeta, and converts back — for all 12 CRD kinds served as v1alpha1.
 func TestAllKindsConversionPlumbing(t *testing.T) {
 	meta := func() metav1.ObjectMeta {
 		return metav1.ObjectMeta{

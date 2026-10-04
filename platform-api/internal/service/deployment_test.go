@@ -31,7 +31,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 )
 
 func isValidUUIDString(id string) bool {
@@ -235,6 +234,11 @@ func (m *mockDeploymentAPIRepository) Delete(deploymentID, artifactUUID, orgUUID
 	return m.deleteError
 }
 
+func (m *mockDeploymentAPIRepository) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
+	_ *model.Build, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
+}
+
 func (m *mockDeploymentAPIRepository) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
 	return m.createWithLimitError
 }
@@ -332,6 +336,11 @@ func (m *mockDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewa
 func (m *mockDeploymentRepo) Delete(deploymentID, artifactUUID, orgUUID string) error {
 	m.deleteCalled = true
 	return m.deleteError
+}
+
+func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *model.Deployment,
+	_ *model.Build, hardLimit int) error {
+	return m.CreateWithLimitEnforcement(deployment, hardLimit)
 }
 
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
@@ -1344,6 +1353,7 @@ func strPtr(s string) *string {
 var testConfig = config.Server{
 	Deployments: config.Deployments{
 		MaxPerAPIGateway: 20,
+		MaxBuildsPerAPI:  50,
 	},
 }
 
@@ -1926,141 +1936,6 @@ func TestApplyStructOverrides(t *testing.T) {
 		}
 		if d.Spec.Vhosts != nil {
 			t.Errorf("vhosts should remain nil, got %v", d.Spec.Vhosts)
-		}
-	})
-}
-
-func TestApplyDeploymentOverrides(t *testing.T) {
-	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1
-kind: RestApi
-metadata:
-  name: test-api
-spec:
-  displayName: Test API
-  version: v1.0
-  context: /test
-  upstream:
-    main:
-      url: http://backend:8080
-  vhosts:
-    main: old-main.example.com
-    sandbox: old-sandbox.example.com
-`
-
-	t.Run("endpoint only preserves vhosts", func(t *testing.T) {
-		eu := "https://new.example.com/api"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, nil, nil, false, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
-			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
-		}
-		if parsed.Spec.Vhosts == nil {
-			t.Fatal("expected vhosts to remain set")
-		}
-		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
-			t.Errorf("main = %v, want %q", parsed.Spec.Vhosts.Main, "old-main.example.com")
-		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
-			t.Errorf("sandbox = %v, want %q", parsed.Spec.Vhosts.Sandbox, "old-sandbox.example.com")
-		}
-	})
-
-	t.Run("vhost main only preserves sandbox", func(t *testing.T) {
-		main := "api.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, &main, nil, true, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
-			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
-		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
-			t.Errorf("expected sandbox to be preserved, got %v", parsed.Spec.Vhosts.Sandbox)
-		}
-		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
-			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
-		}
-	})
-
-	t.Run("vhost sandbox only preserves main", func(t *testing.T) {
-		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, &sandbox, false, true)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Vhosts == nil {
-			t.Fatal("expected vhosts to remain set")
-		}
-		if parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
-			t.Errorf("main should be preserved, got %v", parsed.Spec.Vhosts.Main)
-		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
-			t.Errorf("expected sandbox override, got %v", parsed.Spec.Vhosts.Sandbox)
-		}
-	})
-
-	t.Run("both endpoint and vhosts", func(t *testing.T) {
-		eu := "https://new.example.com/api"
-		main := "api.example.com"
-		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, &main, &sandbox, true, true)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Upstream.Main.URL != "https://new.example.com/api" {
-			t.Errorf("URL = %q, want %q", parsed.Spec.Upstream.Main.URL, "https://new.example.com/api")
-		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "api.example.com" {
-			t.Errorf("expected vhost main, got %v", parsed.Spec.Vhosts)
-		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "sandbox.example.com" {
-			t.Errorf("expected sandbox vhost, got %v", parsed.Spec.Vhosts.Sandbox)
-		}
-	})
-
-	t.Run("neither override is no-op", func(t *testing.T) {
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, nil, false, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		var parsed dto.APIDeploymentYAML
-		if err := yaml.Unmarshal(result, &parsed); err != nil {
-			t.Fatalf("failed to parse result: %v", err)
-		}
-		if parsed.Spec.Upstream.Main.URL != "http://backend:8080" {
-			t.Errorf("upstream URL should be unchanged, got %q", parsed.Spec.Upstream.Main.URL)
-		}
-		if parsed.Spec.Vhosts == nil || parsed.Spec.Vhosts.Main == nil || *parsed.Spec.Vhosts.Main != "old-main.example.com" {
-			t.Errorf("vhost main should remain unchanged, got %v", parsed.Spec.Vhosts)
-		}
-		if parsed.Spec.Vhosts.Sandbox == nil || *parsed.Spec.Vhosts.Sandbox != "old-sandbox.example.com" {
-			t.Errorf("vhost sandbox should remain unchanged, got %v", parsed.Spec.Vhosts.Sandbox)
-		}
-	})
-
-	t.Run("invalid YAML returns error", func(t *testing.T) {
-		eu := "https://new.example.com/api"
-		_, err := applyDeploymentOverrides([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
-		if err == nil {
-			t.Fatal("expected error for invalid YAML")
 		}
 	})
 }

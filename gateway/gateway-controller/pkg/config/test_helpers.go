@@ -18,8 +18,17 @@
 
 package config
 
+import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+
 // stringPtr is a helper function that returns a pointer to the provided string.
 // This is used in tests to create string pointers for optional fields.
 func stringPtr(s string) *string {
 	return &s
+}
+
+// publicCardMode returns a pointer to a public Agent Card mode. The field is
+// optional in the contract — an omitted one means passthrough — so a test that
+// wants a stated mode has to state it as a pointer.
+func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
+	return &mode
 }

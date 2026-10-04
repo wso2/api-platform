@@ -43,6 +43,14 @@ export type GatewaysFeatureProps = {
  * feature). It owns the data: it loads `/managed-gateways` and `/environments`
  * through the host-injected `apiFetch` and feeds the presentational list/form.
  */
+/**
+ * How often the list re-reads gateway status while a gateway is still coming up.
+ * A newly created gateway is inactive until its data-plane gateway finishes
+ * provisioning and its controller dials in, which takes tens of seconds — long
+ * enough that without this the user has to reload the page to see it go active.
+ */
+const STATUS_POLL_INTERVAL_MS = 5000;
+
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const { apiFetch, notify } = port;
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
@@ -62,29 +70,70 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   // since.
   const loadSeqRef = useRef(0);
 
-  const load = useCallback(async () => {
-    const seq = ++loadSeqRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const [gatewayList, environmentList] = await Promise.all([
-        client.listGateways(),
-        client.listEnvironments(),
-      ]);
-      if (seq !== loadSeqRef.current) return;
-      setGateways(gatewayList);
-      setEnvironments(environmentList);
-    } catch (loadError) {
-      if (seq !== loadSeqRef.current) return;
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load gateways.');
-    } finally {
-      if (seq === loadSeqRef.current) setLoading(false);
-    }
-  }, [client]);
+  // `silent` is for the status poll below: it must not show the spinner or
+  // replace the list with an error page, so it only ever writes fresh data.
+  const load = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      const seq = ++loadSeqRef.current;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        const [gatewayList, environmentList] = await Promise.all([
+          client.listGateways(gatewayTypes),
+          client.listEnvironments(),
+        ]);
+        if (seq !== loadSeqRef.current) return;
+        setGateways(gatewayList);
+        setEnvironments(environmentList);
+        // Any load that reaches fresh data clears a previous failure.
+        setError(null);
+      } catch (loadError) {
+        if (seq !== loadSeqRef.current) return;
+        // A failed poll is left silent: the list already on screen stays, and
+        // the next tick may well succeed. Only a foreground load reports.
+        if (!silent) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load gateways.');
+        }
+      } finally {
+        if (!silent && seq === loadSeqRef.current) setLoading(false);
+      }
+    },
+    [client, gatewayTypes]
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A host only ever manages its own kinds of gateway: the AI workspace shows AI
+  // gateways and their default, the publisher shows regular and event ones and
+  // theirs. Filtering here rather than in the list keeps the count, the status
+  // poll and the default badge consistent with what is on screen — the default is
+  // marked per type, so an AI default is meaningless in the publisher's view.
+  const visibleGateways = useMemo(
+    () => gateways.filter((gateway) => gatewayTypes.includes(gateway.type)),
+    [gateways, gatewayTypes]
+  );
+
+  // Poll only while there is something to wait for: a gateway that is not yet
+  // active. Once they are all active the interval is torn down, so a settled
+  // list costs nothing. Creating another gateway makes this true again and the
+  // poll restarts. Deliberately keyed on the boolean, not on `gateways`, so a
+  // poll's own result does not reset the interval.
+  const awaitingStatus = visibleGateways.some((gateway) => gateway.status !== 'active');
+
+  useEffect(() => {
+    if (view !== 'list' || !awaitingStatus) return undefined;
+    const timer = window.setInterval(() => {
+      // Skip a tick mid-write: the create/delete paths refresh on their own, and
+      // the in-flight request would race this one for the newest sequence.
+      if (submittingRef.current || deletingRef.current) return;
+      void load({ silent: true });
+    }, STATUS_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [view, awaitingStatus, load]);
 
   const submitGateway = useCallback(
     async (input: GatewayInput, gatewayId?: string): Promise<boolean> => {
@@ -167,12 +216,13 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (view === 'create' || view === 'edit') {
     const editingGateway =
-      view === 'edit' ? gateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
+      view === 'edit' ? visibleGateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
     return (
       <GatewayForm
         mode={view}
         gateway={editingGateway}
         types={gatewayTypes}
+        gateways={visibleGateways}
         environments={environments}
         onBack={() => {
           setView('list');
@@ -191,8 +241,9 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   return (
     <GatewaysList
-      gateways={gateways}
+      gateways={visibleGateways}
       environments={environments}
+      port={port}
       onAddClick={() => setView('create')}
       onEditClick={(gatewayId) => {
         setEditingGatewayId(gatewayId);

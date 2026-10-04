@@ -1,0 +1,4 @@
+# Enables the platform-api webhook receiver for API Portal integration tests.
+[platform_api.webhook]
+enabled = true
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'

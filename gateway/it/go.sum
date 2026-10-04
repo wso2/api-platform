@@ -14,6 +14,8 @@ github.com/Microsoft/hcsshim v0.14.1 h1:CMuB3fqQVfPdhyXhUqYdUmPUIOhJkmghCx3dJet8
 github.com/Microsoft/hcsshim v0.14.1/go.mod h1:VnzvPLyWUhxiPVsJ31P6XadxCcTogTguBFDy/1GR/OM=
 github.com/ProtonMail/go-crypto v1.3.0 h1:ILq8+Sf5If5DCpHQp4PbZdS1J7HDFRXz/+xKBiRGFrw=
 github.com/ProtonMail/go-crypto v1.3.0/go.mod h1:9whxjD8Rbs29b4XWbB8irEcE8KHMqaR2e7GWU1R+/PE=
+github.com/a2aproject/a2a-go/v2 v2.5.0 h1:ZdcFoxv+nZTUV0i2ue5hES76YCANFPG9vjqd7vK8yWM=
+github.com/a2aproject/a2a-go/v2 v2.5.0/go.mod h1:NcRp/ZHxgMzDj12/BteIC2gOjljuEBKaGRfEdJ2lNSI=
 github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d h1:licZJFw2RwpHMqeKTCYkitsPqHNxTmd4SNR5r94FGM8=
 github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d/go.mod h1:asat636LX7Bqt5lYEZ27JNDcqxfjdBQuJ/MM4CN/Lzo=
 github.com/anchore/go-struct-converter v0.1.0 h1:2rDRssAl6mgKBSLNiVCMADgZRhoqtw9dedlWa0OhD30=

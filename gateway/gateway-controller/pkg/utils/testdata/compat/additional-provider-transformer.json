@@ -1,0 +1,27 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "LlmProxy",
+  "metadata": {
+    "name": "compat-additional-transformer"
+  },
+  "spec": {
+    "displayName": "compat-additional-transformer",
+    "version": "v1.0",
+    "context": "/compat-additional-transformer",
+    "provider": {
+      "id": "openai-provider"
+    },
+    "additionalProviders": [
+      {
+        "id": "anthropic-provider",
+        "transformer": {
+          "type": "openai-to-anthropic-transformer",
+          "version": "v0",
+          "params": {
+            "model": "claude-sonnet-4-20250514"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -20,8 +20,8 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -102,6 +102,53 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 	return errors
 }
 
+// ValidateAgentPolicies validates all policies in an Agent configuration.
+//
+// An Agent has three policy scopes, and they are not interchangeable: the
+// operation-common list runs for every A2A operation, an operation's own list
+// runs after it for that operation only, and the public Agent Card list guards
+// card discovery alone — card serving is not an A2A operation and deliberately
+// does not inherit the operation policies. All three are user-authored, so all
+// three are validated, following ValidateRestAPIPolicies rather than
+// ValidateMCPProxyPolicies, which has no operation scope to walk.
+func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	operationConfigs := &agentConfig.Spec.A2a.OperationConfigs
+
+	if operationConfigs.Policies != nil {
+		for i, policy := range *operationConfigs.Policies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.operationConfigs.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	if operationConfigs.Operations != nil {
+		for opIdx, operation := range *operationConfigs.Operations {
+			if operation.Policies == nil {
+				continue
+			}
+			for pIdx, policy := range *operation.Policies {
+				errs := pv.validatePolicy(policy,
+					fmt.Sprintf("spec.a2a.operationConfigs.operations[%d].policies[%d]", opIdx, pIdx))
+				errors = append(errors, errs...)
+			}
+		}
+	}
+
+	// Read through the shared defaults helper: agentCard and its public block are
+	// both optional, and an Agent that omitted them has no card policies rather
+	// than a missing scope to fail on.
+	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
+		for i, policy := range *cardPolicies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.a2a.agentCard.public.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	return errors
+}
+
 // ValidateLLMProviderPolicies validates all policy references in an LLM provider configuration.
 // Mirrors ValidateRestAPIPolicies: it checks the user-authored global, operation and (deprecated)
 // policy references against the loaded policy definitions. Policies injected later by the
@@ -119,34 +166,70 @@ func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfigurati
 
 // validateLLMPolicyRefs validates the three policy collections shared by LLM providers and
 // proxies: api-level (global) policies, operation-level policies, and the deprecated policies
-// list. An empty version resolves to the latest available version (handled by ResolvePolicyVersion).
+// list. Every collection gets its name/version reference resolved and its params validated
+// against the definition's declared parameter schema. An empty version resolves to the latest
+// available version (handled by ResolvePolicyVersion).
 func (pv *PolicyValidator) validateLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) []ValidationError {
 	var errors []ValidationError
 
-	// Global (api-level) policies carry params, so reuse validatePolicy to also validate them.
+	// Global (api-level) policies carry params on the policy itself, so reuse validatePolicy.
 	if globalPolicies != nil {
 		for i, policy := range *globalPolicies {
 			errors = append(errors, pv.validatePolicy(policy, fmt.Sprintf("spec.globalPolicies[%d]", i))...)
 		}
 	}
 
-	// Operation-level policies: validate name + version existence.
+	// Operation-level policies: name + version existence, then each path's params.
 	if operationPolicies != nil {
 		for i, policy := range *operationPolicies {
-			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.operationPolicies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.operationPolicies[%d]", i)
+			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
+			if len(errs) > 0 {
+				errors = append(errors, errs...)
+				continue
+			}
+			for j := range policy.Paths {
+				errors = append(errors, pv.validateAttachedPolicyParams(policyDef, policy.Paths[j].Params,
+					fmt.Sprintf("%s.paths[%d]", fieldPath, j))...)
+			}
 		}
 	}
 
-	// Deprecated policies list (still honoured): validate name + version existence.
+	// Deprecated policies list (still honoured): same as operation-level policies.
 	if legacyPolicies != nil {
 		for i, policy := range *legacyPolicies {
-			_, errs := pv.validatePolicyRef(policy.Name, policy.Version, fmt.Sprintf("spec.policies[%d]", i))
-			errors = append(errors, errs...)
+			fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+			policyDef, errs := pv.validatePolicyRef(policy.Name, policy.Version, fieldPath)
+			if len(errs) > 0 {
+				errors = append(errors, errs...)
+				continue
+			}
+			for j := range policy.Paths {
+				errors = append(errors, pv.validateAttachedPolicyParams(policyDef, policy.Paths[j].Params,
+					fmt.Sprintf("%s.paths[%d]", fieldPath, j))...)
+			}
 		}
 	}
 
 	return errors
+}
+
+// validateAttachedPolicyParams validates one per-path params map from an LLM operation-level
+// or deprecated policy attachment against the resolved definition's parameter schema. Params
+// are coerced first, since template rendering always yields strings ({{ env "X" }} -> "100"
+// even for an integer param) — mirroring validatePolicy's handling of api-level params.
+func (pv *PolicyValidator) validateAttachedPolicyParams(policyDef *models.PolicyDefinition, params map[string]interface{}, fieldPath string) []ValidationError {
+	if policyDef == nil || policyDef.Parameters == nil {
+		return nil
+	}
+	if params == nil {
+		// A missing params map still has to be validated: the schema may declare
+		// required properties, and an empty object must fail the same way.
+		params = map[string]interface{}{}
+	} else {
+		coerceParamsBySchema(params, *policyDef.Parameters)
+	}
+	return pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
 }
 
 // validatePolicy validates a single policy reference (name + version existence) and, when the
@@ -297,6 +380,33 @@ func (pv *PolicyValidator) CoerceRestAPIPolicies(config *api.RestAPI) {
 func (pv *PolicyValidator) CoerceMCPProxyPolicies(config *api.MCPProxyConfiguration) {
 	if config.Spec.Policies != nil {
 		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+}
+
+// CoerceAgentPolicies coerces policy param strings to their schema-declared types for
+// an AgentConfiguration, across the same three scopes ValidateAgentPolicies walks.
+// Called by AgentValidator immediately before validation, which is after template
+// rendering — text/template emits strings for every value, so without this an
+// integer param supplied as a template expression fails its own schema.
+func (pv *PolicyValidator) CoerceAgentPolicies(agentConfig *api.AgentConfiguration) {
+	operationConfigs := &agentConfig.Spec.A2a.OperationConfigs
+
+	if operationConfigs.Policies != nil {
+		pv.coercePolicySlice(*operationConfigs.Policies)
+	}
+	if operationConfigs.Operations != nil {
+		for i := range *operationConfigs.Operations {
+			if operation := &(*operationConfigs.Operations)[i]; operation.Policies != nil {
+				pv.coercePolicySlice(*operation.Policies)
+			}
+		}
+	}
+	// Same optional-block tolerance as ValidateAgentPolicies, and it has to be the
+	// same reading: coercion writes back into the configuration that gets stored,
+	// so a scope skipped here but validated there would validate coerced values it
+	// never received.
+	if cardPolicies := EffectivePublicCard(agentConfig.Spec.A2a.AgentCard).Policies; cardPolicies != nil {
+		pv.coercePolicySlice(*cardPolicies)
 	}
 }
 

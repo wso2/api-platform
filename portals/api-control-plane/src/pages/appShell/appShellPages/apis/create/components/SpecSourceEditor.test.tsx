@@ -26,18 +26,20 @@ import { SpecSourceEditor } from './SpecSourceEditor';
 // accessible name and the same value/onChange contract. What these tests are
 // about; reading text back, checking it, and what Save does with the result —
 // lives entirely on this side of that boundary.
-vi.mock('./SpecCodeEditor', () => ({
-  SpecCodeEditor: ({
+vi.mock('@/components/CodeEditor/CodeEditor', () => ({
+  CodeEditor: ({
+    ariaLabel,
     onChange,
     readOnly,
     value,
   }: {
+    ariaLabel?: string;
     onChange?: (next: string) => void;
     readOnly?: boolean;
     value: string;
   }) => (
     <textarea
-      aria-label="API definition source"
+      aria-label={ariaLabel}
       onChange={(event) => onChange?.(event.target.value)}
       readOnly={readOnly}
       value={value}
@@ -70,11 +72,11 @@ const openEditor = async (onSave = vi.fn(), spec: Record<string, unknown> = VALI
 };
 
 describe('SpecSourceEditor', () => {
-  it('adopts an edited definition, with the warnings its own re-check raised', async () => {
+  it('adopts an edited definition and passes the spec and raw text to the caller', async () => {
     const { onSave, user } = await openEditor();
 
-    // Same document, minus the servers block — still importable, but the
-    // re-check has something new to say about it.
+    // Same document, minus the servers block — still importable; the component
+    // passes the parsed spec and the raw text string through without blocking.
     await retype(
       JSON.stringify({
         ...VALID_SPEC,
@@ -85,9 +87,9 @@ describe('SpecSourceEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(onSave).toHaveBeenCalledTimes(1);
-    const [spec, warnings] = onSave.mock.calls[0];
+    const [spec, rawText] = onSave.mock.calls[0];
     expect(spec.info).toEqual({ title: 'Renamed API', version: '2.0.0' });
-    expect(warnings.map((warning: { code: string }) => warning.code)).toContain('noServers');
+    expect(typeof rawText).toBe('string');
 
     // Saving closes the editor and hands the document back to the pane.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
@@ -105,19 +107,39 @@ describe('SpecSourceEditor', () => {
     expect(await editor()).toBeInTheDocument();
   });
 
-  it('refuses to save a document the wizard could not use, naming what is wrong', async () => {
-    const { onSave, user } = await openEditor();
-
-    // Parses fine, but declares no operation — an error, not a warning.
-    await retype(
-      JSON.stringify({ openapi: '3.0.3', info: { title: 'A', version: '1' }, paths: {} }),
+  it('refuses to save when backend validation fails, naming what is wrong', async () => {
+    const onBeforeSave = vi
+      .fn()
+      .mockResolvedValue(['declares no GET, POST, PUT, PATCH or DELETE operation']);
+    const onSave = vi.fn();
+    const { user } = renderWithProviders(
+      <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
     );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(
       await screen.findByText(/declares no GET, POST, PUT, PATCH or DELETE operation/),
     ).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
+    // The editor stays open over the text that needs fixing.
+    expect(await editor()).toBeInTheDocument();
+  });
+
+  it('commits the save when the backend raises nothing, and never blocks on an outage', async () => {
+    const onSave = vi.fn();
+    const onBeforeSave = vi.fn().mockRejectedValue(new Error('network down'));
+    const { user } = renderWithProviders(
+      <SpecSourceEditor onBeforeSave={onBeforeSave} onSave={onSave} spec={VALID_SPEC} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+
+    await retype(JSON.stringify({ ...VALID_SPEC, info: { title: 'B', version: '1' } }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByRole('button', { name: 'Edit' });
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a top level that is a list rather than an object', async () => {

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mcp",
+    "bodyPatterns": [
+      { "contains": "\"method\":\"initialize\"" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": { "tools": {} },
+        "serverInfo": { "name": "acme-productivity-tools", "version": "1.4.2" }
+      }
+    }
+  }
+}

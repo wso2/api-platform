@@ -40,7 +40,7 @@ const defaultUpstreamFetchTimeout = 10 * time.Second
 
 var (
 	// sharedHTTPClient is the single outbound *http.Client built once at process startup
-	// (see cmd/main.go) and used by every SSRF-guarded call this package makes. It is built
+	// (see server.InitSharedHTTPClient) and used by every SSRF-guarded call this package makes. It is built
 	// from platform_api.http_client in config.toml under netguard.PermitPrivateBlockMetadata()
 	// by default, so private and in-cluster upstreams work normally (a Kubernetes ClusterIP,
 	// a service-DNS name resolving into RFC 1918 space, a localhost port during development)
@@ -55,10 +55,10 @@ var (
 
 // InitSharedHTTPClient sets the single shared outbound *http.Client used by every
 // SSRF-guarded call this package makes (MCP reachability/JSON-RPC calls, OpenAPI spec
-// fetch), plus the byte ceiling applied to MCP response bodies. Must be called exactly once,
-// at process startup (cmd/main.go, right after config is loaded), before any server/handler
-// wiring that could reach NewUpstreamFetchClient, FetchOpenAPISpecFromURL, or the MCP
-// utilities in this package.
+// fetch), plus the byte ceiling applied to MCP response bodies. Every entry point
+// (cmd/main.go, platform.New) calls it through server.InitSharedHTTPClient at startup,
+// before any wiring that could reach NewUpstreamFetchClient, FetchOpenAPISpecFromURL, or the
+// MCP utilities in this package.
 func InitSharedHTTPClient(client *http.Client, mcpResponseMaxBytes int64) {
 	sharedHTTPClientMu.Lock()
 	defer sharedHTTPClientMu.Unlock()

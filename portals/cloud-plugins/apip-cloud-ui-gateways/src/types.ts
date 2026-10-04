@@ -47,6 +47,12 @@ export type Gateway = {
   url: string;
   status: GatewayStatus;
   isCritical: boolean;
+  /**
+   * Whether this gateway is the one its environment resolves to for its type.
+   * One gateway per environment and type carries it, so an AI gateway being the
+   * default says nothing about the regular ones in the same environment.
+   */
+  isDefault: boolean;
   version?: string;
   createdAt: string;
   updatedAt: string;
@@ -54,12 +60,101 @@ export type Gateway = {
 
 /**
  * Fields the create/edit form collects. `id`/`url` (host) are server-assigned;
- * on edit only `name`/`description` are mutable (`type`/`environmentId` are
- * fixed at creation).
+ * on edit only `name`/`description`/`isDefault` are mutable (`type` and
+ * `environmentId` are fixed at creation).
  */
 export type GatewayInput = {
   name: string;
   description?: string;
   type: GatewayType;
   environmentId: string;
+  /**
+   * Ask for this gateway to be its environment's default for its type. Only a
+   * true value acts: the default is handed over by marking another gateway,
+   * never by clearing this one, so an environment always keeps a default for a
+   * type it has gateways of.
+   */
+  isDefault?: boolean;
+};
+
+/* ── gateway configuration ─────────────────────────────────────────────────── */
+
+/**
+ * `applying` is the expected state immediately after ANY write and can persist
+ * for minutes. It is not a failure and not an unfinished save.
+ *
+ * `unknown` is the platform reporting no phase at all: whether the last change
+ * has landed cannot be said, and it will not settle on its own — so it is a
+ * fourth case to render, not a variant of `applying` to keep waiting on.
+ */
+export type ConfigPhase = 'applying' | 'healthy' | 'failed' | 'unknown';
+
+export type ConfigStatus = {
+  phase: ConfigPhase;
+  /** Platform detail, present when the phase is not healthy. Prose, not a code. */
+  message?: string;
+  /**
+   * RFC 3339 — when the gateway ENTERED this phase, already validated as a
+   * timestamp by platform-api (a bad one is dropped rather than forwarded).
+   *
+   * Read it with `phase`, never instead of it: `applying` reads the same five
+   * minutes after a write and stalled an hour later, and this is the only thing
+   * that separates them. Absent on the response to a write — the phase there is
+   * `applying` before the data plane has seen the change — and on a gateway
+   * whose resources have not reported yet.
+   */
+  lastTransitionTime?: string;
+};
+
+export type ConfigFieldType =
+  | 'enum'
+  | 'boolean'
+  | 'integer'
+  | 'duration'
+  | 'quantity'
+  | 'string';
+
+/**
+ * One setting the organization may change. The platform reads its allowlist at
+ * request time, so this array is the form definition — never a client-side copy
+ * of it — and `label`/`description` are the platform's own user-facing copy.
+ */
+export type EditableField = {
+  path: string;
+  type: ConfigFieldType;
+  label?: string;
+  description?: string;
+  /** Permitted values, present when `type` is `enum`. */
+  values?: string[];
+  /**
+   * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
+   * `string`, `max` is a length in characters and `min` is absent.
+   */
+  min?: string;
+  max?: string;
+};
+
+/**
+ * A rule between two settings. Evaluated by the platform against the document a
+ * write would PRODUCE, so a client checks it across the whole form.
+ */
+export type ConfigConstraint = {
+  type: 'notGreaterThan';
+  path: string;
+  than: string;
+  /** The platform's own sentence for the violation. Surface it verbatim. */
+  message?: string;
+};
+
+export type ConfigValues = Record<string, unknown>;
+
+export type GatewayConfiguration = {
+  id: string;
+  name?: string;
+  environment?: string;
+  /** Current value of every editable setting, keyed exactly as a request body is. */
+  values: ConfigValues;
+  editable: EditableField[];
+  constraints?: ConfigConstraint[];
+  status: ConfigStatus;
 };

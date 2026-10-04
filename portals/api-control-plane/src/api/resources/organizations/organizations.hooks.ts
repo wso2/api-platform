@@ -19,6 +19,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
+import { HANDLED_LOCALLY } from '../../core/queryClient';
 import {
   registerOrganization,
   type ListOrganizationsQuery,
@@ -70,6 +71,29 @@ export const useRegisterOrganization = () => {
       // into the new organization renders instantly instead of showing a
       // loading state for data the server already gave us. `id` is required by
       // the schema, so no guard is needed here.
+      queryClient.setQueryData(organizationKeys.detail(created.id), created);
+      void queryClient.invalidateQueries({ queryKey: organizationKeys.all() });
+    },
+  });
+};
+
+/**
+ * Registers the signed-in user's organization when the platform does not have it yet.
+ *
+ * Separate from `useRegisterOrganization` only in how it treats failure. An
+ * organization reaches the platform by two independent routes — the provisioning flow
+ * creates it when the organization is set up, and a portal creates it when a user
+ * arrives before that has happened — so losing the race is the ordinary case, not an
+ * error the user should be told about. `HANDLED_LOCALLY` keeps that conflict out of the
+ * global mutation-error snackbar; the caller decides what, if anything, to say.
+ */
+export const useBootstrapOrganization = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Organization, ApiError, RegisterOrganizationBody>({
+    meta: HANDLED_LOCALLY,
+    mutationFn: (body) => registerOrganization(body),
+    onSuccess: (created) => {
       queryClient.setQueryData(organizationKeys.detail(created.id), created);
       void queryClient.invalidateQueries({ queryKey: organizationKeys.all() });
     },

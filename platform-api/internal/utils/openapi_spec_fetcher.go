@@ -26,14 +26,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 const (
-	// defaultOpenAPISpecMaxFetchBytes bounds the fetched OpenAPI spec body so a hostile
-	// or misconfigured URL cannot exhaust memory. Used when the configured limit is absent
-	// or non-positive.
-	defaultOpenAPISpecMaxFetchBytes int64 = 5 << 20 // 5 MiB
-
 	// openAPISpecFetchTimeout bounds the whole fetch (DNS + connect + TLS + body read).
 	openAPISpecFetchTimeout = 15 * time.Second
 )
@@ -58,7 +56,7 @@ const (
 // maxBytes <= 0 falls back to defaultOpenAPISpecMaxFetchBytes.
 func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64) (string, error) {
 	if maxBytes <= 0 {
-		maxBytes = defaultOpenAPISpecMaxFetchBytes
+		maxBytes = constants.DefaultOpenAPISpecMaxBytes
 	}
 
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
@@ -105,7 +103,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 		return "", fmt.Errorf("failed to read OpenAPI spec response")
 	}
 	if int64(len(data)) > maxBytes {
-		return "", fmt.Errorf("OpenAPI spec exceeds the maximum allowed size")
+		return "", apperror.PayloadTooLarge.New("The OpenAPI spec fetched from the provided URL exceeds the maximum allowed size.")
 	}
 
 	return string(data), nil

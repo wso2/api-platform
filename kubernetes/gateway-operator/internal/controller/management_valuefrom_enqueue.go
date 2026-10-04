@@ -112,6 +112,48 @@ func enqueueMcpsForConfigMap(c client.Client) handlerMapFunc {
 	}
 }
 
+func enqueueAgentsForSecret(c client.Client) handlerMapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
+		sec, ok := obj.(*corev1.Secret)
+		if !ok {
+			return nil
+		}
+		list := &apiv1.AgentList{}
+		if err := c.List(ctx, list); err != nil {
+			return nil
+		}
+		var reqs []reconcile.Request
+		for i := range list.Items {
+			cr := &list.Items[i]
+			if agentReferencesSecret(cr, sec.Namespace, sec.Name) {
+				reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: cr.Namespace, Name: cr.Name}})
+			}
+		}
+		return reqs
+	}
+}
+
+func enqueueAgentsForConfigMap(c client.Client) handlerMapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
+		cm, ok := obj.(*corev1.ConfigMap)
+		if !ok {
+			return nil
+		}
+		list := &apiv1.AgentList{}
+		if err := c.List(ctx, list); err != nil {
+			return nil
+		}
+		var reqs []reconcile.Request
+		for i := range list.Items {
+			cr := &list.Items[i]
+			if agentReferencesValueFromKind(cr, configMapKeyRefKey, cm.Namespace, cm.Name) {
+				reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: cr.Namespace, Name: cr.Name}})
+			}
+		}
+		return reqs
+	}
+}
+
 func enqueueLlmProxiesForSecret(c client.Client) handlerMapFunc {
 	return func(ctx context.Context, obj client.Object) []reconcile.Request {
 		sec, ok := obj.(*corev1.Secret)
@@ -198,6 +240,34 @@ func mcpReferencesValueFromKind(cr *apiv1.Mcp, kind, targetNS, targetName string
 	defaultNS := cr.Namespace
 	for i := range cr.Spec.Policies {
 		p := &cr.Spec.Policies[i]
+		if p.Params == nil || len(p.Params.Raw) == 0 {
+			continue
+		}
+		var root interface{}
+		if err := json.Unmarshal(p.Params.Raw, &root); err != nil {
+			continue
+		}
+		if jsonTreeReferencesValueFrom(root, kind, targetNS, targetName, defaultNS) {
+			return true
+		}
+	}
+	return false
+}
+
+func agentReferencesSecret(cr *apiv1.Agent, secretNS, secretName string) bool {
+	auth := cr.Spec.Upstream.Auth
+	if auth != nil && auth.Value != nil && auth.Value.ValueFrom != nil {
+		if cr.Namespace == secretNS && strings.TrimSpace(auth.Value.ValueFrom.Name) == secretName {
+			return true
+		}
+	}
+	return agentReferencesValueFromKind(cr, secretKeyRefKey, secretNS, secretName)
+}
+
+func agentReferencesValueFromKind(cr *apiv1.Agent, kind, targetNS, targetName string) bool {
+	defaultNS := cr.Namespace
+	for _, ref := range agentPolicyRefs(&cr.Spec) {
+		p := ref.Policy
 		if p.Params == nil || len(p.Params.Raw) == 0 {
 			continue
 		}

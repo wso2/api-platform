@@ -7,8 +7,8 @@ export { default as App } from './App';
 export type { AppProps } from './App';
 export { default as AIWorkspace } from './AIWorkspace';
 export type { AIWorkspaceProps } from './AIWorkspace';
-export type { AIWorkspaceExtension } from './extensions';
-export { AI_WORKSPACE_SIDEBAR_SLOT } from './extensions';
+export type { AIWorkspaceExtension, AIWorkspaceHeaderAction } from './extensions';
+export { AI_WORKSPACE_HEADER_ACTIONS_SLOT, AI_WORKSPACE_SIDEBAR_SLOT } from './extensions';
 export type { AIWorkspaceHostPort, NotifySeverity } from './hostPort';
 export type { SlotEntry } from './slots';
 export {

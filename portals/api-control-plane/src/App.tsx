@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AcrylicOrangeTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
@@ -26,10 +26,18 @@ import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
+import { OrganizationBootstrap } from './hooks/OrganizationBootstrap';
 import { ProductActivation } from './hooks/ProductActivation';
+import { PermissionProvider, permissionMessages } from './permissions';
 import { AppRoutes } from './routes/AppRoutes';
-import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
+import { BrandLogoProvider, type BrandLogo } from './branding/BrandLogoProvider';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneCloudEntry,
+  type ApiControlPlaneExtension,
+} from './extensions';
 import { I18nProvider } from './i18n';
+import { useIntl } from 'react-intl';
 
 /**
  * The themes `OxygenUIThemeProvider` can switch between — currently the one
@@ -61,9 +69,25 @@ const INITIAL_THEME = themeRegistry[0].key;
  */
 function AppQueryProvider({ children }: { children: ReactNode }) {
   const { notify } = useNotifications();
+  const intl = useIntl();
+  // Read through a ref: `createQueryClient` runs once, so a handler closing
+  // directly over `intl` or `notify` would capture the first render's copies
+  // for the life of the client.
+  const handlers = useRef({ intl, notify });
+  handlers.current = { intl, notify };
+
   const [queryClient] = useState(() =>
     createQueryClient({
-      onMutationError: (error) => notify(error.message, 'error'),
+      onMutationError: (error) => {
+        const { intl: currentIntl, notify: currentNotify } = handlers.current;
+        // A 403 gets the permission layer's own wording rather than the
+        // server's envelope message, so the toast a user sees after clicking
+        // matches the tooltip they would have seen had the console known.
+        const message = error.isForbidden
+          ? currentIntl.formatMessage(permissionMessages.denied)
+          : error.message;
+        currentNotify(message, 'error');
+      },
     }),
   );
 
@@ -71,27 +95,40 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
 }
 
 export type AppProps = {
-  extensions?: readonly ApiControlPlaneExtension[];
+  extensions?: readonly ApiControlPlaneCloudEntry[];
+  /** Logos used across branded surfaces; host applications may provide them. */
+  brandLogo?: BrandLogo;
 };
 
-export default function App({ extensions = [] }: AppProps) {
+export default function App({ brandLogo, extensions = [] }: AppProps) {
+  // Routing and the nav pipeline only ever deal with entries that have a page.
+  // A header action has none, so it is dropped here rather than being given
+  // inert route fields just to pass through.
+  const navExtensions = extensions.filter(
+    (entry): entry is ApiControlPlaneExtension => 'routePath' in entry
+  );
   return (
     <I18nProvider>
       <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
-        <NotificationProvider>
-          <AppQueryProvider>
-            <ErrorBoundary>
-              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-                <AuthProvider>
-                  <ProductActivation />
-                  <ExtensionsProvider extensions={extensions}>
-                    <AppRoutes extensions={extensions} />
-                  </ExtensionsProvider>
-                </AuthProvider>
-              </BrowserRouter>
-            </ErrorBoundary>
-          </AppQueryProvider>
-        </NotificationProvider>
+        <BrandLogoProvider brandLogo={brandLogo}>
+          <NotificationProvider>
+            <AppQueryProvider>
+              <ErrorBoundary>
+                <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                  <AuthProvider>
+                    <PermissionProvider>
+                      <ProductActivation />
+                      <OrganizationBootstrap />
+                      <ExtensionsProvider extensions={extensions}>
+                        <AppRoutes extensions={navExtensions} />
+                      </ExtensionsProvider>
+                    </PermissionProvider>
+                  </AuthProvider>
+                </BrowserRouter>
+              </ErrorBoundary>
+            </AppQueryProvider>
+          </NotificationProvider>
+        </BrandLogoProvider>
       </OxygenUIThemeProvider>
     </I18nProvider>
   );

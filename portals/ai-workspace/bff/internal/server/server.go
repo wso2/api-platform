@@ -20,6 +20,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -46,17 +47,61 @@ type refreshLock struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg       *config.Config
-	claims    session.ClaimMapping
-	store     session.Store
-	fileBased *auth.FileBased
-	oidc      *auth.OIDC
-	proxy     *httputil.ReverseProxy
-	handler   http.Handler
+	cfg          *config.Config
+	claims       session.ClaimMapping
+	store        session.Store
+	fileBased    *auth.FileBased
+	oidc         *auth.OIDC
+	proxy        *httputil.ReverseProxy
+	moesifProxy  *httputil.ReverseProxy
+	billingProxy *httputil.ReverseProxy
+	handler      http.Handler
+
+	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
+	exchanger *auth.Exchanger
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
+
+	exchangeMu    sync.Mutex
+	exchangeLocks map[string]*exchangeLock
+
+	discoverMu    sync.Mutex
+	discoverLocks map[string]*discoverLock
+
+	// sessionMu/sessionLocks serialize the store read-modify-write in doExchange
+	// against the rekey/delete in doRefresh for the same token. Without this, the
+	// two can interleave — doExchange reads the session, doRefresh re-keys it and
+	// deletes the old entry, then doExchange writes it back under the now-deleted
+	// old key, resurrecting a stale session after its token has rotated out.
+	sessionMu    sync.Mutex
+	sessionLocks map[string]*sessionLock
 }
+
+// exchangeLock single-flights one session's exchange, so the burst of parallel calls
+// the SPA makes on page load hits the IDP once rather than once per request.
+type exchangeLock struct {
+	sync.Mutex
+	done   bool
+	result *auth.Result
+	err    error
+}
+
+// discoverLock single-flights one session's org lookup, for the same reason
+// exchangeLock exists: the SPA's page-load burst arrives before any of it has been
+// recorded on the session, so without this every request in the burst would run its
+// own lookup against the Platform API.
+type discoverLock struct {
+	sync.Mutex
+	done   bool
+	handle string
+	err    error
+}
+
+// processStart is when this process came up, reported alongside a failed OIDC
+// callback: login transactions live in memory, so "did we restart mid-login" is the
+// first question such a failure raises and the one the error itself cannot answer.
+var processStart = time.Now()
 
 // New builds a Server from config. It creates the upstream HTTP client, the
 // session store, the file-based authenticator, and (when enabled) the OIDC
@@ -85,14 +130,64 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:       cfg,
-		claims:    claims,
-		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL, paths.PortalAPI, cfg.Session.AbsoluteTTL, claims),
+		cfg:    cfg,
+		claims: claims,
+		// UpstreamPath, not paths.PortalAPI directly: login must reach the same
+		// upstream everything else does, including when a gateway republishes the
+		// portal API under a base path of its own.
+		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL,
+			cfg.ControlPlane.UpstreamPath(paths.PortalAPI), cfg.Session.AbsoluteTTL, claims),
 		// The browser calls the proxy under the app's base path, so the prefix stripped
 		// on the way upstream is the base path plus the proxy prefix — the Platform API
 		// knows nothing about either.
-		proxy:        proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
-		refreshLocks: make(map[string]*refreshLock),
+		proxy: proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport,
+			// The SPA addresses the API by its own prefixes; only this hop knows
+			// where the configured upstream actually publishes them.
+			proxy.WithPathMapper(cfg.ControlPlane.UpstreamPath)),
+		refreshLocks:  make(map[string]*refreshLock),
+		exchangeLocks: make(map[string]*exchangeLock),
+		discoverLocks: make(map[string]*discoverLock),
+		sessionLocks:  make(map[string]*sessionLock),
+	}
+
+	if cfg.ControlPlane.MoesifURL != "" {
+		moesifTarget, err := url.Parse(cfg.ControlPlane.MoesifURL)
+		if err != nil {
+			return nil, err
+		}
+		moesifTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.MoesifCAFile,
+			SkipVerify: cfg.ControlPlane.MoesifTLSSkipVerify,
+		})
+		if err != nil {
+			return nil, err
+		}
+		// Strip <base>/proxy/moesif so /analytics/id-token joins onto MoesifURL.
+		// A deployment whose Moesif upstream publishes those routes under other
+		// names (Choreo's moesif-key API serves the viewer token at /id_token)
+		// supplies moesif_path_mappings; without it this hop forwards unchanged.
+		moesifOpts := []proxy.Option{}
+		if mapPath := cfg.ControlPlane.MoesifPathMapper(); mapPath != nil {
+			moesifOpts = append(moesifOpts, proxy.WithPathMapper(mapPath))
+		}
+		s.moesifProxy = proxy.ReverseProxy(moesifTarget, paths.Base+paths.Proxy+"/moesif", moesifTransport, moesifOpts...)
+	}
+
+	if cfg.ControlPlane.BillingURL != "" {
+		billingTarget, err := url.Parse(cfg.ControlPlane.BillingURL)
+		if err != nil {
+			return nil, err
+		}
+		// Its own transport, so a per-upstream TLS trust setting never leaks onto
+		// the control plane or the Moesif hop.
+		billingTransport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
+			CAFile:     cfg.ControlPlane.BillingCAFile,
+			SkipVerify: cfg.ControlPlane.BillingTLSSkipVerify,
+		})
+		if err != nil {
+			return nil, err
+		}
+		s.billingProxy = proxy.ReverseProxy(billingTarget, paths.Base+paths.Proxy+"/billing", billingTransport)
 	}
 
 	if cfg.Auth.OIDCEnabled() {
@@ -109,9 +204,54 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		s.oidc = o
+
+		// Built after the OIDC client to reuse its endpoint discovery.
+		if cfg.Auth.TokenExchangeEnabled() {
+			endpoint := cfg.Auth.ExchangeTokenEndpoint()
+			if endpoint == "" {
+				endpoint = o.TokenEndpoint()
+			}
+			te := cfg.Auth.OIDC.TokenExchange
+			// The issued token's own claim names, which default per-field to the
+			// login mapping — so this is `claims` unless the STS re-shapes them.
+			exchangeClaims, err := buildClaimMapping(te.ClaimMappings, cfg.Auth.Authorization)
+			if err != nil {
+				return nil, err
+			}
+			s.exchanger = auth.NewExchanger(upstream, te, endpoint,
+				auth.WithClaimMapping(exchangeClaims))
+			slog.Info("token exchange enabled: upstream requests will carry an exchanged token",
+				"grant_type", te.GrantType,
+				"token_endpoint", endpoint,
+				"client_id", te.ClientID,
+				"client_auth", te.ClientAuth,
+				"audience", te.Audience,
+				"resource", te.Resource,
+				"subject_token_type", te.SubjectTokenType,
+				"requested_token_type", te.RequestedTokenType,
+				"cache_enabled", te.CacheEnabled,
+			)
+		}
 	}
 
 	s.handler = s.routes()
+
+	// One startup line carrying every value that decides whether a login can
+	// complete. Each of these has cost a debugging session on its own: a
+	// redirect_uri the IDP does not have registered, a callback path the server does
+	// not serve, and a tx cookie whose Path the callback route falls outside of.
+	// They are only meaningful together, so they are logged together, at Info — a
+	// failing login should not require turning debug on first.
+	if cfg.Auth.OIDCEnabled() {
+		slog.Info("oidc login wiring",
+			"issuer", cfg.Auth.OIDC.Issuer,
+			"client_id", cfg.Auth.OIDC.ClientID,
+			"redirect_uri", cfg.Auth.OIDC.RedirectURL,
+			"callback_served_at", s.path("/api/auth/callback"),
+			"tx_cookie_path", s.txCookiePath(),
+			"post_logout_redirect_uri", cfg.Auth.OIDC.PostLogoutRedirectURL,
+		)
+	}
 	return s, nil
 }
 
@@ -161,6 +301,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	if c.Email != "" {
 		m.Email = c.Email
 	}
+	if c.Picture != "" {
+		m.Picture = c.Picture
+	}
 	if c.Roles != "" {
 		m.Roles = c.Roles
 	}
@@ -175,6 +318,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	}
 	if c.OrgHandle != "" {
 		m.OrgHandle = c.OrgHandle
+	}
+	if c.Organizations != "" {
+		m.Organizations = c.Organizations
 	}
 	return m, nil
 }

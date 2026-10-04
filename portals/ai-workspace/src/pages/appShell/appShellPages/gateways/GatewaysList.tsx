@@ -57,8 +57,8 @@ import NoGW from '../../../../assets/images/NoGW.svg';
 import { useEnvironments } from '../../../../hooks/useEnvironments';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
-const MAX_GATEWAYS_PER_ORG = 3;
 
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -90,13 +90,13 @@ export default function GatewaysList() {
   const apiGatewayCount = gateways.filter(
     (gateway) => gateway.functionalityType === 'regular'
   ).length;
-  const isGatewayQuotaReached =
-    aiGatewayCount + apiGatewayCount >= MAX_GATEWAYS_PER_ORG;
-  const gatewayQuotaTooltip = `You cannot continue because your organization already has ${aiGatewayCount} AI gateway${
-    aiGatewayCount === 1 ? '' : 's'
-  } and ${apiGatewayCount} API gateway${
-    apiGatewayCount === 1 ? '' : 's'
-  }. The maximum limit is 3 gateways in total.`;
+  const { canCreate, limitMessage } = useResourceLimits();
+  const isGatewayQuotaReached = !canCreate('gateways');
+  const gatewayQuotaTooltip = isGatewayQuotaReached
+    ? `${limitMessage('gateways')} You already have ${aiGatewayCount} AI gateway${
+        aiGatewayCount === 1 ? '' : 's'
+      } and ${apiGatewayCount} API gateway${apiGatewayCount === 1 ? '' : 's'}.`
+    : '';
 
   // Filter only AI gateways
   const aiGateways = useMemo(() => {
@@ -185,23 +185,23 @@ export default function GatewaysList() {
               sx={{ ml: 'auto', flexShrink: 0 }}
             >
               {isAdmin && filteredGateways.length > 0 ? (
-                // <Tooltip
-                //   title={isGatewayQuotaReached ? gatewayQuotaTooltip : ''}
-                //   disableHoverListener={!isGatewayQuotaReached}
-                // >
+                <Tooltip
+                  title={isGatewayQuotaReached ? gatewayQuotaTooltip : ''}
+                  disableHoverListener={!isGatewayQuotaReached}
+                >
                   <Box component="span">
                     <Button
                       variant="contained"
                       component={RouterLink}
                       to={newGatewayPath}
                       startIcon={<Plus size={20} />}
-                      // disabled={isGatewayQuotaReached}
-                      // sx={{
-                      //   opacity: isGatewayQuotaReached ? 0.55 : 1,
-                      //   '&.Mui-disabled': {
-                      //     opacity: isGatewayQuotaReached ? 0.55 : 1,
-                      //   },
-                      // }}
+                      disabled={isGatewayQuotaReached}
+                      sx={{
+                        opacity: isGatewayQuotaReached ? 0.55 : 1,
+                        '&.Mui-disabled': {
+                          opacity: isGatewayQuotaReached ? 0.55 : 1,
+                        },
+                      }}
                     >
                       <FormattedMessage
                         id="aiWorkspace.pages.appShell.appShellPages.gateways.GatewaysList.add.ai.gateway"
@@ -209,7 +209,7 @@ export default function GatewaysList() {
                       />
                     </Button>
                   </Box>
-                // </Tooltip>
+                </Tooltip>
               ) : null}
             </Stack>
           </Box>

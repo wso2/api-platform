@@ -909,6 +909,194 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 }
 
 // =============================================================================
+// Analytics header filter response translation
+// =============================================================================
+
+// In the response direction the system analytics policy runs after analytics-header-filter and
+// captures every response header into response_headers. The filter's result must still be the
+// published response_headers, so a denied header never reaches analytics.
+func TestTranslateResponseHeaderActions_AnalyticsHeaderFilter(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"x-internal-token": {"secret"},
+			"x-public-info":    {"public"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseHeaderExecutionResult{
+		Results: []executor.ResponseHeaderPolicyResult{
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsHeaderFilter: policy.DropHeaderAction{Action: "deny", Headers: []string{"x-internal-token"}},
+			}},
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsMetadata: map[string]any{"response_headers": `{"x-internal-token":"secret","x-public-info":"public"}`},
+			}},
+		},
+	}
+
+	resp, err := TranslateResponseHeaderActions(result, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	extProcNamespace := resp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	assert.Equal(t, `{"x-public-info":["public"]}`, analyticsData.GetFields()["response_headers"].GetStringValue())
+}
+
+func TestTranslateResponseHeaderActions_AnalyticsHeaderFilterAllowMode(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"x-internal-token": {"secret"},
+			"x-public-info":    {"public"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseHeaderExecutionResult{
+		Results: []executor.ResponseHeaderPolicyResult{
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsHeaderFilter: policy.DropHeaderAction{Action: "allow", Headers: []string{"x-public-info"}},
+			}},
+			{Action: policy.DownstreamResponseHeaderModifications{
+				AnalyticsMetadata: map[string]any{"response_headers": `{"x-internal-token":"secret","x-public-info":"public"}`},
+			}},
+		},
+	}
+
+	resp, err := TranslateResponseHeaderActions(result, execCtx)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	extProcNamespace := resp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	assert.Equal(t, `{"x-public-info":["public"]}`, analyticsData.GetFields()["response_headers"].GetStringValue())
+}
+
+// The body-merge variant (body-less responses) runs header- and body-phase policies in two
+// loops; the filter must win over a capture from either phase.
+func TestTranslateResponseHeaderActionsWithBodyMerge_AnalyticsHeaderFilter(t *testing.T) {
+	newExecCtx := func() *PolicyExecutionContext {
+		kernel := NewKernel()
+		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+		execCtx.sharedCtx = &policy.SharedContext{}
+		execCtx.responseBodyCtx = &policy.ResponseContext{
+			SharedContext: execCtx.sharedCtx,
+			ResponseHeaders: policy.NewHeaders(map[string][]string{
+				"x-internal-token": {"secret"},
+				"x-public-info":    {"public"},
+			}),
+			ResponseStatus: 200,
+		}
+		return execCtx
+	}
+
+	filter := policy.DownstreamResponseHeaderModifications{
+		AnalyticsHeaderFilter: policy.DropHeaderAction{Action: "deny", Headers: []string{"x-internal-token"}},
+	}
+	capture := map[string]any{"response_headers": `{"x-internal-token":"secret","x-public-info":"public"}`}
+
+	publishedResponseHeaders := func(t *testing.T, resp *extprocv3.ProcessingResponse) string {
+		t.Helper()
+		require.NotNil(t, resp)
+		extProcNamespace := resp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+		require.NotNil(t, extProcNamespace)
+		analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+		require.NotNil(t, analyticsData)
+		return analyticsData.GetFields()["response_headers"].GetStringValue()
+	}
+
+	t.Run("filters a capture from a later header-phase policy", func(t *testing.T) {
+		headerResult := &executor.ResponseHeaderExecutionResult{
+			Results: []executor.ResponseHeaderPolicyResult{
+				{Action: filter},
+				{Action: policy.DownstreamResponseHeaderModifications{AnalyticsMetadata: capture}},
+			},
+		}
+
+		resp, err := TranslateResponseHeaderActionsWithBodyMerge(headerResult, &executor.ResponseExecutionResult{}, newExecCtx())
+
+		require.NoError(t, err)
+		assert.Equal(t, `{"x-public-info":["public"]}`, publishedResponseHeaders(t, resp))
+	})
+
+	t.Run("filters a capture from a body-phase policy", func(t *testing.T) {
+		headerResult := &executor.ResponseHeaderExecutionResult{
+			Results: []executor.ResponseHeaderPolicyResult{{Action: filter}},
+		}
+		bodyResult := &executor.ResponseExecutionResult{
+			Results: []executor.ResponsePolicyResult{
+				{Action: policy.DownstreamResponseModifications{AnalyticsMetadata: capture}},
+			},
+		}
+
+		resp, err := TranslateResponseHeaderActionsWithBodyMerge(headerResult, bodyResult, newExecCtx())
+
+		require.NoError(t, err)
+		assert.Equal(t, `{"x-public-info":["public"]}`, publishedResponseHeaders(t, resp))
+	})
+}
+
+func TestTranslateResponseActionsCore_AnalyticsHeaderFilter(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"x-internal-token": {"secret"},
+			"x-public-info":    {"public"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseExecutionResult{
+		Results: []executor.ResponsePolicyResult{
+			{Action: policy.DownstreamResponseModifications{
+				AnalyticsHeaderFilter: policy.DropHeaderAction{Action: "deny", Headers: []string{"x-internal-token"}},
+			}},
+			{Action: policy.DownstreamResponseModifications{
+				AnalyticsMetadata: map[string]any{"response_headers": `{"x-internal-token":"secret","x-public-info":"public"}`},
+			}},
+		},
+	}
+
+	_, _, analyticsData, _, _, err := translateResponseActionsCore(result, execCtx)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"x-public-info": {"public"}}, analyticsData["response_headers"])
+}
+
+// =============================================================================
 // Dynamic-endpoint request-header translation
 // =============================================================================
 

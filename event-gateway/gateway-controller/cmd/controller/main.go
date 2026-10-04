@@ -63,6 +63,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
+	agentservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
@@ -393,6 +394,33 @@ func main() {
 		}
 	}
 
+	// Build the transformer registry and wire it into the Envoy translator before
+	// the initial xDS snapshot below, so the first snapshot already uses the
+	// transformer-path cluster/route names ("upstream_<name>_<host>_<port>") that the
+	// policy engine's resources reference. WebSubApi is intentionally excluded so it keeps using the
+	// async-specific legacy translation path.
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	// The Agent transformer is required here even though this binary's reason for
+	// existing is the async kinds: it mounts the shared management API (which
+	// registers the /agents routes unconditionally) and runs the shared event
+	// listener (which dispatches EventTypeAgent), so Agents do reach both the
+	// policy manager and the xDS translator below.
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+
+	// Derived from the registry rather than hand-listed, for the same reason the
+	// gateway controller derives it: a hand-written map beside the registry's own
+	// kind list is two lists that drift silently. A kind missing here does not
+	// error — the translator falls back to the legacy path, which rejects
+	// anything that is not an api.RestAPI and drops that artifact's routes from
+	// the snapshot after an otherwise successful deployment.
+	envoyTransformers := make(map[string]models.ConfigTransformer)
+	for _, kind := range transform.EnvoyTranslatorKinds() {
+		envoyTransformers[kind] = transformerRegistry
+	}
+	xdsTranslator.SetTransformers(envoyTransformers)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
 		log.Warn("Failed to generate initial xDS snapshot", slog.Any("error", err))
@@ -431,17 +459,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// Share the transformer registry (built before the initial xDS snapshot above)
+	// with the policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
 
 	loadedAPIs := configStore.GetAll()
 	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {
@@ -529,7 +549,16 @@ func main() {
 	// Deregister WebSub hub topics on delete.
 	restAPIService.SetWebSubTopicDeregistrar(hubtopic.New(apiSvc, httpClient, eventGatewayCfg).Deregister)
 
-	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
+	// Agents are core-kind artifacts, so this binary serves them exactly as the
+	// gateway-controller does, including the DP->CP push wiring.
+	agentSvc := agentservice.NewAgentService(
+		configStore, db, coreconfig.NewParser(),
+		coreconfig.NewAgentValidator().WithPolicyValidator(coreconfig.NewPolicyValidator(policyDefinitions)),
+		log, eventHubInstance, secretsService, gatewayID,
+	)
+	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 
 	authConfig, err := generateAuthConfig(cfg)
 	if err != nil {
@@ -567,7 +596,7 @@ func main() {
 	apiServer, err := handlers.NewAPIServer(
 		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance,
-		subscriptionSnapshotManager, secretsService, restAPIService, httpClient,
+		subscriptionSnapshotManager, secretsService, restAPIService, httpClient, agentSvc,
 	)
 	if err != nil {
 		log.Error("Failed to create API server", slog.Any("error", err))

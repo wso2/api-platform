@@ -53,13 +53,15 @@ spec:
         - path: /model/{modelId}/converse
           methods: [POST]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
         - path: /model/{modelId}/converse-stream
           methods: [POST]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
   accessControl:
     mode: deny_all
     exceptions:

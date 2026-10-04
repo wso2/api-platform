@@ -121,7 +121,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_RejectsUnresolvablePol
 			DisplayName:    "Policy Proxy",
 			Version:        "1.0.0",
 			Context:        stringPtr("/chat"),
-			Provider:       api.LLMProxyProvider{Id: "provider-a"},
+			Provider:       &api.LLMProxyProvider{Id: "provider-a"},
 			GlobalPolicies: &[]api.Policy{{Name: "basic-ratelimit", Version: "v999"}},
 		},
 	}

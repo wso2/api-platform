@@ -177,7 +177,7 @@ func testLLMProxyYAML(t *testing.T, handle, displayName, providerHandle string) 
 			DisplayName: displayName,
 			Version:     "1.0.0",
 			Context:     stringPtr("/chat"),
-			Provider: api.LLMProxyProvider{
+			Provider: &api.LLMProxyProvider{
 				Id: providerHandle,
 			},
 		},
@@ -1260,7 +1260,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 			Spec: api.LLMProxyConfigData{
 				DisplayName: "LLM Proxy Delete",
 				Version:     "v1.0.0",
-				Provider: api.LLMProxyProvider{
+				Provider: &api.LLMProxyProvider{
 					Id: "provider-a",
 				},
 			},

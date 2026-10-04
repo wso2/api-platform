@@ -25,24 +25,17 @@ import {
   Rocket,
   type LucideIcon,
 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { REST_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
 
+// Same cap `ApiPortalPublicationsList` uses to read every portal in one page.
+const LIST_LIMIT = 100;
+
 const messages = defineMessages({
-  progress: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.progress',
-    defaultMessage: '{completed} of {total} completed',
-    description:
-      'Counter beside the lifecycle steps, e.g. "2 of 4 completed". Counts the steps of getting an API live, not APIs.',
-  },
-  next: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.next',
-    defaultMessage: 'Next: {step}',
-    description: 'The next incomplete lifecycle step shown beside the progress counter.',
-  },
   stepCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create',
     defaultMessage: 'Create',
@@ -57,9 +50,9 @@ const messages = defineMessages({
   },
   stepPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish',
-    defaultMessage: 'Publish to Devportal',
+    defaultMessage: 'Publish',
     description:
-      'Fourth step of the API progress stepper — the API is listed in the developer portal.',
+      'Fourth step of the API progress stepper — the API is listed in the developer portal. A stage name, not a button command.',
   },
   stepTest: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test',
@@ -86,12 +79,14 @@ type ProgressStep = {
  * shows the overall percentage.
  *
  * Completion is derived from the API's real lifecycle, which is monotonic —
- * publishing implies the API was deployed and tested, staging implies deploy
- * + test — so earlier steps stay green once a later one is reached:
+ * reaching PUBLISHED/STAGED on the API's own record implies it was deployed
+ * and tested — so earlier steps stay green once a later one is reached:
  *   Create   → always done (the API record exists)
  *   Deploy   → live on a gateway, or STAGED/PUBLISHED
  *   Test     → STAGED or PUBLISHED
- *   Publish  → PUBLISHED to the dev portal
+ *   Publish  → PUBLISHED on at least one API Portal (`/api-publications`,
+ *              not the API's own `lifeCycleStatus` — publishing is per-portal,
+ *              so a single global field on the API can't represent it)
  * The steps double as the navigation the old Deploy/Test/Manage buttons gave.
  */
 export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: boolean }) {
@@ -99,10 +94,15 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   const navigate = useNavigate();
   const intl = useIntl();
 
-  const published = api.lifeCycleStatus === 'PUBLISHED';
+  const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
+  // isPlaceholderData excludes the previous API's publish status left over from keepPreviousData.
+  const published =
+    !publicationsQuery.isPlaceholderData &&
+    (publicationsQuery.data?.list.some((publication) => publication.status === 'PUBLISHED') ?? false);
   const staged = api.lifeCycleStatus === 'STAGED';
-  const deployComplete = deployed || staged || published;
-  const testComplete = staged || published;
+  const lifecyclePublished = api.lifeCycleStatus === 'PUBLISHED';
+  const deployComplete = deployed || staged || lifecyclePublished;
+  const testComplete = staged || lifecyclePublished;
 
   // Formatted here rather than held as descriptors: `label` is both the pill's
   // text and its `aria-label`, and the latter is a string-only prop.
@@ -125,18 +125,17 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
       label: intl.formatMessage(messages.stepTest),
       Icon: FlaskConical,
       complete: testComplete,
-      onClick: () => navigate(routes.apiTestConsole(orgHandle, projectHandler, apiHandler)),
+      onClick: () => navigate(routes.apiTest(orgHandle, projectHandler, apiHandler)),
     },
     {
       key: 'publish',
       label: intl.formatMessage(messages.stepPublish),
       Icon: Globe,
       complete: published,
-      onClick: () => navigate(routes.apiManageLifecycle(orgHandle, projectHandler, apiHandler)),
+      onClick: () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler)),
     },
   ];
 
-  const completedCount = steps.filter((step) => step.complete).length;
   // The first not-yet-complete step is the current, actionable one.
   const activeIndex = steps.findIndex((step) => !step.complete);
 
@@ -179,28 +178,7 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
           divider={<Divider flexItem orientation="vertical" />}
           spacing={1.5}
           sx={{ flexShrink: 0 }}
-        >
-          <Typography color="text.secondary" variant="body2">
-            <FormattedMessage
-              {...messages.progress}
-              values={{ completed: completedCount, total: steps.length }}
-            />
-          </Typography>
-          {activeIndex >= 0 && (
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage
-                {...messages.next}
-                values={{
-                  step: (
-                    <Box component="span" sx={{ color: 'text.primary', fontWeight: 700 }}>
-                      {steps[activeIndex].label}
-                    </Box>
-                  ),
-                }}
-              />
-            </Typography>
-          )}
-        </Stack>
+        ></Stack>
       </Stack>
     </Box>
   );

@@ -38,6 +38,12 @@ import {
   getProjectSlug,
 } from "../../utils/projectRouting";
 import ProjectQuickSelector from "./ProjectQuickSelector";
+import {
+  AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+  type AIWorkspaceHeaderAction,
+} from "../../extensions";
+import type { AIWorkspaceHostPort } from "../../hostPort";
+import { useSlot } from "../../slots";
 
 type SelectableOrg = {
   id: string;
@@ -58,8 +64,12 @@ type Props = {
 
   userName?: string;
   userEmail?: string;
+  userPicture?: string;
 
   currentOrganization: SelectableOrg | null;
+  organizationOptions: SelectableOrg[];
+  isOrganizationsLoading?: boolean;
+  onSelectOrganization?: (organization: SelectableOrg) => void;
 
   projectOptions: SelectableProject[];
   currentProject: SelectableProject | null;
@@ -72,6 +82,7 @@ type Props = {
   setSelectedProjectId: (v: string) => void;
 
   onLogout?: () => void;
+  port: AIWorkspaceHostPort;
 };
 
 export default function AppHeader(props: Props) {
@@ -82,8 +93,12 @@ export default function AppHeader(props: Props) {
     navigate,
     userName,
     userEmail,
+    userPicture,
 
     currentOrganization,
+    organizationOptions,
+    isOrganizationsLoading = false,
+    onSelectOrganization,
 
     projectOptions,
     currentProject,
@@ -95,15 +110,20 @@ export default function AppHeader(props: Props) {
     setSelectedProjectId,
 
     onLogout,
+    port,
   } = props;
+  const headerActions = useSlot<AIWorkspaceHeaderAction>(
+    AI_WORKSPACE_HEADER_ACTIONS_SLOT,
+  );
 
   const userForMenu = useMemo(
     () => ({
       name: userName || userEmail || "User",
       email: userEmail || "",
+      picture: userPicture || null,
       role: role || undefined,
     }),
-    [userName, userEmail, role],
+    [userName, userEmail, userPicture, role],
   );
 
   const canShowProjectSwitcher = Boolean(currentProject?.id);
@@ -121,6 +141,16 @@ export default function AppHeader(props: Props) {
           `/projects/${getProjectSlug(nextProject)}/home`,
         ),
       );
+    }
+  };
+
+  const canShowOrganizationSwitcher =
+    Boolean(onSelectOrganization) && organizationOptions.length > 1;
+
+  const handleOrganizationSelection = (nextOrgId: string) => {
+    const nextOrg = organizationOptions.find((org) => org.id === nextOrgId);
+    if (nextOrg) {
+      onSelectOrganization?.(nextOrg);
     }
   };
 
@@ -156,53 +186,76 @@ export default function AppHeader(props: Props) {
         <Stack direction="row" alignItems="center" spacing={0.5}>
           {currentOrganization && (
             <>
-              <Box
-                sx={{
-                  display: "inline-flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  p: 1.5,
-                  minWidth: 100,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: "8px",
-                  bgcolor: "background.acrylic",
-                  flexShrink: 0,
-                  cursor: "default",
-                  userSelect: "none",
-                }}
-              >
-                <Typography
-                  variant="caption"
+              {canShowOrganizationSwitcher ? (
+                <Box sx={{ minWidth: 200, flexShrink: 0 }}>
+                  <SearchableComplexSelect
+                    value={currentOrganization.id}
+                    selectedOption={currentOrganization}
+                    options={organizationOptions}
+                    loading={isOrganizationsLoading}
+                    onChange={handleOrganizationSelection}
+                    renderOptionContent={(org) => (
+                      <ComplexSelect.MenuItem.Text
+                        primary={org.name}
+                        secondary={org.handle}
+                      />
+                    )}
+                    label="Organizations"
+                    emptyMessage="No organizations available"
+                    noResultsMessage="No matching organizations"
+                    searchPlaceholder="Search organizations"
+                    sx={{ minWidth: 200, maxWidth: 280 }}
+                  />
+                </Box>
+              ) : (
+                <Box
                   sx={{
-                    color: "text.secondary",
-                    lineHeight: 1,
-                    mb: 0.25,
-                    fontSize: "0.7rem",
-                    marginBottom: 1,
+                    display: "inline-flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    p: 1.5,
+                    minWidth: 100,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: "8px",
+                    bgcolor: "background.acrylic",
+                    flexShrink: 0,
+                    cursor: "default",
+                    userSelect: "none",
                   }}
                 >
-                  Organizations
-                </Typography>
-                <Stack direction="row" alignItems="center" spacing={0.5}>
-                  <Building2 size={13} />
                   <Typography
-                    variant="body2"
-                    fontWeight={500}
+                    variant="caption"
                     sx={{
-                      color: "text.primary",
+                      color: "text.secondary",
                       lineHeight: 1,
-                      fontSize: "0.9rem",
-                      fontWeight: 400,
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
-                      whiteSpace: "nowrap",
+                      mb: 0.25,
+                      fontSize: "0.7rem",
+                      marginBottom: 1,
                     }}
                   >
-                    {currentOrganization.name}
+                    Organizations
                   </Typography>
-                </Stack>
-              </Box>
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <Building2 size={13} />
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                      sx={{
+                        color: "text.primary",
+                        lineHeight: 1,
+                        fontSize: "0.9rem",
+                        fontWeight: 400,
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {currentOrganization.name}
+                    </Typography>
+                  </Stack>
+                </Box>
+              )}
               <ChevronRight size={14} style={{ opacity: 0.4, flexShrink: 0 }} />
             </>
           )}
@@ -266,6 +319,10 @@ export default function AppHeader(props: Props) {
       <Header.Spacer />
 
       <Header.Actions>
+        {headerActions.map((action) => (
+          <React.Fragment key={action.id}>{action.render(port)}</React.Fragment>
+        ))}
+
         <ColorSchemeToggle />
 
         <Divider

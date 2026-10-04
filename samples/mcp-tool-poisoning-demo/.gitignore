@@ -1,0 +1,5 @@
+.env
+.pass1-response.json
+.pass2-response.json
+*.log
+.DS_Store

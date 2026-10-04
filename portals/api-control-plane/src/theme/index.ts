@@ -17,10 +17,11 @@
  */
 
 import {
+  focusRingSx,
   glassSurfaceSx,
   hairline,
   interactiveCardSx,
   stickyBottomBarSx,
 } from './receipes';
 
-export { glassSurfaceSx, hairline, interactiveCardSx, stickyBottomBarSx };
+export { focusRingSx, glassSurfaceSx, hairline, interactiveCardSx, stickyBottomBarSx };

@@ -40,28 +40,29 @@ type AnalyticsEvent struct {
 	Direction    string          `json:"direction,omitempty"`
 	Weight       int             `json:"weight,omitempty"`
 	Tags         string          `json:"tags,omitempty"`
+	A2A          any             `json:"a2a,omitempty"`
 }
 
 // RequestDetails represents request information
 type RequestDetails struct {
-	Time          time.Time         `json:"time"`
-	URI           string            `json:"uri"`
-	Verb          string            `json:"verb"`
-	Headers       map[string]string `json:"headers,omitempty"`
-	APIVersion    string            `json:"api_version,omitempty"`
-	IPAddress     string            `json:"ip_address,omitempty"`
-	Body          interface{}       `json:"body,omitempty"`
-	TransferEncoding string         `json:"transfer_encoding,omitempty"`
+	Time             time.Time         `json:"time"`
+	URI              string            `json:"uri"`
+	Verb             string            `json:"verb"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	APIVersion       string            `json:"api_version,omitempty"`
+	IPAddress        string            `json:"ip_address,omitempty"`
+	Body             interface{}       `json:"body,omitempty"`
+	TransferEncoding string            `json:"transfer_encoding,omitempty"`
 }
 
 // ResponseDetails represents response information
 type ResponseDetails struct {
-	Time          time.Time         `json:"time"`
-	Status        int               `json:"status"`
-	Headers       map[string]string `json:"headers,omitempty"`
-	Body          interface{}       `json:"body,omitempty"`
-	IPAddress     string            `json:"ip_address,omitempty"`
-	TransferEncoding string         `json:"transfer_encoding,omitempty"`
+	Time             time.Time         `json:"time"`
+	Status           int               `json:"status"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	Body             interface{}       `json:"body,omitempty"`
+	IPAddress        string            `json:"ip_address,omitempty"`
+	TransferEncoding string            `json:"transfer_encoding,omitempty"`
 }
 
 // gzipMiddleware decompresses gzip-encoded request bodies
@@ -76,7 +77,7 @@ func gzipMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			defer gzipReader.Close()
-			
+
 			// Replace the request body with the decompressed version
 			r.Body = io.NopCloser(gzipReader)
 			// Remove the Content-Encoding header since we've decompressed
@@ -171,7 +172,7 @@ func (mc *MockCollector) ResetEvents(w http.ResponseWriter, r *http.Request) {
 func (mc *MockCollector) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
+		"status":  "ok",
 		"service": "mock-analytics-collector",
 	})
 }
@@ -179,7 +180,7 @@ func (mc *MockCollector) HealthCheck(w http.ResponseWriter, r *http.Request) {
 func main() {
 	collector := NewMockCollector()
 	r := mux.NewRouter()
-	
+
 	// Apply gzip middleware to all routes
 	r.Use(gzipMiddleware)
 

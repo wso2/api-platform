@@ -36,6 +36,10 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 		enableCoverage = true
 	}
 
+	// Package patterns for -coverpkg. Policies are separate modules pulled in as
+	// dependencies, so bare -cover never instruments them.
+	coverPkg := strings.TrimSpace(os.Getenv("COVERPKG"))
+
 	// Check for debug mode from environment variable
 	enableDebug := false
 	if debugEnv := os.Getenv("DEBUG"); strings.EqualFold(debugEnv, "true") {
@@ -55,14 +59,17 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 	ldflags := generateLDFlags(buildMetadata, enableCoverage, enableDebug)
 
 	return &types.CompilationOptions{
-		OutputPath:     outputPath,
-		LDFlags:        ldflags,
-		BuildTags:      []string{},
-		CGOEnabled:     false, // Static binary
-		TargetOS:       "linux",
-		TargetArch:     targetArch,
-		EnableCoverage: enableCoverage,
-		EnableDebug:    enableDebug,
+		OutputPath: outputPath,
+		LDFlags:    ldflags,
+		BuildTags:  []string{},
+		CGOEnabled: false, // Static binary
+		TargetOS:   "linux",
+		TargetArch: targetArch,
+		Coverage: types.CoverageOptions{
+			Enabled:  enableCoverage,
+			Packages: coverPkg,
+		},
+		EnableDebug: enableDebug,
 	}
 }
 

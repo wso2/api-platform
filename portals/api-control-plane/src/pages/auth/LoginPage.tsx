@@ -24,9 +24,10 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
+  ColorSchemeImage,
   Divider,
   FormLabel,
+  IconButton,
   InputAdornment,
   Link,
   List,
@@ -41,6 +42,8 @@ import {
 import {
   Activity,
   ArrowRight,
+  Eye,
+  EyeOff,
   Lock,
   PencilRuler,
   Rocket,
@@ -53,9 +56,12 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
+import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
-import { ambientGlowSx, hairline } from '../../theme/receipes';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { hairline } from '../../theme/receipes';
 
 const messages = defineMessages({
   brandLockup: {
@@ -73,15 +79,14 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.auth.LoginPage.browserUnsupported',
     defaultMessage: 'This console is optimized for Google Chrome and Mozilla Firefox.',
   },
+  redirecting: {
+    id: 'apiControlPlane.pages.auth.LoginPage.redirecting',
+    defaultMessage: 'Signing you in',
+    description: 'Shown while the browser is being handed over to the identity provider.',
+  },
   continueToConsole: {
     id: 'apiControlPlane.pages.auth.LoginPage.continueToConsole',
     defaultMessage: 'Continue to your API Platform console.',
-  },
-  eyebrow: {
-    id: 'apiControlPlane.pages.auth.LoginPage.eyebrow',
-    defaultMessage: 'AI-NATIVE · SCALABLE SAAS',
-    description:
-      'Marketing label above the headline, set in upper case. Keep it short — it renders inside a small pill.',
   },
   featureDeploy: {
     id: 'apiControlPlane.pages.auth.LoginPage.featureDeploy',
@@ -139,8 +144,9 @@ const messages = defineMessages({
   },
   passwordHide: {
     id: 'apiControlPlane.pages.auth.LoginPage.passwordHide',
-    defaultMessage: 'Hide',
-    description: 'Toggle that masks the password again. Command, not a noun.',
+    defaultMessage: 'Hide password',
+    description:
+      'Accessible label of the eye button inside the password field, while the password is visible. A command.',
   },
   passwordLabel: {
     id: 'apiControlPlane.pages.auth.LoginPage.passwordLabel',
@@ -152,8 +158,9 @@ const messages = defineMessages({
   },
   passwordShow: {
     id: 'apiControlPlane.pages.auth.LoginPage.passwordShow',
-    defaultMessage: 'Show',
-    description: 'Toggle that reveals the typed password. Command, not a noun.',
+    defaultMessage: 'Show password',
+    description:
+      'Accessible label of the eye button inside the password field, while the password is masked. A command.',
   },
   privacyPolicy: {
     id: 'apiControlPlane.pages.auth.LoginPage.privacyPolicy',
@@ -177,7 +184,7 @@ const messages = defineMessages({
   tagline: {
     id: 'apiControlPlane.pages.auth.LoginPage.tagline',
     defaultMessage:
-      'A comprehensive platform for designing, deploying, governing, and optimizing APIs and MCP servers — end to end.',
+      'A comprehensive platform for designing, deploying, governing, and optimizing APIs and MCP servers, end to end.',
   },
   termsOfUse: {
     id: 'apiControlPlane.pages.auth.LoginPage.termsOfUse',
@@ -197,6 +204,8 @@ const messages = defineMessages({
     defaultMessage: 'Enter your username',
   },
 });
+
+const BRAND_LOGO_HEIGHT = 56;
 
 type LoginLocationState = {
   confirmationKey?: string;
@@ -261,6 +270,12 @@ const signInButtonSx = (theme: Theme) =>
 /** The label above a field, rather than a floating `TextField` label. */
 const fieldLabelSx = { color: 'text.primary', fontWeight: 500 } as const;
 
+/** Full-height credential fields with an opaque paper background. */
+const fieldSx = {
+  '& .MuiOutlinedInput-input': { fontSize: '1rem' },
+  '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' },
+} as const;
+
 /** Tile behind a feature icon in the left panel's list. */
 const featureIconSx = (theme: Theme) =>
   ({
@@ -272,7 +287,10 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
+  const brandLogo = useBrandLogo();
   const intl = useIntl();
+
+  useDocumentTitle(intl.formatMessage(messages.title));
   const location = useLocation();
   const state = (location.state || {}) as LoginLocationState;
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -300,13 +318,8 @@ export function LoginPage() {
 
   const shouldAutoRedirect = !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError;
 
-  // In OIDC mode this page is just a redirect step to the IdP, so skip it and
-  // go straight there — unless there's an invitation to show or a failed
-  // attempt just redirected back here (retrying immediately would loop). Runs
-  // in an effect, not the render body: auth.login() navigates the page and
-  // mutates a ref, and React 19 requires render to stay pure — under
-  // StrictMode's double-render (or a compiler that reorders render output)
-  // a render-phase navigation is not reliable.
+  // Redirect to the IdP in OIDC mode unless showing an invitation or OIDC
+  // error. Use an effect because auth.login() navigates and mutates a ref.
   useEffect(() => {
     if (!shouldAutoRedirect || autoRedirectStarted.current) return;
     autoRedirectStarted.current = true;
@@ -314,6 +327,14 @@ export function LoginPage() {
   }, [auth, from, shouldAutoRedirect]);
 
   if (auth.isAuthenticated) return <Navigate to={from} replace />;
+
+  // Hand-over to the identity provider is already under way, so the sign-in card
+  // below would only appear for the instant before the browser leaves — which reads
+  // as the console asking for credentials it is not going to take. Show that
+  // something is happening instead, as the AI Workspace does.
+  if (shouldAutoRedirect) {
+    return <LoadingState fullScreen label={intl.formatMessage(messages.redirecting)} />;
+  }
 
   const message = auth.status === 'expired' ? messages.sessionExpired : messages.continueToConsole;
 
@@ -325,12 +346,6 @@ export function LoginPage() {
 
   const brand = (chunks: ReactNode) => (
     <Box component="span" sx={{ color: 'text.primary', fontWeight: 700 }}>
-      {chunks}
-    </Box>
-  );
-
-  const emphasis = (chunks: ReactNode) => (
-    <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
       {chunks}
     </Box>
   );
@@ -355,40 +370,12 @@ export function LoginPage() {
   return (
     <Box
       sx={{
-        bgcolor: 'background.default',
         display: 'flex',
         flexWrap: { md: 'nowrap', xs: 'wrap' },
         minHeight: '100vh',
-        // The washes below bleed past the viewport edges rather than scrolling it.
-        overflow: 'hidden',
-        position: 'relative',
         width: '100%',
       }}
     >
-      {/* Ambient wash — decorative only, so it stays out of the a11y tree. */}
-      <Box
-        aria-hidden
-        sx={(theme) => ({
-          ...ambientGlowSx,
-          bgcolor: alpha(theme.palette.info.light, 0.22),
-          height: 460,
-          right: theme.spacing(-10),
-          top: theme.spacing(-14),
-          width: 560,
-        })}
-      />
-      <Box
-        aria-hidden
-        sx={(theme) => ({
-          ...ambientGlowSx,
-          bgcolor: alpha(theme.palette.primary.light, 0.18),
-          bottom: theme.spacing(-16),
-          height: 480,
-          left: theme.spacing(-12),
-          width: 560,
-        })}
-      />
-
       {/* LEFT — marketing */}
       <Stack
         spacing={4}
@@ -402,41 +389,18 @@ export function LoginPage() {
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <Avatar
-            sx={(theme) => ({
-              bgcolor: alpha(theme.palette.primary.main, 0.1),
-              color: 'primary.main',
-              height: 56,
-              width: 56,
+          <ColorSchemeImage
+            alt={intl.formatMessage({
+              id: 'appShell.header.title',
+              defaultMessage: 'API Platform',
             })}
-          >
-            <Activity size={26} />
-          </Avatar>
-          <Box>
-            <Typography sx={{ fontWeight: 700, letterSpacing: '-0.5px' }} variant="h2">
-              <FormattedMessage {...messages.brandName} />
-            </Typography>
-            <Typography color="text.secondary" variant="subtitle1">
-              <FormattedMessage {...messages.productName} values={{ emphasis }} />
-            </Typography>
-          </Box>
+            height={BRAND_LOGO_HEIGHT}
+            src={brandLogo}
+            width="auto"
+          />
         </Stack>
 
         <Stack spacing={2.5} sx={{ maxWidth: 620 }}>
-          <Chip
-            color="info"
-            icon={<Box sx={{ bgcolor: 'info.main', borderRadius: '50%', height: 6, width: 6 }} />}
-            label={intl.formatMessage(messages.eyebrow)}
-            size="small"
-            sx={{
-              alignSelf: 'flex-start',
-              fontWeight: 600,
-              height: 30,
-              letterSpacing: '1.5px',
-              px: 0.5,
-            }}
-            variant="outlined"
-          />
           <Typography
             component="h1"
             sx={{
@@ -496,11 +460,10 @@ export function LoginPage() {
             border: hairline(theme),
             borderColor: 'divider',
             borderRadius: 2,
-            boxShadow: (theme: Theme) =>
-              `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}, 0 24px 56px ${alpha(
-                theme.palette.common.black,
-                0.1,
-              )}`,
+            boxShadow: `0 1px 2px ${alpha(
+              theme.palette.common.black,
+              0.04,
+            )}, 0 24px 56px ${alpha(theme.palette.common.black, 0.1)}`,
             maxWidth: 540,
             width: '100%',
           })}
@@ -580,6 +543,7 @@ export function LoginPage() {
                         handleKeyDown(event, () => void startBasicLogin())
                       }
                       placeholder={intl.formatMessage(messages.usernamePlaceholder)}
+                      size="medium"
                       slotProps={{
                         input: {
                           startAdornment: (
@@ -589,31 +553,16 @@ export function LoginPage() {
                           ),
                         },
                       }}
+                      sx={fieldSx}
                       type="text"
                       value={username}
                     />
                   </Stack>
 
                   <Stack spacing={1}>
-                    <Stack
-                      direction="row"
-                      sx={{ alignItems: 'center', justifyContent: 'space-between' }}
-                    >
-                      <FormLabel htmlFor="login-password" sx={fieldLabelSx}>
-                        <FormattedMessage {...messages.passwordLabel} />
-                      </FormLabel>
-                      <Link
-                        component="button"
-                        onClick={() => setShowPassword((visible) => !visible)}
-                        sx={{ color: 'text.secondary', fontWeight: 500 }}
-                        type="button"
-                        variant="body2"
-                      >
-                        <FormattedMessage
-                          {...(showPassword ? messages.passwordHide : messages.passwordShow)}
-                        />
-                      </Link>
-                    </Stack>
+                    <FormLabel htmlFor="login-password" sx={fieldLabelSx}>
+                      <FormattedMessage {...messages.passwordLabel} />
+                    </FormLabel>
                     <TextField
                       autoComplete="current-password"
                       fullWidth
@@ -626,8 +575,23 @@ export function LoginPage() {
                         handleKeyDown(event, () => void startBasicLogin())
                       }
                       placeholder={intl.formatMessage(messages.passwordPlaceholder)}
+                      size="medium"
                       slotProps={{
                         input: {
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                aria-label={intl.formatMessage(
+                                  showPassword ? messages.passwordHide : messages.passwordShow,
+                                )}
+                                edge="end"
+                                onClick={() => setShowPassword((visible) => !visible)}
+                                size="small"
+                              >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
                           startAdornment: (
                             <InputAdornment position="start">
                               <Lock size={18} />
@@ -635,6 +599,7 @@ export function LoginPage() {
                           ),
                         },
                       }}
+                      sx={fieldSx}
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                     />

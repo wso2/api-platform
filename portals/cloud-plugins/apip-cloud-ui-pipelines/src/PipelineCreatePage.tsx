@@ -11,6 +11,7 @@ import { useRef, useState, type FC } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
   IconButton,
   PageContent,
   PageTitle,
@@ -20,10 +21,11 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ArrowRight, ChevronLeft, Plus } from '@wso2/oxygen-ui-icons-react';
-import EnvironmentGatewayPicker from './components/EnvironmentGatewayPicker';
+import EnvironmentPicker from './components/EnvironmentPicker';
 import PipelineStageCard from './components/PipelineStageCard';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import { orderEnvironments } from './utils';
+import { validatePipelineName } from './utils/name';
 
 export type PipelineCreatePageProps = {
   environments: Environment[];
@@ -36,33 +38,26 @@ export type PipelineCreatePageProps = {
 };
 
 /**
- * The linear chain the builder edits: environments in promotion order, each with
- * the gateway marked as its default. This is the builder's own working view over
- * the API shape — on submit it emits `promotionPaths` (consecutive pairs) and
- * `defaultGateways` directly; nothing else converts pipeline data.
+ * The linear chain the builder edits: environments in promotion order. This is
+ * the builder's own working view over the API shape — on submit it emits
+ * `promotionPaths` (consecutive pairs) directly; nothing else converts pipeline
+ * data.
  */
 type ChainEntry = {
   /** Environment name — the identifier the API uses everywhere. */
   environment: string;
-  defaultGatewayId: string;
 };
+
+/** Shown until the name breaks a rule, so the constraint is known up front. */
+const NAME_HELPER_TEXT =
+  'Lowercase letters, numbers and hyphens only. The name cannot be changed later.';
 
 const findEnvironment = (environments: Environment[], name: string) =>
   environments.find((environment) => environment.name === name);
 
-const findGateway = (environment: Environment | undefined, gatewayId: string) =>
-  environment?.gateways.find((gateway) => gateway.id === gatewayId);
-
 /** Reconstructs the builder's chain from an existing pipeline's promotion graph. */
-const toChain = (pipeline: Pipeline, environments: Environment[]): ChainEntry[] =>
-  orderEnvironments(pipeline.promotionPaths).map((name) => {
-    const environment = findEnvironment(environments, name);
-    const marked = pipeline.defaultGateways.find((entry) => entry.environment === name)?.gatewayId;
-    return {
-      environment: name,
-      defaultGatewayId: marked ?? (environment?.gateways.length === 1 ? environment.gateways[0].id : ''),
-    };
-  });
+const toChain = (pipeline: Pipeline): ChainEntry[] =>
+  orderEnvironments(pipeline.promotionPaths).map((name) => ({ environment: name }));
 
 const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
   environments,
@@ -74,7 +69,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
   const isEdit = mode === 'edit' && !!initialPipeline;
   const [name, setName] = useState(initialPipeline?.name ?? '');
   const [chain, setChain] = useState<ChainEntry[]>(
-    initialPipeline ? toChain(initialPipeline, environments) : []
+    initialPipeline ? toChain(initialPipeline) : []
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
@@ -90,8 +85,8 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
     setPickerOpen(true);
   };
 
-  const handleAddEnvironment = (environment: string, defaultGatewayId: string) => {
-    const entry: ChainEntry = { environment, defaultGatewayId };
+  const handleAddEnvironment = (environment: string) => {
+    const entry: ChainEntry = { environment };
     setChain((prev) => {
       const index = insertIndexRef.current;
       if (index === null || index >= prev.length) return [...prev, entry];
@@ -103,30 +98,28 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
     setChain((prev) => prev.filter((entry) => entry.environment !== environment));
   };
 
+  // Only a new pipeline is named here; an existing one cannot be renamed, so its
+  // stored name is never re-validated (and an older name that predates the rule
+  // must not be reported as an error on a page that cannot fix it).
+  const nameError = isEdit ? undefined : validatePipelineName(name);
+
   // A pipeline needs at least two environments to form a promotion path
   // (source -> target), which is what the platform-api requires.
-  const canSubmit = name.trim().length > 0 && chain.length >= 2;
+  const canSubmit = name.trim().length > 0 && !nameError && chain.length >= 2;
 
   const handleSubmit = async () => {
     // Guard against a second click issuing a duplicate create/update while the
     // first request is still in flight.
     if (saving) return;
     // The linear chain is emitted as the API shape directly: consecutive pairs
-    // become promotion paths, and only multi-gateway environments carry an
-    // explicit default (single-gateway environments default implicitly).
+    // become promotion paths.
     const promotionPaths = chain.slice(0, -1).map((entry, index) => ({
       sourceEnvironment: entry.environment,
       targetEnvironments: [chain[index + 1].environment],
     }));
-    const defaultGateways = chain
-      .filter((entry) => {
-        const environment = findEnvironment(environments, entry.environment);
-        return !!environment && environment.gateways.length > 1 && !!entry.defaultGatewayId;
-      })
-      .map((entry) => ({ environment: entry.environment, gatewayId: entry.defaultGatewayId }));
     setSaving(true);
     try {
-      await onSubmit({ name: name.trim(), promotionPaths, defaultGateways }, initialPipeline?.id);
+      await onSubmit({ name: name.trim(), promotionPaths }, initialPipeline?.id);
     } finally {
       setSaving(false);
     }
@@ -155,7 +148,10 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             value={name}
             onChange={(event) => setName(event.target.value)}
             disabled={isEdit}
-            helperText={isEdit ? 'A pipeline cannot be renamed after it is created.' : undefined}
+            error={Boolean(nameError)}
+            helperText={
+              isEdit ? 'A pipeline cannot be renamed after it is created.' : nameError ?? NAME_HELPER_TEXT
+            }
             autoFocus={!isEdit}
           />
         </Box>
@@ -187,7 +183,6 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             <>
               {chain.map((entry, index) => {
                 const environment = findEnvironment(environments, entry.environment);
-                const gateway = findGateway(environment, entry.defaultGatewayId);
                 return (
                   <Box key={entry.environment} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     {index > 0 ? (
@@ -204,7 +199,6 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
                     ) : null}
                     <PipelineStageCard
                       environmentName={environment?.name ?? entry.environment}
-                      gatewayName={gateway?.name ?? entry.defaultGatewayId}
                       critical={environment?.critical}
                       onRemove={() => handleRemoveEnvironment(entry.environment)}
                     />
@@ -227,7 +221,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
             </>
           )}
 
-          <EnvironmentGatewayPicker
+          <EnvironmentPicker
             open={pickerOpen}
             anchorEl={pickerAnchor}
             environments={environments}
@@ -238,7 +232,7 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
         </Box>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
-          <Button variant="outlined" color="secondary" onClick={onBack}>
+          <Button variant="outlined" color="secondary" disabled={saving} onClick={onBack}>
             Cancel
           </Button>
           <Tooltip
@@ -249,8 +243,13 @@ const PipelineCreatePage: FC<PipelineCreatePageProps> = ({
               : ''}
           >
             <span>
-              <Button variant="contained" disabled={!canSubmit || saving} onClick={handleSubmit}>
-                {isEdit ? 'Save Changes' : 'Create'}
+              <Button
+                variant="contained"
+                disabled={!canSubmit || saving}
+                onClick={handleSubmit}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {saving ? (isEdit ? 'Saving…' : 'Creating…') : isEdit ? 'Save Changes' : 'Create'}
               </Button>
             </span>
           </Tooltip>

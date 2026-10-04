@@ -32,6 +32,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -51,6 +52,7 @@ type ImmutableGW struct {
 	restAPIService *restapi.RestAPIService
 	llmService     *utils.LLMDeploymentService
 	mcpService     *utils.MCPDeploymentService
+	agentService   *agent.AgentService
 	parser         *config.Parser
 }
 
@@ -60,6 +62,7 @@ func NewImmutableGW(
 	restAPIService *restapi.RestAPIService,
 	llmService *utils.LLMDeploymentService,
 	mcpService *utils.MCPDeploymentService,
+	agentService *agent.AgentService,
 ) *ImmutableGW {
 	if cfg.Enabled && restAPIService == nil {
 		panic("ImmutableGW requires non-nil RestAPIService when immutable mode is enabled")
@@ -69,6 +72,7 @@ func NewImmutableGW(
 		restAPIService: restAPIService,
 		llmService:     llmService,
 		mcpService:     mcpService,
+		agentService:   agentService,
 		parser:         config.NewParser(),
 	}
 }
@@ -94,7 +98,8 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	// Dependency order:
 	//   pass1: LlmProviderTemplate — no dependencies
 	//   pass2: LlmProvider         — depends on LlmProviderTemplate
-	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp — LlmProxy depends on LlmProvider
+	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent — LlmProxy depends on LlmProvider;
+	//          an Agent references no other artifact, so it needs no earlier pass
 	var pass1, pass2, pass3 []artifact
 
 	filePaths, err := collectArtifacts(g.cfg.ArtifactsDir)
@@ -130,7 +135,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 			pass1 = append(pass1, a)
 		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
-		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp:
+		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp, models.KindAgent:
 			pass3 = append(pass3, a)
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
@@ -198,6 +203,15 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	case models.KindMcp:
 		if _, err := g.mcpService.CreateMCPProxy(utils.MCPDeploymentParams{
 			Data:        data,
+			ContentType: contentType,
+			Origin:      models.OriginGatewayAPI,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
+	case models.KindAgent:
+		if _, err := g.agentService.Create(agent.CreateParams{
+			Body:        data,
 			ContentType: contentType,
 			Origin:      models.OriginGatewayAPI,
 			Logger:      log,

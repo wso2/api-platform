@@ -1,0 +1,29 @@
+{
+  "priority": 5,
+  "request": {
+    "method": "POST",
+    "url": "/v1/chat/completions",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.model == 'gpt-4o-mini')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 60,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "chatcmpl-mock-mini",
+      "object": "chat.completion",
+      "created": 1700000000,
+      "model": "gpt-4o-mini",
+      "choices": [
+        {
+          "index": 0,
+          "message": { "role": "assistant", "content": "Short answer from the low-cost model." },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": { "prompt_tokens": 40, "completion_tokens": 60, "total_tokens": 100 }
+    }
+  }
+}

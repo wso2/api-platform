@@ -38,18 +38,12 @@ import {
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  ArrowRight,
-  Boxes,
-  Clock,
-  Network,
-  PanelTop,
-  Trash2,
-  Workflow,
-} from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Boxes, Clock, Network, PanelTop, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
+import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
 import { useGateways } from '@/api/resources/gateways';
 import { useDeleteProject, type Project } from '@/api/resources/projects';
@@ -62,8 +56,7 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
-
-const DOCS_BASE = 'https://wso2.com/api-platform/docs';
+import { Can } from '@/permissions/Can';
 
 const messages = defineMessages({
   apiAction: {
@@ -98,7 +91,7 @@ const messages = defineMessages({
   },
   developerPortalTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalTitle',
-    defaultMessage: 'Developer portals',
+    defaultMessage: 'Portals',
   },
   deleteAriaLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel',
@@ -216,9 +209,18 @@ type OverviewCardProps = {
   metric: string;
   onAction: () => void;
   title: string;
+  operationId: string;
 };
 
-function OverviewCard({ action, description, icon, metric, onAction, title }: OverviewCardProps) {
+function OverviewCard({
+  action,
+  description,
+  icon,
+  metric,
+  onAction,
+  title,
+  operationId = '',
+}: OverviewCardProps) {
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <CardContent sx={{ flexGrow: 1 }}>
@@ -251,29 +253,39 @@ function OverviewCard({ action, description, icon, metric, onAction, title }: Ov
         </Stack>
       </CardContent>
       <Divider />
-      <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
-        <Box
-          sx={{
-            alignItems: 'center',
-            color: 'primary.main',
-            display: 'flex',
-            justifyContent: 'space-between',
-            px: 2,
-            py: 1.25,
-            width: '100%',
-          }}
-        >
-          <Typography sx={{ fontWeight: 700 }} variant="body2">
-            {action}
-          </Typography>
-          <ArrowRight size={16} />
-        </Box>
-      </ButtonBase>
+      <Can do={operationId} denied="hide">
+        <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
+          <Box
+            sx={{
+              alignItems: 'center',
+              color: 'primary.main',
+              display: 'flex',
+              justifyContent: 'space-between',
+              px: 2,
+              py: 1.25,
+              width: '100%',
+            }}
+          >
+            <Typography sx={{ fontWeight: 700 }} variant="body2">
+              {action}
+            </Typography>
+            <ArrowRight size={16} />
+          </Box>
+        </ButtonBase>
+      </Can>
     </Card>
   );
 }
 
 export function OrganizationHomePage() {
+  return (
+    <AppPage>
+      <OrganizationHomePageContent />
+    </AppPage>
+  );
+}
+
+function OrganizationHomePageContent() {
   const intl = useIntl();
   const navigate = useNavigate();
   const { notify } = useNotifications();
@@ -286,6 +298,7 @@ export function OrganizationHomePage() {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const organizationQuery = useOrganization(orgHandle);
   const gatewaysQuery = useGateways({ limit: 100 });
+  const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
   const currentOrganization = organizationQuery.data || organization || organizations[0];
@@ -369,7 +382,7 @@ export function OrganizationHomePage() {
             <OverviewCard
               action={intl.formatMessage(messages.apiAction)}
               description={intl.formatMessage(messages.apiDescription)}
-              icon={<Workflow size={22} />}
+              icon={<Boxes size={22} />}
               metric={
                 restApiCountsQuery.isPending || restApiCountsQuery.error
                   ? '—'
@@ -377,6 +390,7 @@ export function OrganizationHomePage() {
               }
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
+              operationId="CreateRESTAPI"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -391,6 +405,7 @@ export function OrganizationHomePage() {
               }
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
+              operationId="CreateGateway"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -398,9 +413,17 @@ export function OrganizationHomePage() {
               action={intl.formatMessage(messages.developerPortalAction)}
               description={intl.formatMessage(messages.developerPortalDescription)}
               icon={<PanelTop size={22} />}
-              metric={intl.formatNumber(0)}
-              onAction={() => window.open(`${DOCS_BASE}/cloud/dev-portal/`, '_blank', 'noopener')}
+              metric={
+                // Switching orgs keeps prior data via `keepPreviousData`, which
+                // flips `isPlaceholderData` but not `isPending`; treat that as
+                // unavailable so the prior org's count does not flash.
+                portalsQuery.isPending || portalsQuery.isPlaceholderData || portalsQuery.error
+                  ? '—'
+                  : intl.formatNumber(portalsQuery.data?.pagination.total ?? 0)
+              }
+              onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
+              operationId="CreateApiPortal"
             />
           </Grid>
         </Grid>
@@ -441,9 +464,11 @@ export function OrganizationHomePage() {
                 size="small"
                 value={search}
               />
-              <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
-                <FormattedMessage {...messages.projectsAdd} />
-              </Button>
+              <Can do="CreateProject" denied="hide">
+                <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
+                  <FormattedMessage {...messages.projectsAdd} />
+                </Button>
+              </Can>
             </Stack>
           </Box>
           <Divider />
@@ -545,22 +570,24 @@ export function OrganizationHomePage() {
                           )}
                         </Box>
                       </ButtonBase>
-                      <IconButton
-                        aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                          name: project.displayName,
-                        })}
-                        className="project-delete-action"
-                        color="error"
-                        onClick={() => setProjectToDelete(project)}
-                        size="small"
-                        sx={{
-                          flexShrink: 0,
-                          mr: 1.5,
-                          opacity: { md: 0, xs: 1 },
-                        }}
-                      >
-                        <Trash2 size={18} />
-                      </IconButton>
+                      <Can do="DeleteProject" denied="hide">
+                        <IconButton
+                          aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                            name: project.displayName,
+                          })}
+                          className="project-delete-action"
+                          color="error"
+                          onClick={() => setProjectToDelete(project)}
+                          size="small"
+                          sx={{
+                            flexShrink: 0,
+                            mr: 1.5,
+                            opacity: { md: 0, xs: 1 },
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Can>
                     </Box>
                   ))}
                 </Stack>

@@ -1,0 +1,9 @@
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[policy_configurations.mcpauth_v1]
+gatewayhost = "mcp-e2e-gatewayhost.example.com"

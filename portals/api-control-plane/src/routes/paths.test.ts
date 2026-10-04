@@ -29,17 +29,12 @@ const API = 'api-1';
 // the ones a sidebar item can link to before its scope is known. Overview's own
 // tiers (`projectHome`, `api`) are absent deliberately: that item degrades to a
 // shallower tier instead of linking un-scoped, so those aliases don't exist.
-const PROJECT_LEVEL: [string, ProjectPathBuilder][] = [
-  ['apis', routes.apis],
-];
+const PROJECT_LEVEL: [string, ProjectPathBuilder][] = [['apis', routes.apis]];
 
 const API_LEVEL: [string, ApiPathBuilder][] = [
   ['apiDevelopPolicies', routes.apiDevelopPolicies],
-  ['apiDevelopRouting', routes.apiDevelopRouting],
   ['apiDevelopDocuments', routes.apiDevelopDocuments],
-  ['apiTestConsole', routes.apiTestConsole],
-  ['apiTestCurl', routes.apiTestCurl],
-  ['apiTestChat', routes.apiTestChat],
+  ['apiTest', routes.apiTest],
   ['apiDeploy', routes.apiDeploy],
   ['apiInsightsApi', routes.apiInsightsApi],
   ['apiInsightsCompliance', routes.apiInsightsCompliance],
@@ -90,9 +85,11 @@ describe('scope-less aliases round-trip through the scope parser', () => {
   });
 
   it.each(API_LEVEL)('%s: the scoped path still yields both handles', (_id, build) => {
-    expect(
-      getRouteParamsFromPathname(build(ORG, PROJECT, API))
-    ).toMatchObject({ apiHandler: API, orgHandle: ORG, projectHandler: PROJECT });
+    expect(getRouteParamsFromPathname(build(ORG, PROJECT, API))).toMatchObject({
+      apiHandler: API,
+      orgHandle: ORG,
+      projectHandler: PROJECT,
+    });
   });
 
   /*
@@ -113,9 +110,7 @@ describe('scope-less aliases round-trip through the scope parser', () => {
   it('an API legitimately handled "new" is unreachable, by design', () => {
     // Documents the trade-off rather than asserting a wish: the reserved segment
     // wins, so the backend must never mint `new` as an API handle.
-    expect(
-      getRouteParamsFromPathname(routes.api(ORG, PROJECT, 'new')).apiHandler
-    ).toBeUndefined();
+    expect(getRouteParamsFromPathname(routes.api(ORG, PROJECT, 'new')).apiHandler).toBeUndefined();
   });
 });
 
@@ -123,10 +118,7 @@ describe('path builders', () => {
   it('keeps every alias distinct from every other page at the same scope', () => {
     const aliases = [
       ...PROJECT_LEVEL.map(([, build]) => build(ORG, null)),
-      ...API_LEVEL.flatMap(([, build]) => [
-        build(ORG, PROJECT, null),
-        build(ORG, null, null),
-      ]),
+      ...API_LEVEL.flatMap(([, build]) => [build(ORG, PROJECT, null), build(ORG, null, null)]),
       // Pages that keep a fully-scoped path of their own.
       routes.organizationHome(ORG),
       routes.projects(ORG),
@@ -149,7 +141,7 @@ describe('path builders', () => {
     // never the Deploy page awaiting an API.
     expect(routes.apiDeploy(ORG, PROJECT, null)).not.toContain('/apis/');
     expect(routes.api(ORG, PROJECT, 'deploy')).toBe(
-      `/organizations/${ORG}/projects/${PROJECT}/apis/deploy`
+      `/organizations/${ORG}/projects/${PROJECT}/apis/deploy`,
     );
   });
 });

@@ -19,27 +19,22 @@
 import type { ReactNode } from 'react';
 import {
   Activity,
-  BellRing,
+  Braces,
   ChartColumn,
   ChartLine,
-  CircleDollarSign,
   Code,
-  ClipboardList,
   FileCheck,
   FileText,
   Gauge,
-  GitBranch,
   Home,
-  Layers,
-  MessagesSquare,
+  Megaphone,
   Network,
   Rocket,
-  Route,
   ScrollText,
   Settings,
   ShieldCheck,
-  SquareTerminal,
-  Terminal,
+  FlaskConical,
+  Box,
 } from '@wso2/oxygen-ui-icons-react';
 
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
@@ -66,18 +61,30 @@ const CLUSTER = {
   global: 'global',
 } as const;
 
+/** Escapes regex metacharacters, then turns each `:param` into a single-segment wildcard. */
+const escapeRoutePattern = (pattern: string): string =>
+  pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+');
+
 /**
- * Turns a route pattern into an anchored full-path regex: regex metacharacters
- * are escaped, then each `:param` becomes a single-segment wildcard. So
+ * Turns a route pattern into an anchored full-path regex. So
  * `/organizations/:orgHandle/projects/:projectHandler/settings` yields
  * `^/organizations/[^/]+/projects/[^/]+/settings$`.
  */
-const toRouteRegex = (pattern: string): RegExp =>
-  new RegExp(
-    `^${pattern
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`
-  );
+const toRouteRegex = (pattern: string): RegExp => new RegExp(`^${escapeRoutePattern(pattern)}$`);
+
+/**
+ * Like `toRouteRegex`, but also matches any path nested one or more segments
+ * below it — for an item whose page has its own sub-navigation one level
+ * deeper (Settings' tabs; see `SettingsLayout`/`useSettingsTabs`), so the
+ * sidebar item stays highlighted while browsing any of them.
+ */
+const toRouteRegexWithSubpaths = (pattern: string): RegExp =>
+  new RegExp(`^${escapeRoutePattern(pattern)}(?:/.*)?$`);
+
+const buildMatch = (patterns: string[], toRegex: (pattern: string) => RegExp) => {
+  const regexes = patterns.map(toRegex);
+  return (pathname: string) => regexes.some((regex) => regex.test(pathname));
+};
 
 /**
  * Builds a `match` predicate from the same `routes.*` builders an item links to,
@@ -90,10 +97,7 @@ const toRouteRegex = (pattern: string): RegExp =>
  * org/project segments at all. Deriving both from one builder makes that class
  * of drift impossible — a renamed route updates the highlight for free.
  */
-const matchRoutes = (...patterns: string[]) => {
-  const regexes = patterns.map(toRouteRegex);
-  return (pathname: string) => regexes.some((regex) => regex.test(pathname));
-};
+const matchRoutes = (...patterns: string[]) => buildMatch(patterns, toRouteRegex);
 
 /** `to` for an org-level item — always linkable inside the app shell. */
 const orgLevelTo =
@@ -115,11 +119,7 @@ const apiLevelTo =
   (build: ApiPathBuilder): NavigationDefinition['to'] =>
   ({ params }) =>
     params.orgHandle
-      ? build(
-          params.orgHandle,
-          params.projectHandler ?? null,
-          params.apiHandler ?? null
-        )
+      ? build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null)
       : undefined;
 
 /** One entry in a submenu: its own id, label, icon and page. */
@@ -163,7 +163,7 @@ const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
  *   scope resolves. Oxygen leaves an expanded parent unhighlighted by design.
  */
 const submenu = (
-  items: SubItem[]
+  items: SubItem[],
 ): Pick<NavigationDefinition, 'children' | 'match' | 'requires' | 'to'> => ({
   children: items.map(subItem),
   match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
@@ -215,30 +215,31 @@ const tierPattern = ({ level, to }: ScopeTier): string => {
  * ```tsx
  * { id: 'overview', ...adaptive([{ level: 'api', to: routes.api }, ...]) }
  * ```
+ *
+ * Pass `{ matchSubpaths: true }` for an item whose page owns its own
+ * sub-navigation one segment deeper (Settings' tabs), so `match` covers those
+ * routes too instead of only the bare tier paths.
  */
 const adaptive = (
-  tiers: ScopeTier[]
+  tiers: ScopeTier[],
+  options: { matchSubpaths?: boolean } = {},
 ): Pick<NavigationDefinition, 'match' | 'to'> => {
   const deepestFirst = [...tiers].sort(
-    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level]
+    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level],
   );
 
   return {
-    match: matchRoutes(...tiers.map(tierPattern)),
+    match: buildMatch(
+      tiers.map(tierPattern),
+      options.matchSubpaths ? toRouteRegexWithSubpaths : toRouteRegex,
+    ),
     to: ({ params }) => {
       if (!params.orgHandle) return undefined;
-      const tier = deepestFirst.find((candidate) =>
-        isLevelInScope(candidate.level, params)
-      );
-      return tier?.to(
-        params.orgHandle,
-        params.projectHandler,
-        params.apiHandler
-      );
+      const tier = deepestFirst.find((candidate) => isLevelInScope(candidate.level, params));
+      return tier?.to(params.orgHandle, params.projectHandler, params.apiHandler);
     },
   };
 };
-
 
 /**
  * Capability gating for an API-level item, applied only once an API is actually
@@ -253,7 +254,7 @@ const adaptive = (
  */
 const apiCapability =
   (
-    isSupported: (capabilities: ApiCapabilities) => boolean
+    isSupported: (capabilities: ApiCapabilities) => boolean,
   ): NonNullable<NavigationDefinition['isVisible']> =>
   ({ capabilities, isApiScope }) =>
     !isApiScope || isSupported(capabilities);
@@ -278,7 +279,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Projects',
     group: CLUSTER.place,
     order: 20,
-    icon: <Layers />,
+    icon: <Box />,
     // Inside a project this is redundant with Overview, and switching projects
     // is the header switcher's job.
     isVisible: ({ isProjectScope }) => !isProjectScope,
@@ -309,10 +310,10 @@ export const navigationRegistry: NavigationDefinition[] = [
         to: routes.apiDevelopPolicies,
       },
       {
-        icon: <Route />,
-        id: 'develop-routing',
-        label: 'Routing',
-        to: routes.apiDevelopRouting,
+        icon: <Braces />,
+        id: 'develop-definition',
+        label: 'Definition',
+        to: routes.apiDevelopDefinition,
       },
       {
         icon: <FileText />,
@@ -327,28 +328,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Test',
     group: CLUSTER.api,
     order: 40,
-    icon: <Terminal />,
+    icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
-    ...submenu([
-      {
-        icon: <SquareTerminal />,
-        id: 'test-console',
-        label: 'API Console',
-        to: routes.apiTestConsole,
-      },
-      {
-        icon: <Terminal />,
-        id: 'test-curl',
-        label: 'Curl',
-        to: routes.apiTestCurl,
-      },
-      {
-        icon: <MessagesSquare />,
-        id: 'test-chat',
-        label: 'API Chat',
-        to: routes.apiTestChat,
-      },
-    ]),
+    // A leaf, not a parent: the console, the cURL builder and the response all
+    // live on one page, so there is nothing to disclose beneath it.
+    to: apiLevelTo(routes.apiTest),
+    match: matchRoutes(...apiScopedPaths(routes.apiTest)),
   },
   {
     id: 'deploy',
@@ -392,12 +377,6 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Activity />,
     ...submenu([
       {
-        icon: <BellRing />,
-        id: 'observability-alerts',
-        label: 'Alert',
-        to: routes.apiObservabilityAlerts,
-      },
-      {
         icon: <Gauge />,
         id: 'observability-metrics',
         label: 'Metrics',
@@ -412,35 +391,17 @@ export const navigationRegistry: NavigationDefinition[] = [
     ]),
   },
   {
-    id: 'manage',
-    label: 'Manage',
+    // "Publish this API to a portal": the API-level counterpart of the org-level
+    // portal registry, which lives in the cloud-plugin sidebar as "Portals".
+    // Shows at every scope. Out of API scope it links to the scope-less alias so
+    // `PortalsPage`'s ScopeGate can walk the user down to an API.
+    id: 'publish',
+    label: 'Publish',
     group: CLUSTER.api,
-    order: 80,
-    icon: <ClipboardList />,
-    isVisible: apiCapability(({ canManage }) => canManage),
-    ...submenu([
-      {
-        icon: <CircleDollarSign />,
-        id: 'manage-monetize',
-        label: 'Monetize',
-        to: routes.apiManageMonetize,
-      },
-      {
-        icon: <GitBranch />,
-        id: 'manage-lifecycle',
-        label: 'LifeCycle',
-        to: routes.apiManageLifecycle,
-      },
-    ]),
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    group: CLUSTER.api,
-    order: 90,
-    icon: <ShieldCheck />,
-    to: apiLevelTo(routes.apiAdmin),
-    match: matchRoutes(...apiScopedPaths(routes.apiAdmin)),
+    order: 55,
+    icon: <Megaphone />,
+    to: apiLevelTo(routes.apiPortals),
+    match: matchRoutes(...apiScopedPaths(routes.apiPortals), routes.apiPortalPublish()),
   },
   {
     // The one page with no scope requirement at all, hence its own cluster.
@@ -452,9 +413,14 @@ export const navigationRegistry: NavigationDefinition[] = [
     // Follows you down one level: the organization's settings while browsing the
     // org, that project's settings once you are inside one — one pinned link at a
     // time, never both. Same page either way; only the scope it reads differs.
-    ...adaptive([
-      { level: 'project', to: routes.projectSettings },
-      { level: 'organization', to: routes.settings },
-    ]),
+    // matchSubpaths: true keeps this highlighted on Settings' own tabs (General,
+    // Subscription plans, ...), one segment below the bare route it links to.
+    ...adaptive(
+      [
+        { level: 'project', to: routes.projectSettings },
+        { level: 'organization', to: routes.settings },
+      ],
+      { matchSubpaths: true },
+    ),
   },
 ];

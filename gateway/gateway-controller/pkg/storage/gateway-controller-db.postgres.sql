@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 4
+-- Version: 5
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -64,6 +64,25 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- A2A Agents table (added in schema version 5)
+CREATE TABLE IF NOT EXISTS agents (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    -- Signed public Agent Card, produced by the controller at deploy time.
+    -- NULL when signing is disabled, or in passthrough mode. Persisted rather
+    -- than recomputed: signatures are produced only on deploy, never at startup.
+    signed_public_card TEXT,
+    -- Signed protected (extended) Agent Card, on the same terms as the public
+    -- one above. The two representations are validated, stored, and signed
+    -- independently, so an Agent may have either, both, or neither. Nothing
+    -- writes this column until card signing lands; the protected card itself
+    -- ships unsigned in its managed representation's configuration.
+    signed_protected_card TEXT,
     PRIMARY KEY (gateway_id, uuid),
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );

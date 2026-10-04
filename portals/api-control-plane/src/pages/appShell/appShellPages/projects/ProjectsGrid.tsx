@@ -23,13 +23,12 @@ import { ProjectCard } from './components/ProjectCard';
 
 type ProjectsGridProps = {
   projects: Project[];
-  orgHandle: string;
   onOpen: (project: Project) => void;
   onDelete?: (project: Project) => void;
 };
 
 /** Renders only the projects provided; paging is handled by the page. */
-export function ProjectsGrid({ projects, orgHandle, onOpen, onDelete }: ProjectsGridProps) {
+export function ProjectsGrid({ projects, onOpen, onDelete }: ProjectsGridProps) {
   return (
     <Box
       sx={{
@@ -46,13 +45,7 @@ export function ProjectsGrid({ projects, orgHandle, onOpen, onDelete }: Projects
       }}
     >
       {projects.map((project) => (
-        <ProjectCard
-          key={project.id}
-          onDelete={onDelete}
-          onOpen={onOpen}
-          orgHandle={orgHandle}
-          project={project}
-        />
+        <ProjectCard key={project.id} onDelete={onDelete} onOpen={onOpen} project={project} />
       ))}
     </Box>
   );

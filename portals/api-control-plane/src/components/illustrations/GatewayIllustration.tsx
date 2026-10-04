@@ -39,7 +39,7 @@ export function GatewayIllustration() {
       <rect fill="muted" height={32} rx={4} width={40} x={12} y={54} />
       <rect fill="background" height={5} rx={2} width={24} x={20} y={62} />
       <rect fill="background" height={5} rx={2} width={16} x={20} y={72} />
-      <path d="M52 70h24" stroke="border" strokeLinecap="round" strokeWidth={2} />
+      <path d="M52 70h24" stroke="primary" strokeLinecap="round" strokeWidth={2} />
 
       {/* The gateway itself: the one thing every call passes through. */}
       <rect fill="text-primary" height={84} rx={6} width={68} x={76} y={28} />
@@ -54,9 +54,9 @@ export function GatewayIllustration() {
       <rect fill="muted" height={4} rx={2} width={22} x={92} y={85} />
 
       {/* The fan out to the backends behind it. */}
-      <path d="M144 70h10V44h14" fill="none" stroke="border" strokeWidth={2} />
-      <path d="M144 70h24" stroke="border" strokeLinecap="round" strokeWidth={2} />
-      <path d="M144 70h10V96h14" fill="none" stroke="border" strokeWidth={2} />
+      <path d="M144 70h10V44h14" fill="none" stroke="primary" strokeWidth={2} />
+      <path d="M144 70h24" stroke="primary" strokeLinecap="round" strokeWidth={2} />
+      <path d="M144 70h10V96h14" fill="none" stroke="primary" strokeWidth={2} />
 
       {/* The backends it fronts. */}
       <rect fill="primary" height={18} rx={4} width={40} x={168} y={35} />

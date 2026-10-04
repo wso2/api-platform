@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.1.2
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
@@ -18,6 +18,9 @@ policies:
     - name: azure-content-safety-content-moderation
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
+    - name: azure-llm-cost
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/azure-llm-cost@v1
     - name: backend-jwt
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
@@ -52,35 +55,38 @@ policies:
       version: v1.0.4
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.3.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
     - name: llm-header-router
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-header-router@v0
     - name: log-message
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/log-message@v1
     - name: mcp-acl-list
-      version: v1.0.3
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.2.1
+      version: v1.4.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
-      version: v1.1.1
+      version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
-      version: v1.1.2
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
-      version: v1.0.3
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1
+    - name: mcp-spec-validation
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/mcp-spec-validation@v0
     - name: model-round-robin
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v1
@@ -97,19 +103,19 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
     - name: openai-to-anthropic-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-anthropic-transformer@v0
     - name: openai-to-azure-openai-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
     - name: openai-to-bedrock-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-gemini-transformer@v0
     - name: openai-to-mistral-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-mistral-transformer@v0
     - name: pii-masking-regex
       version: v1.0.4
@@ -139,7 +145,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/respond@v1
     - name: semantic-cache
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v1
     - name: semantic-prompt-guard
       version: v1.0.1
@@ -151,7 +157,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v1
     - name: set-headers
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
     - name: subscription-validation
       version: v1.0.3
@@ -159,6 +165,21 @@ policies:
     - name: token-based-ratelimit
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
+    - name: typesafe-jev-content-safety
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-content-safety@v0
+    - name: typesafe-jev-mcp-tool-intent-verification
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-intent-verification@v0
+    - name: typesafe-jev-mcp-tool-result-screening
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-mcp-tool-result-screening@v0
+    - name: typesafe-jev-model-routing
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-model-routing@v0
+    - name: typesafe-jev-tool-filtering
+      version: v0.8.0
+      gomodule: github.com/wso2/gateway-controllers/policies/typesafe-jev-tool-filtering@v0
     - name: url-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1

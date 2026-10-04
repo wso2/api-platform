@@ -30,19 +30,11 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import {
-  Layers,
-  LayoutGrid,
-  List,
-  Network,
-  Plus,
-  Shrub,
-  Wifi,
-  WifiOff,
-} from '@wso2/oxygen-ui-icons-react';
+import { LayoutGrid, List, Network, Plus, Shrub, Wifi, WifiOff } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -51,6 +43,7 @@ import { GatewayGridView } from './components/GatewayGridView';
 import { GatewayListView } from './components/GatewayListView';
 import { gatewayMode, gatewaySearchFields } from './utils/gatewayDisplay';
 import { groupGatewaysByEnvironment } from './utils/gatewayEnvironments';
+import { Can } from '@/permissions';
 
 /** Which hosting modes the listing is currently showing. */
 type GatewayFilter = 'all' | 'managed' | 'self';
@@ -160,6 +153,14 @@ const FILTER_MODE = {
 } as const;
 
 export function GatewaysPage() {
+  return (
+    <AppPage>
+      <GatewaysPageContent />
+    </AppPage>
+  );
+}
+
+function GatewaysPageContent() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
@@ -214,9 +215,11 @@ export function GatewaysPage() {
         {/* Hidden on first run to avoid duplicate provision actions. */}
         {!isFirstRun && (
           <PageTitle.Actions>
-            <Button onClick={provision} startIcon={<Plus />} variant="contained">
-              <FormattedMessage {...messages.provisionButton} />
-            </Button>
+            <Can do="CreateGateway" denied="disable">
+              <Button onClick={provision} startIcon={<Plus />} variant="contained">
+                <FormattedMessage {...messages.provisionButton} />
+              </Button>
+            </Can>
           </PageTitle.Actions>
         )}
       </PageTitle>
@@ -229,6 +232,7 @@ export function GatewaysPage() {
           illustration={<GatewayIllustration />}
           onAction={provision}
           title={intl.formatMessage(messages.emptyTitle)}
+          operationId="CreateGateway"
         />
       ) : (
         <Stack spacing={3}>
@@ -259,7 +263,7 @@ export function GatewaysPage() {
             </Grid>
             <Grid size={{ md: 3, xs: 6 }}>
               <StatCard
-                icon={<Layers size={24} />}
+                icon={<Shrub size={24} />}
                 iconColor="info"
                 label={intl.formatMessage(messages.statEnvironments)}
                 value={environmentCount}

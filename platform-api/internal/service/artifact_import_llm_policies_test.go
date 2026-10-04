@@ -267,3 +267,281 @@ func TestLiftAPIKeySecurity_RequiresKeyOrIn(t *testing.T) {
 		}
 	})
 }
+
+// globalAPIKeyAuth builds an api-level api-key-auth attachment, the shape
+// mapGlobalPoliciesAPIToLLMPolicies produces from spec.globalPolicies.
+func globalAPIKeyAuth(key string) model.LLMPolicy {
+	return model.LLMPolicy{
+		Name:    importPolicyAPIKeyAuth,
+		Version: "v1",
+		Paths: []model.LLMPolicyPath{{
+			Path:    "/*",
+			Methods: []string{"*"},
+			Params:  map[string]interface{}{"key": key, "in": "header"},
+		}},
+	}
+}
+
+// scopedAPIKeyAuth builds a resource-scoped api-key-auth attachment, the shape
+// mapOperationPoliciesAPIToLLMPolicies produces from spec.operationPolicies.
+func scopedAPIKeyAuth(key, path string, methods ...string) model.LLMPolicy {
+	return model.LLMPolicy{
+		Name:    importPolicyAPIKeyAuth,
+		Version: "v1",
+		Paths: []model.LLMPolicyPath{{
+			Path:    path,
+			Methods: methods,
+			Params:  map[string]interface{}{"key": key, "in": "header"},
+		}},
+	}
+}
+
+// findPolicy returns the first policy with the given name, or nil.
+func findPolicy(policies []model.LLMPolicy, name string) *model.LLMPolicy {
+	for i := range policies {
+		if policies[i].Name == name {
+			return &policies[i]
+		}
+	}
+	return nil
+}
+
+// TestLiftLLMPolicies_APIKeyAuthScope pins the scope rule for api-key-auth: an
+// api-level attachment becomes first-class Security, a resource-scoped one stays a
+// policy. Before this was enforced, a resource-scoped attachment was lifted with its
+// path/method binding dropped — reporting an api-wide key the gateway never enforced —
+// and, when both scopes were present, the plain `security = s` overwrite let the
+// resource-scoped one silently replace the genuine api-level one.
+func TestLiftLLMPolicies_APIKeyAuthScope(t *testing.T) {
+	// liftRateLimits is irrelevant to api-key-auth, so both provider (true) and
+	// proxy (false) importers must behave identically here.
+	for _, liftRateLimits := range []bool{true, false} {
+		name := "proxy"
+		if liftRateLimits {
+			name = "provider"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Run("api-level attachment is lifted to Security", func(t *testing.T) {
+				security, _, remaining := liftLLMPolicies(
+					[]model.LLMPolicy{globalAPIKeyAuth("X-API-Key")}, liftRateLimits)
+
+				if security == nil || security.APIKey == nil {
+					t.Fatalf("expected Security to be reconstructed, got %+v", security)
+				}
+				if got := security.APIKey.Key; got != "X-API-Key" {
+					t.Errorf("security.APIKey.Key = %q, want %q", got, "X-API-Key")
+				}
+				if p := findPolicy(remaining, importPolicyAPIKeyAuth); p != nil {
+					t.Errorf("api-level api-key-auth leaked into remaining: %+v", p)
+				}
+			})
+
+			t.Run("resource-scoped attachment stays a policy", func(t *testing.T) {
+				security, _, remaining := liftLLMPolicies(
+					[]model.LLMPolicy{scopedAPIKeyAuth("X-Resource-API-Key", "/models", "GET")},
+					liftRateLimits)
+
+				if security != nil {
+					t.Fatalf("resource-scoped api-key-auth must not become api-wide Security, got %+v", security)
+				}
+				p := findPolicy(remaining, importPolicyAPIKeyAuth)
+				if p == nil {
+					t.Fatal("resource-scoped api-key-auth was dropped; want it preserved as a policy")
+				}
+				if len(p.Paths) != 1 || p.Paths[0].Path != "/models" {
+					t.Fatalf("path binding not preserved: %+v", p.Paths)
+				}
+				if got := p.Paths[0].Methods; len(got) != 1 || got[0] != "GET" {
+					t.Errorf("methods = %v, want [GET]", got)
+				}
+				if got := asString(p.Paths[0].Params["key"]); got != "X-Resource-API-Key" {
+					t.Errorf("params.key = %q, want %q", got, "X-Resource-API-Key")
+				}
+			})
+
+			t.Run("both scopes: neither overwrites the other", func(t *testing.T) {
+				// Ordered as mapLLMProviderSpecToConfig builds liftInput:
+				// globalPolicies first, then operationPolicies.
+				security, _, remaining := liftLLMPolicies([]model.LLMPolicy{
+					globalAPIKeyAuth("X-API-Key"),
+					scopedAPIKeyAuth("X-Resource-API-Key", "/models", "GET"),
+				}, liftRateLimits)
+
+				if security == nil || security.APIKey == nil {
+					t.Fatalf("expected the api-level attachment to be lifted, got %+v", security)
+				}
+				if got := security.APIKey.Key; got != "X-API-Key" {
+					t.Errorf("security.APIKey.Key = %q, want the api-level %q — the "+
+						"resource-scoped attachment must not overwrite it", got, "X-API-Key")
+				}
+				p := findPolicy(remaining, importPolicyAPIKeyAuth)
+				if p == nil {
+					t.Fatal("resource-scoped api-key-auth was dropped")
+				}
+				if len(p.Paths) != 1 || p.Paths[0].Path != "/models" {
+					t.Fatalf("resource-scoped paths = %+v, want only /models", p.Paths)
+				}
+				if got := asString(p.Paths[0].Params["key"]); got != "X-Resource-API-Key" {
+					t.Errorf("resource-scoped params.key = %q, want %q", got, "X-Resource-API-Key")
+				}
+			})
+
+			t.Run("one policy carrying both scopes is split", func(t *testing.T) {
+				// A legacy `spec.policies` entry may list an api-level path and a
+				// resource path under one policy; each half must go to its own home.
+				security, _, remaining := liftLLMPolicies([]model.LLMPolicy{{
+					Name:    importPolicyAPIKeyAuth,
+					Version: "v1",
+					Paths: []model.LLMPolicyPath{
+						{Path: "/*", Methods: []string{"*"},
+							Params: map[string]interface{}{"key": "X-API-Key", "in": "header"}},
+						{Path: "/models", Methods: []string{"GET"},
+							Params: map[string]interface{}{"key": "X-Resource-API-Key", "in": "header"}},
+					},
+				}}, liftRateLimits)
+
+				if security == nil || security.APIKey == nil || security.APIKey.Key != "X-API-Key" {
+					t.Fatalf("api-level half not lifted to Security: %+v", security)
+				}
+				p := findPolicy(remaining, importPolicyAPIKeyAuth)
+				if p == nil {
+					t.Fatal("resource-scoped half was dropped")
+				}
+				if len(p.Paths) != 1 || p.Paths[0].Path != "/models" {
+					t.Fatalf("remaining paths = %+v, want only the resource-scoped /models entry", p.Paths)
+				}
+			})
+
+			t.Run("/* with explicit methods is resource-scoped", func(t *testing.T) {
+				// splitLegacyPoliciesForRead treats "/*" with non-wildcard methods as
+				// an operation policy; the lift must agree, or the entry would be
+				// lifted here yet expected in operationPolicies on read.
+				security, _, remaining := liftLLMPolicies(
+					[]model.LLMPolicy{scopedAPIKeyAuth("X-Post-Key", "/*", "POST")}, liftRateLimits)
+
+				if security != nil {
+					t.Fatalf("\"/*\" + [POST] is not api-level; got Security %+v", security)
+				}
+				if findPolicy(remaining, importPolicyAPIKeyAuth) == nil {
+					t.Fatal("entry was dropped instead of kept as a policy")
+				}
+			})
+		})
+	}
+}
+
+// TestLiftLLMPolicies_APIKeyAuthScopeSurvivesReadSplit closes the loop: a
+// resource-scoped api-key-auth left in the policy list by the lift must land in
+// operationPolicies (not globalPolicies) when the stored list is split for a read
+// response, so the UI renders it against its own resource.
+func TestLiftLLMPolicies_APIKeyAuthScopeSurvivesReadSplit(t *testing.T) {
+	security, _, remaining := liftLLMPolicies([]model.LLMPolicy{
+		globalAPIKeyAuth("X-API-Key"),
+		scopedAPIKeyAuth("X-Resource-API-Key", "/models", "GET"),
+	}, true)
+
+	if security == nil || security.APIKey == nil || security.APIKey.Key != "X-API-Key" {
+		t.Fatalf("api-level attachment not lifted: %+v", security)
+	}
+
+	global, operation := splitLegacyPoliciesForRead(remaining)
+
+	for _, p := range global {
+		if p.Name == importPolicyAPIKeyAuth {
+			t.Errorf("resource-scoped api-key-auth surfaced as a global policy: %+v", p)
+		}
+	}
+	var found *model.OperationPolicy
+	for i := range operation {
+		if operation[i].Name == importPolicyAPIKeyAuth {
+			found = &operation[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("resource-scoped api-key-auth did not surface in operationPolicies")
+	}
+	if len(found.Paths) != 1 || found.Paths[0].Path != "/models" {
+		t.Fatalf("operation policy paths = %+v, want only /models", found.Paths)
+	}
+}
+
+// TestAPIKeyAuthScope_RoundTrip drives a provider carrying BOTH an api-level
+// api-key-auth (via the first-class Security field) and a resource-scoped one (as an
+// operation policy) through the real CP->DP forward conversion and back through the
+// DP->CP import, asserting each lands in its own home. This is the end-to-end guard:
+// the unit tests above pin liftLLMPolicies, this pins the whole pipeline the gateway
+// artifact actually travels.
+func TestAPIKeyAuthScope_RoundTrip(t *testing.T) {
+	provider := &model.LLMProvider{
+		ID:      "api-key-scope-provider",
+		Name:    "API Key Scope Provider",
+		Version: "v1.0",
+		Configuration: model.LLMProviderConfig{
+			Upstream: &model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "https://api.openai.com"}},
+			// api-level: becomes a global api-key-auth policy on the wire.
+			Security: &model.SecurityConfig{
+				Enabled: bptr(true),
+				APIKey:  &model.APIKeySecurity{Enabled: bptr(true), Key: "X-API-Key", In: "header"},
+			},
+			// resource-scoped: stays an operation policy on the wire.
+			OperationPolicies: []model.OperationPolicy{{
+				Name:    importPolicyAPIKeyAuth,
+				Version: "v1",
+				Paths: []model.OperationPolicyPath{{
+					Path:    "/models",
+					Methods: []string{"GET"},
+					Params:  map[string]interface{}{"key": "X-Resource-API-Key", "in": "header"},
+				}},
+			}},
+		},
+	}
+
+	yamlDoc, err := generateLLMProviderDeploymentYAML(provider, "openai")
+	if err != nil {
+		t.Fatalf("generateLLMProviderDeploymentYAML: %v", err)
+	}
+	yamlBytes, err := yaml.Marshal(yamlDoc)
+	if err != nil {
+		t.Fatalf("marshal forward YAML: %v", err)
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(yamlBytes, &doc); err != nil {
+		t.Fatalf("unmarshal forward YAML: %v", err)
+	}
+	specMap, _ := doc["spec"].(map[string]interface{})
+	if specMap == nil {
+		t.Fatal("forward YAML missing spec block")
+	}
+	var spec dto.LLMProviderDeploymentSpec
+	if err := utils.DecodeSpec(specMap, &spec); err != nil {
+		t.Fatalf("DecodeSpec: %v", err)
+	}
+
+	cfg := mapLLMProviderSpecToConfig(spec)
+
+	// The api-level attachment is the one — and the only one — that becomes Security.
+	if cfg.Security == nil || cfg.Security.APIKey == nil {
+		t.Fatalf("api-level api-key-auth not reconstructed into Security: %+v", cfg.Security)
+	}
+	if got := cfg.Security.APIKey.Key; got != "X-API-Key" {
+		t.Errorf("security.APIKey.Key = %q, want the api-level %q", got, "X-API-Key")
+	}
+
+	// The resource-scoped one surfaces as an operation policy, binding intact.
+	_, operation := splitLegacyPoliciesForRead(cfg.Policies)
+	var scoped *model.OperationPolicy
+	for i := range operation {
+		if operation[i].Name == importPolicyAPIKeyAuth {
+			scoped = &operation[i]
+		}
+	}
+	if scoped == nil {
+		t.Fatalf("resource-scoped api-key-auth missing from operation policies: %+v", operation)
+	}
+	if len(scoped.Paths) != 1 || scoped.Paths[0].Path != "/models" {
+		t.Fatalf("operation policy paths = %+v, want only /models", scoped.Paths)
+	}
+	if got := asString(scoped.Paths[0].Params["key"]); got != "X-Resource-API-Key" {
+		t.Errorf("operation policy params.key = %q, want %q", got, "X-Resource-API-Key")
+	}
+}

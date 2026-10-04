@@ -99,6 +99,8 @@ func newObjectListSameType(template client.ObjectList) client.ObjectList {
 		return &apiv1.LlmProxyList{}
 	case *apiv1.McpList:
 		return &apiv1.McpList{}
+	case *apiv1.AgentList:
+		return &apiv1.AgentList{}
 	case *apiv1.ManagedSecretList:
 		return &apiv1.ManagedSecretList{}
 	case *apiv1.CertificateList:
@@ -140,6 +142,12 @@ func extractItems(list client.ObjectList) []client.Object {
 		}
 		return out
 	case *apiv1.McpList:
+		out := make([]client.Object, 0, len(v.Items))
+		for i := range v.Items {
+			out = append(out, &v.Items[i])
+		}
+		return out
+	case *apiv1.AgentList:
 		out := make([]client.Object, 0, len(v.Items))
 		for i := range v.Items {
 			out = append(out, &v.Items[i])

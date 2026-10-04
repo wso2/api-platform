@@ -40,6 +40,7 @@ import {
   deploymentsForGateway,
   nextDeploymentName,
 } from '../utils/gatewayDeployUtils';
+import { Can } from '@/permissions/Can';
 
 const messages = defineMessages({
   active: {
@@ -199,22 +200,24 @@ export function GatewayDeployCard({
           </Box>
           <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5 }}>
             <Box component="span" onClick={(event) => event.stopPropagation()}>
-              <Button
-                color="primary"
-                disabled={!isActive || deployMutation.isPending}
-                onClick={handleDeploy}
-                size="small"
-                startIcon={
-                  deployMutation.isPending ? (
-                    <CircularProgress color="inherit" size={14} />
-                  ) : undefined
-                }
-                variant="contained"
-              >
-                <FormattedMessage
-                  {...(deployMutation.isPending ? messages.deploying : messages.deploy)}
-                />
-              </Button>
+              <Can do="DeployAPI" denied="disable">
+                <Button
+                  color="primary"
+                  disabled={!isActive || deployMutation.isPending}
+                  onClick={handleDeploy}
+                  size="small"
+                  startIcon={
+                    deployMutation.isPending ? (
+                      <CircularProgress color="inherit" size={14} />
+                    ) : undefined
+                  }
+                  variant="contained"
+                >
+                  <FormattedMessage
+                    {...(deployMutation.isPending ? messages.deploying : messages.deploy)}
+                  />
+                </Button>
+              </Can>
             </Box>
             <ChevronDown
               size={20}

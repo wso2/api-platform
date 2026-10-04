@@ -34,7 +34,9 @@ import (
 // version of each CRD shares an identical OpenAPI schema.
 //
 // The operator ships its CRDs (kubernetes/helm/operator-helm-chart/crds/) serving
-// v1 (storage) and v1alpha1 (served) with conversion strategy None — a multi-version
+// v1 (storage) and v1alpha1 (served) with conversion strategy None. Kinds
+// introduced after the v1 promotion (Agent) are served as v1 only and are
+// skipped below, since a single-version CRD has nothing to compare — a multi-version
 // CRD with no explicit spec.conversion block defaults to None at the API server.
 // "None" performs NO field transformation between versions — the API server only
 // relabels apiVersion on read/write. That is safe ONLY while the v1 (storage)

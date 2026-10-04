@@ -34,6 +34,10 @@ var browserSafeKeys = []string{
 	// Identity of the deployment. auth.mode is not listed: buildRuntimeConfig
 	// always emits it from the parsed cfg.Auth.Mode instead.
 	"default_org_region",
+	"api_portal_enabled",
+	// Identity providers a login page may offer directly, as JSON. Empty means the
+	// IDP owns the provider choice, which is the default.
+	"login_identity_providers",
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",
 	"logging.browser_debug",
@@ -48,6 +52,7 @@ var browserSafeKeys = []string{
 	"auth.claim_mappings.organization",
 	"auth.claim_mappings.org_name",
 	"auth.claim_mappings.org_handle",
+	"auth.claim_mappings.organizations",
 
 	// External links and SPA-only endpoints
 	"dev_portal_base_url",
@@ -92,6 +97,13 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// src/config.env.ts), so there is no runtime value that could disagree with the
 	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
+
+	// Whether the BFF has a billing upstream, as a bare boolean — the URL itself is
+	// never browser-safe. The SPA only needs to know that the same-origin
+	// <base>/proxy/billing route exists before it calls it.
+	if cfg.ControlPlane.BillingURL != "" {
+		out[runtimeKey("billing_proxy_enabled")] = "true"
+	}
 
 	return out
 }

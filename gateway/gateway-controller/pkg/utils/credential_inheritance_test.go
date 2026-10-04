@@ -253,7 +253,7 @@ func TestInheritLLMProviderCredential(t *testing.T) {
 func TestInheritLLMProxyCredentials(t *testing.T) {
 	stored := func() api.LLMProxyConfiguration {
 		var cfg api.LLMProxyConfiguration
-		cfg.Spec.Provider = api.LLMProxyProvider{
+		cfg.Spec.Provider = &api.LLMProxyProvider{
 			Id:   "openai-provider",
 			Auth: &api.LLMUpstreamAuth{Type: "api-key", Header: sp("Authorization"), Value: sp(storedCred)},
 		}
@@ -267,7 +267,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 	t.Run("primary provider auth omitted is inherited", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{Id: "openai-provider"}
+		incoming.Spec.Provider = &api.LLMProxyProvider{Id: "openai-provider"}
 
 		inheritLLMProxyCredentials(&incoming, stored())
 
@@ -279,7 +279,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 	// additionalProviders list still inherits the right credential.
 	t.Run("additional providers inherit by id, not position", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{Id: "openai-provider"}
+		incoming.Spec.Provider = &api.LLMProxyProvider{Id: "openai-provider"}
 		reordered := []api.LLMProxyAdditionalProvider{
 			{Id: "gemini-provider"},
 			{Id: "anthropic-provider"},
@@ -297,7 +297,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 	t.Run("an unknown additional provider id inherits nothing", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{Id: "openai-provider"}
+		incoming.Spec.Provider = &api.LLMProxyProvider{Id: "openai-provider"}
 		fresh := []api.LLMProxyAdditionalProvider{{Id: "brand-new-provider"}}
 		incoming.Spec.AdditionalProviders = &fresh
 
@@ -308,7 +308,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 	t.Run("changed auth type on the primary provider inherits nothing", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{
+		incoming.Spec.Provider = &api.LLMProxyProvider{
 			Id:   "openai-provider",
 			Auth: &api.LLMUpstreamAuth{Type: "other"},
 		}
@@ -320,7 +320,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 	t.Run("type none on the primary provider removes auth", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{
+		incoming.Spec.Provider = &api.LLMProxyProvider{
 			Id:   "openai-provider",
 			Auth: &api.LLMUpstreamAuth{Type: "none"},
 		}
@@ -334,7 +334,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 	// provider must not carry the previous provider's credential across.
 	t.Run("repointed primary provider inherits nothing", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{Id: "a-different-provider"}
+		incoming.Spec.Provider = &api.LLMProxyProvider{Id: "a-different-provider"}
 
 		inheritLLMProxyCredentials(&incoming, stored())
 
@@ -344,7 +344,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 	t.Run("repointed primary provider with an empty value inherits nothing", func(t *testing.T) {
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{
+		incoming.Spec.Provider = &api.LLMProxyProvider{
 			Id:   "a-different-provider",
 			Auth: &api.LLMUpstreamAuth{Type: "api-key"},
 		}
@@ -359,7 +359,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 		params := map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token", "clientSecret": storedCred}
 		storedOAuth2 := func() api.LLMProxyConfiguration {
 			var cfg api.LLMProxyConfiguration
-			cfg.Spec.Provider = api.LLMProxyProvider{
+			cfg.Spec.Provider = &api.LLMProxyProvider{
 				Id:   "openai-provider",
 				Auth: &api.LLMUpstreamAuth{Type: "oauth2", PolicyParams: &params},
 			}
@@ -367,7 +367,7 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 		}
 
 		var incoming api.LLMProxyConfiguration
-		incoming.Spec.Provider = api.LLMProxyProvider{Id: "openai-provider"}
+		incoming.Spec.Provider = &api.LLMProxyProvider{Id: "openai-provider"}
 
 		inheritLLMProxyCredentials(&incoming, storedOAuth2())
 

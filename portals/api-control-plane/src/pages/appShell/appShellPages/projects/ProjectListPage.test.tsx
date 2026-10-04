@@ -19,8 +19,8 @@
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ApiScopeProvider } from '../../../../api/core/ApiScopeProvider';
-import { resetHttpClient } from '../../../../api/core/http';
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
+import { resetHttpClient } from '@/api/core/http';
 import {
   aProject,
   collection,
@@ -29,10 +29,11 @@ import {
   recorder,
   type ProjectFixture,
   type Recorder,
-} from '../../../../test/msw';
-import { server } from '../../../../test/server';
-import { renderWithProviders, screen, waitFor, within } from '../../../../test/utils';
-import { makeConsoleScope } from '../../../../test/mockScope';
+} from '@/test/msw';
+import { server } from '@/test/server';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
+import { makeConsoleScope } from '@/test/mockScope';
+import { routes } from '@/routes/paths';
 import { ProjectListPage } from './ProjectListPage';
 
 const ORG = 'api-platform-demo';
@@ -62,11 +63,15 @@ function renderPage() {
     <ApiScopeProvider orgId={ORG}>
       <Routes>
         <Route path="/organizations/:orgHandle/projects" element={<ProjectListPage />} />
+        {/* Stands in for the project home, so opening a project is observable. */}
+        <Route path={routes.projectHome()} element={<div>project home</div>} />
       </Routes>
     </ApiScopeProvider>,
     {
       route: `/organizations/${ORG}/projects`,
-      scope: makeConsoleScope(),
+      // Org-level, like the route: no project handle, so the breadcrumb trail
+      // stays empty instead of naming a project the list is also showing.
+      scope: makeConsoleScope({ params: { orgHandle: ORG, projectHandler: undefined } }),
     },
   );
 }
@@ -123,24 +128,16 @@ describe('ProjectListPage', () => {
     expect(screen.getByText('Internal Tools')).toBeInTheDocument();
   });
 
-  it('defaults to newest-first and sends the chosen order to the server', async () => {
+  it('requests projects newest-first', async () => {
     server.use(collection('/projects', projectFixtures, { record: requests }));
-    const { user } = renderPage();
+    renderPage();
 
     await screen.findByText('Retail APIs');
     expect(requests.last()?.params.get('sortBy')).toBe('createdAt');
     expect(requests.last()?.params.get('sortOrder')).toBe('desc');
-
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Name (A–Z)' }));
-
-    await waitFor(() => {
-      expect(requests.last()?.params.get('sortBy')).toBe('name');
-      expect(requests.last()?.params.get('sortOrder')).toBe('asc');
-    });
   });
 
-  it('returns to the first page when the sort order changes', async () => {
+  it('returns to the first page when the search changes', async () => {
     server.use(collection('/projects', manyProjects, { record: requests }));
     const { user } = renderPage();
 
@@ -148,8 +145,7 @@ describe('ProjectListPage', () => {
     await user.click(screen.getByRole('button', { name: /next page/i }));
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('12'));
 
-    await user.click(screen.getByRole('combobox', { name: 'Sort by' }));
-    await user.click(screen.getByRole('option', { name: 'Oldest first' }));
+    await user.type(screen.getByPlaceholderText('Search projects'), 'Project 1');
 
     await waitFor(() => expect(requests.last()?.params.get('offset')).toBe('0'));
   });
@@ -167,6 +163,59 @@ describe('ProjectListPage', () => {
     expect(await screen.findByText('Project 13')).toBeInTheDocument();
   });
 
+  it('shows only cards without a heading count, sorting, or view controls', async () => {
+    server.use(collection('/projects', projectFixtures));
+    renderPage();
+    await screen.findByText('Retail APIs');
+    expect(screen.queryByLabelText('2 projects')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'List view' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Grid view' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Sort by')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Project actions' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Projects per page')).not.toBeInTheDocument();
+  });
+
+  it('opens a project from the keyboard', async () => {
+    // Pointer users get the whole card/row as the target; without an explicit
+    // focusable role, keyboard users had no way in at all — the delete button
+    // was the only thing in a row they could reach.
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    const card = screen.getByRole('button', { name: 'Open Retail APIs' });
+    card.focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByText('project home')).toBeInTheDocument();
+  });
+
+  it('opens a project from a card with Space', async () => {
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    const row = screen.getByRole('button', { name: 'Open Retail APIs' });
+    row.focus();
+    await user.keyboard(' ');
+
+    expect(await screen.findByText('project home')).toBeInTheDocument();
+  });
+
+  it('leaves the card alone when the delete button takes the keypress', async () => {
+    // The delete button's key events bubble through the row, so Enter on it
+    // must open the confirm dialog and not also navigate into the project.
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    screen.getByRole('button', { name: 'Delete Retail APIs' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('project home')).not.toBeInTheDocument();
+  });
+
   it('deletes a project after type-to-confirm', async () => {
     server.use(
       collection('/projects', projectFixtures),
@@ -175,9 +224,7 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    // Open the actions menu on the first card (Retail APIs) and choose Delete.
-    await user.click(screen.getAllByLabelText('Project actions')[0]);
-    await user.click(screen.getByRole('menuitem', { name: /Delete/ }));
+    await user.click(screen.getByRole('button', { name: 'Delete Retail APIs' }));
 
     // Type-to-confirm guards the irreversible delete.
     const dialog = screen.getByRole('dialog');

@@ -25,7 +25,7 @@ package config
 // rather than introducing a second convention the frontend would need to
 // learn.
 //
-// Every backend call the SPA makes must go through this BFF's same-origin
+// Authenticated backend calls go through this BFF's same-origin
 // proxy — the browser never holds a token — so platformApiBaseUrl is always
 // forced to the configured proxy prefix, never the upstream's real URL.
 func buildRuntimeConfig(cfg *Config) map[string]string {
@@ -34,16 +34,29 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		"platformApiBaseUrl": cfg.ControlPlane.ProxyPrefix,
 	}
 
+	// The public Policy Hub needs no credentials and is called directly by the SPA.
+	if cfg.PolicyHub.BaseURL != "" {
+		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
+	}
+
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
 	// ProductActivation can call it (same-origin, via /proxy/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults
 	// false client-side) for every deployment that doesn't configure one —
 	// every standalone deployment today.
 	for _, u := range cfg.ControlPlane.Upstreams {
-		if u.Name == "billing" {
+		switch u.Name {
+		case "billing":
 			out["billingProxyEnabled"] = "true"
-			break
+		case "cloud":
+			out["cloudProxyEnabled"] = "true"
 		}
+	}
+
+	// Moesif wrap/basic iframe origin for cloud Insights embeds. Emitted
+	// explicitly so the SPA never guesses from environmentName.
+	if cfg.ControlPlane.MoesifAppURL != "" {
+		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
 	}
 
 	return out

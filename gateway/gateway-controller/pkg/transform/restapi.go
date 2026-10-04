@@ -108,6 +108,15 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
+	// An MCP proxy carries every logical operation — tools/call, tools/list,
+	// server/discover — on one POST endpoint, so that route's policy chain is selected
+	// by a resolver reading the request rather than by the route name. Decided once
+	// here; applied to that single route below. False for every other kind.
+	mcpResolved, err := mcpResolutionApplies(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
 	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
 	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
@@ -124,7 +133,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build main upstream cluster
-	mainUpstream, err := t.addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainUpstream, err := addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
@@ -156,7 +165,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Determine auto host rewrite for main upstream
 	mainAutoHostRewrite := true
-	if apiData.Upstream.Main.HostRewrite != nil && *apiData.Upstream.Main.HostRewrite == api.Manual {
+	if apiData.Upstream.Main.HostRewrite != nil && *apiData.Upstream.Main.HostRewrite == api.UpstreamHostRewriteManual {
 		mainAutoHostRewrite = false
 	}
 
@@ -229,10 +238,20 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
+			// MCP POST routes use a resolver-generated chain key instead of the route key.
+			// The resolver and transformer must build the same key for policy-chain lookup.
+			// ResolverConfig and CanonicalChainKey are not needed for this resolver.
+			chainKey := routeKey
+			resolverBearing := mcpResolved && isMCPMultiplexedRoute(method, opPath)
+			if resolverBearing {
+				rdcRoute.ResolverName = MCPResolverName
+				chainKey = rdc.ChainKeyFor(vhost, mcpResolverOperation)
+			}
+
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
-			rdc.PolicyChains[routeKey] = sdkChainToModel(injected)
+			rdc.PolicyChains[chainKey] = sdkChainToModel(injected)
 		}
 	}
 
@@ -293,14 +312,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Add sandbox upstream and update sandbox routes if present
 	if hasSandbox {
-		sbUpstream, err := t.addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+		sbUpstream, err := addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
 		sbUpstreamInfo := sbUpstream.UpstreamInfo()
 
 		sbAutoHostRewrite := true
-		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.Manual {
+		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.UpstreamHostRewriteManual {
 			sbAutoHostRewrite = false
 		}
 
@@ -403,17 +422,33 @@ func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *m
 // appear more than once at the API level (e.g. an LLM provider attaching two set-headers
 // guardrails), and each occurrence must be preserved rather than collapsed to the last one.
 func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) []policyenginev1.PolicyInstance {
+	return resolvePolicyInstances(t.policyDefinitions, t.latestVersions, policies, policyv1alpha.LevelAPI)
+}
+
+// resolvePolicyInstances resolves one attachment scope's policies to SDK instances,
+// preserving spec order and dropping (with a log line) any whose version cannot be
+// resolved. It is a free function rather than a method because every kind's
+// transformer does exactly this over its own scopes — an Agent has three of them
+// (operation-common, per-operation, public Agent Card) and no api.RestAPI to hang
+// them off — and a second copy of the resolve-or-drop rule is how the two drift.
+func resolvePolicyInstances(
+	definitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	policies *[]api.Policy,
+	level policyv1alpha.Level,
+) []policyenginev1.PolicyInstance {
 	var result []policyenginev1.PolicyInstance
 	if policies == nil {
 		return result
 	}
 	for _, p := range *policies {
-		resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, p.Name, p.Version)
+		resolved, err := config.ResolvePolicyVersion(definitions, latestVersions, p.Name, p.Version)
 		if err != nil {
-			slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
+			slog.Error("Failed to resolve policy version",
+				"policy_name", p.Name, "attached_to", string(level), "error", err)
 			continue
 		}
-		result = append(result, convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
+		result = append(result, convertAPIPolicyToSDK(p, level, versionutil.MajorVersion(resolved)))
 	}
 	return result
 }
@@ -429,16 +464,8 @@ func (t *RestAPITransformer) buildPolicyChain(
 	result = append(result, apiPolicies...)
 
 	// Operation-level policies
-	if opPolicies != nil {
-		for _, opPol := range *opPolicies {
-			resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, opPol.Name, opPol.Version)
-			if err != nil {
-				slog.Error("Failed to resolve operation-level policy version", "policy_name", opPol.Name, "error", err)
-				continue
-			}
-			result = append(result, convertAPIPolicyToSDK(opPol, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
-		}
-	}
+	result = append(result,
+		resolvePolicyInstances(t.policyDefinitions, t.latestVersions, opPolicies, policyv1alpha.LevelRoute)...)
 
 	return result
 }
@@ -468,7 +495,14 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 }
 
 // addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
-func (t *RestAPITransformer) addUpstreamCluster(
+//
+// A free function rather than a transformer method: it reads nothing from the
+// transformer, and every kind resolves its upstream the same way. The Agent
+// transformer calls it directly so that an Agent's cluster key, base path, Envoy
+// cluster name and TLS flag are derived by the identical code path as a REST API's
+// — those four values are what the route rewrite and the policy engine's
+// default-upstream both key off.
+func addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,
 	up *api.Upstream,

@@ -20,6 +20,7 @@ package analytics
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -711,10 +712,22 @@ func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
 	require.NotNil(t, event.Latencies)
 	assert.True(t, event.Latencies.BackendLatency >= 0)
 
+	// Total request duration (DS_RX_BEG → DS_TX_END). None of the other four is a
+	// substitute: ResponseLatency starts at the first upstream response byte, so a
+	// percentile computed from it measures the response phase rather than what the
+	// caller waited.
+	assert.Equal(t, int64(250), event.Latencies.Duration)        // 250ms
+	assert.Equal(t, int64(100), event.Latencies.BackendLatency)  // 200ms - 100ms
+	assert.Equal(t, int64(100), event.Latencies.ResponseLatency) // 250ms - 150ms
+
 	// Traffic-log latencies are computed in microseconds from the same timepoints.
 	require.NotNil(t, event.TrafficLogLatencies)
 	assert.Equal(t, int64(250000), event.TrafficLogLatencies.DurationUs)               // DS_RX_BEG → DS_TX_END = 250ms
 	assert.Equal(t, int64(50000), event.TrafficLogLatencies.RequestMediationLatencyUs) // 100ms - 50ms
+
+	// The millisecond and microsecond paths describe the same span, so they must not
+	// be able to drift apart.
+	assert.Equal(t, event.Latencies.Duration*1000, event.TrafficLogLatencies.DurationUs)
 }
 
 func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
@@ -1310,5 +1323,124 @@ func createLogEntryWithStreamID(streamID string) *v3.HTTPAccessLogEntry {
 		Response: &v3.HTTPResponseProperties{
 			ResponseCode: wrapperspb.UInt32(200),
 		},
+	}
+}
+
+// The concrete request path is the only record of what a client actually asked
+// for: the route template groups requests for an operation, and for a request
+// that matched no route there is no template at all. The query string is cut off
+// here rather than at each publisher, because an API key or token in a query
+// parameter is an ordinary pattern in this product and publishers forward
+// analytics to third parties.
+func TestPrepareAnalyticEvent_RequestPathDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		path string
+		want interface{} // nil = the property must be absent
+	}{
+		"no query":              {"/petstore/pet/12345", "/petstore/pet/12345"},
+		"single param":          {"/petstore/pet/12345?apikey=secret", "/petstore/pet/12345"},
+		"multiple params":       {"/search?q=cat&token=abc123&page=2", "/search"},
+		"empty query":           {"/petstore/pet/12345?", "/petstore/pet/12345"},
+		"query only":            {"?apikey=secret", nil},
+		"root":                  {"/", "/"},
+		"absent path":           {"", nil},
+		"encoded question mark": {"/pet/a%3Fb", "/pet/a%3Fb"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+			actual, present := event.Properties[constants.RequestPathPropertyKey]
+
+			if tc.want == nil {
+				if present {
+					t.Errorf("%s = %v; want absent", constants.RequestPathPropertyKey, actual)
+				}
+				return
+			}
+			if !present {
+				t.Fatalf("%s is missing for path %q", constants.RequestPathPropertyKey, tc.path)
+			}
+			if actual != tc.want {
+				t.Errorf("%s = %v, want %v", constants.RequestPathPropertyKey, actual, tc.want)
+			}
+		})
+	}
+}
+
+// APIResourceTemplate comes from Envoy's original_path (the pre-rewrite :path,
+// which every proxied route here produces via context-path stripping), so it
+// carries the client's query string just as Path does. It reaches http.route on
+// the OTel publisher, the Moesif uri and the traffic-log path, so it is cut at
+// this same single point rather than at each of them.
+func TestPrepareAnalyticEvent_APIResourceTemplateDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		originalPath string
+		path         string
+		want         string
+	}{
+		"no query":              {"/petstore/pet/12345", "/pet/12345", "/petstore/pet/12345"},
+		"single param":          {"/petstore/pet/12345?apikey=secret", "/pet/12345", "/petstore/pet/12345"},
+		"multiple params":       {"/search?q=cat&token=abc123", "/search", "/search"},
+		"empty query":           {"/petstore/pet?", "/pet", "/petstore/pet"},
+		"query only":            {"?apikey=secret", "/pet", ""},
+		"absent original path":  {"", "/pet/12345", ""},
+		"encoded question mark": {"/pet/a%3Fb", "/a%3Fb", "/pet/a%3Fb"},
+		// The reviewer's case: the rewritten Path is clean while the pre-rewrite
+		// OriginalPath still carries the credential.
+		"query only on original path": {"/petstore/pet?apikey=secret", "/pet", "/petstore/pet"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.OriginalPath = tc.originalPath
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+
+			if got := event.Operation.APIResourceTemplate; got != tc.want {
+				t.Errorf("APIResourceTemplate = %q, want %q", got, tc.want)
+			}
+			if strings.Contains(event.Operation.APIResourceTemplate, "?") {
+				t.Errorf("APIResourceTemplate %q still carries a query string",
+					event.Operation.APIResourceTemplate)
+			}
+		})
+	}
+}
+
+// Target.Destination reaches three consumers — the OTel publisher's
+// wso2.upstream.destination, the traffic log's destination field, and the
+// target.destination policy expression — so the query string is stripped at this
+// single point rather than in each of them. An API key or token in a query
+// parameter is an ordinary pattern here, and all three carry records off-box.
+func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
+	for name, tc := range map[string]struct {
+		authority string
+		path      string
+		want      string
+	}{
+		"no query":        {"api.example.com", "/orders/v1.0/listings", "api.example.com/orders/v1.0/listings"},
+		"credential":      {"api.example.com", "/orders/v1.0/listings?apikey=secret", "api.example.com/orders/v1.0/listings"},
+		"multiple params": {"localhost:8080", "/nofilter/anything?q=1&token=abc", "localhost:8080/nofilter/anything"},
+		"bare question":   {"localhost:8080", "/everything?", "localhost:8080/everything"},
+		"no path":         {"api.example.com", "", "api.example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logEntry := createLogEntryWithMetadata(map[string]string{})
+			logEntry.Request.Authority = tc.authority
+			logEntry.Request.Path = tc.path
+
+			event := NewAnalytics(&config.Config{}).prepareAnalyticEvent(logEntry)
+			if event.Target == nil {
+				t.Fatal("event.Target is nil")
+			}
+			if event.Target.Destination != tc.want {
+				t.Errorf("Destination = %q, want %q", event.Target.Destination, tc.want)
+			}
+			if strings.Contains(event.Target.Destination, "?") {
+				t.Errorf("Destination %q still carries a query string", event.Target.Destination)
+			}
+		})
 	}
 }

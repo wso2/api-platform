@@ -175,28 +175,6 @@ export const backendPathsFromOperations = (ops: EditableOperation[]): string[] =
   return [...set];
 };
 
-// --- method chip colors (legacy: distinct color per HTTP verb) ---
-
-export type ChipColor =
-  'default' | 'primary' | 'secondary' | 'success' | 'error' | 'warning' | 'info';
-
-export const methodColor = (method: string): ChipColor => {
-  switch (method.toUpperCase()) {
-    case 'GET':
-      return 'success';
-    case 'POST':
-      return 'primary';
-    case 'PUT':
-      return 'warning';
-    case 'DELETE':
-      return 'error';
-    case 'PATCH':
-      return 'secondary';
-    default:
-      return 'default';
-  }
-};
-
 // --- validation ---
 
 /** A URL is acceptable when empty (optional) or a well-formed http(s) URL. */
@@ -218,6 +196,13 @@ export const operationsValid = (ops: EditableOperation[]): boolean =>
 /** Policies are valid when every row has a name + version. */
 export const policiesValid = (policies: Policy[]): boolean =>
   policies.every((p) => p.name.trim() !== '' && p.version.trim() !== '');
+
+/** Converts Policy Hub semantic versions to the major-version format expected by the API payload. */
+const withMajorPolicyVersion = (policy: Policy): Policy => {
+  const version = policy.version.trim();
+  const major = version.match(/^v?(\d+)(?:\..*)?$/)?.[1];
+  return { ...policy, version: major ? `v${major}` : version };
+};
 
 // --- update bodies ---
 
@@ -280,6 +265,11 @@ export const withPolicyEdits = (
   edits: { policies: Policy[]; operations: EditableOperation[] },
 ): UpdateRestApiBody => ({
   ...api,
-  policies: edits.policies,
-  operations: toSpecOperations(edits.operations),
+  policies: edits.policies.map(withMajorPolicyVersion),
+  operations: toSpecOperations(
+    edits.operations.map((operation) => ({
+      ...operation,
+      policies: operation.policies?.map(withMajorPolicyVersion),
+    })),
+  ),
 });

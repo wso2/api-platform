@@ -16,12 +16,12 @@
  * under the License.
  */
 
-import { alpha, Box, Chip, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
+import { alpha, Box, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
-import { ambientGlowSx, hairline } from '@/theme/receipes';
-import { methodColor, type ChipColor } from '../utils/developEdit';
+import { MethodBadge, methodPalette } from '@/components/SwaggerOperationsView';
+import { hairline } from '@/theme/receipes';
 
 const messages = defineMessages({
   description: {
@@ -53,18 +53,6 @@ const PLACEHOLDER_ROWS: PlaceholderRow[] = [
   { ghost: true, method: 'DELETE' },
 ];
 
-/**
- * The palette family a row's tint and chevron are drawn from — the same one
- * its method chip uses, so the row reads as one colour rather than two.
- *
- * `methodColor` can return `'default'`, which is a Chip variant rather than a
- * palette entry, so that case falls back to the neutral text colour.
- */
-const toneFor = (theme: Theme, method: string): string => {
-  const tone: ChipColor = methodColor(method);
-  return tone === 'default' ? theme.palette.text.primary : theme.palette[tone].main;
-};
-
 /** Bounded so the copy underneath stays on two lines at the pane's width. */
 const CONTENT_MAX_WIDTH = 320;
 
@@ -78,7 +66,7 @@ const BAR_LONG_WIDTH = '56%';
  * piece of content.
  */
 const barSx = (width: string) => (theme: Theme) => ({
-  bgcolor: alpha(theme.palette.background.paper, 0.85),
+  bgcolor: alpha(theme.palette.text.primary, 0.18),
   borderRadius: 999,
   flexShrink: 0,
   height: 6,
@@ -116,18 +104,11 @@ export const ResourcePreviewPlaceholder = ({
       data-testid={testId}
       sx={(theme) => ({
         alignItems: 'center',
-        // A faint wash of the same families the method chips use, so the
-        // surface belongs to the listing sitting on it. The two paper stops
-        // hold the middle flat, so the tints read as a hint at the edges rather
-        // than a visible top-to-bottom ramp. Every stop derives from a palette
-        // token, so it re-tints itself in dark mode instead of staying a pale
-        // smudge.
-        backgroundImage: `linear-gradient(180deg, ${alpha(
-          theme.palette.success.light,
-          0.05,
-        )} 0%, ${theme.palette.background.paper} 38%, ${
-          theme.palette.background.paper
-        } 66%, ${alpha(theme.palette.info.light, 0.06)} 100%)`,
+        bgcolor: alpha(theme.palette.text.primary, 0.025),
+        backgroundImage: `radial-gradient(circle at 50% 15%, ${alpha(
+          theme.palette.primary.main,
+          0.06,
+        )}, transparent 42%)`,
         border: hairline(theme),
         borderColor: 'divider',
         borderRadius: 2,
@@ -136,48 +117,11 @@ export const ResourcePreviewPlaceholder = ({
         // `minHeight` rather than `height`: it fills a short pane, but a tall
         // enough one lets the content set the height instead of clipping it.
         minHeight: '100%',
-        // The glows are positioned against this box and bleed past its edges.
         overflow: 'hidden',
         p: { sm: 3, xs: 2.25 },
         position: 'relative',
       })}
     >
-      <Box
-        aria-hidden
-        sx={(theme) => ({
-          ...ambientGlowSx,
-          bgcolor: alpha(theme.palette.success.light, 0.34),
-          height: 150,
-          left: '50%',
-          top: theme.spacing(-5),
-          transform: 'translateX(-50%)',
-          width: 300,
-        })}
-      />
-      <Box
-        aria-hidden
-        sx={(theme) => ({
-          ...ambientGlowSx,
-          bgcolor: alpha(theme.palette.warning.light, 0.24),
-          height: 130,
-          left: '50%',
-          top: '42%',
-          transform: 'translate(-50%, -50%)',
-          width: 220,
-        })}
-      />
-      <Box
-        aria-hidden
-        sx={(theme) => ({
-          ...ambientGlowSx,
-          bgcolor: alpha(theme.palette.info.light, 0.36),
-          bottom: theme.spacing(-6),
-          height: 180,
-          right: theme.spacing(-5),
-          width: 220,
-        })}
-      />
-
       <Stack
         sx={{
           alignItems: 'center',
@@ -188,22 +132,22 @@ export const ResourcePreviewPlaceholder = ({
           zIndex: 1,
         }}
       >
-        <Stack aria-hidden spacing={1.2} sx={{ mb: { sm: 5.5, xs: 4.5 }, width: '100%' }}>
+        <Stack aria-hidden spacing={1} sx={{ mb: { sm: 4, xs: 3 }, width: '100%' }}>
           {PLACEHOLDER_ROWS.map((row) => (
             <Stack
               direction="row"
               key={row.method}
               spacing={1.2}
               sx={(theme) => {
-                const tone = toneFor(theme, row.method);
+                const tone = methodPalette(row.method);
 
                 return {
                   alignItems: 'center',
-                  bgcolor: alpha(tone, 0.1),
+                  bgcolor: tone.bg,
                   border: hairline(theme),
-                  borderColor: alpha(tone, 0.22),
-                  borderRadius: 1.25,
-                  boxShadow: row.ghost ? 'none' : theme.shadows[1],
+                  borderColor: tone.border,
+                  borderRadius: 0.75,
+                  boxShadow: 'none',
                   minHeight: { sm: 40, xs: 38 },
                   px: 1.35,
                   py: 0.9,
@@ -212,12 +156,7 @@ export const ResourcePreviewPlaceholder = ({
                 };
               }}
             >
-              <Chip
-                color={methodColor(row.method)}
-                label={row.method}
-                size="small"
-                sx={{ flexShrink: 0, fontWeight: 700, minWidth: 62 }}
-              />
+              <MethodBadge method={row.method} />
               <Stack
                 direction="row"
                 spacing={1}
@@ -229,8 +168,9 @@ export const ResourcePreviewPlaceholder = ({
               <Box
                 sx={(theme) => ({
                   // ChevronDown paints in `currentColor`, so tinting the
-                  // wrapper is what colours the glyph.
-                  color: alpha(toneFor(theme, row.method), 0.7),
+                  // wrapper is what colours the glyph. Text-coloured, not
+                  // method-coloured: the real rows draw theirs the same way.
+                  color: alpha(theme.palette.text.primary, 0.5),
                   display: 'flex',
                   flexShrink: 0,
                 })}

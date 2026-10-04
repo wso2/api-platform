@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
@@ -37,12 +38,20 @@ type graph struct {
 	planLimit                  string
 	secretHandle               string
 	customPolicy               string
+	apiPortal                  string
+	apiDoc                     string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
 // touches every table whose foreign keys were changed for SQL Server
-// (applications, subscriptions, deployments, deployment_status,
-// publication_mappings) plus their parents.
+// (applications, subscriptions, deployments, deployment_status, api_portals)
+// plus their parents. api_portals carries one active portal row per org.
+// api_documents carries one fixture row too — api_publication_doc_mappings.doc_uuid
+// has a hard FK to api_documents(uuid), so real docIds resolution needs a real
+// row to resolve against. api_publications itself stays unseeded — no
+// repository code writes it via this fixture path; the integration tests
+// that exercise it seed through PublicationService/PublicationRepo directly
+// instead.
 func seedOrgGraph(t *testing.T, it *itDB) graph {
 	t.Helper()
 	g := graph{
@@ -53,6 +62,8 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		planLimit:    id(),
 		secretHandle: id(),
 		customPolicy: id(),
+		apiPortal:    id(),
+		apiDoc:       id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
@@ -104,6 +115,17 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.customPolicy, g.org, "policy-"+g.customPolicy[:8], "v1.0.0", []byte("{}"))
 	it.exec(t, `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`,
 		g.customPolicy, g.apiArtifact)
+
+	// One active API Portal fixture. api_publications itself stays unseeded
+	// here — no repository code writes it via this fixture path.
+	it.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", []byte("dummy-key"), []byte("{}"))
+
+	// One API document fixture — see the comment above the graph struct.
+	// Real doc content is owned by another team; this is only ever resolved
+	// by handle, never served, by this feature.
+	it.exec(t, `INSERT INTO api_documents (uuid, artifact_uuid, organization_uuid, type, handle, display_name, file_name, content_type, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.apiDoc, g.apiArtifact, g.org, "MARKDOWN", "doc-"+g.apiDoc[:8], "Quickstart", "quickstart.md", "text/markdown", []byte("# Quickstart"))
 	return g
 }
 
@@ -273,6 +295,115 @@ func TestCascade_DeleteSubscriptionPlanRemovesLimits(t *testing.T) {
 
 	if got := it.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 0 {
 		t.Fatalf("[%s] subscription_plan_limit not removed after plan delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_APIPublicationFixtures verifies the API Publication feature's
+// fixture data across every dialect: one active api_portals row and one
+// api_documents row both insert cleanly against the real schema.
+func TestCascade_APIPublicationFixtures(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+
+	if got := it.count(t, "api_portals", "uuid", g.apiPortal); got != 1 {
+		t.Fatalf("[%s] want 1 api_portals row, got %d", it.driver, got)
+	}
+	var status string
+	q := it.db.Rebind(`SELECT status FROM api_portals WHERE uuid = ?`)
+	if err := it.db.QueryRow(q, g.apiPortal).Scan(&status); err != nil {
+		t.Fatalf("[%s] querying api_portals.status: %v", it.driver, err)
+	}
+	if status != "active" {
+		t.Fatalf("[%s] want status 'active', got %q", it.driver, status)
+	}
+	if got := it.count(t, "api_documents", "uuid", g.apiDoc); got != 1 {
+		t.Fatalf("[%s] want 1 api_documents row, got %d", it.driver, got)
+	}
+}
+
+// seedPublications gives the seeded API a live listing plus a newer draft on
+// the seeded portal, so both rows of api_publications exist.
+func seedPublications(t *testing.T, it *itDB, g graph) {
+	t.Helper()
+	repo := repository.NewPublicationRepo(it.db)
+	draft := func(version string) *model.Publication {
+		return &model.Publication{
+			OrganizationUUID: g.org,
+			ArtifactUUID:     g.apiArtifact,
+			APIPortalUUID:    g.apiPortal,
+			DisplayName:      "Listing",
+			Version:          version,
+			AgentVisibility:  "VISIBLE",
+		}
+	}
+	first, err := repo.SaveDraftDetails(draft("1.0.0"), []string{g.plan}, []string{g.apiDoc}, "actor")
+	if err != nil {
+		t.Fatalf("[%s] saving first draft: %v", it.driver, err)
+	}
+	content := &model.PublicationContent{
+		OrganizationUUID: g.org,
+		PublicationUUID:  first.UUID,
+		Type:             model.PublicationContentTypeDefinition,
+		FileName:         "openapi.json",
+		ContentType:      "application/json",
+		Content:          []byte(`{"openapi":"3.0.0"}`),
+	}
+	if err := repo.SaveContent(content, "actor"); err != nil {
+		t.Fatalf("[%s] saving definition content: %v", it.driver, err)
+	}
+	saved, _, _, err := repo.GetDraft(g.apiArtifact, g.apiPortal, g.org)
+	if err != nil || saved == nil {
+		t.Fatalf("[%s] reading saved draft: %v", it.driver, err)
+	}
+	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor", saved.UpdatedAt); err != nil {
+		t.Fatalf("[%s] promoting draft: %v", it.driver, err)
+	}
+	if _, err := repo.SaveDraftDetails(draft("1.0.1"), []string{g.plan}, []string{g.apiDoc}, "actor"); err != nil {
+		t.Fatalf("[%s] saving second draft: %v", it.driver, err)
+	}
+	if got := it.count(t, "api_publications", "artifact_uuid", g.apiArtifact); got != 2 {
+		t.Fatalf("[%s] precondition: want a live row and a draft row, got %d", it.driver, got)
+	}
+}
+
+// TestCascade_DeleteRemovesPublications verifies deleting an API or an API
+// Portal that still has a live listing and a draft succeeds on every dialect.
+// SQL Server's FKs from api_publications are NO ACTION, so the delete paths
+// must remove those rows themselves.
+func TestCascade_DeleteRemovesPublications(t *testing.T) {
+	cases := []struct {
+		name        string
+		parentTable string
+		parentCol   string
+		fkCol       string
+		parentID    func(graph) string
+		del         func(*itDB, graph) error
+	}{
+		{"api", "artifacts", "uuid", "artifact_uuid",
+			func(g graph) string { return g.apiArtifact },
+			func(it *itDB, g graph) error { return repository.NewAPIRepo(it.db).DeleteAPI(g.apiArtifact, g.org) }},
+		{"portal", "api_portals", "uuid", "api_portal_uuid",
+			func(g graph) string { return g.apiPortal },
+			func(it *itDB, g graph) error { return repository.NewAPIPortalRepo(it.db).Delete(g.apiPortal, g.org) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			it := openITDB(t)
+			defer it.db.Close()
+			g := seedOrgGraph(t, it)
+			seedPublications(t, it, g)
+
+			if err := tc.del(it, g); err != nil {
+				t.Fatalf("[%s] delete with publications: %v", it.driver, err)
+			}
+			if got := it.count(t, "api_publications", tc.fkCol, tc.parentID(g)); got != 0 {
+				t.Errorf("[%s] publications remain: %d", it.driver, got)
+			}
+			if got := it.count(t, tc.parentTable, tc.parentCol, tc.parentID(g)); got != 0 {
+				t.Errorf("[%s] %s row remains: %d", it.driver, tc.parentTable, got)
+			}
+		})
 	}
 }
 

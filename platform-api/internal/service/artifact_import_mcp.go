@@ -119,12 +119,14 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 // out-of-band), so they are left unset, mirroring the forward mapping.
 func mapMCPProxySpecToConfig(spec model.MCPProxyDeploymentSpec) model.MCPProxyConfiguration {
 	cfg := model.MCPProxyConfiguration{
-		Name:        spec.DisplayName,
-		Version:     spec.Version,
-		Vhost:       spec.Vhost,
-		SpecVersion: spec.SpecVersion,
-		Policies:    spec.Policies,
-		Upstream:    mapMCPUpstreamToModel(spec.Upstream),
+		Name:    spec.DisplayName,
+		Version: spec.Version,
+		Vhost:   spec.Vhost,
+		// Folded here rather than in MCPProxyService: the importer writes through the
+		// repository directly, so the service layer never runs on this path.
+		SpecVersions: model.FoldSpecVersions(spec.SpecVersions, spec.SpecVersion),
+		Policies:     spec.Policies,
+		Upstream:     mapMCPUpstreamToModel(spec.Upstream),
 	}
 	if spec.Context != "" {
 		context := spec.Context

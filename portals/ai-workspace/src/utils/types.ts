@@ -790,6 +790,15 @@ export interface MCPServer {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
+  /**
+   * MCP protocol versions this proxy declares it serves. The workspace never sets these
+   * — a proxy declaring none deploys on the gateway's own oldest supported version — but
+   * they must be declared here so an update round-trips them: the API's update is a full
+   * replace, so a PUT that omits them clears the stored list.
+   */
+  mcpSpecVersions?: string[];
+  /** What the upstream reported when it was last discovered. Informational: the API never sends it to a gateway. */
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
@@ -812,7 +821,12 @@ export interface CreateMCPServerRequest {
   context?: string;
   vhost?: string;
   upstream?: MCPServerUpstream;
-  mcpSpecVersion?: string;
+  /**
+   * What the upstream reported during the create wizard's discovery step. The deprecated
+   * singular mcpSpecVersion is deliberately absent: the API rejects a request carrying it
+   * alongside mcpSpecVersions, and leaving it undeclared makes that state unrepresentable.
+   */
+  upstreamMcpSpecVersions?: string[];
   kind?: string;
   policies?: unknown[];
   capabilities?: MCPServerCapabilities;
@@ -825,6 +839,90 @@ type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 
  * Update MCP Server request - all fields optional, read-only excluded
  */
 export type UpdateMCPServerRequest = Partial<Omit<MCPServer, MCPServerReadOnlyFields>>;
+
+// ============================================================================
+// API Portal publication
+// ----------------------------------------------------------------------------
+// Mirrors the Platform-API contract in platform-api/resources/openapi.yaml
+// (schemas Publication / PublicationDraftDetailsInput, paths
+// /api-portals/{apiPortalId}/apis/{apiType}/{apiId}/...). Platform-API only
+// serves publish/unpublish for apiType `rest-api` today; the `mcp-proxy`
+// equivalents land later, so these types are the UI-side contract the MCP
+// proxy calls in mcpProxiesApis.ts are already written against.
+// ============================================================================
+
+export type ApiPublicationStatus = 'PUBLISHED' | 'DEPRECATED';
+
+export type ApiPortalAgentVisibility = 'VISIBLE' | 'HIDDEN';
+
+/** Author-entered endpoints published with the listing — not derived from the API. */
+export interface PublicationEndpoints {
+  productionUrl?: string;
+  sandboxUrl?: string;
+}
+
+/** Contacts published alongside the listing; omitting them on publish clears the portal's values. */
+export interface PublicationOwners {
+  businessOwner?: string;
+  businessOwnerEmail?: string;
+  technicalOwner?: string;
+  technicalOwnerEmail?: string;
+}
+
+/** Fields shared by a draft and a live publication (schema `PublicationDetailsCore`). */
+export interface PublicationDetailsCore {
+  displayName: string;
+  version: string;
+  description?: string;
+  tags?: string[];
+  /** API Portal label handles controlling which portal views show this listing. */
+  labels?: string[];
+  agentVisibility?: ApiPortalAgentVisibility;
+  endpoints?: PublicationEndpoints;
+  owners?: PublicationOwners;
+}
+
+/** Read-only audit fields (schema `PublicationAuditFields`). */
+export interface PublicationAuditFields {
+  createdAt?: string;
+  createdBy?: string;
+  /** Latest change across details, definition, landing page and thumbnail. */
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * The draft details a publish is composed from (schema
+ * `PublicationDraftDetailsInput`). Saving a draft replaces it wholesale, so
+ * this is the full intended state, never a patch.
+ */
+export interface PublicationDraftDetailsInput extends PublicationDetailsCore {
+  /** Subscription plan handles from GET /subscription-plans, not database UUIDs. */
+  subscriptionPlanIds?: string[];
+  /** Document handles from GET /apis/{apiType}/{apiId}/docs, not database UUIDs. */
+  docIds?: string[];
+}
+
+/**
+ * A saved draft as returned by the API (schema `PublicationDraftDetails`) —
+ * the input fields plus read-only audit/asset flags.
+ */
+export interface PublicationDraftDetails extends PublicationDraftDetailsInput, PublicationAuditFields {
+  hasThumbnail?: boolean;
+  hasLandingPage?: boolean;
+}
+
+/** The live listing for one (API, portal) pairing (schema `Publication`). */
+export interface Publication extends PublicationDetailsCore, PublicationAuditFields {
+  /** The API Portal's handle. */
+  apiPortalId?: string;
+  apiPortalName?: string;
+  status?: ApiPublicationStatus;
+  subscriptionPlanIds?: string[];
+  docIds?: string[];
+  hasThumbnail?: boolean;
+  hasLandingPage?: boolean;
+}
 
 /**
  * MCP Servers list API response
@@ -875,6 +973,8 @@ export interface MCPServerInfoFetchResponse {
     name: string;
     version: string;
   };
+  /** MCP protocol versions the server reported. Absent when they could not be determined. */
+  supportedVersions?: string[];
   tools?: MCPServerTool[];
   resources?: MCPServerResource[];
   prompts?: MCPServerPrompt[];

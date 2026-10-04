@@ -44,6 +44,8 @@ const (
 	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
 	// EventTypeMCPProxy represents an MCP proxy change event
 	EventTypeMCPProxy EventType = "MCP_PROXY"
+	// EventTypeAgent represents an Agent (A2A) change event
+	EventTypeAgent EventType = "AGENT"
 	// EventTypeWebhookSecret represents a webhook HMAC secret lifecycle event
 	EventTypeWebhookSecret EventType = "WEBHOOK_SECRET"
 

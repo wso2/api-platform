@@ -1,0 +1,36 @@
+# The AI Gateway's MCP proxy.
+#
+# `upstream.url` points at the MCP server that arazzo-mcp-gen generated.
+# The gateway does not need to know anything about REST, OpenAPI or Arazzo -
+# it fronts a server that already speaks MCP, and adds governance on top.
+#
+# Uncomment the policies block to enforce authentication or restrict which
+# tools callers may invoke.
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Mcp
+metadata:
+  name: sample-service-mcp-v1.0
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
+spec:
+  displayName: Sample Service MCP
+  version: v1.0
+  context: /sample-service
+  specVersion: "2025-06-18"
+  upstream:
+    # The generated MCP server, reached over the Docker network. The gateway
+    # forwards /sample-service/mcp to exactly this URL, so the /mcp path
+    # has to be part of it.
+    url: http://rest-to-mcp-server:5000/mcp
+  # policies:
+  #   - name: mcp-acl-list
+  #     version: v1
+  #     params:
+  #       tools:
+  #         mode: deny
+  #         exceptions:
+  #           - echoMessage
+  tools: []
+  resources: []
+  prompts: []

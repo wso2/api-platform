@@ -18,5 +18,8 @@
 
 export { default as DeployFeature } from './DeployFeature';
 export type { DeployFeatureProps } from './DeployFeature';
-export type { AIWorkspaceHostPort, NotifySeverity } from './hostPort';
-export type { BuildRecord, Deployment, Environment, Gateway, GatewayStatus } from './types';
+export { default as ProviderDeployFeature } from './ProviderDeployFeature';
+export type { ProviderDeployFeatureProps } from './ProviderDeployFeature';
+export type { ApiFetch, CloudHostPort, NotifySeverity } from './hostPort';
+export type { ArtifactKind } from './deployApi';
+export type { Build, DeploymentStatus, Environment, Gateway, GatewayHealth } from './types';
