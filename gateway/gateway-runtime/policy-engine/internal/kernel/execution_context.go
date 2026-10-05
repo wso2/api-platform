@@ -243,7 +243,8 @@ type PolicyExecutionContext struct {
 	// faultDeclared is the FaultDetails the producing policy supplied, when it
 	// supplied one, captured at the same point the policy is attributed. Surfaced to fault
 	// policies through FaultContext (see attributedFault) so a handler sees the producer's
-	// own account of the failure.
+	// own account of the failure. Replaced by a fault entry's re-description once the chain
+	// has run (see executeFaultPolicies), so the formatter renders the final account.
 	faultDeclared *policy.FaultDetails
 
 	// faultSource is who produced the error currently being handled, resolved once when the
