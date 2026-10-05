@@ -122,7 +122,7 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 		return "", err
 	}
 
-	if err := s.auditRepo.Record("CREATE", doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.CreatedBy); err != nil {
+	if err := s.auditRepo.Record("CREATE", doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, doc.CreatedBy); err != nil {
 		s.slogger.Error("Failed to record audit entry for document create", "artifactUUID", doc.ArtifactUUID, "error", err)
 	}
 	return doc.Handle, nil
@@ -262,10 +262,22 @@ func (s *APIDocumentService) UpsertDocument(req *dto.CreateAPIDocumentRequest, o
 	if isUpdate {
 		action = "UPDATE"
 	}
-	if err := s.auditRepo.Record(action, doc.ArtifactUUID, "api_definition", doc.OrganizationUUID, doc.UpdatedBy); err != nil {
+	if err := s.auditRepo.Record(action, doc.ArtifactUUID, auditResourceTypeFor(doc.Type), doc.OrganizationUUID, doc.UpdatedBy); err != nil {
 		s.slogger.Error("Failed to record audit entry for document upsert", "artifactUUID", doc.ArtifactUUID, "error", err)
 	}
 	return nil
+}
+
+// auditResourceTypeFor maps a document type to its audit resource-type label.
+func auditResourceTypeFor(docType string) string {
+	switch docType {
+	case constants.DocumentTypeDefinition:
+		return "api_definition"
+	case constants.DocumentTypeThumbnail:
+		return "api_thumbnail"
+	default:
+		return "api_document"
+	}
 }
 
 // DeleteUserDocument deletes a user-authored document identified by handle.
@@ -298,7 +310,7 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 		s.slogger.Error("Failed to delete document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return err
 	}
-	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_definition", orgID, userID); err != nil {
+	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_document", orgID, userID); err != nil {
 		s.slogger.Error("Failed to record audit entry for document delete", "artifactUUID", artifactUUID, "error", err)
 	}
 	return nil
@@ -474,7 +486,7 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		return err
 	}
 
-	if err := s.auditRepo.Record("UPDATE", artifactUUID, "api_definition", orgID, userID); err != nil {
+	if err := s.auditRepo.Record("UPDATE", artifactUUID, "api_document", orgID, userID); err != nil {
 		s.slogger.Error("Failed to record audit entry for document update", "artifactUUID", artifactUUID, "error", err)
 	}
 	return nil
@@ -571,6 +583,28 @@ func (s *APIDocumentService) MergeOperations(existing *[]api.Operation, specOps 
 		synced = append(synced, op)
 	}
 	return synced
+}
+
+// DeleteAPIThumbnail removes the thumbnail document for an artifact.
+// Uses DeleteReservedDocument — the regular DeleteDocument deliberately
+// excludes reserved types so a user-facing /docs/{id} DELETE can't touch
+// them, which would otherwise prevent the /thumbnail endpoint from doing
+// its job on the reserved THUMBNAIL row.
+func (s *APIDocumentService) DeleteAPIThumbnail(artifactUUID, orgID, userID string) error {
+	if artifactUUID == "" {
+		return apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	if err := s.documentRepo.DeleteReservedDocument(artifactUUID, constants.DocumentHandleThumbnail, orgID, constants.DocumentTypeThumbnail); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return apperror.NotFound.New()
+		}
+		s.slogger.Error("Failed to delete thumbnail", "artifactUUID", artifactUUID, "error", err)
+		return err
+	}
+	if err := s.auditRepo.Record("DELETE", artifactUUID, "api_thumbnail", orgID, userID); err != nil {
+		s.slogger.Error("Failed to record audit entry for thumbnail delete", "artifactUUID", artifactUUID, "error", err)
+	}
+	return nil
 }
 
 // GetSpecContentType determines the content type (JSON or YAML) for spec content.

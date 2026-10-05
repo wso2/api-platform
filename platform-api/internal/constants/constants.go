@@ -305,6 +305,9 @@ var ValidThrottleLimitUnits = map[string]bool{
 // upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
 
+// DefaultThumbnailMaxBytes bounds a single thumbnail upload.
+const DefaultThumbnailMaxBytes int64 = 1 << 20 // 1 MiB
+
 // DefaultOpenAPISpecFileName is the filename persisted for a spec that was
 // fetched by URL but whose URL has no usable last path segment to name the
 // file after.
@@ -322,6 +325,7 @@ const (
 const (
 	DocumentTypeThumbnail        = "THUMBNAIL"
 	DocumentHandleThumbnail      = "api-thumbnail"
+	DocumentDisplayNameThumbnail = "API Thumbnail"
 )
 
 const (

@@ -948,6 +948,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/apis/{apiType}/{apiId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get API thumbnail
+         * @description Streams the stored thumbnail bytes with the sniffed `Content-Type`
+         *     header (`image/jpeg` or `image/png`). Returns 404 when no thumbnail
+         *     is set — the client renders the API's name initials in that case.
+         */
+        get: operations["GetAPIThumbnail"];
+        /**
+         * Set or replace the API thumbnail
+         * @description Creates or replaces the API's singleton thumbnail. Accepts a single
+         *     `file` field in a multipart body; the server sniffs the uploaded
+         *     bytes and rejects anything that isn't `image/jpeg` or `image/png` —
+         *     the uploader's `Content-Type` and filename extension are not trusted.
+         */
+        put: operations["UpsertAPIThumbnail"];
+        post?: never;
+        /**
+         * Delete the API thumbnail
+         * @description Removes the stored thumbnail. Subsequent `GET` returns 404 and the
+         *     client falls back to rendering the API's name initials.
+         */
+        delete: operations["DeleteAPIThumbnail"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm-provider-templates": {
         parameters: {
             query?: never;
@@ -4095,6 +4134,19 @@ export interface components {
              * @example payment-webhook.md
              */
             fileName?: string;
+        };
+        /**
+         * @description Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+         *     sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+         *     — the declared `Content-Type` and filename extension are ignored for
+         *     the type decision.
+         */
+        APIThumbnailRequest: {
+            /**
+             * Format: binary
+             * @description JPEG or PNG image bytes. Max size is deployment-configured.
+             */
+            file: string;
         };
         /**
          * @description Time unit for API key expiration duration
@@ -8873,6 +8925,96 @@ export interface operations {
                 };
             };
             /** @description Document exists but has no content stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thumbnail bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpsertAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["APIThumbnailRequest"];
+            };
+        };
+        responses: {
+            /** @description Thumbnail stored successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thumbnail deleted successfully */
             204: {
                 headers: {
                     [name: string]: unknown;

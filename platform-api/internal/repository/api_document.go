@@ -327,6 +327,28 @@ func (r *DocumentRepo) UpdateApiDocument(doc *model.Document, updateContent bool
 	return nil
 }
 
+// DeleteReservedDocument removes the singleton reserved-type row (DEFINITION
+// / THUMBNAIL) identified by (artifact, handle, type). The regular
+// DeleteDocument deliberately excludes reserved types so a user-facing
+// `/docs/{id}` DELETE can't touch them — this method is the explicit opt-in
+// for callers that own a reserved document (e.g. the /thumbnail endpoint).
+func (r *DocumentRepo) DeleteReservedDocument(artifactUUID, handle, orgUUID, docType string) error {
+	query := r.db.Rebind(`DELETE FROM api_documents
+		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ? AND type = ?`)
+	result, err := r.db.Exec(query, artifactUUID, handle, orgUUID, docType)
+	if err != nil {
+		return fmt.Errorf("failed to delete reserved document: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read delete affected rows: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // DeleteDocument removes a document by artifact UUID, handle, and org.
 func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID string) error {
 	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))

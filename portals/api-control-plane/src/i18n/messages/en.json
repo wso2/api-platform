@@ -788,6 +788,33 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
+    "defaultMessage": "Change thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteButton": {
+    "defaultMessage": "Remove"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage": {
+    "defaultMessage": "The thumbnail will be removed. The API will fall back to its name initials."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteTitle": {
+    "defaultMessage": "Remove API thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.deleteSuccess": {
+    "defaultMessage": "Thumbnail removed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorSize": {
+    "defaultMessage": "The image must be 1 MB or smaller."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorType": {
+    "defaultMessage": "Only JPEG and PNG images are supported."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.removeThumbnail": {
+    "defaultMessage": "Remove thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.uploadSuccess": {
+    "defaultMessage": "Thumbnail updated."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
     "defaultMessage": "Open API Designer",
     "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."

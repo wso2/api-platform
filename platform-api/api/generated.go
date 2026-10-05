@@ -2185,6 +2185,15 @@ type APIKeySecurity struct {
 // APIKeySecurityIn Location of the API key (header or query)
 type APIKeySecurityIn string
 
+// APIThumbnailRequest Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+// sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+// — the declared `Content-Type` and filename extension are ignored for
+// the type decision.
+type APIThumbnailRequest struct {
+	// File JPEG or PNG image bytes. Max size is deployment-configured.
+	File openapi_types.File `json:"file" yaml:"file"`
+}
+
 // AddApplicationAPIKeysRequest defines model for AddApplicationAPIKeysRequest.
 type AddApplicationAPIKeysRequest struct {
 	// ApiKeys List of API key selectors to add to the application mappings
@@ -5898,6 +5907,9 @@ type CreateAPIDocumentMultipartRequestBody = APIDocumentRequest
 
 // UpdateAPIDocumentMultipartRequestBody defines body for UpdateAPIDocument for multipart/form-data ContentType.
 type UpdateAPIDocumentMultipartRequestBody = APIDocumentRequest
+
+// UpsertAPIThumbnailMultipartRequestBody defines body for UpsertAPIThumbnail for multipart/form-data ContentType.
+type UpsertAPIThumbnailMultipartRequestBody = APIThumbnailRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

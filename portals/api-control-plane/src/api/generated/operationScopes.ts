@@ -491,6 +491,9 @@ export const OPERATION_SCOPES = {
     'ap:rest_api:manage',
   ],
   DeleteApiPortal: ['ap:api_portal:delete', 'ap:api_portal:manage'],
+  DeleteAPIThumbnail: [
+    'ap:docs:manage',
+  ],
   DeleteApplication: ['ap:application:delete', 'ap:application:manage'],
   DeleteBuild: ['ap:rest_api:build:delete', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
   DeleteDeployment: [
@@ -613,6 +616,10 @@ export const OPERATION_SCOPES = {
   getApiPublicationDraftThumbnail: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:read'],
   getApiPublicationLandingPage: ['ap:api_portal:publication:read'],
   getApiPublicationThumbnail: ['ap:api_portal:publication:read'],
+  GetAPIThumbnail: [
+    'ap:docs:manage',
+    'ap:docs:read',
+  ],
   GetApplication: ['ap:application:manage', 'ap:application:read'],
   GetBuild: ['ap:rest_api:build:manage', 'ap:rest_api:build:read', 'ap:rest_api:manage'],
   GetBuilds: ['ap:rest_api:build:manage', 'ap:rest_api:build:read', 'ap:rest_api:manage'],
@@ -897,5 +904,8 @@ export const OPERATION_SCOPES = {
   UpdateRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateSubscription: ['ap:subscription:manage', 'ap:subscription:update'],
   UpdateSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:update'],
+  UpsertAPIThumbnail: [
+    'ap:docs:manage',
+  ],
   ValidateOpenAPISpec: ['ap:rest_api:create', 'ap:rest_api:manage'],
 } as const satisfies Record<keyof operations, readonly ApScope[]>;

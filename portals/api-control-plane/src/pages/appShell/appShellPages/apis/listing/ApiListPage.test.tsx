@@ -85,6 +85,15 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+
+  server.use(
+    http.get(apiUrl('/apis/:apiType/:apiId/thumbnail'), () =>
+      HttpResponse.json(
+        { status: 'error', code: 'NOT_FOUND', message: 'No thumbnail set.' },
+        { status: 404 }
+      )
+    )
+  );
 });
 
 describe('ApiListPage', () => {

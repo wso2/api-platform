@@ -522,6 +522,7 @@ type DocumentRepository interface {
 	UpsertDocument(doc *model.Document) error
 	UpdateApiDocument(doc *model.Document, updateContent bool) error
 	DeleteDocument(artifactUUID, handle, orgUUID string) error
+	DeleteReservedDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
 	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,

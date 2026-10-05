@@ -19,17 +19,18 @@
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { useIntl } from 'react-intl';
 
+import { REST_API_TYPE } from '@/api/resources/apiPublications/apiPublications.endpoints';
 import type { RestApi } from '@/api/resources/restApis';
 import { openableProps } from '@/components/openable';
 import { focusRingSx, interactiveCardSx } from '@/theme';
 import {
   apiDescriptionSx,
   ApiDeleteButton,
-  ApiKindAvatar,
   ApiKindChip,
   UpdatedLabel,
   VersionChip,
 } from './RestApiChips';
+import { ApiThumbnailAvatar } from '../../components/ApiThumbnailAvatar';
 import { useCan } from '@/permissions/useCan';
 
 type ApiCardProps = {
@@ -65,7 +66,12 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
       <CardContent sx={{ flex: 1 }}>
         <Stack spacing={2}>
           <Stack alignItems="flex-start" direction="row" spacing={1.5}>
-            <ApiKindAvatar kind={api.kind} size={AVATAR_SIZE} />
+            <ApiThumbnailAvatar
+              apiId={api.id}
+              apiType={REST_API_TYPE}
+              displayName={api.displayName}
+              size={AVATAR_SIZE}
+            />
             <Box sx={{ minWidth: 0 }}>
               <Typography noWrap sx={{ fontWeight: 700 }} variant="h6">
                 {api.displayName}
