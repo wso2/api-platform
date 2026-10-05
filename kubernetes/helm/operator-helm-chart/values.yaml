@@ -27,7 +27,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.10.1"
+  tag: "0.11.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -70,7 +70,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.2.0"
+    chartVersion: "1.2.3"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
