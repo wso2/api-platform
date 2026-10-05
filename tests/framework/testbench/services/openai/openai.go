@@ -95,6 +95,8 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.openAIReasoning(body))
 	case path == "/openai/v1/chat-web-search":
 		writeJSON(w, s.openAIWebSearch(body))
+	case path == ChatEchoPath:
+		s.openAIChatEcho(w, body)
 
 	// Anthropic
 	case path == "/anthropic/v1/messages":
@@ -265,6 +267,100 @@ func (s *Service) openAIWebSearch(body []byte) map[string]any {
 		orElse(requestModel(body), "gpt-4.1-2025-04-14"),
 		"According to recent sources, the answer is 42.", "default", annotations,
 		openAIUsage(50, 0, 25, 0, 75))
+}
+
+// ChatEchoPath answers with the request's last user message as the assistant's reply, so a
+// scenario controls the response text a gateway policy sees. With "stream": true the reply is
+// sent as OpenAI chat-completion chunks over server-sent events, one word per chunk.
+const ChatEchoPath = "/openai/v1/chat-echo"
+
+// echoRequest is the part of a chat-completions request the echo path reads.
+type echoRequest struct {
+	Model    string `json:"model"`
+	Stream   bool   `json:"stream"`
+	Messages []struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	} `json:"messages"`
+}
+
+func (s *Service) openAIChatEcho(w http.ResponseWriter, body []byte) {
+	var req echoRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "openai: chat-echo needs a JSON chat-completions request", http.StatusBadRequest)
+		return
+	}
+	reply := lastUserText(req)
+	model := orElse(req.Model, "gpt-4o")
+	if !req.Stream {
+		writeJSON(w, openAIChatEnvelope("chatcmpl-echo", model, reply, "default", nil,
+			openAIUsage(defaultPromptTokens, 0, defaultCompletionTokens, 0, defaultTotalTokens)))
+		return
+	}
+	writeEchoStream(w, model, reply)
+}
+
+// lastUserText returns the text of the last user message: a string content, or the text parts
+// of a content-part array joined with a space.
+func lastUserText(req echoRequest) string {
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		message := req.Messages[i]
+		if message.Role != "user" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(message.Content, &text) == nil {
+			return text
+		}
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(message.Content, &parts) != nil {
+			return ""
+		}
+		var texts []string
+		for _, part := range parts {
+			if part.Type == "text" {
+				texts = append(texts, part.Text)
+			}
+		}
+		return strings.Join(texts, " ")
+	}
+	return ""
+}
+
+func writeEchoStream(w http.ResponseWriter, model, reply string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	chunk := func(delta map[string]any, finishReason any) {
+		payload, _ := json.Marshal(map[string]any{
+			"id": "chatcmpl-echo", "object": "chat.completion.chunk", "created": 1741569952, "model": model,
+			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finishReason}},
+		})
+		if _, err := w.Write([]byte("data: " + string(payload) + "\n\n")); err != nil {
+			log.Printf("openai: writing stream: %v", err)
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	chunk(map[string]any{"role": "assistant", "content": ""}, nil)
+	for i, word := range strings.Fields(reply) {
+		if i > 0 {
+			word = " " + word
+		}
+		chunk(map[string]any{"content": word}, nil)
+	}
+	chunk(map[string]any{}, "stop")
+	if _, err := w.Write([]byte("data: [DONE]\n\n")); err != nil {
+		log.Printf("openai: writing stream: %v", err)
+	}
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 // Anthropic messages.
