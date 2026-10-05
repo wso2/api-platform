@@ -59,6 +59,17 @@ export interface SchemaTreeNode {
 }
 
 /**
+ * Optional form a policy can declare in the `x-wso2-policy-ui` block of its
+ * definition. `formSchema` is a JSON Schema with the same data shape as
+ * `parameters`; `uiSchema` is a react-jsonschema-form uiSchema. When present,
+ * the params form is rendered from them instead of from `parameters`.
+ */
+export interface PolicyUiExtension {
+  formSchema: Record<string, unknown>;
+  uiSchema?: Record<string, unknown>;
+}
+
+/**
  * Policy definition parsed from YAML
  */
 export interface PolicyDefinition {
@@ -67,6 +78,7 @@ export interface PolicyDefinition {
   description: string;
   parameters: ParameterSchema;
   systemParameters?: ParameterSchema;
+  ui?: PolicyUiExtension;
 }
 
 /**
