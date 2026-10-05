@@ -148,14 +148,16 @@ func (s *SubscriptionPlanService) GetPlanNameMap(planIDs []string, orgUUID strin
 	return s.planRepo.GetByIDs(planIDs, orgUUID)
 }
 
-// ListPlans returns subscription plans for an organization with pagination
-func (s *SubscriptionPlanService) ListPlans(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
-	return s.planRepo.ListByOrganization(orgUUID, limit, offset)
+// ListPlans returns subscription plans for an organization with pagination and an
+// optional name or handle search
+func (s *SubscriptionPlanService) ListPlans(orgUUID string, opts repository.ListOptions) ([]*model.SubscriptionPlan, error) {
+	return s.planRepo.ListByOrganization(orgUUID, opts)
 }
 
-// CountPlans returns the total number of subscription plans in an organization.
-func (s *SubscriptionPlanService) CountPlans(orgUUID string) (int, error) {
-	return s.planRepo.CountByOrganization(orgUUID)
+// CountPlans returns the number of subscription plans in an organization that match
+// the optional search.
+func (s *SubscriptionPlanService) CountPlans(orgUUID, search string) (int, error) {
+	return s.planRepo.CountByOrganization(orgUUID, search)
 }
 
 // UpdatePlan updates a subscription plan

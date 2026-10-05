@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -109,6 +110,21 @@ func decodePlan(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 	return plan
 }
 
+// listPlans issues GET /subscription-plans with the given query string and returns
+// the number of plans on the page along with the pagination block.
+func listPlans(t *testing.T, h http.Handler, query string) (int, map[string]any) {
+	t.Helper()
+
+	rec := planRequest(t, h, http.MethodGet, planITPath+query, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list %q: status %d, body %s", query, rec.Code, rec.Body.String())
+	}
+	resp := decodePlan(t, rec)
+	list, _ := resp["list"].([]any)
+	pagination, _ := resp["pagination"].(map[string]any)
+	return len(list), pagination
+}
+
 // TestPlanHandler_UpdateExpiryTime walks one plan through the three things a PUT can
 // say about expiryTime: omit it (keep), send a value (replace), send null (clear).
 func TestPlanHandler_UpdateExpiryTime(t *testing.T) {
@@ -144,6 +160,81 @@ func TestPlanHandler_UpdateExpiryTime(t *testing.T) {
 		stored := decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))
 		if got := stored["expiryTime"]; got != step.wantExpiry {
 			t.Errorf("%s: stored expiryTime = %v, want %v", step.name, got, step.wantExpiry)
+		}
+	}
+}
+
+// TestPlanHandler_ListPaging checks limit/offset slice the list while pagination.total
+// stays the full count, which is what the console's pager is driven by.
+func TestPlanHandler_ListPaging(t *testing.T) {
+	h := setupPlanHandlerTestEnv(t)
+	for i := 1; i <= 25; i++ {
+		body := fmt.Sprintf(`{"id":"plan-%d","displayName":"Plan %d"}`, i, i)
+		if rec := planRequest(t, h, http.MethodPost, planITPath, body); rec.Code != http.StatusCreated {
+			t.Fatalf("create plan %d: status %d, body %s", i, rec.Code, rec.Body.String())
+		}
+	}
+
+	pages := []struct {
+		query     string
+		wantCount int
+		wantLimit float64
+		wantStart float64
+	}{
+		{"", 20, 20, 0},
+		{"?limit=20&offset=20", 5, 20, 20},
+		{"?limit=10&offset=10", 10, 10, 10},
+		{"?limit=20&offset=40", 0, 20, 40},
+	}
+	for _, page := range pages {
+		count, pagination := listPlans(t, h, page.query)
+		if count != page.wantCount {
+			t.Errorf("list %q: %d items, want %d", page.query, count, page.wantCount)
+		}
+		if pagination["total"] != float64(25) || pagination["limit"] != page.wantLimit || pagination["offset"] != page.wantStart {
+			t.Errorf("list %q: pagination = %v, want total 25, limit %v, offset %v",
+				page.query, pagination, page.wantLimit, page.wantStart)
+		}
+	}
+}
+
+// TestPlanHandler_ListSearch checks that query filters across the whole collection, not
+// just one page, and that pagination.total counts the matches so the pager follows them.
+func TestPlanHandler_ListSearch(t *testing.T) {
+	h := setupPlanHandlerTestEnv(t)
+	for _, plan := range []string{
+		`{"id":"gold-basic","displayName":"Gold Basic"}`,
+		`{"id":"gold-pro","displayName":"Gold Pro"}`,
+		`{"id":"silver","displayName":"Silver Tier"}`,
+		`{"id":"bronze","displayName":"Bronze 100%"}`,
+	} {
+		if rec := planRequest(t, h, http.MethodPost, planITPath, plan); rec.Code != http.StatusCreated {
+			t.Fatalf("create %s: status %d, body %s", plan, rec.Code, rec.Body.String())
+		}
+	}
+
+	searches := []struct {
+		name      string
+		query     string
+		wantCount int
+		wantTotal float64
+	}{
+		{"matches display name, case-insensitive", "?query=SILVER", 1, 1},
+		{"matches handle", "?query=gold-pro", 1, 1},
+		{"matches several", "?query=gold", 2, 2},
+		{"total counts matches beyond the page", "?query=gold&limit=1", 1, 2},
+		{"second page of matches", "?query=gold&limit=1&offset=1", 1, 2},
+		{"no match", "?query=platinum", 0, 0},
+		{"percent is literal, not a wildcard", "?query=%25", 1, 1},
+		{"blank search returns everything", "?query=", 4, 4},
+	}
+	for _, s := range searches {
+		count, pagination := listPlans(t, h, s.query)
+		if count != s.wantCount {
+			t.Errorf("%s: %d items, want %d", s.name, count, s.wantCount)
+		}
+		if pagination["total"] != s.wantTotal {
+			t.Errorf("%s: pagination.total = %v, want %v", s.name, pagination["total"], s.wantTotal)
 		}
 	}
 }

@@ -304,7 +304,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
-		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, pageSize, offset)
+		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subscription plans for org %s: %w", orgID, err)
 		}

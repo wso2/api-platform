@@ -237,15 +237,15 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	total, err := h.planService.CountPlans(orgId)
+	total, err := h.planService.CountPlans(orgId, opts.Search)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to count subscription plans for org %s", orgId))
 	}
 
-	list, err := h.planService.ListPlans(orgId, limit, offset)
+	list, err := h.planService.ListPlans(orgId, opts)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list subscription plans for org %s", orgId))
@@ -264,8 +264,8 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 		"count": len(items),
 		"pagination": api.Pagination{
 			Total:  total,
-			Offset: offset,
-			Limit:  limit,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	})
 	return nil

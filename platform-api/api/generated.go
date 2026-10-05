@@ -5681,6 +5681,9 @@ type ListSubscriptionPlansParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
