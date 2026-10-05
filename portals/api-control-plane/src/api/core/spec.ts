@@ -77,6 +77,13 @@ export type FormBodyOf<Id extends OperationId> = operations[Id] extends {
   ? B
   : never;
 
+/** Form-encoded body (the OAuth2 token exchange). */
+export type UrlEncodedBodyOf<Id extends OperationId> = operations[Id] extends {
+  requestBody: { content: { 'application/x-www-form-urlencoded': infer B } };
+}
+  ? B
+  : never;
+
 /** Query-string parameters, including which of them are required. */
 export type QueryOf<Id extends OperationId> = operations[Id] extends {
   parameters: { query?: infer Q };
