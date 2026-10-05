@@ -93,6 +93,21 @@ describe('GraphqlDevelopPoliciesPage', () => {
     expect(await screen.findByRole('button', { name: /Save/ })).toBeEnabled();
   });
 
+  it('lists a gateway-managed API’s policies without any way to change them', async () => {
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', { ...api, readOnly: true }),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: 'type Query { a: String }' }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('cors')).toBeInTheDocument();
+    expect(screen.getByText('Policies cannot be changed here')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Save/ })).not.toBeInTheDocument();
+  });
+
   it('shows an error state when the API cannot be found', async () => {
     server.use(resource('/graphql-apis/:graphqlApiId', { status: 'error' }, { status: 404 }));
 

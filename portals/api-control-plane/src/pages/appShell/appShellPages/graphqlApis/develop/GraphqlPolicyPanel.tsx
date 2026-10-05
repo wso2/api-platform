@@ -27,6 +27,7 @@ import { useGraphQLApiSdl, useUpdateGraphQLApi } from '@/api/resources/graphqlAp
 import type { Policy } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { AttachedPolicyList } from '../../develop/policies/AttachedPolicyList';
+import { ReadOnlyPoliciesNotice } from '../../develop/policies/ReadOnlyPoliciesNotice';
 import { AvailablePoliciesPanel } from '../../develop/policies/AvailablePoliciesPanel';
 import { getDraggedPolicy } from '../../develop/policies/policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from '../../develop/policies/PolicyConfigDrawer';
@@ -107,6 +108,9 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   // touches sdlQuery at all, so gating the Save button on this fetch's
   // loading state was blocking the common case on an irrelevant request.
   const needsSdlForSave = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
+  // Synced from a data-plane gateway: the control plane rejects any change, so
+  // the policies are listed without the controls that would change them.
+  const readOnly = Boolean(api.readOnly);
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   const [picked, setPicked] = useState<PolicySummary | null>(null);
@@ -196,6 +200,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
 
   return (
     <Stack spacing={2}>
+      {readOnly && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
           <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
@@ -221,7 +226,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
                 <Box
                   onDragLeave={() => setDropActive(false)}
                   onDragOver={(event) => {
-                    if (!getDraggedPolicy()) return;
+                    if (readOnly || !getDraggedPolicy()) return;
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'copy';
                     setDropActive(true);
@@ -230,7 +235,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
                     event.preventDefault();
                     const dragged = getDraggedPolicy();
                     setDropActive(false);
-                    if (!dragged) return;
+                    if (readOnly || !dragged) return;
                     setEditing(null);
                     setPicked({
                       name: dragged.name,
@@ -252,12 +257,13 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
                 >
                   <AttachedPolicyList
                     canAdd={hubEnabled}
-                    emptyText={intl.formatMessage(messages.empty)}
+                    emptyText={readOnly ? undefined : intl.formatMessage(messages.empty)}
                     onAdd={openAdd}
                     onEdit={openEdit}
                     onReorder={reorderAt}
                     onRemove={removeAt}
                     policies={apiPolicies}
+                    readOnly={readOnly}
                     showHeader={false}
                   />
                 </Box>
@@ -266,7 +272,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
           </Card>
         </Box>
 
-        {hubEnabled && (
+        {hubEnabled && !readOnly && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
@@ -282,13 +288,15 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
         )}
       </Stack>
 
-      <SaveBar
-        dirty={dirty}
-        disabled={!graphqlApiId || (needsSdlForSave && sdlQuery.isPending)}
-        onCancel={cancel}
-        onSave={save}
-        saving={update.isPending}
-      />
+      {!readOnly && (
+        <SaveBar
+          dirty={dirty}
+          disabled={!graphqlApiId || (needsSdlForSave && sdlQuery.isPending)}
+          onCancel={cancel}
+          onSave={save}
+          saving={update.isPending}
+        />
+      )}
 
       <PolicyConfigDrawer
         initialValues={editing?.policy.params}

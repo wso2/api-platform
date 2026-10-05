@@ -2024,6 +2024,14 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources": {
     "defaultMessage": "Search resources"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
+    "defaultMessage": "This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.",
+    "description": "Explains why the policies of a gateway-managed API cannot be added, edited or removed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title": {
+    "defaultMessage": "Policies cannot be changed here",
+    "description": "Title of the notice shown on the policies page of a gateway-managed API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",
     "description": "Adds another key/value pair to a map parameter. Verb phrase."
