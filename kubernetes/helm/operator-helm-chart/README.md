@@ -33,7 +33,7 @@ helm install apip-operator ./operator-helm-chart --namespace gateway-operator-sy
 ```bash
 helm install apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system --create-namespace \
-  --set image.tag=0.10.1 \
+  --set image.tag=0.11.0 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
@@ -53,7 +53,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `replicaCount` | Number of operator replicas | `1` |
 | `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
 | `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
-| `image.tag` | Operator image tag | `0.10.1` |
+| `image.tag` | Operator image tag | `0.11.0` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -66,7 +66,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
 | `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.0` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.2.3` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
@@ -121,6 +121,7 @@ The chart ships all operator CRDs (group `gateway.api-platform.wso2.com`, served
 > **Important — CRDs are install-only.** Helm applies `crds/` only when a CRD does not already exist, and **never updates or deletes** CRDs on `helm upgrade`, `helm uninstall`, or a re-`helm install` on a cluster where they already exist. This operator **requires the `v1` version to be served**, so:
 > - **Fresh clusters** (no pre-existing `gateway.api-platform.wso2.com` CRDs) get the correct v1+v1alpha1 CRDs and work out of the box.
 > - **Clusters that already have older (v1alpha1-only) CRDs** will NOT be upgraded by Helm. To move them to v1, delete the old CRDs first (`kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs kubectl delete`) then reinstall, or apply the updated CRDs manually with `kubectl apply -f crds/`.
+> - **Upgrading from chart 0.11.0 or earlier:** chart 0.11.1 adds the `LLMProviderTemplate` CRD (`gateway.api-platform.wso2.com_llmprovidertemplates.yaml`). Helm does not install new CRDs on `helm upgrade` either, so apply it before upgrading: `kubectl apply --server-side -f crds/gateway.api-platform.wso2.com_llmprovidertemplates.yaml` (or `kubectl apply --server-side -f crds/` to refresh them all).
 
 The two most commonly used kinds:
 
@@ -277,7 +278,7 @@ Debug mode runs the operator under the Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.1-debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.11.0-debug"
 ```
 
 Connect your debugger to the debug port:
