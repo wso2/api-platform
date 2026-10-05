@@ -54,7 +54,11 @@ export const getApiThumbnail = async (
       operationName: 'GetAPIThumbnail',
     });
   } catch (err) {
-    if (err instanceof ApiError && err.code === 'NOT_FOUND') return null;
+    // Status-based check (not `err.code === 'NOT_FOUND'`) because responseType:
+    // 'blob' hands the error body back as a Blob — the generic envelope parser
+    // can't inspect it, so `err.code` collapses to CLIENT_MALFORMED_ERROR. The
+    // HTTP status is still accurate, so branch on that.
+    if (err instanceof ApiError && err.isNotFound) return null;
     throw err;
   }
 };

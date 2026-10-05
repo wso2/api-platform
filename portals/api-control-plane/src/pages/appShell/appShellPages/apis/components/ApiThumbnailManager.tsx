@@ -51,7 +51,7 @@ const messages = defineMessages({
   confirmDeleteMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage',
     defaultMessage:
-      'The thumbnail will be removed. The API will fall back to its name initials.',
+      'Are you sure you want to delete the thumbnail of this API?',
   },
   confirmDeleteButton: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteButton',

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
@@ -39,6 +39,44 @@ import { apiThumbnailKeys, apiThumbnailParentId, apiThumbnailQueries } from './a
  * failure and the delete mutation can push the empty state into the cache
  * directly for an instant UI flip.
  */
+
+/**
+ * Shared, ref-counted `blob:` URLs keyed by Blob.
+ *
+ * Every avatar showing the same cached thumbnail reuses one URL, and the URL
+ * is revoked only once no mounted component holds it. The revoke is deferred
+ * so an immediate remount (StrictMode's mount → cleanup → mount, or a quick
+ * route change between pages that both show the avatar) re-acquires the same
+ * URL instead of rendering a revoked one, which made the `<img>` fail and fall
+ * back to initials until a full refresh.
+ */
+const objectUrls = new Map<Blob, { url: string; refs: number }>();
+
+const objectUrlFor = (blob: Blob): string => {
+  let entry = objectUrls.get(blob);
+  if (!entry) {
+    entry = { url: URL.createObjectURL(blob), refs: 0 };
+    objectUrls.set(blob, entry);
+  }
+  return entry.url;
+};
+
+const retainObjectUrl = (blob: Blob): (() => void) => {
+  objectUrlFor(blob);
+  objectUrls.get(blob)!.refs += 1;
+  return () => {
+    const entry = objectUrls.get(blob);
+    if (!entry) return;
+    entry.refs -= 1;
+    setTimeout(() => {
+      const current = objectUrls.get(blob);
+      if (current && current.refs <= 0) {
+        URL.revokeObjectURL(current.url);
+        objectUrls.delete(blob);
+      }
+    }, 0);
+  };
+};
 
 type Overrides = { orgId?: string };
 
@@ -64,16 +102,12 @@ export const useApiThumbnail = (
     enabled: Boolean(org && apiId),
   });
 
-  // Build the object URL from the fetched Blob and release it when the Blob
-  // changes or the component unmounts. A stale URL would point at freed bytes.
-  const url = useMemo(
-    () => (query.data?.blob ? URL.createObjectURL(query.data.blob) : undefined),
-    [query.data?.blob]
-  );
+  const blob = query.data?.blob;
+  const url = blob ? objectUrlFor(blob) : undefined;
   useEffect(() => {
-    if (!url) return;
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+    if (!blob) return;
+    return retainObjectUrl(blob);
+  }, [blob]);
 
   return { url, isPending: query.isPending, error: query.error as ApiError | null };
 };

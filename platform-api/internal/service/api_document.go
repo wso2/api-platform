@@ -303,7 +303,7 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 		return apperror.NotFound.New()
 	}
 
-	if err := s.documentRepo.DeleteDocument(artifactUUID, handle, orgID); err != nil {
+	if err := s.documentRepo.DeleteApiDocument(artifactUUID, handle, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.NotFound.New()
 		}
@@ -586,15 +586,11 @@ func (s *APIDocumentService) MergeOperations(existing *[]api.Operation, specOps 
 }
 
 // DeleteAPIThumbnail removes the thumbnail document for an artifact.
-// Uses DeleteReservedDocument — the regular DeleteDocument deliberately
-// excludes reserved types so a user-facing /docs/{id} DELETE can't touch
-// them, which would otherwise prevent the /thumbnail endpoint from doing
-// its job on the reserved THUMBNAIL row.
 func (s *APIDocumentService) DeleteAPIThumbnail(artifactUUID, orgID, userID string) error {
 	if artifactUUID == "" {
 		return apperror.ValidationFailed.New("artifact UUID is required")
 	}
-	if err := s.documentRepo.DeleteReservedDocument(artifactUUID, constants.DocumentHandleThumbnail, orgID, constants.DocumentTypeThumbnail); err != nil {
+	if err := s.documentRepo.DeleteDocument(artifactUUID, constants.DocumentHandleThumbnail, orgID, constants.DocumentTypeThumbnail); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.NotFound.New()
 		}

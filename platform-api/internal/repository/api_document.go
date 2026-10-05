@@ -106,33 +106,6 @@ func (r *DocumentRepo) GetDocument(artifactUUID, handle, orgUUID, docType string
 	return doc, nil
 }
 
-// GetDocumentByArtifactAndType retrieves the single document of a given type for an artifact.
-// Returns nil (no error) when no matching row exists.
-// func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
-// 	query := r.db.Rebind(`
-// 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-// 		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
-// 		       COALESCE(created_by, ''), created_at,
-// 		       COALESCE(updated_by, ''), updated_at
-// 		FROM api_documents
-// 		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
-// 	`)
-// 	row := r.db.QueryRow(query, artifactUUID, docType, orgUUID)
-// 	doc := &model.Document{}
-// 	if err := row.Scan(
-// 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
-// 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-// 		&doc.CreatedBy, &doc.CreatedAt,
-// 		&doc.UpdatedBy, &doc.UpdatedAt,
-// 	); err != nil {
-// 		if errors.Is(err, sql.ErrNoRows) {
-// 			return nil, nil
-// 		}
-// 		return nil, fmt.Errorf("failed to get document by artifact and type: %w", err)
-// 	}
-// 	return doc, nil
-// }
-
 // ListDocumentsByArtifact returns user-facing documents for an artifact,
 // optionally filtered by type, as metadata-only rows (no content column).
 // 
@@ -327,17 +300,13 @@ func (r *DocumentRepo) UpdateApiDocument(doc *model.Document, updateContent bool
 	return nil
 }
 
-// DeleteReservedDocument removes the singleton reserved-type row (DEFINITION
-// / THUMBNAIL) identified by (artifact, handle, type). The regular
-// DeleteDocument deliberately excludes reserved types so a user-facing
-// `/docs/{id}` DELETE can't touch them — this method is the explicit opt-in
-// for callers that own a reserved document (e.g. the /thumbnail endpoint).
-func (r *DocumentRepo) DeleteReservedDocument(artifactUUID, handle, orgUUID, docType string) error {
+// DeleteDocument removes any type of document.
+func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID, docType string) error {
 	query := r.db.Rebind(`DELETE FROM api_documents
 		WHERE artifact_uuid = ? AND handle = ? AND organization_uuid = ? AND type = ?`)
 	result, err := r.db.Exec(query, artifactUUID, handle, orgUUID, docType)
 	if err != nil {
-		return fmt.Errorf("failed to delete reserved document: %w", err)
+		return fmt.Errorf("failed to delete document: %w", err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
@@ -349,8 +318,10 @@ func (r *DocumentRepo) DeleteReservedDocument(artifactUUID, handle, orgUUID, doc
 	return nil
 }
 
-// DeleteDocument removes a document by artifact UUID, handle, and org.
-func (r *DocumentRepo) DeleteDocument(artifactUUID, handle, orgUUID string) error {
+// DeleteApiDocument removes a document by artifact UUID, handle, and org.
+// Reserved types (DEFINITION, THUMBNAIL) are excluded from the WHERE clause so
+// this method can never delete a system-managed row
+func (r *DocumentRepo) DeleteApiDocument(artifactUUID, handle, orgUUID string) error {
 	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
 	for i := range constants.ReservedAPIDocumentTypes {
 		reservedPlaceholders[i] = "?"

@@ -795,7 +795,7 @@
     "defaultMessage": "Remove"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage": {
-    "defaultMessage": "The thumbnail will be removed. The API will fall back to its name initials."
+    "defaultMessage": "Are you sure you want to delet the thumbnail of this API?"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteTitle": {
     "defaultMessage": "Remove API thumbnail"
