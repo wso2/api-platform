@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/jev"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
@@ -92,6 +93,10 @@ func Testbench() *components.Definition {
 			// scenario scope receives, addressed as http://testbench:3013/<block>/<scope>/<mode>.
 			// See testbench/services/agentcard.
 			{Name: "agentcard", Port: agentcard.Port, Scheme: "http", AwaitListening: true},
+			// jev is STATEFUL and partitioned per scenario: it records the TypeSafe Jev calls a
+			// policy makes, addressed as http://testbench:3015/<partition>/<mode>. See
+			// testbench/services/jev.
+			{Name: "jev", Port: jev.Port, Scheme: "http", AwaitListening: true},
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.
