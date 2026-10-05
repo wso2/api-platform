@@ -513,6 +513,10 @@ class FaultResponse:
     Every field is optional and merges over the error the client is receiving. Returning
     ``None`` from ``on_fault`` — rather than an empty instance — is how a handler says it
     changed nothing, which is the ordinary case for a notifier.
+
+    Nothing here stops the chain: every fault entry runs, in order, and a later entry sees
+    what an earlier one did. An entry that should not run for some failures says so with its
+    ``executionCondition``.
     """
 
     #: Overrides the error's status. None keeps it.
@@ -530,10 +534,6 @@ class FaultResponse:
     analytics_metadata: dict[str, Any] = field(default_factory=dict)
     dynamic_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     analytics_header_filter: DropHeaderAction = field(default_factory=DropHeaderAction)
-    #: Stops the rest of the fault chain: entries after this one do not run. Separate from
-    #: the fields above because ending the chain and replacing the response are different
-    #: decisions, which returning an ``ImmediateResponse`` would fuse into one.
-    final: bool = False
 
 
 ResponseAction = DownstreamResponseModifications | ImmediateResponse | None

@@ -235,6 +235,10 @@ func (ImmediateResponse) isResponseAction() {}
 // nil is the ordinary return and means "I changed nothing". Every field is optional and
 // merges: a zero FaultResponse changes nothing, and header operations apply on top of the
 // headers the error already has.
+//
+// Nothing here stops the chain: every fault entry runs, in order, and a later entry sees
+// what an earlier one did. An entry that should not run for some failures says so with its
+// executionCondition.
 type FaultResponse struct {
 	// StatusCode overrides the error's status. nil — the common case — keeps it.
 	//
@@ -267,15 +271,6 @@ type FaultResponse struct {
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
 	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
-
-	// Final stops the rest of the fault chain: entries after this one do not run.
-	//
-	// It is a field of its own, rather than something a returned replacement implies,
-	// because stopping the chain and replacing the response are different decisions. Fusing
-	// them — as returning a response-phase ImmediateResponse would — leaves an entry unable
-	// to annotate an error and also be the last word, or to stop the chain without also
-	// replacing the body.
-	Final bool
 }
 
 // Compile-time interface satisfaction checks.

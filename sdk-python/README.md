@@ -350,9 +350,9 @@ description of the failure:
 | `response_committed` | `True` when the response already reached the client, so any change here is discarded |
 | `route_key` | The matched route |
 
-A `FaultResponse` merges over the error the client is receiving: `status_code`, `body`,
-`headers_to_set` / `headers_to_append` / `headers_to_remove`, and `final` to stop the rest of
-the fault chain.
+A `FaultResponse` merges over the error the client is receiving: `status_code`, `body`, and
+`headers_to_set` / `headers_to_append` / `headers_to_remove`. Every fault entry runs, in order;
+use an entry's `executionCondition` to keep it off failures it should not handle.
 
 Returning `None` leaves the error exactly as it was, which is what a handler that only
 notifies or records should do.
