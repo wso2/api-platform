@@ -219,6 +219,18 @@ describe('request bodies', () => {
     expect(captured?.headers.get('Content-Type')).not.toContain('application/json');
   });
 
+  it('sends a URLSearchParams body form-encoded, as the OAuth2 token exchange needs', async () => {
+    server.use(recording('post', '/service-accounts/token', ok()));
+
+    await http.post(
+      '/service-accounts/token',
+      new URLSearchParams({ client_id: 'sa_acme_ci', grant_type: 'client_credentials' })
+    );
+
+    expect(captured?.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
+    expect(new URLSearchParams(captured!.body).get('client_id')).toBe('sa_acme_ci');
+  });
+
   it('sends no body at all when none is given', async () => {
     server.use(recording('delete', '/rest-apis/pizza-shack', () =>
       new HttpResponse(null, { status: 204 })
@@ -517,6 +529,18 @@ describe('session expiry', () => {
     await http.get('/rest-apis').catch(() => undefined);
 
     expect(notified).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it('does not notify when the request says a 401 is about its own credentials', async () => {
+    failWith401();
+    const notified = vi.fn();
+    const unsubscribe = onSessionExpired(notified);
+
+    const error = await rejection(http.get('/rest-apis', { authFailureIsSession: false }));
+
+    expect(error.status).toBe(401);
+    expect(notified).not.toHaveBeenCalled();
     unsubscribe();
   });
 
