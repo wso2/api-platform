@@ -99,7 +99,17 @@ jobs:
             echo 'No API Portal unit-test files found' >&2
             exit 1
           fi
-          node --test "${test_files[@]}"
+          # --experimental-test-coverage with the lcov reporter so these tests
+          # count toward the api-portal coverage Codecov reports. Without it the
+          # suite is a pass/fail gate only: it runs, it blocks the build on a
+          # failure, and every line it covers is discarded. The lcov reporter
+          # writes the report; --test-reporter=spec keeps the human-readable
+          # output on stdout, which a single reporter would otherwise replace.
+          node --test \
+            --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
+            "${test_files[@]}"
 
       - name: Build testbench image
         run: make -C tests/framework testbench
@@ -229,6 +239,21 @@ jobs:
           disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
           flags: api-portal-server-integration
+
+      # Unit coverage, kept as its own flag rather than merged into the
+      # integration ones: the two runs cover different halves of the same files —
+      # the UI suite enters the handlers through real requests, these enter the
+      # validators and error branches directly — and Codecov unions the flags.
+      # Reporting them separately is also what shows which half moved.
+      - name: Upload API Portal unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/api-portal/unit-test-coverage.info
+          flags: api-portal-unit
 
       - name: Upload API Portal UI integration coverage to Codecov
         if: always()
