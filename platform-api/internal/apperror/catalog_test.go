@@ -46,6 +46,7 @@ var messageArity = map[string]int{
 	CodeOf(AgentProxyUpstreamUnreachable):         1,
 	CodeOf(AgentProxyDeploymentValidationFailed):  1,
 	CodeOf(GraphQLAPIDeploymentValidationFailed):  1,
+	CodeOf(GraphQLAPIExists):                      1,
 	CodeOf(DeploymentNotActive):                   1,
 	CodeOf(DeploymentKindUnsupportedByGateway):    2,
 	CodeOf(BuildLimitReached):                     1,

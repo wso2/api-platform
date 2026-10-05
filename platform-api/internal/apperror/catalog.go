@@ -253,8 +253,10 @@ var (
 // IP, the parser's internal error text, or which specific reason applied
 // (error-handling.md / ssrf-prevention.md).
 var (
-	GraphQLAPINotFound                   = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
-	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "A GraphQL API with this ID already exists.")
+	GraphQLAPINotFound = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
+	// GraphQLAPIExists covers two distinct conflicts (handle, name+version) —
+	// the call site supplies which one, as for RESTAPIExists.
+	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "%s")
 	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
 	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 )

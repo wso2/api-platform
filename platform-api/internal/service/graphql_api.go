@@ -235,7 +235,10 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, fmt.Errorf("failed to check GraphQL API exists: %w", err)
 	}
 	if exists {
-		return nil, apperror.GraphQLAPIExists.New()
+		return nil, apperror.GraphQLAPIExists.New(graphQLAPIIDExistsMessage)
+	}
+	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, ""); err != nil {
+		return nil, err
 	}
 
 	upstream := mapUpstreamAPIToModel(req.Upstream)
@@ -299,7 +302,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, apperror.GraphQLAPIExists.Wrap(err)
+			return nil, apperror.GraphQLAPIExists.Wrap(err, graphQLAPIIDExistsMessage)
 		}
 		return nil, fmt.Errorf("failed to create GraphQL API: %w", err)
 	}
@@ -490,6 +493,28 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 		}
 		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", SchemaSource: schemaSource, Resolved: true}, nil
 	}
+}
+
+// GraphQLAPIExists messages, one per conflict — worded like REST's
+// RESTAPIExists equivalents.
+const (
+	graphQLAPIIDExistsMessage          = "A GraphQL API with this ID already exists."
+	graphQLAPINameVersionExistsMessage = "A GraphQL API with the same name and version already exists in the organization."
+)
+
+// ensureNameVersionAvailable rejects a display name + version pair another
+// GraphQL API in the organization already uses — the same rule
+// validateCreateAPIRequest/validateUpdateAPIRequest apply to REST APIs, and the
+// gateway enforces at deploy time. excludeHandle skips the API being updated.
+func (s *GraphQLAPIService) ensureNameVersionAvailable(name, version, orgUUID, excludeHandle string) error {
+	exists, err := s.repo.ExistsByNameAndVersion(name, version, orgUUID, excludeHandle)
+	if err != nil {
+		return fmt.Errorf("failed to check GraphQL API name and version: %w", err)
+	}
+	if exists {
+		return apperror.GraphQLAPIExists.New(graphQLAPINameVersionExistsMessage)
+	}
+	return nil
 }
 
 // handleExistsCheck returns a function that checks if a GraphQL API handle
@@ -687,6 +712,11 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	}
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
+	}
+	// Unlike a REST update, a GraphQL update may change the version as well as
+	// the display name, so the pair checked is the requested one.
+	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, handle); err != nil {
+		return nil, err
 	}
 
 	// auth.value is redacted on GET, so a read-modify-write that only changes the

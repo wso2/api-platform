@@ -40,9 +40,16 @@ import (
 // mockGraphQLAPIRepo is a configurable in-memory-ish fake satisfying
 // repository.GraphQLAPIRepository, mirroring the mocking style used across
 // this repo's service-layer tests (see internal/service/api_test.go).
+// nameVersionCheck records one ExistsByNameAndVersion call.
+type nameVersionCheck struct{ name, version, excludeHandle string }
+
 type mockGraphQLAPIRepo struct {
 	existsResult bool
 	existsErr    error
+
+	nameVersionExists bool
+	nameVersionErr    error
+	nameVersionChecks []nameVersionCheck
 
 	created   *model.GraphQLAPI
 	createErr error
@@ -132,6 +139,11 @@ func (m *mockGraphQLAPIRepo) Delete(handle, orgUUID string) error {
 
 func (m *mockGraphQLAPIRepo) Exists(handle, orgUUID string) (bool, error) {
 	return m.existsResult, m.existsErr
+}
+
+func (m *mockGraphQLAPIRepo) ExistsByNameAndVersion(name, version, orgUUID, excludeHandle string) (bool, error) {
+	m.nameVersionChecks = append(m.nameVersionChecks, nameVersionCheck{name, version, excludeHandle})
+	return m.nameVersionExists, m.nameVersionErr
 }
 
 func (m *mockGraphQLAPIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
