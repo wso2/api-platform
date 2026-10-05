@@ -820,10 +820,21 @@ func (u *Steps) developerCanChooseKeyManagerForOAuth2Key(ctx context.Context) er
 	if err := u.openAPIPortalPath(ctx, "/oauth2-keys"); err != nil {
 		return err
 	}
-	// The listing renders either the toolbar button or, with no keys yet, the one
-	// in the empty state. Which of the two is present depends on whether this
-	// developer has keys already, so accept either rather than assuming.
-	addKey := page.Locator("#ok-add-btn, #ok-add-btn-empty").First()
+	/*
+	 * The key manager this scenario created manages its applications in the
+	 * identity server, so it is offered by the "Add existing key" entry point
+	 * rather than "Generate key" -- each lists only the key managers that can
+	 * serve it.
+	 *
+	 * The listing renders either the toolbar button or, with no keys yet, the one
+	 * in the empty state, so accept either. Both ship hidden and are revealed by
+	 * the page script once the key-manager metadata has loaded, which is why this
+	 * waits for the button to be visible instead of clicking as soon as it exists.
+	 */
+	addKey := page.Locator("#ok-import-btn, #ok-import-btn-empty").First()
+	if err := u.expect.Locator(addKey).ToBeVisible(); err != nil {
+		return fmt.Errorf("waiting for the add-existing-key entry point: %w", err)
+	}
 	if err := addKey.Click(); err != nil {
 		return fmt.Errorf("opening the add-OAuth2-key form: %w", err)
 	}

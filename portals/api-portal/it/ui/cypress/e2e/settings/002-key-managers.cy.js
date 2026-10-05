@@ -97,8 +97,15 @@ describe('Settings — Key Managers', () => {
         //    the application page — a key manager is not bound to an application —
         //    so the check is that the OAuth2 Keys page offers this key manager as a
         //    choice, which is what "enabled for a developer" now means.
+        // The key manager created above manages its applications in the identity
+        // server, so it belongs to the "Add existing key" flow, not "Generate key" —
+        // the two entry points list only the key managers that can serve them.
+        // Either the toolbar button or the empty-state one is present depending on
+        // whether this developer already has keys; both are revealed by the page
+        // script once the metadata says a key manager of this kind exists, so this
+        // waits for visibility rather than clicking the moment it is in the DOM.
         cy.visitPortal('/oauth2-keys');
-        cy.get('#ok-add-btn, #ok-add-btn-empty').first().click();
+        cy.get('#ok-import-btn, #ok-import-btn-empty').first().should('be.visible').click();
         cy.get('#ok-add-modal').should('be.visible');
         cy.get('#ok-km-select').should('contain', KM_NAME);
     });

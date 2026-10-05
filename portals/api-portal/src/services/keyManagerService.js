@@ -939,6 +939,16 @@ const discoverKeyManagerEndpoints = async (req, res) => {
 };
 
 module.exports = {
+    /*
+     * Exported for tests, on the same reasoning as oauth2KeyService's two: these
+     * decide whether a key manager may be stored at all, they are where the
+     * environment and the grant-type restriction are settled, and each has more
+     * branches than a route test can reach without a live identity server.
+     */
+    _resolveKeyType,
+    _validateProvisioning,
+    _validateTokenEndpoint,
+    _declaredGrantTypes,
     createKeyManager,
     updateKeyManager,
     getKeyManagers,
