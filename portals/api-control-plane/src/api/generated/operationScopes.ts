@@ -184,6 +184,9 @@ export type ApScope =
   | 'ap:secret:manage'
   | 'ap:secret:read'
   | 'ap:secret:update'
+  | 'ap:service_account:manage'
+  | 'ap:service_account:read'
+  | 'ap:service_account:token:introspect'
   | 'ap:subscription:create'
   | 'ap:subscription:delete'
   | 'ap:subscription:manage'
@@ -357,6 +360,9 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:secret:manage',
   'ap:secret:read',
   'ap:secret:update',
+  'ap:service_account:manage',
+  'ap:service_account:read',
+  'ap:service_account:token:introspect',
   'ap:subscription:create',
   'ap:subscription:delete',
   'ap:subscription:manage',
@@ -459,6 +465,7 @@ export const OPERATION_SCOPES = {
   CreateProject: ['ap:project:create', 'ap:project:manage'],
   CreateRESTAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
   createSecret: ['ap:secret:create', 'ap:secret:manage'],
+  createServiceAccount: ['ap:service_account:manage'],
   CreateSubscription: ['ap:subscription:create', 'ap:subscription:manage'],
   CreateSubscriptionPlan: ['ap:subscription_plan:create', 'ap:subscription_plan:manage'],
   deleteAgentProxy: ['ap:agent_proxy:delete', 'ap:agent_proxy:manage'],
@@ -531,6 +538,7 @@ export const OPERATION_SCOPES = {
   DeleteProject: ['ap:project:delete', 'ap:project:manage'],
   DeleteRESTAPI: ['ap:rest_api:delete', 'ap:rest_api:manage'],
   deleteSecret: ['ap:secret:delete', 'ap:secret:manage'],
+  deleteServiceAccount: ['ap:service_account:manage'],
   DeleteSubscription: ['ap:subscription:delete', 'ap:subscription:manage'],
   DeleteSubscriptionPlan: ['ap:subscription_plan:delete', 'ap:subscription_plan:manage'],
   DeployAPI: [
@@ -663,10 +671,14 @@ export const OPERATION_SCOPES = {
   ],
   GetRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:read'],
   getSecret: ['ap:secret:manage', 'ap:secret:read'],
+  getServiceAccount: ['ap:service_account:manage', 'ap:service_account:read'],
+  getServiceAccountJWKS: [],
   GetSubscription: ['ap:subscription:manage', 'ap:subscription:read'],
   GetSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
+  introspectServiceAccountToken: ['ap:service_account:token:introspect'],
+  issueServiceAccountToken: [],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   listAgentProxyAPIKeys: [
     'ap:agent_proxy:api_key:manage',
@@ -732,10 +744,13 @@ export const OPERATION_SCOPES = {
   ListProjects: ['ap:project:manage', 'ap:project:read'],
   ListRESTAPIs: ['ap:rest_api:manage', 'ap:rest_api:read'],
   listSecrets: ['ap:secret:manage', 'ap:secret:read'],
+  listServiceAccountRoles: ['ap:service_account:manage', 'ap:service_account:read'],
+  listServiceAccounts: ['ap:service_account:manage', 'ap:service_account:read'],
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],
   listUserAPIKeys: ['ap:api_key:all:manage', 'ap:api_key:read'],
   publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage', 'ap:api_portal:rest_api:publish'],
+  regenerateServiceAccountSecret: ['ap:service_account:manage'],
   RegisterOrganization: ['ap:organization:create', 'ap:organization:manage'],
   RemoveApplicationAPIKey: [
     'ap:api_key:all:manage',
@@ -846,6 +861,7 @@ export const OPERATION_SCOPES = {
   UpdateProject: ['ap:project:manage', 'ap:project:update'],
   UpdateRESTAPI: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:update'],
+  updateServiceAccount: ['ap:service_account:manage'],
   UpdateSubscription: ['ap:subscription:manage', 'ap:subscription:update'],
   UpdateSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:update'],
   ValidateOpenAPISpec: ['ap:rest_api:create', 'ap:rest_api:manage'],
