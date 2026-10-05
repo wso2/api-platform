@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -141,11 +142,24 @@ func (r *ServiceAccountRepo) GetByClientID(clientID string) (*model.ServiceAccou
 	return sa, nil
 }
 
-func (r *ServiceAccountRepo) List(orgID string, limit, offset int) ([]*model.ServiceAccount, error) {
+// serviceAccountSearchClause matches search case-insensitively against name,
+// handle and owner. LIKE metacharacters are escaped, as in handleSearchClause.
+func serviceAccountSearchClause(search string) (string, []any) {
+	s := strings.TrimSpace(search)
+	if s == "" {
+		return "", nil
+	}
+	pattern := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(s)) + "%"
+	return ` AND (LOWER(name) LIKE ? ESCAPE '\' OR LOWER(handle) LIKE ? ESCAPE '\' OR LOWER(owner) LIKE ? ESCAPE '\')`,
+		[]any{pattern, pattern, pattern}
+}
+
+func (r *ServiceAccountRepo) List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error) {
+	searchClause, searchArgs := serviceAccountSearchClause(search)
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+	args := append(append([]any{orgID}, searchArgs...), pageArgs...)
 	rows, err := r.db.Query(r.db.Rebind(serviceAccountCols+
-		` WHERE organization_uuid = ? ORDER BY created_at DESC `+pageClause),
-		append([]any{orgID}, pageArgs...)...)
+		` WHERE organization_uuid = ?`+searchClause+` ORDER BY created_at DESC `+pageClause), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list service accounts: %w", err)
 	}
@@ -162,9 +176,11 @@ func (r *ServiceAccountRepo) List(orgID string, limit, offset int) ([]*model.Ser
 	return out, rows.Err()
 }
 
-func (r *ServiceAccountRepo) Count(orgID string) (int, error) {
+func (r *ServiceAccountRepo) Count(orgID, search string) (int, error) {
+	searchClause, searchArgs := serviceAccountSearchClause(search)
 	var n int
-	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM service_accounts WHERE organization_uuid = ?`), orgID).Scan(&n); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(`SELECT COUNT(*) FROM service_accounts WHERE organization_uuid = ?`+searchClause),
+		append([]any{orgID}, searchArgs...)...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("failed to count service accounts: %w", err)
 	}
 	return n, nil
