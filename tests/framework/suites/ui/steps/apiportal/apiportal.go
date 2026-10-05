@@ -1417,13 +1417,65 @@ func (u *Steps) applicationHasKeyAssociationSections(ctx context.Context) error 
 	if err := u.expect.Locator(page.Locator("#applicationName")).ToContainText(name); err != nil {
 		return fmt.Errorf("application detail page did not render for %q (url %s): %w", name, page.URL(), err)
 	}
-	if err := u.expect.Locator(page.Locator(".ak-title")).ToBeAttached(); err != nil {
-		return fmt.Errorf("key association section heading is missing on %s: %w", page.URL(), err)
-	}
-	if err := u.expect.Locator(page.Locator("#btn-open-associate-key")).ToBeAttached(); err != nil {
-		return fmt.Errorf("key association control is missing on %s: %w", page.URL(), err)
+	/*
+	 * Both sections render their heading with the same .ak-title class, so that
+	 * class on its own matches two elements. A Playwright attachment assertion
+	 * resolves its locator strictly: two matches never resolve, and the failure
+	 * surfaces as "expected to be attached" with a nil received value -- which
+	 * reads as "the heading is missing" when the page in fact has two of them.
+	 *
+	 * So address each section by the text of its own heading, and each control
+	 * by its own id. That also makes the assertion say what the scenario means:
+	 * both association sections are present, not merely that something with this
+	 * class is.
+	 */
+	for _, section := range []struct{ heading, control string }{
+		{"API keys", "#btn-open-associate-key"},
+		{"OAuth2 keys", "#btn-open-associate-oauth2-key"},
+	} {
+		heading := page.Locator(".ak-title").Filter(playwright.LocatorFilterOptions{
+			HasText: regexp.MustCompile(regexp.QuoteMeta(section.heading)),
+		})
+		if err := u.expect.Locator(heading).ToBeAttached(); err != nil {
+			return fmt.Errorf("%q section heading is missing on %s [%s]: %w",
+				section.heading, page.URL(), describeKeySectionDOM(page), err)
+		}
+		if err := u.expect.Locator(page.Locator(section.control)).ToBeAttached(); err != nil {
+			return fmt.Errorf("%q association control (%s) is missing on %s: %w",
+				section.heading, section.control, page.URL(), err)
+		}
 	}
 	return nil
+}
+
+// describeKeySectionDOM reports what the document actually holds when the key
+// association assertion fails.
+//
+// The failure it exists for is contradictory on its face: browser coverage shows
+// application-api-keys.js finding #application-api-keys-config on every load of
+// this page, and .ak-title sits nine lines below that element in the same
+// partial — so both are present or neither is. This prints the counts side by
+// side, plus whether the page is still open, which separates "the section is
+// genuinely missing" from "the assertion ran against a page that was going away".
+func describeKeySectionDOM(page playwright.Page) string {
+	if page.IsClosed() {
+		return "page closed"
+	}
+	counts := map[string]any{}
+	for _, sel := range []string{".ak-title", "#application-api-keys-config", "#applicationName", "section"} {
+		if n, err := page.Locator(sel).Count(); err == nil {
+			counts[sel] = n
+		} else {
+			counts[sel] = "count error: " + err.Error()
+		}
+	}
+	body := -1
+	if html, err := page.Content(); err == nil {
+		body = len(html)
+	}
+	return fmt.Sprintf("open, html=%dB, .ak-title=%v, config-div=%v, #applicationName=%v, section=%v",
+		body, counts[".ak-title"], counts["#application-api-keys-config"],
+		counts["#applicationName"], counts["section"])
 }
 
 func (u *Steps) searchAPIListing(ctx context.Context, query, mustContain, mustNotContain string) error {
