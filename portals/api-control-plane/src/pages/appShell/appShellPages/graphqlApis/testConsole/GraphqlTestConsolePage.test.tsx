@@ -246,6 +246,47 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     }
   });
 
+  // Regression test: GraphiQL keeps the starter tab's "Schema" operation name
+  // after the query is replaced with an anonymous one, and the gateway's
+  // graphql-authz policy rejected every such request with "Unknown operation
+  // named". The fetcher this page wires must drop the stale name.
+  it('does not send a stale operationName for an anonymous query', async () => {
+    serveApi([deployment]);
+    const originalFetch = global.fetch;
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { hello: 'hi' } }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    global.fetch = fetchSpy;
+
+    try {
+      renderPage();
+      await screen.findByText('GraphiQL ready with schema');
+
+      // Same iteration protocol as the toast test above: the toolkit's
+      // fetcher may return an async iterator whose body only runs when
+      // consumed.
+      const fetcher = lastGraphiQLProps?.fetcher as (params: {
+        query: string;
+        operationName?: string;
+      }) => Promise<AsyncIterator<unknown> | unknown>;
+      await act(async () => {
+        const result = await fetcher({ query: '{ hello }', operationName: 'Schema' });
+        if (result && typeof (result as AsyncIterator<unknown>).next === 'function') {
+          await (result as AsyncIterator<unknown>).next().catch(() => undefined);
+        }
+      });
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const body = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+      expect(body.query).toBe('{ hello }');
+      expect(body.operationName).toBeUndefined();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('copies the endpoint URL to the clipboard', async () => {
     serveApi([deployment]);
     const { user } = renderPage();
