@@ -58,6 +58,14 @@ import AgentProxiesCreateForm, {
 } from './AgentProxiesCreateForm';
 import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
 
+/**
+ * The sample agent behind "Try with Sample Agent". This is the agent's base
+ * url, not its card: the platform appends /.well-known/agent-card.json to any
+ * url that does not already end .json.
+ */
+const SAMPLE_A2A_AGENT_URL =
+  'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/a2a-trip-planning-agent/v1.0';
+
 export const AGENT_VERSION_PATTERN = /^v\d+\.\d+$/;
 export const AGENT_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
 export const AGENT_TARGET_ERROR = 'The provided URL is invalid.';
@@ -79,11 +87,26 @@ const SUPPORTED_BINDINGS = AGENT_TRANSPORT_OPTIONS.map(
   (transport) => transport.protocolBinding
 );
 
-/** Path each binding is served on, read off the card's interface URLs. */
-function advertisedPaths(card: AgentCardDocument): Record<string, string> {
+/**
+ * Path each binding is served on, relative to the agent. A card advertises
+ * absolute interface URLs, while the gateway takes the prefix that follows
+ * the agent's own URL, so the agent's path is removed from each one.
+ */
+function advertisedPaths(
+  card: AgentCardDocument,
+  agentUrl: string
+): Record<string, string> {
   const interfaces = Array.isArray(card.supportedInterfaces)
     ? card.supportedInterfaces
     : [];
+  const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+  let agentPath = '';
+  try {
+    agentPath = trimTrailingSlash(new URL(agentUrl).pathname);
+  } catch {
+    // an unparseable agent URL leaves the interface path untrimmed
+  }
+
   const paths: Record<string, string> = {};
   interfaces.forEach((entry) => {
     const record = entry as Record<string, unknown> | null;
@@ -91,8 +114,12 @@ function advertisedPaths(card: AgentCardDocument): Record<string, string> {
     const url = asString(record?.url);
     if (!binding || !url) return;
     try {
-      const path = new URL(url).pathname.replace(/\/+$/, '');
-      if (path) paths[binding] = path;
+      const interfacePath = trimTrailingSlash(new URL(url).pathname);
+      const suffix =
+        agentPath && interfacePath.startsWith(`${agentPath}/`)
+          ? interfacePath.slice(agentPath.length)
+          : interfacePath;
+      if (suffix) paths[binding] = suffix;
     } catch {
       // a card with an unparseable URL keeps the default path
     }
@@ -208,7 +235,10 @@ export default function AgentProxiesNew(): React.JSX.Element {
       );
       setAgentCard(card);
       setSelectedTransports(advertisedBindings(card));
-      setTransportPaths((prev) => ({ ...prev, ...advertisedPaths(card) }));
+      setTransportPaths((prev) => ({
+        ...prev,
+        ...advertisedPaths(card, normalizedUrl),
+      }));
     } catch {
       setFetchError(
         'Could not reach the upstream agent to retrieve its Agent Card. ' +
@@ -218,6 +248,11 @@ export default function AgentProxiesNew(): React.JSX.Element {
     } finally {
       setIsFetching(false);
     }
+  };
+
+  const handleTrySampleAgent = () => {
+    setEndpointUrl(SAMPLE_A2A_AGENT_URL);
+    void fetchCard(SAMPLE_A2A_AGENT_URL);
   };
 
   const handleEndpointChange = (value: string) => {
@@ -435,6 +470,22 @@ export default function AgentProxiesNew(): React.JSX.Element {
                     }}
                   />
                 </FormControl>
+
+                <Button
+                  variant="text"
+                  onClick={handleTrySampleAgent}
+                  sx={{
+                    alignSelf: 'flex-start',
+                    px: 0,
+                    minWidth: 'auto',
+                    py: 0,
+                  }}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.try.with.sample.agent"
+                    defaultMessage="Try with Sample Agent"
+                  />
+                </Button>
 
                 {fetchError || urlError ? (
                   <Alert severity={urlError ? 'error' : 'warning'}>
