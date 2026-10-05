@@ -471,7 +471,7 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 		}
 		return graphQLSchemaResolution{SDL: effectiveSDL, IntrospectionMode: "SDL", SchemaSource: schemaSource, Resolved: true}, nil
 	case string(api.GraphQLAPISchemaSourceUrl):
-		fetched, err := utils.FetchOpenAPISpecFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes)
+		fetched, err := utils.FetchDocumentFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes, "GraphQL SDL")
 		if err != nil {
 			s.slogger.Warn("Failed to fetch GraphQL SDL from sdlUrl", "error", err)
 			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
