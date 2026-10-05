@@ -433,13 +433,13 @@ func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 
 	// Retrieve document — strict match on handle AND type so a user doc that
 	// somehow registered at the reserved handle can't be returned here.
-	doc, err := h.apiDocumentService.GetDocument(artifactUUID, constants.DocumentHandleDefinition, orgId,
+	_, contentBytes, err := h.apiDocumentService.GetDocumentWithContent(artifactUUID, constants.DocumentHandleDefinition, orgId,
 		constants.DocumentTypeDefinition)
 	if err != nil {
 		return serviceError(err, "failed to fetch openapi spec for API "+restApiId)
 	}
 
-	content := string(doc.Content)
+	content := string(contentBytes)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }
@@ -512,12 +512,12 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	}
 
 	// Update document
-	docReq := &dto.PutAPIDocumentRequest{
-		Type:             constants.DocumentTypeDefinition,
-		Handle:           constants.DocumentHandleDefinition,
-		DisplayName:      constants.DocumentDisplayNameDefinition,
-		FileName:         specFileName,
-		Content:		  specContent,
+	docReq := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypeDefinition,
+		Handle:      constants.DocumentHandleDefinition,
+		DisplayName: constants.DocumentDisplayNameDefinition,
+		FileName:    specFileName,
+		Content:     specContent,
 	}
 
 	if err := h.apiDocumentService.UpsertDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {

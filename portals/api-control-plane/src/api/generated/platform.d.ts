@@ -4050,12 +4050,26 @@ export interface components {
             pagination: components["schemas"]["Pagination"];
         };
         /**
-         * @description Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
-         *     `displayName` are required; exactly one of `file` or `inlineContent`
-         *     must carry the body. `id` is optional — the server generates one
-         *     from `displayName` when omitted.
+         * @description Multipart form for document create (`POST`) and update (`PUT`).
+         *
+         *     On **create**: `type` and `displayName` are required; exactly one of
+         *     `file` or `inlineContent` must carry the body. `id` is optional — the
+         *     server generates one from `displayName` when omitted.
+         *
+         *     On **update**: every field is optional; omitted fields leave the stored
+         *     value unchanged. Supplying neither `file` nor `inlineContent` means a
+         *     metadata-only update — the stored bytes are not touched. If `id` is
+         *     supplied it must match the `{docId}` path parameter, otherwise the
+         *     request is rejected with 400.
          */
-        APIDocumentCreateRequest: {
+        APIDocumentRequest: {
+            /**
+             * @description URL-safe document handle. On create: optional, server-generated from
+             *     `displayName` when omitted; must be unique per artifact (409 on
+             *     conflict). On update: if provided, must match the `{docId}` path parameter.
+             * @example payment-webhook-howto
+             */
+            id?: string;
             type: components["schemas"]["APIDocumentType"];
             /**
              * @description Free-form qualifier used when `type` is `OTHER`. Stored and returned
@@ -4068,42 +4082,17 @@ export interface components {
             /** @example Payment Webhook How-To */
             displayName: string;
             /**
-             * @description Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
-             * @example payment-webhook-howto
-             */
-            id?: string;
-            /**
              * Format: binary
-             * @description Uploaded document bytes. Mutually exclusive with `inlineContent`.
+             * @description Document bytes. Mutually exclusive with `inlineContent`.
              */
             file?: string;
             /** @description Inline UTF-8 content (markdown). Mutually exclusive with `file`. */
             inlineContent?: string;
             /**
-             * @description Optional file name to associate with `inlineContent`. Ignored when `file` is present (the uploaded file's name is used instead).
+             * @description File name to associate with the content. When `file` is present the
+             *     uploaded file's name is used and this field is ignored; when
+             *     `inlineContent` is used this provides an explicit name.
              * @example payment-webhook.md
-             */
-            fileName?: string;
-        };
-        /**
-         * @description Multipart form for `PUT /apis/{apiType}/{apiId}/docs/{docId}`. Every
-         *     field is optional; omitted fields leave the stored value unchanged.
-         *     Supplying neither `file` nor `inlineContent` means a metadata-only
-         *     update — the stored bytes are not touched.
-         */
-        APIDocumentUpdateRequest: {
-            /** @example Payment Webhook How-To (v2) */
-            displayName?: string;
-            /**
-             * Format: binary
-             * @description Replacement document bytes. Mutually exclusive with `inlineContent`.
-             */
-            file?: string;
-            /** @description Replacement UTF-8 content. Mutually exclusive with `file`. */
-            inlineContent?: string;
-            /**
-             * @description Optional file name update. Applied alongside a new upload.
-             * @example payment-webhook-v2.md
              */
             fileName?: string;
         };
@@ -8737,7 +8726,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["APIDocumentCreateRequest"];
+                "multipart/form-data": components["schemas"]["APIDocumentRequest"];
             };
         };
         responses: {
@@ -8808,7 +8797,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["APIDocumentUpdateRequest"];
+                "multipart/form-data": components["schemas"]["APIDocumentRequest"];
             };
         };
         responses: {

@@ -101,6 +101,9 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 
 	if doc.Handle == "" {
 		handle, handleErr := utils.GenerateHandle(doc.DisplayName, func(candidate string) bool {
+			if constants.ReservedAPIDocumentHandles[candidate] {
+				return true
+			}
 			exists, err := s.documentRepo.DocumentHandleExistsForArtifact(doc.ArtifactUUID, candidate)
 			if err != nil {
 				return true
@@ -154,10 +157,19 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
 			return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
 		}
+		if len(trimmed) > maxDocTypeLen {
+			return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
 	if strings.TrimSpace(req.DisplayName) == "" {
 		return "", apperror.ValidationFailed.New("displayName is required")
+	}
+	if len(req.DisplayName) > maxDocDisplayNameLen {
+		return "", apperror.ValidationFailed.New(fmt.Sprintf("displayName must be at most %d characters", maxDocDisplayNameLen))
+	}
+	if len(req.FileName) > maxDocFileNameLen {
+		return "", apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
 	}
 	nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, req.DisplayName, "")
 	if nameErr != nil {
@@ -168,6 +180,12 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		return "", apperror.Conflict.New().WithLogMessage("document display name already exists for artifact")
 	}
 	if req.Handle != "" {
+		if err := utils.ValidateHandle(req.Handle); err != nil {
+			return "", err
+		}
+		if constants.ReservedAPIDocumentHandles[req.Handle] {
+			return "", apperror.ValidationFailed.New("id is reserved for a system-managed document")
+		}
 		exists, existsErr := s.documentRepo.DocumentHandleExistsForArtifact(artifactUUID, req.Handle)
 		if existsErr != nil {
 			s.slogger.Error("Failed to check document handle existence", "artifactUUID", artifactUUID, "handle", req.Handle, "error", existsErr)
@@ -184,7 +202,7 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 // UpsertDocument updates or creates a document for an artifact.
 // If a document of the same type already exists, it is updated in-place.
 // If no document exists, a new one is created.
-func (s *APIDocumentService) UpsertDocument(req *dto.PutAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
+func (s *APIDocumentService) UpsertDocument(req *dto.CreateAPIDocumentRequest, orgId string, userId string, artifactUUID string) error {
 	if req == nil {
 		return apperror.ValidationFailed.New("document request is required")
 	}
@@ -204,7 +222,8 @@ func (s *APIDocumentService) UpsertDocument(req *dto.PutAPIDocumentRequest, orgI
 		UpdatedBy:        userId,
 	}
 
-	existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
+	// existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
+	existing, err := s.documentRepo.GetDocument(doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID, doc.Type)
 	if err != nil {
 		s.slogger.Error("Failed to check existing document", "artifactUUID", doc.ArtifactUUID, "error", err)
 		return err
@@ -217,6 +236,9 @@ func (s *APIDocumentService) UpsertDocument(req *dto.PutAPIDocumentRequest, orgI
 		doc.CreatedBy = userId
 		if doc.Handle == "" {
 			handle, handleErr := utils.GenerateHandle(doc.DisplayName, func(candidate string) bool {
+				if constants.ReservedAPIDocumentHandles[candidate] {
+					return true
+				}
 				exists, err := s.documentRepo.DocumentHandleExistsForArtifact(doc.ArtifactUUID, candidate)
 				if err != nil {
 					return true
@@ -255,9 +277,11 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 	if handle == "" {
 		return apperror.ValidationFailed.New("document handle is required")
 	}
+	if constants.ReservedAPIDocumentHandles[handle] {
+		return apperror.ValidationFailed.New("cannot delete a system-managed document via this endpoint")
+	}
 
-	// docType="" excludes reserved types at the repo layer, so a DELETE of
-	// the DEFINITION/THUMBNAIL handle via this surface finds no row and 404s.
+	// docType="" additionally excludes any reserved-type row at the repo layer as defense-in-depth.
 	existing, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, "")
 	if err != nil {
 		s.slogger.Error("Failed to load document for delete", "artifactUUID", artifactUUID, "handle", handle, "error", err)
@@ -283,7 +307,7 @@ func (s *APIDocumentService) DeleteApiDocument(artifactUUID, handle, orgID, user
 // GetAllApiDocuments returns a page of user-facing documents attached to
 // artifactUUID, optionally filtered by docType. Reserved types (DEFINITION,
 // THUMBNAIL) are excluded by the repository at the SQL layer.
-func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType string, limit, offset int) ([]*model.Document, int, error) {
+func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType string, limit, offset int) ([]api.APIDocumentMetadata, int, error) {
 	if artifactUUID == "" {
 		return nil, 0, apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -293,20 +317,18 @@ func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType str
 		s.slogger.Error("Failed to list documents", "artifactUUID", artifactUUID, "error", err)
 		return nil, 0, err
 	}
-	return docs, total, nil
+	items := make([]api.APIDocumentMetadata, 0, len(docs))
+	for _, d := range docs {
+		items = append(items, modelToAPIMetadata(d))
+	}
+	return items, total, nil
 }
 
-// GetDocument retrieves a document (metadata + content) by handle, scoped
-// to artifactUUID + orgID. docType is optional:
-//
-//   - docType != "": strict match on type too. Pass the reserved type
-//     (e.g. constants.DocumentTypeDefinition) when fetching the OpenAPI spec
-//     or thumbnail.
-//   - docType == "": the request came from the user-facing /docs/{docId}
-//     path. The repository excludes reserved types at the SQL layer, so a
-//     caller cannot fetch the OpenAPI spec or thumbnail by guessing the
-//     handle on this endpoint.
-func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType string) (*model.Document, error) {
+// GetDocument retrieves document metadata by handle, scoped to artifactUUID + orgID.
+// docType is optional: pass a reserved type constant to fetch a singleton document
+// (DEFINITION, THUMBNAIL); leave empty for user-facing endpoints where the repository
+// excludes reserved types at the SQL layer.
+func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType string) (*api.APIDocumentMetadata, error) {
 	if artifactUUID == "" {
 		return nil, apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -322,7 +344,44 @@ func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType st
 	if doc == nil {
 		return nil, apperror.NotFound.New()
 	}
-	return doc, nil
+	resp := modelToAPIMetadata(doc)
+	return &resp, nil
+}
+
+// GetDocumentWithContent fetches a document including its raw content bytes.
+func (s *APIDocumentService) GetDocumentWithContent(artifactUUID, handle, orgID, docType string) (*api.APIDocumentMetadata, []byte, error) {
+	if artifactUUID == "" {
+		return nil, nil, apperror.ValidationFailed.New("artifact UUID is required")
+	}
+	if handle == "" {
+		return nil, nil, apperror.ValidationFailed.New("document handle is required")
+	}
+
+	doc, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, docType)
+	if err != nil {
+		s.slogger.Error("Failed to get document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
+		return nil, nil, err
+	}
+	if doc == nil {
+		return nil, nil, apperror.NotFound.New()
+	}
+	resp := modelToAPIMetadata(doc)
+	return &resp, doc.Content, nil
+}
+
+// modelToAPIMetadata converts a model.Document to the generated API metadata type returned on the wire.
+func modelToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
+	return api.APIDocumentMetadata{
+		Id:          d.Handle,
+		Type:        d.Type,
+		DisplayName: d.DisplayName,
+		FileName:    utils.StringPtrIfNotEmpty(d.FileName),
+		ContentType: utils.StringPtrIfNotEmpty(d.ContentType),
+		CreatedBy:   utils.StringPtrIfNotEmpty(d.CreatedBy),
+		CreatedAt:   utils.TimePtrIfNotZero(d.CreatedAt),
+		UpdatedBy:   utils.StringPtrIfNotEmpty(d.UpdatedBy),
+		UpdatedAt:   utils.TimePtrIfNotZero(d.UpdatedAt),
+	}
 }
 
 // UpdateUserDocument applies a partial update to a user-authored document.
@@ -340,9 +399,14 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 	if handle == "" {
 		return apperror.ValidationFailed.New("document handle is required")
 	}
+	if err := utils.ValidateHandle(handle); err != nil {
+		return err
+	}
+	if constants.ReservedAPIDocumentHandles[handle] {
+		return apperror.ValidationFailed.New("cannot update a system-managed document via this endpoint")
+	}
 
-	// docType="" excludes reserved types at the repo layer, so a PUT against
-	// the DEFINITION/THUMBNAIL handle via this surface finds no row
+	// docType="" additionally excludes any reserved-type row at the repo layer as defense-in-depth.
 	existing, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, "")
 	if err != nil {
 		s.slogger.Error("Failed to load document for update", "artifactUUID", artifactUUID, "handle", handle, "error", err)
@@ -354,10 +418,32 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 
 	updatedDocument := *existing
 	updatedDocument.UpdatedBy = userID
+	if req.Type != nil {
+		newType := strings.TrimSpace(*req.Type)
+		if !constants.ValidAPIDocumentUserTypes[newType] {
+			return apperror.ValidationFailed.New("invalid document type")
+		}
+		if newType == constants.DocumentTypeOther {
+			trimmed := strings.TrimSpace(req.OtherTypeName)
+			if trimmed == "" {
+				return apperror.ValidationFailed.New("otherTypeName is required when type is OTHER")
+			}
+			if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+				return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+			}
+			if len(trimmed) > maxDocTypeLen {
+				return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+			}
+		}
+		updatedDocument.Type = resolveStoredDocType(newType, req.OtherTypeName)
+	}
 	if req.DisplayName != nil {
 		trimmed := strings.TrimSpace(*req.DisplayName)
 		if trimmed == "" {
 			return apperror.ValidationFailed.New("displayName must not be empty")
+		}
+		if len(trimmed) > maxDocDisplayNameLen {
+			return apperror.ValidationFailed.New(fmt.Sprintf("displayName must be at most %d characters", maxDocDisplayNameLen))
 		}
 		nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, trimmed, handle)
 		if nameErr != nil {
@@ -370,6 +456,9 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		updatedDocument.DisplayName = trimmed
 	}
 	if req.FileName != nil {
+		if len(*req.FileName) > maxDocFileNameLen {
+			return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+		}
 		updatedDocument.FileName = *req.FileName
 	}
 	updateContent := req.Content != nil
@@ -380,7 +469,7 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		}
 	}
 
-	if err := s.documentRepo.UpdateDocument(&updatedDocument, updateContent); err != nil {
+	if err := s.documentRepo.UpdateApiDocument(&updatedDocument, updateContent); err != nil {
 		s.slogger.Error("Failed to update document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return err
 	}
@@ -426,8 +515,14 @@ func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]ap
 	return extractOperations(sd), nil
 }
 
-// maxSpecFileNameLen is the DB column ceiling (file_name VARCHAR(255)).
-const maxSpecFileNameLen = 255
+// DB column ceilings for api_documents. Mirror the schema so the service can
+// reject over-length values with a 400 before the DB would reject them.
+const (
+	maxDocTypeLen        = 20
+	maxDocDisplayNameLen = 255
+	maxDocFileNameLen    = 255
+	maxSpecFileNameLen   = 255
+)
 
 // NormalizeSpecFileName strips the directory component from an uploaded filename
 // and caps the result to the DB column ceiling, preserving the extension and

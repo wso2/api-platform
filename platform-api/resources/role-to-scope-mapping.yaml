@@ -68,6 +68,7 @@ roles:
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:rest_api:manage
+      - ap:docs:manage
       - ap:application:manage
       - ap:subscription:manage
       - ap:subscription_plan:manage
@@ -120,6 +121,7 @@ roles:
       - ap:gateway:manage
       - ap:gateway_custom_policy:manage
       - ap:rest_api:read
+      - ap:docs:read
       - ap:rest_api:deployment:manage
       - ap:llm_template:manage
       - ap:llm_provider:read
@@ -175,6 +177,7 @@ roles:
       - ap:organization:read
       - ap:project:manage
       - ap:rest_api:manage
+      - ap:docs:manage
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:llm_provider:read
@@ -223,6 +226,7 @@ roles:
       - ap:subscription:manage
       - ap:subscription_plan:read
       - ap:rest_api:read
+      - ap:docs:read
       - ap:mcp_proxy:read
       - ap:agent_proxy:read
       - ap:llm_proxy:read
@@ -256,6 +260,7 @@ roles:
       - ap:gateway:token:read
       - ap:gateway_custom_policy:read
       - ap:rest_api:read
+      - ap:docs:read
       - ap:rest_api:deployment:read
       - ap:application:read
       - ap:application:api_key:read

@@ -2040,36 +2040,6 @@ type A2ATransport struct {
 // A2ATransportProtocolBinding A2A protocol binding served on this transport.
 type A2ATransportProtocolBinding string
 
-// APIDocumentCreateRequest Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
-// `displayName` are required; exactly one of `file` or `inlineContent`
-// must carry the body. `id` is optional — the server generates one
-// from `displayName` when omitted.
-type APIDocumentCreateRequest struct {
-	DisplayName string `json:"displayName" yaml:"displayName"`
-
-	// File Uploaded document bytes. Mutually exclusive with `inlineContent`.
-	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
-
-	// FileName Optional file name to associate with `inlineContent`. Ignored when `file` is present (the uploaded file's name is used instead).
-	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
-
-	// Id Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
-	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// InlineContent Inline UTF-8 content (markdown). Mutually exclusive with `file`.
-	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
-
-	// OtherTypeName Free-form qualifier used when `type` is `OTHER`. Stored and returned
-	// exactly as typed (no case conversion). Ignored for all other types.
-	// Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
-	// type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
-	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
-
-	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
-	// are managed via separate dedicated endpoints.
-	Type APIDocumentType `json:"type" yaml:"type"`
-}
-
 // APIDocumentListResponse defines model for APIDocumentListResponse.
 type APIDocumentListResponse struct {
 	// Count Number of items in the current page.
@@ -2095,33 +2065,57 @@ type APIDocumentMetadata struct {
 	Id string `json:"id" yaml:"id"`
 
 	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
-	Type      string     `binding:"required" json:"type" yaml:"type"`
+	Type      string     `json:"type" yaml:"type"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy User who updated the docuement.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
 
+// APIDocumentRequest Multipart form for document create (`POST`) and update (`PUT`).
+//
+// On **create**: `type` and `displayName` are required; exactly one of
+// `file` or `inlineContent` must carry the body. `id` is optional — the
+// server generates one from `displayName` when omitted.
+//
+// On **update**: every field is optional; omitted fields leave the stored
+// value unchanged. Supplying neither `file` nor `inlineContent` means a
+// metadata-only update — the stored bytes are not touched. If `id` is
+// supplied it must match the `{docId}` path parameter, otherwise the
+// request is rejected with 400.
+type APIDocumentRequest struct {
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// File Document bytes. Mutually exclusive with `inlineContent`.
+	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
+
+	// FileName File name to associate with the content. When `file` is present the
+	// uploaded file's name is used and this field is ignored; when
+	// `inlineContent` is used this provides an explicit name.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe document handle. On create: optional, server-generated from
+	// `displayName` when omitted; must be unique per artifact (409 on
+	// conflict). On update: if provided, must match the `{docId}` path parameter.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// InlineContent Inline UTF-8 content (markdown). Mutually exclusive with `file`.
+	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// OtherTypeName Free-form qualifier used when `type` is `OTHER`. Stored and returned
+	// exactly as typed (no case conversion). Ignored for all other types.
+	// Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
+	// type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
+	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
+
+	// Type User-authored document type. DEFINITION/THUMBNAIL are reserved and
+	// are managed via separate dedicated endpoints.
+	Type APIDocumentType `json:"type" yaml:"type"`
+}
+
 // APIDocumentType User-authored document type. DEFINITION/THUMBNAIL are reserved and
 // are managed via separate dedicated endpoints.
 type APIDocumentType string
-
-// APIDocumentUpdateRequest Multipart form for `PUT /apis/{apiType}/{apiId}/docs/{docId}`. Every
-// field is optional; omitted fields leave the stored value unchanged.
-// Supplying neither `file` nor `inlineContent` means a metadata-only
-// update — the stored bytes are not touched.
-type APIDocumentUpdateRequest struct {
-	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-
-	// File Replacement document bytes. Mutually exclusive with `inlineContent`.
-	File *openapi_types.File `json:"file,omitempty" yaml:"file,omitempty"`
-
-	// FileName Optional file name update. Applied alongside a new upload.
-	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
-
-	// InlineContent Replacement UTF-8 content. Mutually exclusive with `file`.
-	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
-}
 
 // APIKeyItem defines model for APIKeyItem.
 type APIKeyItem struct {
@@ -5900,10 +5894,10 @@ type SaveApiPublicationDraftDefinitionJSONRequestBody = SaveApiPublicationDraftD
 type SaveApiPublicationDraftThumbnailMultipartRequestBody SaveApiPublicationDraftThumbnailMultipartBody
 
 // CreateAPIDocumentMultipartRequestBody defines body for CreateAPIDocument for multipart/form-data ContentType.
-type CreateAPIDocumentMultipartRequestBody = APIDocumentCreateRequest
+type CreateAPIDocumentMultipartRequestBody = APIDocumentRequest
 
 // UpdateAPIDocumentMultipartRequestBody defines body for UpdateAPIDocument for multipart/form-data ContentType.
-type UpdateAPIDocumentMultipartRequestBody = APIDocumentUpdateRequest
+type UpdateAPIDocumentMultipartRequestBody = APIDocumentRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

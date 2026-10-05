@@ -77,6 +77,8 @@ export type ApScope =
   | 'ap:application:manage'
   | 'ap:application:read'
   | 'ap:application:update'
+  | 'ap:docs:manage'
+  | 'ap:docs:read'
   | 'ap:gateway:create'
   | 'ap:gateway:delete'
   | 'ap:gateway:manage'
@@ -250,6 +252,8 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:application:manage',
   'ap:application:read',
   'ap:application:update',
+  'ap:docs:manage',
+  'ap:docs:read',
   'ap:gateway:create',
   'ap:gateway:delete',
   'ap:gateway:manage',
@@ -415,7 +419,13 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
-  CreateAPIDocument: ['ap:rest_api:create', 'ap:rest_api:manage'],
+  CreateAPIDocument: [
+    'ap:docs:manage',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
   CreateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:create',
@@ -473,7 +483,13 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
-  DeleteAPIDocument: ['ap:rest_api:delete', 'ap:rest_api:manage'],
+  DeleteAPIDocument: [
+    'ap:docs:manage',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
   DeleteApiPortal: ['ap:api_portal:delete', 'ap:api_portal:manage'],
   DeleteApplication: ['ap:application:delete', 'ap:application:manage'],
   DeleteBuild: ['ap:rest_api:build:delete', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
@@ -572,8 +588,22 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
-  GetAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:read'],
-  GetAPIDocumentContent: ['ap:rest_api:manage', 'ap:rest_api:read'],
+  GetAPIDocument: [
+    'ap:docs:manage',
+    'ap:docs:read',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
+  GetAPIDocumentContent: [
+    'ap:docs:manage',
+    'ap:docs:read',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
   GetApiPortal: ['ap:api_portal:manage', 'ap:api_portal:read'],
   getApiPublication: ['ap:api_portal:publication:read'],
   getApiPublicationDefinition: ['ap:api_portal:publication:read'],
@@ -688,7 +718,14 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
-  ListAPIDocuments: ['ap:rest_api:manage', 'ap:rest_api:read'],
+  ListAPIDocuments: [
+    'ap:docs:manage',
+    'ap:docs:read',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
   ListApiPortals: ['ap:api_portal:manage', 'ap:api_portal:read'],
   listApiPublications: ['ap:api_publication:read'],
   ListApplicationAPIKeys: [
@@ -835,7 +872,13 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:manage',
     'ap:api_key:all:manage',
   ],
-  UpdateAPIDocument: ['ap:rest_api:manage', 'ap:rest_api:update'],
+  UpdateAPIDocument: [
+    'ap:docs:manage',
+    'ap:llm_provider:manage',
+    'ap:llm_proxy:manage',
+    'ap:mcp_proxy:manage',
+    'ap:rest_api:manage',
+  ],
   UpdateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:manage',

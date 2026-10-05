@@ -1938,6 +1938,10 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       parameters:
@@ -1967,6 +1971,10 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       requestBody:
@@ -1974,7 +1982,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/APIDocumentCreateRequest'
+              $ref: '#/components/schemas/APIDocumentRequest'
       responses:
         '201':
           description: Document created successfully
@@ -2017,6 +2025,10 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -2042,6 +2054,10 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       requestBody:
@@ -2049,7 +2065,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/APIDocumentUpdateRequest'
+              $ref: '#/components/schemas/APIDocumentRequest'
       responses:
         '200':
           description: Document updated successfully
@@ -2077,6 +2093,10 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -2110,6 +2130,10 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -9262,17 +9286,31 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    APIDocumentCreateRequest:
+    APIDocumentRequest:
       type: object
       description: |
-        Multipart form for `POST /apis/{apiType}/{apiId}/docs`. `type` and
-        `displayName` are required; exactly one of `file` or `inlineContent`
-        must carry the body. `id` is optional — the server generates one
-        from `displayName` when omitted.
+        Multipart form for document create (`POST`) and update (`PUT`).
+
+        On **create**: `type` and `displayName` are required; exactly one of
+        `file` or `inlineContent` must carry the body. `id` is optional — the
+        server generates one from `displayName` when omitted.
+
+        On **update**: every field is optional; omitted fields leave the stored
+        value unchanged. Supplying neither `file` nor `inlineContent` means a
+        metadata-only update — the stored bytes are not touched. If `id` is
+        supplied it must match the `{docId}` path parameter, otherwise the
+        request is rejected with 400.
       required:
         - type
         - displayName
       properties:
+        id:
+          type: string
+          description: |
+            URL-safe document handle. On create: optional, server-generated from
+            `displayName` when omitted; must be unique per artifact (409 on
+            conflict). On update: if provided, must match the `{docId}` path parameter.
+          example: payment-webhook-howto
         type:
           $ref: '#/components/schemas/APIDocumentType'
         otherTypeName:
@@ -9286,44 +9324,20 @@ components:
         displayName:
           type: string
           example: Payment Webhook How-To
-        id:
-          type: string
-          description: Optional URL-safe handle. Must be unique per artifact; a conflict returns 409.
-          example: payment-webhook-howto
         file:
           type: string
           format: binary
-          description: Uploaded document bytes. Mutually exclusive with `inlineContent`.
+          description: Document bytes. Mutually exclusive with `inlineContent`.
         inlineContent:
           type: string
           description: Inline UTF-8 content (markdown). Mutually exclusive with `file`.
         fileName:
           type: string
-          description: Optional file name to associate with `inlineContent`. Ignored when `file` is present (the uploaded file's name is used instead).
+          description: |
+            File name to associate with the content. When `file` is present the
+            uploaded file's name is used and this field is ignored; when
+            `inlineContent` is used this provides an explicit name.
           example: payment-webhook.md
-
-    APIDocumentUpdateRequest:
-      type: object
-      description: |
-        Multipart form for `PUT /apis/{apiType}/{apiId}/docs/{docId}`. Every
-        field is optional; omitted fields leave the stored value unchanged.
-        Supplying neither `file` nor `inlineContent` means a metadata-only
-        update — the stored bytes are not touched.
-      properties:
-        displayName:
-          type: string
-          example: Payment Webhook How-To (v2)
-        file:
-          type: string
-          format: binary
-          description: Replacement document bytes. Mutually exclusive with `inlineContent`.
-        inlineContent:
-          type: string
-          description: Replacement UTF-8 content. Mutually exclusive with `file`.
-        fileName:
-          type: string
-          description: Optional file name update. Applied alongside a new upload.
-          example: payment-webhook-v2.md
 
     TimeUnit:
       type: string

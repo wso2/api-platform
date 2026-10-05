@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -107,30 +108,30 @@ func (r *DocumentRepo) GetDocument(artifactUUID, handle, orgUUID, docType string
 
 // GetDocumentByArtifactAndType retrieves the single document of a given type for an artifact.
 // Returns nil (no error) when no matching row exists.
-func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
-	query := r.db.Rebind(`
-		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
-		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
-		       COALESCE(created_by, ''), created_at,
-		       COALESCE(updated_by, ''), updated_at
-		FROM api_documents
-		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
-	`)
-	row := r.db.QueryRow(query, artifactUUID, docType, orgUUID)
-	doc := &model.Document{}
-	if err := row.Scan(
-		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
-		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
-		&doc.CreatedBy, &doc.CreatedAt,
-		&doc.UpdatedBy, &doc.UpdatedAt,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get document by artifact and type: %w", err)
-	}
-	return doc, nil
-}
+// func (r *DocumentRepo) GetDocumentByArtifactAndType(artifactUUID, docType, orgUUID string) (*model.Document, error) {
+// 	query := r.db.Rebind(`
+// 		SELECT uuid, artifact_uuid, organization_uuid, type, handle, display_name,
+// 		       COALESCE(file_name, ''), COALESCE(content_type, ''), content,
+// 		       COALESCE(created_by, ''), created_at,
+// 		       COALESCE(updated_by, ''), updated_at
+// 		FROM api_documents
+// 		WHERE artifact_uuid = ? AND type = ? AND organization_uuid = ?
+// 	`)
+// 	row := r.db.QueryRow(query, artifactUUID, docType, orgUUID)
+// 	doc := &model.Document{}
+// 	if err := row.Scan(
+// 		&doc.ID, &doc.ArtifactUUID, &doc.OrganizationUUID, &doc.Type,
+// 		&doc.Handle, &doc.DisplayName, &doc.FileName, &doc.ContentType, &doc.Content,
+// 		&doc.CreatedBy, &doc.CreatedAt,
+// 		&doc.UpdatedBy, &doc.UpdatedAt,
+// 	); err != nil {
+// 		if errors.Is(err, sql.ErrNoRows) {
+// 			return nil, nil
+// 		}
+// 		return nil, fmt.Errorf("failed to get document by artifact and type: %w", err)
+// 	}
+// 	return doc, nil
+// }
 
 // ListDocumentsByArtifact returns user-facing documents for an artifact,
 // optionally filtered by type, as metadata-only rows (no content column).
@@ -144,25 +145,22 @@ func (r *DocumentRepo) ListDocumentsByArtifact(artifactUUID, orgUUID, docType st
 	args := []interface{}{artifactUUID, orgUUID}
 	if docType != "" {
 		if docType == constants.DocumentTypeOther {
-			placeholders := make([]string, 0, len(constants.ForbiddenOtherTypeNames))
-			for t := range constants.ForbiddenOtherTypeNames {
-				placeholders = append(placeholders, "?")
+			// Sort the user-type keys so the generated SQL text is deterministic
+			// across invocations — a map iteration order would churn the
+			// placeholder order and defeat the DB driver's prepared-statement cache.
+			userTypes := sortedMapKeys(constants.ValidAPIDocumentUserTypes)
+			placeholders := make([]string, len(userTypes))
+			for i, t := range userTypes {
+				placeholders[i] = "?"
 				args = append(args, t)
 			}
 			whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
 		} else {
 			whereClause += ` AND type = ?`
 			args = append(args, docType)
-			if len(constants.ReservedAPIDocumentTypes) > 0 {
-				placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
-				for i, t := range constants.ReservedAPIDocumentTypes {
-					placeholders[i] = "?"
-					args = append(args, t)
-				}
-				whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
-			}
 		}
-	} else if len(constants.ReservedAPIDocumentTypes) > 0 {
+	}
+	if len(constants.ReservedAPIDocumentTypes) > 0 {
 		placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
 		for i, t := range constants.ReservedAPIDocumentTypes {
 			placeholders[i] = "?"
@@ -216,7 +214,13 @@ func (r *DocumentRepo) ListDocumentsByArtifact(artifactUUID, orgUUID, docType st
 	return docs, total, nil
 }
 
-// UpsertDocument inserts or updates a document scoped by (artifact_uuid, handle, type)
+// UpsertDocument writes the singleton OpenAPI definition for an artifact,
+// scoped by (artifact_uuid, handle, type). The matching POST
+// /rest-apis/{id}/openapi endpoint was deliberately removed, so the initial
+// spec upload lands here too — hence the create-if-missing branch. The SET
+// list is intentionally narrow (content + file_name + content_type): the
+// type (DEFINITION) and display_name are fixed by convention for this
+// singleton and must not be mutated through this path.
 func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	now := time.Now().UTC()
 	updateQuery := r.db.Rebind(`
@@ -257,12 +261,15 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	return nil
 }
 
-// UpdateDocument updates an existing document identified by artifact UUID + handle + org.
-// doc.Content is written only when updateContent is true, so a metadata-only PUT (no new file/inlineContent)
-// never overwrites the stored bytes with an empty payload.
+// UpdateApiDocument applies metadata and/or content changes to a user-authored
+// API document identified by (artifact_uuid, handle, org). Used by the
+// user-facing PUT /apis/{apiType}/{apiId}/docs/{docId} path to update either
+// the content or the metadata of an existing user doc.
+//
 // Reserved types (DEFINITION, THUMBNAIL) are excluded from the WHERE clause so
-// user-facing callers can never mutate them through this path.
-func (r *DocumentRepo) UpdateDocument(doc *model.Document, updateContent bool) error {
+// this method can never mutate a system-managed row — reserved rows have their
+// own write path (UpsertDocument).
+func (r *DocumentRepo) UpdateApiDocument(doc *model.Document, updateContent bool) error {
 	now := time.Now().UTC()
 
 	reservedPlaceholders := make([]string, len(constants.ReservedAPIDocumentTypes))
@@ -463,4 +470,13 @@ func (r *DocumentRepo) GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID stri
 		m[id] = handle
 	}
 	return m, rows.Err()
+}
+
+func sortedMapKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

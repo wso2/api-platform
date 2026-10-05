@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 	"github.com/wso2/api-platform/platform-api/api"
@@ -32,7 +31,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
-	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 )
@@ -119,13 +117,9 @@ func (h *APIDocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Reques
 		return serviceError(err, "failed to list documents")
 	}
 
-	items := make([]api.APIDocumentMetadata, 0, len(docs))
-	for _, d := range docs {
-		items = append(items, documentToAPIMetadata(d))
-	}
 	resp := api.APIDocumentListResponse{
-		Count: len(items),
-		List:  items,
+		Count: len(docs),
+		List:  docs,
 		Pagination: api.Pagination{
 			Total:  total,
 			Offset: offset,
@@ -153,15 +147,11 @@ func (h *APIDocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request)
 		return serviceError(err, "failed to get document")
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, documentToAPIMetadata(doc))
+	httputil.WriteJSON(w, http.StatusOK, doc)
 	return nil
 }
 
 // GetDocumentContent handles GET /apis/{apiType}/{apiId}/docs/{docId}/content.
-// Streams the stored document bytes with the document's stored Content-Type
-// header so the caller can handle the body correctly for the current format
-// (text/markdown) and any future format (PDF, DOCX, images) without any
-// schema changes — the stored content-type drives interpretation.
 func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.Request) error {
 	orgID, artifactUUID, err := h.resolveArtifactUUID(r)
 	if err != nil {
@@ -172,26 +162,26 @@ func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.R
 		return apperror.ValidationFailed.New("document ID is required")
 	}
 
-	doc, err := h.service.GetDocument(artifactUUID, docID, orgID, "")
+	doc, content, err := h.service.GetDocumentWithContent(artifactUUID, docID, orgID, "")
 	if err != nil {
 		return serviceError(err, "failed to get document content")
 	}
 
-	if len(doc.Content) == 0 {
+	if len(content) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return nil
 	}
 
-	ct := doc.ContentType
-	if ct == "" {
-		ct = "application/octet-stream"
+	ct := "application/octet-stream"
+	if doc.ContentType != nil && *doc.ContentType != "" {
+		ct = *doc.ContentType
 	}
 	w.Header().Set("Content-Type", ct)
-	if doc.FileName != "" {
-		fn := strings.NewReplacer(`"`, `\"`, `\`, `\\`).Replace(doc.FileName)
+	if doc.FileName != nil && *doc.FileName != "" {
+		fn := strings.NewReplacer(`"`, `\"`, `\`, `\\`).Replace(*doc.FileName)
 		w.Header().Set("Content-Disposition", `inline; filename="`+fn+`"`)
 	}
-	_, _ = w.Write(doc.Content)
+	_, _ = w.Write(content)
 	return nil
 }
 
@@ -232,7 +222,7 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 		return serviceError(err, "failed to load created document")
 	}
 	w.Header().Set("Location", r.URL.Path+"/"+handle)
-	httputil.WriteJSON(w, http.StatusCreated, documentToAPIMetadata(doc))
+	httputil.WriteJSON(w, http.StatusCreated, doc)
 	return nil
 }
 
@@ -260,7 +250,16 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 
+	// If the caller echoed back the document handle, it must match the path.
+	if parsed.handle != "" && parsed.handle != docID {
+		return apperror.ValidationFailed.New("id in request body does not match the document ID in the path")
+	}
+
 	req := &dto.UpdateAPIDocumentRequest{}
+	if parsed.docTypeSet {
+		req.Type = &parsed.docType
+		req.OtherTypeName = parsed.otherTypeName
+	}
 	if parsed.displayNameSet {
 		req.DisplayName = &parsed.displayName
 	}
@@ -288,7 +287,7 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return serviceError(err, "failed to load updated document")
 	}
-	httputil.WriteJSON(w, http.StatusOK, documentToAPIMetadata(doc))
+	httputil.WriteJSON(w, http.StatusOK, doc)
 	return nil
 }
 
@@ -429,41 +428,3 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 	return parsed, nil
 }
 
-// documentToAPIMetadata strips the content BLOB and reshapes a model.Document
-// into the generated api.APIDocumentMetadata response type. Empty optional
-// fields on the model become nil pointers so JSON output omits them, matching
-// the OpenAPI contract's `omitempty` optionality.
-//
-// Note: api.APIDocumentMetadata.Id in the spec is the document handle, not
-// the DB UUID — the handle is what callers use in /docs/{docId}.
-func documentToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
-	return api.APIDocumentMetadata{
-		Id:          d.Handle,
-		Type:        d.Type,
-		DisplayName: d.DisplayName,
-		FileName:    optionalString(d.FileName),
-		ContentType: optionalString(d.ContentType),
-		CreatedBy:   optionalString(d.CreatedBy),
-		CreatedAt:   optionalTime(d.CreatedAt),
-		UpdatedBy:   optionalString(d.UpdatedBy),
-		UpdatedAt:   optionalTime(d.UpdatedAt),
-	}
-}
-
-// optionalString returns nil for an empty string so JSON serialisation
-// honours `omitempty` on *string fields in the generated api types.
-func optionalString(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-// optionalTime returns nil for a zero time.Time so JSON serialisation honours
-// `omitempty` on *time.Time fields in the generated api types.
-func optionalTime(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
-}

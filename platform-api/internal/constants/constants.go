@@ -345,8 +345,13 @@ var ReservedAPIDocumentTypes = []string{
 	DocumentTypeThumbnail,
 }
 
+var ReservedAPIDocumentHandles = map[string]bool{
+	DocumentHandleDefinition: true,
+	DocumentHandleThumbnail:  true,
+}
+
 // ForbiddenOtherTypeNames is the set of type names that may not be used as
-// otherTypeName when creating a document with type=OTHER.
+// custom doc types when creating a document with type=OTHER.
 var ForbiddenOtherTypeNames = map[string]bool{
 	DocumentTypeDefinition:   true,
 	DocumentTypeThumbnail:    true,
