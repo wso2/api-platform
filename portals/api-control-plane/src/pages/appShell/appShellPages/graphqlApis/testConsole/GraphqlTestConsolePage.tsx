@@ -49,6 +49,7 @@ import { versionLabel } from '@/utils/versionLabel';
 import { buildInvokeUrl } from '../../apis/overview/InvokeUrlPanel';
 import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { parseGraphQLSdl } from '../../apis/create/utils/graphqlSchema';
+import { withValidOperationName } from './withValidOperationName';
 
 const messages = defineMessages({
   apiNotFound: {
@@ -254,15 +255,14 @@ function GraphqlTestConsolePageContent() {
       },
     [notify, intl],
   );
-  const fetcher: Fetcher = useMemo(
-    () =>
-      createGraphiQLFetcher({
-        fetch: guardedFetch,
-        headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE },
-        url: invokeProxyUrl,
-      }),
-    [invokeProxyUrl, guardedFetch],
-  );
+  const fetcher: Fetcher = useMemo(() => {
+    const baseFetcher = createGraphiQLFetcher({
+      fetch: guardedFetch,
+      headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE },
+      url: invokeProxyUrl,
+    });
+    return (params, opts) => baseFetcher(withValidOperationName(params), opts);
+  }, [invokeProxyUrl, guardedFetch]);
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
