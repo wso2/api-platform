@@ -240,3 +240,32 @@ instead of a crash-looping pod.
 {{- end -}}
 {{- $canonical -}}
 {{- end -}}
+
+{{/*
+Returns "true" when service accounts are enabled with their own key pair, else "".
+Without one they sign with the shared auth.jwt pair. A half-set pair fails the
+render: it would pair one key's public half with the other's private half.
+*/}}
+{{- define "apip.platformApi.saOwnKey" -}}
+{{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
+{{- if $sa.enabled -}}
+{{- $jwt := default (dict) $sa.jwt -}}
+{{- if or $jwt.issuer $jwt.publicKeyFile $jwt.privateKeyFile -}}
+{{- if not (and $jwt.issuer $jwt.publicKeyFile $jwt.privateKeyFile) -}}
+{{- fail "platform-api: config.auth.serviceAccount.jwt needs issuer, publicKeyFile and privateKeyFile together, or none of them." -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Returns "true" when service accounts are enabled without their own key pair, so
+they sign with auth.jwt — which must then be rendered and mounted in every mode.
+*/}}
+{{- define "apip.platformApi.saSharedKey" -}}
+{{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
+{{- if and $sa.enabled (not (include "apip.platformApi.saOwnKey" .)) -}}
+true
+{{- end -}}
+{{- end -}}
