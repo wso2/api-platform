@@ -1267,16 +1267,16 @@ const putSubscriptionPlans = async (req, res) => {
     }
 }
 
-// The plan's own `id` in the request body is what the client wants to become the stored handle.
-// YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
+const nonBlank = (value) => (value && String(value).trim()) || undefined;
+
+// Handle rule: the caller-supplied `id`, else a `handle` already on the plan (YAML-sourced plans
+// carry one from metadata.name), else a generated UUID. The settings UI sends no id on create
+// (so those get a UUID) but always sends it on update (that's how the plan is located).
 function normalizePlanHandle(plan) {
     if (!plan) {
         return plan;
     }
-    // Handle rule: use the caller-supplied `id` when present; otherwise generate a
-    // UUID. The settings UI sends no id on create (so those get a UUID) but always
-    // sends it on update (that's how the plan is located), so update never generates.
-    plan.handle = (plan.id && String(plan.id).trim()) ? plan.id : crypto.randomUUID();
+    plan.handle = nonBlank(plan.id) ?? nonBlank(plan.handle) ?? crypto.randomUUID();
     return plan;
 }
 
