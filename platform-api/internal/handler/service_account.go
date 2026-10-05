@@ -96,8 +96,8 @@ func (h *ServiceAccountHandler) List(w http.ResponseWriter, r *http.Request) err
 	if !ok {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	limit, offset := parsePagination(r)
-	resp, err := h.svc.List(orgID, limit, offset)
+	opts := parseListOptions(r)
+	resp, err := h.svc.List(orgID, opts.Search, opts.Limit, opts.Offset)
 	if err != nil {
 		return serviceError(err, "failed to list service accounts")
 	}

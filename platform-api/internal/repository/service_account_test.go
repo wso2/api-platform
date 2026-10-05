@@ -192,14 +192,14 @@ func TestServiceAccountRepo_ListAndCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if n, err := repo.Count("org-sa"); err != nil || n != 3 {
+	if n, err := repo.Count("org-sa", ""); err != nil || n != 3 {
 		t.Fatalf("Count = %d, %v", n, err)
 	}
-	page, err := repo.List("org-sa", 2, 0)
+	page, err := repo.List("org-sa", "", 2, 0)
 	if err != nil || len(page) != 2 {
 		t.Fatalf("first page = %d, %v", len(page), err)
 	}
-	rest, err := repo.List("org-sa", 2, 2)
+	rest, err := repo.List("org-sa", "", 2, 2)
 	if err != nil || len(rest) != 1 {
 		t.Fatalf("second page = %d, %v", len(rest), err)
 	}
@@ -246,8 +246,8 @@ func TestServiceAccountRepo_SurfacesDatabaseErrors(t *testing.T) {
 		"create":        func() error { return repo.Create(sa, sa.Subject("org")) },
 		"get by handle": func() error { _, err := repo.GetByHandle("org-sa", "ci-bot"); return err },
 		"get by client": func() error { _, err := repo.GetByClientID(sa.ClientID); return err },
-		"list":          func() error { _, err := repo.List("org-sa", 10, 0); return err },
-		"count":         func() error { _, err := repo.Count("org-sa"); return err },
+		"list":          func() error { _, err := repo.List("org-sa", "", 10, 0); return err },
+		"count":         func() error { _, err := repo.Count("org-sa", ""); return err },
 		"update":        func() error { return repo.Update(sa, 1, model.ServiceAccountStatusActive, rev) },
 		"update secret": func() error { return repo.UpdateSecret(sa, 1, rev) },
 		"delete":        func() error { return repo.Delete("org-sa", sa.UUID, 1, rev) },
@@ -307,5 +307,47 @@ func TestServiceAccountRepo_WritesWatermarkWithChange(t *testing.T) {
 	}
 	if got := watermark(); got != 3 {
 		t.Fatalf("after UpdateSecret: watermark %d, want 3", got)
+	}
+}
+
+func TestServiceAccountRepo_ListSearch(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	createTestOrganizationAndProject(t, db, "org-sa", "proj-sa")
+	repo := NewServiceAccountRepo(db)
+
+	for i, handle := range []string{"ci-bot", "nightly-report", "data_100"} {
+		sa := newTestServiceAccount("org-sa", "22222222-0000-0000-0000-00000000000"+string(rune('1'+i)), handle)
+		if handle == "nightly-report" {
+			sa.DisplayName, sa.Owner = "Nightly Report", "Data-Team@example.com"
+		}
+		if err := repo.Create(sa, sa.Subject("org")); err != nil {
+			t.Fatalf("Create %s: %v", handle, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		search string
+		want   int
+	}{
+		{"", 3},
+		{"NIGHTLY", 1},   // name, case-insensitive
+		{"ci-b", 1},      // handle
+		{"data-team", 1}, // owner
+		{"_", 1},         // a literal underscore, not a single-character wildcard
+		{"%", 0},         // a literal percent sign
+		{"missing", 0},
+	} {
+		got, err := repo.List("org-sa", tc.search, 20, 0)
+		if err != nil {
+			t.Fatalf("List(%q): %v", tc.search, err)
+		}
+		n, err := repo.Count("org-sa", tc.search)
+		if err != nil {
+			t.Fatalf("Count(%q): %v", tc.search, err)
+		}
+		if len(got) != tc.want || n != tc.want {
+			t.Errorf("search %q: list %d, count %d, want %d", tc.search, len(got), n, tc.want)
+		}
 	}
 }
