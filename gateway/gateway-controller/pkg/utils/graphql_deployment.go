@@ -42,6 +42,11 @@ func init() {
 
 const graphQLApiKind = string(api.GraphQLAPIKindGraphQLApi)
 
+// graphQLSpecRules supplies the spec-level rules GraphQLApi shares with RestApi
+// (displayName, version, context). Stateless apart from its compiled regexes,
+// so one instance serves every validation.
+var graphQLSpecRules = config.NewAPIValidator()
+
 // graphQLPolicyValidator validates spec.policies references (name/version resolution
 // and param-schema conformance). It is nil until SetGraphQLPolicyValidator is called from
 // main.go, because it depends on the loaded policy definitions, which are not available
@@ -101,20 +106,15 @@ func validateGraphQLAPIConfig(cfg any) (apiName, apiVersion string, validationEr
 
 	errors = append(errors, config.ValidateMetadata(&graphqlConfig.Metadata)...)
 
+	// displayName, version and context follow RestApi's own rules exactly
+	// (length, URL-friendly name, semantic version, context shape) — reused
+	// from config.APIValidator rather than re-implemented, so the two kinds
+	// can't drift apart. Name/version and handle uniqueness are enforced for
+	// every kind by DeployAPIConfiguration's validateArtifactConflicts.
 	spec := graphqlConfig.Spec
-	if strings.TrimSpace(spec.DisplayName) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.displayName", Message: "displayName is required"})
-	}
-	if strings.TrimSpace(spec.Version) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.version", Message: "version is required"})
-	}
-	if strings.TrimSpace(spec.Context) == "" {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context is required"})
-	} else if !strings.HasPrefix(spec.Context, "/") {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context must start with '/'"})
-	} else if strings.HasSuffix(spec.Context, "/") && spec.Context != "/" {
-		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "Context cannot end with / (except for root context)"})
-	}
+	errors = append(errors, graphQLSpecRules.ValidateDisplayName(spec.DisplayName)...)
+	errors = append(errors, graphQLSpecRules.ValidateVersion(spec.Version)...)
+	errors = append(errors, graphQLSpecRules.ValidateContext(spec.Context)...)
 
 	errors = append(errors, validateGraphQLUpstream("main", &spec.Upstream.Main)...)
 	if spec.Upstream.Sandbox != nil {
