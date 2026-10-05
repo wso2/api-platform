@@ -127,6 +127,7 @@ type Server struct {
 	Webhook        Webhook          `koanf:"webhook"`
 	HTTPClient     HTTPClientConfig `koanf:"http_client"`
 	AgentCardCache AgentCardCache   `koanf:"agent_card_cache"`
+	ReadOnly       ReadOnly         `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 }
 
 // AgentCardCache configures the in-process cache sitting in front of the
@@ -818,6 +819,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
+		return nil, err
+	}
+	if err := validateReadOnlyConfig(&cfg.ReadOnly); err != nil { // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 		return nil, err
 	}
 	if err := validateEventHubConfig(&cfg.EventHub); err != nil {
