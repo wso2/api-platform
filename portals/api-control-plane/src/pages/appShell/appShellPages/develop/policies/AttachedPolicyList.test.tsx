@@ -41,4 +41,42 @@ describe('AttachedPolicyList', () => {
     expect(screen.queryByText('vv1')).not.toBeInTheDocument();
     expect(screen.getByText('v2.0')).toBeInTheDocument();
   });
+
+  it('lists policies without add, edit, remove or reorder when read-only', () => {
+    const { container } = renderWithProviders(
+      <AttachedPolicyList
+        canAdd
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        policies={[{ name: 'cors', version: 'v1' }]}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByText('cors')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add Policy' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
+    expect(container.querySelector('[draggable="true"]')).toBeNull();
+  });
+
+  it('keeps every control when editable', () => {
+    const { container } = renderWithProviders(
+      <AttachedPolicyList
+        canAdd
+        onAdd={vi.fn()}
+        onEdit={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        policies={[{ name: 'cors', version: 'v1' }]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Add Policy' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit policy')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove policy')).toBeInTheDocument();
+    expect(container.querySelector('[draggable="true"]')).not.toBeNull();
+  });
 });
