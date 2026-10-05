@@ -51,7 +51,8 @@ func (ec *PolicyExecutionContext) formatFaultResponse(
 	immResp policy.ImmediateResponse,
 ) policy.ImmediateResponse {
 	decision := faultformat.ShouldFormat(errorFormatRegistry,
-		ec.faultFormatInput(ec.errorFor(immResp.Fault), immResp.StatusCode))
+		ec.faultFormatInput(ec.errorFor(immResp.Fault), immResp.StatusCode,
+			immResp.Fault != nil && !ec.isEngineFailure()))
 	if !decision.Format {
 		slog.DebugContext(ctx, "Error formatting skipped",
 			"request_id", ec.requestID, "route_key", ec.routeKey, "reason", decision.Reason)
@@ -82,14 +83,19 @@ func (ec *PolicyExecutionContext) formatFaultResponse(
 //
 // The server-level caller (formatSterileFault) deliberately does NOT use this: it has no
 // execution context to read, which is the whole reason it exists separately.
+//
+// policyDescribed is the third varying input: whether a policy, rather than the engine,
+// described the failure — see faultformat.Input.PolicyDescribed.
 func (ec *PolicyExecutionContext) faultFormatInput(
 	declared policy.FaultDetails,
 	status int,
+	policyDescribed bool,
 ) faultformat.Input {
 	return faultformat.Input{
 		FormatterEnabled: ec.errorFormatterEnabled(),
 		BodyAuthored:     ec.faultBodyAuthored,
 		Err:              declared,
+		PolicyDescribed:  policyDescribed,
 		Status:           status,
 		ErrorID:          ec.engineErrorID,
 		APIKind:          ec.apiKind(),
@@ -141,6 +147,12 @@ func (ec *PolicyExecutionContext) errorResponseForFormatting() policy.FaultDetai
 // False when the server was built without the option, and false for a request that matched
 // no route — an unknown route has no kind, so no configuration could have named it, and the
 // reply Envoy already wrote stands.
+// isEngineFailure reports that the failure being handled is the engine's own — set by
+// engineError before the fault flow runs, so its description is the engine's, not a policy's.
+func (ec *PolicyExecutionContext) isEngineFailure() bool {
+	return ec.engineErrorID != ""
+}
+
 func (ec *PolicyExecutionContext) errorFormatterEnabled() bool {
 	if ec.server == nil {
 		return false
@@ -269,15 +281,18 @@ func (s *ExternalProcessorServer) formatSterileError(
 		FormatterEnabled: s.errorFormatterKinds.Enabled(sig.APIKind),
 		// Nothing can have authored a body here: no policy chain ran. The sterile body is
 		// the engine's own, and the engine is not an author — same rule as its 500s.
-		BodyAuthored:  false,
-		Err:           err,
-		Status:        status,
-		ErrorID:       errorID,
-		APIKind:       sig.APIKind,
-		Transport:     sig.Transport,
-		ContentType:   sig.ContentType,
-		Accept:        sig.Accept,
-		RequestMethod: sig.Method,
+		BodyAuthored: false,
+		// Nor can a policy have described it, so this leaves the sterile body as released
+		// gateways sent it. Kept as an explicit field so the rule is visible here.
+		PolicyDescribed: false,
+		Err:             err,
+		Status:          status,
+		ErrorID:         errorID,
+		APIKind:         sig.APIKind,
+		Transport:       sig.Transport,
+		ContentType:     sig.ContentType,
+		Accept:          sig.Accept,
+		RequestMethod:   sig.Method,
 	})
 	if !decision.Format {
 		slog.DebugContext(ctx, "Sterile error left unformatted",

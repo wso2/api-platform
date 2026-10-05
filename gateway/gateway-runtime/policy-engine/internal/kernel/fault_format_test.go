@@ -283,13 +283,27 @@ func TestErrorFormat_HeadResponseGetsNoBody(t *testing.T) {
 	assert.Empty(t, out.Headers[contentTypeHeader])
 }
 
-// Most errors today carry no FaultDetails — the router produced them, or the policy still
-// puts its message in the body. A sparse error must still render a valid document, since
-// that is exactly the case an MCP client cannot otherwise parse.
-func TestErrorFormat_SparseErrorStillRenders(t *testing.T) {
+// A rejection that no policy described is left exactly as it was, even on an enabled kind:
+// a policy that predates the fault contract describes nothing, and released gateways sent
+// its errors unformatted. Rendering them would change what an existing client receives.
+func TestErrorFormat_UndescribedErrorIsLeftAlone(t *testing.T) {
 	ec := mcpCtx(t)
 
 	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{StatusCode: 503})
+
+	assert.Nil(t, out.Body, "an undescribed rejection must not gain a body")
+	assert.Empty(t, out.Headers[contentTypeHeader])
+	assert.Equal(t, 503, out.StatusCode)
+}
+
+// Described, but sparsely: a policy that declared a Fault with no fields set still asked for
+// rendering, and a sparse description must still produce a valid document with a usable
+// message — the case an MCP client cannot otherwise parse.
+func TestErrorFormat_SparseDescriptionStillRenders(t *testing.T) {
+	ec := mcpCtx(t)
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(),
+		policy.ImmediateResponse{StatusCode: 503, Fault: &policy.FaultDetails{}})
 
 	require.NotNil(t, out.Body)
 	var body map[string]any

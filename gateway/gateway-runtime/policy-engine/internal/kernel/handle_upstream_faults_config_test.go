@@ -193,17 +193,14 @@ func TestHandleUpstreamFaults_EnabledStillRespectsTheStatusFloor(t *testing.T) {
 	}
 }
 
-// The flag governs the fault POLICIES, never the formatter.
+// The flag governs the fault POLICIES, never the formatter — and the formatter itself renders
+// only what a policy described.
 //
-// Collapsing the two would be a trap that only springs later: which failures an operator
-// wants their handlers to see is a deployment choice, but which shape an error is rendered in
-// is a protocol fact — a SOAP caller cannot parse a JSON error whatever the deployment
-// thinks. Gated together, a SOAP API's backend 503 would reach its client unparseable until
-// someone flipped an unrelated behavioural flag.
-//
-// Dormant in production while faultformat.supportedKinds is empty, which is why it needs a
-// test: nothing else would notice the coupling until the day a kind is added to that list.
-func TestHandleUpstreamFaults_DisabledStillFormatsForAProtocolThatNeedsIt(t *testing.T) {
+// An upstream 503 is described by no policy, so with the flag off nothing changes it: the
+// operator's fault policies do not run, and the formatter, consulted regardless of the flag,
+// declines. That is the released behaviour for an upstream error, which this flag being off
+// exists to keep.
+func TestHandleUpstreamFaults_DisabledLeavesAnUndescribedUpstreamErrorAlone(t *testing.T) {
 	ec := upstreamFaultCtx(t, false, nil)
 	ec.sharedCtx.APIKind = policy.APIKindMCP
 	enableFaultFormatter(t, ec, policy.APIKindMCP)
@@ -215,10 +212,10 @@ func TestHandleUpstreamFaults_DisabledStillFormatsForAProtocolThatNeedsIt(t *tes
 	execResult := &executor.ResponseExecutionResult{}
 	changed := ec.runFaultPoliciesOnResponse(context.Background(), execResult, originUpstream)
 
-	assert.True(t, changed,
-		"an MCP client cannot read a plain-text upstream error; the formatter must still run")
+	assert.False(t, changed, "no policy described an upstream error, so nothing renders it")
+	assert.Empty(t, execResult.Results)
 	assert.False(t, ec.faultPoliciesRan,
-		"but the operator's fault policies must NOT have run — that is what the flag gates")
+		"and the operator's fault policies must NOT have run — that is what the flag gates")
 }
 
 // The mirror of the above, and the one that keeps the default honest: with formatting off for

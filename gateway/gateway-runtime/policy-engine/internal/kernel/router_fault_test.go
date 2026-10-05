@@ -110,47 +110,30 @@ func TestRouterError_ReachesTheFaultPolicy(t *testing.T) {
 	assert.Empty(t, saw.Fault.Policy, "no policy caused it")
 }
 
-// The FORMATTER must render the engine's router description too, not only the fault chain.
+// A router failure is described by the engine, not by a policy, so the formatter leaves it as
+// released gateways sent it — on every kind, enabled or not.
 //
-// Regression: the two shared no resolution point, so router descriptions were taught to
-// attributedFault (fault chain) while errorResponseForFormatting (formatter) still returned an
-// empty error. Fault policies saw the router's code; the client saw "An unexpected error
-// occurred."
-// Neither the fault-chain test nor the formatter's declared-error tests could see the gap.
-func TestRouterError_ReachesTheFormattedBody(t *testing.T) {
-	cases := []struct {
-		name    string
-		kind    policy.APIKind
-		wantSub string // JSON carries the code; JSON-RPC uses its own reserved code space
-	}{
-		{"REST caller gets the canonical code", policy.APIKindRestApi, codeUpstreamUnavailable},
-		{"MCP caller gets the description in JSON-RPC form", policy.APIKindMCP, "The upstream service is unavailable."},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+// The fault CHAIN still receives the engine's description (the test above); only the client
+// body is unchanged. A fault entry that re-describes the failure does get it rendered — see
+// TestFaultRedescription_TheResponseFormatterRendersIt.
+func TestRouterError_IsNotFormatted(t *testing.T) {
+	for _, kind := range []policy.APIKind{policy.APIKindRestApi, policy.APIKindMCP} {
+		t.Run(string(kind), func(t *testing.T) {
 			ec := faultExecCtx(t, nil, nil) // no fault policies at all
-			ec.sharedCtx.APIKind = tc.kind
-			enableFaultFormatter(t, ec, tc.kind)
+			ec.sharedCtx.APIKind = kind
+			enableFaultFormatter(t, ec, kind)
 			withRejectedBody(ec, 503)
 			ec.responseCodeDetails = codeDetailsNoHealthyUpstream
 
-			// An empty result set, NOT bodyRejection: a router failure has no policy behind
-			// it, so nothing authored a body. bodyRejection simulates a guardrail that DID
-			// author one, which would correctly suppress formatting and prove nothing here.
 			execResult := &executor.ResponseExecutionResult{}
-			require.True(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originUpstream))
+			ec.runFaultPoliciesOnResponse(context.Background(), execResult, originUpstream)
 
-			var formatted []byte
 			for _, r := range execResult.Results {
 				if r.PolicyName == errorFormatResultName {
-					formatted = r.Action.(policy.DownstreamResponseModifications).Body
+					t.Fatalf("a router failure must not be formatted: %s",
+						r.Action.(policy.DownstreamResponseModifications).Body)
 				}
 			}
-			require.NotNil(t, formatted, "a router failure with no fault policies must still be formatted")
-			assert.Contains(t, string(formatted), tc.wantSub,
-				"the body must carry the engine's description, not the generic fallback")
-			assert.NotContains(t, string(formatted), "An unexpected error occurred",
-				"the generic fallback means the description never reached the formatter")
 		})
 	}
 }

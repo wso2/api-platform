@@ -147,37 +147,27 @@ func TestResolutionFailure_DisabledKindKeepsTheSterileBody(t *testing.T) {
 	assert.NotContains(t, body, "code", "an unenabled kind gains no rendered envelope")
 }
 
-// An MCP client cannot parse `{"error":"Bad Request"}` — it is not a JSON-RPC error object.
-// This is the case these paths were missing.
-func TestResolutionFailure_EnabledMcpKindGetsJSONRPC(t *testing.T) {
+// Enabling the kind changes nothing for a resolution failure: no policy described it, so the
+// sterile body released gateways sent is what the client still receives.
+func TestResolutionFailure_EnabledKindKeepsTheSterileBody(t *testing.T) {
 	imm := resolutionFailureBody(t, policy.APIKindMCP, true, resolver.FailureParse,
 		requestShapeSignals{Method: "POST", ContentType: "application/json"})
 
-	assert.Equal(t, uint32(400), uint32(imm.GetStatus().GetCode()),
-		"formatting must never change the status")
-
+	assert.Equal(t, uint32(400), uint32(imm.GetStatus().GetCode()))
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(imm.GetBody(), &body), "body: %s", imm.GetBody())
-	assert.Equal(t, "2.0", body["jsonrpc"])
-	errObj, ok := body["error"].(map[string]any)
-	require.True(t, ok, "error must be a JSON-RPC error OBJECT: %s", imm.GetBody())
-	assert.Equal(t, "Bad Request", errObj["message"])
-
-	data, ok := errObj["data"].(map[string]any)
-	require.True(t, ok, "the gateway code travels in data: %s", imm.GetBody())
-	assert.Equal(t, codeResolutionBadRequest, data["code"])
-	assert.Equal(t, policy.FaultTypeValidation, data["type"])
-	assert.NotEmpty(t, data["error_id"], "the correlation id must survive rendering")
+	assert.Equal(t, "Bad Request", body["error"], "the pre-existing sterile shape")
+	assert.NotEmpty(t, body["error_id"])
+	assert.NotContains(t, body, "jsonrpc", "no rendered envelope for an engine-described failure")
 }
 
-// The content type has to travel with the body, or a client sees JSON-RPC labelled as
-// whatever the sterile response happened to declare.
-func TestResolutionFailure_EnabledKindSetsTheRenderedContentType(t *testing.T) {
+// The content type stays the sterile one too, whatever the caller accepts.
+func TestResolutionFailure_EnabledKindKeepsTheSterileContentType(t *testing.T) {
 	imm := resolutionFailureBody(t, policy.APIKindRestApi, true, resolver.FailureUnknownOperation,
 		requestShapeSignals{Method: "GET", Accept: "application/xml"})
 
 	assert.Equal(t, uint32(404), uint32(imm.GetStatus().GetCode()))
-	assert.Contains(t, string(imm.GetBody()), "<error>", "an XML caller gets an XML document")
+	assert.NotContains(t, string(imm.GetBody()), "<error>", "no XML rendering for an engine-described failure")
 
 	var contentType string
 	for _, h := range imm.GetHeaders().GetSetHeaders() {
@@ -185,7 +175,7 @@ func TestResolutionFailure_EnabledKindSetsTheRenderedContentType(t *testing.T) {
 			contentType = string(h.GetHeader().GetRawValue())
 		}
 	}
-	assert.Equal(t, "application/xml", contentType)
+	assert.Equal(t, "application/json", contentType)
 }
 
 // ─── A route with no policy chain ────────────────────────────────────────────
@@ -217,23 +207,12 @@ func TestNoPolicyChain_DisabledKindKeepsTheSterileBody(t *testing.T) {
 		"byte-for-byte the body this path has always returned")
 }
 
-func TestNoPolicyChain_EnabledMcpKindGetsJSONRPC(t *testing.T) {
+func TestNoPolicyChain_EnabledKindKeepsTheSterileBody(t *testing.T) {
 	imm := noChainResponse(t, policy.APIKindMCP, true, map[string]string{":method": "GET"})
 
 	assert.Equal(t, uint32(500), uint32(imm.GetStatus().GetCode()))
-	var body map[string]any
-	require.NoError(t, json.Unmarshal(imm.GetBody(), &body), "body: %s", imm.GetBody())
-	assert.Equal(t, "2.0", body["jsonrpc"])
-
-	errObj, ok := body["error"].(map[string]any)
-	require.True(t, ok, "body: %s", imm.GetBody())
-	data, ok := errObj["data"].(map[string]any)
-	require.True(t, ok, "body: %s", imm.GetBody())
-	assert.Equal(t, codeNoPolicyChain, data["code"],
-		"a missing chain is its own condition, not the generic engine-internal code")
-	assert.Equal(t, policy.FaultTypeInternal, data["type"])
-	assert.NotEmpty(t, data["error_id"],
-		"this path had no correlation id at all before; the rendered body carries one")
+	assert.JSONEq(t, `{"error":"Internal Server Error"}`, string(imm.GetBody()),
+		"no policy described a missing chain, so the released body stands")
 }
 
 // A HEAD response carries no body whatever the config says — Envoy recalculates

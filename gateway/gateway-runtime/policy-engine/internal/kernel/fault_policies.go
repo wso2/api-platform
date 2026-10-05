@@ -231,7 +231,8 @@ func (ec *PolicyExecutionContext) appendFormattedFaultBody(
 	ec.noteUpstreamAuthoredBody()
 
 	decision := faultformat.ShouldFormat(errorFormatRegistry,
-		ec.faultFormatInput(ec.errorResponseForFormatting(), status))
+		ec.faultFormatInput(ec.errorResponseForFormatting(), status,
+			ec.faultDeclared != nil && !ec.isEngineFailure()))
 	if !decision.Format {
 		slog.DebugContext(ctx, "Error formatting skipped",
 			"request_id", ec.requestID, "route_key", ec.routeKey, "reason", decision.Reason)

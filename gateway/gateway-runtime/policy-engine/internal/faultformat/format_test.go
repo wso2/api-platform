@@ -144,9 +144,19 @@ func TestShouldFormat_GateOrderIsVisibleInTheReason(t *testing.T) {
 		assert.Contains(t, d.Reason, "authored")
 	})
 
-	t.Run("enabled and unauthored renders", func(t *testing.T) {
+	t.Run("enabled and unauthored but described by no policy is left alone", func(t *testing.T) {
 		in := base
 		in.FormatterEnabled = true
+		d := ShouldFormat(r, in)
+
+		assert.False(t, d.Format, "an engine-only description must not be rendered")
+		assert.Contains(t, d.Reason, "no policy described")
+	})
+
+	t.Run("enabled, unauthored and described by a policy renders", func(t *testing.T) {
+		in := base
+		in.FormatterEnabled = true
+		in.PolicyDescribed = true
 		d := ShouldFormat(r, in)
 
 		require.True(t, d.Format, "reason: %s", d.Reason)

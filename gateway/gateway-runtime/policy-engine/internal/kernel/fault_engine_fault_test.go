@@ -118,15 +118,14 @@ func TestEngineError_FaultPolicyCanReplaceTheResponse(t *testing.T) {
 		"the replacement must reach the wire, not just the context")
 }
 
-// With no fault policies configured — the common case — the engine's own failure is still
-// rendered, and still carries the correlation id.
+// With no fault policies configured — the common case — the engine's own failure keeps the
+// body it has always had, even on a kind the formatter supports.
 //
-// The literal body the engine writes is a fallback for a gateway that cannot render, so on a
-// kind the operator enabled what reaches the client is the canonical envelope. The engine's
-// own body is NOT policy-authored, which is why enabling the kind is enough to replace it.
-// What must not change either way is the status and the traceability: an id that appears
-// only in a log nobody correlated is not an id.
-func TestEngineError_RenderedWithTheCorrelationIDWhenNoFaultPoliciesConfigured(t *testing.T) {
+// Formatting renders only what a POLICY described (faultformat.Input.PolicyDescribed), and an
+// engine failure is described by the engine. Released gateways sent this exact body, and what
+// must survive is the status and the correlation id: an id that appears only in a log nobody
+// correlated is not an id.
+func TestEngineError_KeepsItsOwnBodyEvenWhenTheKindIsEnabled(t *testing.T) {
 	ec := faultExecCtx(t, nil, nil)
 	ec.sharedCtx.APIKind = policy.APIKindRestApi
 	enableFaultFormatter(t, ec, policy.APIKindRestApi)
@@ -140,9 +139,9 @@ func TestEngineError_RenderedWithTheCorrelationIDWhenNoFaultPoliciesConfigured(t
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(imm.GetBody(), &body),
 		"engine errors must be valid JSON: %s", imm.GetBody())
-	assert.Equal(t, codeEngineInternal, body["code"])
-	assert.NotEmpty(t, body["error_id"],
-		"the correlation id must survive into the rendered body")
+	assert.Equal(t, "Internal Server Error", body["error"], "the body released gateways sent")
+	assert.NotEmpty(t, body["error_id"], "and it still carries the correlation id")
+	assert.NotContains(t, body, "code", "an engine-described failure gains no rendered envelope")
 }
 
 // The same failure on a gateway that enabled nothing: the engine's own literal body reaches

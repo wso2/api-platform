@@ -149,6 +149,16 @@ type Input struct {
 	// Err is the producing policy's account of the failure. A zero value is normal and
 	// still renderable — see Render.
 	Err policy.FaultDetails
+	// PolicyDescribed reports that a POLICY described this failure: the producing policy
+	// declared a Fault, or a fault entry re-described it. False for a failure only the
+	// engine can account for — a router error, the engine's own 500, a resolution failure —
+	// even though Err may carry the engine's description of it.
+	//
+	// Formatting is opt-in through this, and that is a compatibility decision: gateways
+	// released before the fault contract sent those errors unformatted, and a policy that
+	// predates the contract describes nothing. Rendering only what a policy described keeps
+	// every such response byte-for-byte what it was.
+	PolicyDescribed bool
 	// Status is the response status, used only to pick a JSON-RPC code.
 	Status int
 	// ErrorID correlates a client-visible error with the engine log entry that explains it.
@@ -176,6 +186,7 @@ type Input struct {
 //
 // For an enabled kind, authorship decides the rest:
 //
+//	Not described by a policy -> leave alone (see Input.PolicyDescribed)
 //	Fault described   -> render, whatever the body holds
 //	no Fault          -> the body stands, described or empty
 //
@@ -206,6 +217,12 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		// policy that writes a body and describes no Error switches this package off for that
 		// route, with no ordering requirement between the two.
 		return Decision{Reason: "body already authored by a policy"}
+	}
+
+	if !in.PolicyDescribed {
+		// Checked after authorship only so the log keeps naming an authored body as the
+		// reason when both apply; the outcome is the same either way.
+		return Decision{Reason: "no policy described the failure"}
 	}
 
 	shape := Negotiate(Request{
