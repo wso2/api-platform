@@ -35,6 +35,7 @@ import McpMenuIcon from '../../assets/icons/McpMenuIcon';
 import { useAppShell } from '../../contexts/AppShellContext';
 import { useAppAuth } from '../../contexts/AppAuthContext';
 import { SCOPES } from '../../auth/permissions';
+import { isFeatureEnabled } from '../../config.env';
 import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
 import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
@@ -304,7 +305,8 @@ export default function AppSidebar({
             </>
           )}
 
-          {hasPermission(SCOPES.AGENT_PROXY_READ) && (
+          {isFeatureEnabled('agent-proxy') &&
+            hasPermission(SCOPES.AGENT_PROXY_READ) && (
             <>
               <Sidebar.Category>
                 <Sidebar.CategoryLabel>

@@ -33,6 +33,7 @@ import {
   AgentProxiesProvider,
   useAgentProxies,
 } from '../../../../contexts/agentProxy';
+import { isFeatureEnabled } from '../../../../config.env';
 import {
   ProviderTemplatesProvider,
   useProviderTemplates,
@@ -141,43 +142,46 @@ function OverviewContent(): React.JSX.Element {
     buildProjectPath(currentOrganization, currentProject, suffix);
 
   const kinds = useMemo(
-    () => [
-      {
-        id: 'llm-providers' as const,
-        label: 'LLM Providers',
-        icon: <Handshake size={26} />,
-        count: providers.providersResponse.count,
-        isLoading: providers.isLoading,
-      },
-      {
-        id: 'llm-proxies' as const,
-        label: 'App LLM Proxies',
-        icon: <Workflow size={26} />,
-        count: proxies.proxiesResponse.count,
-        isLoading: proxies.isLoading,
-      },
-      {
-        id: 'mcp-proxies' as const,
-        label: 'MCP Proxies',
-        icon: <McpMenuIcon size={26} />,
-        count: mcpServers.mcpServersResponse.count,
-        isLoading: mcpServers.isLoading,
-      },
-      {
-        id: 'agent-proxies' as const,
-        label: 'Agent Proxies',
-        icon: <Bot size={26} />,
-        count: agentProxies.agentProxiesResponse.count,
-        isLoading: agentProxies.isLoading,
-      },
-      {
-        id: 'applications' as const,
-        label: 'GenAI Applications',
-        icon: <Dock size={26} />,
-        count: applications.applicationsResponse.count,
-        isLoading: applications.isLoading,
-      },
-    ],
+    () =>
+      [
+        {
+          id: 'llm-providers' as const,
+          label: 'LLM Providers',
+          icon: <Handshake size={26} />,
+          count: providers.providersResponse.count,
+          isLoading: providers.isLoading,
+        },
+        {
+          id: 'llm-proxies' as const,
+          label: 'App LLM Proxies',
+          icon: <Workflow size={26} />,
+          count: proxies.proxiesResponse.count,
+          isLoading: proxies.isLoading,
+        },
+        {
+          id: 'mcp-proxies' as const,
+          label: 'MCP Proxies',
+          icon: <McpMenuIcon size={26} />,
+          count: mcpServers.mcpServersResponse.count,
+          isLoading: mcpServers.isLoading,
+        },
+        {
+          id: 'agent-proxies' as const,
+          label: 'Agent Proxies',
+          icon: <Bot size={26} />,
+          count: agentProxies.agentProxiesResponse.count,
+          isLoading: agentProxies.isLoading,
+        },
+        {
+          id: 'applications' as const,
+          label: 'GenAI Applications',
+          icon: <Dock size={26} />,
+          count: applications.applicationsResponse.count,
+          isLoading: applications.isLoading,
+        },
+      ].filter(
+        (kind) => kind.id !== 'agent-proxies' || isFeatureEnabled('agent-proxy')
+      ),
     [
       providers.providersResponse.count,
       providers.isLoading,

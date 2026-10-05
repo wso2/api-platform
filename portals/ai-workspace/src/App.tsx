@@ -34,7 +34,7 @@ import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarConte
 import OrgProvisioningPage from './pages/register/OrgProvisioningPage';
 import { checkOrganizationExists, registerOrganization } from './apis/platformApis';
 import { forceLogoutAndRedirect } from './auth/logout';
-import { DEFAULT_ORG_REGION } from './config.env';
+import { DEFAULT_ORG_REGION, isFeatureEnabled } from './config.env';
 
 // App Shell Pages
 import Overview from './pages/appShell/appShellPages/overview/Overview';
@@ -665,48 +665,50 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                 </WithPageBoundary>
               }
             />
-            <Route path="agent-proxy" element={<AgentProxyLayout />}>
-              <Route
-                index
-                element={
-                  <WithPageBoundary>
-                    <AgentProxiesList />
-                  </WithPageBoundary>
-                }
-              />
-              <Route
-                path="create"
-                element={
-                  <WithPageBoundary>
-                    <AgentProxiesNew />
-                  </WithPageBoundary>
-                }
-              />
-              <Route
-                path=":agentProxyId"
-                element={
-                  <WithPageBoundary>
-                    <AgentProxyOverview />
-                  </WithPageBoundary>
-                }
-              />
-              <Route
-                path=":agentProxyId/edit"
-                element={
-                  <WithPageBoundary>
-                    <EditAgentProxy />
-                  </WithPageBoundary>
-                }
-              />
-              <Route
-                path=":agentProxyId/deploy"
-                element={
-                  <WithPageBoundary>
-                    <AgentProxiesDeploy />
-                  </WithPageBoundary>
-                }
-              />
-            </Route>
+            {isFeatureEnabled('agent-proxy') && (
+              <Route path="agent-proxy" element={<AgentProxyLayout />}>
+                <Route
+                  index
+                  element={
+                    <WithPageBoundary>
+                      <AgentProxiesList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="create"
+                  element={
+                    <WithPageBoundary>
+                      <AgentProxiesNew />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path=":agentProxyId"
+                  element={
+                    <WithPageBoundary>
+                      <AgentProxyOverview />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path=":agentProxyId/edit"
+                  element={
+                    <WithPageBoundary>
+                      <EditAgentProxy />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path=":agentProxyId/deploy"
+                  element={
+                    <WithPageBoundary>
+                      <AgentProxiesDeploy />
+                    </WithPageBoundary>
+                  }
+                />
+              </Route>
+            )}
             <Route
               path="mcp-proxy/create"
               element={
@@ -984,48 +986,50 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   </WithPageBoundary>
                 }
               />
-              <Route path="agent-proxy" element={<AgentProxyLayout />}>
-                <Route
-                  index
-                  element={
-                    <WithPageBoundary>
-                      <AgentProxiesList />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path="create"
-                  element={
-                    <WithPageBoundary>
-                      <AgentProxiesNew />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path=":agentProxyId"
-                  element={
-                    <WithPageBoundary>
-                      <AgentProxyOverview />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path=":agentProxyId/edit"
-                  element={
-                    <WithPageBoundary>
-                      <EditAgentProxy />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path=":agentProxyId/deploy"
-                  element={
-                    <WithPageBoundary>
-                      <AgentProxiesDeploy />
-                    </WithPageBoundary>
-                  }
-                />
-              </Route>
+              {isFeatureEnabled('agent-proxy') && (
+                <Route path="agent-proxy" element={<AgentProxyLayout />}>
+                  <Route
+                    index
+                    element={
+                      <WithPageBoundary>
+                        <AgentProxiesList />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path="create"
+                    element={
+                      <WithPageBoundary>
+                        <AgentProxiesNew />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path=":agentProxyId"
+                    element={
+                      <WithPageBoundary>
+                        <AgentProxyOverview />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path=":agentProxyId/edit"
+                    element={
+                      <WithPageBoundary>
+                        <EditAgentProxy />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path=":agentProxyId/deploy"
+                    element={
+                      <WithPageBoundary>
+                        <AgentProxiesDeploy />
+                      </WithPageBoundary>
+                    }
+                  />
+                </Route>
+              )}
               <Route
                 path="mcp-proxy/create"
                 element={
