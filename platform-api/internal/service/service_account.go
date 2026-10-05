@@ -93,7 +93,13 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 	if req.Id == constants.ServiceAccountReservedHandle {
 		return nil, apperror.ValidationFailed.New(fmt.Sprintf("The id %q is reserved.", req.Id))
 	}
-	displayName, owner, description := strings.TrimSpace(req.DisplayName), strings.TrimSpace(req.Owner), strings.TrimSpace(req.Description)
+	displayName, owner, description := strings.TrimSpace(req.DisplayName), trimmed(req.Owner), trimmed(req.Description)
+	if owner == "" {
+		var err error
+		if owner, err = s.identity.SubForUUID(actor); err != nil {
+			return nil, err
+		}
+	}
 	if err := requireText(map[string]string{"displayName": displayName, "owner": owner, "description": description}); err != nil {
 		return nil, err
 	}
@@ -217,7 +223,11 @@ func (s *ServiceAccountService) Update(orgID, handle, actor string, req *api.Ser
 		sa.DisplayName = strings.TrimSpace(*req.DisplayName)
 	}
 	if req.Owner != nil {
-		sa.Owner = strings.TrimSpace(*req.Owner)
+		if sa.Owner = strings.TrimSpace(*req.Owner); sa.Owner == "" {
+			if sa.Owner, err = s.identity.SubForUUID(sa.CreatedBy); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if req.Description != nil {
 		sa.Description = strings.TrimSpace(*req.Description)
@@ -558,13 +568,14 @@ func expandRoles(roles []string, roleScopeMap map[string][]string) string {
 // not a database error.
 var textFieldMaxLength = map[string]int{"displayName": 255, "owner": 255, "description": 1023}
 
+// requireText checks lengths; only displayName and owner may not be blank.
 func requireText(fields map[string]string) error {
 	for _, name := range []string{"displayName", "owner", "description"} {
 		v, ok := fields[name]
 		if !ok {
 			continue
 		}
-		if v == "" {
+		if v == "" && name != "description" {
 			return apperror.ValidationFailed.New(name + " must not be blank")
 		}
 		if limit := textFieldMaxLength[name]; len(v) > limit {
@@ -572,6 +583,14 @@ func requireText(fields map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// trimmed is *v without surrounding space, or "" when v is nil.
+func trimmed(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(*v)
 }
 
 // newServiceAccountSecret is apsa_ plus 64 hex chars from crypto/rand.

@@ -189,7 +189,7 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 }
 
 func createReq(handle string) *api.ServiceAccountCreateRequest {
-	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Owner: "team", Description: "deploys", Roles: []string{"ap_sa_operator"}}
+	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Owner: ptr("team"), Description: ptr("deploys"), Roles: []string{"ap_sa_operator"}}
 }
 
 func TestServiceAccountCreate_SecretFormat(t *testing.T) {
@@ -215,10 +215,6 @@ func TestServiceAccountCreate_SecretFormat(t *testing.T) {
 
 func TestServiceAccountCreate_Validation(t *testing.T) {
 	f := newSAFixture(t)
-	blankOwner := createReq("a-bot")
-	blankOwner.Owner = "  "
-	blankDesc := createReq("b-bot")
-	blankDesc.Description = ""
 	badRole := createReq("c-bot")
 	badRole.Roles = []string{"ap_sa_nope"}
 	humanRole := createReq("d-bot")
@@ -227,12 +223,12 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	noRole.Roles = nil
 	reserved := createReq("token")
 	longOwner := createReq("f-bot")
-	longOwner.Owner = strings.Repeat("o", 256)
+	longOwner.Owner = ptr(strings.Repeat("o", 256))
 	longDesc := createReq("g-bot")
-	longDesc.Description = strings.Repeat("d", 1024)
+	longDesc.Description = ptr(strings.Repeat("d", 1024))
 	for name, req := range map[string]*api.ServiceAccountCreateRequest{
 		"owner too long": longOwner, "description too long": longDesc,
-		"blank owner": blankOwner, "blank description": blankDesc, "unknown role": badRole,
+		"unknown role":    badRole,
 		"non-ap_sa_ role": humanRole, "no role": noRole, "reserved id": reserved,
 	} {
 		if _, err := f.svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {
@@ -247,9 +243,30 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{DisplayName: &long}); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("overlong display name on update: got %v", err)
 	}
-	blank := "   "
-	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Owner: &blank}); !apperror.ValidationFailed.Is(err) {
-		t.Fatalf("blanking owner on update: got %v", err)
+}
+
+// Only id, displayName and roles are required: a blank owner falls back to the
+// creator, on create and on update, and a description may be empty.
+func TestServiceAccountOptionalOwnerAndDescription(t *testing.T) {
+	f := newSAFixture(t)
+	f.svc.identity = NewIdentityService(renamingIdentityRepo{})
+	req := createReq("ci-bot")
+	req.Owner, req.Description = ptr("  "), nil
+	creds, err := f.svc.Create("org-1", "creator", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := creds.ServiceAccount; got.Owner != "resolved:creator" || got.Description != "" {
+		t.Fatalf("owner %q, description %q", got.Owner, got.Description)
+	}
+
+	got, err := f.svc.Update("org-1", "ci-bot", "editor", &api.ServiceAccountUpdateRequest{Owner: ptr("team"), Description: ptr("deploys")})
+	if err != nil || got.Owner != "team" || got.Description != "deploys" {
+		t.Fatalf("set owner: %+v, %v", got, err)
+	}
+	got, err = f.svc.Update("org-1", "ci-bot", "editor", &api.ServiceAccountUpdateRequest{Owner: ptr(" "), Description: ptr("")})
+	if err != nil || got.Owner != "resolved:creator" || got.Description != "" {
+		t.Fatalf("blank owner should reset to the creator, not the editor: %+v, %v", got, err)
 	}
 }
 
@@ -567,6 +584,10 @@ func TestServiceAccountListAndGet(t *testing.T) {
 // renamingIdentityRepo resolves every UUID to a value unlike the input, so a
 // missing resolve shows.
 type renamingIdentityRepo struct{ passthroughIdentityRepo }
+
+func (renamingIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
+	return "resolved:" + uuid, true, nil
+}
 
 func (renamingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error) {
 	out := map[string]string{}

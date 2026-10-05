@@ -7310,7 +7310,9 @@ paths:
   /service-accounts:
     get:
       summary: List service accounts
-      description: Returns the organization's service accounts. The client secret is never included, only its masked form.
+      description: >-
+        Returns the organization's service accounts. The client secret is never included, only its
+        masked form. `query` also matches the owner.
       operationId: listServiceAccounts
       security:
         - OAuth2Security:
@@ -11935,14 +11937,15 @@ components:
           example: CI deployer
         owner:
           type: string
-          description: Who is accountable for this account — a team, person or mailing list
+          description: |
+            Who is accountable for this account — a team, person or mailing list.
+            Defaults to the creator: the `sub` of the token that created it.
           minLength: 1
           maxLength: 255
           example: platform-team@example.com
         description:
           type: string
-          description: What the account is for
-          minLength: 1
+          description: What the account is for; may be empty
           maxLength: 1023
           example: Deploys REST APIs from the release pipeline
         clientId:
@@ -12047,8 +12050,6 @@ components:
       required:
         - id
         - displayName
-        - owner
-        - description
         - roles
       properties:
         id:
@@ -12064,12 +12065,11 @@ components:
           example: CI deployer
         owner:
           type: string
-          minLength: 1
+          description: Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).
           maxLength: 255
           example: platform-team@example.com
         description:
           type: string
-          minLength: 1
           maxLength: 1023
           example: Deploys REST APIs from the release pipeline
         roles:
@@ -12082,7 +12082,7 @@ components:
 
     ServiceAccountUpdateRequest:
       type: object
-      description: Every field is optional. Owner and description may change but not be blanked.
+      description: Every field is optional.
       properties:
         displayName:
           type: string
@@ -12091,12 +12091,11 @@ components:
           example: CI deployer
         owner:
           type: string
-          minLength: 1
+          description: Blank resets it to the account's creator.
           maxLength: 255
           example: platform-team@example.com
         description:
           type: string
-          minLength: 1
           maxLength: 1023
           example: Deploys REST APIs from the release pipeline
         roles:

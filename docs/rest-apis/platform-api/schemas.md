@@ -5387,8 +5387,8 @@ A service account. Never carries the plaintext secret.
 |---|---|---|---|---|
 |id|string|true|none|Service account handle, unique within the organization|
 |displayName|string|true|none|none|
-|owner|string|true|none|Who is accountable for this account — a team, person or mailing list|
-|description|string|true|none|What the account is for|
+|owner|string|true|none|Who is accountable for this account — a team, person or mailing list.<br>Defaults to the creator: the `sub` of the token that created it.|
+|description|string|true|none|What the account is for; may be empty|
 |clientId|string|true|read-only|none|
 |maskedSecret|string|true|read-only|none|
 |roles|[string]|true|none|The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file|
@@ -5456,6 +5456,67 @@ A service account. Never carries the plaintext secret.
 |list|[[ServiceAccount](#schemaserviceaccount)]|true|none|[A service account. Never carries the plaintext secret.]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
+## ServiceAccountRole
+
+<a id="schemaserviceaccountrole"></a>
+<a id="schema_ServiceAccountRole"></a>
+<a id="tocSserviceaccountrole"></a>
+<a id="tocsserviceaccountrole"></a>
+
+```json
+{
+  "name": "ap_sa_reader",
+  "scopes": [
+    "ap:rest_api:read",
+    "ap:gateway:read"
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|scopes|[string]|true|none|none|
+
+## ServiceAccountRoleListResponse
+
+<a id="schemaserviceaccountrolelistresponse"></a>
+<a id="schema_ServiceAccountRoleListResponse"></a>
+<a id="tocSserviceaccountrolelistresponse"></a>
+<a id="tocsserviceaccountrolelistresponse"></a>
+
+```json
+{
+  "count": 1,
+  "list": [
+    {
+      "name": "ap_sa_reader",
+      "scopes": [
+        "ap:rest_api:read",
+        "ap:gateway:read"
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|none|
+|list|[[ServiceAccountRole](#schemaserviceaccountrole)]|true|none|none|
+|pagination|[Pagination](#schemapagination)|true|none|none|
+
 ## ServiceAccountCreateRequest
 
 <a id="schemaserviceaccountcreaterequest"></a>
@@ -5482,8 +5543,8 @@ A service account. Never carries the plaintext secret.
 |---|---|---|---|---|
 |id|string|true|none|Service account handle. `token` is reserved.|
 |displayName|string|true|none|none|
-|owner|string|true|none|none|
-|description|string|true|none|none|
+|owner|string|false|none|Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).|
+|description|string|false|none|none|
 |roles|[string]|true|none|Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.|
 
 ## ServiceAccountUpdateRequest
@@ -5506,14 +5567,14 @@ A service account. Never carries the plaintext secret.
 
 ```
 
-Every field is optional. Owner and description may change but not be blanked.
+Every field is optional.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|false|none|none|
-|owner|string|false|none|none|
+|owner|string|false|none|Blank resets it to the account's creator.|
 |description|string|false|none|none|
 |roles|[string]|false|none|Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens<br>already issued; adding one does not.|
 |status|string|false|none|none|
