@@ -142,6 +142,11 @@ COMPOSE_SQLITE   += -f docker-compose.coverage.yaml
 COMPOSE_POSTGRES += -f docker-compose.coverage.yaml
 endif
 
+# The portal container runs as uid 10001. A bind mount takes the HOST
+# directory's ownership, and Docker creates a missing one as root — so on Linux
+# the container could not write its profiles and the run produced nothing, while
+# macOS (which maps bind-mount ownership) looked fine. Created up front, world
+# writable, so the mount is usable whoever the container runs as.
 COVERAGE_RAW    = reports/coverage-raw
 COVERAGE_NORM   = reports/coverage-normalized
 COVERAGE_LCOV   = reports/lcov.info
@@ -155,6 +160,7 @@ test-rest-api-scope: AUTH_MODE = scope
 test-rest-api-role:  AUTH_MODE = role
 test-rest-api-scope test-rest-api-role: ensure-test-tag ensure-certs
 	@echo "==> REST API suite (SQLite, authorization mode = $(AUTH_MODE))"
+	@if [ "$(IT_COVERAGE)" = "1" ]; then mkdir -p $(COVERAGE_RAW) && chmod 777 $(COVERAGE_RAW); fi
 	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) $(COMPOSE_SQLITE) up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT) $(COMPOSE_SQLITE) down -v --remove-orphans; \
@@ -169,6 +175,7 @@ test-rest-api-postgres-scope: AUTH_MODE = scope
 test-rest-api-postgres-role:  AUTH_MODE = role
 test-rest-api-postgres-scope test-rest-api-postgres-role: ensure-test-tag ensure-certs
 	@echo "==> REST API suite (PostgreSQL, authorization mode = $(AUTH_MODE))"
+	@if [ "$(IT_COVERAGE)" = "1" ]; then mkdir -p $(COVERAGE_RAW) && chmod 777 $(COVERAGE_RAW); fi
 	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) $(COMPOSE_POSTGRES) up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT_POSTGRES) $(COMPOSE_POSTGRES) down -v --remove-orphans; \
@@ -201,20 +208,21 @@ clean:
 # coverage.
 .PHONY: rest-api-lcov
 rest-api-lcov:
-	@if [ ! -d "$(COVERAGE_RAW)" ] || [ -z "$$(ls -A $(COVERAGE_RAW) 2>/dev/null)" ]; then \
+	@# ONE shell for the whole recipe. Make runs each recipe line in its own
+	@# shell, so the early `exit 0` below ended only that line -- make carried on
+	@# to the next one and tried to normalise a glob that had matched nothing.
+	@# Joining them with `;` is what makes the guard actually guard.
+	@set -e; \
+	if ! ls $(COVERAGE_RAW)/*.json >/dev/null 2>&1; then \
 		echo "==> no raw coverage in $(COVERAGE_RAW) — run with IT_COVERAGE=1 first"; \
 		exit 0; \
-	fi
-	@rm -rf $(COVERAGE_NORM) && mkdir -p $(COVERAGE_NORM)
-	@for f in $(COVERAGE_RAW)/*.json; do \
-		node $(COVERAGE_TOOLS)/coverage/normalize-v8.js "$$f" "$(COVERAGE_NORM)/$$(basename $$f)" ".." || exit 1; \
-	done
-	@cd $(COVERAGE_TOOLS)/coverage && npm ci --silent --no-audit --no-fund >/dev/null 2>&1 || npm install --silent >/dev/null 2>&1
-	@# c8 is run from the PORTAL directory, not from here. Its include globs and
-	@# the paths it writes are both relative to the working directory, so running
-	@# it from it/ produced an lcov with every path unmatched -- a valid, empty
-	@# file that uploads cleanly and reports nothing.
-	@cd .. && node ../../tests/framework/tools/coverage/node_modules/.bin/c8 report \
+	fi; \
+	rm -rf $(COVERAGE_NORM); mkdir -p $(COVERAGE_NORM); \
+	for f in $(COVERAGE_RAW)/*.json; do \
+		node $(COVERAGE_TOOLS)/coverage/normalize-v8.js "$$f" "$(COVERAGE_NORM)/$$(basename $$f)" ".."; \
+	done; \
+	(cd $(COVERAGE_TOOLS)/coverage && (npm ci --silent --no-audit --no-fund >/dev/null 2>&1 || npm install --silent >/dev/null 2>&1)); \
+	cd .. && node ../../tests/framework/tools/coverage/node_modules/.bin/c8 report \
 		--temp-directory it/$(COVERAGE_NORM) \
-		--reporter=lcovonly --reports-dir it/reports
-	@echo "==> wrote $(COVERAGE_LCOV) ($$(grep -c '^SF:' $(COVERAGE_LCOV)) files)"
+		--reporter=lcovonly --reports-dir it/reports; \
+	echo "==> wrote it/$(COVERAGE_LCOV) ($$(grep -c '^SF:' it/$(COVERAGE_LCOV)) files)"

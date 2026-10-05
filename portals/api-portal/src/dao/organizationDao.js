@@ -258,6 +258,31 @@ const deleteOrgDependents = async (orgUuid, t) => {
         }
         await exec.execute(`DELETE FROM app_key_mappings WHERE ${conditions.join(' OR ')}`, params);
     }
+    /*
+     * OAuth2 keys, before the organization row they point at.
+     *
+     * `oauth2_consumer_keys` carries ON DELETE NO ACTION to organizations -- a
+     * key is a client that exists at an identity server, so the database must
+     * not quietly drop the portal's only record of one. That makes deleting an
+     * organization with keys fail outright unless they go first.
+     *
+     * Their application mappings cascade from both sides, so deleting the keys is
+     * enough; the explicit delete below covers a mapping whose key was already
+     * removed but whose row survived an earlier partial failure.
+     *
+     * Note this does NOT delete the clients at the key manager: nothing here can,
+     * since the provisioning credential is going away with the key manager row.
+     * An operator deleting an organization is accepting that those clients remain
+     * at the identity server, which is the same bargain every other upstream
+     * artifact here is subject to.
+     */
+    await exec.execute(
+        `DELETE FROM oauth2_consumer_key_app_mappings
+          WHERE key_uuid IN (SELECT uuid FROM oauth2_consumer_keys WHERE org_uuid = ?)`,
+        [orgUuid]
+    );
+    await exec.execute('DELETE FROM oauth2_consumer_keys WHERE org_uuid = ?', [orgUuid]);
+
     await exec.execute('DELETE FROM applications WHERE org_uuid = ?', [orgUuid]);
     await exec.execute('DELETE FROM key_managers WHERE org_uuid = ?', [orgUuid]);
 

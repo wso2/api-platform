@@ -218,9 +218,14 @@ test('_validateTokenEndpoint refuses link-local and metadata addresses under eve
             svc._validateTokenEndpoint('https://169.254.1.1/oauth2/token'),
         ]);
     `;
-    [runProbe(body, { permissive: true }), runProbe(body, { permissive: true })].forEach((result) => {
-        result.forEach((r) => assert.match(r, /blocked address range/));
-    });
+    // Strict AND permissive. Running the permissive probe twice -- which this
+    // test did at first -- never exercises the default posture, so a regression
+    // that let 169.254.169.254 through on a stock deployment would still pass.
+    const postures = { strict: runProbe(body), permissive: runProbe(body, { permissive: true }) };
+    for (const [posture, result] of Object.entries(postures)) {
+        result.forEach((r) => assert.match(r, /blocked address range/,
+            `expected a block under the ${posture} posture, got: ${r}`));
+    }
 });
 
 test('_validateTokenEndpoint refuses a non-URL and a non-http scheme', () => {

@@ -52,7 +52,7 @@
         <i class="bi bi-link-45deg"></i> Add existing key
       </button>
       <button class="dp-btn dp-btn--primary" id="ok-add-btn" type="button"
-        {{#unless generationAvailable}}disabled title="No key manager is configured for OAuth2 key generation"{{/unless}}>
+        {{#unless generationAvailable}}disabled title="No key manager is available for OAuth2 keys"{{/unless}}>
         <i class="bi bi-plus"></i> Generate key
       </button>
     </div>
@@ -210,9 +210,15 @@
       </div>
       {{/unless}}
       {{else}}
-      {{!-- Honest about the blocker rather than showing a button that can only fail:
-            key generation needs a key manager declared in the portal configuration. --}}
-      <p class="dp-empty-desc">No key manager is configured for OAuth2 key generation. Add an <code>[[api_portal.key_manager]]</code> entry to the portal configuration and restart, then you can register applications here.</p>
+      {{!-- Honest about the blocker rather than showing a button that can only fail.
+            Deliberately does not name a remedy: `generationAvailable` is false when
+            no key manager is ENABLED, which covers a portal with none configured and
+            one whose key managers an admin has disabled. It also predates Settings →
+            Key Managers, so pointing at [[api_portal.key_manager]] now names one of
+            two ways to add one and no way at all to re-enable an existing one. The
+            reader of this page is a developer in either case; the action belongs to
+            an administrator. --}}
+      <p class="dp-empty-desc">No key manager is available for OAuth2 keys. Ask an administrator to add or enable one.</p>
       {{/if}}
     </div>
     {{/if}}

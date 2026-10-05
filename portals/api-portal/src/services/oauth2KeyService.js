@@ -35,14 +35,23 @@
  *     response is the only place it appears.
  *   - The client metadata. Re-read from the key manager on GET, so there is one
  *     copy; a driver with no read reports an empty set rather than stale data.
- *   - The RFC 7592 registration access token. Read/update/delete therefore
- *     authenticate with the portal's PROVISIONING credential instead of the
- *     per-client token RFC 7592 §2 specifies. A key manager that requires the
- *     registration access token will answer those calls 401 — which surfaces as
- *     `provisioning_credential_rejected` in the log.
- *   - The client configuration URI. The driver constructs
- *     <registration_endpoint>/<consumer_key>, so a key manager that issues a
- *     URI in some other shape is not reachable for update/delete.
+ *
+ * The RFC 7592 credentials ARE stored, and this is the one place to look for
+ * where that bearer token lives: `registration_access_token_enc` (encrypted at
+ * rest with security.encryption_key) and `registration_client_uri`, both written
+ * by `oauth2ConsumerKeyDao.create` and rewritten by `setRegistration` whenever a
+ * response carries a rotated pair. Neither rides along on an ordinary read —
+ * they sit outside COLUMNS, and `getWithRegistration` is the only path that opts
+ * in — so a list or detail response never carries a credential it has no use for.
+ *
+ * `_withRegistration` is what read/update/delete go through: it presents the
+ * stored token when there is one, and falls back to the portal's PROVISIONING
+ * credential when there is not — which is every key on a key manager that issues
+ * no token, and any key whose stored token the server has since rejected
+ * (`provisioning_credential_rejected`, after which the stale pair is cleared).
+ * The configuration URI is stored rather than reconstructed because RFC 7592 §3
+ * lets a server put it on a different host or path than registration, as
+ * Keycloak does.
  *
  * The key↔application association lives in `oauth2_consumer_key_app_mappings`,
  * reached through `keyAppMappingDao`. A key belongs to at most one application;
@@ -821,9 +830,10 @@ const updateOAuth2Key = async (req, res) => {
             record.name = newName;
         }
 
-        // Nothing else to persist: the rest of the metadata lives at the key
-        // manager, and the rotated RFC 7592 credentials (if it issued any) are
-        // not stored.
+        // Nothing else to persist HERE: the rest of the metadata lives at the key
+        // manager. A rotated RFC 7592 credential is stored, but by
+        // `_withRegistration`, which sees the driver's response — this path only
+        // ever has the name the caller sent.
 
         logUserAction('OAUTH2_KEY_UPDATED', req, {
             orgId,
