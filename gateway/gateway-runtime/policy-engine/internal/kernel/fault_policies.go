@@ -100,6 +100,11 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 			immResp.StatusCode = faultCtx.ResponseStatus
 		}
 	}
+	// This path formats from immResp.Fault rather than faultDeclared, so a re-description
+	// is carried across here as well.
+	if out.redescribed {
+		immResp.Fault = faultCtx.Fault
+	}
 
 	// Telemetry is read out of the results rather than the shared views, because unlike the
 	// status and body it is not something a later entry observes — it accumulates.
@@ -415,6 +420,9 @@ type faultOutcome struct {
 	// results holds one entry per fault entry, in order. Every entry runs: nothing a fault
 	// policy returns ends the chain, and the caller reads the outcome from the shared views.
 	results []executor.FaultPolicyResult
+	// redescribed reports that an entry returned a Fault, so the description the chain ends
+	// with — faultCtx.Fault — is no longer the producing policy's.
+	redescribed bool
 }
 
 // applyFaultResponse folds one entry's return into the views the fault chain shares, so the
@@ -427,9 +435,20 @@ type faultOutcome struct {
 //
 // Names are lowercased because policy.Headers keys are: a mixed-case name would otherwise sit
 // beside the header it meant to replace and both would reach the client.
+//
+// A returned Fault re-describes the failure: the next entry reads it as FaultContext.Fault,
+// and executeFaultPolicies hands the final description to the formatter. It is stored as a
+// copy with Policy kept as the producing policy's — Policy names who CAUSED the failure,
+// which re-describing it does not change, and it is gateway-owned in any case (see
+// attributedFault). Copying also keeps the entry's own struct out of the engine's hands.
 func applyFaultResponse(faultCtx *policy.FaultContext, fr *policy.FaultResponse, withAppends bool) {
 	if fr == nil {
 		return
+	}
+	if fr.Fault != nil {
+		redescribed := *fr.Fault
+		redescribed.Policy = faultCtx.Policy
+		faultCtx.Fault = &redescribed
 	}
 	headers := faultCtx.ResponseHeaders.UnsafeInternalValues()
 	for key, value := range fr.HeadersToSet {
@@ -598,7 +617,18 @@ func (ec *PolicyExecutionContext) executeFaultPolicies(
 		// by a refresh step that had to be remembered.
 		if !res.Skipped {
 			applyFaultResponse(faultCtx, res.Response, rejection)
+			if res.Response != nil && res.Response.Fault != nil {
+				out.redescribed = true
+			}
 		}
+	}
+
+	// The formatter renders from faultDeclared (see attributedFault), so a description an
+	// entry supplied has to land there too — otherwise the client's body would describe the
+	// failure one way while the analytics event, built from the collector's view of
+	// faultCtx.Fault, described it another.
+	if out.redescribed {
+		ec.faultDeclared = faultCtx.Fault
 	}
 	return out, true
 }

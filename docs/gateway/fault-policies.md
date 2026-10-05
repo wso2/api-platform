@@ -83,7 +83,7 @@ Otherwise set only the fields you mean to change:
 |---|---|
 | `StatusCode *int` | Overrides the error's status. `nil` keeps it. |
 | `Body []byte` | Replaces the body. `nil` keeps it, `[]byte{}` clears it. Setting it also switches the gateway's own protocol formatting off for this response. |
-| `Fault *FaultDetails` | Re-describes the failure for a renderer or a later entry. |
+| `Fault *FaultDetails` | Re-describes the failure: later entries read it as `FaultContext.Fault`, and the gateway's own error body is rendered from it. Its `Policy` is ignored — that always names the policy that caused the failure. |
 | `HeadersToSet` / `HeadersToAppend` / `HeadersToRemove` | Applied **over** the error's existing headers rather than replacing them. |
 | `AnalyticsMetadata` / `DynamicMetadata` / `AnalyticsHeaderFilter` | As on the response path. |
 
