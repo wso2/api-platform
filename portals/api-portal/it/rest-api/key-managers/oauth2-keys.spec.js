@@ -38,20 +38,33 @@
 
 const client = require('../support/client');
 const { uniqueHandle } = require('../support/fixtures');
-const { createDcrServer } = require('../support/dcr-server');
+const { createDcrServer, PROVISIONING } = require('../support/dcr-server');
 
 const DCR_PORT = Number(new URL(process.env.MOCK_DCR_ENDPOINT_URL || 'http://localhost:4505').port);
 
+/*
+ * ONE server for the whole file, on the one port the portal is configured to
+ * reach. A second instance on another port looked reasonable and was not: the
+ * endpoints a key manager is pointed at come from MOCK_DCR_ENDPOINT_URL, so a
+ * server listening anywhere else is simply never called.
+ */
+let dcr;
+
+beforeAll(async () => {
+    dcr = createDcrServer();
+    await dcr.start(DCR_PORT);
+});
+
+afterAll(async () => {
+    if (dcr) await dcr.stop();
+});
+
 describe('OAuth2 keys', () => {
-    let dcr;
     let kmId;
 
     beforeAll(async () => {
         await client.login('admin');
         await client.login('developer');
-
-        dcr = createDcrServer();
-        await dcr.start(DCR_PORT);
 
         // A key manager that registers clients: a provisioning block makes the
         // portal a DCR client of the server above.
@@ -63,14 +76,10 @@ describe('OAuth2 keys', () => {
             provisioning: {
                 type: 'custom',
                 registrationEndpoint: dcr.registrationEndpoint(),
-                auth: { method: 'client_credentials', clientId: 'portal', clientSecret: 'portal-secret' },
+                auth: { method: 'client_credentials', ...PROVISIONING },
             },
         });
         expect(created.status).toBe(201);
-    });
-
-    afterAll(async () => {
-        if (dcr) await dcr.stop();
     });
 
     it('registers a client on the key manager and returns credentials', async () => {
@@ -226,5 +235,147 @@ describe('OAuth2 keys', () => {
         });
         expect(res.status).toBe(404);
         expect(JSON.stringify(res.body)).not.toContain('no-such-key-manager');
+    });
+});
+
+/*
+ * The paths a developer hits when something is wrong, and the provisioning
+ * credentials other than client_credentials.
+ *
+ * Separate describe because these need their own key managers: the auth method a
+ * key manager provisions with is fixed at creation, and the error cases turn on
+ * what a client registered itself as rather than on the request.
+ */
+describe('OAuth2 keys — credentials and failure paths', () => {
+    let kmBasic;
+    let kmApiKey;
+    let kmId;
+
+    beforeAll(async () => {
+        await client.login('admin');
+        await client.login('developer');
+
+        const make = async (id, auth) => {
+            const res = await client.as('admin').post('/key-managers', {
+                id,
+                displayName: `KM ${id}`,
+                tokenEndpoint: dcr.tokenEndpoint(),
+                provisioning: { type: 'custom', registrationEndpoint: dcr.registrationEndpoint(), auth },
+            });
+            expect(res.status).toBe(201);
+            return id;
+        };
+
+        // The portal presents a different credential to the identity server for
+        // each of these. Only client_credentials is exercised elsewhere.
+        kmId = await make(uniqueHandle('km-cc'), { method: 'client_credentials', ...PROVISIONING });
+        kmBasic = await make(uniqueHandle('km-basic'),
+            { method: 'basic', username: 'portal', password: 'portal-pass' });
+        kmApiKey = await make(uniqueHandle('km-apikey'),
+            { method: 'api_key', apiKey: 'portal-key', headerName: 'X-Api-Key' });
+    });
+
+    const create = (km, properties) => client.as('developer').post('/oauth2-keys', {
+        keyManagerId: km, properties: { grant_types: ['client_credentials'], ...properties },
+    });
+
+    it.each([
+        ['basic auth', () => kmBasic, 'Basic '],
+        ['api key auth', () => kmApiKey, null],
+    ])('registers a client through a key manager using %s', async (_label, km, expectedPrefix) => {
+        const res = await create(km(), { client_name: 'cred-check' });
+        expect(res.status).toBe(201);
+        expect(res.body.consumerKey).toMatch(/^mock-client-/);
+
+        // The portal's own credential reached the identity server in the shape
+        // that method defines — this is the only place those authenticators are
+        // exercised against a real request.
+        const registration = dcr.requestsOf('POST')
+            .filter((r) => r.path === '/register')
+            .slice(-1)[0];
+        if (expectedPrefix) {
+            expect(registration.auth).toMatch(new RegExp(`^${expectedPrefix}`));
+        } else {
+            // api_key auth puts it in its configured header, not Authorization.
+            expect(registration.auth).toBe('');
+        }
+    });
+
+    it('issues a token when the developer supplies the right secret', async () => {
+        const created = await create(kmId, { client_name: 'token-ok' });
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`,
+                { consumerSecret: created.body.consumerSecret });
+        expect(res.status).toBe(200);
+        expect(res.body.accessToken).toBe('mock-access-token');
+    });
+
+    it('answers 400 when the identity server rejects the secret', async () => {
+        /*
+         * The developer's own credential is wrong, not the portal's — so this is
+         * their request to fix and the API says so with a 4xx rather than
+         * reporting an upstream fault.
+         */
+        const created = await create(kmId, { client_name: 'token-bad-secret' });
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`,
+                { consumerSecret: 'not-the-right-secret' });
+        expect(res.status).toBe(400);
+        // The upstream body is never echoed: it names an internal host.
+        expect(JSON.stringify(res.body)).not.toMatch(/invalid_client/);
+    });
+
+    it('refuses a token for a public client, which has no secret to present', async () => {
+        // RFC 6749 §4.4 restricts client_credentials to confidential clients, so
+        // a client registered with auth method "none" can never use this flow.
+        const created = await create(kmId, {
+            client_name: 'public-client', token_endpoint_auth_method: 'none',
+        });
+        expect(created.status).toBe(201);
+
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`, { consumerSecret: 'anything' });
+        // 409: the key exists and the caller may see it; it is simply not eligible.
+        expect(res.status).toBe(409);
+    });
+
+    it('refuses a token for a client whose auth method the portal cannot present', async () => {
+        const created = await create(kmId, {
+            client_name: 'jwt-client', token_endpoint_auth_method: 'private_key_jwt',
+        });
+        expect(created.status).toBe(201);
+
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`, { consumerSecret: 'anything' });
+        expect(res.status).toBe(409);
+    });
+
+    it('sends the secret where the client said it would accept it', async () => {
+        // client_secret_post puts it in the body; the default puts it in the
+        // Authorization header. Sending it the wrong way is a plain 401 from a
+        // real server, indistinguishable from a wrong secret.
+        const created = await create(kmId, {
+            client_name: 'post-client', token_endpoint_auth_method: 'client_secret_post',
+        });
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`,
+                { consumerSecret: created.body.consumerSecret });
+        expect(res.status).toBe(200);
+
+        const tokenCall = dcr.requestsOf('POST').filter((r) => r.path === '/token').slice(-1)[0];
+        expect(tokenCall.body.client_secret).toBe(created.body.consumerSecret);
+        expect(tokenCall.auth).toBe('');
+    });
+
+    it('passes requested scopes through to the identity server', async () => {
+        const created = await create(kmId, { client_name: 'scoped' });
+        const res = await client.as('developer')
+            .post(`/oauth2-keys/${created.body.keyId}/generate-token`, {
+                consumerSecret: created.body.consumerSecret,
+                scopes: ['read', 'write'],
+            });
+        expect(res.status).toBe(200);
+        const tokenCall = dcr.requestsOf('POST').filter((r) => r.path === '/token').slice(-1)[0];
+        expect(tokenCall.body.scope).toBe('read write');
     });
 });

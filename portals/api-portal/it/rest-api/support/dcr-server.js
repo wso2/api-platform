@@ -45,6 +45,10 @@
 
 const http = require('http');
 
+// The credential a key manager is configured to provision with. Exported so a
+// spec configures the key manager with the same pair this server will accept.
+const PROVISIONING = Object.freeze({ clientId: 'portal', clientSecret: 'portal-secret' });
+
 const REGISTER_PATH = '/register';
 const CLIENT_PATH = '/clients';
 const TOKEN_PATH = '/token';
@@ -120,9 +124,55 @@ function createDcrServer() {
             }
         }
 
-        // --- a token endpoint, so one key manager serves both ----------------
+        /*
+         * A token endpoint, so one key manager serves both roles.
+         *
+         * The secret is actually checked, because that is what makes the failure
+         * path testable: the portal maps an upstream 401 here to
+         * `token_request_rejected`, which the API answers 400. Accepting any
+         * secret would make the happy path pass and leave that mapping unproven.
+         *
+         * Both RFC 6749 placements are honoured — client_secret_basic in the
+         * Authorization header, client_secret_post in the body — since which one
+         * the portal uses is driven by the client's own registered
+         * token_endpoint_auth_method.
+         */
         if (req.method === 'POST' && url.pathname === TOKEN_PATH) {
-            return json(res, 200, { access_token: 'mock-access-token', token_type: 'Bearer', expires_in: 3600 });
+            const form = parsed || {};
+            let clientId = form.client_id;
+            let secret = form.client_secret;
+            const basic = (req.headers.authorization || '').split(' ');
+            if ((basic[0] || '').toLowerCase() === 'basic') {
+                const [u, p] = Buffer.from(basic[1] || '', 'base64').toString('utf8').split(':');
+                clientId = clientId || u;
+                secret = secret || p;
+            }
+            /*
+             * Two different callers reach this endpoint, and conflating them was
+             * a real mistake while writing these tests:
+             *
+             *   the PORTAL, minting its own provisioning token with the
+             *   client_credentials credential a key manager is configured with —
+             *   that client was never registered here, so checking it against an
+             *   issued secret rejected the portal from its own key manager;
+             *
+             *   a DEVELOPER, exchanging the secret of a client this server
+             *   actually issued.
+             *
+             * Both are accepted, each against the credential it legitimately holds.
+             */
+            const isProvisioning = clientId === PROVISIONING.clientId
+                && secret === PROVISIONING.clientSecret;
+            const held = clients.get(clientId);
+            if (!isProvisioning && (!held || secret !== `secret-${clientId}`)) {
+                return json(res, 401, { error: 'invalid_client' });
+            }
+            return json(res, 200, {
+                access_token: 'mock-access-token',
+                token_type: 'Bearer',
+                expires_in: 3600,
+                scope: form.scope || '',
+            });
         }
 
         return json(res, 404, { error: 'not_found' });
@@ -167,4 +217,4 @@ function createDcrServer() {
     };
 }
 
-module.exports = { createDcrServer };
+module.exports = { createDcrServer, PROVISIONING };
