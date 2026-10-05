@@ -150,12 +150,12 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 	return &api.ServiceAccountCredentials{ServiceAccount: *resp, ClientId: sa.ClientID, ClientSecret: secret}, nil
 }
 
-func (s *ServiceAccountService) List(orgID string, limit, offset int) (*api.ServiceAccountListResponse, error) {
-	accounts, err := s.repo.List(orgID, limit, offset)
+func (s *ServiceAccountService) List(orgID, search string, limit, offset int) (*api.ServiceAccountListResponse, error) {
+	accounts, err := s.repo.List(orgID, search, limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.Count(orgID)
+	total, err := s.repo.Count(orgID, search)
 	if err != nil {
 		return nil, err
 	}

@@ -76,20 +76,25 @@ func (f *fakeSARepo) GetByHandle(orgID, handle string) (*model.ServiceAccount, e
 func (f *fakeSARepo) GetByClientID(id string) (*model.ServiceAccount, error) {
 	return f.find(func(e *model.ServiceAccount) bool { return e.ClientID == id })
 }
-func (f *fakeSARepo) List(orgID string, limit, offset int) ([]*model.ServiceAccount, error) {
+func (f *fakeSARepo) List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error) {
+	term := strings.ToLower(strings.TrimSpace(search))
 	var out []*model.ServiceAccount
 	for _, e := range f.byUUID {
-		if e.OrganizationID == orgID {
-			c := *e
-			out = append(out, &c)
+		if e.OrganizationID != orgID {
+			continue
 		}
+		if term != "" && !strings.Contains(strings.ToLower(e.DisplayName+" "+e.Handle+" "+e.Owner), term) {
+			continue
+		}
+		c := *e
+		out = append(out, &c)
 	}
 	// Sorted only to page deterministically; tests must not rely on the order.
 	slices.SortFunc(out, func(a, b *model.ServiceAccount) int { return strings.Compare(a.Handle, b.Handle) })
 	return out[min(offset, len(out)):min(offset+limit, len(out))], nil
 }
-func (f *fakeSARepo) Count(orgID string) (int, error) {
-	all, _ := f.List(orgID, len(f.byUUID), 0)
+func (f *fakeSARepo) Count(orgID, search string) (int, error) {
+	all, _ := f.List(orgID, search, len(f.byUUID), 0)
 	return len(all), nil
 }
 
@@ -531,14 +536,14 @@ func TestServiceAccountListAndGet(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := f.svc.List("org-1", 2, 0)
+	page, err := f.svc.List("org-1", "", 2, 0)
 	if err != nil || page.Count != 2 || page.Pagination.Total != 3 || page.Pagination.Limit != 2 {
 		t.Fatalf("first page: %+v, %v", page, err)
 	}
 	if *page.List[0].CreatedBy != "resolved:admin" || *page.List[0].UpdatedBy != "resolved:admin" {
 		t.Fatalf("audit fields not resolved: %q", *page.List[0].CreatedBy)
 	}
-	rest, _ := f.svc.List("org-1", 2, 2)
+	rest, _ := f.svc.List("org-1", "", 2, 2)
 	seen := map[string]bool{}
 	for _, sa := range append(page.List, rest.List...) {
 		seen[sa.Id] = true
@@ -546,7 +551,7 @@ func TestServiceAccountListAndGet(t *testing.T) {
 	if rest.Count != 1 || len(seen) != 3 {
 		t.Fatalf("pages overlap or miss an account: %v", seen)
 	}
-	if page, _ := f.svc.List("org-2", 10, 0); page.Count != 0 || page.Pagination.Total != 0 {
+	if page, _ := f.svc.List("org-2", "", 10, 0); page.Count != 0 || page.Pagination.Total != 0 {
 		t.Fatalf("another org sees accounts: %+v", page)
 	}
 
