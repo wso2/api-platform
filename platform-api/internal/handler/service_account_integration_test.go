@@ -195,7 +195,7 @@ func decodeSAJSON[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 func createSATestAccount(t *testing.T, e *saTestEnv, handle string) api.ServiceAccountCredentials {
 	t.Helper()
 	rec := e.call(t, http.MethodPost, saTestBasePath, api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI",
-		Owner: "team", Description: "deploys", Roles: []string{"ap_sa_reader"}}, true)
+		Owner: saStr("team"), Description: saStr("deploys"), Roles: []string{"ap_sa_reader"}}, true)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
@@ -209,7 +209,7 @@ func saTestForm(creds api.ServiceAccountCredentials, scope string) url.Values {
 
 func TestServiceAccountHandler_Lifecycle(t *testing.T) {
 	e := setupSATestEnv(t)
-	create := api.ServiceAccountCreateRequest{Id: "ci-bot", DisplayName: "CI", Owner: "team", Description: "deploys",
+	create := api.ServiceAccountCreateRequest{Id: "ci-bot", DisplayName: "CI", Owner: saStr("team"), Description: saStr("deploys"),
 		Roles: []string{"ap_sa_reader"}}
 
 	rec := e.call(t, http.MethodPost, saTestBasePath, create, true)
@@ -367,6 +367,29 @@ func TestServiceAccountHandler_TokenRejects(t *testing.T) {
 	}
 }
 
+// Owner and description may be omitted; owner then reads back as the creator's
+// sub, through the real identity mapping.
+func TestServiceAccountHandler_OwnerDefaultsToCreator(t *testing.T) {
+	e := setupSATestEnv(t)
+	rec := e.call(t, http.MethodPost, saTestBasePath, map[string]any{"id": "ci-bot", "displayName": "CI",
+		"roles": []string{"ap_sa_reader"}}, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if got := decodeSAJSON[api.ServiceAccountCredentials](t, rec).ServiceAccount; got.Owner != "alice" || got.Description != "" {
+		t.Fatalf("owner %q, description %q", got.Owner, got.Description)
+	}
+
+	rec = e.call(t, http.MethodPut, saTestBasePath+"/ci-bot", map[string]string{"owner": "platform-team"}, true)
+	if got := decodeSAJSON[api.ServiceAccount](t, rec); got.Owner != "platform-team" {
+		t.Fatalf("set owner: %d %+v", rec.Code, got)
+	}
+	rec = e.call(t, http.MethodPut, saTestBasePath+"/ci-bot", map[string]string{"owner": " "}, true)
+	if got := decodeSAJSON[api.ServiceAccount](t, rec); got.Owner != "alice" {
+		t.Fatalf("blank owner must reset to the creator: %d %+v", rec.Code, got)
+	}
+}
+
 // Every management route needs the organization from the token.
 func TestServiceAccountHandler_RequiresOrganization(t *testing.T) {
 	e := setupSATestEnv(t)
@@ -407,3 +430,5 @@ func TestClientIP(t *testing.T) {
 		t.Errorf("without port: %q", got)
 	}
 }
+
+func saStr(s string) *string { return &s }
