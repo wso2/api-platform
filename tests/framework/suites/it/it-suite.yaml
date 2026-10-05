@@ -547,6 +547,23 @@ blocks:
         features:
           - features/gateway/guardrails-policies/azure_content_safety.feature
 
+  # TypeSafe Jev policies, against the testbench jev service. The policies ship in the source
+  # build's policy set only, so every runner is gated to source builds. One runner at a time:
+  # monitor-mode scenarios assert on the block's analytics partition.
+  - name: typesafe-jev
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/typesafe-jev.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: typesafe-jev-content-safety
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/guardrails-policies/typesafe_jev_content_safety.feature
+
   - name: semantic-ai
     parallel: 2
     components:
