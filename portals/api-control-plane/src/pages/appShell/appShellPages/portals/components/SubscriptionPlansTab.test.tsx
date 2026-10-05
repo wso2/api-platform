@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aSubscriptionPlan, collection, failure, type SubscriptionPlanFixture } from '@/test/msw';
+import { aSubscriptionPlan, collection, failure, recorder, type SubscriptionPlanFixture } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -84,6 +84,24 @@ describe('SubscriptionPlansTab', () => {
     expect(screen.getAllByText('Active')).toHaveLength(2);
     expect(screen.getByText('Inactive')).toBeInTheDocument();
     expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
+  });
+
+  it('loads every page of plans, not just the first 20', async () => {
+    const many = Array.from({ length: 120 }, (_, i) =>
+      aSubscriptionPlan({ displayName: `Plan ${i + 1}`, id: `plan-${i + 1}` }),
+    );
+    const requests = recorder();
+    server.use(collection(PLANS_PATH, many, { record: requests }));
+
+    renderTab({ values: values({ subscriptionPlanIds: ['plan-120'] }) });
+
+    expect(await screen.findByRole('checkbox', { name: /Plan 120/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(120);
+    expect(summaryText('1 of 120 plans selected')).toBeInTheDocument();
+    expect(requests.calls.map((call) => [call.params.get('limit'), call.params.get('offset')])).toEqual([
+      ['100', '0'],
+      ['100', '100'],
+    ]);
   });
 
   it('shows an empty state and no Select all button only when the org has no plans at all', async () => {

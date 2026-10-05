@@ -37,7 +37,7 @@ import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useNotifications } from '@/components/Notifications';
-import { useSubscriptionPlans } from '@/api/resources/subscriptionPlans';
+import { useAllSubscriptionPlans } from '@/api/resources/subscriptionPlans';
 import { LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -256,7 +256,7 @@ function PortalPublishPageContent() {
   const [viewingPublished, setViewingPublished] = useState(false);
   const data = usePublishPageData(apiPortalId, apiHandler, viewingPublished && tab === 'specification');
 
-  const plansQuery = useSubscriptionPlans();
+  const plansQuery = useAllSubscriptionPlans();
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });

@@ -56,6 +56,16 @@ export const useSubscriptionPlans = (
   });
 };
 
+/** Every plan in the active organization, across all pages. */
+export const useAllSubscriptionPlans = (overrides: { orgId?: string } = {}) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...subscriptionPlanQueries.listAll(org!),
+    enabled: Boolean(org),
+  });
+};
+
 /** A single plan. */
 export const useSubscriptionPlan = (
   subscriptionPlanId: string | undefined,

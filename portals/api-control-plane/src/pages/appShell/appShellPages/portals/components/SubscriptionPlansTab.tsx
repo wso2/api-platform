@@ -19,7 +19,7 @@
 import { Box, Button, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
+import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
@@ -100,7 +100,7 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
 export function SubscriptionPlansTab({ disabled, onChange, readOnly, values }: SubscriptionPlansTabProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
-  const plansQuery = useSubscriptionPlans();
+  const plansQuery = useAllSubscriptionPlans();
   const selectedIds = values.subscriptionPlanIds;
   const selectedSet = new Set(selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
