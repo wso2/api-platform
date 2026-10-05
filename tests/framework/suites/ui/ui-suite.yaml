@@ -120,6 +120,7 @@ blocks:
         dependsOn: [platform-api]
       - name: testbench
       - name: ai-workspace
+        overlay: tests/framework/core/catalog/overlays/ai-workspace-agent-proxy.toml
       - name: browser
     runners:
       - name: smoke
