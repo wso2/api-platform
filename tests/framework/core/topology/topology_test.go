@@ -1624,6 +1624,42 @@ blocks:
 		require.NoError(t, err)
 	})
 
+	t.Run("bundled policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("source-built policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: latest-policies
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("bundled and source-built policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: latest-policies
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
 	t.Run("database variants alongside a source-built policy block", func(t *testing.T) {
 		_, err := Load([]byte(`
 suite: policy-sources
@@ -1711,6 +1747,21 @@ blocks:
 			`feature "features/shared.feature" is bound to 2 runners (first-bundled/r, second-bundled/r)`)
 	})
 
+	t.Run("duplicate within the bundled policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: second-bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-bundled/dp-to-cp, second-bundled/dp-to-cp)`)
+	})
+
 	t.Run("duplicate within one policy source", func(t *testing.T) {
 		_, err := Load([]byte(`
 suite: policy-sources
@@ -1727,6 +1778,21 @@ blocks:
 `), registry)
 		require.ErrorContains(t, err,
 			`feature "features/shared.feature" is bound to 2 runners (first-latest/r, second-latest/r)`)
+	})
+
+	t.Run("duplicate within one policy source on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-latest
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: second-latest
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-latest/dp-to-cp, second-latest/dp-to-cp)`)
 	})
 
 	t.Run("overlapping version ranges within one policy source", func(t *testing.T) {
