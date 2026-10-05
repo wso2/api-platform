@@ -212,6 +212,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 - [Introspect a service-account token](service-accounts.md#introspect-a-service-account-token)
 - [Service-account signing keys](service-accounts.md#service-account-signing-keys)
 - [Regenerate a service account's secret](service-accounts.md#regenerate-a-service-accounts-secret)
+- [List the roles a service account can hold](service-accounts.md#list-the-roles-a-service-account-can-hold)
 
 ### [Secrets](secrets.md)
 

@@ -5354,7 +5354,7 @@ type ServiceAccount struct {
 	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
-	// Description What the account is for
+	// Description What the account is for; may be empty
 	Description string `json:"description" yaml:"description"`
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
@@ -5364,7 +5364,8 @@ type ServiceAccount struct {
 	LastUsedIp   *string    `json:"lastUsedIp,omitempty" yaml:"lastUsedIp,omitempty"`
 	MaskedSecret *string    `json:"maskedSecret,omitempty" yaml:"maskedSecret,omitempty"`
 
-	// Owner Who is accountable for this account — a team, person or mailing list
+	// Owner Who is accountable for this account — a team, person or mailing list.
+	// Defaults to the creator: the `sub` of the token that created it.
 	Owner string `json:"owner" yaml:"owner"`
 
 	// Roles The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
@@ -5380,12 +5381,14 @@ type ServiceAccountStatus string
 
 // ServiceAccountCreateRequest defines model for ServiceAccountCreateRequest.
 type ServiceAccountCreateRequest struct {
-	Description string `json:"description" yaml:"description"`
-	DisplayName string `json:"displayName" yaml:"displayName"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName string  `json:"displayName" yaml:"displayName"`
 
 	// Id Service account handle. `token` is reserved.
-	Id    string `json:"id" yaml:"id"`
-	Owner string `json:"owner" yaml:"owner"`
+	Id string `json:"id" yaml:"id"`
+
+	// Owner Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).
+	Owner *string `json:"owner,omitempty" yaml:"owner,omitempty"`
 
 	// Roles Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
 	Roles []string `json:"roles" yaml:"roles"`
@@ -5448,11 +5451,13 @@ type ServiceAccountTokenResponse struct {
 	TokenType string  `json:"token_type" yaml:"token_type"`
 }
 
-// ServiceAccountUpdateRequest Every field is optional. Owner and description may change but not be blanked.
+// ServiceAccountUpdateRequest Every field is optional.
 type ServiceAccountUpdateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Owner       *string `json:"owner,omitempty" yaml:"owner,omitempty"`
+
+	// Owner Blank resets it to the account's creator.
+	Owner *string `json:"owner,omitempty" yaml:"owner,omitempty"`
 
 	// Roles Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
 	// already issued; adding one does not.
