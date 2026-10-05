@@ -7,6 +7,8 @@
 {{- $https := $srv.https -}}
 {{- /* internal_token mode with validation skipped needs — and reads — no verifying key. */ -}}
 {{- $skipJwtValidation := and (eq $auth.mode "internal_token") (dig "internalToken" "skipValidation" false $auth) -}}
+{{- /* Service accounts without their own pair sign with auth.jwt, in every mode. */ -}}
+{{- $saSharedKey := include "apip.platformApi.saSharedKey" . -}}
 {{- if $pa.deployment.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -107,16 +109,41 @@ data:
     skip_validation = {{ $skipJwtValidation }}
     {{- end }}
 
-    {{- if ne $auth.mode "idp" }}
+    {{- if or (ne $auth.mode "idp") $saSharedKey }}
     [platform_api.auth.jwt]
     issuer = {{ $auth.jwt.issuer | quote }}
-    {{- if not $skipJwtValidation }}
-    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\" — or set auth.internalToken.skipValidation=true to run internal_token mode without a verifying key" $auth.jwt.publicKeyFile | quote }}
+    {{- if or (not $skipJwtValidation) $saSharedKey }}
+    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\", or when service accounts use the shared auth.jwt pair — or set auth.internalToken.skipValidation=true to run internal_token mode without a verifying key" $auth.jwt.publicKeyFile | quote }}
     {{- end }}
-    {{- if eq $auth.mode "file" }}
-    private_key_file = {{ required "config.auth.jwt.privateKeyFile is required when auth.mode is \"file\"" $auth.jwt.privateKeyFile | quote }}
+    {{- if or (eq $auth.mode "file") $saSharedKey }}
+    private_key_file = {{ required "config.auth.jwt.privateKeyFile is required when auth.mode is \"file\", or when service accounts use the shared auth.jwt pair" $auth.jwt.privateKeyFile | quote }}
     {{- end }}
     token_ttl = {{ $auth.jwt.tokenTtl | quote }}
+    {{- end }}
+
+    {{- $sa := default (dict) $auth.serviceAccount }}
+    {{- $saOwnKey := include "apip.platformApi.saOwnKey" $ }}
+
+    [platform_api.auth.service_account]
+    {{- if $sa.enabled }}
+    enabled = true
+    token_ttl = {{ $sa.tokenTtl | quote }}
+    audience = {{ $sa.audience | quote }}
+    {{- with $sa.retiredPublicKeyFiles }}
+    retired_public_key_files = {{ toJson . }}
+    {{- end }}
+
+    [platform_api.auth.service_account.revocation]
+    poll_interval = {{ $sa.pollInterval | quote }}
+    {{- if $saOwnKey }}
+
+    [platform_api.auth.service_account.jwt]
+    issuer = {{ $sa.jwt.issuer | quote }}
+    public_key_file = {{ $sa.jwt.publicKeyFile | quote }}
+    private_key_file = {{ $sa.jwt.privateKeyFile | quote }}
+    {{- end }}
+    {{- else }}
+    enabled = false
     {{- end }}
 
     {{- if eq $auth.mode "idp" }}
