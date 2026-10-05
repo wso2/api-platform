@@ -65,10 +65,10 @@ beforeEach(() => {
 });
 
 describe('SubscriptionPlansTab', () => {
-  it('lists active plans first, then inactive ones greyed out, each with a status pill, counting only the active plans', async () => {
+  it('lists active plans first, then the selected inactive one, flagging only the inactive one, counting only the active plans', async () => {
     server.use(collection(PLANS_PATH, [legacy, bronze, gold]));
 
-    renderTab({ values: values({ subscriptionPlanIds: ['bronze'] }) });
+    renderTab({ values: values({ subscriptionPlanIds: ['bronze', 'legacy'] }) });
 
     await screen.findByText('Bronze');
     const names = ['Bronze', 'Gold', 'Legacy'];
@@ -78,10 +78,10 @@ describe('SubscriptionPlansTab', () => {
     expect(screen.getByText('1,000')).toBeInTheDocument();
     expect(screen.getByText('requests / hour')).toBeInTheDocument();
     expect(screen.getAllByText('Unlimited')).toHaveLength(2);
-    expect(screen.getByRole('checkbox', { name: /Legacy/ })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('checkbox', { name: /Legacy/ })).not.toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('checkbox', { name: /Gold/ })).not.toHaveAttribute('aria-disabled', 'true');
-    // Every card carries a status pill: the active ones say so, the inactive one is flagged.
-    expect(screen.getAllByText('Active')).toHaveLength(2);
+    // Only the inactive plan carries a status pill.
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
     expect(screen.getByText('Inactive')).toBeInTheDocument();
     expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
   });
@@ -113,14 +113,13 @@ describe('SubscriptionPlansTab', () => {
     expect(screen.queryByRole('button', { name: /select all|clear all/i })).not.toBeInTheDocument();
   });
 
-  it('still lists the plans when every one of them is inactive, and has nothing to select all of', async () => {
+  it('offers no inactive plan that is not selected, so an all-inactive org shows the empty state', async () => {
     server.use(collection(PLANS_PATH, [legacy]));
 
     renderTab();
 
-    expect(await screen.findByRole('checkbox', { name: /Legacy/ })).toBeInTheDocument();
-    expect(screen.queryByText('No subscription plans')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Select all' })).toBeDisabled();
+    expect(await screen.findByText('No subscription plans')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Legacy/ })).not.toBeInTheDocument();
   });
 
   it('shows an error state when the plans request fails', async () => {
@@ -146,18 +145,14 @@ describe('SubscriptionPlansTab', () => {
     expect(onChange.mock.calls[0][0].subscriptionPlanIds).toHaveLength(2);
   });
 
-  it('refuses to select an inactive plan, and warns instead', async () => {
+  it('does not offer an inactive plan that is not selected', async () => {
     server.use(collection(PLANS_PATH, plans));
-    const onChange = vi.fn();
 
-    const { user } = renderTab({ onChange });
+    renderTab();
 
-    await user.click(await screen.findByRole('checkbox', { name: /Legacy/ }));
-
-    expect(onChange).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText('"Legacy" is inactive. Activate it in Settings.'),
-    ).toBeInTheDocument();
+    await screen.findByText('Bronze');
+    expect(screen.queryByRole('checkbox', { name: /Legacy/ })).not.toBeInTheDocument();
+    expect(summaryText('0 of 2 plans selected')).toBeInTheDocument();
   });
 
   it('keeps a selected inactive plan at full strength, counts it separately, and lets it be cleared', async () => {

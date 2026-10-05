@@ -246,7 +246,7 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
   });
 
-  it('lists every plan in the draft, greyed out when inactive, and blocks Save Draft and Publish until an inactive selected plan is cleared', async () => {
+  it('offers an inactive plan only while it is selected, and blocks Save Draft and Publish until an inactive selected plan is cleared', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     const unused = aSubscriptionPlan({ displayName: 'Unused', id: 'unused', status: 'INACTIVE' });
@@ -267,10 +267,10 @@ describe('PortalPublishPage', () => {
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
 
-    // Nothing is dropped behind the user's back, and nothing inactive is hidden.
+    // Nothing selected is dropped behind the user's back; an unselected inactive plan isn't offered.
     const retiredCard = await screen.findByRole('checkbox', { name: /Retired/ });
     expect(retiredCard).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('checkbox', { name: /Unused/ })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('checkbox', { name: /Unused/ })).not.toBeInTheDocument();
     expect(screen.getByText('1 inactive plan selected')).toBeInTheDocument();
 
     // Both actions stop at the plans, without a request.

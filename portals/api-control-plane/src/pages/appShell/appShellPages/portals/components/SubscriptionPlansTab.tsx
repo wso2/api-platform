@@ -20,7 +20,6 @@ import { Box, Button, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
-import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import type { DraftFormValues } from '../utils/publicationForm';
@@ -62,11 +61,6 @@ const messages = defineMessages({
     defaultMessage: '{count, plural, one {# inactive plan selected} other {# inactive plans selected}}',
     description: 'Warning next to the selection summary: selected plans that are no longer active.',
   },
-  inactiveBlockedToast: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveBlockedToast',
-    defaultMessage: '"{name}" is inactive. Activate it in Settings.',
-    description: 'Warning shown when the user tries to select an inactive plan. {name} is the plan\'s display name.',
-  },
   selectAll: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll',
     defaultMessage: 'Select all',
@@ -93,22 +87,21 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * portal. A plan's active/inactive status is set in Settings, not here.
  *
  * Status limits what can be *chosen*, never what is shown of the selection: the
- * draft lists every plan (active first), an inactive one refuses to be selected,
- * but one already selected stays visible and can be cleared. The published view
+ * draft offers the active plans, and an inactive one only while it is already
+ * selected, so it can be cleared (after which it drops out). The published view
  * lists exactly the plans the live listing holds.
  */
 export function SubscriptionPlansTab({ disabled, onChange, readOnly, values }: SubscriptionPlansTabProps) {
   const intl = useIntl();
-  const { notify } = useNotifications();
   const plansQuery = useAllSubscriptionPlans();
   const selectedIds = values.subscriptionPlanIds;
   const selectedSet = new Set(selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
   const activePlans = allPlans.filter((plan) => plan.status === 'ACTIVE');
-  const inactivePlans = allPlans.filter((plan) => plan.status !== 'ACTIVE');
-  const inactiveSelectedPlans = inactivePlans.filter((plan) => selectedSet.has(plan.id));
-  const orderedPlans = [...activePlans, ...inactivePlans];
-  const shownPlans = readOnly ? orderedPlans.filter((plan) => selectedSet.has(plan.id)) : orderedPlans;
+  const inactiveSelectedPlans = allPlans.filter((plan) => plan.status !== 'ACTIVE' && selectedSet.has(plan.id));
+  // An inactive plan is offered only while it is selected, so it can still be cleared.
+  const offeredPlans = [...activePlans, ...inactiveSelectedPlans];
+  const shownPlans = readOnly ? offeredPlans.filter((plan) => selectedSet.has(plan.id)) : offeredPlans;
 
   if (plansQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -144,9 +137,6 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, values }: S
   // Select all keeps an already-selected inactive plan; Clear all clears everything.
   const toggleAll = () =>
     commitSelection(allActiveSelected ? [] : [...activePlans, ...inactiveSelectedPlans].map((plan) => plan.id));
-
-  const warnInactive = (plan: DisplayablePlan) =>
-    notify(intl.formatMessage(messages.inactiveBlockedToast, { name: plan.displayName }), 'warning');
 
   const countStyle = {
     color: readOnly ? 'success.main' : 'primary.main',
@@ -219,7 +209,6 @@ export function SubscriptionPlansTab({ disabled, onChange, readOnly, values }: S
             inactive={plan.status !== 'ACTIVE'}
             key={plan.id}
             limit={getPlanLimitDisplay(plan)}
-            onBlocked={() => warnInactive(plan)}
             onToggle={() => toggle(plan.id)}
             readOnly={readOnly}
             selected={selectedSet.has(plan.id)}
