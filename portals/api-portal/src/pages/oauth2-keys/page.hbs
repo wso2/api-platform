@@ -34,10 +34,28 @@
           Both are gates on showing the button at all, rather than on it failing later. --}}
     {{#unless (designMode)}}
     {{#if oauth2Keys.length}}
-    <button class="dp-btn dp-btn--primary" id="ok-add-btn" type="button"
-      {{#unless generationAvailable}}disabled title="No key manager is configured for OAuth2 key generation"{{/unless}}>
-      <i class="bi bi-plus"></i> Add key
-    </button>
+    {{!-- Two entry points, because the choice between them is the one a developer
+          actually makes: whether the application exists already. It used to be
+          inferred from which key manager they picked inside a single modal, which
+          put the question after the answer and rebuilt the form when it changed.
+
+          The import button starts hidden and is revealed by the page script only
+          when a key manager that accepts an existing application is configured —
+          most portals have none, and a second button for a path they cannot take
+          is worse than no button. --}}
+    {{!-- Grouped. .page-header is `justify-content: space-between`, so two loose
+          buttons become two separate flex children and get pushed to opposite ends
+          of the header with the title. One actions element keeps the header at two
+          children, whatever it holds. --}}
+    <div class="ok-head-actions">
+      <button class="dp-btn dp-btn--outline" id="ok-import-btn" type="button" hidden>
+        <i class="bi bi-link-45deg"></i> Add existing key
+      </button>
+      <button class="dp-btn dp-btn--primary" id="ok-add-btn" type="button"
+        {{#unless generationAvailable}}disabled title="No key manager is configured for OAuth2 key generation"{{/unless}}>
+        <i class="bi bi-plus"></i> Generate key
+      </button>
+    </div>
     {{/if}}
     {{/unless}}
   </div>
@@ -182,9 +200,14 @@
       {{#if generationAvailable}}
       <p class="dp-empty-desc">Register an OAuth2 application on one of your key managers to get a client ID and secret for requesting access tokens.</p>
       {{#unless (designMode)}}
-      <button class="dp-btn dp-btn--primary dp-btn--lg" id="ok-add-btn-empty" type="button">
-        <i class="bi bi-plus"></i> Add key
-      </button>
+      <div class="ok-empty-actions">
+        <button class="dp-btn dp-btn--primary dp-btn--lg" id="ok-add-btn-empty" type="button">
+          <i class="bi bi-plus"></i> Generate key
+        </button>
+        <button class="dp-btn dp-btn--outline dp-btn--lg" id="ok-import-btn-empty" type="button" hidden>
+          <i class="bi bi-link-45deg"></i> Add existing key
+        </button>
+      </div>
       {{/unless}}
       {{else}}
       {{!-- Honest about the blocker rather than showing a button that can only fail:

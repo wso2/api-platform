@@ -25,6 +25,19 @@
 
   var editKmId = null;
 
+  /* Scopes are entered as chips rather than a space-separated string -- see
+     cfg-chip-input.js, shared with the API wizard's Tags field. Space commits as
+     well as Enter, because that is the separator OAuth2 itself uses and the habit
+     the old field taught. Null when the markup is absent (this script also loads
+     on pages without the key manager modal), and every call site guards for it. */
+  var scopeChips = window.cfgChipInput ? window.cfgChipInput.create({
+    wrapId: 'km-scopes-wrap',
+    chipsId: 'km-scopes-chips',
+    inputId: 'km-scopes',
+    splitOn: /[\s,]+/,
+    commitKey: ' ',
+  }) : null;
+
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
   function sv(id,val) { var e=document.getElementById(id); if(e) e.value=val||''; }
   /* Headers for every state-changing call from this page. The CSRF token is read
@@ -237,7 +250,7 @@
     sv('km-username', on ? (p.username || '') : '');
     sv('km-header-name', on ? (p.headerName || '') : '');
     sv('km-scheme', on ? (p.scheme || '') : '');
-    sv('km-scopes', on && p.scopes ? p.scopes.join(' ') : '');
+    if (scopeChips) scopeChips.set(on && p.scopes ? p.scopes : []);
     sv('km-resource', on ? (p.resource || '') : '');
     // Cleared on every open: a secret typed for one key manager must never be
     // carried into the next modal the admin opens.
@@ -265,7 +278,7 @@
    * omission. That was equally true of the toggle's off position.
    */
   function collectProvisioning() {
-    // "They already exist" is the explicit way to say "this key manager registers
+    // "In the identity server" is the explicit way to say "this key manager registers
     // nothing". It sends no provisioning block at all, which is exactly how a key
     // manager created before DCR support is already stored — so the payload is
     // unchanged from when this was a type in the dropdown.
@@ -283,8 +296,8 @@
      * whichever credential field is missing.
      */
     if (!v('km-registration-endpoint')) {
-      return { error: 'Registration endpoint is required when the portal creates the applications. '
-        + 'Choose "They already exist" if the applications are created in the identity server instead.' };
+      return { error: 'Registration endpoint is required when applications are managed in the portal. '
+        + 'Choose "In the identity server" if they are managed there instead.' };
     }
     var method = el('km-auth-method').value;
     var auth = { method: method };
@@ -292,7 +305,7 @@
       if (!v('km-client-id')) return { error: 'Client ID is required to let the portal create applications.' };
       auth.clientId = v('km-client-id');
       if (v('km-client-secret')) auth.clientSecret = v('km-client-secret');
-      var scopes = v('km-scopes').split(/\s+/).filter(Boolean);
+      var scopes = scopeChips ? scopeChips.get() : [];
       if (scopes.length) auth.scopes = scopes;
       if (v('km-resource')) auth.resource = v('km-resource');
     } else if (method === 'api_key') {

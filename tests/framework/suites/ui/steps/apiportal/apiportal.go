@@ -672,10 +672,10 @@ func (u *Steps) createKeyManagerAndDeveloperApplication(ctx context.Context) err
 	if err := page.Locator("#km-display").Fill(name); err != nil {
 		return err
 	}
-	// "They already exist": this key manager only proxies token requests for
+	// "In the identity server": this key manager only proxies token requests for
 	// applications registered at the identity server, so it needs no registration
-	// endpoint or provisioning credential. The form opens on "The portal creates
-	// them", which now refuses a blank registration block rather than silently
+	// endpoint or provisioning credential. The form opens on "In the portal",
+	// which now refuses a blank registration block rather than silently
 	// saving an importing key manager — so a token-proxy-only key manager has to
 	// say so explicitly.
 	if err := page.Locator("#km-mode-import").Check(); err != nil {

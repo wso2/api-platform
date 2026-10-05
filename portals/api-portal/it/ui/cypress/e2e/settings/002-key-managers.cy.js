@@ -60,10 +60,10 @@ describe('Settings — Key Managers', () => {
         cy.get('#cfg-add-km-btn').click();
         cy.get('#cfg-km-modal').should('be.visible');
         cy.get('#km-display').type(KM_NAME);
-        // "They already exist": this key manager only proxies token requests for
+        // "In the identity server": this key manager only proxies token requests for
         // applications registered at the identity server, so it needs no
-        // registration endpoint or provisioning credential. The form opens on "The
-        // portal creates them", which now refuses a blank registration block rather
+        // registration endpoint or provisioning credential. The form opens on
+        // "In the portal", which now refuses a blank registration block rather
         // than silently saving an importing key manager — so the mode has to be
         // chosen explicitly for a token-proxy-only key manager like this one.
         cy.get('#km-mode-import').check();

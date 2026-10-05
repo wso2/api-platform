@@ -57,7 +57,7 @@
      */
     var MODES = {
         register: {
-            group: 'Portal creates the application',
+            title: 'Generate OAuth2 key',
             submit: 'Generate key',
             hint: function (km) {
                 return (km.displayName || km.id) + ' will create the application and show you its '
@@ -65,8 +65,11 @@
             },
         },
         provide: {
-            group: 'Use an application you already created',
-            submit: 'Add existing key',
+            title: 'Add an existing key',
+            // Shorter than the button that opened this modal: the title above
+            // already says "existing", so repeating it here reads as a second
+            // thing to decide rather than the same one.
+            submit: 'Add key',
             hint: function (km) {
                 return 'Create the application in ' + (km.displayName || km.id)
                     + ' first, then paste its client id below. No secret is issued here.';
@@ -215,11 +218,54 @@
                     field.appendChild(wrap);
                 });
             } else if (p.type === 'string_list') {
-                field = el('textarea', 'ok-form-input ok-form-textarea');
-                field.rows = 2;
-                field.placeholder = 'One per line';
-                if (Array.isArray(current)) field.value = current.join('\n');
-                else if (current != null) field.value = String(current);
+                /*
+                 * One row per value, added and removed with buttons, rather than a
+                 * textarea of newline-separated text. Callback URLs are the field
+                 * this exists for: they are long, they are easy to typo, and in a
+                 * textarea a wrapped URL is indistinguishable from two, so there was
+                 * no way to see where one ended. A row also gives each URL its own
+                 * type=url box, so the browser validates it individually.
+                 */
+                var heldList = Array.isArray(current)
+                    ? current.slice()
+                    : (current != null && String(current) !== '' ? [String(current)] : []);
+                field = el('div', 'ok-list');
+                var rows = el('div', 'ok-list-rows');
+                field.appendChild(rows);
+
+                var addRow = function (value) {
+                    var row = el('div', 'ok-list-row');
+                    var box = document.createElement('input');
+                    box.type = p.itemType === 'uri' ? 'url' : 'text';
+                    box.className = 'ok-form-input ok-list-input';
+                    box.value = value || '';
+                    if (p.placeholder) box.placeholder = p.placeholder;
+                    var del = el('button', 'ok-list-del');
+                    del.type = 'button';
+                    del.title = 'Remove';
+                    del.setAttribute('aria-label', 'Remove this entry');
+                    del.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                    del.addEventListener('click', function () {
+                        row.parentNode.removeChild(row);
+                        // Never leave the field with no row at all: an empty list and
+                        // "no rows" look the same to the reader, and with nothing to
+                        // type into, adding one back means finding the Add button.
+                        if (!rows.querySelector('.ok-list-row')) addRow('');
+                        refreshConditionalMarks();
+                    });
+                    row.appendChild(box);
+                    row.appendChild(del);
+                    rows.appendChild(row);
+                    return box;
+                };
+
+                (heldList.length ? heldList : ['']).forEach(addRow);
+
+                var add = el('button', 'ok-list-add');
+                add.type = 'button';
+                add.innerHTML = '<i class="bi bi-plus-lg" aria-hidden="true"></i> Add';
+                add.addEventListener('click', function () { addRow('').focus(); });
+                field.appendChild(add);
             } else if (p.type === 'number') {
                 field = el('input', 'ok-form-input');
                 field.type = 'number';
@@ -251,9 +297,17 @@
             return picked.length ? picked : undefined;
         }
         if (p.type === 'string_list') {
-            var raw = (document.getElementById('ok-prop-' + p.name) || {}).value || '';
-            var lines = raw.split('\n').map(function (v) { return v.trim(); }).filter(Boolean);
-            return lines.length ? lines : undefined;
+            var listHost = document.getElementById('ok-prop-' + p.name);
+            if (!listHost) return undefined;
+            var values = [];
+            listHost.querySelectorAll('.ok-list-input').forEach(function (box) {
+                var v = (box.value || '').trim();
+                // Blank rows are the field's own empty state, not a value: a list
+                // always shows at least one row, so an untouched field would
+                // otherwise read as [''] rather than "left alone".
+                if (v && values.indexOf(v) === -1) values.push(v);
+            });
+            return values.length ? values : undefined;
         }
         var node = document.getElementById('ok-prop-' + p.name);
         if (p.type === 'boolean') {
@@ -346,12 +400,16 @@
      * manager is disabled, where there are no descriptors but the selector must
      * still say which key manager issued it.
      */
-    function setMode(mode, km, fallbackKmName) {
+    function setMode(mode, km, fallbackKmName, addMode) {
         var editing = mode === 'edit';
         var viewing = mode === 'view';
         _editKeyId = (editing || viewing) ? _editKeyId : null;
+        // On the add path the title names the one thing this modal does, because
+        // the two paths are now separate entry points: "Generate" would be a lie
+        // on the import flow, where nothing is generated.
         document.getElementById('ok-add-title').textContent =
-            editing ? 'Update OAuth2 key' : (viewing ? 'OAuth2 key' : 'Add OAuth2 key');
+            editing ? 'Update OAuth2 key'
+                : (viewing ? 'OAuth2 key' : (MODES[addMode] || MODES.register).title);
         document.getElementById('ok-add-submit').hidden = editing || viewing;
         document.getElementById('ok-edit-submit').hidden = !editing;
         // Named for what it does in each mode: nothing has been typed in view mode,
@@ -527,7 +585,10 @@
         var host = document.getElementById('ok-fields');
         if (!host) return;
         host.classList.add('ok-fields--readonly');
-        host.querySelectorAll('input, select, textarea').forEach(function (c) {
+        // `button` is in the list for the string_list field's Add and Remove
+        // controls: they are the only buttons rendered among the fields, and
+        // without this a read-only view would still let a row be added or dropped.
+        host.querySelectorAll('input, select, textarea, button').forEach(function (c) {
             c.disabled = true;
         });
     }
@@ -747,7 +808,24 @@
         }
     }
 
-    async function openAdd() {
+    /**
+     * Open the add modal for one creation mode.
+     *
+     * The mode is chosen before the modal opens -- "Generate key" and "Add
+     * existing key" are separate buttons -- rather than inferred from which key
+     * manager is picked inside it. Two reasons. The developer's actual question is
+     * "do I already have an application?", which is an action, not a key manager;
+     * and the two forms are different shapes, not variants of one, so a dropdown
+     * that switched between them rebuilt the modal under the reader.
+     *
+     * With the mode fixed, the selector lists only the key managers that can serve
+     * it, and the optgroup headings that used to carry the split are gone -- the
+     * distinction is stated once, by which button was pressed.
+     *
+     * @param {'register'|'provide'} mode
+     */
+    async function openAdd(mode) {
+        var modeKey = MODES[mode] ? mode : 'register';
         if (!_metadata) {
             try {
                 var resp = await fetch(window.apiPortalApi.root('/key-managers/metadata'), { headers: mutationHeaders() });
@@ -760,8 +838,11 @@
                 return;
             }
         }
-        if (!_metadata.length) {
-            await alertMsg('No key manager is configured for OAuth2 key generation.', 'error');
+        var choices = _metadata.filter(function (km) { return modeOf(km) === MODES[modeKey]; });
+        if (!choices.length) {
+            await alertMsg(modeKey === 'provide'
+                ? 'No key manager accepts an application you created yourself.'
+                : 'No key manager is configured for OAuth2 key generation.', 'error');
             return;
         }
 
@@ -769,34 +850,20 @@
         // inherits whatever the last opened row left behind — edit title, the
         // wrong submit button, and a key manager selector locked to that key's
         // key manager, because only openEdit was setting the mode.
-        setMode('add');
+        setMode('add', null, null, modeKey);
 
         var sel = document.getElementById('ok-km-select');
         sel.textContent = '';
-        // Grouped, because the split is the one thing a developer has to get right
-        // and the option label alone cannot carry it. Groups are emitted only when
-        // non-empty, so a portal with one kind of key manager sees a plain list
-        // rather than a heading over everything.
-        ['register', 'provide'].forEach(function (mode) {
-            var members = _metadata.filter(function (km) { return modeOf(km) === MODES[mode]; });
-            if (!members.length) return;
-            var holder = sel;
-            if (_metadata.length > members.length) {
-                holder = el('optgroup');
-                holder.label = MODES[mode].group;
-                sel.appendChild(holder);
-            }
-            members.forEach(function (km) {
-                // Marked in the option text as well as in the hint below, because
-                // the environment is part of what is being chosen here — seeing it
-                // only after selecting means discovering it after the decision.
-                // An <option> renders no markup, so this is text, not a badge.
-                var label = km.displayName || km.id;
-                if (km.keyType === 'SANDBOX') label += ' · Sandbox';
-                var opt = el('option', null, label);
-                opt.value = km.id;
-                holder.appendChild(opt);
-            });
+        choices.forEach(function (km) {
+            // Marked in the option text as well as in the hint below, because
+            // the environment is part of what is being chosen here — seeing it
+            // only after selecting means discovering it after the decision.
+            // An <option> renders no markup, so this is text, not a badge.
+            var label = km.displayName || km.id;
+            if (km.keyType === 'SANDBOX') label += ' · Sandbox';
+            var opt = el('option', null, label);
+            opt.value = km.id;
+            sel.appendChild(opt);
         });
         sel.selectedIndex = 0;
         syncKeyManagerChoice();
@@ -1004,8 +1071,40 @@
 
     ['ok-add-btn', 'ok-add-btn-empty'].forEach(function (id) {
         var b = document.getElementById(id);
-        if (b) b.addEventListener('click', openAdd);
+        if (b) b.addEventListener('click', function () { openAdd('register'); });
     });
+    ['ok-import-btn', 'ok-import-btn-empty'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.addEventListener('click', function () { openAdd('provide'); });
+    });
+
+    /*
+     * Show each entry point only where it leads somewhere.
+     *
+     * Which modes a portal can actually serve is not known to the server renderer:
+     * it comes from each driver's own `keyCreation`, which arrives with the
+     * metadata. So the import button ships hidden and is revealed here, and the
+     * generate button -- which the server does render -- is withdrawn when no key
+     * manager registers applications, rather than being left to open a modal with
+     * nothing in it.
+     *
+     * Failing quietly is deliberate: if the metadata call does not come back, the
+     * page is left exactly as the server rendered it. A portal that cannot read
+     * its key managers should look like it did yesterday, not lose its only button.
+     */
+    (async function syncEntryPoints() {
+        var ids = { register: ['ok-add-btn', 'ok-add-btn-empty'], provide: ['ok-import-btn', 'ok-import-btn-empty'] };
+        if (!ids.register.concat(ids.provide).some(function (id) { return document.getElementById(id); })) return;
+        var list = await loadMetadata();
+        if (!list) return;
+        Object.keys(ids).forEach(function (mode) {
+            var available = list.some(function (km) { return modeOf(km) === MODES[mode]; });
+            ids[mode].forEach(function (id) {
+                var b = document.getElementById(id);
+                if (b) b.hidden = !available;
+            });
+        });
+    }());
     ['ok-add-close', 'ok-add-cancel'].forEach(function (id) {
         var b = document.getElementById(id);
         if (b) b.addEventListener('click', function () { hide('ok-add-modal'); });

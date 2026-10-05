@@ -172,7 +172,6 @@
   gap: 0.625rem;
 }
 
-.ak-btn-app,
 .ak-btn-regen,
 .ak-btn-revoke {
   display: inline-flex;
@@ -189,17 +188,69 @@
   background: var(--white);
 }
 
-.ak-btn-app    { border: 1px solid var(--border); color: var(--text-muted); }
 .ak-btn-regen  { border: 1px solid #c2d3ea; color: var(--primary); }
 .ak-btn-revoke { border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface)); color: var(--danger); }
 
-.ak-btn-app:hover:not(:disabled)    { background: var(--surface-sunken); }
 .ak-btn-regen:hover:not(:disabled)  { background: var(--primary-surface); }
 .ak-btn-revoke:hover:not(:disabled) { background: var(--danger-surface); }
 
-.ak-btn-app:disabled,
 .ak-btn-regen:disabled,
 .ak-btn-revoke:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* ── Application column ───────────────────────────────────────── */
+/* The association control sits in the Application column, beside the value it
+   edits, rather than among the row's Actions — the same arrangement the OAuth2
+   keys listing uses, and the reason these rules mirror .ok-app-btn there. */
+.ak-app-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+.ak-app-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0.375rem;
+  color: var(--text-subtle);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  transition: background 0.12s, color 0.12s, opacity 0.12s;
+}
+.ak-app-btn:hover:not(:disabled) { background: var(--border); color: var(--text-strong); }
+.ak-app-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Beside a name the pencil is a secondary mark, so it stays quiet until the row
+   is under the cursor — the name is what the column is for. It is never fully
+   hidden: `display:none` would make it unreachable by keyboard, and it stays put
+   on focus so tabbing to it is visible. */
+.ak-app-btn:not(.ak-app-btn--empty) { opacity: 0.45; }
+.ak-table tbody tr:hover .ak-app-btn,
+.ak-app-btn:focus-visible { opacity: 1; }
+
+/* With no application there is no value to sit beside, so this is the only thing
+   in the cell and has to read as an invitation rather than as decoration. The
+   dashed outline is what distinguishes "nothing here yet, add one" from the
+   quiet pencil above. */
+.ak-app-btn--empty {
+  border: 1px dashed var(--border-strong);
+  color: var(--text-subtle);
+  /* Optical alignment. Left-aligning the BOX is not enough: the glyph is centred
+     inside it, so it lands about half the box's free space to the right of where
+     the name text starts in the rows that have one, and the column stops reading
+     as a column. Pulled back by exactly that amount — derived from the geometry
+     rather than a measured constant, so it still holds if the size changes. */
+  margin-left: calc((1.75rem - 1em) / -2);
+}
+.ak-app-btn--empty:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-surface);
+}
 
 /* ── Modal overlay ────────────────────────────────────────────── */
 .ak-overlay {
