@@ -18,7 +18,7 @@ curl -X GET https://localhost:9243/api/v0.9/service-accounts \
 
 ```
 
-Returns the organization's service accounts. The client secret is never included, only its masked form.
+Returns the organization's service accounts. The client secret is never included, only its masked form. `query` also matches the owner.
 
 ### Authentication
 
@@ -35,6 +35,7 @@ Required scopes (the token must carry at least one of): `ap:service_account:read
 |---|---|---|---|---|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
+|query|query|string|false|Case-insensitive substring filter matched against the resource display name and id (handle).|
 
 > Example responses
 >
@@ -1052,4 +1053,96 @@ Required scopes (the token must carry at least one of): `ap:service_account:mana
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+## List the roles a service account can hold
+
+<a id="opIdlistServiceAccountRoles"></a>
+
+`GET /service-account-roles`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:9243/api/v0.9/service-account-roles \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+The ap_sa_* roles in the role-to-scope mapping, each with the scopes it grants.
+A sibling of /service-accounts, not a child, so it never shadows an account id.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:service_account:read`, `ap:service_account:manage`
+
+</aside>
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "count": 1,
+  "list": [
+    {
+      "name": "ap_sa_reader",
+      "scopes": [
+        "ap:rest_api:read",
+        "ap:gateway:read"
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="list-the-roles-a-service-account-can-hold-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Roles a service account can hold|[ServiceAccountRoleListResponse](schemas.md#schemaserviceaccountrolelistresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
