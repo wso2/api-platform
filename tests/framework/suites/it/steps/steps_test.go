@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"gopkg.in/yaml.v3"
@@ -75,8 +76,40 @@ func TestJSONStringField(t *testing.T) {
 }
 
 func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
-	_, err := newSuite(nil, []byte("not a PEM certificate"))
+	_, err := newSuite(nil, []byte("not a PEM certificate"), nil)
 	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")
+}
+
+func TestGatewayListenerTLSConfig(t *testing.T) {
+	t.Run("trusts the checked-in listener certificate under its own name", func(t *testing.T) {
+		pem, err := gatewayListenerCertificate()
+		require.NoError(t, err)
+
+		cfg, err := gatewayListenerTLSConfig(pem)
+		require.NoError(t, err)
+		require.Equal(t, "localhost", cfg.ServerName)
+		require.NotNil(t, cfg.RootCAs)
+	})
+	t.Run("rejects malformed PEM", func(t *testing.T) {
+		_, err := gatewayListenerTLSConfig([]byte("not a PEM certificate"))
+		require.ErrorContains(t, err, "loading the gateway listener certificate")
+	})
+	t.Run("rejects empty input", func(t *testing.T) {
+		_, err := gatewayListenerTLSConfig(nil)
+		require.ErrorContains(t, err, "loading the gateway listener certificate")
+	})
+	t.Run("newSuite fails on an invalid listener certificate", func(t *testing.T) {
+		_, err := newSuite(nil, shared.ControlPlaneCrypto()["certs/cert.pem"], []byte("bad"))
+		require.ErrorContains(t, err, "loading the gateway listener certificate")
+	})
+}
+
+func TestSendRequestOnListenerRejectsUnknownContextValue(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	base := &Base{}
+
+	err := base.sendRequestOnListener(ctx, "GET", " over HTTPS", "${CTX:missing}/card")
+	require.Error(t, err)
 }
 
 func TestJSONFieldNotEqual(t *testing.T) {
@@ -313,4 +346,55 @@ func TestJSONArrayItemSteps(t *testing.T) {
 		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{"list":{}}`), "list", "contain", "id", "a"), "not an array")
 		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{}`), "list", "contain", "id", "a"), "absent")
 	})
+}
+
+func publishedContext(t *testing.T, resp *httpx.Response) context.Context {
+	t.Helper()
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, resp))
+	return ctx
+}
+
+func TestStoreResponseBodyKeepsTheExactBytes(t *testing.T) {
+	base := &Base{}
+	body := "{\"name\": \"Trip Planner\"}\n"
+	ctx := publishedContext(t, &httpx.Response{StatusCode: 200, Body: []byte(body)})
+
+	require.NoError(t, base.storeResponseBody(ctx, "card"))
+	value, ok := tcontext.Get(ctx, "card")
+	require.True(t, ok)
+	require.Equal(t, body, value, "the stored body must keep its whitespace for a byte comparison")
+
+	require.ErrorContains(t, base.storeResponseBody(ctx, " "), "empty key")
+	empty := publishedContext(t, &httpx.Response{StatusCode: 304})
+	require.ErrorContains(t, base.storeResponseBody(empty, "card"), "empty response body")
+	require.Error(t, base.storeResponseBody(tcontext.WithLocal(context.Background(), tcontext.NewLocal("r")), "card"),
+		"nothing published")
+	noLocal := context.Background()
+	require.Error(t, base.storeResponseBody(noLocal, "card"))
+}
+
+func TestStoreResponseHeaderRequiresTheHeader(t *testing.T) {
+	base := &Base{}
+	ctx := publishedContext(t, &httpx.Response{StatusCode: 200, Headers: map[string][]string{"Etag": {`"abc"`}}})
+
+	require.NoError(t, base.storeResponseHeader(ctx, "ETag", "etag"))
+	value, ok := tcontext.Get(ctx, "etag")
+	require.True(t, ok)
+	require.Equal(t, `"abc"`, value)
+
+	require.ErrorContains(t, base.storeResponseHeader(ctx, "X-Missing", "missing"), "did not send it")
+	require.ErrorContains(t, base.storeResponseHeader(ctx, "ETag", ""), "empty key")
+}
+
+func TestResponseHeaderNotEquals(t *testing.T) {
+	base := &Base{}
+	ctx := publishedContext(t, &httpx.Response{StatusCode: 200, Headers: map[string][]string{"Etag": {`"new"`}}})
+	require.NoError(t, tcontext.Set(ctx, "old", `"old"`))
+	require.NoError(t, tcontext.Set(ctx, "same", `"new"`))
+
+	require.NoError(t, base.responseHeaderNotEquals(ctx, "ETag", "${CTX:old}"))
+	require.ErrorContains(t, base.responseHeaderNotEquals(ctx, "etag", "${CTX:same}"), "not to be")
+	require.NoError(t, base.responseHeaderNotEquals(ctx, "X-Absent", "anything"), "an absent header is not the value")
+	require.Error(t, base.responseHeaderNotEquals(ctx, "ETag", "${CTX:unknown}"))
 }

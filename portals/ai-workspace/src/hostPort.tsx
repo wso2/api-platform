@@ -32,6 +32,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import type { BillingOrganization } from './billing/organization';
 import { CSRF_HEADER, CSRF_VALUE } from './config.env';
 import { PLATFORM_API_BASE_URL } from './paths';
 
@@ -69,6 +70,19 @@ export type ResourceLimitsPort = {
   set: (limits: ResourceLimitSet | null) => void;
 };
 
+/**
+ * The organization's billing record as an extension reads it. The host owns the
+ * call (see `billing/organization`) because it is not a plain read — it performs
+ * first-login subscription activation as a side effect — so an extension asks
+ * for the record rather than fetching it, and every caller shares one request.
+ *
+ * Resolves `null` when the BFF has no billing upstream, so an extension needs no
+ * deployment config of its own to know billing is unavailable.
+ */
+export type BillingPort = {
+  organization: () => Promise<BillingOrganization | null>;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   orgUuid?: string;
@@ -77,6 +91,7 @@ export type AIWorkspaceHostPort = {
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
   resourceLimits: ResourceLimitsPort;
+  billing: BillingPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

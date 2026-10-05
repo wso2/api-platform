@@ -173,6 +173,13 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the MCP proxy update carries the URL "([^"]*)"$`, u.theMCPProxyUpdateCarriesTheURL)
 	sc.Step(`^the MCP proxy was updated with a placeholder referencing that secret, not the credential "([^"]*)"$`, u.theMCPProxyWasUpdatedWithAPlaceholder)
 
+	sc.Step(`^the MCP server reports the protocol versions "([^"]*)"$`, u.theMCPServerReportsTheProtocolVersions)
+	sc.Step(`^the MCP server reports no protocol versions$`, u.theMCPServerReportsNoProtocolVersions)
+	sc.Step(`^the MCP proxy was created with the upstream protocol versions "([^"]*)"$`, u.theMCPProxyWasCreatedWithUpstreamProtocolVersions)
+	sc.Step(`^the MCP proxy update carries the upstream protocol versions "([^"]*)"$`, u.theMCPProxyUpdateCarriesTheUpstreamProtocolVersions)
+	sc.Step(`^the MCP proxy create body declares no MCP spec version$`, u.theMCPProxyCreateDeclaresNoMCPSpecVersion)
+	sc.Step(`^the MCP proxy create body records no upstream protocol versions$`, u.theMCPProxyCreateRecordsNoUpstreamProtocolVersions)
+
 	sc.Step(`^the user opens GenAI Applications$`, u.opensGenAIApplications)
 	sc.Step(`^the user creates the GenAI application "([^"]*)"$`, u.createsGenAIApplication)
 	sc.Step(`^the user is on the GenAI application's overview page$`, u.onGenAIApplicationOverview)

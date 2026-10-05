@@ -85,6 +85,7 @@ type Receiver struct {
 	subs      subscriptionService
 	apps      applicationService
 	orgs      organizationResolver
+	readOnly  readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
 	slogger   *slog.Logger
 
 	handlers map[string]func(ctx context.Context, env *Envelope) error
@@ -181,6 +182,9 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 		return mapWebhookError(err)
 	}
 	log = log.With("orgId", env.OrgID)
+	if r.rejectIfReadOnly(w, env, log) { // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+		return nil
+	}
 
 	// 4. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
 	//    each handler being idempotent by domain identity, so no envelope-level dedup is needed.

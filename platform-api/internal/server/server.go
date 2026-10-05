@@ -100,6 +100,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, err
 	}
 
+	// TEMP-READ-ONLY-MODE: announce the mode up front, before any startup writer
+	// runs. It is a per-process, restart-time setting, so this line is also what
+	// makes per-replica config drift visible in the logs. Remove with config/readonly.go.
+	if cfg.ReadOnly.Enabled {
+		slogger.Warn("READ-ONLY MODE ENABLED — write operations are rejected with HTTP 503 for every organization "+
+			"except the writable ones listed here",
+			slog.Int("writableOrganizationCount", len(cfg.ReadOnly.WritableOrganizations)),
+			slog.Any("writableOrganizations", cfg.ReadOnly.WritableOrganizations))
+	} else if len(cfg.ReadOnly.WritableOrganizations) > 0 {
+		slogger.Warn("read_only.writable_organizations is set but read_only.enabled is false — the list has no effect",
+			slog.Int("writableOrganizationCount", len(cfg.ReadOnly.WritableOrganizations)))
+	}
+	// TEMP-READ-ONLY-MODE: end
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -194,6 +208,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			}
 			for _, org := range orgs {
 				if org == nil || org.ID == "" {
+					continue
+				}
+				if cfg.ReadOnly.IsReadOnlyOrg(org.ID) { // TEMP-READ-ONLY-MODE: remove with config/readonly.go
+					slogger.Debug("Read-only mode: skipping LLM template seeding", "orgID", org.ID)
 					continue
 				}
 				if seedErr := llmTemplateSeeder.SeedForOrg(org.ID); seedErr != nil {
@@ -419,6 +437,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
+	// TEMP-READ-ONLY-MODE: wire the read-only mode into the components that write
+	// outside the HTTP guard (gateway-token routes, the WebSocket connection, the
+	// timeout job; the webhook receiver is wired where it is built). Remove this
+	// block together with the *_readonly.go files.
+	wsHandler.SetReadOnly(&cfg.ReadOnly)
+	internalGatewayHandler.SetReadOnly(&cfg.ReadOnly)
+	timeoutService.SetReadOnly(&cfg.ReadOnly)
+	// TEMP-READ-ONLY-MODE: end
+
 	slogger.Info("Initialized all services and handlers successfully")
 
 	// Setup mux and record all core routes.
@@ -596,6 +623,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize webhook receiver: %w", err)
 		}
+		webhookReceiver.SetReadOnly(&cfg.ReadOnly) // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
 		webhookReceiver.RegisterRoutes(mux)
 		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
 	}
@@ -604,7 +632,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Build the middleware chain that wraps the mux.
 	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
-	//        [plugin postChain] → mux
+	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
 	var chain []func(http.Handler) http.Handler
 
 	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
@@ -691,6 +719,27 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
 	}
 	chain = append(chain, scopeEnforcer)
+
+	// TEMP-READ-ONLY-MODE: reject write requests for organizations in read-only
+	// mode. Registered after authentication, organization resolution and scope
+	// enforcement so those behave exactly as before; only would-be-successful
+	// writes become 503s. The exempt read-style routes are checked against the
+	// mux at startup, whether or not the mode is enabled, so a renamed route
+	// cannot leave a stale exemption behind. Remove with middleware/readonly.go.
+	if err := middleware.ValidateReadOnlyExemptRoutes(mux); err != nil {
+		return nil, err
+	}
+	readOnlyGuard, err := middleware.ReadOnlyGuard(middleware.ReadOnlyGuardConfig{
+		ReadOnly:  &cfg.ReadOnly,
+		Routes:    mux,
+		SkipPaths: cfg.Auth.SkipPaths,
+		Logger:    slogger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build read-only guard: %w", err)
+	}
+	chain = append(chain, readOnlyGuard)
+	// TEMP-READ-ONLY-MODE: end
 
 	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
 	// before the mux. The authenticated org/identity are in the context here and
