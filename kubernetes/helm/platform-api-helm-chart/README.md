@@ -69,11 +69,12 @@ The chart never creates or embeds secret values. The render **fails** unless
 | Key | Required when |
 | --- | --- |
 | `APIP_CP_ENCRYPTION_KEY` | Always (64-char hex AES-256 key) |
-| `jwt_public.pem` | `auth.mode` `internal_token` or `file` (not with `internalToken.skipValidation=true`) |
-| `jwt_private.pem` | `auth.mode=file` |
+| `jwt_public.pem` | `auth.mode` `internal_token` or `file` (not with `internalToken.skipValidation=true`); any mode when [service accounts](#service-accounts) are on without their own pair |
+| `jwt_private.pem` | `auth.mode=file`; any mode when service accounts are on without their own pair |
 | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` | `auth.mode=file` (bcrypt hash; there is no `admin/admin` default) |
 | `APIP_CP_DATABASE_PASSWORD` | `config.database.driver` is `postgres` / `sqlserver` |
 | `APIP_CP_WEBHOOK_SECRET` | `config.webhook.enabled=true` |
+| `sa_jwt_public.pem` / `sa_jwt_private.pem` | `config.auth.serviceAccount.jwt` is set (see [Service accounts](#service-accounts)) |
 
 Each value is written to its own file in a private temporary directory. The directory is
 passed with `--from-file`, which turns each file name into a Secret key. Secret values never
@@ -100,6 +101,14 @@ For a database password or webhook secret, read it with `read -rsp` and write it
 running `kubectl create secret`.
 
 The key names can be changed through `secrets.keys.*`.
+
+For [service accounts](#service-accounts) with their own key pair, add one more pair to
+`$SECRET_DIR` before `kubectl create secret`:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$SECRET_DIR/sa_jwt_private.pem"
+openssl rsa -in "$SECRET_DIR/sa_jwt_private.pem" -pubout -out "$SECRET_DIR/sa_jwt_public.pem"
+```
 
 ### Standalone, Step 2: Install the chart
 
@@ -177,6 +186,7 @@ curl -k https://localhost:9243/health
   auth mode needs is missing (see the table in Step 1). It can also be an ap: scope in
   `config.auth.authorization.roles` that the OpenAPI spec doesn't declare. Check
   `kubectl logs`.
+- **Service-account errors** — see [Service accounts](#service-accounts), *Troubleshooting*.
 - **A portal can't call the Platform API (TLS error)** — the default Issuer is self-signed and
   its certificate covers only `platform-api.localhost`. For production, use a trusted issuer
   (`tls.certManager.createIssuer=false`, `tls.certManager.issuerRef`). List the in-cluster
@@ -218,15 +228,17 @@ every key below with `platform-api.`.
     for SQL Server). The password always comes from the Secret.
   - `config.auth.mode` — `file` (default: local admin login plus RS256 tokens),
     `internal_token` (verify RS256 tokens minted elsewhere), or `idp` (external JWKS; no local
-    PEMs mounted).
+    PEMs mounted unless service accounts are on).
   - `config.auth.authorization.*` — scope enforcement, `scope` | `role` mode, and the
-    `roles` → scopes table rendered into the mounted role-to-scope mapping (only `ap_admin`
-    ships by default). Under the `ai-workspace` umbrella, this `mode` must equal
+    `roles` → scopes table rendered into the mounted role-to-scope mapping (`ap_admin`
+    and the service-account role `ap_sa_reader` ship by default). Under the `ai-workspace` umbrella, this `mode` must equal
     `ai-workspace-ui.config.auth.authorization.mode`.
   - `config.auth.file.*` — the default organization and the file-mode admin's roles. The
     username and password hash come from the Secret.
   - `config.auth.claimMappings.*` / `config.auth.jwt.*` / `config.auth.idp.*` — claim
     names, token issuer/TTL and PEM mount paths, and the IDP JWKS/issuer/audience.
+  - `config.auth.serviceAccount.*` — service accounts: off by default. See
+    [Service accounts](#service-accounts).
   - `config.server.*` — HTTPS/HTTP listeners, timeouts, CORS `allowedOrigins` (explicit
     origins only, never `*`), and WebSocket limits.
   - `config.gateway.*`, `config.deployments.*`, `config.eventHub.*`, `config.webhook.*` —
@@ -263,3 +275,105 @@ The RS256 keys are the exception: they're mounted as files at `config.auth.jwt.p
 | `sqlite3` (default) | 1 only — the DB file lives on the PVC | Refused at render |
 | `postgres` | Multi-replica | Supported |
 | `sqlserver` | Multi-replica | Supported |
+
+## Service accounts
+
+A service account is a machine identity that belongs to no person. An administrator
+creates one and gets a client ID and secret. The workload swaps them for a short-lived
+token at `POST /api/v0.9/service-accounts/token` and calls the API with it. The endpoints
+are described in
+[`docs/rest-apis/platform-api/service-accounts.md`](../../../docs/rest-apis/platform-api/service-accounts.md).
+
+The feature is **off by default**. Turn it on with
+`config.auth.serviceAccount.enabled: true`.
+
+### What each auth mode needs
+
+The Platform API signs service-account tokens itself, so it needs a private key. By
+default it reuses the `auth.jwt` pair (`jwt_public.pem` / `jwt_private.pem`). When
+service accounts are on, the chart mounts that pair in **every** mode, including `idp`, so
+the Secret must hold both PEMs. `generate-secrets.sh` always creates them.
+
+An own pair is better in production:
+
+- The shared `auth.jwt` key can't be changed without breaking every live token at once; an
+  own pair can, using retired keys.
+- In `internal_token` mode, `auth.jwt`'s private key belongs to whatever mints your tokens.
+  Without an own pair, the Platform API must hold that key too.
+
+```yaml
+config:
+  auth:
+    serviceAccount:
+      enabled: true
+      jwt:
+        issuer: platform-api-sa          # must differ from auth.jwt.issuer and auth.idp.issuer
+        publicKeyFile: /etc/platform-api/keys/sa_jwt_public.pem
+        privateKeyFile: /etc/platform-api/keys/sa_jwt_private.pem
+```
+
+The two PEMs come from the Secret, under `secrets.keys.saJwtPublicKey` /
+`saJwtPrivateKey` (`sa_jwt_public.pem` / `sa_jwt_private.pem`). They are mounted into the
+same directory as the `auth.jwt` pair, so keep both pairs in one directory with distinct
+file names.
+
+### Databases
+
+On `sqlite3` the Platform API creates the tables itself. On `postgres` and `sqlserver` it
+never runs DDL, so create the tables **before** turning the feature on:
+
+1. Apply the `service_accounts` and `service_account_revocations` tables, and their
+   indexes, from `schema.postgres.sql` or `schema.sqlserver.sql`. Both are in the image at
+   `/app/internal/database/`.
+2. Set `config.auth.serviceAccount.enabled: true` and run `helm upgrade`.
+
+Doing step 2 without step 1 leaves every pod in `CrashLoopBackOff`. Set `enabled: false`
+again to recover.
+
+### Changing the key
+
+Only an own pair can be changed without an outage. The mount paths stay the same; only
+the Secret keys behind them change.
+
+1. Add three keys to the Secret: the new pair (say `sa_jwt_public_v2.pem`,
+   `sa_jwt_private_v2.pem`), and a copy of the current public key (`sa_jwt_public_v1.pem`).
+2. Point the chart at them. Each retired file is read from the Secret key named like the
+   file:
+
+   ```yaml
+   secrets:
+     keys:
+       saJwtPublicKey: sa_jwt_public_v2.pem
+       saJwtPrivateKey: sa_jwt_private_v2.pem
+   config:
+     auth:
+       serviceAccount:
+         retiredPublicKeyFiles:
+           - /etc/platform-api/keys/sa_jwt_public_v1.pem
+   ```
+
+3. `helm upgrade`. New tokens are signed with the new key. The retired key still verifies
+   tokens and stays in the JWKS, but never signs.
+4. After one `tokenTtl`, plus the refresh interval of anything that caches the JWKS, drop
+   the retired entry and its Secret key.
+
+### Troubleshooting
+
+Look for these in `kubectl logs`:
+
+- **`failed to load service-account revocations`** — the tables are missing. See
+  [Databases](#databases).
+- **`existing identities use the reserved "sa:" subject prefix`** — a user whose name
+  starts with `sa:` already exists. Rename it before turning service accounts on.
+- **`service-account role ... which a service account may never hold`** — an `ap_sa_*`
+  role in `config.auth.authorization.roles` grants `ap:service_account:manage`,
+  `ap:service_account:read` or `ap:api_key:all:manage`. Remove the scope.
+- **`auth.service_account.jwt.issuer must differ from ...`** — the own pair's `issuer`
+  equals `config.auth.jwt.issuer` (default `platform-api`) or one of
+  `config.auth.idp.issuer`. Pick another, e.g. `platform-api-sa`.
+- **`retired_public_key_files requires [auth.service_account.jwt]`** — retired keys work
+  only with an own pair.
+- **`is a service-account role`** — `config.auth.file.admin.roles` names an `ap_sa_*` role.
+  Those are for service accounts only; use another role.
+- **`no ap_sa_* role; no service account can be created`** (a warning) — the role mapping
+  has no `ap_sa_*` role. Keep `ap_sa_reader`, or add your own.
