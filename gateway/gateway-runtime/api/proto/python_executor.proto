@@ -657,8 +657,6 @@ message FaultResponse {
   google.protobuf.Struct analytics_metadata = 7;
   map<string, google.protobuf.Struct> dynamic_metadata = 8;
   DropHeaderAction analytics_header_filter = 9;
-  // Stops the rest of the fault chain.
-  bool final = 10;
 }
 
 // FaultResponsePayload wraps the on_fault return. Absent action means the policy changed

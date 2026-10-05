@@ -68,7 +68,7 @@ func TestOnFault_NeverEscalates(t *testing.T) {
 			if got == nil {
 				return
 			}
-			if got.Body != nil || got.StatusCode != nil || got.Final {
+			if got.Body != nil || got.StatusCode != nil {
 				t.Fatalf("the collector must observe only, got %+v", got)
 			}
 		})

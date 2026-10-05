@@ -48,13 +48,6 @@ type FaultPolicyResult struct {
 	Skipped       bool // true if disabled or the condition evaluated to false
 }
 
-// Final reports that this entry ended the fault chain, so the entries after it must not run.
-// A method rather than a field on a batch result, because the entry's own return value is
-// the whole of the answer and the caller owns the loop it applies to.
-func (r FaultPolicyResult) Final() bool {
-	return r.Response != nil && r.Response.Final
-}
-
 // ExecuteFaultPolicy runs ONE fault entry through the FaultPolicy contract.
 //
 // Single-entry rather than list-shaped so the caller owns the loop: one broken fault handler
@@ -155,12 +148,5 @@ func (c *ChainExecutor) ExecuteFaultPolicy(
 	// live view every entry reads, so it can apply between entries and keep the "a later
 	// entry sees what an earlier one did" semantics — while this function stays a runner
 	// that mutates nothing.
-	if result.Final() {
-		if span.IsRecording() {
-			span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
-		}
-		metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
-	}
-
 	return result, nil
 }

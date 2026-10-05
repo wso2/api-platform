@@ -65,8 +65,8 @@ func (p *faultRecorderPolicy) OnFault(_ context.Context, faultCtx *policy.FaultC
 	}
 }
 
-// faultReplacerPolicy replaces the error response and ends the chain, like the respond
-// policy. Final is what ends it now; the body and status are ordinary field settings.
+// faultReplacerPolicy replaces the error response, like the respond policy. The body and
+// status are ordinary field settings; replacing them does not end the chain.
 type faultReplacerPolicy struct{ order *[]string }
 
 func (p *faultReplacerPolicy) Mode() policy.ProcessingMode {
@@ -81,7 +81,6 @@ func (p *faultReplacerPolicy) OnFault(_ context.Context, _ *policy.FaultContext,
 		StatusCode:   &status,
 		HeadersToSet: map[string]string{"content-type": "application/json"},
 		Body:         []byte(`{"replaced":"by fault policies"}`),
-		Final:        true,
 	}
 }
 
@@ -306,12 +305,10 @@ func TestFaultPolicies_ASkippedEntryStillReportsAResult(t *testing.T) {
 	}
 }
 
-// Final ends the chain, so an entry declared after the one that set it must not run.
-//
-// Distinct from the replace-the-response test below: that one runs a Final entry ALONE, so it
-// passes whether or not Final is honoured — applyFaultResponse writes the body and status
-// either way. Only a second entry can tell the two apart.
-func TestFaultPolicies_FinalStopsTheEntriesAfterIt(t *testing.T) {
+// Replacing the response does not end the chain: an entry declared after the replacer still
+// runs, and the replacement survives it. This is what keeps a system entry appended last —
+// the analytics collector — from being skipped by an operator entry ahead of it.
+func TestFaultPolicies_EveryEntryRunsAfterAReplacement(t *testing.T) {
 	var order []string
 	ec := faultExecCtx(t, []policy.Policy{
 		&faultReplacerPolicy{order: &order},
@@ -320,9 +317,9 @@ func TestFaultPolicies_FinalStopsTheEntriesAfterIt(t *testing.T) {
 
 	out := ec.runFaultPoliciesOnRejection(context.Background(), errResp(422))
 
-	assert.Equal(t, []string{"replacer"}, order,
-		"an entry after the one that set Final must never run")
-	assert.Equal(t, 500, out.StatusCode, "and the Final entry's response still applies")
+	assert.Equal(t, []string{"replacer", "after"}, order,
+		"an entry after the replacer must still run")
+	assert.Equal(t, 500, out.StatusCode, "and the replacement still applies")
 }
 
 // A fault policy may take over the response entirely.

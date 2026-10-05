@@ -302,7 +302,6 @@ func (t *Translator) ToGoFaultResponse(resp *proto.StreamResponse) (*policy.Faul
 		AnalyticsMetadata:     structToMap(fault.GetAnalyticsMetadata()),
 		DynamicMetadata:       structMapToNestedMap(fault.GetDynamicMetadata()),
 		AnalyticsHeaderFilter: t.toGoDropHeaderAction(fault.GetAnalyticsHeaderFilter()),
-		Final:                 fault.GetFinal(),
 	}, nil
 }
 

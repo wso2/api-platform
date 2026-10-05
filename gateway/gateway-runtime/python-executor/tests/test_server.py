@@ -502,7 +502,6 @@ class PythonExecutorServicerTest(unittest.IsolatedAsyncioTestCase):
         fault = response.fault_response_action.fault_response
         self.assertEqual("true", fault.headers_to_set["x-fault-handled"])
         self.assertEqual("900123", fault.fault.code)
-        self.assertFalse(fault.final, "a notifier must not end the fault chain")
 
         self.assertEqual("fault", metadata["phase"])
         self.assertEqual(422, metadata["status"])
