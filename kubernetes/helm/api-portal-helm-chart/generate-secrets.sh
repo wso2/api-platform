@@ -32,6 +32,8 @@
 #
 # Component flags:
 #   API_PORTAL=false  Skip the API Portal Secret (default: true).
+#   SA_KEYS=true      Add a service-account key pair (sa_jwt_*.pem) to the Platform
+#                     API Secret, if it has none (default: false).
 #   (The shared Platform API Secret is always ensured. An AI Workspace UI Secret
 #    is provisioned only when APIP_AIW_AUTH_OIDC_CLIENT_SECRET is set — for the extensibility
 #    case where the AI Workspace UI is added to this umbrella.)
@@ -58,6 +60,7 @@ set -euo pipefail
 NAMESPACE="${1:-}"
 RELEASE="${2:-api-portal}"
 API_PORTAL="${API_PORTAL:-true}"
+SA_KEYS="${SA_KEYS:-false}"
 APIP_CP_ADMIN_USERNAME="${APIP_CP_ADMIN_USERNAME:-admin}"
 
 if [[ -z "$NAMESPACE" ]]; then
@@ -121,6 +124,23 @@ else
   echo "      password: ${ADMIN_PASSWORD}"
 fi
 
+# --- Platform API: optional service-account key pair (SA_KEYS=true) ---
+# Only added when missing, so an existing pair is never replaced. Patched from a
+# file so the private key never appears in kubectl's arguments.
+if [[ "$SA_KEYS" == "true" ]]; then
+  if secret_has_key "$PA_SECRET" sa_jwt_public.pem; then
+    echo "==> $PA_SECRET already has a service-account key pair — leaving it untouched"
+  else
+    echo "==> Adding a service-account key pair to $PA_SECRET"
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$TMP/sa_jwt_private.pem" 2>/dev/null
+    openssl rsa -in "$TMP/sa_jwt_private.pem" -pubout -out "$TMP/sa_jwt_public.pem" 2>/dev/null
+    printf '{"data":{"sa_jwt_public.pem":"%s","sa_jwt_private.pem":"%s"}}' \
+      "$(base64 < "$TMP/sa_jwt_public.pem" | tr -d '\n')" "$(base64 < "$TMP/sa_jwt_private.pem" | tr -d '\n')" \
+      > "$TMP/sa-keys-patch.json"
+    kubectl -n "$NAMESPACE" patch secret "$PA_SECRET" --type merge --patch-file "$TMP/sa-keys-patch.json"
+  fi
+fi
+
 # --- API Portal: encryption key + session secret + PA public key (+optional) ---
 if [[ "$API_PORTAL" == "true" ]]; then
   if secret_exists "$AP_SECRET"; then
@@ -179,3 +199,16 @@ echo "Done. Next:"
 echo "  helm dependency update ./api-portal-helm-chart   # first time / after editing deps"
 echo "  helm upgrade --install $RELEASE ./api-portal-helm-chart -n $NAMESPACE \\"
 echo "    -f $OUT_FILE -f my_values.yaml"
+if [[ "$SA_KEYS" == "true" ]]; then
+  echo
+  echo "To use the service-account key pair, add to my_values.yaml:"
+  echo "  platform-api:"
+  echo "    config:"
+  echo "      auth:"
+  echo "        serviceAccount:"
+  echo "          enabled: true"
+  echo "          jwt:"
+  echo "            issuer: platform-api-sa"
+  echo "            publicKeyFile: /etc/platform-api/keys/sa_jwt_public.pem"
+  echo "            privateKeyFile: /etc/platform-api/keys/sa_jwt_private.pem"
+fi
