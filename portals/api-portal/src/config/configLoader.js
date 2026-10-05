@@ -700,11 +700,19 @@ function validateIdpConfig(cfg) {
         process.exit(1);
     }
     if (jwksProtocol !== 'https:') {
+        // TEMP local-dev escape: Thunder on local k3d is served over plain http://openchoreoapis.localhost
+        // only. Opt-in via APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true so prod stays strict by default.
+        // Remove once local Thunder is TLS-terminated.
+        if (String(process.env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS || '').toLowerCase() !== 'true') {
+            process.stderr.write(
+                `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
+                'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
+            );
+            process.exit(1);
+        }
         process.stderr.write(
-            `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
-            'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
+            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true. Local-dev only.\n`
         );
-        process.exit(1);
     }
 }
 
