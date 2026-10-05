@@ -195,6 +195,8 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 	}
 	if update.ExpiryTime != nil {
 		existing.ExpiryTime = update.ExpiryTime
+	} else if update.ClearExpiryTime {
+		existing.ExpiryTime = nil
 	}
 	if update.Status != nil {
 		switch *update.Status {

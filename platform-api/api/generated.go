@@ -4660,8 +4660,10 @@ type SubscriptionPlan struct {
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
-	DisplayName string     `json:"displayName" yaml:"displayName"`
-	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// ExpiryTime Optional plan expiry time. On update, omit the field to keep the current value or send null to clear it.
+	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
 	// Id Handle (slug) for the subscription plan
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`

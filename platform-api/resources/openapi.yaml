@@ -9234,6 +9234,10 @@ components:
         expiryTime:
           type: string
           format: date-time
+          nullable: true
+          description: >-
+            Optional plan expiry time. On update, omit the field to keep the current
+            value or send null to clear it.
         organizationId:
           type: string
           pattern: '^[a-z0-9-]+$'
