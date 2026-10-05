@@ -45,7 +45,7 @@ find . -name "*.sql" -not -path "*/node_modules/*" -not -path "*/target/*" | sor
 | API Portal | `portals/api-portal/database/schema.{postgres,sqlite,sqlserver}.sql` | R0–R10 |
 | Gateway Controller | `gateway/gateway-controller/pkg/storage/gateway-controller-db{,.postgres,.sqlserver}.sql` **and** `gateway/gateway-controller/resources/gateway-controller-db.sql` | R0–R2, R4–R10 (**R3 exempt**) |
 | Event Gateway Controller | `event-gateway/gateway-controller/pkg/dbschema/eventgateway-db{,.postgres,.sqlserver}.sql` | R0–R2, R4–R10 (**R3 exempt**) |
-| Fixtures | `platform-api/internal/database/init-platform-api-db.sql`, `tests/integration-e2e/init-db.sql` | keep in sync |
+| Fixtures | `platform-api/internal/database/init-platform-api-db.sql` | keep in sync |
 
 `gateway/gateway-controller` keeps **two copies** of the same schema. Grep repo-wide before editing so no copy is missed:
 

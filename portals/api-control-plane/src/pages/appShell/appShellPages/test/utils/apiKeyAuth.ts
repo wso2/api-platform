@@ -35,8 +35,8 @@ export const API_KEY_AUTH_POLICY = 'api-key-auth';
  * Header the policy checks when it declares no `params.key`.
  *
  * The gateway's own documented default for `api-key-auth` — see
- * `tests/integration-e2e/steps_secured_test.go`, which pins it as the header a
- * secured API is invoked with. Guessing anything else here produces a 401 that
+ * `tests/framework/suites/it/features/management-portal/subscriptions/secured_api_invocation.feature`,
+ * which pins it as the header a secured API is invoked with. Guessing anything else here produces a 401 that
  * reads as a broken key rather than a misaddressed one.
  */
 export const DEFAULT_API_KEY_HEADER = 'API-Key';

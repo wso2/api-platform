@@ -40,7 +40,7 @@ Do **not** use `find . -name "schema*.sql"` — it matches 10 of the 19 schema f
 | AI Workspace | packages Platform API's schemas — no source of its own | — |
 | Gateway Controller | `gateway/gateway-controller/pkg/storage/` **and** `gateway/gateway-controller/resources/` | R0–R2, R4–R10 (**R3 skipped**) |
 | Event Gateway Controller | `event-gateway/gateway-controller/pkg/dbschema/` | R0–R2, R4–R10 (**R3 skipped**) |
-| Fixtures | `platform-api/internal/database/init-platform-api-db.sql`, `tests/integration-e2e/init-db.sql` | keep in sync |
+| Fixtures | `platform-api/internal/database/init-platform-api-db.sql` | keep in sync |
 
 **Type exemption** — gateway-controller and event-gateway schemas are owned by separate teams who manage their own type choices. Apply all structural, constraint, audit, index, alignment, and idempotency rules (R0–R2, R4–R10) as normal, but do **not** raise R3 findings (column types, JSONB, BOOLEAN, TIMESTAMPTZ, VARCHAR widths) against those files.
 

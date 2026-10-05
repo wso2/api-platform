@@ -120,13 +120,26 @@ it-all-dbs: ## Run integration tests across SQLite, PostgreSQL and SQL Server
 	@$(MAKE) it-postgres
 	@$(MAKE) it-sqlserver
 
-e2e: ## Run the combined platform-api + gateway Cucumber e2e (E2E_DB=postgres|sqlite|sqlserver)
-	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} go test -run TestFeatures -count=1 -v -timeout 25m ./...
+# The framework joins a runner's own tags to -feature-tags without grouping, and a comma is the
+# top-level OR, so each alternative carries the @known-issue exclusion itself.
+E2E_DB ?= postgres
+E2E_BLOCKS := platform-api-$(E2E_DB)/$(E2E_DB)
+E2E_FEATURE_TAGS := @platform-api-deployment && ~@known-issue,@platform-api-secret-deploy && ~@known-issue,@platform-api-secured-invocation && ~@known-issue
+# The API Portal webhook scenarios need the API Portal, which only runs on PostgreSQL.
+ifeq ($(E2E_DB),postgres)
+E2E_BLOCKS := $(E2E_BLOCKS),devportal-webhook
+E2E_FEATURE_TAGS := $(E2E_FEATURE_TAGS),@devportal-webhook && ~@known-issue
+endif
 
-e2e-all-dbs: ## Run the combined Cucumber e2e across all three databases
-	@cd ../tests/integration-e2e && E2E_DB=sqlite go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=postgres go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=sqlserver go test -run TestFeatures -count=1 -v -timeout 25m ./...
+e2e: ## Run the platform-api + gateway scenarios from tests/framework (E2E_DB=postgres|sqlite|sqlserver; needs `make -C ../tests/framework testbench`)
+	@cd ../tests/framework/suites/it && go test -count=1 -v -timeout 45m \
+		-blocks=$(E2E_BLOCKS) \
+		-feature-tags="$(E2E_FEATURE_TAGS)"
+
+e2e-all-dbs: ## Run the platform-api + gateway scenarios from tests/framework across all three databases
+	@$(MAKE) e2e E2E_DB=sqlite
+	@$(MAKE) e2e E2E_DB=postgres
+	@$(MAKE) e2e E2E_DB=sqlserver
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
