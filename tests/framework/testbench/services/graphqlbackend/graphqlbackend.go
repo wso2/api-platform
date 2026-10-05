@@ -32,7 +32,7 @@ import (
 )
 
 // Port is the container port used by the testbench.
-const Port = 3014
+const Port = 3016
 
 // Service implements the stateless GraphQL backend testbench service.
 type Service struct{}
