@@ -4842,10 +4842,8 @@ type FaultResponse struct {
 	AnalyticsMetadata     *structpb.Struct            `protobuf:"bytes,7,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
 	DynamicMetadata       map[string]*structpb.Struct `protobuf:"bytes,8,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	AnalyticsHeaderFilter *DropHeaderAction           `protobuf:"bytes,9,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
-	// Stops the rest of the fault chain.
-	Final         bool `protobuf:"varint,10,opt,name=final,proto3" json:"final,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *FaultResponse) Reset() {
@@ -4939,13 +4937,6 @@ func (x *FaultResponse) GetAnalyticsHeaderFilter() *DropHeaderAction {
 		return x.AnalyticsHeaderFilter
 	}
 	return nil
-}
-
-func (x *FaultResponse) GetFinal() bool {
-	if x != nil {
-		return x.Final
-	}
-	return false
 }
 
 // FaultResponsePayload wraps the on_fault return. Absent action means the policy changed
@@ -5762,7 +5753,7 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"\x15ResponseActionPayload\x12\x8b\x01\n" +
 	"!downstream_response_modifications\x18\x01 \x01(\v2=.wso2.gateway.python.v1alpha2.DownstreamResponseModificationsH\x00R\x1fdownstreamResponseModifications\x12`\n" +
 	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1alpha2.ImmediateResponseH\x00R\x11immediateResponseB\b\n" +
-	"\x06action\"\xfe\a\n" +
+	"\x06action\"\xe8\a\n" +
 	"\rFaultResponse\x12<\n" +
 	"\vstatus_code\x18\x01 \x01(\v2\x1b.google.protobuf.Int32ValueR\n" +
 	"statusCode\x12/\n" +
@@ -5773,9 +5764,7 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"\x11headers_to_remove\x18\x06 \x03(\tR\x0fheadersToRemove\x12F\n" +
 	"\x12analytics_metadata\x18\a \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12k\n" +
 	"\x10dynamic_metadata\x18\b \x03(\v2@.wso2.gateway.python.v1alpha2.FaultResponse.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
-	"\x17analytics_header_filter\x18\t \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x12\x14\n" +
-	"\x05final\x18\n" +
-	" \x01(\bR\x05final\x1a?\n" +
+	"\x17analytics_header_filter\x18\t \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a?\n" +
 	"\x11HeadersToSetEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1al\n" +

@@ -487,7 +487,6 @@ class Translator:
             message.analytics_header_filter,
             fault.analytics_header_filter,
         )
-        message.final = fault.final
         if fault.fault is not None:
             Translator._copy_fault_details(message.fault, fault.fault)
         return payload

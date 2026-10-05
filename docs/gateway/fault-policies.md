@@ -86,13 +86,14 @@ Otherwise set only the fields you mean to change:
 | `Fault *FaultDetails` | Re-describes the failure for a renderer or a later entry. |
 | `HeadersToSet` / `HeadersToAppend` / `HeadersToRemove` | Applied **over** the error's existing headers rather than replacing them. |
 | `AnalyticsMetadata` / `DynamicMetadata` / `AnalyticsHeaderFilter` | As on the response path. |
-| `Final bool` | Stops the rest of the fault chain. |
 
 One field from `ImmediateResponse` is deliberately absent: `Headers` replaces the whole map,
 where an entry annotating an error wants to add a header without discarding the ones the error
-already carries. `Final` is separate
-from the body and status because ending the chain and replacing the response are different
-decisions that returning an `ImmediateResponse` would fuse into one.
+already carries.
+
+Nothing a fault policy returns stops the chain. Every entry runs, in order, and sees what the
+entries before it did. To keep an entry off failures it should not handle, give it an
+`executionCondition`.
 
 #### Python policies
 
@@ -707,13 +708,12 @@ return &policy.FaultResponse{
     StatusCode:   &status,
     HeadersToSet: map[string]string{"content-type": "application/json"},
     Body:         []byte(`{"error":"unavailable","requestId":"..."}`),
-    Final:        true,
 }
 ```
 
-`Final: true` **ends the fault chain** — entries after it do not run. It is opt-in and separate
-from the body: replacing a body without setting it leaves the remaining entries free to annotate
-what you wrote, which is usually what an operator listing several handlers wants.
+Replacing the body does **not** end the fault chain: the entries after this one still run and may
+annotate what you wrote. Where two entries would both write a body, the later one wins — order
+them, or narrow one with an `executionCondition`, so only one applies to a given failure.
 
 Note the headers are *operations*, so the ones the error already carries survive alongside the
 content-type set here — a `WWW-Authenticate` on an auth rejection, for instance. The old contract

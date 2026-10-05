@@ -81,25 +81,17 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 		return ec.formatFaultResponse(ctx, immResp)
 	}
 
-	if out.stopped {
-		slog.DebugContext(ctx, "A fault policy ended the chain",
-			"request_id", ec.requestID, "route_key", ec.routeKey,
-			"status", faultCtx.ResponseStatus)
-	}
-
 	// Header mutations were applied to the shared header set as the chain ran, appends
 	// included; that set is now the rejection's headers.
 	immResp.Headers = headersFromView(faultCtx.ResponseHeaders)
 
 	// Any entry that authored a body has decided what the client receives, which switches
-	// formatting off. Checked across every result rather than only the last, since an entry
-	// that mutates without ending the chain has authored just as much.
+	// formatting off. Checked across every result rather than only the last: an entry that
+	// wrote a body has authored it even when a later entry ran after it.
 	ec.noteAuthoredBody(out.results)
 
 	// Status and body are read off the shared views rather than out of the results, because
-	// that is where applyFaultResponse put them — and it is the same read whether an entry
-	// ended the chain or merely mutated. Replacing the error and transforming it stopped
-	// being different code paths when Final stopped implying a whole new response.
+	// that is where applyFaultResponse put them as each entry ran.
 	if len(out.results) > 0 {
 		if faultCtx.ResponseBody != nil && faultCtx.ResponseBody.Present {
 			immResp.Body = faultCtx.ResponseBody.Content
@@ -200,18 +192,8 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnResponse(
 	}
 
 	// Any entry that authored a body has decided what the client receives, which switches
-	// formatting off below.
+	// formatting off below. No entry ends the chain, so this sets no ShortCircuited flag.
 	ec.noteAuthoredBody(out.results)
-
-	// Ending the chain is not coupled to replacing the response, so this sets no
-	// ShortCircuited flag. An entry that ended the chain AND wrote a body has already
-	// switched formatting off through noteAuthoredBody; one that ended it without writing a
-	// body still needs a body, and gets one rather than being left with none.
-	if out.stopped {
-		slog.DebugContext(ctx, "A fault policy ended the chain",
-			"request_id", ec.requestID, "route_key", ec.routeKey,
-			"origin", string(origin), "status", status)
-	}
 
 	ec.appendFormattedFaultBody(ctx, execResult, status)
 	return true
@@ -430,14 +412,9 @@ type faultEntry struct {
 
 // faultOutcome aggregates what the fault chain produced.
 type faultOutcome struct {
+	// results holds one entry per fault entry, in order. Every entry runs: nothing a fault
+	// policy returns ends the chain, and the caller reads the outcome from the shared views.
 	results []executor.FaultPolicyResult
-	// stopped reports that an entry set Final, so the entries after it did not run.
-	//
-	// There is no replacement response alongside it any more. A Final entry leaves its marks
-	// on the shared views like any other entry, and the caller reads the result from there —
-	// so "stop the chain" and "replace the response" are finally separate decisions rather
-	// than one ImmediateResponse meaning both.
-	stopped bool
 }
 
 // applyFaultResponse folds one entry's return into the views the fault chain shares, so the
@@ -621,11 +598,6 @@ func (ec *PolicyExecutionContext) executeFaultPolicies(
 		// by a refresh step that had to be remembered.
 		if !res.Skipped {
 			applyFaultResponse(faultCtx, res.Response, rejection)
-		}
-
-		if res.Final() {
-			out.stopped = true
-			break
 		}
 	}
 	return out, true
