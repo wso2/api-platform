@@ -111,6 +111,22 @@ jobs:
             --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
             "${test_files[@]}"
 
+      # Prints what the unit run actually produced. The Codecov upload below is
+      # continue-on-error, so a report that was never written, or written empty,
+      # uploads nothing and leaves the job green — which is precisely how a
+      # missing api-portal-unit flag stayed invisible. This makes the producing
+      # side visible in the log without being able to fail the build.
+      - name: Report API Portal unit coverage size
+        if: always()
+        working-directory: portals/api-portal
+        run: |
+          if [ -s unit-test-coverage.info ]; then
+            echo "unit-test-coverage.info: $(wc -c < unit-test-coverage.info) bytes, $(grep -c '^SF:' unit-test-coverage.info) files"
+            grep -m 5 '^SF:' unit-test-coverage.info
+          else
+            echo "unit-test-coverage.info is MISSING or EMPTY — nothing will be uploaded for the api-portal-unit flag" >&2
+          fi
+
       - name: Build testbench image
         run: make -C tests/framework testbench
 
