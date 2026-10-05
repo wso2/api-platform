@@ -717,6 +717,10 @@
     "defaultMessage": "General",
     "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
   },
+  "apiControlPlane.navigation.useSettingsTabs.serviceAccountsTab": {
+    "defaultMessage": "Service accounts",
+    "description": "Label for the organization-level Settings tab listing machine identities (service accounts)."
+  },
   "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
     "defaultMessage": "Subscription plans",
     "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
@@ -2609,6 +2613,411 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month": {
     "defaultMessage": "Month"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.actionFailed": {
+    "defaultMessage": "The action could not be completed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.actionsFor": {
+    "defaultMessage": "Actions for {name}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.clientIdCopied": {
+    "defaultMessage": "Copied: {clientId}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnActions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnLastUsed": {
+    "defaultMessage": "Last token issued",
+    "description": "Column header. The server records when a token was last issued, not when one was last used."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnOwner": {
+    "defaultMessage": "Owner"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnRoles": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnStatus": {
+    "defaultMessage": "Status"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.copyClientId": {
+    "defaultMessage": "Copy client ID of {name}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.copyClientIdTooltip": {
+    "defaultMessage": "Copy client ID: {clientId}",
+    "description": "{clientId} is a literal value, e.g. sa_acme_ci-bot_3f9a1c."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.create": {
+    "defaultMessage": "New service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.delete": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.deleteBody": {
+    "defaultMessage": "This cannot be undone. The account is removed, its secret stops working, and every token it holds is rejected. If you might need it again, disable it instead."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.deleteInput": {
+    "defaultMessage": "Type the ID to confirm"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.deleteTitle": {
+    "defaultMessage": "Delete \"{name}\"?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.deleted": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disable": {
+    "defaultMessage": "Disable"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disableBody": {
+    "defaultMessage": "It will not be able to get new tokens, and tokens it already holds stop working within a few seconds. You can enable it again later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disableTitle": {
+    "defaultMessage": "Disable \"{name}\"?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disabled": {
+    "defaultMessage": "Disabled \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disabledBody": {
+    "defaultMessage": "An operator can turn them on in the Platform API configuration."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.disabledTitle": {
+    "defaultMessage": "Service accounts are turned off"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.emptyBody": {
+    "defaultMessage": "A service account belongs to no person. A pipeline or tool uses its client ID and secret to get a short-lived token."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.emptyTitle": {
+    "defaultMessage": "Create your first service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.enable": {
+    "defaultMessage": "Enable"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.enabled": {
+    "defaultMessage": "Enabled \"{name}\". Tokens issued before it was disabled stay invalid — the workload must request a new one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.forbiddenBody": {
+    "defaultMessage": "Ask an organization administrator if you need a service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.forbiddenTitle": {
+    "defaultMessage": "Service accounts are managed by administrators"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.lastUsedDetail": {
+    "defaultMessage": "{time} from {ip}",
+    "description": "Tooltip: when and from which IP address the last token was issued."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.loadFailed": {
+    "defaultMessage": "Unable to load service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.loading": {
+    "defaultMessage": "Loading service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.moreRoles": {
+    "defaultMessage": "+{count}",
+    "description": "Chip standing for roles not shown in the list row; the tooltip names them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.moreRolesLabel": {
+    "defaultMessage": "{count, plural, one {# more role} other {# more roles}}: {roles}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.never": {
+    "defaultMessage": "Never"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.nextPage": {
+    "defaultMessage": "Next page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.noMatchesBody": {
+    "defaultMessage": "Try a different search term."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.noMatchesTitle": {
+    "defaultMessage": "No matching service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.pageRange": {
+    "defaultMessage": "{from}–{to} of {total}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.previousPage": {
+    "defaultMessage": "Previous page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.regenerate": {
+    "defaultMessage": "Regenerate secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.regenerateBody": {
+    "defaultMessage": "The current secret stops working immediately, with no overlap period, and tokens already issued stop working too. Anything still using the old secret fails until you give it the new one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.regenerateTitle": {
+    "defaultMessage": "Regenerate the secret for \"{name}\"?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.search": {
+    "defaultMessage": "Search by name, ID or owner"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.statusActive": {
+    "defaultMessage": "Active"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.statusDisabled": {
+    "defaultMessage": "Disabled"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.subtitle": {
+    "defaultMessage": "Identities for scripts, pipelines and other tools that call the API Platform."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.testToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.title": {
+    "defaultMessage": "Service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.clientId": {
+    "defaultMessage": "Client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.clientSecret": {
+    "defaultMessage": "Client secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.done": {
+    "defaultMessage": "Done"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.exampleHint": {
+    "defaultMessage": "Set PLATFORM_API_URL to the API Platform address and CLIENT_SECRET from your secret store. The secret is never written into this example.",
+    "description": "PLATFORM_API_URL and CLIENT_SECRET are shell variable names — do not translate."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.exampleTitle": {
+    "defaultMessage": "Get an access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.subtitle": {
+    "defaultMessage": "Credentials for {name}.",
+    "description": "{name} is the service account display name — never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.testToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.title": {
+    "defaultMessage": "Copy the secret now"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.warningBody": {
+    "defaultMessage": "Store it in your secret manager. If it is lost, regenerate it — which breaks anything still using the old one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.CredentialsDialog.warningTitle": {
+    "defaultMessage": "The secret will not be shown again"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.helper": {
+    "defaultMessage": "Only service account roles (the ap_sa_* roles) are listed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.label": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.loadFailed": {
+    "defaultMessage": "Could not load the roles. Close the dialog and try again."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.loading": {
+    "defaultMessage": "Loading roles…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.none": {
+    "defaultMessage": "No service-account roles are defined. Add an ap_sa_ role to the role-to-scope mapping on the server.",
+    "description": "Shown when the server lists no roles. \"ap_sa_\" is a literal role-name prefix — do not translate."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.required": {
+    "defaultMessage": "Select at least one role."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.scopeCount": {
+    "defaultMessage": "{count, plural, one {# scope} other {# scopes}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.SecretField.copied": {
+    "defaultMessage": "Copied",
+    "description": "Replaces the copy label once the value is on the clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.SecretField.copy": {
+    "defaultMessage": "Copy {label}",
+    "description": "Accessible name of the copy button. {label} is the field name, e.g. \"Client secret\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.SecretField.hide": {
+    "defaultMessage": "Hide {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.SecretField.show": {
+    "defaultMessage": "Show {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.clientId": {
+    "defaultMessage": "Client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.clientIdCopied": {
+    "defaultMessage": "Copied"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.close": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.conflict": {
+    "defaultMessage": "Someone else changed this account while you were editing. Reload to see their changes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.copyClientId": {
+    "defaultMessage": "Copy client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.create": {
+    "defaultMessage": "Create"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.createFailed": {
+    "defaultMessage": "Could not create the service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.createSubtitle": {
+    "defaultMessage": "An identity for a script, pipeline or tool. You get a client ID and secret once it is created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.createTitle": {
+    "defaultMessage": "New service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.created": {
+    "defaultMessage": "Created \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.createdBy": {
+    "defaultMessage": "Created by {who} on {date}",
+    "description": "{who} is a user name, {date} a formatted date."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.creating": {
+    "defaultMessage": "Creating…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.description": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.descriptionHelper": {
+    "defaultMessage": "What the account is for."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.displayName": {
+    "defaultMessage": "Display name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.editHandle": {
+    "defaultMessage": "Edit ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.editTitle": {
+    "defaultMessage": "Edit service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handle": {
+    "defaultMessage": "ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleEditedHelper": {
+    "defaultMessage": "Used in the client ID. Cannot be changed later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleFormat": {
+    "defaultMessage": "Use lowercase letters, digits and single hyphens, not at the start or end."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleHelper": {
+    "defaultMessage": "Made from the display name and used in the client ID. Cannot be changed later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleLength": {
+    "defaultMessage": "Use {min} to {max} characters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleReserved": {
+    "defaultMessage": "This ID is reserved. Choose another."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.handleTaken": {
+    "defaultMessage": "An account with this ID already exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.loadFailed": {
+    "defaultMessage": "Could not load the service account. Close this and try again."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.loading": {
+    "defaultMessage": "Loading the service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.owner": {
+    "defaultMessage": "Owner"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.ownerEditHelper": {
+    "defaultMessage": "Who answers for this account. Leave empty for the creator, {creator}.",
+    "description": "{creator} is the user name of whoever created the account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.ownerHelper": {
+    "defaultMessage": "Who answers for this account. Leave empty for you."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.reload": {
+    "defaultMessage": "Reload"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.required": {
+    "defaultMessage": "Required."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.roleRemovedWarning": {
+    "defaultMessage": "Removing a role stops every token already issued to this account. The workload must request a new one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.saving": {
+    "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.secret": {
+    "defaultMessage": "Secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.secretRegenerated": {
+    "defaultMessage": "Secret last replaced {date}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.tooLong": {
+    "defaultMessage": "Use at most {max} characters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.updateFailed": {
+    "defaultMessage": "Could not save the service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.ServiceAccountFormDialog.updated": {
+    "defaultMessage": "Saved \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.accessToken": {
+    "defaultMessage": "Access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.clientId": {
+    "defaultMessage": "Client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.clientSecret": {
+    "defaultMessage": "Client secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.close": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.expired": {
+    "defaultMessage": "Expired"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.expiresIn": {
+    "defaultMessage": "Expires in {minutes}:{seconds}",
+    "description": "Countdown to token expiry, e.g. \"Expires in 14:52\". {seconds} is always two digits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.failed": {
+    "defaultMessage": "Could not get a token. Try again in a moment.",
+    "description": "Shown for any failure other than rejected credentials or scopes: timeouts, network or server errors."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.getAnother": {
+    "defaultMessage": "Get another"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.getToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.getting": {
+    "defaultMessage": "Getting token…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.rejected": {
+    "defaultMessage": "Could not get a token. Check the secret, and that the account is enabled.",
+    "description": "Shown when the server rejects the client ID or secret. It never says which, on purpose."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.revokeNote": {
+    "defaultMessage": "This token cannot be revoked on its own. Disabling the account or regenerating its secret stops it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.scopeFailed": {
+    "defaultMessage": "The account's roles do not grant the requested scopes. Reload the page and try again."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.scopes": {
+    "defaultMessage": "Scopes"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.secretHelper": {
+    "defaultMessage": "The server does not keep the secret, so paste it here. It is not stored."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.title": {
+    "defaultMessage": "Get token — {name}",
+    "description": "{name} is the service account display name — never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.usageNote": {
+    "defaultMessage": "Getting a token counts as using the account: it updates \"Last token issued\" and is logged."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.TestTokenDialog.useIt": {
+    "defaultMessage": "Use it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.useCopy.copyFailed": {
+    "defaultMessage": "Could not copy. Select the value and copy it manually."
   },
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.body": {
     "defaultMessage": "Legacy routes that are outside the MVP are intentionally not exposed."
