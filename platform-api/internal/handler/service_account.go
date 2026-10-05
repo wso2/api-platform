@@ -75,6 +75,9 @@ func (h *ServiceAccountHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/token", middleware.MapErrors(h.slogger, h.Token))
 	mux.HandleFunc("POST "+base+"/introspect", middleware.MapErrors(h.slogger, h.Introspect))
 	mux.HandleFunc("GET "+base+"/jwks.json", middleware.MapErrors(h.slogger, h.JWKS))
+	// A sibling path: under /service-accounts, "roles" would shadow an account
+	// with that handle.
+	mux.HandleFunc("GET "+constants.APIBasePath+"/service-account-roles", middleware.MapErrors(h.slogger, h.humansOnly(h.Roles)))
 }
 
 // humansOnly refuses SA tokens at the management endpoints outright, so a
@@ -99,6 +102,11 @@ func (h *ServiceAccountHandler) List(w http.ResponseWriter, r *http.Request) err
 		return serviceError(err, "failed to list service accounts")
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+	return nil
+}
+
+func (h *ServiceAccountHandler) Roles(w http.ResponseWriter, r *http.Request) error {
+	httputil.WriteJSON(w, http.StatusOK, h.svc.Roles())
 	return nil
 }
 

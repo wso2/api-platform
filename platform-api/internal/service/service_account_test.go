@@ -752,3 +752,25 @@ func TestToServiceAccountAPI_LastUsedIP(t *testing.T) {
 		t.Fatal("an unused account must have no lastUsedIp")
 	}
 }
+
+func TestServiceAccountRoles_OnlyServiceAccountRolesSorted(t *testing.T) {
+	f := newSAFixture(t)
+	resp := f.svc.Roles()
+	var names []string
+	for _, r := range resp.List {
+		names = append(names, r.Name)
+	}
+	if want := []string{"ap_sa_operator", "ap_sa_reader"}; !slices.Equal(names, want) {
+		t.Fatalf("roles = %v, want %v", names, want)
+	}
+	if resp.Count != 2 || resp.Pagination.Total != 2 {
+		t.Fatalf("count = %d, total = %d, want 2", resp.Count, resp.Pagination.Total)
+	}
+	if !slices.Equal(resp.List[0].Scopes, []string{"ap:gateway:read", "ap:rest_api:read"}) {
+		t.Fatalf("ap_sa_operator scopes = %v", resp.List[0].Scopes)
+	}
+	resp.List[0].Scopes[0] = "changed"
+	if f.svc.roleScopeMap["ap_sa_operator"][0] != "ap:gateway:read" {
+		t.Fatal("Roles exposed the shared role map")
+	}
+}

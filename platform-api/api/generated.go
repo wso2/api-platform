@@ -4748,6 +4748,19 @@ type ServiceAccountListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ServiceAccountRole defines model for ServiceAccountRole.
+type ServiceAccountRole struct {
+	Name   string   `json:"name" yaml:"name"`
+	Scopes []string `json:"scopes" yaml:"scopes"`
+}
+
+// ServiceAccountRoleListResponse defines model for ServiceAccountRoleListResponse.
+type ServiceAccountRoleListResponse struct {
+	Count      int                  `json:"count" yaml:"count"`
+	List       []ServiceAccountRole `json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
+}
+
 // ServiceAccountTokenRequest Send client_id and client_secret here, or with HTTP Basic instead.
 type ServiceAccountTokenRequest struct {
 	ClientId     *string                             `json:"client_id,omitempty" yaml:"client_id,omitempty"`

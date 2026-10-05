@@ -155,7 +155,7 @@ func TestSecretsRoutesAreRegisteredOnTheBasePath(t *testing.T) {
 	}
 }
 
-// TestServiceAccountRoutesResolveToTheirScopes checks router→spec for the nine
+// TestServiceAccountRoutesResolveToTheirScopes checks router→spec for the ten
 // service-account routes: the two public ones must match the literal route and
 // declare no scope; the rest must declare one.
 func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
@@ -189,6 +189,7 @@ func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
 		{http.MethodPost, base + "/introspect", base + "/introspect", false},
 		{http.MethodPost, base + "/token", base + "/token", true},
 		{http.MethodGet, base + "/jwks.json", base + "/jwks.json", true},
+		{http.MethodGet, constants.APIBasePath + "/service-account-roles", constants.APIBasePath + "/service-account-roles", false},
 	} {
 		req, err := http.NewRequest(probe.method, probe.path, nil)
 		if err != nil {

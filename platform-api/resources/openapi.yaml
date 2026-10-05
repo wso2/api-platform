@@ -7593,6 +7593,33 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /service-account-roles:
+    get:
+      summary: List the roles a service account can hold
+      description: |
+        The ap_sa_* roles in the role-to-scope mapping, each with the scopes it grants.
+        A sibling of /service-accounts, not a child, so it never shadows an account id.
+      operationId: listServiceAccountRoles
+      security:
+        - OAuth2Security:
+            - ap:service_account:read
+            - ap:service_account:manage
+      tags:
+        - Service Accounts
+      responses:
+        '200':
+          description: Roles a service account can hold
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccountRoleListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   headers:
     Location:
@@ -11979,6 +12006,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ServiceAccount'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ServiceAccountRole:
+      type: object
+      required:
+        - name
+        - scopes
+      properties:
+        name:
+          type: string
+          example: ap_sa_reader
+        scopes:
+          type: array
+          items:
+            type: string
+          example: [ap:rest_api:read, ap:gateway:read]
+
+    ServiceAccountRoleListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 1
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceAccountRole'
         pagination:
           $ref: '#/components/schemas/Pagination'
 

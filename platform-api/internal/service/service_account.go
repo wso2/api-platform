@@ -177,6 +177,23 @@ func (s *ServiceAccountService) List(orgID string, limit, offset int) (*api.Serv
 	}, nil
 }
 
+// Roles lists the ap_sa_* roles in the mapping, sorted by name, with their
+// scopes. Read from the map loaded at startup, so it never touches the DB.
+func (s *ServiceAccountService) Roles() *api.ServiceAccountRoleListResponse {
+	list := make([]api.ServiceAccountRole, 0)
+	for name, scopes := range s.roleScopeMap {
+		if strings.HasPrefix(name, constants.ServiceAccountRolePrefix) {
+			list = append(list, api.ServiceAccountRole{Name: name, Scopes: slices.Clone(scopes)})
+		}
+	}
+	slices.SortFunc(list, func(a, b api.ServiceAccountRole) int { return strings.Compare(a.Name, b.Name) })
+	return &api.ServiceAccountRoleListResponse{
+		Count:      len(list),
+		List:       list,
+		Pagination: api.Pagination{Total: len(list), Offset: 0, Limit: len(list)},
+	}
+}
+
 func (s *ServiceAccountService) Get(orgID, handle string) (*api.ServiceAccount, error) {
 	sa, err := s.repo.GetByHandle(orgID, handle)
 	if err != nil {
