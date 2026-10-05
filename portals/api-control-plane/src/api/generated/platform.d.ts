@@ -11907,6 +11907,8 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;
