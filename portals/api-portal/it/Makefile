@@ -142,11 +142,17 @@ COMPOSE_SQLITE   += -f docker-compose.coverage.yaml
 COMPOSE_POSTGRES += -f docker-compose.coverage.yaml
 endif
 
-# The portal container runs as uid 10001. A bind mount takes the HOST
-# directory's ownership, and Docker creates a missing one as root — so on Linux
-# the container could not write its profiles and the run produced nothing, while
-# macOS (which maps bind-mount ownership) looked fine. Created up front, world
-# writable, so the mount is usable whoever the container runs as.
+# The portal container runs as uid 10001, and a bind mount takes the HOST
+# directory's ownership. Two consequences on Linux, neither visible on macOS,
+# which remaps bind-mount ownership:
+#
+#   writing  Docker creates a missing directory as root, so the container could
+#            not write its profiles at all. Hence the world-writable mkdir in
+#            the test targets.
+#   reading  Node writes V8 profiles 0600, owned by the container's uid, so the
+#            files land unreadable by whoever runs make afterwards. Hence the
+#            ownership step in rest-api-lcov, done in a root container rather
+#            than with sudo so it works the same for a developer locally.
 COVERAGE_RAW    = reports/coverage-raw
 COVERAGE_NORM   = reports/coverage-normalized
 COVERAGE_LCOV   = reports/lcov.info
@@ -216,6 +222,12 @@ rest-api-lcov:
 	if ! ls $(COVERAGE_RAW)/*.json >/dev/null 2>&1; then \
 		echo "==> no raw coverage in $(COVERAGE_RAW) — run with IT_COVERAGE=1 first"; \
 		exit 0; \
+	fi; \
+	if [ ! -r "$$(ls $(COVERAGE_RAW)/*.json | head -1)" ]; then \
+		echo "==> taking ownership of the raw profiles (written 0600 by the container user)"; \
+		docker run --rm --user root --entrypoint chmod \
+			-v "$$(cd $(COVERAGE_RAW) && pwd):/raw" \
+			$(DOCKER_REGISTRY)/api-portal:test -R a+rX /raw; \
 	fi; \
 	rm -rf $(COVERAGE_NORM); mkdir -p $(COVERAGE_NORM); \
 	for f in $(COVERAGE_RAW)/*.json; do \

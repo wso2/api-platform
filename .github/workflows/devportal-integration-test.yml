@@ -81,12 +81,21 @@ jobs:
           files: portals/api-portal/it/reports/lcov.info
           flags: api-portal-rest-integration
 
+      # The raw and normalised V8 profiles are excluded deliberately. They are
+      # large (megabytes each), they are an intermediate of the lcov above rather
+      # than a test report, and the container writes them 0600 as its own uid —
+      # which made this step fail outright on a permission error before
+      # `rest-api-lcov` took ownership of them. Excluding them keeps this step
+      # independent of that having run at all.
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rest-api-test-reports-${{ matrix.db }}-${{ matrix.mode }}
-          path: portals/api-portal/it/reports/
+          path: |
+            portals/api-portal/it/reports/
+            !portals/api-portal/it/reports/coverage-raw
+            !portals/api-portal/it/reports/coverage-normalized
           retention-days: 7
 
       - name: Debug on failure - dump container logs
