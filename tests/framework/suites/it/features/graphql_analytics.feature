@@ -45,7 +45,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
@@ -83,7 +83,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
@@ -117,7 +117,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
@@ -148,7 +148,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
@@ -180,7 +180,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
@@ -218,7 +218,7 @@ Feature: GraphQL API analytics - operation identity and error enrichment
       | spec.displayName       | ${CTX:graphqlDisplayName} |
       | spec.version           | v1.0                       |
       | spec.context           | ${CTX:graphqlContext}     |
-      | spec.upstream.main.url | http://testbench:3014     |
+      | spec.upstream.main.url | http://testbench:3016     |
     Then the response should be successful
 
     And I send a "POST" request to "${CTX:graphqlContext}" until status 200 with body:
