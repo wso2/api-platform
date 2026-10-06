@@ -38,7 +38,7 @@ describe('DefineApiPanel — start from scratch', () => {
     await user.click(screen.getByRole('button', { name: /From an endpoint/ }));
 
     expect(screen.getByRole('heading', { name: 'Backend endpoint' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Backend URL')).toHaveValue('');
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('');
     expect(screen.queryByText('How do you want to start?')).not.toBeInTheDocument();
     expect(screen.queryByText('API resources')).not.toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe('DefineApiPanel — start from scratch', () => {
 
     await user.click(screen.getByRole('button', { name: 'Try a sample' }));
 
-    expect(screen.getByLabelText('Backend URL')).toHaveValue(
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue(
       'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books',
     );
   });
@@ -58,12 +58,34 @@ describe('DefineApiPanel — start from scratch', () => {
     const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
     await user.click(screen.getByRole('button', { name: /From an endpoint/ }));
 
-    const endpoint = screen.getByLabelText('Backend URL');
+    const endpoint = screen.getByLabelText(/Backend URL/);
     await user.clear(endpoint);
     await user.type(endpoint, 'https://api.acme.com/v1');
 
     expect(onDraftChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ upstream: { main: { url: 'https://api.acme.com/v1' } } }),
+    );
+  });
+
+  it('names the API from the endpoint, and holds Continue until the URL parses', async () => {
+    const onDraftChange = vi.fn();
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
+    await user.click(screen.getByRole('button', { name: /From an endpoint/ }));
+
+    const endpoint = screen.getByLabelText(/Backend URL/);
+    await user.type(endpoint, 'orders');
+    expect(onDraftChange).toHaveBeenLastCalledWith(null);
+
+    // The error waits for the user to leave the field.
+    expect(screen.queryByText(/doesn’t look like a URL yet/)).not.toBeInTheDocument();
+    await user.tab();
+    expect(screen.getByText(/doesn’t look like a URL yet/)).toBeInTheDocument();
+
+    await user.clear(endpoint);
+    await user.type(endpoint, 'https://api.example.com/orders/v2');
+    expect(screen.queryByText(/doesn’t look like a URL yet/)).not.toBeInTheDocument();
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ displayName: 'Orders', version: '2.0.0' }),
     );
   });
 });

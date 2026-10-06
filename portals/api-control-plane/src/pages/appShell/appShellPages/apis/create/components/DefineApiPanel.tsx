@@ -21,6 +21,7 @@ import {
   Button,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   InputAdornment,
   OutlinedInput,
@@ -31,7 +32,8 @@ import { FileCode2, Link as LinkIcon, Pencil, Zap } from '@wso2/oxygen-ui-icons-
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import { isHttpUrl } from '../../utils/basicInfoRules';
+import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
 import { nameFromEndpoint, versionFromEndpoint } from '../utils/nameFromEndpoint';
 import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
@@ -54,6 +56,16 @@ const messages = defineMessages({
     id: 'api.create.defineApi.scratch.endpoint.description',
     defaultMessage:
       'Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway.',
+  },
+  endpointHint: {
+    id: 'api.create.defineApi.scratch.endpoint.hint',
+    defaultMessage: 'Your API’s base URL. We forward traffic to it; we don’t call it now.',
+    description: 'Always-visible line under the backend URL field.',
+  },
+  endpointInvalid: {
+    id: 'api.create.defineApi.scratch.endpoint.invalid',
+    defaultMessage:
+      'That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start.',
   },
   endpointLabel: {
     id: 'api.create.defineApi.scratch.endpoint.label',
@@ -101,6 +113,9 @@ type ApproachTabProps = {
 };
 
 const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
+
+/** A bare example, not instructions: placeholders vanish on focus. */
+const ENDPOINT_PLACEHOLDER = 'https://api.example.com/v1';
 
 const SampleLink = ({ onClick }: { onClick: () => void }) => (
   <Button
@@ -172,6 +187,12 @@ export const DefineApiPanel = ({
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('scratch');
   const [endpointUrl, setEndpointUrl] = useState('');
+  // The endpoint is checked for shape only; the console never calls it. The
+  // error waits until the user leaves the field, so a half-typed URL never
+  // flashes red, and clears the moment the value parses.
+  const [endpointTouched, setEndpointTouched] = useState(false);
+  const endpointValid = isHttpUrl(endpointUrl.trim());
+  const endpointError = endpointTouched && endpointUrl.trim() !== '' && !endpointValid;
   const [contract, setContract] = useState<FetchedContract | null>(null);
 
   const selectApproach = (next: ApproachKey) => {
@@ -181,7 +202,7 @@ export const DefineApiPanel = ({
 
   const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
     const upstreamUrl = endpointUrl.trim();
-    if (!upstreamUrl) return null;
+    if (!isHttpUrl(upstreamUrl)) return null;
 
     const details = extractApiDetails(DEFAULT_API_SKELETON);
     const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
@@ -206,7 +227,8 @@ export const DefineApiPanel = ({
 
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
     if (contract?.spec === undefined) return null;
-    const base = extractApiDetails(contract.spec);
+    // A URL-sourced spec resolves a relative server against its own address.
+    const base = extractApiDetails(contract.spec, contract.values.url);
     const rawText = contract.rawText;
     if (rawText === undefined) return null;
     const isJson = rawText.trimStart().startsWith('{');
@@ -295,14 +317,16 @@ export const DefineApiPanel = ({
                     <FormattedMessage {...messages.endpointDescription} />
                   </Typography>
                 </Box>
-                <FormControl fullWidth>
+                <FormControl error={endpointError} fullWidth required>
                   <FormLabel htmlFor="backend-endpoint">
                     <FormattedMessage {...messages.endpointLabel} />
                   </FormLabel>
                   <OutlinedInput
+                    aria-describedby="backend-endpoint-hint"
                     id="backend-endpoint"
+                    onBlur={() => setEndpointTouched(true)}
                     onChange={(event) => setEndpointUrl(event.target.value)}
-                    placeholder={PLACEHOLDER_UPSTREAM_URL}
+                    placeholder={ENDPOINT_PLACEHOLDER}
                     startAdornment={
                       <InputAdornment position="start">
                         <LinkIcon size={18} />
@@ -311,6 +335,11 @@ export const DefineApiPanel = ({
                     sx={{ mt: 0.75 }}
                     value={endpointUrl}
                   />
+                  <FormHelperText id="backend-endpoint-hint">
+                    <FormattedMessage
+                      {...(endpointError ? messages.endpointInvalid : messages.endpointHint)}
+                    />
+                  </FormHelperText>
                   <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
                 </FormControl>
               </Stack>

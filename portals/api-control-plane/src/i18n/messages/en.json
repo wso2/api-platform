@@ -188,6 +188,13 @@
   "api.create.defineApi.scratch.endpoint.heading": {
     "defaultMessage": "Backend endpoint"
   },
+  "api.create.defineApi.scratch.endpoint.hint": {
+    "defaultMessage": "Your API’s base URL. We forward traffic to it; we don’t call it now.",
+    "description": "Always-visible line under the backend URL field."
+  },
+  "api.create.defineApi.scratch.endpoint.invalid": {
+    "defaultMessage": "That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start."
+  },
   "api.create.defineApi.scratch.endpoint.label": {
     "defaultMessage": "Backend URL"
   },
@@ -382,6 +389,10 @@
   },
   "api.create.fromContract.url.placeholder": {
     "defaultMessage": "https://api.example.com/openapi.json"
+  },
+  "api.create.fromContract.url.repaired": {
+    "defaultMessage": "Link updated: that was a {host} page rather than the file itself, so we switched to the raw file URL.",
+    "description": "{host} is GitHub, GitLab or Bitbucket; do not translate it."
   },
   "api.create.fromContract.url.required": {
     "defaultMessage": "Enter the spec’s URL."

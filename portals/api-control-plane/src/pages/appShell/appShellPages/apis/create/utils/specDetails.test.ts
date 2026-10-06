@@ -77,6 +77,17 @@ describe('extractApiDetails', () => {
     expect(draft).not.toHaveProperty('transports');
   });
 
+  it('resolves a relative server against the address the document came from', () => {
+    // The Petstore 3 sample declares `/api/v3`; taken as-is it is a backend
+    // URL the details step rejects.
+    const draft = extractApiDetails(
+      { info: { title: 'Swagger Petstore', version: '1.0.27' }, servers: [{ url: '/api/v3' }] },
+      'https://petstore3.swagger.io/api/v3/openapi.json',
+    );
+
+    expect(draft.upstream).toEqual({ main: { url: 'https://petstore3.swagger.io/api/v3' } });
+  });
+
   it('assembles the upstream from Swagger 2.0 host/basePath/schemes', () => {
     expect(
       extractApiDetails({
