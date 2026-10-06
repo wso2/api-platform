@@ -55,6 +55,10 @@
   "api.create.ApiCreationWizard.action.back": {
     "defaultMessage": "Back"
   },
+  "api.create.ApiCreationWizard.action.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Leaves the wizard without creating anything, back to the project’s APIs."
+  },
   "api.create.ApiCreationWizard.action.continue": {
     "defaultMessage": "Continue"
   },

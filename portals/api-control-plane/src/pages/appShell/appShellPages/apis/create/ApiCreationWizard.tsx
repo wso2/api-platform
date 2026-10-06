@@ -93,6 +93,11 @@ const messages = defineMessages({
     description:
       '{apiType} is the type picked in the first step, e.g. "REST API". Reads as one sentence.',
   },
+  cancel: {
+    id: 'api.create.ApiCreationWizard.action.cancel',
+    defaultMessage: 'Cancel',
+    description: 'Leaves the wizard without creating anything, back to the project’s APIs.',
+  },
   stepCount: {
     id: 'api.create.ApiCreationWizard.stepCount',
     defaultMessage: 'Step {current} of 3',
@@ -435,9 +440,24 @@ const ApiCreationWizardContent = () => {
               px: 3,
             }}
           >
-            <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
-              {intl.formatMessage(messages.stepCount, { current: stepNumber })}
-            </Typography>
+            <Stack alignItems="center" direction="row" spacing={2}>
+              <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
+                {intl.formatMessage(messages.stepCount, { current: stepNumber })}
+              </Typography>
+              {/* The wizard hides breadcrumbs and has no other exit, so
+                  leaving used to mean the browser's Back or the sidebar. */}
+              {params.orgHandle && params.projectHandler && (
+                <Button
+                  color="inherit"
+                  onClick={() => navigate(routes.apis(params.orgHandle!, params.projectHandler!))}
+                  size="small"
+                  type="button"
+                  variant="text"
+                >
+                  {intl.formatMessage(messages.cancel)}
+                </Button>
+              )}
+            </Stack>
             <Stack direction="row" spacing={1}>
               <Button
                 disabled={step === 'apiType'}
