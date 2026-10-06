@@ -201,6 +201,9 @@ export const SCOPES = {
   SECRET_UPDATE: 'ap:secret:update',
   SECRET_DELETE: 'ap:secret:delete',
   SECRET_MANAGE: 'ap:secret:manage',
+
+  // Service accounts
+  SERVICE_ACCOUNT_MANAGE: 'ap:service_account:manage',
 } as const;
 
 /**
