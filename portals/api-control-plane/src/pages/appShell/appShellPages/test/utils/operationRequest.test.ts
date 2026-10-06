@@ -23,6 +23,7 @@ import {
   fillPathParameters,
   operationParameters,
   parameterValue,
+  sendablePath,
 } from './operationRequest';
 import { buildRequestUrl } from '../curl/utils/toCurl';
 import type { ConsoleRequest } from './types';
@@ -220,7 +221,33 @@ describe('fillPathParameters', () => {
   });
 });
 
+describe('sendablePath', () => {
+  it('turns the catch-all route into a path that can be sent', () => {
+    // An endpoint API is created with `/*`. Sent literally, the `*` reaches
+    // the backend as a segment, and an ID-reading backend answers 404.
+    expect(sendablePath('/*')).toBe('/');
+    expect(sendablePath('/books/*')).toBe('/books/');
+  });
+
+  it('leaves ordinary paths and placeholders alone', () => {
+    expect(sendablePath('/payments')).toBe('/payments');
+    expect(sendablePath('/payments/{paymentId}')).toBe('/payments/{paymentId}');
+    expect(sendablePath('/a*b')).toBe('/a*b');
+  });
+});
+
 describe('buildConsoleRequest', () => {
+  it('sends the catch-all route as its root rather than a literal *', () => {
+    const request = build({
+      spec: { paths: { '/*': { get: {} } } },
+      path: '/*',
+      method: 'get',
+      baseUrl: BASE,
+    });
+
+    expect(request.path).toBe('/');
+  });
+
   it('maps filled query parameters onto rows', () => {
     const request = build({
       spec,
