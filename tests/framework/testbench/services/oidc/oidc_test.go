@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	testIssuer   = "https://testbench:3014/oauth2/token"
+	testIssuer   = "https://testbench:3015/oauth2/token"
 	testClient   = "portal-client"
 	testCallback = "http://portal:9543/api-portal/default/callback"
 	testVerifier = "a-code-verifier-long-enough-for-pkce-0123456789"
@@ -457,14 +457,14 @@ func TestTheIssuerFollowsTheRequestHostWhenUnconfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "https://idp.example:3014/mint", strings.NewReader(`{"sub":"s"}`))
+	req := httptest.NewRequest(http.MethodPost, "https://idp.example:3015/mint", strings.NewReader(`{"sub":"s"}`))
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	var out map[string]string
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if claims := verify(t, s, out["token"]); claims["iss"] != "https://idp.example:3014/oauth2/token" {
+	if claims := verify(t, s, out["token"]); claims["iss"] != "https://idp.example:3015/oauth2/token" {
 		t.Fatalf("iss = %v", claims["iss"])
 	}
 }
