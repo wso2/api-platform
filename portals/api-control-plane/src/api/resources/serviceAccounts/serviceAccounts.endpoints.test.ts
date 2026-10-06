@@ -80,7 +80,7 @@ describe('service account reads', () => {
     const response = await listServiceAccountRoles();
 
     expect(requests.last()?.url.pathname).toBe('/api/v0.9/service-account-roles');
-    expect(response.list[0]?.name).toBe('ap_sa_reader');
+    expect(response.list[0]?.name).toBe('ap_service_account');
   });
 });
 
@@ -92,11 +92,10 @@ describe('service account writes', () => {
       description: 'deploys',
       displayName: 'CI deployer',
       id: 'ci-deployer',
-      owner: 'team',
-      roles: ['ap_sa_reader'],
+      roles: ['ap_service_account'],
     });
 
-    expect(JSON.parse(requests.last()!.body)).toMatchObject({ id: 'ci-deployer', roles: ['ap_sa_reader'] });
+    expect(JSON.parse(requests.last()!.body)).toMatchObject({ id: 'ci-deployer', roles: ['ap_service_account'] });
     expect(result.clientSecret).toBe(credentials.clientSecret);
   });
 
