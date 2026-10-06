@@ -748,6 +748,19 @@ blocks:
         features:
           - features/gateway/routes-policies/interceptor_service.feature
 
+  - name: ai-workspace-cli
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+    runners:
+      - name: ai-workspace-cli
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
+
   - name: platform-api-sqlite
     parallel: 2
     components:
