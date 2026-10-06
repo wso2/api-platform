@@ -51,6 +51,18 @@ func fakeCLI(t *testing.T) string {
 	return path
 }
 
+// fakeCLIInWorkingDirectory is fakeCLI placed under the test's working directory, so a
+// relative path to it only resolves from that directory.
+func fakeCLIInWorkingDirectory(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp(mustGetwd(t), ".fake-ap-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(dir)) })
+	path := filepath.Join(dir, "ap")
+	require.NoError(t, os.Rename(fakeCLI(t), path))
+	return path
+}
+
 func TestLookup(t *testing.T) {
 	tests := []struct {
 		key     string
@@ -93,12 +105,25 @@ func TestAssertContainsAll(t *testing.T) {
 }
 
 func TestResolveBinary(t *testing.T) {
-	binary := fakeCLI(t)
+	binary := fakeCLIInWorkingDirectory(t)
 
 	t.Setenv(envCLIBinary, binary)
 	got, err := resolveBinary()
 	require.NoError(t, err)
 	require.Equal(t, binary, got)
+
+	relative := relativeToWorkingDirectory(t, binary)
+	require.False(t, filepath.IsAbs(relative))
+	t.Setenv(envCLIBinary, relative)
+	got, err = resolveBinary()
+	require.NoError(t, err)
+	require.True(t, filepath.IsAbs(got), "resolved path %q must be absolute", got)
+	require.Equal(t, binary, got)
+
+	t.Setenv(envCLIBinary, filepath.Join(relative, "..", "missing"))
+	_, err = resolveBinary()
+	require.ErrorContains(t, err, "make -C tests/framework ap-cli")
+	require.ErrorContains(t, err, string(filepath.Separator), "the error names the resolved path")
 
 	t.Setenv(envCLIBinary, filepath.Join(t.TempDir(), "missing"))
 	_, err = resolveBinary()
@@ -111,8 +136,12 @@ func TestResolveBinary(t *testing.T) {
 
 func TestCLIRunIsolatesHomeAndReportsExitStatus(t *testing.T) {
 	ctx, reg := testContext(t)
-	c, err := newCLI(ctx, fakeCLI(t))
+	t.Setenv(envCLIBinary, relativeToWorkingDirectory(t, fakeCLIInWorkingDirectory(t)))
+	bin, err := resolveBinary()
 	require.NoError(t, err)
+	c, err := newCLI(ctx, bin)
+	require.NoError(t, err)
+	require.NotEqual(t, mustGetwd(t), c.workspace, "the CLI runs from its own scratch workspace")
 	require.Len(t, reg.Pending(), 2, "the HOME and workspace are both registered for cleanup")
 
 	res, err := c.run(ctx, []string{"WSO2AP_AIWORKSPACE_TOKEN=tok"}, "ai-workspace", "build", "-f", "demo")
@@ -127,6 +156,20 @@ func TestCLIRunIsolatesHomeAndReportsExitStatus(t *testing.T) {
 	res, err = c.run(ctx, nil, "version")
 	require.NoError(t, err, "a non-zero exit is a result, not an error")
 	require.Equal(t, 3, res.exit)
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	return dir
+}
+
+func relativeToWorkingDirectory(t *testing.T, path string) string {
+	t.Helper()
+	relative, err := filepath.Rel(mustGetwd(t), path)
+	require.NoError(t, err)
+	return relative
 }
 
 func TestCLIRunFailsWhenTheBinaryCannotRun(t *testing.T) {

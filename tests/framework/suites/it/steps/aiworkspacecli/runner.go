@@ -76,6 +76,10 @@ func resolveBinary() (string, error) {
 		}
 		bin = filepath.Join(root, "cli", "src", "build", "ap")
 	}
+	bin, err := filepath.Abs(bin)
+	if err != nil {
+		return "", fmt.Errorf("resolving the ap binary path: %w", err)
+	}
 	info, err := os.Stat(bin)
 	if err != nil {
 		return "", fmt.Errorf("ap binary not found at %s (%s): %w", bin, buildHint, err)
