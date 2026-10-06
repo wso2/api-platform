@@ -50,10 +50,6 @@ import { InvokeUrlPanel } from '../../apis/overview/InvokeUrlPanel';
 import { resuppliedSchemaSource } from '../utils/graphqlApiMetadataUpdate';
 
 const messages = defineMessages({
-  schemaTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle',
-    defaultMessage: 'Schema',
-  },
   endpointTitle: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
     defaultMessage: 'Endpoint',
@@ -346,14 +342,11 @@ export function GraphqlOverviewTab({
     <Grid container spacing={2}>
       <Grid size={{ lg: 8, xs: 12 }}>
         <Stack spacing={2} marginTop={1}>
-          <Card sx={{ display: 'flex', flexDirection: 'column', p: 2 }}>
-            <Typography sx={{ fontWeight: 600, mb: 1.5 }} variant="h6">
-              <FormattedMessage {...messages.schemaTitle} />
-            </Typography>
+          <Card>
             {/* An API imported from a gateway carries no SDL, and the server
                 returns it as an empty string — that's "no schema yet", not an
                 unparseable one, so the explorer gets its initial empty state. */}
-            <GraphqlSchemaExplorer sdl={sdl?.trim() ? sdl : undefined} />
+            <GraphqlSchemaExplorer sdl={sdl?.trim() ? sdl : undefined} variant="card" />
           </Card>
         </Stack>
       </Grid>

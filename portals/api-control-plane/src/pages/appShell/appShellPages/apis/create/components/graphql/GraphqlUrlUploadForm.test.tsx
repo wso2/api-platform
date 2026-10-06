@@ -188,6 +188,15 @@ describe('GraphqlUrlUploadForm — Upload tab', () => {
     await user.click(screen.getByRole('button', { name: 'Upload' }));
   };
 
+  it('titles the dropzone for a GraphQL schema, not the shared API-contract wording', async () => {
+    const { user } = renderForm();
+
+    await switchToUploadTab(user);
+
+    expect(screen.getByText('Upload GraphQL Schema')).toBeInTheDocument();
+    expect(screen.queryByText('Upload API Contract')).not.toBeInTheDocument();
+  });
+
   it('has no fetch button and does nothing until a file is chosen', async () => {
     const { user } = renderForm();
 

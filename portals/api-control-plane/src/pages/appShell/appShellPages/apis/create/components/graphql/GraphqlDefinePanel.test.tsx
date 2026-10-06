@@ -67,7 +67,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
     await user.tab();
 
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     const lastCall = onDraftChange.mock.calls.at(-1)?.[0];
     expect(lastCall).toMatchObject({
@@ -140,7 +140,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
     await user.tab();
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
 
@@ -153,7 +153,7 @@ describe('GraphqlDefinePanel — draft field presence', () => {
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
     await user.tab();
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     await user.click(screen.getByRole('button', { name: 'SDL' }));
     expect(screen.getByRole('button', { name: 'Explorer' })).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
 
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/schema.graphql');
     await user.tab();
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ displayName: 'Raw' }));
   });
@@ -192,7 +192,7 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
     const file = new File([SAMPLE_SDL], 'countries-schema.graphql');
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(fileInput, file);
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     expect(onDraftChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ displayName: 'Countries Schema' }),
@@ -205,7 +205,7 @@ describe('GraphqlDefinePanel — display name suggestion', () => {
 
     await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
     await user.type(screen.getByLabelText(/Endpoint URL/i), 'https://backend.example.com/graphql');
-    await screen.findByText('Query', { exact: false });
+    await screen.findByText('Queries');
 
     expect(onDraftChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ displayName: 'Backend' }),

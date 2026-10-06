@@ -45,6 +45,11 @@ const FILE_EXTENSIONS = ['.graphql', '.gql', '.json'];
 const SAMPLE_SDL_URL = 'https://raw.githubusercontent.com/graphql/swapi-graphql/master/schema.graphql';
 
 const messages = defineMessages({
+  uploadTitle: {
+    id: 'api.create.graphql.urlUpload.upload.title',
+    defaultMessage: 'Upload GraphQL Schema',
+    description: 'Heading of the empty dropzone where a GraphQL schema (SDL) file is dropped or picked.',
+  },
   sampleUrl: {
     id: 'api.create.graphql.urlUpload.action.sampleUrl',
     defaultMessage: 'Try with Sample Schema',
@@ -292,6 +297,7 @@ export const GraphqlUrlUploadForm = ({
           file={file}
           onReject={handleFileReject}
           onSelect={handleFileSelect}
+          title={intl.formatMessage(messages.uploadTitle)}
         />
       )}
 

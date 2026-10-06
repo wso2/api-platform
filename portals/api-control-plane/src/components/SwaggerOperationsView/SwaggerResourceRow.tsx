@@ -58,6 +58,12 @@ export type SwaggerResourceRowProps = {
   disabled?: boolean;
   method: string;
   path: string;
+  /**
+   * `code` (default) sets the path in bold monospace, as a URL path reads;
+   * `text` sets it in the body font at regular weight — a GraphQL field name,
+   * matching how the Bijira console lists operations.
+   */
+  pathVariant?: 'code' | 'text';
 };
 
 export function SwaggerResourceRow({
@@ -69,6 +75,7 @@ export function SwaggerResourceRow({
   disabled = false,
   method,
   path,
+  pathVariant = 'code',
 }: SwaggerResourceRowProps) {
   const intl = useIntl();
   const bodyId = useId();
@@ -108,9 +115,15 @@ export function SwaggerResourceRow({
         <MethodBadge method={method} />
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography noWrap sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
-            {path}
-          </Typography>
+          {pathVariant === 'code' ? (
+            <Typography noWrap sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
+              {path}
+            </Typography>
+          ) : (
+            <Typography noWrap variant="body1">
+              {path}
+            </Typography>
+          )}
           {description && (
             <Typography color="text.secondary" noWrap variant="body2">
               {description}
