@@ -5425,12 +5425,11 @@ Secret metadata — never includes the plaintext value.
 {
   "id": "ci-deployer",
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "clientId": "sa_acme_ci-deployer_3f9a1c",
   "maskedSecret": "***9f2c1",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ],
   "status": "active",
   "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -5452,11 +5451,10 @@ A service account. Never carries the plaintext secret.
 |---|---|---|---|---|
 |id|string|true|none|Service account handle, unique within the organization|
 |displayName|string|true|none|none|
-|owner|string|true|none|Who is accountable for this account — a team, person or mailing list.<br>Defaults to the creator: the `sub` of the token that created it.|
 |description|string|true|none|What the account is for; may be empty|
 |clientId|string|true|read-only|none|
 |maskedSecret|string|true|read-only|none|
-|roles|[string]|true|none|The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file|
+|roles|[string]|true|none|The account's roles, from the role-to-scope mapping file|
 |status|string|true|none|none|
 |lastUsedAt|string(date-time)|false|read-only|none|
 |lastUsedIp|string|false|read-only|none|
@@ -5487,12 +5485,11 @@ A service account. Never carries the plaintext secret.
     {
       "id": "ci-deployer",
       "displayName": "CI deployer",
-      "owner": "platform-team@example.com",
       "description": "Deploys REST APIs from the release pipeline",
       "clientId": "sa_acme_ci-deployer_3f9a1c",
       "maskedSecret": "***9f2c1",
       "roles": [
-        "ap_sa_reader"
+        "ap_service_account"
       ],
       "status": "active",
       "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -5530,7 +5527,7 @@ A service account. Never carries the plaintext secret.
 
 ```json
 {
-  "name": "ap_sa_reader",
+  "name": "ap_service_account",
   "scopes": [
     "ap:rest_api:read",
     "ap:gateway:read"
@@ -5558,7 +5555,7 @@ A service account. Never carries the plaintext secret.
   "count": 1,
   "list": [
     {
-      "name": "ap_sa_reader",
+      "name": "ap_service_account",
       "scopes": [
         "ap:rest_api:read",
         "ap:gateway:read"
@@ -5593,10 +5590,9 @@ A service account. Never carries the plaintext secret.
 {
   "id": "ci-deployer",
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ]
 }
 
@@ -5608,9 +5604,8 @@ A service account. Never carries the plaintext secret.
 |---|---|---|---|---|
 |id|string|true|none|Service account handle. `token` is reserved.|
 |displayName|string|true|none|none|
-|owner|string|false|none|Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).|
 |description|string|false|none|none|
-|roles|[string]|true|none|Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.|
+|roles|[string]|true|none|Roles from the role-to-scope mapping file. Any role is accepted.|
 
 ## ServiceAccountUpdateRequest
 
@@ -5622,10 +5617,9 @@ A service account. Never carries the plaintext secret.
 ```json
 {
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ],
   "status": "disabled"
 }
@@ -5639,9 +5633,8 @@ Every field is optional.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|false|none|none|
-|owner|string|false|none|Blank resets it to the account's creator.|
 |description|string|false|none|none|
-|roles|[string]|false|none|Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens<br>already issued; adding one does not.|
+|roles|[string]|false|none|Replaces the roles. Removing a role invalidates tokens<br>already issued; adding one does not.|
 |status|string|false|none|none|
 
 ##### Enumerated Values
@@ -5663,12 +5656,11 @@ Every field is optional.
   "serviceAccount": {
     "id": "ci-deployer",
     "displayName": "CI deployer",
-    "owner": "platform-team@example.com",
     "description": "Deploys REST APIs from the release pipeline",
     "clientId": "sa_acme_ci-deployer_3f9a1c",
     "maskedSecret": "***9f2c1",
     "roles": [
-      "ap_sa_reader"
+      "ap_service_account"
     ],
     "status": "active",
     "lastUsedAt": "2019-08-24T14:15:22Z",

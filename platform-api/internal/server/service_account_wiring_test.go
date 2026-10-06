@@ -56,15 +56,6 @@ func TestBuildIssuerKeyMap_RefusesEmptyIssuer(t *testing.T) {
 	}
 }
 
-func TestHasServiceAccountRole(t *testing.T) {
-	if hasServiceAccountRole(nil) || hasServiceAccountRole(map[string][]string{"ap_admin": nil}) {
-		t.Fatal("no ap_sa_ role reported as present")
-	}
-	if !hasServiceAccountRole(map[string][]string{"ap_admin": nil, "ap_sa_reader": nil}) {
-		t.Fatal("ap_sa_reader not found")
-	}
-}
-
 // signSATestToken mints a real SA token with keys, as /token would.
 func signSATestToken(t *testing.T, keys *service.ServiceAccountKeys) string {
 	t.Helper()

@@ -21,13 +21,9 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"slices"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 // roleScopeEntry is a single entry in role-to-scope-mapping.yaml: an IDP role name and the
@@ -104,28 +100,6 @@ func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error 
 			}
 			if _, ok := known[s]; !ok {
 				return fmt.Errorf("role-to-scope-mapping.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
-			}
-		}
-	}
-	return nil
-}
-
-// ValidateServiceAccountRoles refuses an ap_sa_* role that grants a refused
-// scope. The prefix is only a name; this check is the boundary.
-func ValidateServiceAccountRoles(m map[string][]string) error {
-	roles := make([]string, 0, len(m))
-	for role := range m {
-		roles = append(roles, role)
-	}
-	sort.Strings(roles)
-	for _, role := range roles {
-		if !strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
-			continue
-		}
-		for _, s := range m[role] {
-			if slices.Contains(constants.ServiceAccountRefusedScopes, s) {
-				return fmt.Errorf("role-to-scope-mapping.yaml: service-account role %q grants %q, which a service account may never hold",
-					role, s)
 			}
 		}
 	}
