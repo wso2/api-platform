@@ -17,13 +17,12 @@
  */
 
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
-  alpha,
   Box,
+  ButtonBase,
   Chip,
+  Collapse,
+  Divider,
   IconButton,
   InputAdornment,
   MenuItem,
@@ -34,16 +33,15 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
-  type Theme,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, Download, Search } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState, type ReactNode } from 'react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { ChevronDown, ChevronUp, Download, Search } from '@wso2/oxygen-ui-icons-react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import { methodPalette, SwaggerResourceRow } from '@/components/SwaggerOperationsView';
 import {
   ResourcePreviewPlaceholder,
   type PlaceholderRow,
-  type PlaceholderRowTone,
 } from '@/pages/appShell/appShellPages/apis/components/ResourcePreviewPlaceholder';
 import { hairline } from '@/theme/receipes';
 import { PANE_HEIGHT } from '../ApiResourcesPreview';
@@ -115,13 +113,20 @@ const messages = defineMessages({
     description:
       '{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser\'s own error text.',
   },
-  mutationHint: {
-    id: 'api.create.graphql.schemaExplorer.section.mutationHint',
-    defaultMessage: 'Entry points that change data',
+  arguments: {
+    id: 'api.create.graphql.schemaExplorer.operation.arguments',
+    defaultMessage: 'Arguments',
+    description: 'Heading over the list of arguments a GraphQL query, mutation or subscription accepts.',
   },
-  queryHint: {
-    id: 'api.create.graphql.schemaExplorer.section.queryHint',
-    defaultMessage: 'Entry points into the schema',
+  noArguments: {
+    id: 'api.create.graphql.schemaExplorer.operation.noArguments',
+    defaultMessage: 'No arguments',
+    description: 'Shown under the Arguments heading when a GraphQL operation takes no arguments.',
+  },
+  returns: {
+    id: 'api.create.graphql.schemaExplorer.operation.returns',
+    defaultMessage: 'Returns',
+    description: 'Heading over the type a GraphQL query, mutation or subscription returns.',
   },
   sdlView: {
     id: 'api.create.graphql.schemaExplorer.view.sdl',
@@ -131,21 +136,53 @@ const messages = defineMessages({
     id: 'api.create.graphql.schemaExplorer.search.placeholder',
     defaultMessage: 'Search types and fields',
   },
-  subscriptionHint: {
-    id: 'api.create.graphql.schemaExplorer.section.subscriptionHint',
-    defaultMessage: 'Entry points that stream updates',
-  },
   title: {
     id: 'api.create.graphql.schemaExplorer.title',
     defaultMessage: 'Schema',
   },
-  typesInSchema: {
-    id: 'api.create.graphql.schemaExplorer.section.typesInSchema',
-    defaultMessage: '{count, plural, one {# in this schema} other {# in this schema}}',
+  mutationCount: {
+    id: 'api.create.graphql.schemaExplorer.mutations.count',
+    defaultMessage: '{count, plural, one {# mutation} other {# mutations}}',
+    description: 'Subtitle of the collapsible Mutations group: how many mutation fields it lists.',
+  },
+  mutationsTitle: {
+    id: 'api.create.graphql.schemaExplorer.mutations.title',
+    defaultMessage: 'Mutations',
+    description: 'Heading of the collapsible group listing a GraphQL schema\'s mutation fields.',
+  },
+  queryCount: {
+    id: 'api.create.graphql.schemaExplorer.queries.count',
+    defaultMessage: '{count, plural, one {# query} other {# queries}}',
+    description: 'Subtitle of the collapsible Queries group: how many query fields it lists.',
+  },
+  queriesTitle: {
+    id: 'api.create.graphql.schemaExplorer.queries.title',
+    defaultMessage: 'Queries',
+    description: 'Heading of the collapsible group listing a GraphQL schema\'s query fields.',
+  },
+  subscriptionCount: {
+    id: 'api.create.graphql.schemaExplorer.subscriptions.count',
+    defaultMessage: '{count, plural, one {# subscription} other {# subscriptions}}',
+    description: 'Subtitle of the collapsible Subscriptions group: how many subscription fields it lists.',
+  },
+  subscriptionsTitle: {
+    id: 'api.create.graphql.schemaExplorer.subscriptions.title',
+    defaultMessage: 'Subscriptions',
+    description: 'Heading of the collapsible group listing a GraphQL schema\'s subscription fields.',
+  },
+  typeCount: {
+    id: 'api.create.graphql.schemaExplorer.types.count',
+    defaultMessage: '{count, plural, one {# type} other {# types}}',
+    description: 'Subtitle of the collapsible Types group: how many named types it lists.',
+  },
+  typesTitle: {
+    id: 'api.create.graphql.schemaExplorer.types.title',
+    defaultMessage: 'Types',
+    description: 'Heading of the collapsible group listing every non-root type in a GraphQL schema.',
   },
 });
 
-/** Field row shared by the Query/Mutation/Subscription sections and a type's own fields. */
+/** One field of a non-root type, shown inside that type's expanded row. */
 const FieldRow = ({ field }: { field: GraphQLFieldSummary }) => (
   <Stack
     direction="row"
@@ -181,111 +218,91 @@ const FieldRow = ({ field }: { field: GraphQLFieldSummary }) => (
   </Stack>
 );
 
-/**
- * Chip colors this file assigns by hand — Oxygen's own `Chip` `color` prop
- * union, minus two tokens that don't actually read as distinct in this theme:
- * `secondary.main` is a near-white gray with no readable contrast text defined
- * for it (a filled `color="secondary"` chip renders as white-on-white), and
- * `warning` (`#ed6c02`, MUI's default) is close enough to this theme's own
- * `primary` orange (`#ff7300`) to look like the same color at a glance. The
- * remaining five — orange, green, red, blue, neutral gray — are the tones
- * that actually look different from each other here.
- */
-type SchemaChipColor = 'default' | 'error' | 'info' | 'primary' | 'success';
+/** The three GraphQL root operation kinds, labelled as their row badge reads. */
+type OperationKind = 'MUTATION' | 'QUERY' | 'SUBSCRIPTION';
 
-/**
- * One color per root operation, mirroring how `SwaggerOperationsView` tints
- * REST's GET/POST/PUT/DELETE pills so a GraphQL schema reads with the same
- * at-a-glance distinction: Query (read) lands on `info` like GET, Mutation
- * (write) on `success` like POST, and Subscription — no REST equivalent —
- * gets `error` as its own clearly distinct third tone.
- */
-const OPERATION_COLOR: Record<'mutation' | 'query' | 'subscription', SchemaChipColor> = {
-  mutation: 'success',
-  query: 'info',
-  subscription: 'error',
-};
+/** A details heading inside an expanded operation row. */
+const DetailHeading = ({ children }: { children: ReactNode }) => (
+  <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
+    {children}
+  </Typography>
+);
 
-const OperationSection = ({
-  color,
-  fields,
-  hint,
-  title,
-}: {
-  color: SchemaChipColor;
-  fields: GraphQLFieldSummary[];
-  hint: ReactNode;
-  title: string;
-}) => {
-  if (fields.length === 0) return null;
-
-  return (
-    <Stack spacing={0.75}>
-      <Stack
-        direction="row"
-        spacing={1.5}
-        sx={(theme) => {
-          const tone = paletteTone(theme, color);
-
-          return {
-            alignItems: 'center',
-            bgcolor: tone.bg,
-            border: hairline(theme),
-            borderColor: tone.border,
-            borderRadius: 0.75,
-            px: 1.35,
-            py: 0.9,
-          };
-        }}
-      >
-        <Chip
-          color={color}
-          label={title}
-          size="small"
-          // borderRadius matches SwaggerOperationsView's own method chip
-          // (GET/POST/...) exactly — Oxygen's default Chip radius is a much
-          // rounder pill that reads as a different control from REST's.
-          sx={{ borderRadius: 0.4, fontFamily: 'monospace', fontWeight: 700 }}
-        />
-        <Typography color="text.secondary" variant="caption">
-          {hint}
+/** An expanded operation row's body: its arguments, then the type it returns. */
+const OperationDetails = ({ field }: { field: GraphQLFieldSummary }) => (
+  <Stack spacing={1.5}>
+    <Stack spacing={0.5}>
+      <DetailHeading>
+        <FormattedMessage {...messages.arguments} />
+      </DetailHeading>
+      {field.arguments.length === 0 ? (
+        <Typography color="text.secondary" variant="body2">
+          <FormattedMessage {...messages.noArguments} />
         </Typography>
-      </Stack>
-      {fields.map((field) => (
-        <FieldRow field={field} key={field.name} />
-      ))}
+      ) : (
+        field.arguments.map((arg) => (
+          <Typography component="div" key={arg.name} sx={{ fontFamily: 'monospace' }} variant="body2">
+            <Box component="span" sx={{ fontWeight: 600 }}>
+              {arg.name}
+            </Box>
+            <Box component="span" sx={{ color: 'text.disabled' }}>
+              {': '}
+            </Box>
+            <Box component="span" sx={{ color: 'info.main' }}>
+              {arg.type}
+            </Box>
+          </Typography>
+        ))
+      )}
     </Stack>
-  );
-};
+    <Stack spacing={0.5}>
+      <DetailHeading>
+        <FormattedMessage {...messages.returns} />
+      </DetailHeading>
+      <Typography color="info.main" sx={{ fontFamily: 'monospace' }} variant="body2">
+        {field.type}
+      </Typography>
+    </Stack>
+  </Stack>
+);
 
-const KIND_LABELS: Record<GraphQLTypeKind, string> = {
-  ENUM: 'ENUM',
-  INPUT_OBJECT: 'INPUT',
-  INTERFACE: 'INTERFACE',
-  OBJECT: 'OBJECT',
-  SCALAR: 'SCALAR',
-  UNION: 'UNION',
-};
-
-/** A `SchemaChipColor` resolved against the theme, for `ResourcePreviewPlaceholder`'s row tones. */
-const paletteTone = (theme: Theme, color: SchemaChipColor): PlaceholderRowTone => {
-  const hex = color === 'default' ? theme.palette.text.secondary : theme.palette[color].main;
-  return { badge: hex, bg: alpha(hex, 0.14), border: hex };
-};
+/**
+ * One row per root operation field, drawn exactly like a REST resource row
+ * (`SwaggerResourceRow`): a solid QUERY/MUTATION/SUBSCRIPTION badge and the
+ * field name on a row tinted in the badge's colour, expanding to show the
+ * field's arguments and return type — the layout the Bijira console uses.
+ */
+const OperationRows = ({ fields, kind }: { fields: GraphQLFieldSummary[]; kind: OperationKind }) => (
+  <>
+    {fields.map((field) => (
+      <SwaggerResourceRow
+        badge={
+          field.deprecated ? (
+            <Chip label={<FormattedMessage {...messages.deprecated} />} size="small" variant="outlined" />
+          ) : null
+        }
+        description={field.description}
+        key={field.name}
+        method={kind}
+        path={field.name}
+        pathVariant="text"
+      >
+        <OperationDetails field={field} />
+      </SwaggerResourceRow>
+    ))}
+  </>
+);
 
 /**
  * Rows for the empty state's mock listing — a hint at the shape a resolved
- * schema takes (an operation badge + two placeholder bars), styled like
- * REST's own `ResourcePreviewPlaceholder` empty state so both creation
- * wizards' source steps read as the same control. Colors reuse
- * `OPERATION_COLOR` so the preview never drifts out of sync with the real
- * badges — only the three root operations get a badge here, matching the
- * explorer now that individual types no longer carry their own kind chip.
+ * schema takes, styled like REST's own `ResourcePreviewPlaceholder` empty
+ * state. Tones come from the same `methodPalette` the real operation rows
+ * use, so the preview never drifts out of sync with them.
  */
 const SCHEMA_PLACEHOLDER_ROWS: PlaceholderRow[] = [
-  { label: 'QUERY', tone: (theme) => paletteTone(theme, OPERATION_COLOR.query) },
-  { label: 'MUTATION', tone: (theme) => paletteTone(theme, OPERATION_COLOR.mutation) },
-  { ghost: true, label: 'SUBSCRIPTION', tone: (theme) => paletteTone(theme, OPERATION_COLOR.subscription) },
+  { label: 'QUERY', tone: () => methodPalette('QUERY') },
+  { label: 'MUTATION', tone: () => methodPalette('MUTATION') },
+  { ghost: true, label: 'SUBSCRIPTION', tone: () => methodPalette('SUBSCRIPTION') },
 ];
 
 /**
@@ -304,53 +321,128 @@ const typeMemberNames = (type: GraphQLTypeSummary): string[] => [
   ...(type.unionMembers ?? []),
 ];
 
+/**
+ * A type's badge label — the SDL keyword it is declared with (`type Country`,
+ * `enum Status`, …), uppercased like the QUERY/MUTATION badges. Not
+ * translated: these are SDL keywords. Also the kind filter's option labels.
+ */
+const TYPE_KEYWORDS: Record<GraphQLTypeKind, string> = {
+  ENUM: 'ENUM',
+  INPUT_OBJECT: 'INPUT',
+  INTERFACE: 'INTERFACE',
+  OBJECT: 'TYPE',
+  SCALAR: 'SCALAR',
+  UNION: 'UNION',
+};
+
+/**
+ * One named type, drawn exactly like an operation row (`SwaggerResourceRow`):
+ * a solid kind badge and the type name on a row tinted in the badge's colour,
+ * its member count as the summary line, expanding to list its members.
+ */
 const TypeRow = ({ defaultExpanded, type }: { defaultExpanded: boolean; type: GraphQLTypeSummary }) => {
   const intl = useIntl();
   const { count, message } = typeCountLabel(type);
 
   return (
-    <Accordion
+    <SwaggerResourceRow
       defaultExpanded={defaultExpanded}
-      disableGutters
-      sx={(theme) => ({ border: hairline(theme), borderColor: 'divider' })}
+      description={intl.formatMessage(message, { count })}
+      method={TYPE_KEYWORDS[type.kind]}
+      path={type.name}
+      pathVariant="text"
     >
-      <AccordionSummary expandIcon={<ChevronDown size={18} />}>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-          {/* No chip here — only the root Query/Mutation/Subscription
-              operations carry a colored chip; a type's kind is plain,
-              muted text (still available to filter on via the Kind
-              select above). */}
-          <Typography
-            color="text.secondary"
-            sx={{ flexShrink: 0, fontFamily: 'monospace', fontWeight: 700, minWidth: 74 }}
-            variant="caption"
-          >
-            {KIND_LABELS[type.kind]}
+      <Stack spacing={0.75}>
+        {type.fields?.map((field) => <FieldRow field={field} key={field.name} />)}
+        {type.enumValues?.map((value) => (
+          <Typography key={value} sx={{ fontFamily: 'monospace' }} variant="body2">
+            {value}
           </Typography>
-          <Typography sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
-            {type.name}
+        ))}
+        {type.unionMembers?.map((member) => (
+          <Typography key={member} sx={{ fontFamily: 'monospace' }} variant="body2">
+            {member}
+          </Typography>
+        ))}
+      </Stack>
+    </SwaggerResourceRow>
+  );
+};
+
+/**
+ * One collapsible section of the explorer — Queries, Mutations,
+ * Subscriptions or Types — as the Bijira console groups a schema: a header
+ * with the section's name and how many rows it holds, over its rows. Forced
+ * open while a search is active, so a collapsed group never hides a match.
+ * Renders nothing when it has no rows (an absent root type, or a search that
+ * filtered every row out).
+ */
+const SchemaGroup = ({
+  children,
+  count,
+  countMessage,
+  forceOpen,
+  title,
+}: {
+  children: ReactNode;
+  count: number;
+  countMessage: MessageDescriptor;
+  forceOpen: boolean;
+  title: MessageDescriptor;
+}) => {
+  const bodyId = useId();
+  const [expanded, setExpanded] = useState(true);
+  const open = expanded || forceOpen;
+
+  if (count === 0) return null;
+
+  return (
+    <Box
+      sx={(theme) => ({
+        border: hairline(theme),
+        borderColor: 'divider',
+        borderRadius: 1,
+        minWidth: 0,
+        overflow: 'hidden',
+      })}
+    >
+      <ButtonBase
+        aria-controls={bodyId}
+        aria-expanded={open}
+        disabled={forceOpen}
+        onClick={() => setExpanded((current) => !current)}
+        sx={{
+          alignItems: 'center',
+          bgcolor: 'action.hover',
+          display: 'flex',
+          gap: 1.5,
+          justifyContent: 'flex-start',
+          px: 1.5,
+          py: 1.25,
+          textAlign: 'left',
+          width: '100%',
+        }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+            <FormattedMessage {...title} />
           </Typography>
           <Typography color="text.secondary" variant="caption">
-            {intl.formatMessage(message, { count })}
+            <FormattedMessage {...countMessage} values={{ count }} />
           </Typography>
+        </Box>
+        {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+      </ButtonBase>
+      <Collapse in={open} timeout="auto">
+        <Stack
+          id={bodyId}
+          spacing={1}
+          sx={(theme) => ({ borderTop: hairline(theme), borderColor: 'divider', p: 1.5 })}
+        >
+          {children}
         </Stack>
-      </AccordionSummary>
-      <AccordionDetails>
-        <Stack spacing={0.75}>
-          {type.fields?.map((field) => <FieldRow field={field} key={field.name} />)}
-          {type.enumValues?.map((value) => (
-            <Typography key={value} sx={{ fontFamily: 'monospace' }} variant="body2">
-              {value}
-            </Typography>
-          ))}
-          {type.unionMembers?.map((member) => (
-            <Typography key={member} sx={{ fontFamily: 'monospace' }} variant="body2">
-              {member}
-            </Typography>
-          ))}
-        </Stack>
-      </AccordionDetails>
-    </Accordion>
+      </Collapse>
+    </Box>
   );
 };
 
@@ -365,6 +457,13 @@ export type GraphqlSchemaExplorerProps = {
    * actually been attempted and failed.
    */
   error?: GraphqlResolutionFailure | null;
+  /**
+   * `pane` (default): the creation wizard's fixed-height right-hand pane.
+   * `card`: the body of the API overview's Schema card, laid out like REST's
+   * Resources card — a "Schema" header strip carrying the Explorer/SDL toggle,
+   * a divider, then the content, growing to a capped height.
+   */
+  variant?: 'card' | 'pane';
 };
 
 /**
@@ -376,11 +475,24 @@ export type GraphqlSchemaExplorerProps = {
  * Presentational only — no data fetching of its own — so it is reusable
  * wherever else a resolved SDL needs to be shown.
  */
-export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: GraphqlSchemaExplorerProps) => {
+export const GraphqlSchemaExplorer = ({
+  error,
+  sdl,
+  sourceDescription,
+  variant = 'pane',
+}: GraphqlSchemaExplorerProps) => {
   const intl = useIntl();
   const [view, setView] = useState<'explorer' | 'sdl'>('explorer');
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<GraphQLTypeKind | 'all'>('all');
+
+  // Nothing loaded and nothing attempted yet — only the placeholder shows.
+  const isEmpty = sdl === undefined && !error;
+  const isCard = variant === 'card';
+  // The card's header strip is the section's own title, so it always shows;
+  // the pane drops its heading over the empty state, where the placeholder
+  // already says what will show here.
+  const showHeader = isCard || !isEmpty;
 
   const parsed = useMemo(() => (sdl === undefined ? undefined : parseGraphQLSdl(sdl)), [sdl]);
   const schema = parsed && 'schema' in parsed ? parsed.schema : undefined;
@@ -433,57 +545,73 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: PANE_HEIGHT,
+        height: isCard ? undefined : PANE_HEIGHT,
         minHeight: 0,
         minWidth: 0,
         overflow: 'hidden',
         width: '100%',
       }}
     >
-      <Stack
-        direction="row"
-        spacing={1.5}
-        sx={{ alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', rowGap: 1 }}
-      >
-        <Typography noWrap sx={{ fontWeight: 700 }} variant="subtitle1">
-          <FormattedMessage {...messages.title} />
-        </Typography>
-        <Box sx={{ flex: 1, minWidth: 0 }} />
-        {sdl !== undefined ? (
-          <Stack
-            direction="row"
-            spacing={1.5}
-            sx={{ alignItems: 'center', flexShrink: 0 }}
-          >
-            <ToggleButtonGroup
-              exclusive
-              onChange={(_event, next: 'explorer' | 'sdl' | null) => {
-                if (next !== null) setView(next);
-              }}
-              size="small"
-              value={view}
+      {showHeader ? (
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{
+            alignItems: 'center',
+            flexShrink: 0,
+            flexWrap: 'wrap',
+            rowGap: 1,
+            ...(isCard && { minHeight: 32, px: 2, py: 1.5 }),
+          }}
+        >
+          {isCard ? (
+            // Same heading as REST's Resources card (`ResourcesPanel`).
+            <Typography noWrap sx={{ fontWeight: 600 }} variant="h6">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          ) : (
+            <Typography noWrap sx={{ fontWeight: 700 }} variant="subtitle1">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          )}
+          <Box sx={{ flex: 1, minWidth: 0 }} />
+          {sdl !== undefined ? (
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ alignItems: 'center', flexShrink: 0 }}
             >
-              <ToggleButton sx={{ textTransform: 'none' }} value="explorer">
-                <FormattedMessage {...messages.explorerView} />
-              </ToggleButton>
-              <ToggleButton sx={{ textTransform: 'none' }} value="sdl">
-                <FormattedMessage {...messages.sdlView} />
-              </ToggleButton>
-            </ToggleButtonGroup>
-            {view === 'sdl' ? (
-              <Tooltip title={intl.formatMessage(messages.download)}>
-                <IconButton
-                  aria-label={intl.formatMessage(messages.download)}
-                  onClick={downloadSdl}
-                  size="small"
-                >
-                  <Download size={18} />
-                </IconButton>
-              </Tooltip>
-            ) : null}
-          </Stack>
-        ) : null}
-      </Stack>
+              <ToggleButtonGroup
+                exclusive
+                onChange={(_event, next: 'explorer' | 'sdl' | null) => {
+                  if (next !== null) setView(next);
+                }}
+                size="small"
+                value={view}
+              >
+                <ToggleButton sx={{ textTransform: 'none' }} value="explorer">
+                  <FormattedMessage {...messages.explorerView} />
+                </ToggleButton>
+                <ToggleButton sx={{ textTransform: 'none' }} value="sdl">
+                  <FormattedMessage {...messages.sdlView} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+              {view === 'sdl' ? (
+                <Tooltip title={intl.formatMessage(messages.download)}>
+                  <IconButton
+                    aria-label={intl.formatMessage(messages.download)}
+                    onClick={downloadSdl}
+                    size="small"
+                  >
+                    <Download size={18} />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+            </Stack>
+          ) : null}
+        </Stack>
+      ) : null}
+      {isCard ? <Divider /> : null}
 
       {sourceDescription ? (
         <Typography
@@ -497,7 +625,14 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
         </Typography>
       ) : null}
 
-      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, mt: 1.5, overflow: 'auto' }}>
+      <Box
+        sx={
+          isCard
+            ? // REST's Resources card body: padded, scrolling past a capped height.
+              { maxHeight: { md: 720, xs: 420 }, minWidth: 0, overflowY: 'auto', px: 2, py: 1.5 }
+            : { flex: 1, minHeight: 0, minWidth: 0, mt: showHeader ? 1.5 : 0, overflow: 'auto' }
+        }
+      >
         {sdl === undefined && error ? (
           <Stack spacing={1.5}>
             {error.sdlErrors && error.sdlErrors.length > 0 ? (
@@ -577,49 +712,52 @@ export const GraphqlSchemaExplorer = ({ error, sdl, sourceDescription }: Graphql
                 value={kindFilter}
               >
                 <MenuItem value="all">{intl.formatMessage(messages.allKinds)}</MenuItem>
-                {(Object.keys(KIND_LABELS) as GraphQLTypeKind[]).map((kind) => (
+                {(Object.keys(TYPE_KEYWORDS) as GraphQLTypeKind[]).map((kind) => (
                   <MenuItem key={kind} value={kind}>
-                    {KIND_LABELS[kind]}
+                    {TYPE_KEYWORDS[kind]}
                   </MenuItem>
                 ))}
               </Select>
             </Stack>
 
-            <OperationSection
-              color={OPERATION_COLOR.query}
-              fields={queryFields}
-              hint={<FormattedMessage {...messages.queryHint} />}
-              title="QUERY"
-            />
-            <OperationSection
-              color={OPERATION_COLOR.mutation}
-              fields={mutationFields}
-              hint={<FormattedMessage {...messages.mutationHint} />}
-              title="MUTATION"
-            />
-            <OperationSection
-              color={OPERATION_COLOR.subscription}
-              fields={subscriptionFields}
-              hint={<FormattedMessage {...messages.subscriptionHint} />}
-              title="SUBSCRIPTION"
-            />
-
-            {filteredTypes.length > 0 ? (
-              <Stack spacing={0.75}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline' }}>
-                  <Typography sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="subtitle2">
-                    <FormattedMessage {...messages.typesInSchema} values={{ count: filteredTypes.length }} />
-                  </Typography>
-                </Stack>
-                {filteredTypes.map(({ memberMatch, nameMatch, type }) => {
-                  const autoExpand = memberMatch && !nameMatch;
-                  // Keyed on autoExpand so a row remounts (and picks up the new
-                  // defaultExpanded) when a search starts or stops matching
-                  // only inside it; the reader can still toggle it freely.
-                  return <TypeRow defaultExpanded={autoExpand} key={`${type.name}:${autoExpand}`} type={type} />;
-                })}
-              </Stack>
-            ) : null}
+            <SchemaGroup
+              count={queryFields.length}
+              countMessage={messages.queryCount}
+              forceOpen={query !== ''}
+              title={messages.queriesTitle}
+            >
+              <OperationRows fields={queryFields} kind="QUERY" />
+            </SchemaGroup>
+            <SchemaGroup
+              count={mutationFields.length}
+              countMessage={messages.mutationCount}
+              forceOpen={query !== ''}
+              title={messages.mutationsTitle}
+            >
+              <OperationRows fields={mutationFields} kind="MUTATION" />
+            </SchemaGroup>
+            <SchemaGroup
+              count={subscriptionFields.length}
+              countMessage={messages.subscriptionCount}
+              forceOpen={query !== ''}
+              title={messages.subscriptionsTitle}
+            >
+              <OperationRows fields={subscriptionFields} kind="SUBSCRIPTION" />
+            </SchemaGroup>
+            <SchemaGroup
+              count={filteredTypes.length}
+              countMessage={messages.typeCount}
+              forceOpen={query !== ''}
+              title={messages.typesTitle}
+            >
+              {filteredTypes.map(({ memberMatch, nameMatch, type }) => {
+                const autoExpand = memberMatch && !nameMatch;
+                // Keyed on autoExpand so a row remounts (and picks up the new
+                // defaultExpanded) when a search starts or stops matching
+                // only inside it; the reader can still toggle it freely.
+                return <TypeRow defaultExpanded={autoExpand} key={`${type.name}:${autoExpand}`} type={type} />;
+              })}
+            </SchemaGroup>
 
             {nothingMatches ? (
               <Typography color="text.secondary" variant="body2">

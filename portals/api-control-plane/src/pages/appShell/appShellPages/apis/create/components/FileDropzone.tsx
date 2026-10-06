@@ -54,7 +54,7 @@ const messages = defineMessages({
   uploadedFile: {
     id: 'api.create.fromContract.upload.uploadedFile',
     defaultMessage: 'Uploaded file',
-    description: 'Heading above the selected API contract file.',
+    description: 'Heading above the selected file — an API contract, or a GraphQL schema.',
   },
   uploadRequired: {
     id: 'api.create.fromContract.upload.required',
@@ -83,6 +83,8 @@ export type FileDropzoneProps = {
   file: File | null;
   onReject: (reason: FileDropzoneRejection) => void;
   onSelect: (file: File) => void;
+  /** The empty dropzone's heading; defaults to "Upload API Contract". */
+  title?: string;
 };
 
 /** Bytes rendered as a locale-aware "13 kB" / "1.4 MB". */
@@ -175,7 +177,7 @@ const iconTileSx = (size: number) => (theme: Theme) => ({
  * selection. The hidden input is opened through a ref instead, and the
  * buttons around it stay real buttons for keyboard and screen-reader users.
  */
-export const FileDropzone = ({ extensions, error, file, onReject, onSelect }: FileDropzoneProps) => {
+export const FileDropzone = ({ extensions, error, file, onReject, onSelect, title }: FileDropzoneProps) => {
   const intl = useIntl();
   const [draggedOver, setDraggedOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -272,7 +274,7 @@ export const FileDropzone = ({ extensions, error, file, onReject, onSelect }: Fi
                 <Upload size={24} />
               </Box>
               <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h6">
-                <FormattedMessage {...messages.uploadTitle} />
+                {title ?? <FormattedMessage {...messages.uploadTitle} />}
               </Typography>
               <Typography color="text.secondary" variant="body2">
                 <FormattedMessage {...messages.uploadHint} values={{ extensions: extensionList }} />

@@ -365,7 +365,7 @@
   },
   "api.create.fromContract.upload.uploadedFile": {
     "defaultMessage": "Uploaded file",
-    "description": "Heading above the selected API contract file."
+    "description": "Heading above the selected file — an API contract, or a GraphQL schema."
   },
   "api.create.fromContract.url.invalid": {
     "defaultMessage": "Enter a valid HTTP or HTTPS URL."
@@ -509,26 +509,14 @@
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
   },
-  "api.create.graphql.configureForm.context.helper": {
-    "defaultMessage": "Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one."
-  },
   "api.create.graphql.configureForm.endpoint.error.invalid": {
     "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
   },
   "api.create.graphql.configureForm.endpoint.error.required": {
     "defaultMessage": "Enter the GraphQL endpoint URL."
   },
-  "api.create.graphql.configureForm.endpoint.helper": {
-    "defaultMessage": "The GraphQL backend the gateway routes POST requests to."
-  },
   "api.create.graphql.configureForm.endpoint.label": {
     "defaultMessage": "Query and Mutation URL"
-  },
-  "api.create.graphql.configureForm.identifier.helper": {
-    "defaultMessage": "URL-friendly. Generated from the name until you change it."
-  },
-  "api.create.graphql.configureForm.identifier.status.available": {
-    "defaultMessage": "Available."
   },
   "api.create.graphql.configureForm.identifier.status.unavailable": {
     "defaultMessage": "This identifier is already in use."
@@ -536,9 +524,6 @@
   "api.create.graphql.configureForm.identifier.status.unavailableIcon": {
     "defaultMessage": "Identifier is already in use",
     "description": "Accessible label for the warning icon shown beside a taken identifier."
-  },
-  "api.create.graphql.configureForm.version.helper": {
-    "defaultMessage": "e.g. 1.0"
   },
   "api.create.graphql.definePanel.approach.label": {
     "defaultMessage": "How do you want to define this GraphQL API?"
@@ -601,6 +586,34 @@
   "api.create.graphql.schemaExplorer.invalidSdl": {
     "defaultMessage": "This schema could not be parsed: {reason}"
   },
+  "api.create.graphql.schemaExplorer.mutations.count": {
+    "defaultMessage": "{count, plural, one {# mutation} other {# mutations}}",
+    "description": "Subtitle of the collapsible Mutations group: how many mutation fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.mutations.title": {
+    "defaultMessage": "Mutations",
+    "description": "Heading of the collapsible group listing a GraphQL schema's mutation fields."
+  },
+  "api.create.graphql.schemaExplorer.operation.arguments": {
+    "defaultMessage": "Arguments",
+    "description": "Heading over the list of arguments a GraphQL query, mutation or subscription accepts."
+  },
+  "api.create.graphql.schemaExplorer.operation.noArguments": {
+    "defaultMessage": "No arguments",
+    "description": "Shown under the Arguments heading when a GraphQL operation takes no arguments."
+  },
+  "api.create.graphql.schemaExplorer.operation.returns": {
+    "defaultMessage": "Returns",
+    "description": "Heading over the type a GraphQL query, mutation or subscription returns."
+  },
+  "api.create.graphql.schemaExplorer.queries.count": {
+    "defaultMessage": "{count, plural, one {# query} other {# queries}}",
+    "description": "Subtitle of the collapsible Queries group: how many query fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.queries.title": {
+    "defaultMessage": "Queries",
+    "description": "Heading of the collapsible group listing a GraphQL schema's query fields."
+  },
   "api.create.graphql.schemaExplorer.resolutionFailed.generic": {
     "defaultMessage": "Schema could not be resolved."
   },
@@ -615,17 +628,13 @@
   "api.create.graphql.schemaExplorer.search.placeholder": {
     "defaultMessage": "Search types and fields"
   },
-  "api.create.graphql.schemaExplorer.section.mutationHint": {
-    "defaultMessage": "Entry points that change data"
+  "api.create.graphql.schemaExplorer.subscriptions.count": {
+    "defaultMessage": "{count, plural, one {# subscription} other {# subscriptions}}",
+    "description": "Subtitle of the collapsible Subscriptions group: how many subscription fields it lists."
   },
-  "api.create.graphql.schemaExplorer.section.queryHint": {
-    "defaultMessage": "Entry points into the schema"
-  },
-  "api.create.graphql.schemaExplorer.section.subscriptionHint": {
-    "defaultMessage": "Entry points that stream updates"
-  },
-  "api.create.graphql.schemaExplorer.section.typesInSchema": {
-    "defaultMessage": "{count, plural, one {# in this schema} other {# in this schema}}"
+  "api.create.graphql.schemaExplorer.subscriptions.title": {
+    "defaultMessage": "Subscriptions",
+    "description": "Heading of the collapsible group listing a GraphQL schema's subscription fields."
   },
   "api.create.graphql.schemaExplorer.title": {
     "defaultMessage": "Schema"
@@ -640,6 +649,14 @@
   "api.create.graphql.schemaExplorer.type.valueCount": {
     "defaultMessage": "{count, plural, one {# value} other {# values}}",
     "description": "Number of values an ENUM type declares."
+  },
+  "api.create.graphql.schemaExplorer.types.count": {
+    "defaultMessage": "{count, plural, one {# type} other {# types}}",
+    "description": "Subtitle of the collapsible Types group: how many named types it lists."
+  },
+  "api.create.graphql.schemaExplorer.types.title": {
+    "defaultMessage": "Types",
+    "description": "Heading of the collapsible group listing every non-root type in a GraphQL schema."
   },
   "api.create.graphql.schemaExplorer.view.explorer": {
     "defaultMessage": "Explorer"
@@ -659,6 +676,10 @@
   },
   "api.create.graphql.urlUpload.unresolved": {
     "defaultMessage": "That schema could not be resolved. Check it is valid GraphQL SDL."
+  },
+  "api.create.graphql.urlUpload.upload.title": {
+    "defaultMessage": "Upload GraphQL Schema",
+    "description": "Heading of the empty dropzone where a GraphQL schema (SDL) file is dropped or picked."
   },
   "api.create.graphql.urlUpload.url.label": {
     "defaultMessage": "Schema URL"
@@ -2351,9 +2372,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlOverviewTab.schemaTitle": {
-    "defaultMessage": "Schema"
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.next": {
     "defaultMessage": "Next: {step}",

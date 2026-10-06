@@ -19,12 +19,10 @@
 import { useMemo } from 'react';
 import {
   Box,
-  Breadcrumbs,
   Button,
   Card,
   Chip,
   IconButton,
-  Link,
   Stack,
   Tooltip,
   Typography,
@@ -111,11 +109,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
     description: 'Shown while the API being edited is fetched.',
-  },
-  breadcrumbApis: {
-    id: 'apiListPage.title',
-    defaultMessage: 'APIs',
-    description: 'Page title for the API list page',
   },
 });
 
@@ -214,15 +207,6 @@ function GraphqlApiDetailPageContent() {
 
   return (
     <>
-      <Breadcrumbs sx={{ mb: 2 }}>
-        <Link component={RouterLink} to={routes.apis(orgHandle, projectHandler)} underline="hover">
-          <FormattedMessage {...messages.breadcrumbApis} />
-        </Link>
-        <Typography color="text.primary" noWrap variant="body2">
-          {displayName}
-        </Typography>
-      </Breadcrumbs>
-
       <Card sx={{ mb: 3 }}>
         <Box
           sx={{

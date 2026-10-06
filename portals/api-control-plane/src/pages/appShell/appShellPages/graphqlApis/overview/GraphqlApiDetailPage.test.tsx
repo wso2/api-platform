@@ -94,7 +94,7 @@ describe('GraphqlApiDetailPage', () => {
     expect(screen.getByText('v1.0.0')).toBeInTheDocument();
     expect(screen.getByText('GraphQL API')).toBeInTheDocument();
     // From the resolved SDL, via the shared schema explorer.
-    expect(await screen.findByText('Query', { exact: false })).toBeInTheDocument();
+    expect(await screen.findByText('Queries')).toBeInTheDocument();
 
     const deployLink = screen.getByRole('link', { name: /Deploy to Gateway/ });
     expect(deployLink).toHaveAttribute(

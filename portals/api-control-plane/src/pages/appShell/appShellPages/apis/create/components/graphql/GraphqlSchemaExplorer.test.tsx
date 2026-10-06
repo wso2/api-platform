@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, within } from '@/test/utils';
 import { GraphqlSchemaExplorer } from './GraphqlSchemaExplorer';
 
 const SDL = `
@@ -50,6 +50,8 @@ describe('GraphqlSchemaExplorer — before anything has loaded', () => {
     renderWithProviders(<GraphqlSchemaExplorer />);
 
     expect(screen.getByText('Schema will show here')).toBeInTheDocument();
+    // The placeholder speaks for itself — no "Schema" heading above it.
+    expect(screen.queryByText('Schema')).not.toBeInTheDocument();
     // Neither view toggle nor a source description makes sense with nothing loaded.
     expect(screen.queryByRole('button', { name: 'Explorer' })).not.toBeInTheDocument();
   });
@@ -103,6 +105,7 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
   it('renders the Query/Mutation entry points and the other named types', () => {
     renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} sourceDescription="Fetched from example.com" />);
 
+    expect(screen.getByText('Schema')).toBeInTheDocument();
     expect(screen.getByText('Fetched from example.com')).toBeInTheDocument();
     expect(screen.getByText('country')).toBeInTheDocument();
     expect(screen.getByText('addReview')).toBeInTheDocument();
@@ -171,8 +174,8 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
   it('labels an enum by its values and an object by its fields', () => {
     renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
-    expect(screen.getByRole('button', { name: /Status.*2 values/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Country.*2 fields/ })).toBeInTheDocument();
+    expect(screen.getByText('2 values')).toBeInTheDocument();
+    expect(screen.getAllByText('2 fields')).toHaveLength(1);
   });
 
   it('filters the type list by kind', async () => {
@@ -202,15 +205,73 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
     expect(screen.getByText(/could not be parsed/)).toBeInTheDocument();
   });
 
-  it('gives Query and Mutation their own chip color, with no chip at all on a type’s kind label', () => {
+  it('draws each operation as its own REST-style row, badge colored by operation kind', () => {
     renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
-    expect(screen.getByText('QUERY').closest('.MuiChip-root')).toHaveClass('MuiChip-colorInfo');
-    expect(screen.getByText('MUTATION').closest('.MuiChip-root')).toHaveClass('MuiChip-colorSuccess');
-    // A type's own kind (OBJECT/ENUM/…) is plain text now, not a colored
-    // chip — only the three root operations keep the chip treatment.
-    expect(screen.getAllByText('OBJECT')[0].closest('.MuiChip-root')).toBeNull();
-    expect(screen.getByText('ENUM').closest('.MuiChip-root')).toBeNull();
+    // One badge per operation field, colored from the shared Swagger palette
+    // so a GraphQL schema reads like a REST resource list.
+    expect(screen.getByText('QUERY')).toHaveStyle({ backgroundColor: '#4286de' });
+    expect(screen.getByText('MUTATION')).toHaveStyle({ backgroundColor: '#49cc90' });
+  });
+
+  it('wraps every non-root type in one collapsible Types group, each drawn like an operation row', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    const group = screen.getByRole('button', { name: /Types.*3 types/ });
+    expect(group).toHaveAttribute('aria-expanded', 'true');
+    // Same row as QUERY/MUTATION, badged with the SDL keyword instead.
+    expect(screen.getByRole('button', { name: 'Show details for TYPE Country' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show details for ENUM Status' })).toBeInTheDocument();
+    expect(screen.getAllByText('TYPE')[0]).toHaveStyle({ backgroundColor: '#6b7d99' });
+
+    await user.click(group);
+
+    expect(group).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('wraps queries and mutations in their own collapsible groups, like Types, and omits an empty one', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    const queries = screen.getByRole('button', { name: /Queries.*1 query/ });
+    expect(screen.getByRole('button', { name: /Mutations.*1 mutation/ })).toHaveAttribute('aria-expanded', 'true');
+    // The schema declares no Subscription type, so no empty group is drawn for it.
+    expect(screen.queryByRole('button', { name: /Subscriptions/ })).not.toBeInTheDocument();
+
+    await user.click(queries);
+
+    expect(queries).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('expands an operation row to show its arguments and return type', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    expect(screen.queryByText('Arguments')).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Show details for QUERY country' });
+    await user.click(toggle);
+
+    // Scoped to the row's own panel: the collapsed Country type row also
+    // mounts a `code` field.
+    const details = within(document.getElementById(toggle.getAttribute('aria-controls') ?? '')!);
+    expect(details.getByText('Arguments')).toBeInTheDocument();
+    expect(details.getByText('code')).toBeInTheDocument();
+    expect(details.getByText('ID!')).toBeInTheDocument();
+    expect(details.getByText('Returns')).toBeInTheDocument();
+    expect(details.getByText('Country')).toBeInTheDocument();
+  });
+
+  it('as a card, heads itself once with the view toggle on the same row, like REST\'s Resources card', () => {
+    renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} variant="card" />);
+
+    expect(screen.getAllByText('Schema')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'SDL' })).toBeInTheDocument();
+  });
+
+  it('as a card, keeps its heading over the empty state', () => {
+    renderWithProviders(<GraphqlSchemaExplorer variant="card" />);
+
+    expect(screen.getByText('Schema')).toBeInTheDocument();
+    expect(screen.getByText('Schema will show here')).toBeInTheDocument();
   });
 
   it('can switch back to Explorer after viewing SDL', async () => {

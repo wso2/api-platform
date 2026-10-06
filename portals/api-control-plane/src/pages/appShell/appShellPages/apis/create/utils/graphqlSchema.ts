@@ -50,10 +50,20 @@ export const parseGraphQLSdl = (
 /** Re-prints a schema in `graphql-js`'s canonical formatting ("Format" action). */
 export const formatSdl = (schema: GraphQLSchema): string => printSchema(schema);
 
+export type GraphQLArgumentSummary = {
+  name: string;
+  /** The argument's type, e.g. `ID!`. */
+  type: string;
+};
+
 export type GraphQLFieldSummary = {
   name: string;
   /** `(arg: Type, other: Type)`, or `''` when the field takes no arguments. */
   args: string;
+  /** The same arguments as `args`, one entry each, for a per-argument listing. */
+  arguments: GraphQLArgumentSummary[];
+  /** The field's own SDL description, if it declares one. */
+  description?: string;
   /** The field's return type, e.g. `[Country!]!`. */
   type: string;
   deprecated: boolean;
@@ -69,7 +79,9 @@ const describeFields = (
 ): GraphQLFieldSummary[] =>
   Object.values(fields).map((field) => ({
     args: describeArgs(field),
+    arguments: field.args.map((arg) => ({ name: arg.name, type: arg.type.toString() })),
     deprecated: field.deprecationReason !== undefined && field.deprecationReason !== null,
+    description: field.description ?? undefined,
     name: field.name,
     type: field.type.toString(),
   }));
@@ -78,7 +90,9 @@ const describeFields = (
 const describeInputFields = (fields: Record<string, GraphQLInputField>): GraphQLFieldSummary[] =>
   Object.values(fields).map((field) => ({
     args: '',
+    arguments: [],
     deprecated: field.deprecationReason !== undefined && field.deprecationReason !== null,
+    description: field.description ?? undefined,
     name: field.name,
     type: field.type.toString(),
   }));

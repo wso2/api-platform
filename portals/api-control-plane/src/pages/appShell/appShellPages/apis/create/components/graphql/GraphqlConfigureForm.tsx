@@ -74,11 +74,6 @@ const messages = defineMessages({
     id: 'api.create.generalForm.context.error.pattern',
     defaultMessage: 'Start with / and use only letters, numbers, hyphens, dots and slashes.',
   },
-  contextHelper: {
-    id: 'api.create.graphql.configureForm.context.helper',
-    defaultMessage:
-      'Built from the identifier and version. All operations are served from this single path. Optional — leave it as generated, or clear it to let the server pick one.',
-  },
   contextLabel: {
     id: 'api.create.generalForm.context.label',
     defaultMessage: 'Context',
@@ -90,10 +85,6 @@ const messages = defineMessages({
   descriptionLabel: {
     id: 'api.create.generalForm.description.label',
     defaultMessage: 'Description',
-  },
-  endpointHelper: {
-    id: 'api.create.graphql.configureForm.endpoint.helper',
-    defaultMessage: 'The GraphQL backend the gateway routes POST requests to.',
   },
   endpointLabel: {
     id: 'api.create.graphql.configureForm.endpoint.label',
@@ -124,26 +115,14 @@ const messages = defineMessages({
     id: 'api.create.generalForm.identifier.error.tooLong',
     defaultMessage: 'Use {max} characters or fewer.',
   },
-  identifierHelper: {
-    id: 'api.create.graphql.configureForm.identifier.helper',
-    defaultMessage: 'URL-friendly. Generated from the name until you change it.',
-  },
   identifierLabel: {
     id: 'api.create.generalForm.identifier.label',
     defaultMessage: 'Identifier',
-  },
-  identifierStatusAvailable: {
-    id: 'api.create.graphql.configureForm.identifier.status.available',
-    defaultMessage: 'Available.',
   },
   identifierStatusAvailableIcon: {
     id: 'api.create.generalForm.identifier.status.availableIcon',
     defaultMessage: 'Identifier is available',
     description: 'Accessible label for the tick shown beside a free identifier.',
-  },
-  identifierStatusChecking: {
-    id: 'api.create.generalForm.identifier.status.checking',
-    defaultMessage: 'Checking whether this identifier is free…',
   },
   identifierStatusUnavailable: {
     id: 'api.create.graphql.configureForm.identifier.status.unavailable',
@@ -174,10 +153,6 @@ const messages = defineMessages({
   versionErrorRequired: {
     id: 'api.create.generalForm.version.error.required',
     defaultMessage: 'Enter a version.',
-  },
-  versionHelper: {
-    id: 'api.create.graphql.configureForm.version.helper',
-    defaultMessage: 'e.g. 1.0',
   },
   versionLabel: {
     id: 'api.create.generalForm.version.label',
@@ -513,20 +488,11 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
                   sx={{ mt: 0.75 }}
                   value={formState.id}
                 />
-                <FormHelperText
-                  id="graphqlIdentifier-error"
-                  sx={isAvailable ? { color: 'success.main' } : undefined}
-                >
+                {/* Errors only, like REST: the adornment's icons already show
+                    a live check's progress and a free identifier. */}
+                <FormHelperText id="graphqlIdentifier-error">
                   {fieldErrors.id ??
-                    (isChecking ? (
-                      <FormattedMessage {...messages.identifierStatusChecking} />
-                    ) : isUnavailable ? (
-                      <FormattedMessage {...messages.identifierStatusUnavailable} />
-                    ) : isAvailable ? (
-                      <FormattedMessage {...messages.identifierStatusAvailable} />
-                    ) : (
-                      <FormattedMessage {...messages.identifierHelper} />
-                    ))}
+                    (isUnavailable ? <FormattedMessage {...messages.identifierStatusUnavailable} /> : null)}
                 </FormHelperText>
               </FormControl>
             </Grid>
@@ -543,7 +509,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
                   value={formState.version}
                 />
                 <FormHelperText id="graphqlVersion-error">
-                  {fieldErrors.version ?? <FormattedMessage {...messages.versionHelper} />}
+                  {fieldErrors.version}
                 </FormHelperText>
               </FormControl>
             </Grid>
@@ -560,7 +526,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
               value={formState.context}
             />
             <FormHelperText id="graphqlContext-error">
-              {fieldErrors.context ?? <FormattedMessage {...messages.contextHelper} />}
+              {fieldErrors.context}
             </FormHelperText>
           </FormControl>
 
@@ -595,7 +561,7 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
               value={formState.endpointUrl}
             />
             <FormHelperText id="graphqlEndpointUrl-error">
-              {fieldErrors.targetUrl ?? <FormattedMessage {...messages.endpointHelper} />}
+              {fieldErrors.targetUrl}
             </FormHelperText>
           </FormControl>
         </Form.Stack>
