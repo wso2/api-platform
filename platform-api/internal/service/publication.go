@@ -322,17 +322,49 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// resolvePlanUUIDs resolves each subscription plan handle to its UUID,
-// rejecting any handle absent from the organization's catalog.
+// loadActivePlans loads the plans for handles, keyed by handle, rejecting any handle
+// absent from the organization's catalog and any plan that is not ACTIVE.
+func (s *PublicationService) loadActivePlans(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error) {
+	plans, err := s.subscriptionPlanRepo.GetByHandles(handles, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+	}
+	var unknown, inactive []string
+	for _, h := range handles {
+		plan, ok := plans[h]
+		switch {
+		case !ok:
+			unknown = append(unknown, h)
+		case plan.Status != model.SubscriptionPlanStatusActive:
+			inactive = append(inactive, h)
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, apperror.APIPublicationValidationFailed.New(
+			"subscriptionPlanIds not found in the organization's catalog: " + strings.Join(unknown, ", "))
+	}
+	if len(inactive) > 0 {
+		return nil, apperror.APIPublicationValidationFailed.New(
+			"subscriptionPlanIds that are not active: " + strings.Join(inactive, ", "))
+	}
+	return plans, nil
+}
+
+// resolvePlanUUIDs resolves each subscription plan handle to its UUID, rejecting
+// any handle that is unknown or not ACTIVE.
 func (s *PublicationService) resolvePlanUUIDs(handles []string, orgUUID string) ([]string, error) {
 	if len(handles) == 0 {
 		return nil, nil
 	}
-	resolved, err := s.subscriptionPlanRepo.GetUUIDsByHandles(handles, orgUUID)
+	plans, err := s.loadActivePlans(handles, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve subscription plan handles: %w", err)
+		return nil, err
 	}
-	return uuidsForHandles(handles, resolved, "subscriptionPlanIds not found in the organization's catalog")
+	uuids := make([]string, 0, len(handles))
+	for _, h := range handles {
+		uuids = append(uuids, plans[h].UUID)
+	}
+	return uuids, nil
 }
 
 // resolveDocUUIDs resolves each document handle to its doc_uuid, scoped to
@@ -729,13 +761,13 @@ func (s *PublicationService) createMissingPortalPlans(ctx context.Context, porta
 	if len(handles) == 0 {
 		return nil
 	}
+	byHandle, err := s.loadActivePlans(handles, orgUUID)
+	if err != nil {
+		return err
+	}
 	plans := make([]*model.SubscriptionPlan, 0, len(handles))
-	for _, handle := range handles {
-		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
-		if err != nil {
-			return fmt.Errorf("failed to get subscription plan %q: %w", handle, err)
-		}
-		plans = append(plans, plan)
+	for _, h := range handles {
+		plans = append(plans, byHandle[h])
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, portalPlansTimeout)

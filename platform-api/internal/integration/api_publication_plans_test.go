@@ -21,6 +21,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,5 +137,52 @@ func TestPublicationPublish_PlanSyncFailureStopsBeforePush(t *testing.T) {
 				t.Fatalf("[%s] want the draft kept, got %v", it.driver, err)
 			}
 		})
+	}
+}
+
+func deactivatePlan(t *testing.T, it *itDB, g graph) {
+	t.Helper()
+	it.exec(t, "UPDATE subscription_plans SET status = ? WHERE uuid = ?", string(model.SubscriptionPlanStatusInactive), g.plan)
+}
+
+func TestPublicationDraft_InactivePlanRejected(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	svc := newPublicationTestService(it)
+	deactivatePlan(t, it, g)
+
+	draft := &model.Publication{DisplayName: "x", Version: "1.0", AgentVisibility: "VISIBLE"}
+	_, err := svc.SaveDraftDetails("rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "actor", draft, []string{planHandleFor(g)}, nil)
+	if !apperror.APIPublicationValidationFailed.Is(err) {
+		t.Fatalf("[%s] want APIPublicationValidationFailed for an inactive plan, got %v", it.driver, err)
+	}
+	if !strings.Contains(err.Error(), planHandleFor(g)) || !strings.Contains(err.Error(), "not active") {
+		t.Fatalf("[%s] want the error to name the inactive plan, got %v", it.driver, err)
+	}
+}
+
+func TestPublicationPublish_PlanDeactivatedAfterSaveIsRejected(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+	portal := &planSyncRecorder{}
+	svc := newPublicationTestServiceWith(it, portal)
+	saveDraftWithPlans(t, it, svc, g, []string{planHandleFor(g)})
+	deactivatePlan(t, it, g)
+
+	_, _, err := svc.Publish(context.Background(), "rest-api", apiHandleFor(g), portalHandleFor(g), g.org, "publisher")
+	if !apperror.APIPublicationValidationFailed.Is(err) {
+		t.Fatalf("[%s] want APIPublicationValidationFailed, got %v", it.driver, err)
+	}
+	if len(portal.events) != 0 {
+		t.Fatalf("[%s] want no portal call for an inactive plan, got %v", it.driver, portal.events)
+	}
+	if _, err := svc.GetPublication("rest-api", apiHandleFor(g), portalHandleFor(g), g.org); !apperror.APIPublicationNotFound.Is(err) {
+		t.Fatalf("[%s] want no live listing, got %v", it.driver, err)
+	}
+	draft, err := svc.GetDraft("rest-api", apiHandleFor(g), portalHandleFor(g), g.org)
+	if err != nil || len(draft.SubscriptionPlanIds) != 1 || draft.SubscriptionPlanIds[0] != planHandleFor(g) {
+		t.Fatalf("[%s] want the draft kept with its plan so the user can clear it, got %+v (%v)", it.driver, draft, err)
 	}
 }
