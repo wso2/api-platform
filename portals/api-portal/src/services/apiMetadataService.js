@@ -1407,6 +1407,7 @@ const updateSubscriptionPlans = async (req, res) => {
         }
 
         const updatedRecords = [];
+        let anyCreated = false;
 
         await db.withTransaction(async (t) => {
             for (const plan of subscriptionPlans) {
@@ -1420,12 +1421,13 @@ const updateSubscriptionPlans = async (req, res) => {
                     );
                 }
                 updatedRecords.push(result.subscriptionPlanResponse);
+                if (result.statusCode === 201) anyCreated = true;
             }
         });
         const audits = await userIdpReferenceDao.buildListAuditFields(updatedRecords);
         const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
 
-        res.status(201).send(updatedPlans);
+        res.status(anyCreated ? 201 : 200).send(updatedPlans);
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,

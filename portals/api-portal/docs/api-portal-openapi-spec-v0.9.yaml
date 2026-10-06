@@ -461,8 +461,6 @@ paths:
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
       responses:
-        "200":
-          $ref: "#/components/responses/MessageResponse"
         "201":
           $ref: "#/components/responses/SubscriptionPlanMutationResponse"
         "400":
@@ -482,7 +480,7 @@ paths:
       description: >-
         Upserts one subscription plan when the request body is an object, or multiple plans when the body is an array. A
         single plan update returns `200` when an existing plan is updated and `201` when a new plan is created. A bulk
-        update returns `201`.
+        update returns `200` when every plan already existed and `201` when at least one plan was created.
       operationId: putSubscriptionPlans
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
