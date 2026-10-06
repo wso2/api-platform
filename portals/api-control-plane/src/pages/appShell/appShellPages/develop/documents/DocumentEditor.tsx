@@ -38,7 +38,7 @@ import { FileText, Upload } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { isErrorCode, type ApiError } from '@/api/core/errors';
+import { ErrorCode, isErrorCode, type ApiError } from '@/api/core/errors';
 import {
   useApiDocument,
   useApiDocumentContent,
@@ -61,6 +61,7 @@ import {
   MAX_CUSTOM_TYPE_LENGTH,
   documentTypeLabel,
   documentTypeName,
+  isCustomDocumentType,
   validateCustomType,
   type CustomTypeError,
 } from './documentTypes';
@@ -123,6 +124,10 @@ const messages = defineMessages({
   customTypeInvalid: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeInvalid',
     defaultMessage: 'Use only letters, numbers, spaces, hyphens and underscores.',
+  },
+  customTypeReserved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeReserved',
+    defaultMessage: 'This is a reserved document type.',
   },
   nameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameLabel',
@@ -255,6 +260,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.tooLarge',
     defaultMessage: 'The document is too large to save.',
   },
+  nameExists: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameExists',
+    defaultMessage: 'A document with this name already exists for this API.',
+  },
 });
 
 const FILE_ERROR_MESSAGE: Record<MarkdownFileError, typeof messages.fileType> = {
@@ -270,6 +279,7 @@ const FILE_ERROR_MESSAGE: Record<MarkdownFileError, typeof messages.fileType> = 
 const CUSTOM_TYPE_ERROR_MESSAGE: Record<Exclude<CustomTypeError, 'required'>, typeof messages.customTypeTooLong> = {
   tooLong: messages.customTypeTooLong,
   invalid: messages.customTypeInvalid,
+  reserved: messages.customTypeReserved,
 };
 
 type Layout = 'source' | 'split' | 'preview';
@@ -396,7 +406,7 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
     return () => window.removeEventListener('beforeunload', warn);
   }, [hasUnsavedChanges]);
 
-  const valid = Boolean(trimmedName) && Boolean(content.trim()) && !customTypeError;
+  const valid = Boolean(trimmedName) && Boolean(content.trim()) && !customTypeFormatError;
 
   const applyUpload = (upload: { fileName: string; content: string }) => {
     setContent(upload.content);
@@ -424,6 +434,9 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
 
   const handleError = (error: ApiError) => {
     const fieldErrors: FieldErrors = {};
+    if (isErrorCode(error, ErrorCode.API_DOCUMENT_NAME_EXISTS)) {
+      fieldErrors.displayName = intl.formatMessage(messages.nameExists);
+    }
     for (const fieldError of error.fieldErrors) {
       if (fieldError.field === 'displayName' || fieldError.field === 'type') {
         fieldErrors[fieldError.field] = fieldError.message;
@@ -451,7 +464,7 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
             fileName: fileName || undefined,
             inlineContent: content,
             type,
-            otherTypeName: isOther ? customType.trim() : undefined,
+            otherTypeName: isOther ? (customType.trim() || undefined) : undefined,
           },
         },
         {
@@ -465,11 +478,11 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
       return;
     }
 
-    // Only what changed is sent: omitting the content makes this a
-    // metadata-only update that leaves the stored bytes untouched.
-    // Type cannot be changed after creation.
+    const existingIsCustomType = isCustomDocumentType(existing.type);
     const body: UpdateApiDocumentBody = {
-      displayName: trimmedName !== existing.displayName ? trimmedName : undefined,
+      displayName: trimmedName,
+      type: existingIsCustomType ? 'OTHER' : (existing.type as ApiDocumentType),
+      otherTypeName: existingIsCustomType ? existing.type : undefined,
       fileName: uploadedNew && fileName ? fileName : undefined,
       inlineContent: contentChanged ? content : undefined,
     };
@@ -542,7 +555,6 @@ function DocumentForm({ apiHandle, existing, existingContent = '', onCancel, onS
             {isOther && !isEdit && (
               <FormControl
                 error={Boolean(customTypeFormatError)}
-                required
                 sx={{ flexShrink: 0, width: { md: 220, xs: '100%' } }}
               >
                 <FormLabel htmlFor={customTypeId}>

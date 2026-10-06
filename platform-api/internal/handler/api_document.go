@@ -22,6 +22,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -221,7 +222,7 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return serviceError(err, "failed to load created document")
 	}
-	w.Header().Set("Location", r.URL.Path+"/"+handle)
+	w.Header().Set("Location", r.URL.Path+"/"+url.PathEscape(handle))
 	httputil.WriteJSON(w, http.StatusCreated, doc)
 	return nil
 }
@@ -250,8 +251,7 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 
-	// If the caller echoed back the document handle, it must match the path.
-	if parsed.handle != "" && parsed.handle != docID {
+	if parsed.handleSet && parsed.handle != docID {
 		return apperror.ValidationFailed.New("id in request body does not match the document ID in the path")
 	}
 
@@ -321,6 +321,7 @@ type parsedDocForm struct {
 	docTypeSet     bool
 	otherTypeName  string // only meaningful when docType == "OTHER"
 	handle         string
+	handleSet      bool
 	displayName    string
 	displayNameSet bool
 	fileName       string
@@ -355,8 +356,11 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 				parsed.docType = strings.TrimSpace(vals[0])
 			}
 		}
-		if vals, ok := form.Value["id"]; ok && len(vals) > 0 {
-			parsed.handle = strings.TrimSpace(vals[0])
+		if vals, ok := form.Value["id"]; ok {
+			parsed.handleSet = true
+			if len(vals) > 0 {
+				parsed.handle = strings.TrimSpace(vals[0])
+			}
 		}
 		if vals, ok := form.Value["otherTypeName"]; ok && len(vals) > 0 {
 			parsed.otherTypeName = strings.TrimSpace(vals[0])

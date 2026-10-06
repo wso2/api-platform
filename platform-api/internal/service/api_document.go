@@ -118,6 +118,9 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 	}
 
 	if err := s.documentRepo.CreateDocument(doc); err != nil {
+		if repository.IsUniqueViolation(err) {
+			return "", apperror.Conflict.New().WithLogMessage("document handle already exists for artifact")
+		}
 		s.slogger.Error("Failed to create document", "artifactUUID", doc.ArtifactUUID, "error", err)
 		return "", err
 	}
@@ -129,13 +132,18 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 }
 
 // resolveStoredDocType computes the value to persist in the type column.
-// For OTHER it stores the otherTypeName value directly (e.g. "FAQ"), so the
-// OTHER_ prefix never appears in the database. Fixed types are stored as-is.
+// For OTHER with a non-empty otherTypeName it stores the bare custom name
+// (e.g. "FAQ") so the fixed type enum never appears in the database as a
+// custom name. For OTHER with no otherTypeName it stores "OTHER" itself,
+// which the UI renders as "Other". Fixed types are stored as-is.
 func resolveStoredDocType(docType, otherTypeName string) string {
 	if docType != constants.DocumentTypeOther {
 		return docType
 	}
-	return strings.TrimSpace(otherTypeName)
+	if trimmed := strings.TrimSpace(otherTypeName); trimmed != "" {
+		return trimmed
+	}
+	return constants.DocumentTypeOther
 }
 
 // CreateApiDocument creates a user-authored document attached to an artifact.
@@ -151,14 +159,13 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	}
 	if req.Type == constants.DocumentTypeOther {
 		trimmed := strings.TrimSpace(req.OtherTypeName)
-		if trimmed == "" {
-			return "", apperror.ValidationFailed.New("otherTypeName is required when type is OTHER")
-		}
-		if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
-			return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-		}
-		if len(trimmed) > maxDocTypeLen {
-			return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+		if trimmed != "" {
+			if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+				return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+			}
+			if len(trimmed) > maxDocTypeLen {
+				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+			}
 		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
@@ -177,7 +184,7 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		return "", apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
 	}
 	if nameExists {
-		return "", apperror.Conflict.New().WithLogMessage("document display name already exists for artifact")
+		return "", apperror.APIDocumentNameExists.New()
 	}
 	if req.Handle != "" {
 		if err := utils.ValidateHandle(req.Handle); err != nil {
@@ -437,14 +444,13 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		}
 		if newType == constants.DocumentTypeOther {
 			trimmed := strings.TrimSpace(req.OtherTypeName)
-			if trimmed == "" {
-				return apperror.ValidationFailed.New("otherTypeName is required when type is OTHER")
-			}
-			if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
-				return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-			}
-			if len(trimmed) > maxDocTypeLen {
-				return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+			if trimmed != "" {
+				if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+					return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+				}
+				if len(trimmed) > maxDocTypeLen {
+					return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+				}
 			}
 		}
 		updatedDocument.Type = resolveStoredDocType(newType, req.OtherTypeName)
@@ -463,7 +469,7 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 			return apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
 		}
 		if nameExists {
-			return apperror.Conflict.New().WithLogMessage("document display name already exists for artifact")
+			return apperror.APIDocumentNameExists.New()
 		}
 		updatedDocument.DisplayName = trimmed
 	}
@@ -478,6 +484,8 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		updatedDocument.Content = req.Content
 		if req.ContentType != nil {
 			updatedDocument.ContentType = *req.ContentType
+		} else {
+			updatedDocument.ContentType = s.contentTypeForDocType(updatedDocument.Type, req.Content)
 		}
 	}
 
@@ -627,6 +635,7 @@ func (s *APIDocumentService) contentTypeForDocType(docType string, content []byt
 	case constants.DocumentTypeThumbnail:
 		return s.GetImageContentType(content)
 	default:
+		//Should be expanded if supporting other document types with specific content types. For now, default to markdown.
 		return "text/markdown; charset=utf-8"
 	}
 }

@@ -34,15 +34,14 @@ export const apiThumbnailParentId = (apiType: string, apiId: string): string =>
   `${apiType}/${apiId}`;
 
 export const apiThumbnailQueries = {
-  /** The stored thumbnail Blob + sniffed content type. 404 is a normal "not set" state. */
+  /** The stored thumbnail Blob + sniffed content type. 204 No Content is the normal "not set" state. */
   blob: (org: OrgScope, apiType: string, apiId: string) =>
     queryOptions({
       queryKey: apiThumbnailKeys.child(org, apiThumbnailParentId(apiType, apiId), 'blob'),
       queryFn: ({ signal }) => getApiThumbnail(apiType, apiId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
       // A missing thumbnail is a steady state, not a transient failure — one
-      // 404 doesn't mean the next request will succeed. Avoid React Query's
-      // default 3-retry burst on every re-render that mounts the component.
+      // 204 doesn't mean the next request will succeed.
       retry: false,
     }),
 };

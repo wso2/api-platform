@@ -200,9 +200,12 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
     const fence = FENCE.exec(line);
     if (fence) {
       const marker = fence[1];
+      const closing = new RegExp(
+        `^ {0,3}${marker[0] === '`' ? '`' : '~'}{${marker.length},}\\s*$`,
+      );
       const body: string[] = [];
       i += 1;
-      while (i < lines.length && !lines[i].trimStart().startsWith(marker)) {
+      while (i < lines.length && !closing.test(lines[i])) {
         body.push(lines[i]);
         i += 1;
       }

@@ -85,8 +85,8 @@ func (h *APIThumbnailHandler) resolveArtifactUUID(r *http.Request) (orgID, artif
 	return orgID, artifactUUID, nil
 }
 
-// GetThumbnail handles GET /apis/{apiType}/{apiId}/thumbnail. Streams the
-// stored bytes with the sniffed Content-Type. 404 on absent.
+// GetThumbnail handles GET /apis/{apiType}/{apiId}/thumbnail. Streams the stored bytes
+// with the sniffed Content-Type. 204 No Content when thumbnail is not set
 func (h *APIThumbnailHandler) GetThumbnail(w http.ResponseWriter, r *http.Request) error {
 	orgID, artifactUUID, err := h.resolveArtifactUUID(r)
 	if err != nil {
@@ -96,10 +96,15 @@ func (h *APIThumbnailHandler) GetThumbnail(w http.ResponseWriter, r *http.Reques
 	doc, content, err := h.service.GetDocumentWithContent(artifactUUID, constants.DocumentHandleThumbnail,
 		orgID, constants.DocumentTypeThumbnail)
 	if err != nil {
+		if apperror.NotFound.Is(err) {
+			w.WriteHeader(http.StatusNoContent)
+			return nil
+		}
 		return serviceError(err, "failed to fetch thumbnail")
 	}
 	if len(content) == 0 {
-		return apperror.NotFound.New()
+		w.WriteHeader(http.StatusNoContent)
+		return nil
 	}
 
 	ct := "application/octet-stream"

@@ -259,8 +259,8 @@ func TestAPIDocumentService_CreateApiDocument_DuplicateDisplayNameRejected(t *te
 		DisplayName: "Getting started",
 	}, "org-1", "alice", "artifact-1")
 
-	if err == nil || !apperror.Conflict.Is(err) {
-		t.Fatalf("CreateApiDocument duplicate displayName err = %v, want Conflict", err)
+	if err == nil || !apperror.APIDocumentNameExists.Is(err) {
+		t.Fatalf("CreateApiDocument duplicate displayName err = %v, want APIDocumentNameExists", err)
 	}
 	if len(docRepo.createdDocs) != 0 {
 		t.Errorf("CreateDocument called despite duplicate displayName")

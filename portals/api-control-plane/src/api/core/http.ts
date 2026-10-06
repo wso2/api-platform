@@ -501,13 +501,19 @@ export type BlobResponse = {
  * Like {@link request}, for endpoints that return raw bytes (images, PDFs, ...).
  * The body comes back as a `Blob` so the caller can `URL.createObjectURL(blob)`
  * for an `<img>` or save it to disk. Errors are still `ApiError`.
+ *
+ * Returns `null` for 204/205 No Content — endpoints that use the empty response
+ * as a typed "not set" signal (e.g. `GET /thumbnail` when no thumbnail exists).
  */
 export async function requestBlob(
   method: string,
   path: string,
   options: RequestOptions = {}
-): Promise<BlobResponse> {
+): Promise<BlobResponse | null> {
   const response = await send(method, path, options, 'blob');
+  if (response.status === 204 || response.status === 205) {
+    return null;
+  }
   const contentType = String(response.headers['content-type'] ?? '');
   const blob =
     response.data instanceof Blob

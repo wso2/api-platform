@@ -88,7 +88,9 @@ export const MAX_CUSTOM_TYPE_LENGTH = 20;
 /** Letters, digits, spaces, hyphens and underscores. */
 const CUSTOM_TYPE_PATTERN = /^[\p{L}\p{N} _-]+$/u;
 
-export type CustomTypeError = 'required' | 'tooLong' | 'invalid';
+const RESERVED_CUSTOM_TYPE_NAMES = new Set(DOCUMENT_TYPES.map((t) => t.toUpperCase()));
+
+export type CustomTypeError = 'required' | 'tooLong' | 'invalid' | 'reserved';
 
 /** Why a custom type name can't be saved, or `undefined` when it can. */
 export const validateCustomType = (name: string): CustomTypeError | undefined => {
@@ -96,6 +98,7 @@ export const validateCustomType = (name: string): CustomTypeError | undefined =>
   if (!trimmed) return 'required';
   if (!CUSTOM_TYPE_PATTERN.test(trimmed)) return 'invalid';
   if (trimmed.length > MAX_CUSTOM_TYPE_LENGTH) return 'tooLong';
+  if (RESERVED_CUSTOM_TYPE_NAMES.has(trimmed.toUpperCase())) return 'reserved';
   return undefined;
 };
 

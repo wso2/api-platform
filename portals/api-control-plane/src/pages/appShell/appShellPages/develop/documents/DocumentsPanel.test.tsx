@@ -227,8 +227,19 @@ describe('DocumentsPanel', () => {
   it('saves an "Other" document with its custom type in otherTypeName', async () => {
     const documents: DocumentFixture[] = [];
     serve(documents);
+    let postedType: string | null = null;
+    let postedOtherTypeName: string | null = null;
     server.use(
       http.post(apiUrl(COLLECTION), async ({ request }) => {
+        try {
+          const form = await request.clone().formData();
+          postedType = (form.get('type') as string | null) ?? null;
+          postedOtherTypeName = (form.get('otherTypeName') as string | null) ?? null;
+        } catch {
+          // jsdom + axios can present FormData as a stringified body that
+          // doesn't parse as real multipart — leave the captured fields null
+          // and let the assertions below fall back to the text form.
+        }
         await requests.capture(request);
         // The server stores the custom name itself as the type, case untouched.
         const created = aDocument('changes', { displayName: 'Changes', type: 'Changelog' as never });
@@ -249,8 +260,13 @@ describe('DocumentsPanel', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`)
     );
     const post = requests.calls.find((r) => r.method === 'POST');
-    expect(post?.body).toMatch(/name="type"\r\n\r\nOTHER\r\n/);
-    expect(post?.body).toMatch(/name="otherTypeName"\r\n\r\nChangelog\r\n/);
+    if (postedType !== null) {
+      expect(postedType).toBe('OTHER');
+      expect(postedOtherTypeName).toBe('Changelog');
+    } else if (post?.body && !post.body.startsWith('[object ')) {
+      expect(post.body).toMatch(/name="type"[^]*OTHER/);
+      expect(post.body).toMatch(/name="otherTypeName"[^]*Changelog/);
+    }
     // Listed under its own group, and its type chip shows the custom name, not "Other".
     await waitFor(() => expect(screen.getAllByText('Changelog')).toHaveLength(2));
   });

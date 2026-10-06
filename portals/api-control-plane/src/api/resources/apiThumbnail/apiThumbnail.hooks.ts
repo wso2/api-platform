@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
@@ -103,9 +103,20 @@ export const useApiThumbnail = (
   });
 
   const blob = query.data?.blob;
-  const url = blob ? objectUrlFor(blob) : undefined;
+  // Create the URL inside the effect, not during render. Calling
+  // `objectUrlFor(blob)` in render would store a shared-cache entry with
+  // `refs: 0`; if the render is discarded before commit (concurrent mode,
+  // Suspense / error interruption, blob swap), the effect never increments
+  // the ref count, no revoke timer is scheduled, and the `blob:` URL leaks
+  // its backing bytes. Keeping URL creation + retain / release inside the
+  // same commit-phase effect ties the URL's lifetime to a mounted consumer.
+  const [url, setUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (!blob) return;
+    if (!blob) {
+      setUrl(undefined);
+      return;
+    }
+    setUrl(objectUrlFor(blob));
     return retainObjectUrl(blob);
   }, [blob]);
 
@@ -150,11 +161,7 @@ export const useDeleteApiThumbnail = (overrides: Overrides = {}) => {
     onSuccess: (_data, { apiType, apiId }) => {
       // Push the "no thumbnail" state into the cache directly instead of
       // invalidating-and-refetching. Invalidation would trigger a GET that
-      // returns 404 — React Query treats that as an error and *keeps the
-      // previous data on screen*, so the old thumbnail would linger until a
-      // full page refresh. Setting the data to `null` (which the endpoint
-      // also returns for 404) flips every live `<img>` to the initials
-      // fallback on the next render with zero extra network calls.
+      // returns 204
       if (!org) return;
       queryClient.setQueryData(
         apiThumbnailQueries.blob(org, apiType, apiId).queryKey,

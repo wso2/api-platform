@@ -88,6 +88,11 @@ describe('custom "Other" document types', () => {
     ['Notes!', 'invalid'],
     ['Changelog', undefined],
     ['Release notes', undefined],
+    // Reserved fixed-type names are rejected (case-insensitive).
+    ['HOW_TO', 'reserved'],
+    ['how_to', 'reserved'],
+    ['OTHER', 'reserved'],
+    ['SAMPLE_SDK', 'reserved'],
   ])('validates %j', (name, error) => {
     expect(validateCustomType(name)).toBe(error);
   });

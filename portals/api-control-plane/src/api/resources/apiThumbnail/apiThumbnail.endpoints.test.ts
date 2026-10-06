@@ -40,9 +40,12 @@ import {
  * Contract tests for `/apis/{apiType}/{apiId}/thumbnail`.
  *
  * The thumbnail endpoint is unusual on three axes:
- *  1. GET returns raw bytes (a Blob), not a JSON envelope.
- *  2. 404 is a steady "no thumbnail set" state, not an error — the endpoint
- *     resolves it to `null` so the hook can gate the UI without a try/catch.
+ *  1. GET returns raw bytes (a Blob), not a JSON envelope. When no thumbnail
+ *     is set, the server returns 204 No Content (not 404) so the browser
+ *     DevTools stays free of red entries for APIs without a thumbnail.
+ *  2. 204 and 404 both resolve to `null` — the endpoint never throws for
+ *     either "no thumbnail" status, letting the hook gate the UI without a
+ *     try/catch at every call site.
  *  3. PUT is multipart (image bytes), not JSON. jsdom can't serialise FormData
  *     onto the wire, so what we assert is that the Content-Type isn't labelled
  *     JSON and that a non-GET verb is used.
@@ -84,11 +87,19 @@ describe('getApiThumbnail', () => {
     expect(requests.last()?.url.pathname).toBe('/api/v0.9/apis/rest-api/orders-api/thumbnail');
   });
 
-  it('resolves 404 to null rather than throwing', async () => {
-    // This is what lets the delete hook flip the cache to `null` and the hook
-    // tell "no thumbnail" apart from "fetch failed" without a try/catch at the
-    // call site. If this ever regresses to a throw, every list page gets 20
-    // red error toasts for APIs that simply have no thumbnail.
+  it('resolves 204 No Content to null (no thumbnail set)', async () => {
+    // Primary contract: server returns 204 when no thumbnail exists so the
+    // browser DevTools shows no red error entry. requestBlob maps 204 → null.
+    server.use(
+      mswHttp.get(apiUrl(PATH), () => new HttpResponse(null, { status: 204 }))
+    );
+
+    await expect(getApiThumbnail('rest-api', 'orders-api')).resolves.toBeNull();
+  });
+
+  it('resolves 404 to null for backward compatibility', async () => {
+    // Older server versions return 404; the endpoint still catches it so a
+    // mixed deployment never breaks the listing page's initials fallback.
     server.use(failure('get', PATH, 404, 'NOT_FOUND'));
 
     await expect(getApiThumbnail('rest-api', 'orders-api')).resolves.toBeNull();

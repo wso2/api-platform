@@ -22,7 +22,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   apiUrl,
-  failure,
   noContent,
   recorder,
   type Recorder,
@@ -48,12 +47,12 @@ import { apiThumbnailQueries } from './apiThumbnail.queries';
  *     right bytes" from "the URL points anywhere at all". Here we assert that
  *     a `blob:` URL is produced when a Blob is cached and that it is
  *     `URL.revokeObjectURL`'d on unmount, so the handle doesn't leak.
- *  2. A 404 from the server resolves to a `null` cache entry and a `url` of
+ *  2. A 204 from the server resolves to a `null` cache entry and a `url` of
  *     `undefined` — not an error. This is what lets a listing page render
  *     initials fallback instead of 20 error toasts.
  *  3. The delete mutation uses `setQueryData(key, null)` rather than
- *     `invalidateQueries`. A refetch after invalidation would 404 and React
- *     Query would keep the previous blob on screen until a page refresh.
+ *     `invalidateQueries`. A refetch after invalidation would return 204 and
+ *     React Query would keep the previous blob on screen until a page refresh.
  */
 
 const API_TYPE = 'rest-api';
@@ -97,7 +96,12 @@ const servePng = () => {
 };
 
 const serveNoThumbnail = () => {
-  server.use(failure('get', PATH, 404, 'NOT_FOUND', { record: requests }));
+  server.use(
+    mswHttp.get(apiUrl(PATH), async ({ request }) => {
+      await requests.capture(request);
+      return new HttpResponse(null, { status: 204 });
+    })
+  );
 };
 
 describe('useApiThumbnail — fetch and lifecycle', () => {
@@ -140,7 +144,7 @@ describe('useApiThumbnail — fetch and lifecycle', () => {
     expect(revokedObjectURLs).toContain(createdUrl);
   });
 
-  it('surfaces 404 as a null url, no error', async () => {
+  it('surfaces 204 (no thumbnail) as a null url, no error', async () => {
     // The listing page uses `url` to decide between an `<img>` and an initials
     // fallback. A thrown error on this hook would break every API card with
     // no custom thumbnail — which is the common case.
