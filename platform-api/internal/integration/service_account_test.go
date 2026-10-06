@@ -41,7 +41,7 @@ func TestServiceAccount_LifecycleAndLedger(t *testing.T) {
 	accountUUID := id()
 	sa := &model.ServiceAccount{
 		UUID: accountUUID, OrganizationID: orgID, Handle: "ci-bot-" + accountUUID[:6], DisplayName: "CI bot",
-		Owner: "team", Description: "deploys", ClientID: "sa_it_" + accountUUID, ClientSecretHash: "h1",
+		Description: "deploys", ClientID: "sa_it_" + accountUUID, ClientSecretHash: "h1",
 		MaskedSecret: "***abcde", Roles: "ap_sa_reader",
 	}
 	if err := repo.Create(sa, sa.Subject("it")); err != nil {

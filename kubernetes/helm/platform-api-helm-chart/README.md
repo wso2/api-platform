@@ -231,7 +231,7 @@ every key below with `platform-api.`.
     PEMs mounted unless service accounts are on).
   - `config.auth.authorization.*` — scope enforcement, `scope` | `role` mode, and the
     `roles` → scopes table rendered into the mounted role-to-scope mapping (`ap_admin`
-    and the service-account role `ap_sa_reader` ship by default). Under the `ai-workspace` umbrella, this `mode` must equal
+    and the default service-account role `ap_service_account` ship by default). Under the `ai-workspace` umbrella, this `mode` must equal
     `ai-workspace-ui.config.auth.authorization.mode`.
   - `config.auth.file.*` — the default organization and the file-mode admin's roles. The
     username and password hash come from the Secret.
@@ -365,15 +365,8 @@ Look for these in `kubectl logs`:
   [Databases](#databases).
 - **`existing identities use the reserved "sa:" subject prefix`** — a user whose name
   starts with `sa:` already exists. Rename it before turning service accounts on.
-- **`service-account role ... which a service account may never hold`** — an `ap_sa_*`
-  role in `config.auth.authorization.roles` grants `ap:service_account:manage`,
-  `ap:service_account:read` or `ap:api_key:all:manage`. Remove the scope.
 - **`auth.service_account.jwt.issuer must differ from ...`** — the own pair's `issuer`
   equals `config.auth.jwt.issuer` (default `platform-api`) or one of
   `config.auth.idp.issuer`. Pick another, e.g. `platform-api-sa`.
 - **`retired_public_key_files requires [auth.service_account.jwt]`** — retired keys work
   only with an own pair.
-- **`is a service-account role`** — `config.auth.file.admin.roles` names an `ap_sa_*` role.
-  Those are for service accounts only; use another role.
-- **`no ap_sa_* role; no service account can be created`** (a warning) — the role mapping
-  has no `ap_sa_*` role. Keep `ap_sa_reader`, or add your own.
