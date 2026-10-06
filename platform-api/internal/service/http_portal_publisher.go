@@ -144,6 +144,11 @@ func apisURL(portal *model.APIPortal) string {
 	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/apis"
 }
 
+// plansURL is the portal's subscription plan collection URL.
+func plansURL(portal *model.APIPortal) string {
+	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/subscription-plans"
+}
+
 // apiURL is the portal's URL for the listing with the given handle.
 func apiURL(portal *model.APIPortal, apiHandle string) string {
 	return apisURL(portal) + "/" + url.PathEscape(apiHandle)

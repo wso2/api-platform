@@ -742,5 +742,8 @@ func TestPortalURLsIncludeTheRESTBase(t *testing.T) {
 		if got, want := apiURL(portal, "my-api"), "https://portal.example.com/api-portal/api/v0.9/apis/my-api"; got != want {
 			t.Errorf("apiURL(%q) = %q, want %q", root, got, want)
 		}
+		if got, want := plansURL(portal), "https://portal.example.com/api-portal/api/v0.9/subscription-plans"; got != want {
+			t.Errorf("plansURL(%q) = %q, want %q", root, got, want)
+		}
 	}
 }

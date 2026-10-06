@@ -45,6 +45,10 @@ func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPo
 	return nil
 }
 
+func (alwaysSucceedsPortalPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
+}
+
 func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
 	return nil
 }
@@ -589,6 +593,10 @@ func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPorta
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
+func (unpublishConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
+}
+
 func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
 	return nil
 }
@@ -654,6 +662,10 @@ func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *mo
 		Message: "the API Portal rejected removal of this listing (status 409)",
 		Reason:  "active subscriptions are removed",
 	}
+}
+
+func (unpublishSubscriptionConflictPublisher) CreateMissingPlans(_ context.Context, _ *model.APIPortal, _ []*model.SubscriptionPlan) error {
+	return nil
 }
 
 func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *model.APIPortal, _ string, _ *model.Publication) error {
