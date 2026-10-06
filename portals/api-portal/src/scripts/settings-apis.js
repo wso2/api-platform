@@ -250,11 +250,11 @@
      Free-text chips. The behaviour lives in cfg-chip-input.js, shared with the key
      manager scopes field — it was duplicated the moment a second field wanted it,
      and the markup and CSS (.cfg-chip-input-wrap and friends) were already common. */
-  var tagChips = window.cfgChipInput.create({
+  var tagChips = window.cfgChipInput ? window.cfgChipInput.create({
     wrapId: 'wz-tags-wrap',
     chipsId: 'wz-tags-chips',
     inputId: 'wz-tags-input',
-  });
+  }) : null;
 
   function getTags() { return tagChips ? tagChips.get() : []; }
   function setTags(list) { if (tagChips) tagChips.set(list); }
