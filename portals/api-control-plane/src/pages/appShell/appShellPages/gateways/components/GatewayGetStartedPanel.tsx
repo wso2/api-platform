@@ -50,6 +50,7 @@ import {
   TOKEN_PLACEHOLDER,
 } from '../utils/gatewaySetup';
 import { CopyableCommand } from './CopyableCommand';
+import { GatewayConnectionStatus } from './GatewayConnectionStatus';
 
 const messages = defineMessages({
   chartHeading: {
@@ -495,6 +496,10 @@ export function GatewayGetStartedPanel({
                   <FormattedMessage {...messages.chartIntro} />
                 </Typography>
                 <CopyableCommand code={helmInstallCommand(target, gatewayId, tokenValue)} />
+                <GatewayConnectionStatus
+                  isConnected={gateway.isActive === true}
+                  waitingSinceToken={Boolean(token)}
+                />
               </SetupStep>
             </>
           ) : (
@@ -521,6 +526,10 @@ export function GatewayGetStartedPanel({
                   <FormattedMessage {...messages.startRun} />
                 </Typography>
                 <CopyableCommand code={startCommand(target)} />
+                <GatewayConnectionStatus
+                  isConnected={gateway.isActive === true}
+                  waitingSinceToken={Boolean(token)}
+                />
               </SetupStep>
             </>
           )}

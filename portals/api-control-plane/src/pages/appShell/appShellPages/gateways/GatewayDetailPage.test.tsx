@@ -137,6 +137,17 @@ describe('GatewayDetailPage', () => {
 
     expect(await screen.findByText('Your Default GW gateway is connected')).toBeInTheDocument();
     expect(screen.getByText('2/2')).toBeInTheDocument();
+    expect(
+      screen.getByText('Connected. This gateway is ready for deployments.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says it is waiting under the start command until the gateway connects', async () => {
+    server.use(resource('/gateways/:gatewayId', gateway()));
+
+    renderPage();
+
+    expect(await screen.findByText('Waiting for your gateway to connect…')).toBeInTheDocument();
   });
 
   it('keeps the setup banner closed after it is dismissed', async () => {

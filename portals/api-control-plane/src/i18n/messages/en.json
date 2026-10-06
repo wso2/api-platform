@@ -3725,6 +3725,30 @@
   "gateways.detail.GetStarted.start.run": {
     "defaultMessage": "Run this command in the gateway folder to start the gateway:"
   },
+  "gateways.detail.GetStarted.status.connected": {
+    "defaultMessage": "Connected. This gateway is ready for deployments."
+  },
+  "gateways.detail.GetStarted.status.slow.host": {
+    "defaultMessage": "the control plane address in the settings is reachable from the gateway’s machine"
+  },
+  "gateways.detail.GetStarted.status.slow.logs": {
+    "defaultMessage": "the controller logs show no connection errors: docker compose logs gateway-controller",
+    "description": "The command after the colon must be kept exactly as written."
+  },
+  "gateways.detail.GetStarted.status.slow.running": {
+    "defaultMessage": "the containers are running: docker compose ps",
+    "description": "\"docker compose ps\" is a command; keep it exactly as written."
+  },
+  "gateways.detail.GetStarted.status.slow.title": {
+    "defaultMessage": "Still not connected? Check that:"
+  },
+  "gateways.detail.GetStarted.status.slow.token": {
+    "defaultMessage": "the token in the settings is the one generated above, copied in full"
+  },
+  "gateways.detail.GetStarted.status.waiting": {
+    "defaultMessage": "Waiting for your gateway to connect…",
+    "description": "Shown under the start command while the console polls for the gateway."
+  },
   "gateways.detail.GetStarted.step.configure": {
     "defaultMessage": "Step 2: Configure the Gateway"
   },
