@@ -53,12 +53,12 @@ const nightly = aServiceAccount({
   id: 'nightly',
   lastUsedAt: '2026-10-01T10:00:00Z',
   lastUsedIp: '203.0.113.7',
-  roles: ['ap_sa_reader', 'ap_sa_deployer'],
+  roles: ['ap_service_account', 'ap_deployer'],
   status: 'disabled',
 });
 const roles = [
   aServiceAccountRole(),
-  aServiceAccountRole({ name: 'ap_sa_deployer', scopes: ['ap:rest_api:deployment:manage'] }),
+  aServiceAccountRole({ name: 'ap_deployer', scopes: ['ap:rest_api:deployment:manage'] }),
 ];
 const credentialsFor = (account = ciDeployer) => ({
   clientId: account.clientId,
@@ -96,16 +96,15 @@ beforeEach(() => {
 });
 
 describe('ServiceAccountsSettingsPage', () => {
-  it('lists accounts with owner, roles, status and last token issued', async () => {
+  it('lists accounts with roles, status and last token issued', async () => {
     useAccounts();
     renderPage();
 
     expect(await screen.findByText('CI deployer')).toBeInTheDocument();
     const row = screen.getByText('Nightly report').closest('tr')!;
-    expect(within(row).getByText('ap_sa_deployer')).toBeInTheDocument();
+    expect(within(row).getByText('ap_deployer')).toBeInTheDocument();
     expect(within(row).getByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText('Never')).toBeInTheDocument();
-    expect(screen.getAllByText('platform-team@example.com').length).toBeGreaterThan(0);
   });
 
   it('shows two roles, then a "+N" chip naming the rest', async () => {
@@ -139,7 +138,7 @@ describe('ServiceAccountsSettingsPage', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Copy client ID: sa_acme_nightly_aa11bb');
   });
 
-  it('opens the edit view from the name, showing the ID, client ID and secret', async () => {
+  it('opens the edit view from the name, with a header and the credentials', async () => {
     useAccounts();
     server.use(resource('/service-accounts/ci-deployer', aServiceAccount()));
     const { user } = renderPage();
@@ -147,10 +146,13 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
     const form = await screen.findByRole('dialog');
     expect(within(form).getByText('Edit service account')).toBeInTheDocument();
-    const facts = within(form).getAllByRole('definition')[0].closest('dl')!;
-    expect(within(facts).getByText('ID').nextElementSibling).toHaveTextContent('ci-deployer');
-    expect(within(facts).getByText('Client ID').nextElementSibling).toHaveTextContent('sa_acme_ci-deployer_3f9a1c');
-    expect(within(facts).getByText('Secret').nextElementSibling).toHaveTextContent('***9f2c1');
+    expect(within(form).getByText('CD')).toBeInTheDocument();
+    expect(within(form).getByText('Active')).toBeInTheDocument();
+    expect(within(form).getByText('ci-deployer')).toBeInTheDocument();
+    expect(within(form).getByText('sa_acme_ci-deployer_3f9a1c')).toBeInTheDocument();
+    expect(within(form).getByText('••••••••9f2c1')).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Regenerate' })).toBeInTheDocument();
+    expect(within(form).getByRole('switch', { name: 'Account enabled' })).toBeChecked();
     expect(within(form).getByRole('button', { name: 'Copy client ID' })).toBeInTheDocument();
     expect(within(form).getByLabelText(/Display name/)).toHaveValue('CI deployer');
   });
@@ -192,11 +194,9 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
     expect(within(form).getByLabelText(/^ID/)).toHaveValue('ci-deployer');
     expect(within(form).getByLabelText(/^ID/)).toBeDisabled();
-    await user.type(within(form).getByLabelText(/Owner/), 'platform-team@example.com');
     await user.type(within(form).getByLabelText(/Description/), 'Deploys APIs');
-    await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_sa_reader/ }));
-    await user.keyboard('{Escape}');
+    // The default role is already selected.
+    expect(await within(form).findByText('ap_service_account')).toBeInTheDocument();
     await user.click(within(form).getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'POST')).toBe(true));
@@ -205,8 +205,7 @@ describe('ServiceAccountsSettingsPage', () => {
       description: 'Deploys APIs',
       displayName: 'CI deployer',
       id: 'ci-deployer',
-      owner: 'platform-team@example.com',
-      roles: ['ap_sa_reader'],
+      roles: ['ap_service_account'],
     });
 
     expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
@@ -232,8 +231,8 @@ describe('ServiceAccountsSettingsPage', () => {
     const create = within(form).getByRole('button', { name: 'Create' });
     expect(create).toBeDisabled();
     await user.type(within(form).getByLabelText(/Display name/), `Release ${'x'.repeat(50)}`);
-    // Still no role.
-    expect(create).toBeDisabled();
+    // The default role is preselected, so a name is enough.
+    await waitFor(() => expect(create).toBeEnabled());
     // Cut to the server's 40-character limit.
     expect(within(form).getByLabelText(/^ID/)).toHaveValue(`release-${'x'.repeat(32)}`);
 
@@ -250,23 +249,28 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.type(within(form).getByLabelText(/Display name/), 'y');
     expect(id).toHaveValue('release-bot');
 
+    // The default role can be removed, which leaves no role.
     await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_sa_reader/ }));
+    await user.click(await screen.findByRole('option', { name: /ap_service_account/ }));
+    await user.keyboard('{Escape}');
+    expect(create).toBeDisabled();
+    await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
+    await user.click(await screen.findByRole('option', { name: /ap_deployer/ }));
     await user.keyboard('{Escape}');
     expect(create).toBeEnabled();
     await user.click(create);
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'POST')).toBe(true));
-    // No owner or description: the server makes the creator the owner.
+    // No description sent.
     expect(JSON.parse(requests.calls.find((call) => call.method === 'POST')!.body)).toEqual({
       displayName: `Release ${'x'.repeat(50)}y`,
       id: 'release-bot',
-      roles: ['ap_sa_reader'],
+      roles: ['ap_deployer'],
     });
   }, FORM_TIMEOUT);
 
-  it('sends a cleared owner as empty, so the server resets it to the creator', async () => {
-    const account = aServiceAccount({ createdBy: 'alice' });
+  it('sends a cleared description as empty', async () => {
+    const account = aServiceAccount();
     useAccounts([account]);
     server.use(
       accepts('put', '/service-accounts/ci-deployer', account, { record: requests }),
@@ -277,15 +281,12 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
     await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
     const form = await screen.findByRole('dialog');
-    expect(within(form).getByText(/Leave empty for the creator, alice/)).toBeInTheDocument();
-    await user.clear(within(form).getByLabelText(/Owner/));
     await user.clear(within(form).getByLabelText(/Description/));
-    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       description: '',
-      owner: '',
     });
   }, FORM_TIMEOUT);
 
@@ -297,11 +298,8 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'New service account' }));
     const form = await screen.findByRole('dialog');
     await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
-    await user.type(within(form).getByLabelText(/Owner/), 'team');
     await user.type(within(form).getByLabelText(/Description/), 'deploys');
-    await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_sa_reader/ }));
-    await user.keyboard('{Escape}');
+    await waitFor(() => expect(within(form).getByRole('button', { name: 'Create' })).toBeEnabled());
     await user.click(within(form).getByRole('button', { name: 'Create' }));
 
     expect(await within(form).findByText('An account with this ID already exists.')).toBeInTheDocument();
@@ -418,37 +416,115 @@ describe('ServiceAccountsSettingsPage', () => {
     expect(within(form).queryByText(/Removing a role stops every token/)).not.toBeInTheDocument();
 
     await user.click(within(form).getByRole('combobox', { name: /Roles/ }));
-    await user.click(await screen.findByRole('option', { name: /ap_sa_deployer/ }));
+    await user.click(await screen.findByRole('option', { name: /ap_deployer/ }));
     await user.keyboard('{Escape}');
     expect(within(form).getByText(/Removing a role stops every token/)).toBeInTheDocument();
 
-    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
-      roles: ['ap_sa_reader'],
+      roles: ['ap_service_account'],
     });
+  });
+
+  it('disables from the edit view with the switch, after a warning', async () => {
+    useAccounts();
+    server.use(
+      accepts('put', '/service-accounts/ci-deployer', aServiceAccount({ status: 'disabled' }), { record: requests }),
+      resource('/service-accounts/ci-deployer', aServiceAccount()),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+    const form = await screen.findByRole('dialog');
+    expect(within(form).queryByText(/Disabling stops every token/)).not.toBeInTheDocument();
+    await user.click(within(form).getByRole('switch', { name: 'Account enabled' }));
+    expect(within(form).getByText(/Disabling stops every token/)).toBeInTheDocument();
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
+    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({ status: 'disabled' });
+  });
+
+  it('regenerates from the edit view without losing unsaved edits', async () => {
+    useAccounts();
+    server.use(resource('/service-accounts/ci-deployer', aServiceAccount()));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+    const form = await screen.findByRole('dialog');
+    await user.clear(within(form).getByLabelText(/Description/));
+    await user.type(within(form).getByLabelText(/Description/), 'new description');
+    await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
+
+    // The confirmation opens over the form, which stays mounted behind it.
+    const confirm = (await screen.findByText(/stops working immediately, with no overlap/)).closest<HTMLElement>(
+      '[role="dialog"]',
+    )!;
+    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(within(form).getByRole('button', { name: 'Save changes' })).toBeInTheDocument(),
+    );
+    expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
   });
 
   it('offers a reload when someone else changed the account first', async () => {
     useAccounts();
     server.use(
       failure('put', '/service-accounts/ci-deployer', 409, 'CONFLICT'),
-      resource('/service-accounts/ci-deployer', aServiceAccount({ owner: 'someone-else' })),
+      resource('/service-accounts/ci-deployer', aServiceAccount({ description: 'someone-else' })),
     );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
     await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
     const form = await screen.findByRole('dialog');
-    await user.clear(within(form).getByLabelText(/Owner/));
-    await user.type(within(form).getByLabelText(/Owner/), 'new-owner');
-    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    await user.clear(within(form).getByLabelText(/Description/));
+    await user.type(within(form).getByLabelText(/Description/), 'new description');
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
 
     expect(await within(form).findByText(/Someone else changed this account/)).toBeInTheDocument();
     await user.click(within(form).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(within(form).queryByText(/Someone else changed/)).not.toBeInTheDocument());
     // What the admin typed is kept.
-    expect(within(form).getByLabelText(/Owner/)).toHaveValue('new-owner');
+    expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
+  });
+
+  it("adopts another admin's changes to the fields left untouched, after a reload", async () => {
+    useAccounts();
+    server.use(resource('/service-accounts/ci-deployer', aServiceAccount()));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+    const form = await screen.findByRole('dialog');
+    expect(within(form).getByLabelText(/Display name/)).toHaveValue('CI deployer');
+    // Meanwhile someone else renames and disables the account.
+    server.use(
+      failure('put', '/service-accounts/ci-deployer', 409, 'CONFLICT'),
+      resource(
+        '/service-accounts/ci-deployer',
+        aServiceAccount({ displayName: 'Renamed elsewhere', status: 'disabled' }),
+      ),
+    );
+    await user.clear(within(form).getByLabelText(/Description/));
+    await user.type(within(form).getByLabelText(/Description/), 'new description');
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
+
+    expect(await within(form).findByText(/Someone else changed this account/)).toBeInTheDocument();
+    await user.click(within(form).getByRole('button', { name: 'Reload' }));
+    await waitFor(() =>
+      expect(within(form).getByLabelText(/Display name/)).toHaveValue('Renamed elsewhere'),
+    );
+    expect(within(form).getByRole('switch', { name: 'Account enabled' })).not.toBeChecked();
+    expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
+
+    // Saving again sends only the admin's own edit, not a stale status or name.
+    server.use(accepts('put', '/service-accounts/ci-deployer', aServiceAccount(), { record: requests }));
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
+    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
+      description: 'new description',
+    });
   });
 
   it('says the scopes are the problem when scope mode refuses them', async () => {
@@ -496,7 +572,7 @@ describe('ServiceAccountsSettingsPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Next page' }));
     expect(await screen.findByText('Bot 20')).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('Search by name, ID or owner'), 'bot 7');
+    await user.type(screen.getByPlaceholderText('Search by name or ID'), 'bot 7');
 
     expect(await screen.findByText('Bot 7')).toBeInTheDocument();
     await waitFor(() => expect(requests.last()?.params.get('query')).toBe('bot 7'));
@@ -539,7 +615,7 @@ describe('ServiceAccountsSettingsPage', () => {
 
   it('builds the edit form from a fresh read, not the cached list row', async () => {
     useAccounts();
-    server.use(resource('/service-accounts/ci-deployer', aServiceAccount({ owner: 'changed-by-someone-else' })));
+    server.use(resource('/service-accounts/ci-deployer', aServiceAccount({ description: 'changed-by-someone-else' })));
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
