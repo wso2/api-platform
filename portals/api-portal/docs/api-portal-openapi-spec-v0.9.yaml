@@ -427,8 +427,8 @@ paths:
         - Subscription Plans
       summary: List subscription plans
       description: >-
-        Lists subscription plans for an organization. When `name` is supplied, only the matching plan (if any) is
-        returned. Plan names are unique within an organization.
+        Lists subscription plans for an organization, ordered by handle. When `name` is supplied, only the matching
+        plan (if any) is returned. Plan names are unique within an organization. Use `limit` and `offset` to page.
       operationId: listSubscriptionPlans
       parameters:
         - in: query
@@ -437,6 +437,8 @@ paths:
           schema:
             type: string
           description: Filter by exact plan name. Returns an array of zero or one items.
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionPlanListResponse"
