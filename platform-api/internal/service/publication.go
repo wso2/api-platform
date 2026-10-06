@@ -607,6 +607,10 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, err
 	}
 
+	if err := s.createMissingPortalPlans(ctx, portal, orgUUID, draft.SubscriptionPlanIds); err != nil {
+		return nil, false, err
+	}
+
 	if err := s.portalPublisher.Publish(ctx, portal, apiId, draft, definition); err != nil {
 		return nil, false, portalPushError(err)
 	}
@@ -713,6 +717,33 @@ func (s *PublicationService) Deprecate(ctx context.Context, apiType, apiId, apiP
 		return nil, apperror.APIPublicationStateConflict.New("The API status changed during the request. No changes were made.")
 	}
 	return s.getPublicationRow(apiType, apiId, apiPortalId, orgUUID)
+}
+
+// portalPlansTimeout bounds the whole plan step. Publish's own two portal calls can
+// take 43s each, so 25s keeps the worst case under the server's 120s write timeout.
+const portalPlansTimeout = 25 * time.Second
+
+// createMissingPortalPlans makes sure the portal has every plan the draft selects,
+// creating those it lacks. Failures come back already mapped for the caller.
+func (s *PublicationService) createMissingPortalPlans(ctx context.Context, portal *model.APIPortal, orgUUID string, handles []string) error {
+	if len(handles) == 0 {
+		return nil
+	}
+	plans := make([]*model.SubscriptionPlan, 0, len(handles))
+	for _, handle := range handles {
+		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
+		if err != nil {
+			return fmt.Errorf("failed to get subscription plan %q: %w", handle, err)
+		}
+		plans = append(plans, plan)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, portalPlansTimeout)
+	defer cancel()
+	if err := s.portalPublisher.CreateMissingPlans(ctx, portal, plans); err != nil {
+		return portalPushError(err)
+	}
+	return nil
 }
 
 // portalPushError maps a failed portal call to 409 when the portal rejected the
