@@ -74,6 +74,13 @@
   "api.create.ApiCreationWizard.configure.title": {
     "defaultMessage": "Configure and create"
   },
+  "api.create.ApiCreationWizard.created.nextStep": {
+    "defaultMessage": "API created. Deploy it to a gateway to start serving traffic."
+  },
+  "api.create.ApiCreationWizard.created.nextStepAction": {
+    "defaultMessage": "Deploy",
+    "description": "Button in the \"API created\" notification that opens the Deploy page."
+  },
   "api.create.ApiCreationWizard.error.specTooLarge": {
     "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
   },
@@ -1264,6 +1271,14 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted": {
     "defaultMessage": "Deployment \"{deploymentName}\" started.",
     "description": "Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStep": {
+    "defaultMessage": "Deployed to {gatewayName}. Send it a test request.",
+    "description": "Toast once a deployment is live. {gatewayName} is the gateway’s display name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStepAction": {
+    "defaultMessage": "Test it",
+    "description": "Button in the \"Deployed\" notification that opens the Test page."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying": {
     "defaultMessage": "Deploying...",
@@ -3539,6 +3554,10 @@
   "gateways.create.action.back": {
     "defaultMessage": "Back to gateways"
   },
+  "gateways.create.action.backToDeploy": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Returns to the API Deploy page the user came from to add a gateway."
+  },
   "gateways.create.action.cancel": {
     "defaultMessage": "Cancel"
   },
@@ -3863,6 +3882,18 @@
   "gateways.detail.action.back": {
     "defaultMessage": "Back to list",
     "description": "Returns to the gateway listing from a gateway’s own page."
+  },
+  "gateways.detail.action.backToDeploy": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Returns to the API Deploy page the user came from to add this gateway."
+  },
+  "gateways.detail.connected.nextStep": {
+    "defaultMessage": "{name} is connected. You can deploy your API to it now.",
+    "description": "{name} is the gateway’s display name; do not translate it."
+  },
+  "gateways.detail.connected.nextStepAction": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Button in the \"gateway connected\" notification."
   },
   "gateways.detail.error.message": {
     "defaultMessage": "Unable to load this gateway."

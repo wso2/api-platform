@@ -35,7 +35,7 @@ import {
   Stack,
 } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
@@ -44,11 +44,17 @@ import { routes } from '@/routes/paths';
 import { GatewayTypeSelector } from './components/GatewayTypeSelector';
 import type { GatewayFunctionality } from './utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from './utils/gatewayEnvironments';
+import { readReturnTo, withReturnTo } from './utils/returnTo';
 
 const messages = defineMessages({
   back: {
     id: 'gateways.create.action.back',
     defaultMessage: 'Back to gateways',
+  },
+  backToDeploy: {
+    id: 'gateways.create.action.backToDeploy',
+    defaultMessage: 'Back to Deploy',
+    description: 'Returns to the API Deploy page the user came from to add a gateway.',
   },
   cancel: {
     id: 'gateways.create.action.cancel',
@@ -263,6 +269,10 @@ function GatewayCreatePageContent() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const createGateway = useCreateGateway();
+  // Set when the user came here from an API's Deploy page; Back, Cancel and
+  // the new gateway's page all lead back there.
+  const returnTo = readReturnTo(useLocation().search);
+  const exitPath = returnTo ?? routes.gateways(orgHandle);
 
   const [formState, setFormState] = useState<GatewayFormState>(INITIAL_STATE);
 
@@ -322,7 +332,7 @@ function GatewayCreatePageContent() {
           }),
           'success',
         );
-        navigate(routes.gateway(orgHandle, gateway.id ?? ''));
+        navigate(withReturnTo(routes.gateway(orgHandle, gateway.id ?? ''), returnTo));
       },
       onError: (error) => {
         // The global mutation handler already surfaces the failure; this only
@@ -354,9 +364,9 @@ function GatewayCreatePageContent() {
   return (
     <>
       <PageTitle>
-        <Link to={routes.gateways(orgHandle)}>
+        <Link to={exitPath}>
           <PageTitle.BackButton>
-            <FormattedMessage {...messages.back} />
+            <FormattedMessage {...(returnTo ? messages.backToDeploy : messages.back)} />
           </PageTitle.BackButton>
         </Link>
         <PageTitle.Header>
@@ -533,7 +543,7 @@ function GatewayCreatePageContent() {
           spacing={2}
           sx={{ alignItems: 'center', justifyContent: 'flex-end' }}
         >
-          <Button component={Link} to={routes.gateways(orgHandle)} variant="text">
+          <Button component={Link} to={exitPath} variant="text">
             <FormattedMessage {...messages.cancel} />
           </Button>
           <Button disabled={createGateway.isPending} type="submit" variant="contained">

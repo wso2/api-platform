@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
@@ -73,6 +74,35 @@ describe('NewProjectDialog', () => {
       description: 'Invoices',
     });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('goes on to the caller’s destination when one is given', async () => {
+    // Opened from "Create an API" with no project yet: the new project should
+    // lead into the API wizard, not stop at the project's home.
+    server.use(accepts('post', '/projects', aProject({ id: 'billing' })));
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId={ORG}>
+        <Routes>
+          <Route
+            element={
+              <NewProjectDialog
+                destination={(projectId) => `/wizard/${projectId}`}
+                onClose={vi.fn()}
+                open
+                orgHandle={ORG}
+              />
+            }
+            path="/"
+          />
+          <Route element={<p>API wizard for billing</p>} path="/wizard/billing" />
+        </Routes>
+      </ApiScopeProvider>,
+    );
+
+    await user.type(screen.getByLabelText(/Name/), 'Billing');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByText('API wizard for billing')).toBeInTheDocument();
   });
 
   it('keeps the dialog open and surfaces the error message on failure', async () => {

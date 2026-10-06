@@ -18,9 +18,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useGateways } from '@/api/resources/gateways';
+import { withReturnTo } from '@/pages/appShell/appShellPages/gateways/utils/returnTo';
 import { useRestApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
 import { AppPage } from '@/components/AppPage';
@@ -99,6 +100,7 @@ function Deploy() {
   const { params } = useConsoleScope();
   const orgHandle = params.orgHandle ?? '';
   const navigate = useNavigate();
+  const location = useLocation();
   const apiQuery = useRestApi(params.apiHandler);
   const gatewaysQuery = useGateways();
   // The deployments query is gated on the handle rather than on the loaded API:
@@ -173,7 +175,8 @@ function Deploy() {
         <EmptyState
           actionLabel={intl.formatMessage(messages.addGateway)}
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={() => navigate(routes.newGateway(orgHandle))}
+          // Bring the user back here once the new gateway is connected.
+          onAction={() => navigate(withReturnTo(routes.newGateway(orgHandle), location.pathname))}
           title={intl.formatMessage(messages.emptyTitle)}
           operationId="CreateGateway"
         />

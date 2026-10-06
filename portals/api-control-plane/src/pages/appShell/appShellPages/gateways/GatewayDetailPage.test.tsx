@@ -60,7 +60,7 @@ let manifestReads: Recorder;
  * provider is mounted here — without it every query stays `enabled: false` and
  * the page renders its loading state forever.
  */
-function renderPage() {
+function renderPage(search = '') {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
@@ -71,7 +71,7 @@ function renderPage() {
       </Routes>
     </ApiScopeProvider>,
     {
-      route: `/organizations/${ORG}/gateways/${GATEWAY_ID}`,
+      route: `/organizations/${ORG}/gateways/${GATEWAY_ID}${search}`,
       scope: makeConsoleScope(),
     },
   );
@@ -118,6 +118,16 @@ describe('GatewayDetailPage', () => {
     expect(
       screen.getByText(/wso2apip-api-gateway-2026\.09\.24\.zip/, { exact: false }),
     ).toBeInTheDocument();
+  });
+
+  it('leads back to the Deploy page the user came from', async () => {
+    server.use(resource('/gateways/:gatewayId', gateway()));
+    const deploy = `/organizations/${ORG}/projects/shop/apis/orders/deploy`;
+
+    renderPage(`?returnTo=${encodeURIComponent(deploy)}`);
+
+    const back = await screen.findByRole('link', { name: /Back to Deploy/ });
+    expect(back).toHaveAttribute('href', deploy);
   });
 
   it('counts setup complete once the gateway agent has connected', async () => {
