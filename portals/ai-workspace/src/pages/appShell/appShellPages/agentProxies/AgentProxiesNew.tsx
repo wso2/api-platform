@@ -64,7 +64,7 @@ import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
  * url that does not already end .json.
  */
 const SAMPLE_A2A_AGENT_URL =
-  'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/godzilla/a2a-trip-planning-agent/v1.0';
+  'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/a2a-trip-planning-agent/v1.0';
 
 export const AGENT_VERSION_PATTERN = /^v\d+\.\d+$/;
 export const AGENT_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
