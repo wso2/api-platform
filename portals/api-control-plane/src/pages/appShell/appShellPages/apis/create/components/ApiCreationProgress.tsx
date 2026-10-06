@@ -34,7 +34,7 @@ const messages = defineMessages({
   },
   failedTitle: {
     id: 'api.create.ApiCreationProgress.failed.title',
-    defaultMessage: 'We could not create this API proxy',
+    defaultMessage: 'We couldn’t create this API',
   },
   percent: {
     id: 'api.create.ApiCreationProgress.progress.value',
@@ -43,7 +43,7 @@ const messages = defineMessages({
   },
   progressLabel: {
     id: 'api.create.ApiCreationProgress.progress.label',
-    defaultMessage: 'API proxy creation progress',
+    defaultMessage: 'API creation progress',
     description: 'Accessible name for the circular progress indicator.',
   },
   retry: {
@@ -52,12 +52,12 @@ const messages = defineMessages({
   },
   stageCreating: {
     id: 'api.create.ApiCreationProgress.stage.creating',
-    defaultMessage: 'Creating API Proxy',
+    defaultMessage: 'Creating the API',
     description: 'Status shown while the platform is creating the API proxy.',
   },
   stageDone: {
     id: 'api.create.ApiCreationProgress.stage.done',
-    defaultMessage: 'API Proxy created. Taking you there…',
+    defaultMessage: 'API created. Taking you there…',
   },
   stageFinalizing: {
     id: 'api.create.ApiCreationProgress.stage.finalizing',
@@ -69,11 +69,11 @@ const messages = defineMessages({
   },
   title: {
     id: 'api.create.ApiCreationProgress.title',
-    defaultMessage: 'We are in the process of creating your API Proxy',
+    defaultMessage: 'Creating your API',
   },
   titleWithName: {
     id: 'api.create.ApiCreationProgress.titleWithName',
-    defaultMessage: 'We are in the process of creating your {name} API Proxy',
+    defaultMessage: 'Creating {name}',
     description: '{name} is the display name the user gave the API. Never translated.',
   },
 });

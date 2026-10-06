@@ -46,7 +46,7 @@ describe('ApiCreationProgress', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: 'We are in the process of creating your Orders API API Proxy',
+        name: 'Creating Orders API',
       }),
     ).toBeInTheDocument();
     expect(
@@ -60,7 +60,7 @@ describe('ApiCreationProgress', () => {
     });
 
     const progress = screen.getByRole('progressbar', {
-      name: 'API proxy creation progress',
+      name: 'API creation progress',
     });
     expect(Number(progress.getAttribute('aria-valuenow'))).toBeLessThan(100);
   });
@@ -80,9 +80,10 @@ describe('ApiCreationProgress', () => {
       <ApiCreationProgress onBack={noop} onComplete={onComplete} onRetry={noop} status="created" />,
     );
 
-    expect(
-      screen.getByRole('progressbar', { name: 'API proxy creation progress' }),
-    ).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByRole('progressbar', { name: 'API creation progress' })).toHaveAttribute(
+      'aria-valuenow',
+      '100',
+    );
     expect(onComplete).not.toHaveBeenCalled();
 
     act(() => {
@@ -97,7 +98,7 @@ describe('ApiCreationProgress', () => {
       <ApiCreationProgress onBack={noop} onComplete={onComplete} onRetry={noop} status="failed" />,
     );
 
-    expect(screen.getByText('We could not create this API proxy')).toBeInTheDocument();
+    expect(screen.getByText('We couldn’t create this API')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Back to configuration' })).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

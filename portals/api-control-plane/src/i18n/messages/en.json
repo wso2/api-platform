@@ -10,10 +10,10 @@
     "defaultMessage": "Nothing was created. Check the details you entered and try again."
   },
   "api.create.ApiCreationProgress.failed.title": {
-    "defaultMessage": "We could not create this API proxy"
+    "defaultMessage": "We couldn’t create this API"
   },
   "api.create.ApiCreationProgress.progress.label": {
-    "defaultMessage": "API proxy creation progress",
+    "defaultMessage": "API creation progress",
     "description": "Accessible name for the circular progress indicator."
   },
   "api.create.ApiCreationProgress.progress.value": {
@@ -21,11 +21,11 @@
     "description": "Share of the creation flow completed so far."
   },
   "api.create.ApiCreationProgress.stage.creating": {
-    "defaultMessage": "Creating API Proxy",
+    "defaultMessage": "Creating the API",
     "description": "Status shown while the platform is creating the API proxy."
   },
   "api.create.ApiCreationProgress.stage.done": {
-    "defaultMessage": "API Proxy created. Taking you there…"
+    "defaultMessage": "API created. Taking you there…"
   },
   "api.create.ApiCreationProgress.stage.finalizing": {
     "defaultMessage": "Finalizing setup"
@@ -34,10 +34,10 @@
     "defaultMessage": "Validating configuration"
   },
   "api.create.ApiCreationProgress.title": {
-    "defaultMessage": "We are in the process of creating your API Proxy"
+    "defaultMessage": "Creating your API"
   },
   "api.create.ApiCreationProgress.titleWithName": {
-    "defaultMessage": "We are in the process of creating your {name} API Proxy",
+    "defaultMessage": "Creating {name}",
     "description": "{name} is the display name the user gave the API. Never translated."
   },
   "api.create.ApiCreationSteps.step.apiType": {
@@ -82,10 +82,10 @@
     "description": "Button in the \"API created\" notification that opens the Deploy page."
   },
   "api.create.ApiCreationWizard.error.specTooLarge": {
-    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+    "defaultMessage": "This OpenAPI spec is larger than the maximum allowed size."
   },
   "api.create.ApiCreationWizard.source.subtitle": {
-    "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
+    "defaultMessage": "Point us at a running service, or bring an OpenAPI spec that describes it."
   },
   "api.create.ApiCreationWizard.source.title": {
     "defaultMessage": "How do you want to define your {apiType}?",
@@ -127,7 +127,7 @@
     "description": "Placeholder shown while Monaco editor initialises."
   },
   "api.create.apiResourcesPreview.empty.body": {
-    "defaultMessage": "Import a contract to explore its endpoints"
+    "defaultMessage": "Import an OpenAPI spec to see its resources"
   },
   "api.create.apiResourcesPreview.empty.title": {
     "defaultMessage": "Resources will show here"
@@ -174,13 +174,13 @@
     "defaultMessage": "WebSub API"
   },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import an API contract from a URL or a file."
+    "defaultMessage": "Import an OpenAPI spec from a URL or a file."
   },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a contract"
+    "defaultMessage": "From an OpenAPI spec"
   },
   "api.create.defineApi.scratch.description": {
-    "defaultMessage": "Begin with a blank API and fill in the details."
+    "defaultMessage": "Proxy a running service. Every path is forwarded as-is."
   },
   "api.create.defineApi.scratch.endpoint.description": {
     "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway."
@@ -189,7 +189,7 @@
     "defaultMessage": "Backend endpoint"
   },
   "api.create.defineApi.scratch.endpoint.label": {
-    "defaultMessage": "Endpoint URL"
+    "defaultMessage": "Backend URL"
   },
   "api.create.defineApi.scratch.endpoint.preview.description": {
     "defaultMessage": "Every API resource will route to the backend endpoint you provide."
@@ -198,17 +198,17 @@
     "defaultMessage": "Ready to connect"
   },
   "api.create.defineApi.scratch.endpoint.sampleUrl": {
-    "defaultMessage": "Try with Sample URL"
+    "defaultMessage": "Try a sample"
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Start from scratch"
+    "defaultMessage": "From an endpoint"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
     "description": "Clears the API contract URL field and its loaded preview."
   },
   "api.create.fromContract.action.sampleUrl": {
-    "defaultMessage": "Try with Sample URL",
+    "defaultMessage": "Try a sample",
     "description": "Fills the field with a ready-made example to try the import with."
   },
   "api.create.fromContract.gitHub.authorize": {
@@ -234,7 +234,7 @@
     "defaultMessage": "Public Repository URL"
   },
   "api.create.fromContract.gitHub.noContract": {
-    "defaultMessage": "No YAML or JSON contract in this directory. Choose another one."
+    "defaultMessage": "No YAML or JSON spec in this directory. Choose another one."
   },
   "api.create.fromContract.gitHub.or": {
     "defaultMessage": "OR",
@@ -268,7 +268,7 @@
     "defaultMessage": "GitHub"
   },
   "api.create.fromContract.source.label": {
-    "defaultMessage": "Import the contract from",
+    "defaultMessage": "Import the spec from",
     "description": "Label over the picker that chooses where the API contract is read from."
   },
   "api.create.fromContract.source.swaggerHub": {
@@ -282,16 +282,16 @@
     "description": "Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid"
   },
   "api.create.fromContract.spec.tooLarge": {
-    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+    "defaultMessage": "This OpenAPI spec is larger than the maximum allowed size."
   },
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
   },
   "api.create.fromContract.spec.validationFailed": {
-    "defaultMessage": "Failed to validate the OpenAPI specification. Please try again."
+    "defaultMessage": "We couldn’t read an OpenAPI spec at that address. Check that the link opens the raw file in a browser, or upload the file instead."
   },
   "api.create.fromContract.status.fetching": {
-    "defaultMessage": "Reading the contract…",
+    "defaultMessage": "Reading the spec…",
     "description": "Shown while the chosen contract is being read and checked, which starts on its own."
   },
   "api.create.fromContract.swaggerHub.apiLabel": {
@@ -362,10 +362,10 @@
     "description": "Accessible name for the button that discards the chosen file."
   },
   "api.create.fromContract.upload.required": {
-    "defaultMessage": "Select an API contract file to continue"
+    "defaultMessage": "Choose an OpenAPI spec file to continue."
   },
   "api.create.fromContract.upload.title": {
-    "defaultMessage": "Upload API Contract"
+    "defaultMessage": "Upload an OpenAPI spec"
   },
   "api.create.fromContract.upload.unsupported": {
     "defaultMessage": "That file type is not supported. Accepted types: {extensions}"
@@ -378,13 +378,13 @@
     "defaultMessage": "Enter a valid HTTP or HTTPS URL."
   },
   "api.create.fromContract.url.label": {
-    "defaultMessage": "URL for API Contract"
+    "defaultMessage": "Spec URL"
   },
   "api.create.fromContract.url.placeholder": {
-    "defaultMessage": "Enter URL for API Contract here"
+    "defaultMessage": "https://api.example.com/openapi.json"
   },
   "api.create.fromContract.url.required": {
-    "defaultMessage": "The URL for the API contract cannot be empty"
+    "defaultMessage": "Enter the spec’s URL."
   },
   "api.create.generalForm.action.back": {
     "defaultMessage": "Back"
@@ -442,7 +442,7 @@
     "defaultMessage": "Name"
   },
   "api.create.generalForm.rejected.title": {
-    "defaultMessage": "We could not create this API proxy",
+    "defaultMessage": "We couldn’t create this API",
     "description": "Heading of the summary shown when the server rejected the submitted form."
   },
   "api.create.generalForm.section.backendEndpoint": {
@@ -455,13 +455,13 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter a backend URL."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
   "api.create.generalForm.targetUrl.label": {
-    "defaultMessage": "Target URL"
+    "defaultMessage": "Backend URL"
   },
   "api.create.generalForm.targetUrl.placeholder.notice": {
     "defaultMessage": "This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying."
@@ -496,10 +496,10 @@
     "description": "Accessible name for the chevron that opens a directory."
   },
   "api.create.gitHubDirectory.files.heading": {
-    "defaultMessage": "API contract in this directory"
+    "defaultMessage": "OpenAPI spec in this directory"
   },
   "api.create.gitHubDirectory.files.none": {
-    "defaultMessage": "No YAML or JSON file here. Pick a directory that holds the API contract."
+    "defaultMessage": "No YAML or JSON file here. Pick a directory that holds the OpenAPI spec."
   },
   "api.create.gitHubDirectory.loading": {
     "defaultMessage": "Reading the repository…"

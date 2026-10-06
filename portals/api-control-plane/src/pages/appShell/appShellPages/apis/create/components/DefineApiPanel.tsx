@@ -32,6 +32,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import { nameFromEndpoint, versionFromEndpoint } from '../utils/nameFromEndpoint';
 import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
@@ -43,11 +44,11 @@ type ApproachKey = 'contract' | 'scratch';
 const messages = defineMessages({
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import an API contract from a URL or a file.',
+    defaultMessage: 'Import an OpenAPI spec from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
-    defaultMessage: 'Start with a contract',
+    defaultMessage: 'From an OpenAPI spec',
   },
   endpointDescription: {
     id: 'api.create.defineApi.scratch.endpoint.description',
@@ -56,7 +57,7 @@ const messages = defineMessages({
   },
   endpointLabel: {
     id: 'api.create.defineApi.scratch.endpoint.label',
-    defaultMessage: 'Endpoint URL',
+    defaultMessage: 'Backend URL',
   },
   endpointHeading: {
     id: 'api.create.defineApi.scratch.endpoint.heading',
@@ -72,15 +73,15 @@ const messages = defineMessages({
   },
   sampleUrl: {
     id: 'api.create.defineApi.scratch.endpoint.sampleUrl',
-    defaultMessage: 'Try with Sample URL',
+    defaultMessage: 'Try a sample',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Begin with a blank API and fill in the details.',
+    defaultMessage: 'Proxy a running service. Every path is forwarded as-is.',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Start from scratch',
+    defaultMessage: 'From an endpoint',
   },
 });
 
@@ -184,13 +185,21 @@ export const DefineApiPanel = ({
 
     const details = extractApiDetails(DEFAULT_API_SKELETON);
     const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
+    // Name and version come from the URL where it says them, so an API made
+    // from `…/orders/v2` starts as "Orders" 2.0.0 rather than "Untitled API".
+    const guessedName = nameFromEndpoint(upstreamUrl);
+    const guessedVersion = versionFromEndpoint(upstreamUrl);
     return {
       ...details,
+      ...(guessedName ? { displayName: guessedName } : {}),
+      ...(guessedVersion ? { version: guessedVersion } : {}),
       upstream: {
         main: { url: upstreamUrl },
       },
       contractImport: {
         specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
+        // Rebuilt at submit from the details step's values (`skeletonFor`).
+        fromSkeleton: true,
       },
     };
   }, [endpointUrl]);

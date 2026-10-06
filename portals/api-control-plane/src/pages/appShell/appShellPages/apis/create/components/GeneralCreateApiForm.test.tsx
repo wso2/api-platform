@@ -74,7 +74,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       screen.getByText(/using https:\/\/example\.com as a placeholder backend/i),
     ).toBeInTheDocument();
 
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Backend URL/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://api.example.org');
 
@@ -92,7 +92,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       upstream: { main: { url: 'https://example.com' } },
     });
 
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Backend URL/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://example.com');
 
@@ -124,7 +124,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       { onUpstreamEdited },
     );
 
-    await user.type(screen.getByLabelText(/Target URL/), '/v1');
+    await user.type(screen.getByLabelText(/Backend URL/), '/v1');
 
     expect(onUpstreamEdited).toHaveBeenCalled();
   });
@@ -147,6 +147,14 @@ describe('GeneralCreateApiForm — initial values', () => {
     // The platform's own base path shape, not anything read off a document.
     expect(screen.getByLabelText(/Context/)).toHaveValue(
       `/${scope.activeScope.projectHandler}/orders-api/v2.1`,
+    );
+  });
+
+  it('does not double the v when the version already carries one', () => {
+    renderForm({ displayName: 'Orders API', version: 'v1' });
+
+    expect(screen.getByLabelText(/Context/)).toHaveValue(
+      `/${scope.activeScope.projectHandler}/orders-api/v1`,
     );
   });
 

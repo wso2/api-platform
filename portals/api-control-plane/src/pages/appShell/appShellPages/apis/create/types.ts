@@ -65,6 +65,12 @@ export interface ApiOperation {
  */
 export interface ContractImport {
   specFile: File;
+  /**
+   * The file is the built-in endpoint skeleton rather than a user's spec, so
+   * its title, version, description and server are rewritten from the
+   * details step at submit instead of being stored as placeholders.
+   */
+  fromSkeleton?: boolean;
 }
 
 export interface GeneralApiCreationFormState {

@@ -81,7 +81,7 @@ const messages = defineMessages({
   },
   rejectedTitle: {
     id: 'api.create.generalForm.rejected.title',
-    defaultMessage: 'We could not create this API proxy',
+    defaultMessage: 'We couldn’t create this API',
     description: 'Heading of the summary shown when the server rejected the submitted form.',
   },
   contextErrorPattern: {
@@ -173,7 +173,7 @@ const messages = defineMessages({
   },
   targetUrlErrorRequired: {
     id: 'api.create.generalForm.targetUrl.error.required',
-    defaultMessage: 'Enter a target URL.',
+    defaultMessage: 'Enter a backend URL.',
   },
   targetUrlHelper: {
     id: 'api.create.generalForm.targetUrl.helper',
@@ -181,7 +181,7 @@ const messages = defineMessages({
   },
   targetUrlLabel: {
     id: 'api.create.generalForm.targetUrl.label',
-    defaultMessage: 'Target URL',
+    defaultMessage: 'Backend URL',
   },
   versionErrorPattern: {
     id: 'api.create.generalForm.version.error.pattern',
@@ -237,10 +237,13 @@ const toBasePath = (
   apiHandle: string,
   version: string,
 ): string => {
+  // A version that already starts with "v" (common in specs: "v1") keeps its
+  // own prefix rather than gaining a second one ("/vv1").
+  const bareVersion = version.trim().replace(/^v(?=\d)/i, '');
   const segments = [
     projectHandler?.trim(),
     apiHandle.trim(),
-    version.trim() === '' ? undefined : `v${version.trim()}`,
+    bareVersion === '' ? undefined : `v${bareVersion}`,
   ].filter((segment): segment is string => Boolean(segment));
 
   return `/${segments.join('/')}`;

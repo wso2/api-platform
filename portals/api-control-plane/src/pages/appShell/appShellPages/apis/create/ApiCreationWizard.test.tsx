@@ -112,7 +112,7 @@ const submitCreate = async () => {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.click(screen.getByRole('button', { name: 'Use this contract' }));
   await user.click(screen.getByRole('button', { name: 'Continue' }));
-  await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
+  await user.type(screen.getByLabelText(/Backend URL/), 'https://orders.example.com');
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
   return rendered;
@@ -142,10 +142,10 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Backend URL/)).toBeInTheDocument();
     expect(createRequests.count()).toBe(0);
 
-    await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
+    await user.type(screen.getByLabelText(/Backend URL/), 'https://orders.example.com');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createRequests.count()).toBe(1);
@@ -181,7 +181,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     await submitCreate();
 
     expect(await screen.findByText('Must be reachable over https.')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://orders.example.com');
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('https://orders.example.com');
   });
 
   it('does not call the backend a placeholder again once the user has chosen it', async () => {
@@ -205,7 +205,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     expect(screen.getByText(placeholderNotice)).toBeInTheDocument();
 
     // Deliberately settling on the same URL retires the notice.
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Backend URL/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://example.com');
     expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
@@ -213,7 +213,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByText('Context is already in use.')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://example.com');
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('https://example.com');
     expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
   });
 
@@ -225,6 +225,6 @@ describe('ApiCreationWizard — a rejected create', () => {
     await submitCreate();
 
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Target URL/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Backend URL/)).not.toBeInTheDocument();
   });
 });

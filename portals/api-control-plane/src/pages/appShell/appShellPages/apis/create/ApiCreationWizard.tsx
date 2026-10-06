@@ -38,6 +38,7 @@ import {
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
 import { ApiDesignerBanner } from './components/ApiDesignerBanner';
+import { skeletonFor } from './utils/apiSkeleton';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -84,8 +85,7 @@ const messages = defineMessages({
   },
   sourceSubtitle: {
     id: 'api.create.ApiCreationWizard.source.subtitle',
-    defaultMessage:
-      'Bring an existing contract, or start from a blank slate and fill in the details yourself.',
+    defaultMessage: 'Point us at a running service, or bring an OpenAPI spec that describes it.',
   },
   sourceTitle: {
     id: 'api.create.ApiCreationWizard.source.title',
@@ -99,7 +99,7 @@ const messages = defineMessages({
   },
   specTooLarge: {
     id: 'api.create.ApiCreationWizard.error.specTooLarge',
-    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
+    defaultMessage: 'This OpenAPI spec is larger than the maximum allowed size.',
   },
 });
 
@@ -219,7 +219,26 @@ const ApiCreationWizardContent = () => {
     // File by DefineApiPanel), scratch passes the skeleton. Both submit via
     // import-openapi. The backend still accepts `url` for direct REST callers.
     const formData = new FormData();
-    formData.append('file', values.contractImport.specFile, values.contractImport.specFile.name);
+    const mainUrl = values.upstream?.main?.url?.trim();
+    const specFile = values.contractImport.fromSkeleton
+      ? new File(
+          [
+            JSON.stringify(
+              skeletonFor({
+                description: values.description?.trim() || undefined,
+                displayName: values.displayName.trim(),
+                upstreamUrl: mainUrl,
+                version: values.version.trim(),
+              }),
+              null,
+              2,
+            ),
+          ],
+          values.contractImport.specFile.name,
+          { type: 'application/json' },
+        )
+      : values.contractImport.specFile;
+    formData.append('file', specFile, specFile.name);
     formData.append('id', values.id.trim());
     formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());
@@ -230,7 +249,6 @@ const ApiCreationWizardContent = () => {
     if (values.description?.trim()) {
       formData.append('description', values.description.trim());
     }
-    const mainUrl = values.upstream?.main?.url?.trim();
     if (mainUrl) {
       formData.append('upstream', JSON.stringify({ main: { url: mainUrl } }));
     }
