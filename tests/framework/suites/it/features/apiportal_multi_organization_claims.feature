@@ -137,7 +137,7 @@ Feature: API Portal multi-organization organization claims
       | sub      | s1                                                   |
       | org_id   | ${CTX:suborg}                                        |
       | org_name | Suborg ${CTX:suborg}                                 |
-      | iss      | https://testbench:3014/o/${CTX:suborg}/oauth2/token  |
+      | iss      | https://testbench:3015/o/${CTX:suborg}/oauth2/token  |
       | roles    | ["ap_admin"]                                         |
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 401

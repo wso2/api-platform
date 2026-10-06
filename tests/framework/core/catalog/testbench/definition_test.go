@@ -40,6 +40,17 @@ func TestTestbenchDefinition(t *testing.T) {
 	}
 }
 
+// Every service shares the one testbench container, so two services on one port means
+// whichever binds second fails to start, and the scenarios using it get the other one.
+func TestTestbenchEndpointsHaveDistinctPorts(t *testing.T) {
+	seen := map[int]string{}
+	for _, endpoint := range Testbench().Endpoints {
+		other, taken := seen[endpoint.Port]
+		require.False(t, taken, "%s and %s both use port %d", other, endpoint.Name, endpoint.Port)
+		seen[endpoint.Port] = endpoint.Name
+	}
+}
+
 func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
 	definition := Testbench()
 	endpoint, ok := definition.Endpoint("oidc")
@@ -50,7 +61,7 @@ func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
 	pair := shared.IdentityProviderTLS()
 	require.Equal(t, string(pair.CertPEM), definition.Env[oidc.EnvTLSCert])
 	require.Equal(t, string(pair.PrivateKeyPEM), definition.Env[oidc.EnvTLSKey])
-	require.Equal(t, "https://testbench:3014/oauth2/token", definition.Env[oidc.EnvIssuer])
+	require.Equal(t, "https://testbench:3015/oauth2/token", definition.Env[oidc.EnvIssuer])
 	require.Equal(t, OIDCIssuer, definition.Env[oidc.EnvIssuer])
 
 	block, _ := pem.Decode(pair.CertPEM)
