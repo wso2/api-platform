@@ -60,6 +60,8 @@ Feature: AI Workspace CLI publish and persistence
     Given I generate a unique resource name from "awcli-provider" and store it as "providerId"
     And I generate a unique API context from "/awcli-provider" and store it as "providerContext"
     And I create an LLM provider "${CTX:providerId}" via the control plane with context "${CTX:providerContext}" referencing template "openai"
+    And I generate a unique resource name from "awcli-secret" and store it as "secretHandle"
+    And I create a secret "${CTX:secretHandle}" via the control plane
     And I generate a unique resource name from "awcli-proxy" and store it as "artifactId"
     And I generate a unique API context from "/awcli-proxy" and store it as "artifactContext"
     When the "llm-proxy" project artifact is initialized

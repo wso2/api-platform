@@ -11,7 +11,7 @@ spec:
         auth:
             header: X-API-Key
             type: api-key
-            value: '{{ secret "13b216e7-10d9-47ca-b343-e0a546ab718b" }}'
+            value: '{{ secret "${CTX:secretHandle}" }}'
     globalPolicies:
         - name: api-key-auth
           params:
