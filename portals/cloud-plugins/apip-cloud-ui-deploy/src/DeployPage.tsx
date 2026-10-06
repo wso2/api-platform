@@ -93,7 +93,7 @@ const DeployPage: FC<DeployPageProps> = ({
   };
 
   return (
-    <>
+    <PageContent>
       <PageTitle sx={{ mb: 2, flexShrink: 0 }}>
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
@@ -193,7 +193,7 @@ const DeployPage: FC<DeployPageProps> = ({
         onClose={() => setDialog(null)}
         onConfirm={handleConfirm}
       />
-    </>
+    </PageContent>
   );
 };
 
