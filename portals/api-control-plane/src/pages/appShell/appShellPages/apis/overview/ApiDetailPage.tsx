@@ -28,7 +28,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Clock, Copy, Edit, FlaskConical, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
@@ -72,6 +72,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label',
     defaultMessage: 'by',
     description: 'Label between the API creation time and creator.',
+  },
+  redeploy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.redeploy',
+    defaultMessage: 'Re-deploy',
+    description:
+      'Secondary button on the API overview once the API is live; opens the deployment page.',
+  },
+  testApi: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.testApi',
+    defaultMessage: 'Test it',
+    description:
+      'Primary button on the API overview once the API is deployed; opens the Test page.',
   },
   deployToGateway: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway',
@@ -204,6 +216,13 @@ function ApiDetailPageContent() {
     params.projectHandler ?? null,
     params.apiHandler ?? null,
   );
+
+  const testPath = routes.apiTest(
+    params.orgHandle ?? '',
+    params.projectHandler ?? null,
+    params.apiHandler ?? null,
+  );
+  const isLive = deployedGateways.length > 0;
 
   // Same reasoning: the page only mounts fully scoped, so the edit page's path
   // is always the fully-scoped one.
@@ -362,17 +381,31 @@ function ApiDetailPageContent() {
                 </IconButton>
               </Tooltip>
             )}
+            {/* Before the first deploy, deploying is the next step. Once the
+                API is live, testing it is, so Test takes the primary slot and
+                Deploy steps back to a secondary Re-deploy. */}
             <Can do="DeployAPI" denied="disable">
               <Button
                 component={RouterLink}
                 startIcon={<Rocket size={18} />}
                 sx={{ flexShrink: 0 }}
                 to={deployPath}
-                variant="contained"
+                variant={isLive ? 'outlined' : 'contained'}
               >
-                <FormattedMessage {...messages.deployToGateway} />
+                <FormattedMessage {...(isLive ? messages.redeploy : messages.deployToGateway)} />
               </Button>
             </Can>
+            {isLive && (
+              <Button
+                component={RouterLink}
+                startIcon={<FlaskConical size={18} />}
+                sx={{ flexShrink: 0 }}
+                to={testPath}
+                variant="contained"
+              >
+                <FormattedMessage {...messages.testApi} />
+              </Button>
+            )}
           </Stack>
         </Box>
         <ProgressBanner api={api} deployed={deployedGateways.length > 0} />

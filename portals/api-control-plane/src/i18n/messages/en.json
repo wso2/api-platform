@@ -788,6 +788,14 @@
     "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
     "description": "Tooltip explaining the gateway-managed chip."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.redeploy": {
+    "defaultMessage": "Re-deploy",
+    "description": "Secondary button on the API overview once the API is live; opens the deployment page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.testApi": {
+    "defaultMessage": "Test it",
+    "description": "Primary button on the API overview once the API is deployed; opens the Test page."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
@@ -1229,6 +1237,14 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch": {
     "defaultMessage": "No gateways match your search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarning": {
+    "defaultMessage": "Anyone with this API’s URL will be able to call it. To restrict access, add an authentication policy such as API Key Auth, then deploy.",
+    "description": "Warning on the Deploy page when the API has no caller-authentication policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarningAction": {
+    "defaultMessage": "Add a policy",
+    "description": "Link in the public-API warning that opens the API’s policies."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder": {
     "defaultMessage": "Search gateways"
