@@ -35,7 +35,7 @@ import {
   PageTitle,
   Stack,
 } from '@wso2/oxygen-ui';
-import { LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
+import { Laptop, LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
@@ -68,7 +68,18 @@ const NAV_ITEMS: NavItem[] = [
     path: '/settings/custom-policies',
     scope: SCOPES.GATEWAY_CUSTOM_POLICY_READ,
   },
+  {
+    key: 'serviceAccounts',
+    label: 'Service Accounts',
+    icon: <Laptop size={18} />,
+    path: '/settings/service-accounts',
+    scope: SCOPES.SERVICE_ACCOUNT_MANAGE,
+  },
 ];
+
+/** Whether the user can open any Settings section; the sidebar link keys off this. */
+export const canSeeSettings = (hasPermission: (scope: string) => boolean) =>
+  NAV_ITEMS.some((item) => hasPermission(item.scope));
 
 export default function Settings() {
   const navigate = useNavigate();

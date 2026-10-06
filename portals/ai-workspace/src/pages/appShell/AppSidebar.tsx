@@ -48,6 +48,7 @@ import {
   type AIWorkspacePageOverride,
 } from '../../extensions';
 import { Hideable, useSlot } from '../../slots';
+import { canSeeSettings } from './appShellPages/settings/Main';
 
 const navLinkStyle: React.CSSProperties = {
   textDecoration: 'none',
@@ -397,7 +398,7 @@ export default function AppSidebar({
 
       <Sidebar.Footer>
         <Sidebar.Category>
-          {hasPermission(SCOPES.LLM_TEMPLATE_MANAGE) && (
+          {canSeeSettings(hasPermission) && (
             <NavLink to={settingsPath} style={navLinkStyle}>
               <Sidebar.Item id="settings">
                 <Sidebar.ItemIcon>
