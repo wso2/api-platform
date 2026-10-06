@@ -326,3 +326,42 @@ func TestOnFault_SynthesizedContextIsComplete(t *testing.T) {
 		}
 	}
 }
+
+// TestOnFault_RecordsTheJSONRPCCodeAsANumber pins the code's type, not just its presence.
+// The engine converts analytics metadata through structpb, which rejects a pointer, and the
+// classifier reads the code back only as a number — so a *int stored here reached the event
+// as a string and was silently dropped. A nil Code means "derive from the status" and is left
+// out rather than recorded as null.
+func TestOnFault_RecordsTheJSONRPCCodeAsANumber(t *testing.T) {
+	p := &AnalyticsPolicy{}
+	fault := func(rpc *policy.JSONRPCError) *policy.FaultContext {
+		return &policy.FaultContext{
+			SharedContext:  &policy.SharedContext{},
+			ResponseStatus: 400,
+			Fault:          &policy.FaultDetails{Code: "900902", JSONRPC: rpc},
+		}
+	}
+
+	code := -32602
+	got := p.OnFault(context.Background(), fault(&policy.JSONRPCError{Code: &code}), nil)
+	if got == nil {
+		t.Fatal("expected metadata")
+	}
+	if v, ok := got.AnalyticsMetadata[FaultJSONRPCCodeMetadataKey].(int); !ok || v != code {
+		t.Fatalf("%s = %#v, want the int %d", FaultJSONRPCCodeMetadataKey,
+			got.AnalyticsMetadata[FaultJSONRPCCodeMetadataKey], code)
+	}
+
+	for name, rpc := range map[string]*policy.JSONRPCError{
+		"nil code":    {ID: 7},
+		"no JSON-RPC": nil,
+	} {
+		got := p.OnFault(context.Background(), fault(rpc), nil)
+		if got == nil {
+			continue
+		}
+		if v, present := got.AnalyticsMetadata[FaultJSONRPCCodeMetadataKey]; present {
+			t.Errorf("%s: %s = %#v, want it omitted", name, FaultJSONRPCCodeMetadataKey, v)
+		}
+	}
+}

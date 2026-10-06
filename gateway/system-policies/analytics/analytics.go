@@ -1025,8 +1025,11 @@ func populateFaultAnalyticsMetadata(analyticsMetadata map[string]any, faultCtx *
 			analyticsMetadata[FaultGuardrailReasonMetadataKey] = g.ActionReason
 		}
 	}
-	if f.JSONRPC != nil {
-		analyticsMetadata[FaultJSONRPCCodeMetadataKey] = f.JSONRPC.Code
+	// Stored as the int, not the *int: the engine converts this metadata through structpb,
+	// which rejects a pointer, so the code would arrive as a string the classifier never
+	// reads. A nil Code means "derive from the status", which has nothing to record.
+	if f.JSONRPC != nil && f.JSONRPC.Code != nil {
+		analyticsMetadata[FaultJSONRPCCodeMetadataKey] = *f.JSONRPC.Code
 	}
 }
 

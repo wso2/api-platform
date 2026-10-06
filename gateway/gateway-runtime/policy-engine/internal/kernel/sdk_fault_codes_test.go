@@ -75,42 +75,13 @@ func TestSDKFaultCodesMatchAnalytics(t *testing.T) {
 	}
 }
 
-// The SDK's classification ranges must match the ones analytics uses.
+// The SDK splits the 96xxxx policy space into a WSO2 half and a customer half, and the split
+// must be contiguous: a gap between them would be a range nobody may allocate in, silently.
 //
-// These decide a code's fault CATEGORY, so a range that drifts silently re-files every code
-// inside it. Exported from the SDK so a policy can check its own allocation, which means the
-// two copies are read by different audiences and would drift without noticing.
-func TestSDKClassificationRangesMatchAnalytics(t *testing.T) {
-	cases := []struct {
-		name                 string
-		sdkStart, sdkEnd     int
-		analyticsStart, aEnd int
-	}{
-		{"auth", policy.AuthFailureRangeStart, policy.AuthFailureRangeEnd,
-			policy.AuthFailureRangeStart, policy.AuthFailureRangeEnd},
-		{"throttled", policy.ThrottledFailureRangeStart, policy.ThrottledFailureRangeEnd,
-			policy.ThrottledFailureRangeStart, policy.ThrottledFailureRangeEnd},
-		{"target", policy.TargetFailureRangeStart, policy.TargetFailureRangeEnd,
-			policy.TargetFailureRangeStart, policy.TargetFailureRangeEnd},
-	}
-	for _, tc := range cases {
-		if tc.sdkStart != tc.analyticsStart || tc.sdkEnd != tc.aEnd {
-			t.Errorf("%s range: SDK [%d,%d), analytics [%d,%d)",
-				tc.name, tc.sdkStart, tc.sdkEnd, tc.analyticsStart, tc.aEnd)
-		}
-	}
-
-	// The SDK splits the 96xxxx policy space into a WSO2 half and a customer half, which
-	// analytics carries as one block. The outer bounds must still agree, and the split must
-	// be contiguous — a gap between them would be a range nobody may allocate in, silently.
-	if policy.ShippedPolicyRangeStart != policy.ShippedPolicyRangeStart {
-		t.Errorf("policy space starts at %d in the SDK, %d in analytics",
-			policy.ShippedPolicyRangeStart, policy.ShippedPolicyRangeStart)
-	}
-	if policy.UserDefinedRangeEnd != policy.UserDefinedRangeEnd {
-		t.Errorf("policy space ends at %d in the SDK, %d in analytics",
-			policy.UserDefinedRangeEnd, policy.UserDefinedRangeEnd)
-	}
+// There is no analytics side to compare against any more. internal/analytics reads the SDK's
+// classification ranges directly (see analytics/fault_classification.go), so they cannot
+// drift; what is left to check is the SDK's own arithmetic.
+func TestSDKPolicyCodeSpaceIsContiguous(t *testing.T) {
 	if policy.ShippedPolicyRangeEnd != policy.UserDefinedRangeStart {
 		t.Errorf("the shipped block ends at %d and the customer block starts at %d, leaving a "+
 			"range nobody owns", policy.ShippedPolicyRangeEnd, policy.UserDefinedRangeStart)
