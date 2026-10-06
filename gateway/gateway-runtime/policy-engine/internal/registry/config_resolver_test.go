@@ -735,6 +735,45 @@ func TestConfigResolver_FallbackMarkers(t *testing.T) {
 		}
 	})
 
+	t.Run("resolves nested boolean keys and defaults the keys a table omits", func(t *testing.T) {
+		resolver, err := NewConfigResolver(map[string]interface{}{
+			"router": map[string]interface{}{
+				"downstream_tls": map[string]interface{}{
+					"client_certificate_header": map[string]interface{}{
+						"trust_any": true,
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+		}
+
+		input := map[string]interface{}{
+			"headerName": map[string]interface{}{
+				policyv1alpha.SystemParamConfigRefKey:    "${config.router.downstream_tls.client_certificate_header.name}",
+				policyv1alpha.SystemParamDefaultValueKey: "X-WSO2-CLIENT-CERTIFICATE",
+			},
+			"trustAny": map[string]interface{}{
+				policyv1alpha.SystemParamConfigRefKey:    "${config.router.downstream_tls.client_certificate_header.trust_any}",
+				policyv1alpha.SystemParamDefaultValueKey: false,
+			},
+		}
+
+		got, err := resolver.ResolveMap(input)
+		if err != nil {
+			t.Fatalf("ResolveMap() unexpected error: %v", err)
+		}
+
+		want := map[string]interface{}{
+			"headerName": "X-WSO2-CLIENT-CERTIFICATE",
+			"trustAny":   true,
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("ResolveMap() = %v, want %v", got, want)
+		}
+	})
+
 	t.Run("does not fallback on non-missing-key errors", func(t *testing.T) {
 		resolver, err := NewConfigResolver(map[string]interface{}{
 			"policy": map[string]interface{}{

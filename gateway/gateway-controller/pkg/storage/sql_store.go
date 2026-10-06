@@ -2023,16 +2023,58 @@ func (s *sqlStore) GetLLMProviderTemplateByHandle(handle string) (*models.Stored
 	return &template, nil
 }
 
+// certificateMatchToJSON marshals a CertificateMatch into the match_json
+// column. A nil match persists as SQL NULL, never the string "null".
+func certificateMatchToJSON(match *models.CertificateMatch) (sql.NullString, error) {
+	if match == nil {
+		return sql.NullString{}, nil
+	}
+	b, err := json.Marshal(match)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("failed to encode certificate match: %w", err)
+	}
+	return sql.NullString{String: string(b), Valid: true}, nil
+}
+
+// certificateMatchFromJSON reverses certificateMatchToJSON. A NULL or empty
+// value decodes to a nil match.
+func certificateMatchFromJSON(ns sql.NullString) (*models.CertificateMatch, error) {
+	if !ns.Valid || ns.String == "" {
+		return nil, nil
+	}
+	var match models.CertificateMatch
+	if err := json.Unmarshal([]byte(ns.String), &match); err != nil {
+		return nil, fmt.Errorf("failed to decode stored certificate match: %w", err)
+	}
+	return &match, nil
+}
+
+// certificateCommonColumns is the column list of every certificate SELECT,
+// so the scan order cannot drift from the scanners.
+const certificateCommonColumns = `uuid, name, certificate, subject, issuer,
+	       not_before, not_after, cert_count, usage, role, match_json,
+	       private_key_ciphertext, key_algorithm, created_at, updated_at`
+
 // SaveCertificate persists a certificate to the database
 func (s *sqlStore) SaveCertificate(cert *models.StoredCertificate) error {
+	usage := cert.EffectiveUsage()
+	role := cert.EffectiveRole()
+	matchJSON, err := certificateMatchToJSON(cert.Match)
+	if err != nil {
+		return err
+	}
+	privateKeyCiphertext := nullableString(cert.PrivateKeyCiphertext)
+	keyAlgorithm := nullableString(cert.KeyAlgorithm)
+
 	query := `
 		INSERT INTO certificates (
 			uuid, gateway_id, name, certificate, subject, issuer,
-			not_before, not_after, cert_count, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			not_before, not_after, cert_count, usage, role, match_json,
+			private_key_ciphertext, key_algorithm, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := s.exec(query,
+	_, err = s.exec(query,
 		cert.UUID,
 		s.gatewayId,
 		cert.Name,
@@ -2042,6 +2084,11 @@ func (s *sqlStore) SaveCertificate(cert *models.StoredCertificate) error {
 		cert.NotBefore,
 		cert.NotAfter,
 		cert.CertCount,
+		usage,
+		role,
+		matchJSON,
+		privateKeyCiphertext,
+		keyAlgorithm,
 		cert.CreatedAt,
 		cert.UpdatedAt,
 	)
@@ -2059,75 +2106,41 @@ func (s *sqlStore) SaveCertificate(cert *models.StoredCertificate) error {
 
 // GetCertificate retrieves a certificate by UUID
 func (s *sqlStore) GetCertificate(id string) (*models.StoredCertificate, error) {
-	query := `
-		SELECT uuid, name, certificate, subject, issuer,
-		       not_before, not_after, cert_count, created_at, updated_at
+	query := `SELECT ` + certificateCommonColumns + `
 		FROM certificates
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
-	var cert models.StoredCertificate
-	err := s.queryRow(query, id, s.gatewayId).Scan(
-		&cert.UUID,
-		&cert.Name,
-		&cert.Certificate,
-		&cert.Subject,
-		&cert.Issuer,
-		&cert.NotBefore,
-		&cert.NotAfter,
-		&cert.CertCount,
-		&cert.CreatedAt,
-		&cert.UpdatedAt,
-	)
-
+	cert, err := scanOneCertificate(s.queryRow(query, id, s.gatewayId))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
 		}
 		return nil, fmt.Errorf("failed to get certificate: %w", err)
 	}
-
-	return &cert, nil
+	return cert, nil
 }
 
 // GetCertificateByName retrieves a certificate by name
 func (s *sqlStore) GetCertificateByName(name string) (*models.StoredCertificate, error) {
-	query := `
-		SELECT uuid, name, certificate, subject, issuer,
-		       not_before, not_after, cert_count, created_at, updated_at
+	query := `SELECT ` + certificateCommonColumns + `
 		FROM certificates
 		WHERE name = ? AND gateway_id = ?
 	`
 
-	var cert models.StoredCertificate
-	err := s.queryRow(query, name, s.gatewayId).Scan(
-		&cert.UUID,
-		&cert.Name,
-		&cert.Certificate,
-		&cert.Subject,
-		&cert.Issuer,
-		&cert.NotBefore,
-		&cert.NotAfter,
-		&cert.CertCount,
-		&cert.CreatedAt,
-		&cert.UpdatedAt,
-	)
-
+	cert, err := scanOneCertificate(s.queryRow(query, name, s.gatewayId))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to get certificate by name: %w", err)
 	}
-
-	return &cert, nil
+	return cert, nil
 }
 
 // ListCertificates retrieves all certificates
 func (s *sqlStore) ListCertificates() ([]*models.StoredCertificate, error) {
-	query := `
-		SELECT uuid, name, certificate, subject, issuer,
-		       not_before, not_after, cert_count, created_at, updated_at
+	query := `SELECT ` + certificateCommonColumns + `
 		FROM certificates
 		WHERE gateway_id = ?
 		ORDER BY created_at DESC
@@ -2139,24 +2152,91 @@ func (s *sqlStore) ListCertificates() ([]*models.StoredCertificate, error) {
 	}
 	defer rows.Close()
 
+	certs, err := scanCertificateRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return certs, nil
+}
+
+// ListCertificatesByUsage retrieves certificates matching the given usage value.
+func (s *sqlStore) ListCertificatesByUsage(usage string) ([]*models.StoredCertificate, error) {
+	query := `SELECT ` + certificateCommonColumns + `
+		FROM certificates
+		WHERE gateway_id = ? AND usage = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, s.gatewayId, usage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list certificates by usage: %w", err)
+	}
+	defer rows.Close()
+
+	certs, err := scanCertificateRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return certs, nil
+}
+
+// nullableString converts an empty string to SQL NULL.
+func nullableString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// certificateRowScanner is satisfied by both *sql.Row and *sql.Rows.
+type certificateRowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// scanOneCertificate scans one row selected with certificateCommonColumns.
+func scanOneCertificate(row certificateRowScanner) (*models.StoredCertificate, error) {
+	var cert models.StoredCertificate
+	var matchJSON, privateKeyCiphertext, keyAlgorithm sql.NullString
+	if err := row.Scan(
+		&cert.UUID,
+		&cert.Name,
+		&cert.Certificate,
+		&cert.Subject,
+		&cert.Issuer,
+		&cert.NotBefore,
+		&cert.NotAfter,
+		&cert.CertCount,
+		&cert.Usage,
+		&cert.Role,
+		&matchJSON,
+		&privateKeyCiphertext,
+		&keyAlgorithm,
+		&cert.CreatedAt,
+		&cert.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	match, err := certificateMatchFromJSON(matchJSON)
+	if err != nil {
+		return nil, err
+	}
+	cert.Match = match
+	cert.PrivateKeyCiphertext = privateKeyCiphertext.String
+	cert.KeyAlgorithm = keyAlgorithm.String
+	return &cert, nil
+}
+
+// scanCertificateRows scans rows selected with certificateCommonColumns.
+func scanCertificateRows(rows *sql.Rows) ([]*models.StoredCertificate, error) {
 	var certs []*models.StoredCertificate
 	for rows.Next() {
-		var cert models.StoredCertificate
-		if err := rows.Scan(
-			&cert.UUID,
-			&cert.Name,
-			&cert.Certificate,
-			&cert.Subject,
-			&cert.Issuer,
-			&cert.NotBefore,
-			&cert.NotAfter,
-			&cert.CertCount,
-			&cert.CreatedAt,
-			&cert.UpdatedAt,
-		); err != nil {
+		cert, err := scanOneCertificate(rows)
+		if err != nil {
 			return nil, fmt.Errorf("failed to scan certificate: %w", err)
 		}
-		certs = append(certs, &cert)
+		certs = append(certs, cert)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -2186,6 +2266,44 @@ func (s *sqlStore) DeleteCertificate(id string) error {
 	}
 
 	s.logger.Info("Certificate deleted", slog.String("uuid", id))
+
+	return nil
+}
+
+// UpdateCertificate replaces an existing certificate's material. Name and
+// usage are immutable.
+func (s *sqlStore) UpdateCertificate(cert *models.StoredCertificate) error {
+	query := `
+		UPDATE certificates
+		SET certificate = ?, subject = ?, issuer = ?, not_before = ?, not_after = ?,
+		    cert_count = ?, private_key_ciphertext = ?, key_algorithm = ?, updated_at = ?
+		WHERE uuid = ? AND gateway_id = ?
+	`
+
+	result, err := s.exec(query,
+		cert.Certificate,
+		cert.Subject,
+		cert.Issuer,
+		cert.NotBefore,
+		cert.NotAfter,
+		cert.CertCount,
+		nullableString(cert.PrivateKeyCiphertext),
+		nullableString(cert.KeyAlgorithm),
+		cert.UpdatedAt,
+		cert.UUID,
+		s.gatewayId,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update certificate: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s", ErrNotFound, cert.UUID)
+	}
 
 	return nil
 }

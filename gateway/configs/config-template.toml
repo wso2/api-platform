@@ -405,6 +405,12 @@ reqTxDur = "%REQUEST_TX_DURATION%"
 respTxDur = "%RESPONSE_TX_DURATION%"
 reqDur = "%REQUEST_DURATION%"
 respDur = "%RESPONSE_DURATION%"
+# TLS of the caller's connection and of the backend handshake
+sni = "%REQUESTED_SERVER_NAME%"
+tlsVer = "%DOWNSTREAM_TLS_VERSION%"
+peerSubj = "%DOWNSTREAM_PEER_SUBJECT%"
+peerFp = "%DOWNSTREAM_PEER_FINGERPRINT_256%"
+upTlsFail = "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
 
 [router.downstream_tls]
 cert_path = "./listener-certs/default-listener.crt"
@@ -419,6 +425,26 @@ ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA
 # hybrid group. An unsupported curve name is rejected by Envoy when it
 # applies the resulting config, not by this file.
 ecdh_curves = "X25519MLKEM768,X25519,P-256"
+# HTTPS connections asked for a client certificate while an API attaches mtls-auth:
+#   "mtls_hostnames"  - only those of mtls-auth API hostnames (default); every connection
+#                       while one has no hostname of its own or a relay entry exists
+#   "all_connections" - every connection
+client_certificate_request = "mtls_hostnames"
+# Refuse (HTTP 400) to deploy an mtls-auth API without its own hostname.
+# Only with "mtls_hostnames". true | false (default)
+mtls_requires_dedicated_hostname = false
+
+[router.downstream_tls.client_certificate_header]
+# HTTP header carrying a client certificate relayed by a front proxy that
+# terminates TLS ahead of this gateway (PEM, URL-encoded PEM, or base64-encoded
+# DER). Must be a valid HTTP header token.
+name = "X-WSO2-CLIENT-CERTIFICATE"
+# When true, the header is believed on ANY connection whose own certificate
+# wasn't rejected, not only on one matching a role: relay pool entry.
+# Only safe when this gateway is reachable from nothing but a trusted front
+# proxy. Off by default; every mtls-auth deployment carries a
+# HEADER_CERT_BYPASS_ACTIVE warning and a startup WARN is logged while true.
+trust_any = false
 
 [router.upstream.tls]
 minimum_protocol_version = "TLS1_2"
@@ -435,6 +461,9 @@ trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
 custom_certs_path = "./certificates"
 verify_host_name = true
 disable_ssl_verification = false
+# Present a client certificate to HTTPS backends whose upstream names no tls.identity:
+# the role "default" identity, else the HTTPS listener certificate. true (default) | false
+present_default_identity = true
 
 [router.upstream.timeouts]
 route_timeout_ms = 60000

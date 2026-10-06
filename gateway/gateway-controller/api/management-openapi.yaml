@@ -855,12 +855,24 @@ paths:
     get:
       summary: List all custom certificates
       description: |
-        Retrieve all custom TLS certificates currently loaded in the certificate store.
-        These certificates are used for verifying HTTPS upstream connections.
+        Retrieve custom TLS certificates currently loaded in the certificate store.
+        Without a filter, every certificate is listed. With usage: upstream, the
+        certificates used to verify HTTPS backends; with usage: downstream, the
+        pooled client certificate authorities that authenticate mutual-TLS
+        callers; with usage: identity, the gateway identities presented to
+        backends.
       operationId: listCertificates
       x-basicauth-roles: [admin, developer]
       tags:
         - Certificate Management
+      parameters:
+        - name: usage
+          in: query
+          required: false
+          description: Filter the list to a single usage. Omit to list all certificates regardless of usage.
+          schema:
+            type: string
+            enum: [ upstream, downstream, identity ]
       responses:
         "200":
           description: List of certificates
@@ -868,6 +880,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CertificateListResponse"
+        "400":
+          description: Invalid usage filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -877,7 +895,14 @@ paths:
 
     post:
       summary: Upload a new certificate
-      description: Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loaded dynamically without restarting the Gateway.
+      description: |
+        Upload a new TLS certificate (PEM format) to the Gateway. The certificate is
+        loaded dynamically without restarting the Gateway. With usage: upstream (the
+        default), it is used for verifying HTTPS upstream connections. With usage:
+        downstream, it becomes a pooled client certificate authority used to
+        authenticate mutual-TLS callers. With usage: identity, it is a gateway
+        identity presented to backends. Each usage has its own trust bundle or
+        secret; they are never mixed.
       operationId: uploadCertificate
       x-basicauth-roles: [admin]
       tags:
@@ -908,6 +933,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A certificate with this name already exists (names are one namespace across usages), or a role default identity is uploaded while another identity already has role default
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body exceeds the maximum allowed size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -916,6 +953,85 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /certificates/{id}:
+    put:
+      summary: Rotate a gateway identity's certificate and key
+      description: >
+        Replace a usage: identity certificate's chain and private key in
+        place, keeping its name and references intact. Only `certificate`
+        and `privateKey` are read from the body; `name`, `usage`, `role`
+        and `match` stay as stored. Refused for any other usage. Triggers
+        an SDS snapshot update so newly-dialed upstream connections use
+        the new identity.
+      operationId: updateCertificate
+      x-basicauth-roles: [admin]
+      tags:
+        - Certificate Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the certificate to replace
+          schema:
+            type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CertificateUploadRequest"
+              example:
+                certificate: |
+                  -----BEGIN CERTIFICATE-----
+                  ...
+                  -----END CERTIFICATE-----
+                  -----BEGIN CERTIFICATE-----
+                  ...
+                  -----END CERTIFICATE-----
+                privateKey: |
+                  -----BEGIN PRIVATE KEY-----
+                  ...
+                  -----END PRIVATE KEY-----
+      responses:
+        "200":
+          description: Certificate rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateResponse"
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440000
+                name: gateway-billing
+                subject: CN=gateway-billing,O=Example
+                issuer: CN=Example Issuing CA,O=Example
+                notAfter: "2027-11-26 06:07:26"
+                count: 2
+                usage: identity
+                isLeaf: true
+                keyAlgorithm: ECDSA
+                chainLength: 2
+                status: success
+                message: Certificate updated and SDS updated successfully
+        "400":
+          description: Invalid update (bad certificate/key, or the certificate is not usage identity)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     delete:
       summary: Delete a certificate
       description: Delete a certificate from the Gateway. The change is applied dynamically without restarting the Gateway.
@@ -950,6 +1066,18 @@ paths:
                     example: 550e8400-e29b-41d4-a716-446655440000
         "404":
           description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >-
+            The certificate is still referenced by a deployed API and cannot
+            be removed: a client authority named in an mtls-auth accept list
+            (or the pool's last non-relay authority while a deployed API still
+            attaches mtls-auth), an upstream certificate named in an upstream
+            definition's tls.trustedCAs, or a gateway identity named in an
+            upstream definition's tls.identity.
           content:
             application/json:
               schema:
@@ -3280,6 +3408,40 @@ components:
           format: date-time
           description: Timestamp when the resource was last deployed (omitted when undeployed)
           example: 2026-04-24T07:21:13Z
+        warnings:
+          type: array
+          readOnly: true
+          description: >-
+            Non-fatal deploy-time findings (e.g. a policy's parameters resolved
+            to something other than what was written, such as an omitted
+            accept list inheriting the whole client-CA pool). Present only
+            when non-empty.
+          items:
+            $ref: "#/components/schemas/Warning"
+
+    Warning:
+      type: object
+      description: A non-fatal, deploy-time finding attached to a resource's status.
+      properties:
+        code:
+          type: string
+          enum:
+            - MTLS_ACCEPT_INHERITS_POOL
+            - MTLS_ACCEPT_UNNARROWED
+            - MTLS_AUTH_NOT_FIRST
+            - MTLS_ACCEPT_NAMES_RELAY_AUTHORITY
+            - MTLS_THUMBPRINT_NORMALISED
+            - HEADER_CERT_BYPASS_ACTIVE
+            - MTLS_HOSTNAME_NOT_SCOPED
+            - TLS_VERIFY_HOSTNAME_DISABLED
+            - TLS_IDENTITY_EXPIRED
+          example: TLS_VERIFY_HOSTNAME_DISABLED
+        field:
+          type: string
+          example: spec.upstreamDefinitions[0].tls.verifyHostName
+        message:
+          type: string
+          example: hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host
 
     # Request body for create/update: user/resource fields only (no server-managed status).
     RestAPIRequest:
@@ -3560,6 +3722,24 @@ components:
                 minimum: 0
                 maximum: 100
                 example: 80
+        tls:
+          type: object
+          description: >
+            Optional mutual-TLS presentation and trust for this backend.
+            `identity` (string) names a gateway identity — a certificate
+            uploaded to POST /certificates with usage: identity — to
+            present on the connection. `trustedCAs` (array of string)
+            lists usage: upstream certificates to trust for this backend
+            in place of the gateway-wide trust bundle; omit to use the
+            gateway bundle. `verifyHostName` (boolean, default true)
+            controls SAN/hostname verification against the target. Every
+            target in a definition carrying `tls` must use https://.
+            Unknown keys are rejected at deploy time.
+          additionalProperties: true
+          example:
+            identity: partner-identity
+            trustedCAs: [partner-ca]
+            verifyHostName: true
 
     UpstreamTimeout:
       type: object
@@ -3616,6 +3796,13 @@ components:
             `auto` delegates host rewriting to Envoy, which rewrites the Host header
             using the upstream cluster host. `manual` disables automatic rewriting
             and expects explicit configuration.
+        tls:
+          type: object
+          description: >
+            Not supported on an inline upstream (a `url`-based main/sandbox
+            entry); a tls block placed here is rejected at deploy time. Put
+            it on the upstreamDefinitions entry referenced via `ref`.
+          additionalProperties: true
 
     Operation:
       type: object
@@ -6290,10 +6477,18 @@ components:
       required:
         - certificate
         - name
+      example:
+        name: partner-a-root
+        usage: downstream
+        certificate: |
+          -----BEGIN CERTIFICATE-----
+          MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+          ...
+          -----END CERTIFICATE-----
       properties:
         name:
           type: string
-          description: Unique name for the certificate. Must be unique across all certificates.
+          description: Unique name for the certificate. Must be unique across all certificates, regardless of usage.
           pattern: "^[a-zA-Z0-9._-]+$"
           minLength: 1
           maxLength: 100
@@ -6306,9 +6501,86 @@ components:
             MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
             ...
             -----END CERTIFICATE-----
+        usage:
+          type: string
+          description: |
+            What the certificate is for: backend trust used to verify HTTPS
+            upstream connections (upstream, the default), a pooled client
+            certificate authority that authenticates mutual-TLS callers
+            (downstream), or a gateway identity (identity): a certificate chain,
+            leaf first, plus its private key, presented to backends that
+            require mutual TLS.
+          enum: [ upstream, downstream, identity ]
+          default: upstream
+          example: upstream
+        role:
+          type: string
+          description: |
+            How the gateway uses the certificate. With usage downstream,
+            "client" (the default) means the authority validates a client
+            certificate presented directly on the mTLS connection; "relay"
+            means it validates a client certificate relayed via a header
+            (e.g. from a terminating load balancer) instead. With usage
+            identity, "default" makes this the identity presented to HTTPS
+            backends whose upstream definition names no tls identity, when
+            router.upstream.tls.present_default_identity is on; at most one
+            identity has it. Any other combination of role and usage is
+            rejected. The role cannot be changed after upload.
+          enum: [ client, relay, default ]
+          example: client
+        match:
+          allOf:
+            - $ref: "#/components/schemas/CertificateMatch"
+          description: |
+            Only valid for role: relay. Narrows which connections
+            authenticated as this relay entry can make a relayed header
+            believed. Omit to accept any connection presenting a certificate
+            from this authority, with no further narrowing.
+        privateKey:
+          type: string
+          writeOnly: true
+          description: >
+            Required (and only valid) when usage is identity: a PEM-encoded,
+            unencrypted private key matching the leaf certificate
+            (RSA/ECDSA/Ed25519, PKCS#8/PKCS#1/SEC1). Encrypted at rest by
+            the gateway; never returned by any response.
+          example: |
+            -----BEGIN PRIVATE KEY-----
+            MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC...
+            -----END PRIVATE KEY-----
+
+    CertificateMatch:
+      type: object
+      description: |
+        Narrows a role: relay pool entry to the connections it vouches for.
+        Each list, when present, must name at least one non-empty SAN.
+      properties:
+        dnsSANs:
+          type: array
+          items:
+            type: string
+          example: [ "lb.corp.test" ]
+        uriSANs:
+          type: array
+          items:
+            type: string
+          example: [ "urn:partner-a:edge-lb" ]
 
     CertificateResponse:
       type: object
+      example:
+        id: 550e8400-e29b-41d4-a716-446655440000
+        name: partner-a-root
+        subject: CN=Partner A Root,O=Partner A,C=US
+        issuer: CN=Partner A Root,O=Partner A,C=US
+        notAfter: "2026-11-26 06:07:26"
+        count: 1
+        usage: downstream
+        role: client
+        isLeaf: false
+        referencedByApis: 0
+        message: Certificate uploaded and SDS updated successfully
+        status: success
       properties:
         id:
           type: string
@@ -6320,21 +6592,61 @@ components:
           example: my-custom-ca
         subject:
           type: string
-          description: Certificate subject DN (for first cert if bundle)
+          description: Certificate subject DN (identity certificate, for a client-CA bundle)
           example: CN=My CA,O=My Organization,C=US
         issuer:
           type: string
-          description: Certificate issuer DN (for first cert if bundle)
+          description: Certificate issuer DN (identity certificate, for a client-CA bundle)
           example: CN=My CA,O=My Organization,C=US
         notAfter:
           type: string
-          description: Certificate expiration date (for first cert if bundle)
+          description: Certificate expiration date (identity certificate, for a client-CA bundle)
           format: date-time
           example: "2026-11-26 06:07:26"
         count:
           type: integer
           description: Number of certificates in the file
           example: 1
+        usage:
+          type: string
+          description: Whether this is upstream/backend trust, a pooled client certificate authority, or a gateway identity.
+          enum: [ upstream, downstream, identity ]
+          example: upstream
+        role:
+          type: string
+          description: |
+            Present for usage downstream: whether the authority validates a
+            directly-presented (client) or header-relayed (relay) client
+            certificate. Present for usage identity only as "default", on
+            the identity presented to backends whose upstream definition
+            names no tls identity.
+          enum: [ client, relay, default ]
+          example: client
+        match:
+          allOf:
+            - $ref: "#/components/schemas/CertificateMatch"
+          description: Only present for role relay entries that were stored with a narrowing match.
+        isLeaf:
+          type: boolean
+          description: True when the identity certificate is not itself a certificate authority (pooled as a one-member authority).
+          example: false
+        keyAlgorithm:
+          type: string
+          description: Only present for usage identity. The leaf private key's algorithm (RSA, ECDSA or Ed25519).
+          example: RSA
+        chainLength:
+          type: integer
+          description: Only present for usage identity. Number of certificates in the uploaded chain.
+          example: 1
+        warnings:
+          type: array
+          description: Non-fatal findings about the upload (e.g. leaf certificate, not yet valid). Omitted when there are none.
+          items:
+            $ref: "#/components/schemas/CertificateWarning"
+        referencedByApis:
+          type: integer
+          description: Number of deployed APIs referencing this certificate — a client authority (accept/pool) or a gateway identity (upstreamDefinitions[].tls.identity). Only present for usage downstream or identity.
+          example: 0
         message:
           type: string
           description: Success or informational message
@@ -6343,6 +6655,24 @@ components:
           type: string
           enum: [ success, error ]
           example: success
+
+    CertificateWarning:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - CLIENT_CA_IS_LEAF
+            - CLIENT_CA_NOT_YET_VALID
+            - CERT_EXPIRES_SOON
+            - IDENTITY_NO_CLIENTAUTH_EKU
+          example: CLIENT_CA_IS_LEAF
+        field:
+          type: string
+          example: certificate
+        message:
+          type: string
+          example: the certificate is not a certificate authority; it is pooled as a one-member authority that trusts exactly this certificate
 
     CertificateListResponse:
       type: object
