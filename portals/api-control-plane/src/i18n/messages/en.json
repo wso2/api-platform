@@ -176,7 +176,7 @@
     "defaultMessage": "Begin with a blank API and fill in the details."
   },
   "api.create.defineApi.scratch.endpoint.description": {
-    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
+    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway."
   },
   "api.create.defineApi.scratch.endpoint.heading": {
     "defaultMessage": "Backend endpoint"
@@ -3557,6 +3557,10 @@
   "gateways.create.endpoint.error.required": {
     "defaultMessage": "Enter a URL."
   },
+  "gateways.create.endpoint.helper": {
+    "defaultMessage": "Where this gateway will serve API traffic. For a gateway on your own machine, use https://localhost:8443.",
+    "description": "Helper text under the gateway URL field."
+  },
   "gateways.create.endpoint.label": {
     "defaultMessage": "URL"
   },
@@ -3629,12 +3633,22 @@
   "gateways.detail.GetStarted.environment.label": {
     "defaultMessage": "Associated Environment"
   },
+  "gateways.detail.GetStarted.generateToken": {
+    "defaultMessage": "Generate token",
+    "description": "Generates this gateway’s first registration token."
+  },
   "gateways.detail.GetStarted.k8s.chartHeading": {
     "defaultMessage": "Installing the Chart",
     "description": "Heading above the Helm command that installs the gateway into a cluster."
   },
   "gateways.detail.GetStarted.k8s.chartIntro": {
     "defaultMessage": "Run this command to install the gateway chart with control plane configurations:"
+  },
+  "gateways.detail.GetStarted.prepare.intro": {
+    "defaultMessage": "Then go into the gateway folder and run its one-time setup, which creates the gateway’s certificates and settings file:"
+  },
+  "gateways.detail.GetStarted.prepare.introNoSetup": {
+    "defaultMessage": "Then go into the gateway folder:"
   },
   "gateways.detail.GetStarted.prerequisite.curl": {
     "defaultMessage": "cURL installed"
@@ -3655,11 +3669,11 @@
     "defaultMessage": "Prerequisites"
   },
   "gateways.detail.GetStarted.reconfigure": {
-    "defaultMessage": "Reconfigure",
-    "description": "Generates a fresh registration token, revoking the gateway’s previous one."
+    "defaultMessage": "Generate another token",
+    "description": "Generates an additional registration token. The previous one stays active until revoked."
   },
   "gateways.detail.GetStarted.reconfigure.confirm.body": {
-    "defaultMessage": "This revokes the current registration token and disconnects any gateway still using it. You will need to apply the new token to bring it back online."
+    "defaultMessage": "The current token keeps working until you revoke it. A gateway can have at most two active tokens, so if it already has two, revoke one first."
   },
   "gateways.detail.GetStarted.reconfigure.confirm.button": {
     "defaultMessage": "Generate new token"
@@ -3673,12 +3687,8 @@
   "gateways.detail.GetStarted.reconfiguring": {
     "defaultMessage": "Generating…"
   },
-  "gateways.detail.GetStarted.start.enter": {
-    "defaultMessage": "1. Navigate to the gateway folder."
-  },
   "gateways.detail.GetStarted.start.run": {
-    "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
-    "description": "configs/keys.env is a file path — keep it exactly as written."
+    "defaultMessage": "Run this command in the gateway folder to start the gateway:"
   },
   "gateways.detail.GetStarted.step.configure": {
     "defaultMessage": "Step 2: Configure the Gateway"
@@ -3707,10 +3717,10 @@
     "defaultMessage": "Get Started"
   },
   "gateways.detail.GetStarted.token.notice.compose": {
-    "defaultMessage": "The registration token is single-use. If you need to reconfigure the gateway, generate a new token — this will revoke the old token and disconnect the gateway from the control plane."
+    "defaultMessage": "Generate a registration token, then run the command that appears to add it, with this control plane’s address, to the gateway’s settings. The token is shown only once."
   },
   "gateways.detail.GetStarted.token.notice.helm": {
-    "defaultMessage": "The registration token is a one-time generated token for this gateway. If you need to install or update the gateway chart again, first reconfigure this gateway to generate a new registration token. Reconfiguring will revoke the previous token."
+    "defaultMessage": "Generate a registration token. It is added to the install command below, and shown only once."
   },
   "gateways.detail.GetStarted.token.once": {
     "defaultMessage": "Copy this now. The token is shown only once and cannot be retrieved again."
