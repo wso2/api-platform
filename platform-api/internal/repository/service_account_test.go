@@ -27,7 +27,7 @@ import (
 
 func newTestServiceAccount(orgID, uuid, handle string) *model.ServiceAccount {
 	return &model.ServiceAccount{
-		UUID: uuid, OrganizationID: orgID, Handle: handle, DisplayName: handle, Owner: "team", Description: "test",
+		UUID: uuid, OrganizationID: orgID, Handle: handle, DisplayName: handle, Description: "test",
 		ClientID: "sa_org_" + handle, ClientSecretHash: "hash-" + handle, MaskedSecret: "***abcde",
 		Roles: "ap_sa_reader",
 	}
@@ -48,7 +48,7 @@ func TestServiceAccountRepo_CRUDAndDeleteKeepsLedger(t *testing.T) {
 	}
 
 	got, err := repo.GetByClientID(sa.ClientID)
-	if err != nil || got.UUID != sa.UUID || got.Owner != "team" || got.LastUsedAt != nil {
+	if err != nil || got.UUID != sa.UUID || got.LastUsedAt != nil {
 		t.Fatalf("GetByClientID = %+v, %v", got, err)
 	}
 	if err := repo.TouchLastUsed(sa.UUID, time.Now(), "203.0.113.7"); err != nil {
@@ -319,7 +319,7 @@ func TestServiceAccountRepo_ListSearch(t *testing.T) {
 	for i, handle := range []string{"ci-bot", "nightly-report", "data_100"} {
 		sa := newTestServiceAccount("org-sa", "22222222-0000-0000-0000-00000000000"+string(rune('1'+i)), handle)
 		if handle == "nightly-report" {
-			sa.DisplayName, sa.Owner = "Nightly Report", "Data-Team@example.com"
+			sa.DisplayName = "Nightly Report"
 		}
 		if err := repo.Create(sa, sa.Subject("org")); err != nil {
 			t.Fatalf("Create %s: %v", handle, err)
@@ -333,7 +333,6 @@ func TestServiceAccountRepo_ListSearch(t *testing.T) {
 		{"", 3},
 		{"NIGHTLY", 1},   // name, case-insensitive
 		{"ci-b", 1},      // handle
-		{"data-team", 1}, // owner
 		{"_", 1},         // a literal underscore, not a single-character wildcard
 		{"%", 0},         // a literal percent sign
 		{"missing", 0},
