@@ -171,6 +171,35 @@ blocks:
         features:
           - features/apiportal/security/grant_table_parity.feature
 
+  # Multi-organization mode: IDP sign-in through the testbench identity provider, every
+  # organization under the portal's portal_id served.
+  - name: api-portal-multi-organization
+    parallel: 3
+    components:
+      - name: testbench
+      - name: api-portal-multi-organization
+        db:
+          matrix: [postgres, sqlserver]
+    runners:
+      - name: claims
+        features:
+          - features/apiportal_multi_organization_claims.feature
+      - name: isolation
+        features:
+          - features/apiportal_multi_organization_isolation.feature
+      - name: login
+        features:
+          - features/apiportal_multi_organization_login.feature
+      - name: webhooks
+        features:
+          - features/apiportal_multi_organization_webhooks.feature
+      - name: publishing
+        features:
+          - features/apiportal_multi_organization_publishing.feature
+      - name: portals
+        features:
+          - features/apiportal_multi_organization_portals.feature
+
   - name: api-portal-foreign-org
     parallel: 1
     components:

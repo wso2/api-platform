@@ -44,7 +44,7 @@ router.get('/:orgName', async (req, res, next) => {
     // mounted under BASE_PATH the target must carry it too (res.redirect on a
     // domain-absolute path ignores the router mount), or the browser lands outside the
     // portal namespace and 404s.
-    return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
+    return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle(req.orgId)}`);
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 // The portal serves one organization, so the root is simply its front door —

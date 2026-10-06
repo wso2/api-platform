@@ -83,9 +83,9 @@ const registerPartials = async (req, res, next) => {
         // which would build sidebar links to a view that may since have been renamed or
         // deleted.
         if (isOrgSettings && !req.params.viewName) {
-          req.params.viewName = await orgContext.getFallbackViewHandle();
+          req.params.viewName = await orgContext.getFallbackViewHandle(req.orgId);
         }
-        const viewSegment = req.params.viewName || await orgContext.getFallbackViewHandle();
+        const viewSegment = req.params.viewName || await orgContext.getFallbackViewHandle(req.orgId);
         const baseUrl = "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 

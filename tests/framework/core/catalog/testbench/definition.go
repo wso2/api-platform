@@ -19,6 +19,7 @@
 package testbench
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -35,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
@@ -43,6 +45,10 @@ import (
 const EnvImageTestbench = "APIP_IT_IMAGE_TESTBENCH"
 
 const imgTestbench = "ghcr.io/wso2/api-platform/testbench:test"
+
+// OIDCIssuer is the issuer the testbench identity provider signs tokens with, as a component
+// reaches it over the docker network.
+var OIDCIssuer = "https://" + shared.IdentityProviderHost + ":" + strconv.Itoa(oidc.Port) + "/oauth2/token"
 
 // Testbench is every mock service the suites need, in ONE container.
 //
@@ -92,6 +98,14 @@ func Testbench() *components.Definition {
 			// scenario scope receives, addressed as http://testbench:3013/<block>/<scope>/<mode>.
 			// See testbench/services/agentcard.
 			{Name: "agentcard", Port: agentcard.Port, Scheme: "http", AwaitListening: true},
+			// The OIDC identity provider serves HTTPS with shared.IdentityProviderTLS, the
+			// certificate components that sign in through it are given to trust.
+			{Name: "oidc", Port: oidc.Port, Scheme: "https", AwaitListening: true},
+		},
+		Env: map[string]string{
+			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),
+			oidc.EnvTLSKey:  string(shared.IdentityProviderTLS().PrivateKeyPEM),
+			oidc.EnvIssuer:  OIDCIssuer,
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.

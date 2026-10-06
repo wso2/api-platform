@@ -204,6 +204,9 @@ module.exports = {
             '**/api-keys?**',
             '**/subscriptions',
             '/*/settings',
+            // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
+            '/*/views/*/llms-config',
+            '/*/views/*/llms.txt/preview',
         ],
         SYSTEM_AUTHORIZED_PAGES: [
             '**/applications',
@@ -212,6 +215,9 @@ module.exports = {
             '**/api-keys?**',
             '**/subscriptions',
             '/*/settings',
+            // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
+            '/*/views/*/llms-config',
+            '/*/views/*/llms.txt/preview',
         ],
     },
     ROLES: {
