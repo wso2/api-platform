@@ -74,6 +74,7 @@ import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStartWizard from './pages/appShell/appShellPages/quickStartWizard/Main';
 import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
+import ServiceAccountsList from './pages/appShell/appShellPages/settings/serviceAccounts/ServiceAccountsList';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
 import AgentProxyLayout from './pages/appShell/appShellPages/agentProxies/AgentProxyLayout';
@@ -846,6 +847,14 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   element={
                     <WithPageBoundary>
                       <CustomPoliciesList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="service-accounts"
+                  element={
+                    <WithPageBoundary>
+                      <ServiceAccountsList />
                     </WithPageBoundary>
                   }
                 />
