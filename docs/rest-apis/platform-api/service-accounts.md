@@ -48,12 +48,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:read
     {
       "id": "ci-deployer",
       "displayName": "CI deployer",
-      "owner": "platform-team@example.com",
       "description": "Deploys REST APIs from the release pipeline",
       "clientId": "sa_acme_ci-deployer_3f9a1c",
       "maskedSecret": "***9f2c1",
       "roles": [
-        "ap_sa_reader"
+        "ap_service_account"
       ],
       "status": "active",
       "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -157,10 +156,9 @@ shown only in this response and cannot be recovered later.
 {
   "id": "ci-deployer",
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ]
 }
 ```
@@ -189,12 +187,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:mana
   "serviceAccount": {
     "id": "ci-deployer",
     "displayName": "CI deployer",
-    "owner": "platform-team@example.com",
     "description": "Deploys REST APIs from the release pipeline",
     "clientId": "sa_acme_ci-deployer_3f9a1c",
     "maskedSecret": "***9f2c1",
     "roles": [
-      "ap_sa_reader"
+      "ap_service_account"
     ],
     "status": "active",
     "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -327,12 +324,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:read
 {
   "id": "ci-deployer",
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "clientId": "sa_acme_ci-deployer_3f9a1c",
   "maskedSecret": "***9f2c1",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ],
   "status": "active",
   "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -424,10 +420,9 @@ account was changed by another request after this one read it; retry.
 ```json
 {
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ],
   "status": "disabled"
 }
@@ -461,12 +456,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:mana
 {
   "id": "ci-deployer",
   "displayName": "CI deployer",
-  "owner": "platform-team@example.com",
   "description": "Deploys REST APIs from the release pipeline",
   "clientId": "sa_acme_ci-deployer_3f9a1c",
   "maskedSecret": "***9f2c1",
   "roles": [
-    "ap_sa_reader"
+    "ap_service_account"
   ],
   "status": "active",
   "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -972,12 +966,11 @@ Required scopes (the token must carry at least one of): `ap:service_account:mana
   "serviceAccount": {
     "id": "ci-deployer",
     "displayName": "CI deployer",
-    "owner": "platform-team@example.com",
     "description": "Deploys REST APIs from the release pipeline",
     "clientId": "sa_acme_ci-deployer_3f9a1c",
     "maskedSecret": "***9f2c1",
     "roles": [
-      "ap_sa_reader"
+      "ap_service_account"
     ],
     "status": "active",
     "lastUsedAt": "2019-08-24T14:15:22Z",
@@ -1071,7 +1064,7 @@ curl -X GET https://localhost:9243/api/v0.9/service-account-roles \
 
 ```
 
-The ap_sa_* roles in the role-to-scope mapping, each with the scopes it grants.
+Every role in the role-to-scope mapping, each with the scopes it grants.
 A sibling of /service-accounts, not a child, so it never shadows an account id.
 
 ### Authentication
@@ -1092,7 +1085,7 @@ Required scopes (the token must carry at least one of): `ap:service_account:read
   "count": 1,
   "list": [
     {
-      "name": "ap_sa_reader",
+      "name": "ap_service_account",
       "scopes": [
         "ap:rest_api:read",
         "ap:gateway:read"

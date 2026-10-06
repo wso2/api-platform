@@ -93,14 +93,8 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 	if req.Id == constants.ServiceAccountReservedHandle {
 		return nil, apperror.ValidationFailed.New(fmt.Sprintf("The id %q is reserved.", req.Id))
 	}
-	displayName, owner, description := strings.TrimSpace(req.DisplayName), trimmed(req.Owner), trimmed(req.Description)
-	if owner == "" {
-		var err error
-		if owner, err = s.identity.SubForUUID(actor); err != nil {
-			return nil, err
-		}
-	}
-	if err := requireText(map[string]string{"displayName": displayName, "owner": owner, "description": description}); err != nil {
+	displayName, description := strings.TrimSpace(req.DisplayName), trimmed(req.Description)
+	if err := requireText(map[string]string{"displayName": displayName, "description": description}); err != nil {
 		return nil, err
 	}
 	roles, err := s.validateRoles(req.Roles)
@@ -132,7 +126,6 @@ func (s *ServiceAccountService) Create(orgID, actor string, req *api.ServiceAcco
 		OrganizationID:   orgID,
 		Handle:           req.Id,
 		DisplayName:      displayName,
-		Owner:            owner,
 		Description:      description,
 		ClientID:         "sa_" + org.Handle + "_" + req.Id + "_" + suffix[:6],
 		ClientSecretHash: hashServiceAccountSecret(secret),
@@ -183,14 +176,11 @@ func (s *ServiceAccountService) List(orgID, search string, limit, offset int) (*
 	}, nil
 }
 
-// Roles lists the ap_sa_* roles in the mapping, sorted by name, with their
-// scopes. Read from the map loaded at startup, so it never touches the DB.
+// Roles lists every role in the mapping, sorted by name, with its scopes. Read from the map loaded at startup, so it never touches the DB.
 func (s *ServiceAccountService) Roles() *api.ServiceAccountRoleListResponse {
 	list := make([]api.ServiceAccountRole, 0)
 	for name, scopes := range s.roleScopeMap {
-		if strings.HasPrefix(name, constants.ServiceAccountRolePrefix) {
-			list = append(list, api.ServiceAccountRole{Name: name, Scopes: slices.Clone(scopes)})
-		}
+		list = append(list, api.ServiceAccountRole{Name: name, Scopes: slices.Clone(scopes)})
 	}
 	slices.SortFunc(list, func(a, b api.ServiceAccountRole) int { return strings.Compare(a.Name, b.Name) })
 	return &api.ServiceAccountRoleListResponse{
@@ -222,17 +212,10 @@ func (s *ServiceAccountService) Update(orgID, handle, actor string, req *api.Ser
 	if req.DisplayName != nil {
 		sa.DisplayName = strings.TrimSpace(*req.DisplayName)
 	}
-	if req.Owner != nil {
-		if sa.Owner = strings.TrimSpace(*req.Owner); sa.Owner == "" {
-			if sa.Owner, err = s.identity.SubForUUID(sa.CreatedBy); err != nil {
-				return nil, err
-			}
-		}
-	}
 	if req.Description != nil {
 		sa.Description = strings.TrimSpace(*req.Description)
 	}
-	if err := requireText(map[string]string{"displayName": sa.DisplayName, "owner": sa.Owner, "description": sa.Description}); err != nil {
+	if err := requireText(map[string]string{"displayName": sa.DisplayName, "description": sa.Description}); err != nil {
 		return nil, err
 	}
 	if req.Roles != nil {
@@ -263,7 +246,7 @@ func (s *ServiceAccountService) Update(orgID, handle, actor string, req *api.Ser
 	}
 	s.remember(rev)
 
-	if sa.DisplayName != before.DisplayName || sa.Owner != before.Owner ||
+	if sa.DisplayName != before.DisplayName ||
 		sa.Description != before.Description || sa.Roles != before.Roles {
 		s.audit(auditActionUpdate, sa, actor)
 		// The audit table has no detail column, so the role change is logged here.
@@ -459,8 +442,8 @@ func (s *ServiceAccountService) TokenScope(claims jwt.MapClaims) string {
 	return expandRoles(roles, s.roleScopeMap)
 }
 
-// validateRoles accepts one or more ap_sa_* roles from the mapping file. Any
-// other role is a person's, and one missing from the file would authorize nothing.
+// validateRoles accepts one or more roles from the mapping file; a role missing
+// from the file would authorize nothing.
 func (s *ServiceAccountService) validateRoles(roles []string) ([]string, error) {
 	if len(roles) == 0 {
 		return nil, apperror.ValidationFailed.New("roles must name at least one role")
@@ -468,10 +451,6 @@ func (s *ServiceAccountService) validateRoles(roles []string) ([]string, error) 
 	out := make([]string, 0, len(roles))
 	for _, role := range roles {
 		role = strings.TrimSpace(role)
-		if !strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
-			return nil, apperror.ValidationFailed.New(fmt.Sprintf("role %q is not a service-account role (%q prefix)",
-				role, constants.ServiceAccountRolePrefix))
-		}
 		if _, ok := s.roleScopeMap[role]; !ok {
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf("role %q is not defined in the role-to-scope mapping", role))
 		}
@@ -518,7 +497,6 @@ func toServiceAccountAPI(sa *model.ServiceAccount) api.ServiceAccount {
 	resp := api.ServiceAccount{
 		Id:                  sa.Handle,
 		DisplayName:         sa.DisplayName,
-		Owner:               sa.Owner,
 		Description:         sa.Description,
 		ClientId:            &clientID,
 		MaskedSecret:        &masked,
@@ -566,11 +544,11 @@ func expandRoles(roles []string, roleScopeMap map[string][]string) string {
 
 // textFieldMaxLength matches the column widths, so an overlong value is a 400,
 // not a database error.
-var textFieldMaxLength = map[string]int{"displayName": 255, "owner": 255, "description": 1023}
+var textFieldMaxLength = map[string]int{"displayName": 255, "description": 1023}
 
-// requireText checks lengths; only displayName and owner may not be blank.
+// requireText checks lengths; only displayName may not be blank.
 func requireText(fields map[string]string) error {
-	for _, name := range []string{"displayName", "owner", "description"} {
+	for _, name := range []string{"displayName", "description"} {
 		v, ok := fields[name]
 		if !ok {
 			continue

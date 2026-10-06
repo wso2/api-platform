@@ -9100,7 +9100,7 @@ paths:
     get:
       summary: List the roles a service account can hold
       description: |
-        The ap_sa_* roles in the role-to-scope mapping, each with the scopes it grants.
+        Every role in the role-to-scope mapping, each with the scopes it grants.
         A sibling of /service-accounts, not a child, so it never shadows an account id.
       operationId: listServiceAccountRoles
       security:
@@ -14211,7 +14211,6 @@ components:
       required:
         - id
         - displayName
-        - owner
         - description
         - clientId
         - maskedSecret
@@ -14229,14 +14228,6 @@ components:
           minLength: 1
           maxLength: 255
           example: CI deployer
-        owner:
-          type: string
-          description: |
-            Who is accountable for this account — a team, person or mailing list.
-            Defaults to the creator: the `sub` of the token that created it.
-          minLength: 1
-          maxLength: 255
-          example: platform-team@example.com
         description:
           type: string
           description: What the account is for; may be empty
@@ -14252,10 +14243,10 @@ components:
           example: "***9f2c1"
         roles:
           type: array
-          description: The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
+          description: The account's roles, from the role-to-scope mapping file
           items:
             type: string
-          example: [ap_sa_reader]
+          example: [ap_service_account]
         status:
           type: string
           enum: [active, disabled]
@@ -14315,7 +14306,7 @@ components:
       properties:
         name:
           type: string
-          example: ap_sa_reader
+          example: ap_service_account
         scopes:
           type: array
           items:
@@ -14357,22 +14348,17 @@ components:
           minLength: 1
           maxLength: 255
           example: CI deployer
-        owner:
-          type: string
-          description: Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).
-          maxLength: 255
-          example: platform-team@example.com
         description:
           type: string
           maxLength: 1023
           example: Deploys REST APIs from the release pipeline
         roles:
           type: array
-          description: Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
+          description: Roles from the role-to-scope mapping file. Any role is accepted.
           minItems: 1
           items:
             type: string
-          example: [ap_sa_reader]
+          example: [ap_service_account]
 
     ServiceAccountUpdateRequest:
       type: object
@@ -14383,11 +14369,6 @@ components:
           minLength: 1
           maxLength: 255
           example: CI deployer
-        owner:
-          type: string
-          description: Blank resets it to the account's creator.
-          maxLength: 255
-          example: platform-team@example.com
         description:
           type: string
           maxLength: 1023
@@ -14395,12 +14376,12 @@ components:
         roles:
           type: array
           description: |
-            Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
+            Replaces the roles. Removing a role invalidates tokens
             already issued; adding one does not.
           minItems: 1
           items:
             type: string
-          example: [ap_sa_reader]
+          example: [ap_service_account]
         status:
           type: string
           enum: [active, disabled]

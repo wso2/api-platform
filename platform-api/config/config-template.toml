@@ -286,7 +286,7 @@ skip_validation = false
 # apsa_[0-9a-f]{64} to your secret scanner (GitHub secret scanning,
 # GitGuardian, trufflehog) so a leaked secret is caught.
 #
-# An account holds one or more ap_sa_* roles from the role-to-scope mapping. Its
+# An account holds one or more roles from the role-to-scope mapping. Its
 # token carries one authorization claim, chosen by auth.authorization.mode: in
 # "scope" mode the client must send scope=<space-separated scopes>, all granted
 # by its roles, and the token carries exactly those; in "role" mode scope is

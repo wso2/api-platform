@@ -102,20 +102,3 @@ paths:
 		})
 	}
 }
-
-func TestValidateServiceAccountRoles(t *testing.T) {
-	ok := map[string][]string{
-		"ap_sa_reader": {"ap:rest_api:read", "ap:service_account:token:introspect"},
-		// Refused scopes are fine outside ap_sa_* roles.
-		"ap_admin": {"ap:service_account:manage", "ap:api_key:all:manage"},
-	}
-	if err := ValidateServiceAccountRoles(ok); err != nil {
-		t.Fatalf("valid mapping rejected: %v", err)
-	}
-	for _, refused := range []string{"ap:service_account:manage", "ap:service_account:read", "ap:api_key:all:manage"} {
-		err := ValidateServiceAccountRoles(map[string][]string{"ap_sa_admin": {"ap:rest_api:read", refused}})
-		if err == nil || !strings.Contains(err.Error(), "ap_sa_admin") || !strings.Contains(err.Error(), refused) {
-			t.Errorf("%s: want an error naming the role and scope, got %v", refused, err)
-		}
-	}
-}
