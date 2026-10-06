@@ -248,3 +248,14 @@ func Exported() {}
 	require.Contains(t, issues[0], "must contain doc.go")
 	require.Contains(t, strings.Join(issues, "\n"), "documentation comment")
 }
+
+func TestCheckFeaturesAllowsCELFieldReferenceNamedMetadata(t *testing.T) {
+	root := t.TempDir()
+	feature := `Feature: cel conditions
+  Scenario: auth context
+    Given I create API with values:
+      | spec.operations | [{"policies":[{"name":"api-key-auth","executionCondition":"\"x\" in request.Metadata"}]}] |
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root, "cel.feature"), []byte(feature), 0o600))
+	require.Empty(t, checkFeatures(root))
+}

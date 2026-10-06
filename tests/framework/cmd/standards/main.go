@@ -48,6 +48,7 @@ var uniqueFieldRegistry = []uniqueFieldRule{
 	{name: "metadata.name", pattern: regexp.MustCompile(`(?i)(?:["']name["']|^\s*name)\s*:\s*["']?([^"'\s]+)`)},
 	{name: "metadata.context", pattern: regexp.MustCompile(`(?i)(?:["']context["']|^\s*context)\s*:\s*["']?([^"'\s]+)`)},
 }
+var metadataKeyPattern = regexp.MustCompile(`(?i)["']?metadata["']?\s*:`)
 var yamlField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\s*:`)
 var shellSleep = regexp.MustCompile(`(^|[;&|{])\s*sleep\s+`)
 var cleanupCreationMethods = map[string]struct{}{
@@ -545,7 +546,7 @@ func checkFeatures(root string) []string {
 				docLines = append(docLines, text)
 				continue
 			}
-			if strings.Contains(strings.ToLower(text), "metadata") {
+			if metadataKeyPattern.MatchString(text) {
 				metadataLine = true
 			}
 			if metadataLine {
