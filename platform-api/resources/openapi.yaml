@@ -12752,7 +12752,7 @@ components:
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     PublicationBadRequest:
-      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
+      description: The payload failed validation — a plan handle or document handle absent from the organization, a plan that is not active, or content over the configured size ceiling.
       content:
         application/json:
           schema:
@@ -12767,8 +12767,9 @@ components:
     PublicationPublishBadRequest:
       description: >-
         Either this API type has no projection onto the API Portal's own API types, so no listing can be
-        created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
-        one point definition validity is enforced; the draft itself may hold anything.
+        created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
+        one point definition validity is enforced; the draft itself may hold anything — or a selected
+        subscription plan is no longer active.
       content:
         application/json:
           schema:
