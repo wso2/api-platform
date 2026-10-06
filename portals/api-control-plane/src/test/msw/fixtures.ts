@@ -223,11 +223,10 @@ export const aServiceAccount = (
 ): ServiceAccountFixture => ({
   id: 'ci-deployer',
   displayName: 'CI deployer',
-  owner: 'platform-team@example.com',
   description: 'Deploys REST APIs from the release pipeline',
   clientId: 'sa_acme_ci-deployer_3f9a1c',
   maskedSecret: '***9f2c1',
-  roles: ['ap_sa_reader'],
+  roles: ['ap_service_account'],
   status: 'active',
   ...overrides,
 });
@@ -235,7 +234,7 @@ export const aServiceAccount = (
 export const aServiceAccountRole = (
   overrides: Partial<ServiceAccountRoleFixture> = {}
 ): ServiceAccountRoleFixture => ({
-  name: 'ap_sa_reader',
+  name: 'ap_service_account',
   scopes: ['ap:rest_api:read', 'ap:gateway:read'],
   ...overrides,
 });

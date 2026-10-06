@@ -17,6 +17,7 @@
  */
 
 import type { Gateway } from '@/api/resources/gateways';
+import { initials } from '@/utils/initials';
 
 /**
  * Display helpers for the spec's `GatewayResponse` shape — the presentation
@@ -58,15 +59,5 @@ export const gatewaySearchFields = (gateway: Gateway): string[] =>
     Boolean(field),
   );
 
-/** Gateway tile monogram from the first two word initials, or first two letters. */
-export const gatewayInitials = (displayName?: string): string => {
-  const words = (displayName ?? '')
-    .split(/\s+/)
-    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
-    .filter((word) => word.length > 0);
-
-  if (words.length === 0) return '';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-
-  return (words[0][0] + words[1][0]).toUpperCase();
-};
+/** Gateway tile monogram. */
+export const gatewayInitials = initials;

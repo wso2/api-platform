@@ -3076,7 +3076,7 @@ export interface paths {
         };
         /**
          * List the roles a service account can hold
-         * @description The ap_sa_* roles in the role-to-scope mapping, each with the scopes it grants.
+         * @description Every role in the role-to-scope mapping, each with the scopes it grants.
          *     A sibling of /service-accounts, not a child, so it never shadows an account id.
          */
         get: operations["listServiceAccountRoles"];
@@ -6318,12 +6318,6 @@ export interface components {
             /** @example CI deployer */
             displayName: string;
             /**
-             * @description Who is accountable for this account — a team, person or mailing list.
-             *     Defaults to the creator: the `sub` of the token that created it.
-             * @example platform-team@example.com
-             */
-            owner: string;
-            /**
              * @description What the account is for; may be empty
              * @example Deploys REST APIs from the release pipeline
              */
@@ -6333,9 +6327,9 @@ export interface components {
             /** @example ***9f2c1 */
             readonly maskedSecret: string;
             /**
-             * @description The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
+             * @description The account's roles, from the role-to-scope mapping file
              * @example [
-             *       "ap_sa_reader"
+             *       "ap_service_account"
              *     ]
              */
             roles: string[];
@@ -6369,7 +6363,7 @@ export interface components {
             pagination: components["schemas"]["Pagination"];
         };
         ServiceAccountRole: {
-            /** @example ap_sa_reader */
+            /** @example ap_service_account */
             name: string;
             /**
              * @example [
@@ -6393,17 +6387,12 @@ export interface components {
             id: string;
             /** @example CI deployer */
             displayName: string;
-            /**
-             * @description Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).
-             * @example platform-team@example.com
-             */
-            owner?: string;
             /** @example Deploys REST APIs from the release pipeline */
             description?: string;
             /**
-             * @description Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
+             * @description Roles from the role-to-scope mapping file. Any role is accepted.
              * @example [
-             *       "ap_sa_reader"
+             *       "ap_service_account"
              *     ]
              */
             roles: string[];
@@ -6412,18 +6401,13 @@ export interface components {
         ServiceAccountUpdateRequest: {
             /** @example CI deployer */
             displayName?: string;
-            /**
-             * @description Blank resets it to the account's creator.
-             * @example platform-team@example.com
-             */
-            owner?: string;
             /** @example Deploys REST APIs from the release pipeline */
             description?: string;
             /**
-             * @description Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
+             * @description Replaces the roles. Removing a role invalidates tokens
              *     already issued; adding one does not.
              * @example [
-             *       "ap_sa_reader"
+             *       "ap_service_account"
              *     ]
              */
             roles?: string[];
