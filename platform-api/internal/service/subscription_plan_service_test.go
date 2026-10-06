@@ -29,8 +29,10 @@ import (
 // interface panics on any other call, which would flag an unexpected dependency.
 type fakePlanRepo struct {
 	repository.SubscriptionPlanRepository
-	plan    *model.SubscriptionPlan
-	updated *model.SubscriptionPlan
+	plan        *model.SubscriptionPlan
+	updated     *model.SubscriptionPlan
+	listOpts    repository.ListOptions
+	countSearch string
 }
 
 func (f *fakePlanRepo) GetByHandleAndOrg(string, string) (*model.SubscriptionPlan, error) {
@@ -70,5 +72,32 @@ func TestUpdatePlan_ExpiryTime(t *testing.T) {
 				t.Fatalf("expiry = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func (f *fakePlanRepo) ListByOrganization(_ string, opts repository.ListOptions) ([]*model.SubscriptionPlan, error) {
+	f.listOpts = opts
+	return []*model.SubscriptionPlan{f.plan}, nil
+}
+
+func (f *fakePlanRepo) CountByOrganization(_, search string) (int, error) {
+	f.countSearch = search
+	return 7, nil
+}
+
+func TestListAndCountPlans_PassSearchToRepo(t *testing.T) {
+	repo := &fakePlanRepo{plan: &model.SubscriptionPlan{Handle: "gold"}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	plans, err := svc.ListPlans("org-1", repository.ListOptions{Limit: 5, Offset: 10, Search: "gold"})
+	if err != nil || len(plans) != 1 {
+		t.Fatalf("ListPlans = %v, %v", plans, err)
+	}
+	total, err := svc.CountPlans("org-1", "gold")
+	if err != nil || total != 7 {
+		t.Fatalf("CountPlans = %d, %v", total, err)
+	}
+	if repo.listOpts != (repository.ListOptions{Limit: 5, Offset: 10, Search: "gold"}) || repo.countSearch != "gold" {
+		t.Fatalf("repo got list %+v, count search %q", repo.listOpts, repo.countSearch)
 	}
 }

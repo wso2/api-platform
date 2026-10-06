@@ -32,6 +32,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -236,5 +237,24 @@ func TestPlanHandler_ListSearch(t *testing.T) {
 		if pagination["total"] != s.wantTotal {
 			t.Errorf("%s: pagination.total = %v, want %v", s.name, pagination["total"], s.wantTotal)
 		}
+	}
+}
+
+func TestPlanHandler_UpdateRejectsBadBody(t *testing.T) {
+	h := setupPlanHandlerTestEnv(t)
+	if rec := planRequest(t, h, http.MethodPost, planITPath, `{"id":"gold","displayName":"Gold"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("create: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	tests := map[string]string{
+		"malformed json": `{"displayName":`,
+		"oversized body": `{"displayName":"` + strings.Repeat("x", maxPlanUpdateBodyBytes) + `"}`,
+	}
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			if rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", body); rec.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400, body %.200s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
