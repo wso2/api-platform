@@ -33,7 +33,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { isHttpUrl } from '../../utils/basicInfoRules';
-import { DEFAULT_API_SKELETON } from '../utils/apiSkeleton';
+import { DEFAULT_API_SKELETON, skeletonFor } from '../utils/apiSkeleton';
 import { nameFromEndpoint, versionFromEndpoint } from '../utils/nameFromEndpoint';
 import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
@@ -78,6 +78,16 @@ const messages = defineMessages({
   endpointPreviewDescription: {
     id: 'api.create.defineApi.scratch.endpoint.preview.description',
     defaultMessage: 'Every API resource will route to the backend endpoint you provide.',
+  },
+  endpointPreviewForwardsTo: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.forwardsTo',
+    defaultMessage: 'FORWARDS TO',
+    description: 'Small caps label above the backend URL in the routes preview.',
+  },
+  endpointPreviewNote: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.note',
+    defaultMessage:
+      'One catch-all route per method. Requests to any path are forwarded unchanged; without a spec we can’t list your API’s paths individually. Add a spec later whenever you want that.',
   },
   endpointPreviewTitle: {
     id: 'api.create.defineApi.scratch.endpoint.preview.title',
@@ -225,6 +235,18 @@ export const DefineApiPanel = ({
     };
   }, [endpointUrl]);
 
+  // The definition an endpoint API would be created with, for the preview.
+  // Built only once the URL parses: before that the pane explains itself.
+  const endpointPreview = useMemo(() => {
+    if (scratchDraft === null) return null;
+    const spec = skeletonFor({
+      displayName: scratchDraft.displayName ?? 'Untitled API',
+      upstreamUrl: endpointUrl.trim(),
+      version: scratchDraft.version ?? '1.0.0',
+    });
+    return { rawText: JSON.stringify(spec, null, 2), spec };
+  }, [endpointUrl, scratchDraft]);
+
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
     if (contract?.spec === undefined) return null;
     // A URL-sourced spec resolves a relative server against its own address.
@@ -353,28 +375,61 @@ export const DefineApiPanel = ({
               }}
             />
             <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-              <Stack
-                sx={{
-                  alignItems: 'center',
-                  // bgcolor: 'action.hover',
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  height: '100%',
-                  justifyContent: 'center',
-                  minHeight: 420,
-                  p: 3,
-                  textAlign: 'center',
-                }}
-              >
-                <GatewayIllustration />
-                <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
-                  {intl.formatMessage(messages.endpointPreviewTitle)}
-                </Typography>
-                <Typography color="text.secondary" sx={{ maxWidth: 360, mt: 0.5 }} variant="body2">
-                  {intl.formatMessage(messages.endpointPreviewDescription)}
-                </Typography>
-              </Stack>
+              {endpointPreview ? (
+                // What will be created, drawn by the same preview a spec
+                // uses: the forwarding target once, then the catch-all routes.
+                <Stack spacing={1.5}>
+                  <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 2, py: 1.5 }}>
+                    <Typography
+                      color="text.secondary"
+                      sx={{ fontWeight: 600, letterSpacing: 0.4 }}
+                      variant="caption"
+                    >
+                      <FormattedMessage {...messages.endpointPreviewForwardsTo} />
+                    </Typography>
+                    <Typography
+                      sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
+                      variant="body2"
+                    >
+                      {endpointUrl.trim()}
+                    </Typography>
+                  </Box>
+                  <ApiResourcesPreview
+                    height={360}
+                    rawText={endpointPreview.rawText}
+                    spec={endpointPreview.spec}
+                  />
+                  <Typography color="text.secondary" variant="body2">
+                    <FormattedMessage {...messages.endpointPreviewNote} />
+                  </Typography>
+                </Stack>
+              ) : (
+                <Stack
+                  sx={{
+                    alignItems: 'center',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    height: '100%',
+                    justifyContent: 'center',
+                    minHeight: 420,
+                    p: 3,
+                    textAlign: 'center',
+                  }}
+                >
+                  <GatewayIllustration />
+                  <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
+                    {intl.formatMessage(messages.endpointPreviewTitle)}
+                  </Typography>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ maxWidth: 360, mt: 0.5 }}
+                    variant="body2"
+                  >
+                    {intl.formatMessage(messages.endpointPreviewDescription)}
+                  </Typography>
+                </Stack>
+              )}
             </Box>
           </>
         )}

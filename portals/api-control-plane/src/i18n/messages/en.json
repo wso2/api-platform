@@ -201,6 +201,13 @@
   "api.create.defineApi.scratch.endpoint.preview.description": {
     "defaultMessage": "Every API resource will route to the backend endpoint you provide."
   },
+  "api.create.defineApi.scratch.endpoint.preview.forwardsTo": {
+    "defaultMessage": "FORWARDS TO",
+    "description": "Small caps label above the backend URL in the routes preview."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.note": {
+    "defaultMessage": "One catch-all route per method. Requests to any path are forwarded unchanged; without a spec we can’t list your API’s paths individually. Add a spec later whenever you want that."
+  },
   "api.create.defineApi.scratch.endpoint.preview.title": {
     "defaultMessage": "Ready to connect"
   },
