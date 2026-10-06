@@ -563,11 +563,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Service accounts expand their roles through the same mapping, so they are
 	// wired here too.
 	saCfg := cfg.Auth.ServiceAccount
-	if saEnabled && !hasServiceAccountRole(roleScopeMap) {
-		slogger.Warn("service accounts are enabled but the role-to-scope mapping defines no "+
-			constants.ServiceAccountRolePrefix+"* role; no service account can be created",
-			"roleToScopeMapping", cfg.Auth.Authorization.RoleToScopeMapping)
-	}
 	var saKeys *service.ServiceAccountKeys
 	if saEnabled {
 		saKeys, err = service.LoadServiceAccountKeys(cfg)
@@ -792,16 +787,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}, nil
 }
 
-// hasServiceAccountRole reports whether the mapping defines any ap_sa_* role.
-func hasServiceAccountRole(roleScopeMap map[string][]string) bool {
-	for role := range roleScopeMap {
-		if strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // buildIssuerKeyMap registers every issuer this server verifies. In idp mode
 // the local entry exists only to verify SA tokens, so it is the SA kind.
 func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (*middleware.IssuerKeyMap, error) {
@@ -970,9 +955,6 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 	}
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
 		return nil, fmt.Errorf("invalid role-to-scope-mapping.yaml: %w", err)
-	}
-	if err := middleware.ValidateServiceAccountRoles(m); err != nil {
-		return nil, err
 	}
 	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RoleToScopeMapping, "roles", len(m))
 

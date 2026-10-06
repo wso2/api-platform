@@ -4701,11 +4701,7 @@ type ServiceAccount struct {
 	LastUsedIp   *string    `json:"lastUsedIp,omitempty" yaml:"lastUsedIp,omitempty"`
 	MaskedSecret *string    `json:"maskedSecret,omitempty" yaml:"maskedSecret,omitempty"`
 
-	// Owner Who is accountable for this account — a team, person or mailing list.
-	// Defaults to the creator: the `sub` of the token that created it.
-	Owner string `json:"owner" yaml:"owner"`
-
-	// Roles The account's roles, each an `ap_sa_*` role from the role-to-scope mapping file
+	// Roles The account's roles, from the role-to-scope mapping file
 	Roles               []string             `json:"roles" yaml:"roles"`
 	SecretRegeneratedAt *time.Time           `json:"secretRegeneratedAt,omitempty" yaml:"secretRegeneratedAt,omitempty"`
 	Status              ServiceAccountStatus `json:"status" yaml:"status"`
@@ -4724,10 +4720,7 @@ type ServiceAccountCreateRequest struct {
 	// Id Service account handle. `token` is reserved.
 	Id string `json:"id" yaml:"id"`
 
-	// Owner Who answers for the account. Omitted or blank, it is the creator (the `sub` of the caller's token).
-	Owner *string `json:"owner,omitempty" yaml:"owner,omitempty"`
-
-	// Roles Roles from the role-to-scope mapping file. Only `ap_sa_*` roles are accepted.
+	// Roles Roles from the role-to-scope mapping file. Any role is accepted.
 	Roles []string `json:"roles" yaml:"roles"`
 }
 
@@ -4793,10 +4786,7 @@ type ServiceAccountUpdateRequest struct {
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-	// Owner Blank resets it to the account's creator.
-	Owner *string `json:"owner,omitempty" yaml:"owner,omitempty"`
-
-	// Roles Replaces the roles; only `ap_sa_*` roles. Removing a role invalidates tokens
+	// Roles Replaces the roles. Removing a role invalidates tokens
 	// already issued; adding one does not.
 	Roles  *[]string                          `json:"roles,omitempty" yaml:"roles,omitempty"`
 	Status *ServiceAccountUpdateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`

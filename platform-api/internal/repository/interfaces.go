@@ -505,7 +505,7 @@ type ServiceAccountRepository interface {
 	// GetByClientID is the token endpoint's lookup. Not org-scoped: the caller
 	// presents no organization and client_id is globally unique.
 	GetByClientID(clientID string) (*model.ServiceAccount, error)
-	// List and Count filter by search (name, handle or owner) when it is non-empty.
+	// List and Count filter by search (name or handle) when it is non-empty.
 	List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error)
 	Count(orgID, search string) (int, error)
 	// Update writes metadata, roles, status and token version; rev is written

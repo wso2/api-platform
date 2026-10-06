@@ -1320,12 +1320,6 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 			return fmt.Errorf("auth.file.users[%d]: username must not start with %q (reserved for service accounts)",
 				i, constants.ServiceAccountSubPrefix)
 		}
-		for _, role := range u.Roles {
-			if strings.HasPrefix(role, constants.ServiceAccountRolePrefix) {
-				return fmt.Errorf("auth.file.users[%d] (%s): role %q is a service-account role (%q prefix)",
-					i, u.Username, role, constants.ServiceAccountRolePrefix)
-			}
-		}
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
 		}

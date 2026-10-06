@@ -10,10 +10,8 @@
 #     such a user's entire grant, so this file is the only place their privileges
 #     are defined; there is no per-user scope list to keep in sync with it.
 #
-# Service-account roles start with "ap_sa_". A service account may hold one or
-# more roles, and only such roles. They may not grant ap:service_account:manage,
-# ap:service_account:read or ap:api_key:all:manage — startup fails if one does —
-# and file-mode users may not hold them.
+# A service account may hold any role here, one or more. ap_service_account is
+# the read-only role the UI selects for a new account.
 #
 # When a token — or a file-mode user's roles list — carries multiple roles, the
 # effective scopes are the union of all matching entries; most-permissive wins.
@@ -314,8 +312,7 @@ roles:
       - dp:event:read
 
   # Service account, read-only — the Platform API read scopes of ap_viewer.
-  # Define further ap_sa_* roles for workloads that write.
-  - name: ap_sa_reader
+  - name: ap_service_account
     scopes:
       - ap:organization:read
       - ap:project:read

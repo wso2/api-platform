@@ -39,7 +39,7 @@ func NewServiceAccountRepo(db *database.DB) *ServiceAccountRepo {
 	return &ServiceAccountRepo{db: db}
 }
 
-const serviceAccountCols = `SELECT uuid, organization_uuid, handle, name, version, owner, description,
+const serviceAccountCols = `SELECT uuid, organization_uuid, handle, name, version, description,
 	       client_id, client_secret_hash, masked_secret, roles, status, token_version,
 	       last_used_at, last_used_ip, secret_regenerated_at, secret_regenerated_by,
 	       created_at, created_by, updated_at, updated_by FROM service_accounts`
@@ -49,7 +49,7 @@ func scanServiceAccount(row interface{ Scan(...any) error }) (*model.ServiceAcco
 	var lastUsedAt, regeneratedAt sql.NullTime
 	var lastUsedIP, regeneratedBy, createdBy, updatedBy sql.NullString
 	err := row.Scan(
-		&sa.UUID, &sa.OrganizationID, &sa.Handle, &sa.DisplayName, &sa.Version, &sa.Owner, &sa.Description,
+		&sa.UUID, &sa.OrganizationID, &sa.Handle, &sa.DisplayName, &sa.Version, &sa.Description,
 		&sa.ClientID, &sa.ClientSecretHash, &sa.MaskedSecret, &sa.Roles, &sa.Status, &sa.TokenVersion,
 		&lastUsedAt, &lastUsedIP, &regeneratedAt, &regeneratedBy,
 		&sa.CreatedAt, &createdBy, &sa.UpdatedAt, &updatedBy,
@@ -93,11 +93,11 @@ func (r *ServiceAccountRepo) Create(sa *model.ServiceAccount, subject string) er
 
 	_, err = tx.Exec(r.db.Rebind(`
 		INSERT INTO service_accounts (
-			uuid, organization_uuid, handle, name, version, owner, description,
+			uuid, organization_uuid, handle, name, version, description,
 			client_id, client_secret_hash, masked_secret, roles, status, token_version,
 			created_at, created_by, updated_at, updated_by
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		sa.UUID, sa.OrganizationID, sa.Handle, sa.DisplayName, sa.Version, sa.Owner, sa.Description,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		sa.UUID, sa.OrganizationID, sa.Handle, sa.DisplayName, sa.Version, sa.Description,
 		sa.ClientID, sa.ClientSecretHash, sa.MaskedSecret, sa.Roles, sa.Status, sa.TokenVersion,
 		sa.CreatedAt, sa.CreatedBy, sa.UpdatedAt, sa.UpdatedBy,
 	)
@@ -142,16 +142,16 @@ func (r *ServiceAccountRepo) GetByClientID(clientID string) (*model.ServiceAccou
 	return sa, nil
 }
 
-// serviceAccountSearchClause matches search case-insensitively against name,
-// handle and owner. LIKE metacharacters are escaped, as in handleSearchClause.
+// serviceAccountSearchClause matches search case-insensitively against name
+// and handle. LIKE metacharacters are escaped, as in handleSearchClause.
 func serviceAccountSearchClause(search string) (string, []any) {
 	s := strings.TrimSpace(search)
 	if s == "" {
 		return "", nil
 	}
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(s)) + "%"
-	return ` AND (LOWER(name) LIKE ? ESCAPE '\' OR LOWER(handle) LIKE ? ESCAPE '\' OR LOWER(owner) LIKE ? ESCAPE '\')`,
-		[]any{pattern, pattern, pattern}
+	return ` AND (LOWER(name) LIKE ? ESCAPE '\' OR LOWER(handle) LIKE ? ESCAPE '\')`,
+		[]any{pattern, pattern}
 }
 
 func (r *ServiceAccountRepo) List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error) {
@@ -193,9 +193,9 @@ func (r *ServiceAccountRepo) Update(sa *model.ServiceAccount, prevVersion int64,
 	return r.inTx(func(tx *sql.Tx) error {
 		res, err := tx.Exec(r.db.Rebind(`
 			UPDATE service_accounts
-			SET name = ?, owner = ?, description = ?, roles = ?, status = ?, token_version = ?, updated_at = ?, updated_by = ?
+			SET name = ?, description = ?, roles = ?, status = ?, token_version = ?, updated_at = ?, updated_by = ?
 			WHERE organization_uuid = ? AND uuid = ? AND token_version = ? AND status = ?`),
-			sa.DisplayName, sa.Owner, sa.Description, sa.Roles, sa.Status, sa.TokenVersion, sa.UpdatedAt, sa.UpdatedBy,
+			sa.DisplayName, sa.Description, sa.Roles, sa.Status, sa.TokenVersion, sa.UpdatedAt, sa.UpdatedBy,
 			sa.OrganizationID, sa.UUID, prevVersion, prevStatus)
 		if err := r.requireOneRow(tx, res, err, sa.OrganizationID, sa.UUID); err != nil {
 			return err

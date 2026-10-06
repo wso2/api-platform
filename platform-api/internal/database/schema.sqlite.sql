@@ -837,7 +837,6 @@ CREATE TABLE IF NOT EXISTS service_accounts (
     handle                 VARCHAR(40)   NOT NULL,
     name                   VARCHAR(255)  NOT NULL,
     version                VARCHAR(30)   NOT NULL DEFAULT 'v1.0',
-    owner                  VARCHAR(255)  NOT NULL,
     description            VARCHAR(1023) NOT NULL,
     client_id              VARCHAR(255)  NOT NULL,
     client_secret_hash     VARCHAR(255)  NOT NULL,

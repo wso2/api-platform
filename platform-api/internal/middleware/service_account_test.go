@@ -18,10 +18,8 @@
 package middleware
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -262,23 +260,6 @@ func TestPlatformClaimsRejectsReservedSubjectFromIdP(t *testing.T) {
 	}
 	if code := run("alice"); code != http.StatusOK {
 		t.Fatalf("ordinary IdP subject: code=%d", code)
-	}
-}
-
-// An ap_sa_* role on an IdP token is logged once per role.
-func TestWarnServiceAccountRolesOncePerRole(t *testing.T) {
-	var buf bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	defer slog.SetDefault(prev)
-
-	warnServiceAccountRoles([]string{"ap_admin", "ap_sa_test_once"})
-	warnServiceAccountRoles([]string{"ap_sa_test_once"})
-	if got := strings.Count(buf.String(), "ap_sa_test_once"); got != 1 {
-		t.Fatalf("warned %d times, want once", got)
-	}
-	if strings.Contains(buf.String(), "ap_admin") {
-		t.Fatal("a non-SA role was warned about")
 	}
 }
 

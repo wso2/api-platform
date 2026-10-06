@@ -103,15 +103,6 @@ func TestFileUsersCannotUseTheServiceAccountPrefix(t *testing.T) {
 	assert.Contains(t, err.Error(), "reserved for service accounts")
 }
 
-func TestFileUsersCannotHoldServiceAccountRoles(t *testing.T) {
-	err := validateFileBasedConfig(&FileBased{
-		Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
-		Users:        FileBasedUsers{{Username: "alice", PasswordHash: "h", Roles: []string{"ap_sa_reader"}}},
-	}, &Authorization{RoleToScopeMapping: "/m.yaml"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "service-account role")
-}
-
 func TestServiceAccountsDisabledByDefault(t *testing.T) {
 	assert.False(t, defaultConfig().Auth.ServiceAccount.Enabled)
 }

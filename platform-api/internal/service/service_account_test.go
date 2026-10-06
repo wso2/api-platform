@@ -83,7 +83,7 @@ func (f *fakeSARepo) List(orgID, search string, limit, offset int) ([]*model.Ser
 		if e.OrganizationID != orgID {
 			continue
 		}
-		if term != "" && !strings.Contains(strings.ToLower(e.DisplayName+" "+e.Handle+" "+e.Owner), term) {
+		if term != "" && !strings.Contains(strings.ToLower(e.DisplayName+" "+e.Handle), term) {
 			continue
 		}
 		c := *e
@@ -189,7 +189,7 @@ func newSAFixtureMode(t *testing.T, mode string) *saFixture {
 }
 
 func createReq(handle string) *api.ServiceAccountCreateRequest {
-	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Owner: ptr("team"), Description: ptr("deploys"), Roles: []string{"ap_sa_operator"}}
+	return &api.ServiceAccountCreateRequest{Id: handle, DisplayName: "CI", Description: ptr("deploys"), Roles: []string{"ap_sa_operator"}}
 }
 
 func TestServiceAccountCreate_SecretFormat(t *testing.T) {
@@ -217,19 +217,13 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	f := newSAFixture(t)
 	badRole := createReq("c-bot")
 	badRole.Roles = []string{"ap_sa_nope"}
-	humanRole := createReq("d-bot")
-	humanRole.Roles = []string{"ap_sa_reader", "ap_operator"}
 	noRole := createReq("e-bot")
 	noRole.Roles = nil
 	reserved := createReq("token")
-	longOwner := createReq("f-bot")
-	longOwner.Owner = ptr(strings.Repeat("o", 256))
 	longDesc := createReq("g-bot")
 	longDesc.Description = ptr(strings.Repeat("d", 1024))
 	for name, req := range map[string]*api.ServiceAccountCreateRequest{
-		"owner too long": longOwner, "description too long": longDesc,
-		"unknown role":    badRole,
-		"non-ap_sa_ role": humanRole, "no role": noRole, "reserved id": reserved,
+		"description too long": longDesc, "unknown role": badRole, "no role": noRole, "reserved id": reserved,
 	} {
 		if _, err := f.svc.Create("org-1", "admin", req); !apperror.ValidationFailed.Is(err) {
 			t.Errorf("%s: want validation error, got %v", name, err)
@@ -245,28 +239,18 @@ func TestServiceAccountCreate_Validation(t *testing.T) {
 	}
 }
 
-// Only id, displayName and roles are required: a blank owner falls back to the
-// creator, on create and on update, and a description may be empty.
-func TestServiceAccountOptionalOwnerAndDescription(t *testing.T) {
+// Only id, displayName and roles are required; a description may be empty.
+func TestServiceAccountOptionalDescription(t *testing.T) {
 	f := newSAFixture(t)
-	f.svc.identity = NewIdentityService(renamingIdentityRepo{})
 	req := createReq("ci-bot")
-	req.Owner, req.Description = ptr("  "), nil
+	req.Description = nil
 	creds, err := f.svc.Create("org-1", "creator", req)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || creds.ServiceAccount.Description != "" {
+		t.Fatalf("create without description: %+v, %v", creds, err)
 	}
-	if got := creds.ServiceAccount; got.Owner != "resolved:creator" || got.Description != "" {
-		t.Fatalf("owner %q, description %q", got.Owner, got.Description)
-	}
-
-	got, err := f.svc.Update("org-1", "ci-bot", "editor", &api.ServiceAccountUpdateRequest{Owner: ptr("team"), Description: ptr("deploys")})
-	if err != nil || got.Owner != "team" || got.Description != "deploys" {
-		t.Fatalf("set owner: %+v, %v", got, err)
-	}
-	got, err = f.svc.Update("org-1", "ci-bot", "editor", &api.ServiceAccountUpdateRequest{Owner: ptr(" "), Description: ptr("")})
-	if err != nil || got.Owner != "resolved:creator" || got.Description != "" {
-		t.Fatalf("blank owner should reset to the creator, not the editor: %+v, %v", got, err)
+	got, err := f.svc.Update("org-1", "ci-bot", "editor", &api.ServiceAccountUpdateRequest{Description: ptr("deploys")})
+	if err != nil || got.Description != "deploys" {
+		t.Fatalf("set description: %+v, %v", got, err)
 	}
 }
 
@@ -442,9 +426,10 @@ func TestServiceAccountUpdate_AddingRoleDoesNotRevoke(t *testing.T) {
 	if !slices.Equal(resp.Roles, []string{"ap_sa_operator", "ap_sa_reader"}) {
 		t.Fatalf("roles = %v, want deduplicated", resp.Roles)
 	}
+	// Any role in the mapping is accepted, not only service-account ones.
 	mixed := []string{"ap_sa_operator", "ap_operator"}
-	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &mixed}); !apperror.ValidationFailed.Is(err) {
-		t.Fatalf("a non-ap_sa_ role on update: got %v", err)
+	if _, err := f.svc.Update("org-1", "ci-bot", "admin", &api.ServiceAccountUpdateRequest{Roles: &mixed}); err != nil {
+		t.Fatalf("a person's role on update: got %v", err)
 	}
 }
 
@@ -779,23 +764,23 @@ func TestToServiceAccountAPI_LastUsedIP(t *testing.T) {
 	}
 }
 
-func TestServiceAccountRoles_OnlyServiceAccountRolesSorted(t *testing.T) {
+func TestServiceAccountRoles_AllRolesSorted(t *testing.T) {
 	f := newSAFixture(t)
 	resp := f.svc.Roles()
 	var names []string
 	for _, r := range resp.List {
 		names = append(names, r.Name)
 	}
-	if want := []string{"ap_sa_operator", "ap_sa_reader"}; !slices.Equal(names, want) {
+	if want := []string{"ap_operator", "ap_sa_operator", "ap_sa_reader"}; !slices.Equal(names, want) {
 		t.Fatalf("roles = %v, want %v", names, want)
 	}
-	if resp.Count != 2 || resp.Pagination.Total != 2 {
-		t.Fatalf("count = %d, total = %d, want 2", resp.Count, resp.Pagination.Total)
+	if resp.Count != 3 || resp.Pagination.Total != 3 {
+		t.Fatalf("count = %d, total = %d, want 3", resp.Count, resp.Pagination.Total)
 	}
-	if !slices.Equal(resp.List[0].Scopes, []string{"ap:gateway:read", "ap:rest_api:read"}) {
-		t.Fatalf("ap_sa_operator scopes = %v", resp.List[0].Scopes)
+	if !slices.Equal(resp.List[1].Scopes, []string{"ap:gateway:read", "ap:rest_api:read"}) {
+		t.Fatalf("ap_sa_operator scopes = %v", resp.List[1].Scopes)
 	}
-	resp.List[0].Scopes[0] = "changed"
+	resp.List[1].Scopes[0] = "changed"
 	if f.svc.roleScopeMap["ap_sa_operator"][0] != "ap:gateway:read" {
 		t.Fatal("Roles exposed the shared role map")
 	}
