@@ -456,8 +456,7 @@ paths:
       summary: Create subscription plans
       description: >-
         Creates one subscription plan when the request body is an object, or multiple subscription plans when the body
-        is an array. Bulk creation returns a message instead of creating plans when `generateDefaultSubPlans` is
-        enabled.
+        is an array.
       operationId: addSubscriptionPlans
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
@@ -482,8 +481,8 @@ paths:
       summary: Upsert subscription plans
       description: >-
         Upserts one subscription plan when the request body is an object, or multiple plans when the body is an array. A
-        single plan update returns `200` when an existing plan is updated and `201` when a new plan is created. Bulk
-        updates return a message when `generateDefaultSubPlans` is enabled.
+        single plan update returns `200` when an existing plan is updated and `201` when a new plan is created. A bulk
+        update returns `201`.
       operationId: putSubscriptionPlans
       requestBody:
         $ref: "#/components/requestBodies/SubscriptionPlanBody"
