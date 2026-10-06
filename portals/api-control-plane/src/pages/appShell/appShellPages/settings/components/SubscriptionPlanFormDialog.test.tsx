@@ -29,7 +29,7 @@ import {
   type SubscriptionPlanFixture,
 } from '@/test/msw';
 import { server } from '@/test/server';
-import { fireEvent, renderWithProviders, screen, userEvent, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, userEvent, waitFor } from '@/test/utils';
 import { SubscriptionPlanFormDialog } from './SubscriptionPlanFormDialog';
 
 const ORG = 'api-platform-demo';
@@ -137,18 +137,36 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(screen.getByRole('button', { name: 'Add limit' })).toBeInTheDocument();
   });
 
-  it('sends the expiry date as a full RFC3339 timestamp, not the bare date the input holds', async () => {
+  it('sends the picked expiry date as a full RFC3339 timestamp', async () => {
     server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
     const { user } = setup();
 
     await user.type(screen.getByLabelText(/Name/), 'Gold');
-    // A native date input's value is always a bare `yyyy-mm-dd`; userEvent
-    // can't type into it segment-by-segment reliably, so set it directly.
-    fireEvent.change(screen.getByLabelText(/Expiry date/), { target: { value: '2026-12-31' } });
+    // The picker is a segmented field: focus the first section and type the
+    // whole date, which advances through month, day and year.
+    await user.click(screen.getByRole('spinbutton', { name: 'Month' }));
+    await user.keyboard('12312026');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
-    expect(JSON.parse(requests.last()!.body).expiryTime).toBe('2026-12-31T00:00:00Z');
+    expect(JSON.parse(requests.last()!.body).expiryTime).toBe('2026-12-31T00:00:00.000Z');
+  });
+
+  it('sends an explicit null when the expiry date of an existing plan is cleared', async () => {
+    const plan = aSubscriptionPlan({
+      displayName: 'Gold',
+      expiryTime: '2026-12-31T00:00:00Z',
+      id: 'gold',
+    });
+    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
+    const { user } = setup({ plan });
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    // null, not absent: an omitted expiryTime means "keep the current value".
+    expect(JSON.parse(requests.last()!.body)).toHaveProperty('expiryTime', null);
   });
 
   it('opens pre-filled with an existing plan, and preserves its status on save', async () => {

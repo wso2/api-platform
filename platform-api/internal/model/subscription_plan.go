@@ -39,7 +39,11 @@ type SubscriptionPlanUpdate struct {
 	// submits an explicit empty "limits" array. Ignored if ThrottleLimitCount is set.
 	ClearLimit bool
 	ExpiryTime *time.Time
-	Status     *SubscriptionPlanStatus
+	// ClearExpiryTime removes the plan's expiry. Set when the caller submits an
+	// explicit null "expiryTime"; an omitted field leaves the expiry unchanged.
+	// Ignored if ExpiryTime is set.
+	ClearExpiryTime bool
+	Status          *SubscriptionPlanStatus
 }
 
 // SubscriptionPlan represents an organization-scoped subscription plan

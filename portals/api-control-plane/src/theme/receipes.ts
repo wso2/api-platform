@@ -40,6 +40,22 @@ import { alpha, toggleButtonGroupClasses, type Theme } from '@wso2/oxygen-ui';
  */
 export const hairline = (theme: Theme) => `${theme.border.width} ${theme.border.style}`;
 
+/**
+ * Opaque surface for a popup whose `Paper` the theme leaves translucent.
+ *
+ * The Acrylic theme fills a plain `Paper` with `background.acrylic`, so text
+ * behind it reads through. `Popover` and `Autocomplete` already override that
+ * with a solid fill; a popup built on a bare `Paper` (the date picker's
+ * calendar) does not, and needs the same treatment to stay legible.
+ */
+export const popupPaperSx = (theme: Theme) =>
+  ({
+    backdropFilter: theme.blur.medium,
+    backgroundColor: 'background.paper',
+    backgroundImage: 'none',
+    WebkitBackdropFilter: theme.blur.medium,
+  }) as const;
+
 /** Blur radius behind a glass surface. One value, so every pane matches. */
 const GLASS_BLUR = '14px';
 

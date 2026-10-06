@@ -211,8 +211,8 @@ type SubscriptionPlanRepository interface {
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
-	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
-	CountByOrganization(orgUUID string) (int, error)
+	ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID, search string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
