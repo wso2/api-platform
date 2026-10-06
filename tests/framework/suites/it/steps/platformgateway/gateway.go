@@ -1583,6 +1583,9 @@ var serviceEndpoints = map[string]struct {
 	"analytics":                {component: "testbench", endpoint: "analytics", partitioned: true},
 	"capture":                  {component: "testbench", endpoint: "capture", partitioned: true},
 	"oauth2":                   {component: "testbench", endpoint: "oauth2", partitioned: true},
+	// The TypeSafe Jev API. Not block-partitioned here: a scenario addresses its own partition
+	// as the first path segment, so request counts are scoped to the scenario.
+	"jev": {component: "testbench", endpoint: "jev"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.

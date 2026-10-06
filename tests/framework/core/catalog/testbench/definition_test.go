@@ -29,7 +29,7 @@ func TestTestbenchDefinition(t *testing.T) {
 	require.Equal(t, "testbench", definition.Name)
 	require.True(t, definition.Shared)
 	require.NotNil(t, definition.Health)
-	for _, endpoint := range []string{"backend", "jwks", "echo", "analytics"} {
+	for _, endpoint := range []string{"backend", "jwks", "echo", "analytics", "jev"} {
 		_, ok := definition.Endpoint(endpoint)
 		require.True(t, ok, endpoint)
 	}

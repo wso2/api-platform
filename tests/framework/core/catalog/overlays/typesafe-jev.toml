@@ -1,0 +1,7 @@
+# The shared TypeSafe Jev settings every Jev policy reads. The testbench jev service stands in
+# for TypeSafe's API: it accepts only this key, and the block partition and "ok" mode in the base
+# URL keep requests from scenarios that don't set their own baseURL in this block's partition.
+[policy_configurations.typesafe_jev_v0]
+api_key = "test-jev-key"
+base_url = "http://testbench:3015/${BLOCK}/ok"
+model = "jev-it-model"
