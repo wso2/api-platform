@@ -40,7 +40,12 @@ const messages = defineMessages({
   },
   helper: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.helper',
-    defaultMessage: 'Only service account roles (the ap_sa_* roles) are listed.',
+    defaultMessage: 'Each role lists the scopes it grants. Pick the fewest that do the job.',
+  },
+  grants: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.grants',
+    defaultMessage: '{count, plural, one {Grants # scope.} other {Grants # scopes.}}',
+    description: 'Under the picker: how many distinct scopes the selected roles grant together.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.loading',
@@ -52,9 +57,7 @@ const messages = defineMessages({
   },
   none: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.none',
-    defaultMessage:
-      'No service-account roles are defined. Add an ap_sa_ role to the role-to-scope mapping on the server.',
-    description: 'Shown when the server lists no roles. "ap_sa_" is a literal role-name prefix — do not translate.',
+    defaultMessage: 'No roles are defined. Add one to the role-to-scope mapping on the server.',
   },
   required: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.components.RolePicker.required',
@@ -68,6 +71,9 @@ const messages = defineMessages({
 
 const FIELD_ID = 'service-account-roles';
 
+/** Preselected for a new account when the server defines it. */
+export const DEFAULT_ROLE = 'ap_service_account';
+
 export type RolePickerProps = {
   roles: readonly ServiceAccountRole[];
   value: string[];
@@ -79,7 +85,7 @@ export type RolePickerProps = {
   warning?: ReactNode;
 };
 
-/** Multi-select of the server's ap_sa_* roles, each showing the scopes it grants. */
+/** Multi-select of the server's roles, each showing the scopes it grants. */
 export function RolePicker({
   roles,
   value,
@@ -91,6 +97,9 @@ export function RolePicker({
 }: RolePickerProps) {
   const intl = useIntl();
   const unavailable = loading || failed || roles.length === 0;
+  const granted = new Set(
+    roles.filter((role) => value.includes(role.name)).flatMap((role) => role.scopes),
+  ).size;
 
   const helper = failed
     ? intl.formatMessage(messages.loadFailed)
@@ -100,7 +109,9 @@ export function RolePicker({
         ? intl.formatMessage(messages.none)
         : showRequiredError
           ? intl.formatMessage(messages.required)
-          : intl.formatMessage(messages.helper);
+          : value.length > 0
+            ? intl.formatMessage(messages.grants, { count: granted })
+            : intl.formatMessage(messages.helper);
 
   return (
     <FormControl error={failed || (!loading && roles.length === 0) || showRequiredError} fullWidth required>

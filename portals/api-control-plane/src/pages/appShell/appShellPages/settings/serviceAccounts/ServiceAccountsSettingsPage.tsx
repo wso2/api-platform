@@ -120,7 +120,7 @@ const messages = defineMessages({
   },
   search: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.search',
-    defaultMessage: 'Search by name, ID or owner',
+    defaultMessage: 'Search by name or ID',
   },
   noMatchesTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.noMatchesTitle',
@@ -133,10 +133,6 @@ const messages = defineMessages({
   columnName: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnName',
     defaultMessage: 'Name',
-  },
-  columnOwner: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnOwner',
-    defaultMessage: 'Owner',
   },
   columnRoles: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.serviceAccounts.ServiceAccountsSettingsPage.columnRoles',
@@ -471,9 +467,6 @@ function ServiceAccountList() {
                         <FormattedMessage {...messages.columnName} />
                       </ListingTable.Cell>
                       <ListingTable.Cell>
-                        <FormattedMessage {...messages.columnOwner} />
-                      </ListingTable.Cell>
-                      <ListingTable.Cell>
                         <FormattedMessage {...messages.columnRoles} />
                       </ListingTable.Cell>
                       <ListingTable.Cell>
@@ -543,6 +536,7 @@ function ServiceAccountList() {
             setFormTarget(null);
             setCredentials(result);
           }}
+          onRegenerate={(account) => setConfirm({ account, kind: 'regenerate' })}
         />
       )}
 
@@ -632,13 +626,6 @@ function ServiceAccountRow({
             </IconButton>
           </Tooltip>
         </Stack>
-      </ListingTable.Cell>
-      <ListingTable.Cell sx={{ maxWidth: 160 }}>
-        <Tooltip title={account.owner}>
-          <Typography noWrap variant="body2">
-            {account.owner}
-          </Typography>
-        </Tooltip>
       </ListingTable.Cell>
       <ListingTable.Cell>
         <RoleChips roles={rolesOf(account)} />
