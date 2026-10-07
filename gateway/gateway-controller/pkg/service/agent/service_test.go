@@ -96,10 +96,12 @@ type agentYAMLOpts struct {
 	version      string
 	context      string
 	upstreamAuth string
-	signing      string
-	protected    string
-	deployState  string
-	annotations  string
+	// upstreamURL overrides the default upstream url.
+	upstreamURL string
+	signing     string
+	protected   string
+	deployState string
+	annotations string
 	// extendedCard adds capabilities.extendedAgentCard: true to the managed
 	// public card, which configuring a protected card requires.
 	extendedCard bool
@@ -158,7 +160,7 @@ spec:
           "skills": []
         }
 %s
-`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamAuth), o.deployState,
+`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamURL, o.upstreamAuth), o.deployState,
 		o.signing, o.context, extendedCardCapability(o.extendedCard), o.protected))
 }
 
@@ -172,8 +174,11 @@ func extendedCardCapability(declared bool) string {
 	return `, "extendedAgentCard": true`
 }
 
-func upstreamBlock(auth string) string {
-	block := "  upstream:\n    url: https://weather.internal"
+func upstreamBlock(url, auth string) string {
+	if url == "" {
+		url = "https://weather.internal"
+	}
+	block := "  upstream:\n    url: " + url
 	if auth != "" {
 		block += "\n" + auth
 	}
@@ -689,6 +694,33 @@ func TestUpdate_InheritsStoredCredentialWhenOmitted(t *testing.T) {
 	assert.Equal(t, "stored-secret", *source.Spec.Upstream.Auth.Value)
 }
 
+func TestUpdate_DoesNotInheritCredentialAcrossChangedUpstream(t *testing.T) {
+	h := newHarness(t, nil)
+
+	_, err := h.create(t, agentYAML(agentYAMLOpts{
+		upstreamAuth: "    auth:\n      type: api-key\n      header: x-api-key\n      value: stored-secret",
+	}))
+	require.NoError(t, err)
+
+	// Same auth block without a value, but pointed at a different upstream: the
+	// stored credential was issued for the old target and must not follow the edit.
+	result, err := h.service.Update(UpdateParams{
+		Handle: "weather-agent-v1-0",
+		Body: agentYAML(agentYAMLOpts{
+			upstreamURL:  "https://other.internal",
+			upstreamAuth: "    auth:\n      type: api-key\n      header: x-api-key",
+		}),
+		ContentType: "application/yaml",
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	require.NoError(t, err)
+
+	source, ok := result.Config.SourceConfiguration.(api.AgentConfiguration)
+	require.True(t, ok)
+	require.NotNil(t, source.Spec.Upstream.Auth)
+	assert.Nil(t, source.Spec.Upstream.Auth.Value, "stored credential followed an update to a different upstream")
+}
+
 func TestUpdate_TypeNoneRemovesCredential(t *testing.T) {
 	h := newHarness(t, nil)
 
@@ -778,23 +810,18 @@ func (p *recordingPusher) PushArtifact(_ string, artifact *models.StoredConfig, 
 	return nil
 }
 
-// TestControlPlanePushIsOffByDefault is the state this gateway actually ships
-// in: the push path exists but ControlPlanePushSupported is false, so nothing is
-// pushed and no row claims a sync is pending.
-func TestControlPlanePushIsOffByDefault(t *testing.T) {
-	require.False(t, ControlPlanePushSupported,
-		"flip this test's expectations together with the constant")
-
+// TestControlPlanePushOffWhenSyncDisabled keeps the off state honest: with
+// deployment sync disabled nothing is pushed and no row claims a sync is pending.
+func TestControlPlanePushOffWhenSyncDisabled(t *testing.T) {
 	h := newHarness(t, nil)
 	pusher := &recordingPusher{connected: true}
-	h.service.SetControlPlanePusher(pusher,
-		ControlPlanePushSupported && true /* deployment sync enabled */)
+	h.service.SetControlPlanePusher(pusher, false /* deployment sync disabled */)
 
 	created, err := h.create(t, agentYAML(agentYAMLOpts{}))
 	require.NoError(t, err)
 	assert.Equal(t, models.CPSyncStatus(""), created.StoredConfig.CPSyncStatus,
 		`an artifact that will never be pushed must not be recorded as "pending"`)
-	assert.Empty(t, pusher.submitted, "nothing may be pushed while the control plane cannot model an Agent")
+	assert.Empty(t, pusher.submitted)
 
 	_, err = h.service.Delete(DeleteParams{Handle: "weather-agent-v1-0", Logger: discardLogger()})
 	require.NoError(t, err)
@@ -802,9 +829,9 @@ func TestControlPlanePushIsOffByDefault(t *testing.T) {
 	assert.Empty(t, pusher.pushed)
 }
 
-// TestControlPlanePushWhenEnabled exercises the wiring that
-// ControlPlanePushSupported currently gates, so enabling it is a one-line change
-// against a tested path rather than against never-run code.
+// TestControlPlanePushWhenEnabled exercises the full push wiring: a create
+// schedules a push that waits for the deployment, and a delete pushes the
+// artifact as undeployed.
 func TestControlPlanePushWhenEnabled(t *testing.T) {
 	h := newHarness(t, nil)
 	pusher := &recordingPusher{connected: true}

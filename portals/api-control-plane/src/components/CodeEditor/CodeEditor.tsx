@@ -173,7 +173,16 @@ export const CodeEditor = ({
     <Editor
       height="100%"
       language={language}
-      onChange={(next) => onChange?.(next ?? '')}
+      onChange={(next) => {
+        // @monaco-editor/react suppresses this callback for a programmatic
+        // value update on a writable editor, but not on a read-only one —
+        // there it calls the model's setValue directly, which still fires a
+        // change event. A read-only editor can never produce a real edit, so
+        // any change reaching here while read-only is that library quirk,
+        // not user input.
+        if (readOnly) return;
+        onChange?.(next ?? '');
+      }}
       options={{
         // The pane and the panel are both resizable; without this the editor
         // keeps whatever size it was first measured at.

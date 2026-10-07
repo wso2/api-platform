@@ -49,6 +49,29 @@ function buildConnectionConfig(config) {
     };
 }
 
+/*
+ * The driver binds every JS string as NVARCHAR. Compared against a VARCHAR column —
+ * every uuid/handle key in this schema — SQL Server has to CONVERT_IMPLICIT the
+ * column side, which turns a primary-key seek into a full clustered-index scan. Inside
+ * a transaction that scan takes update locks on every row, including other
+ * transactions' uncommitted inserts, so concurrent writers deadlock on each other
+ * (parallel API key generation hit this on `UPDATE events ... WHERE uuid = ?`).
+ *
+ * An ASCII-only string is byte-for-byte identical as VARCHAR and NVARCHAR, so binding
+ * it as VARCHAR loses nothing: against a VARCHAR column it seeks directly, and against
+ * an NVARCHAR column the parameter (not the column) is the side converted, which still
+ * seeks. A string with any non-ASCII character keeps the driver's NVARCHAR binding —
+ * as VARCHAR it would be squeezed into the database's code page. One fixed length
+ * keeps every such parameter on the same cached plan; longer strings (document
+ * bodies, not keys) also keep the default, since VARCHAR(MAX) would not seek anyway.
+ */
+const VARCHAR_PARAM_LENGTH = 8000;
+const ASCII_ONLY = /^[\x00-\x7F]*$/; // eslint-disable-line no-control-regex
+
+function isVarcharSafe(value) {
+    return typeof value === 'string' && value.length <= VARCHAR_PARAM_LENGTH && ASCII_ONLY.test(value);
+}
+
 function createMssqlAdapter(config) {
     const pool = new sql.ConnectionPool(buildConnectionConfig(config));
     const ready = pool.connect();
@@ -86,7 +109,12 @@ function createMssqlAdapter(config) {
                 request.input(name, sql.VarBinary(sql.MAX), value.value);
                 return;
             }
-            request.input(name, coerceParamValue(value));
+            const coerced = coerceParamValue(value);
+            if (isVarcharSafe(coerced)) {
+                request.input(name, sql.VarChar(VARCHAR_PARAM_LENGTH), coerced);
+                return;
+            }
+            request.input(name, coerced);
         });
     }
 

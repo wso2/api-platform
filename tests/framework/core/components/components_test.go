@@ -55,6 +55,12 @@ func controllerLike() *Definition {
 	}
 }
 
+func TestDefinitionProductDefaultsToItsName(t *testing.T) {
+	require.Equal(t, "api-portal", (&Definition{Name: "api-portal"}).Product())
+	require.Equal(t, "api-portal", (&Definition{Name: "api-portal-replica", SourceProduct: "api-portal"}).Product())
+	require.Empty(t, (*Definition)(nil).Product())
+}
+
 func TestDefinitionValidate(t *testing.T) {
 	t.Run("a nil definition is rejected", func(t *testing.T) {
 		var d *Definition

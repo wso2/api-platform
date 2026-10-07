@@ -40,3 +40,16 @@ role_to_scope_mapping = "/etc/api-portal/role-to-scope-mapping.yaml"
 [api_portal.security]
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
 session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
+
+# Key managers created through the API point at endpoints inside this compose
+# network — plaintext, on container names that resolve to private addresses.
+# Both guards are off by default (an API-created key manager must use https on a
+# public address until an operator says otherwise), so without this the portal
+# refuses to store the key managers these scenarios create.
+#
+# The same opt-in portals/api-portal/it/test-config.toml takes, and the same one
+# a developer takes to point at an identity server on localhost — not a
+# relaxation invented for the suite.
+[api_portal.key_manager_provisioning]
+allow_http_endpoints    = true
+allow_private_endpoints = true

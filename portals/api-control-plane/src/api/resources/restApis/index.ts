@@ -61,4 +61,4 @@ export {
   useValidateOpenApiSpec,
 } from './restApis.hooks';
 
-export { parseSpecContent, toRestApiDefinition } from './restApis.utils';
+export { formatValidationError, parseSpecContent, toRestApiDefinition } from './restApis.utils';

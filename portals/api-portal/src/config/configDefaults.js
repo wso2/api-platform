@@ -157,6 +157,15 @@ const DEFAULTS = {
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
+            // Optional claim carrying the organization's human-readable name. Used only
+            // when an organization is provisioned from a claim (multi-organization mode):
+            // its URL handle and display name are derived from it. Empty — or absent from
+            // the token — derives both from the organization claim above instead.
+            orgName: '',
+            // Optional claim carrying the organization's URL handle (e.g. WSO2 IS's
+            // org_handle). Provisioning uses it as the handle as-is when it is a valid,
+            // unreserved one; otherwise the handle is derived as above.
+            orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
         },
@@ -266,13 +275,12 @@ const DEFAULTS = {
         authenticated: [],
         authorized: [],
     },
-    // The single organization this portal instance serves. The database schema is
-    // still multi-org (one shared database can hold many organizations, each served
-    // by its own portal instance), but a given instance is pinned to exactly one:
-    // every page route, REST request, and background worker is scoped to `handle`,
-    // and anything resolving to a different organization is rejected. See
-    // src/utils/orgContext.js. The organization is seeded on first startup if it
-    // doesn't exist yet (src/services/seederService.js).
+    // The single organization this portal instance serves. One shared database can
+    // hold many organizations, each served by its own portal instance, but a given
+    // instance is pinned to exactly one: every page route, REST request, and
+    // background worker is scoped to `handle`, and anything resolving to a different
+    // organization is rejected. See src/utils/orgContext.js. The organization is
+    // seeded on first startup if it doesn't exist yet (src/services/seederService.js).
     organization: {
         // Handle (URL slug) of this instance's organization — the {orgHandle}
         // segment of /{orgHandle}/views/{viewName}. Mirrors platform-api's
@@ -303,6 +311,20 @@ const DEFAULTS = {
         // organization.portal_id in a local config file for on-premise. When neither
         // is set the template resolves to 'portal_id'.
         portalId: '',
+    },
+    // Multi-organization mode. Off (the default) — the portal serves only the
+    // organization above, exactly as described there. On — one portal serves every
+    // organization under its portal_id: page URLs, org claims and the organization APIs
+    // resolve to whichever organization they name, not only the configured one (which
+    // stays the default and fallback). Takes effect in auth.mode = "idp" only; local
+    // auth stays single-organization.
+    //
+    // Assumes this deployment owns its portal_id: several instances may share it only
+    // as replicas with identical configuration, since any instance may serve any
+    // organization under it. Other deployments may share the database under a
+    // different portal_id. See src/utils/orgContext.js.
+    multiOrganization: {
+        enabled: false,
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here
     // gets no nav entry, no landing-page section, and 404s on its routes. Any
@@ -360,6 +382,53 @@ const DEFAULTS = {
         timeoutMs: 15000,
         maxRequestBytes: 1048576,   // 1 MiB
         maxResponseBytes: 5242880,  // 5 MiB
+    },
+    // OAuth2 key generation via Dynamic Client Registration — the key managers
+    // the portal may register clients on. An array of tables in TOML:
+    //
+    //   [[api_portal.key_manager]]
+    //   id = "thunder-local"; name = "ThunderID"; type = "thunderid"
+    //   registration_endpoint / token_endpoint / authorize_endpoint = "..."
+    //     [api_portal.key_manager.auth]
+    //     method = "client_credentials"; client_id = "..."
+    //     client_secret = '{{ env "THUNDER_CLIENT_SECRET" }}'
+    //
+    // Empty by default: no key manager means GET /key-managers/metadata returns
+    // an empty list and POST /oauth2-keys has nothing to register against, which
+    // is the correct posture for a portal whose operator has not configured one.
+    // Validated at startup by src/config/keyManagerConfig.js — see
+    // src/keymanagers/ for the drivers each `type` activates.
+    keyManager: [],
+    // Deployment-wide resource bounds for key manager calls (the provisioning
+    // token request and the DCR calls alike).
+    //
+    // Only bounds live here. Whether a given key manager may be reached over
+    // plain http, on a private/loopback address, or without TLS verification is
+    // set per key manager — `allow_http_endpoints`, `allow_private_endpoints`
+    // and `insecure_skip_verify` on its own [[api_portal.key_manager]] entry.
+    // Each describes one host, so a global value would hand the loosest setting
+    // to every key manager configured.
+    keyManagerClient: {
+        timeoutMs: 10000,
+        maxRequestBytes: 1048576,   // 1 MiB
+        maxResponseBytes: 1048576,  // 1 MiB — a DCR response is small
+    },
+    // The outbound posture for key managers created through the REST API / the
+    // Settings UI, which — unlike an [[api_portal.key_manager]] entry — cannot
+    // set their own.
+    //
+    // Global rather than per key manager, which is the opposite of how the TOML
+    // entries work, and deliberately so: these hosts are chosen by whoever holds
+    // an admin token, not by whoever deployed the portal. Letting each row widen
+    // its own reach would make the address guard something an API caller can
+    // switch off, on exactly the endpoints that guard exists for. All three
+    // default off, so an API-created key manager must use https on a public
+    // address with a valid certificate until an operator says otherwise —
+    // typically to point a development portal at an identity server on localhost.
+    keyManagerProvisioning: {
+        allowPrivateEndpoints: false,
+        allowHttpEndpoints: false,
+        insecureSkipVerify: false,
     },
     developer: {
         // Internal/debug knob for the /portal REST router's response validation

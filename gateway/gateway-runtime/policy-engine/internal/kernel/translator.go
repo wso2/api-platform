@@ -1026,6 +1026,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 
+	var responseHeaderDropAction *policy.DropHeaderAction
 	for _, pr := range result.Results {
 		if pr.Skipped || pr.Action == nil {
 			continue
@@ -1051,13 +1052,18 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
 			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 		}
-		dropAction := mods.AnalyticsHeaderFilter
-		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-			originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
-			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["response_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		if dropAction := mods.AnalyticsHeaderFilter; dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			responseHeaderDropAction = &dropAction
 		}
+	}
+
+	// Apply the filter after the loop so a later policy's response_headers (e.g. the
+	// system analytics header capture) cannot overwrite it.
+	if responseHeaderDropAction != nil {
+		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
+		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
+		analyticsData["response_headers"] = finalizedHeaders
+		execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -1123,6 +1129,8 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 
+	var responseHeaderDropAction *policy.DropHeaderAction
+
 	// Collect mutations from header-phase policies (DownstreamResponseHeaderModifications).
 	for _, pr := range headerResult.Results {
 		if pr.Skipped || pr.Action == nil {
@@ -1149,12 +1157,8 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
 			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 		}
-		dropAction := mods.AnalyticsHeaderFilter
-		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-			originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
-			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["response_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		if dropAction := mods.AnalyticsHeaderFilter; dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			responseHeaderDropAction = &dropAction
 		}
 	}
 
@@ -1194,13 +1198,18 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
 			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 		}
-		dropAction := mods.AnalyticsHeaderFilter
-		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-			originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
-			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["response_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		if dropAction := mods.AnalyticsHeaderFilter; dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			responseHeaderDropAction = &dropAction
 		}
+	}
+
+	// Apply the filter after both loops so a later policy's response_headers (e.g. the
+	// system analytics header capture) cannot overwrite it.
+	if responseHeaderDropAction != nil {
+		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
+		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
+		analyticsData["response_headers"] = finalizedHeaders
+		execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
 	}
 
 	// Re-compress body if a policy modified it and the original response was compressed.
@@ -1361,6 +1370,8 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	var finalBodyLength int
 	bodyModified := false
 
+	var responseHeaderDropAction *policy.DropHeaderAction
+
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
 		if policyResult.Skipped || policyResult.Error != nil {
@@ -1411,23 +1422,27 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
 				}
 
-				dropAction := mods.AnalyticsHeaderFilter
-				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+				if dropAction := mods.AnalyticsHeaderFilter; dropAction.Action != "" || len(dropAction.Headers) > 0 {
 					slog.Debug("Translator: Found analytics header filter action (RESPONSE)",
 						"action", dropAction.Action,
 						"headers", dropAction.Headers,
 						"headers_count", len(dropAction.Headers))
-
-					originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
-					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-					analyticsData["response_headers"] = finalizedHeaders
-
-					// Include request_headers from execution context if it was set in a previous phase
-					if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
-						analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
-					}
+					responseHeaderDropAction = &dropAction
 				}
 			}
+		}
+	}
+
+	// Apply the filter after the loop so a later policy's response_headers (e.g. the
+	// system analytics header capture) cannot overwrite it.
+	if responseHeaderDropAction != nil {
+		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
+		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
+		analyticsData["response_headers"] = finalizedHeaders
+
+		// Include request_headers from execution context if it was set in a previous phase
+		if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
+			analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
 		}
 	}
 

@@ -422,13 +422,20 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // Session helpers
 // ---------------------------------------------------------------------------
 
-// tokenFromCookie returns the JWT stored directly in the session cookie.
+// tokenFromCookie reassembles the JWT from its two session-cookie parts. Fails closed
+// (GO-AUTH-001): either cookie missing or empty is treated as no session — never as a
+// partial/best-effort token — even though a mangled JWT would also just fail signature
+// verification downstream, rejecting here keeps the failure explicit and in one place.
 func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
-	c, err := r.Cookie(s.cfg.Cookie.Name)
-	if err != nil || c.Value == "" {
+	c1, err := r.Cookie(s.cfg.Cookie.Name1)
+	if err != nil || c1.Value == "" {
 		return "", false
 	}
-	return c.Value, true
+	c2, err := r.Cookie(s.cfg.Cookie.Name2)
+	if err != nil || c2.Value == "" {
+		return "", false
+	}
+	return joinSessionToken(c1.Value, c2.Value), true
 }
 
 // userFromToken builds the display User for /api/session. File-based claims are

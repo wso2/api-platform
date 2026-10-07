@@ -131,8 +131,9 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	cfg.Deployments.MaxPerAPIGateway = 10
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo,
-		artifactRepo, deploymentRepo, gatewayRepo, projectRepo, cfg, logger, fakeMCPServerInfoFetcher{})
+	agentProxyRepo := repository.NewAgentProxyRepo(db)
+	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo, agentProxyRepo,
+		artifactRepo, deploymentRepo, gatewayRepo, projectRepo, cfg, logger, fakeMCPServerInfoFetcher{}, nil)
 
 	return &importTestDeps{
 		svc:          svc,

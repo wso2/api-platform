@@ -16,141 +16,192 @@
  * under the License.
  */
 
-import { Avatar, Box, Button, Card, CardContent, Chip, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { ChevronRight, Globe, Link2 } from '@wso2/oxygen-ui-icons-react';
-import { useId } from 'react';
+import { Avatar, Box, Button, Card, Chip, chipClasses, Divider, Stack, Typography } from '@wso2/oxygen-ui';
+import { Circle, ExternalLink } from '@wso2/oxygen-ui-icons-react';
+import { useId, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { Link } from 'react-router-dom';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
-import { publicationChipMeta } from '../utils/publicationDisplay';
+import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
+import { useFormatters } from '@/i18n/useFormatters';
+import { routes } from '@/routes/paths';
+import { hairline } from '@/theme/receipes';
+import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from '../utils/publicationDisplay';
 
 const messages = defineMessages({
   goToPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Go To Publish',
+    defaultMessage: 'Go to publish',
     description: 'Card action opening the publish flow for this API on this portal.',
+  },
+  viewInPortal: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal',
+    defaultMessage: 'View in portal',
+    description: 'Link opening this API\'s own page on the portal, in a new tab.',
+  },
+  statusLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel',
+    defaultMessage: 'Status',
+    description: 'Row label for the API\'s publication status on this portal.',
   },
 });
 
 type PortalPublicationCardProps = {
+  apiHandle: string;
+  orgHandle: string;
+  projectHandle: string;
   publication: PublicationSummaryItem;
-  onOpen: (publication: PublicationSummaryItem) => void;
 };
 
-const AVATAR_SIZE = 48;
+const AVATAR_SIZE = 72;
+const DESCRIPTION_LINES = 2;
+/** Description line height, so a short description still reserves its two lines. */
+const DESCRIPTION_LINE_HEIGHT = 1.5;
 
-/** Square identity tile for a portal — same treatment as an API's kind avatar. */
+/** Breathing room around a chip's icon and label, so neither sits against the border. */
+const chipSx = {
+  typography: 'caption',
+  [`& .${chipClasses.label}`]: { px: 1.25 },
+  [`& .${chipClasses.icon}`]: { ml: 1, mr: -0.5 },
+} as const;
+
+/** Share of the tile the logo fills, leaving the margin around it. */
+const LOGO_SIZE = '75%';
+
+/** Square identity tile for a portal, carrying the developer portal's mark. */
 function PortalAvatar() {
   return (
     <Avatar
-      sx={{
-        bgcolor: 'primary.light',
-        color: 'primary.contrastText',
+      sx={(theme) => ({
+        bgcolor: 'action.hover',
+        border: hairline(theme),
+        borderColor: 'divider',
         flexShrink: 0,
         height: AVATAR_SIZE,
         width: AVATAR_SIZE,
-      }}
+      })}
       variant="rounded"
     >
-      <Globe size={Math.round(AVATAR_SIZE * 0.5)} />
+      <Box
+        alt=""
+        component="img"
+        src={devportalLogoUrl}
+        sx={{ height: LOGO_SIZE, objectFit: 'contain', width: LOGO_SIZE }}
+      />
     </Avatar>
   );
 }
 
-/** Drops the scheme and a trailing slash so the card shows a clean host, not a full URL. */
-const displayUrl = (url: string): string => url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+/** A label on the left, its value on the right. */
+function DetailRow({ children, label }: { children: ReactNode; label: ReactNode }) {
+  return (
+    <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={2} sx={{ minHeight: 24 }}>
+      <Typography color="text.secondary" variant="body2">
+        {label}
+      </Typography>
+      {children}
+    </Stack>
+  );
+}
 
 /**
- * One API Portal, annotated with this API's own publication status. Only the
- * "Go To Publish" button opens it; the card itself is not clickable.
+ * One API Portal, annotated with this API's own publication state: its status,
+ * when it last changed, and whether a draft is waiting. The card itself is not
+ * clickable; "Go to publish" opens the flow.
  */
-export function PortalPublicationCard({ publication, onOpen }: PortalPublicationCardProps) {
+export function PortalPublicationCard({ apiHandle, orgHandle, projectHandle, publication }: PortalPublicationCardProps) {
   const intl = useIntl();
+  const { relativeTime } = useFormatters();
   const nameId = useId();
   const name = publication.apiPortalName || publication.apiPortalId || '';
-  const chipMeta = publicationChipMeta(publication);
-  const open = () => onOpen(publication);
+  const status = publicationStatusMeta(publication.status);
+  // NOT_PUBLISHED has never had a page on the portal to link to.
+  const viewInPortalHref =
+    publication.apiPortalUrl && isListedOnPortal(publication.status)
+      ? buildViewInPortalUrl(publication.apiPortalUrl, orgHandle, apiHandle)
+      : undefined;
+
+  // Without an id there is no publish flow to open.
+  const publishHref = publication.apiPortalId
+    ? routes.apiPortalPublish(orgHandle, projectHandle, apiHandle, publication.apiPortalId)
+    : undefined;
 
   return (
-    <Card
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-      }}
-    >
-      <CardContent sx={{ flex: 1 }}>
-        <Stack spacing={1.5}>
-          <Stack alignItems="flex-start" direction="row" spacing={1.5}>
-            <PortalAvatar />
-            <Box sx={{ minWidth: 0 }}>
-              <Typography id={nameId} noWrap sx={{ fontWeight: 700 }} variant="h6">
-                {name}
-              </Typography>
-              {chipMeta && (
-                <Chip
-                  color={chipMeta.color}
-                  label={intl.formatMessage(chipMeta.label)}
-                  size="small"
-                  sx={{ mt: 0.5, typography: 'caption' }}
-                  variant="outlined"
-                />
-              )}
-            </Box>
-          </Stack>
-
-          {publication.apiPortalDescription && (
+    <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} variant="outlined">
+      <Stack spacing={2} sx={{ flex: 1, p: 2.5 }}>
+        <Stack alignItems="flex-start" direction="row" spacing={2}>
+          <PortalAvatar />
+          <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0, pt: 0.5 }}>
+            <Typography id={nameId} sx={{ fontWeight: 600, overflowWrap: 'break-word' }} variant="subtitle2">
+              {name}
+            </Typography>
             <Typography
               color="text.secondary"
               sx={{
                 display: '-webkit-box',
+                lineHeight: DESCRIPTION_LINE_HEIGHT,
+                minHeight: `${DESCRIPTION_LINES * DESCRIPTION_LINE_HEIGHT}em`,
                 overflow: 'hidden',
                 WebkitBoxOrient: 'vertical',
-                WebkitLineClamp: 2,
+                WebkitLineClamp: DESCRIPTION_LINES,
               }}
               variant="body2"
             >
               {publication.apiPortalDescription}
             </Typography>
-          )}
-
-          {publication.apiPortalUrl && (
-            <Stack
-              alignItems="center"
-              direction="row"
-              spacing={0.75}
-              sx={{ color: 'text.secondary', minWidth: 0 }}
-            >
-              <Link2 size={14} />
-              <Typography
-                component="a"
-                href={publication.apiPortalUrl}
-                noWrap
-                rel="noopener noreferrer"
-                sx={{ color: 'inherit', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-                target="_blank"
-                variant="caption"
-              >
-                {displayUrl(publication.apiPortalUrl)}
-              </Typography>
-            </Stack>
-          )}
+          </Stack>
         </Stack>
-      </CardContent>
 
-      <Divider />
+        <Divider />
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2, py: 1.25 }}>
-        <Button
-          aria-describedby={nameId}
-          endIcon={<ChevronRight size={16} />}
-          onClick={open}
-          size="small"
-          variant="outlined"
-        >
-          <FormattedMessage {...messages.goToPublish} />
-        </Button>
-      </Box>
+        <Box sx={{ flex: 1 }}>
+          <DetailRow label={<FormattedMessage {...messages.statusLabel} />}>
+            <Stack alignItems="center" direction="row" spacing={1.25}>
+              <Typography color="text.secondary" variant="caption">
+                {relativeTime(publication.publicationUpdatedAt)}
+              </Typography>
+              <Chip
+                color={status.color}
+                icon={<Circle fill="currentColor" size={8} />}
+                label={intl.formatMessage(status.label)}
+                size="small"
+                sx={chipSx}
+                variant="outlined"
+              />
+            </Stack>
+          </DetailRow>
+        </Box>
+
+        <Stack alignItems="center" direction="row" spacing={2}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Button
+              aria-describedby={nameId}
+              component={Link}
+              disabled={!publishHref}
+              fullWidth
+              size="small"
+              state={{ portalName: publication.apiPortalName }}
+              to={publishHref ?? ''}
+              variant="contained"
+            >
+              <FormattedMessage {...messages.goToPublish} />
+            </Button>
+          </Box>
+          <Button
+            component="a"
+            disabled={!viewInPortalHref}
+            endIcon={<ExternalLink size={16} />}
+            href={viewInPortalHref}
+            rel="noopener noreferrer"
+            size="small"
+            sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+            target="_blank"
+          >
+            <FormattedMessage {...messages.viewInPortal} />
+          </Button>
+        </Stack>
+      </Stack>
     </Card>
   );
 }

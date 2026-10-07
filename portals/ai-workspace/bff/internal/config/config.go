@@ -427,13 +427,25 @@ type ClaimMappingConfig struct {
 // unconditionally true; there is no supported plain-HTTP deployment that would need it
 // false.
 type CookieConfig struct {
-	Name     string
+	// Name1 and Name2 carry the session JWT split across two HttpOnly cookies, so a
+	// single Set-Cookie value stays under browsers' and intermediate proxies'
+	// per-cookie size ceiling even when the JWT's scope list is large (see
+	// defaultOIDCScopes below).
+	Name1    string
+	Name2    string
 	Secure   bool
 	SameSite string // "lax" | "strict" | "none"
 }
 
-// cookieName is the session cookie's name.
-const cookieName = "_ai_workspace_session"
+// cookieName1 and cookieName2 are the session cookie names. LegacyCookieName is the
+// single-cookie name used before the session was split in two; exported because
+// server.clearSessionCookie also expires it so a browser holding a pre-upgrade cookie
+// doesn't keep it alive forever (see cookies.go).
+const (
+	cookieName1      = "_ai_workspace_session_1"
+	cookieName2      = "_ai_workspace_session_2"
+	LegacyCookieName = "_ai_workspace_session"
+)
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
 // the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
@@ -472,6 +484,9 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
+	" ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage" +
+	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
+	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore" +
 	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
 	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
 	" ap:api_portal:publication:read" +
@@ -599,7 +614,7 @@ func (c *Config) normalize() {
 		c.Auth.OIDC.TokenExchange.Scopes = c.Auth.OIDC.Scopes
 	}
 
-	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
+	c.Cookie = CookieConfig{Name1: cookieName1, Name2: cookieName2, Secure: true, SameSite: "lax"}
 }
 
 // TokenExchangeEnabled derives the switch from both flags, so the feature can never

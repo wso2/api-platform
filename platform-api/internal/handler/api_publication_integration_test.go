@@ -252,6 +252,47 @@ func TestPublicationHandler_SaveDraft_UnknownDocId(t *testing.T) {
 	}
 }
 
+// TestPublicationHandler_SaveDraftDefinition_AcceptsAnyContent checks that
+// saving a draft definition never validates its content — a draft is a work
+// in progress, and only Publish enforces that a REST definition is a valid
+// OpenAPI 3.x document (see TestPublicationHandler_Publish_RejectsInvalidDefinition).
+// The one thing still rejected here is a Content-Type outside the four
+// recognized serializations, needed to know how to store the content at all,
+// independent of any apiType's own rules.
+func TestPublicationHandler_SaveDraftDefinition_AcceptsAnyContent(t *testing.T) {
+	r, _, cleanup := setupPublicationTestEnv(t)
+	defer cleanup()
+
+	w := doPublicationRequest(r, http.MethodPut, draftPath, "application/json", []byte(`{"displayName":"x","version":"1.0"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT draft: want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	accepted := []struct{ name, contentType, body string }{
+		{"valid OpenAPI document", "application/json", `{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/":{"get":{"responses":{"200":{"description":"ok"}}}}}}`},
+		{"missing info and paths", "application/json", `{"openapi":"3.0.0"}`},
+		{"not openapi", "application/json", `{"foo":1}`},
+		{"swagger 2", "application/json", `{"swagger":"2.0","info":{"title":"t","version":"1"},"paths":{}}`},
+		{"invalid yaml spec", "application/yaml", "openapi: 3.0.0\n"},
+		{"graphql content-type on a REST API", "application/graphql", "type Query { hello: String }"},
+		{"empty string", "application/json", ""},
+		{"whitespace only", "application/json", "   \n"},
+		{"empty object", "application/json", "{}"},
+		{"empty yaml", "application/yaml", ""},
+	}
+	for _, tc := range accepted {
+		w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", tc.contentType, []byte(tc.body))
+		if w.Code != http.StatusNoContent {
+			t.Errorf("%s: want 204, got %d: %s", tc.name, w.Code, w.Body.String())
+		}
+	}
+
+	w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", "text/plain", []byte("anything"))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "PUBLICATION_VALIDATION_FAILED") {
+		t.Errorf("unrecognized content-type: want 400 PUBLICATION_VALIDATION_FAILED, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // TestPublicationHandler_ContentEndpoints drives definition/landing-page/
 // thumbnail PUT+GET through the real HTTP stack, including the one multipart
 // upload in this feature.
@@ -266,12 +307,13 @@ func TestPublicationHandler_ContentEndpoints(t *testing.T) {
 	}
 
 	// Definition.
-	w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", "application/json", []byte(`{"openapi":"3.0.0"}`))
+	const validSpec = `{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/":{"get":{"responses":{"200":{"description":"ok"}}}}}}`
+	w = doPublicationRequest(r, http.MethodPut, draftPath+"/definition", "application/json", []byte(validSpec))
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("PUT definition: want 204, got %d: %s", w.Code, w.Body.String())
 	}
 	w = doPublicationRequest(r, http.MethodGet, draftPath+"/definition", "", nil)
-	if w.Code != http.StatusOK || w.Body.String() != `{"openapi":"3.0.0"}` {
+	if w.Code != http.StatusOK || w.Body.String() != validSpec {
 		t.Fatalf("GET definition: want 200 with echoed body, got %d: %s", w.Code, w.Body.String())
 	}
 	if ct := w.Header().Get("Content-Type"); ct != "application/json" {

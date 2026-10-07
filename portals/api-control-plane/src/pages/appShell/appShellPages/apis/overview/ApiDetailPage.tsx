@@ -32,6 +32,7 @@ import { Boxes, Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-re
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useRestApi } from '@/api/resources/restApis';
 import type { Gateway } from '@/api/resources/gateways';
 import { useDeployments } from '@/api/resources/restApis/deployments';
@@ -153,6 +154,14 @@ function DescriptionField({ description }: { description: string }) {
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
+  return (
+    <AppPage>
+      <ApiDetailPageContent />
+    </AppPage>
+  );
+}
+
+function ApiDetailPageContent() {
   const { params } = useConsoleScope();
   const canEdit = useCan('UpdateRESTAPI');
   const apiQuery = useRestApi(params.apiHandler);

@@ -1,0 +1,33 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Agent
+metadata:
+    name: travel-agent
+    labels:
+        projectId: 0b7d3c1e-5f2a-4c8e-9d6b-1a2b3c4d5e6f
+spec:
+    displayName: Travel Agent
+    version: v2.1
+    upstream:
+        url: https://travel-agent.internal:8443/a2a
+    resilience:
+        timeout: 30s
+    a2a:
+        protocolVersion: "1.0"
+        operationConfigs:
+            transports:
+                - protocolBinding: HTTP+JSON
+        agentCard:
+            public:
+                rewriteUrls: false
+            protected:
+                mode: managed
+                content:
+                    capabilities:
+                        streaming: false
+                    name: Travel Agent
+                    skills: []
+                    supportedInterfaces:
+                        - protocolBinding: HTTP+JSON
+                          protocolVersion: "1.0"
+                          url: https://agents.example.com/
+                    version: 2.1.0
