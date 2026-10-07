@@ -93,6 +93,10 @@ type ExternalProcessorServer struct {
 	// move it.
 	handleUpstreamFaults bool
 
+	// llmOpenAIErrors renders LLM-route errors in the OpenAI envelope. From
+	// policy_engine.llm_openai_compatible_errors.enabled, off by default. See WithLLMOpenAIErrors.
+	llmOpenAIErrors bool
+
 	// correlationStore carries captured request/response headers and bodies to
 	// the ALS handler, keyed by a per-stream token, instead of round-tripping them
 	// through Envoy dynamic metadata (see storeInProcess and
@@ -141,6 +145,26 @@ func WithErrorFormatterKinds(kinds []string) ServerOption {
 func WithHandleUpstreamFaults(enabled bool) ServerOption {
 	return func(s *ExternalProcessorServer) {
 		s.handleUpstreamFaults = enabled
+	}
+}
+
+// WithLLMOpenAIErrors renders every gateway-produced error on an LlmProvider or LlmProxy route
+// in the OpenAI error envelope, from policy_engine.llm_openai_compatible_errors.enabled.
+//
+// A production option, unlike WithErrorFormatterKinds: an LLM API has shipped with the bodies
+// its policies write, so changing them is the operator's call. It ADDS the LLM kinds to
+// whatever the formatter already covers, so the shipped Agent formatting is unaffected. Pass it
+// after WithErrorFormatterKinds, which replaces the set.
+//
+// Turning it on also reshapes a body a policy wrote itself (see
+// faultformat.OpenAIPolicyBodyMessage); an operator's fault policy body and a backend's own error
+// still pass through.
+func WithLLMOpenAIErrors(enabled bool) ServerOption {
+	return func(s *ExternalProcessorServer) {
+		s.llmOpenAIErrors = enabled
+		if enabled {
+			s.errorFormatterKinds = s.errorFormatterKinds.With(faultformat.OpenAIErrorKinds()...)
+		}
 	}
 }
 
