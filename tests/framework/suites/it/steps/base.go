@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/aiworkspacecli"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/apiportal"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformapi"
@@ -201,6 +202,7 @@ func (s *Suite) Register(sc *godog.ScenarioContext) {
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
 	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot)
 	apiportal.Register(sc, s.topo, s.funnel.Client())
+	aiworkspacecli.Register(sc, s.topo, s.funnel, s.featureRoot)
 }
 
 // Request-shaping state is stored in the scenario context.

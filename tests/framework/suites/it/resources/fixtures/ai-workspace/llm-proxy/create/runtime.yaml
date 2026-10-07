@@ -1,36 +1,23 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
-    name: claude-proxy
+    name: ${CTX:artifactId}
 spec:
     displayName: wso2 claude proxy
     version: v1.0
-    context: /default/claude-proxy
+    context: ${CTX:artifactContext}
     provider:
-        id: claude-provider
+        id: ${CTX:providerId}
         auth:
             header: X-API-Key
             type: api-key
+            value: '{{ secret "${CTX:secretHandle}" }}'
     globalPolicies:
         - name: api-key-auth
           params:
             in: header
             key: X-API-Key
           version: ""
-        - name: aws-bedrock-guardrail
-          params:
-            request:
-                enabled: true
-                jsonPath: $.messages[-1].content
-                passthroughOnError: false
-                redactPII: false
-                showAssessment: false
-            response:
-                enabled: false
-                jsonPath: $.choices[0].message.content
-                passthroughOnError: false
-                showAssessment: false
-          version: v1
     operationPolicies:
         - name: basic-auth
           paths:

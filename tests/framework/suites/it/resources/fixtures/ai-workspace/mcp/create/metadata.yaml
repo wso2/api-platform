@@ -1,7 +1,7 @@
 apiVersion: ai-workspace.api-platform.wso2.com/v1alpha
-kind: LlmProxy
+kind: McpMetadata
 metadata:
-  name: claude-proxy
+  name: ${CTX:artifactId}
 spec:
-  displayName: claude Proxy
+  displayName: mcp-proxy
   version: v1.0

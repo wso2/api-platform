@@ -1,11 +1,11 @@
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProvider
 metadata:
-    name: claude-provider
+    name: ${CTX:artifactId}
 spec:
     displayName: wso2 claude provider
     version: v1.0
-    context: /wso2-claude
+    context: ${CTX:artifactContext}
     template: anthropic
     upstream:
         url: https://api.anthropic.com

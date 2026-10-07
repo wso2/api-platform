@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -123,6 +124,28 @@ func TestDeploymentStatusMatches(t *testing.T) {
 			require.Equal(t, tt.ok, deploymentStatusMatches(tt.resp, tt.want))
 		})
 	}
+}
+
+func TestRegisterCreatedArtifactRegistersCleanupInDependencyOrder(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 1, time.Millisecond)
+
+	for kind, id := range map[string]string{"LlmProvider": "prov-1", "LlmProxy": "proxy-1", "Mcp": "mcp-1"} {
+		require.NoError(t, RegisterCreatedArtifact(ctx, nil, funnel, kind, id))
+	}
+	require.Equal(t, []string{"prov-1"}, pendingIDs(reg, platformProviderKind))
+	require.Equal(t, []string{"proxy-1"}, pendingIDs(reg, platformProxyKind))
+	require.Equal(t, []string{"mcp-1"}, pendingIDs(reg, platformMCPKind))
+
+	// A proxy deletes before the provider it references; both delete before an associated
+	// gateway, which deletes before the project.
+	require.Less(t, platformProxyKind.Order, platformProviderKind.Order)
+	require.Less(t, platformProviderKind.Order, platformGatewayKind.Order)
+	require.Less(t, platformMCPKind.Order, platformGatewayKind.Order)
+	require.Less(t, platformGatewayKind.Order, platformProjectKind.Order)
+
+	require.ErrorContains(t, RegisterCreatedArtifact(ctx, nil, funnel, "RestApi", "api-1"), "no control-plane cleanup")
+	require.ErrorContains(t, RegisterCreatedArtifact(ctx, nil, funnel, "", "x"), "no control-plane cleanup")
 }
 
 func TestIsLastProjectValidation(t *testing.T) {
