@@ -35,7 +35,12 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     handle: plan.handle,
     display_name: plan.displayName,
     description: plan.description,
-    ref_id: plan.refId ?? null,
+    // Default ref_id to the handle so outbound subscription webhook events
+    // (which carry subscription_plan.ref_id) resolve on Platform API's side.
+    // Platform API's CreateSubscription treats this value as the plan handle
+    // and looks it up via GetByHandleAndOrg; a null ref_id ships as null and
+    // the subscription insert fails with the plan_uuid foreign key violation.
+    ref_id: plan.refId ?? plan.handle ?? null,
   };
 };
 
