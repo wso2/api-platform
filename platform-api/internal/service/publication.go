@@ -378,12 +378,12 @@ func (s *PublicationService) resolveDocUUIDs(artifactUUID string, handles []stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve document handles: %w", err)
 	}
-	return uuidsForHandles(handles, resolved, "docIds not found in the organization's documents")
+	return docUUIDsForHandles(handles, resolved)
 }
 
-// uuidsForHandles returns the UUID of every handle in order, or a validation
-// error listing the handles that have none.
-func uuidsForHandles(handles []string, resolved map[string]string, notFoundMessage string) ([]string, error) {
+// docUUIDsForHandles returns the UUID of every document handle in order, or a
+// validation error listing the handles that have none.
+func docUUIDsForHandles(handles []string, resolved map[string]string) ([]string, error) {
 	uuids := make([]string, 0, len(handles))
 	var unresolved []string
 	for _, h := range handles {
@@ -395,7 +395,7 @@ func uuidsForHandles(handles []string, resolved map[string]string, notFoundMessa
 	}
 	if len(unresolved) > 0 {
 		return nil, apperror.APIPublicationValidationFailed.New(
-			fmt.Sprintf("%s: %s", notFoundMessage, strings.Join(unresolved, ", ")))
+			"docIds not found in the organization's documents: " + strings.Join(unresolved, ", "))
 	}
 	return uuids, nil
 }

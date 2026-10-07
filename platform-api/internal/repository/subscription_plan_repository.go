@@ -228,8 +228,8 @@ func (r *SubscriptionPlanRepo) GetByHandles(handles []string, orgUUID string) (m
 		args = append(args, h)
 	}
 	args = append(args, orgUUID)
-	query := fmt.Sprintf(`SELECT `+planSelectColumns+`
-		WHERE p.handle IN (%s) AND p.organization_uuid = ?`, strings.Join(placeholders, ","))
+	query := `SELECT ` + planSelectColumns + `
+		WHERE p.handle IN (` + strings.Join(placeholders, ",") + `) AND p.organization_uuid = ?`
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load subscription plans by handle: %w", err)
