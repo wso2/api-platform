@@ -191,6 +191,13 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
     const now = new Date();
     const handle = apiMetadata.handle || `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`;
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
+    // Default ref_id to the handle so outbound webhook events (which carry
+    // data.api.ref_id) resolve on Platform API's side without a dedicated
+    // publication record wiring the id. Publisher-side pushes still override
+    // this with the publisher's own apiHandle; portal-authored APIs otherwise
+    // left ref_id null and every subscription/apikey event 400'd Platform API
+    // with "data.api.ref_id is required".
+    const referenceId = apiMetadata.referenceId || handle;
 
     const portalId = getPortalId();
     await exec.execute(
@@ -200,14 +207,14 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
              sandbox_url, production_url, metadata_search, org_uuid, portal_id, created_by, updated_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            uuid, apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, handle, apiMetadata.description,
+            uuid, referenceId, apiMetadata.status, apiMetadata.name, handle, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner, owners.technicalOwnerEmail,
             owners.businessOwnerEmail, owners.businessOwner, apiMetadata.endPoints.sandboxURL,
             apiMetadata.endPoints.productionURL, apiMetadata, orgId, portalId, createdBy, createdBy, now, now,
         ]
     );
     return {
-        uuid, ref_id: apiMetadata.referenceId, status: apiMetadata.status, name: apiMetadata.name, handle,
+        uuid, ref_id: referenceId, status: apiMetadata.status, name: apiMetadata.name, handle,
         description: apiMetadata.description, version: apiMetadata.version, type: apiMetadata.type,
         agent_visibility: agentVisibility, technical_owner: owners.technicalOwner,
         technical_owner_email: owners.technicalOwnerEmail, business_owner_email: owners.businessOwnerEmail,
@@ -222,6 +229,11 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const owners = apiMetadata.owners || {};
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
+    // Preserve the create-time default: an update that omits referenceId must
+    // not blank out a ref_id a previous create / publisher push wrote. Falling
+    // back to the handle keeps portal-authored APIs resolvable on the Platform
+    // API side even when the caller never populates referenceId.
+    const referenceId = apiMetadata.referenceId || apiMetadata.handle;
 
     const portalId = getPortalId();
     const { rowCount } = await exec.execute(
@@ -231,7 +243,7 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
          WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
-            apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
+            referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,
