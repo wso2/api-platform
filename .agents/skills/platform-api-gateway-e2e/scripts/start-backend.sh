@@ -17,6 +17,7 @@ else
   # Run from $BDIR: request-info writes ./last_response on every request.
   ( cd "$BDIR" && exec ./request-info -addr "127.0.0.1:${BACKEND_PORT}" -read-envs=false -logH ) \
     > "$LOGS/backend.log" 2>&1 < /dev/null &
+  state_set BACKEND_PID "$!"   # teardown stops only this pid
   wait_for 30 "request-info" curl -sf "http://127.0.0.1:${BACKEND_PORT}/healthz" || die "request-info did not start"
 fi
 

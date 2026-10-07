@@ -66,8 +66,10 @@ log "building platform-api from $ROOT/platform-api"
 # exec + full redirection: no shell lingers holding the caller's stdout (a piped caller would hang).
 ( cd "$ROOT/platform-api" && exec "$PDIR/platform-api" -config "$PDIR/config.toml" ) \
   > "$LOGS/platform-api.log" 2>&1 < /dev/null &
+PAPI_PID=$!   # the exec'd server itself; teardown stops only this pid
 
 wait_for 90 "platform-api /health" curl -sf "$PAPI_URL/health" \
   || { tail -40 "$LOGS/platform-api.log"; die "platform-api did not come up"; }
 state_set PAPI_REPO "$ROOT"
+state_set PAPI_PID "$PAPI_PID"
 log "platform-api: $PAPI_URL (curl), https://localhost:${PAPI_HTTPS_PORT} (gateways); log $LOGS/platform-api.log"

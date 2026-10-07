@@ -17,11 +17,12 @@ VLIST=$(echo "$VERSIONS" | tr ',' ' ')
 
 if [ "$REUSE" = true ] && curl -sf "$PAPI_URL/health" >/dev/null 2>&1; then
   log "reusing running platform-api"
+  need_work   # keep the work dir lib.sh resolved (PAPI_GW_E2E_DIR or the recorded one)
 else
   "$HERE/start-platform-api.sh" || exit 1
+  # start-platform-api.sh created a fresh work dir; pick it up.
+  WORK=$(cat "$WORK_POINTER"); LOGS="$WORK/logs"; STATE="$WORK/state.env"
 fi
-# start-platform-api.sh created a fresh work dir; pick it up.
-WORK=$(cat "$WORK_POINTER"); LOGS="$WORK/logs"; STATE="$WORK/state.env"
 "$HERE/bootstrap.sh" || exit 1
 "$HERE/start-backend.sh" || exit 1
 for v in $VLIST; do "$HERE/start-gateway.sh" "$v" || exit 1; done

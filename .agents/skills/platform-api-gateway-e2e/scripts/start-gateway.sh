@@ -83,7 +83,10 @@ is_active() { api GET "/gateways/$GW" | http_body | json_get isActive | grep -qi
 wait_for 60 "gateway $VER connected to platform-api" is_active \
   || { docker compose -p "$PROJ" logs --tail 40 gateway-controller; die "gateway $VER did not connect (see controller log above)"; }
 
-has_exact_version() { api GET "/gateways/$GW" | http_body | json_get version | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
-wait_for 30 "gateway $VER manifest" has_exact_version || log "manifest version not reported yet"
+# The stored version selects the translation shape, so the run is only valid once the manifest has
+# replaced the registered major.minor with exactly the release under test.
+has_expected_version() { api GET "/gateways/$GW" | http_body | json_get version | grep -Fxq "$VER"; }
+wait_for 30 "gateway $VER manifest" has_expected_version \
+  || die "gateway $VER reported version '$(api GET "/gateways/$GW" | http_body | json_get version)', expected '$VER'"
 stored=$(api GET "/gateways/$GW" | http_body | json_get version)
 log "gateway $VER up: router $(gw_router "$VER"), controller REST http://localhost:$(gw_port "$VER" 9090), platform-api stored version '$stored'"

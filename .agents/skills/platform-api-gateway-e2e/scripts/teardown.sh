@@ -14,17 +14,20 @@ for d in ${WORK:+"$WORK"/gw-*}; do
     || log "  compose down failed for $ver (docker not running?)"
 done
 
-stop_port() { # port name probe-url
+# stop_port PORT NAME RECORDED-PID: stop the listener on PORT only when it is the process this
+# skill started (its pid was recorded in state at start). Anything else on the port is left alone.
+stop_port() {
   local pid; pid=$(port_pid "$1")
   [ -n "$pid" ] || return 0
-  if curl -sf "$3" >/dev/null 2>&1; then
+  if [ -n "$3" ] && [ "$pid" = "$3" ]; then
     kill "$pid" 2>/dev/null && log "stopped $2 (pid $pid)"
   else
-    log "port $1 is held by pid $pid, which does not answer like $2 — leaving it alone"
+    log "port $1 is held by pid $pid, which this skill did not start — leaving it alone"
   fi
 }
-stop_port "$BACKEND_PORT" request-info "http://127.0.0.1:${BACKEND_PORT}/healthz"
-stop_port "$PAPI_HTTP_PORT" platform-api "${PAPI_URL}/health"
+state_load
+stop_port "$BACKEND_PORT" request-info "${BACKEND_PID:-}"
+stop_port "$PAPI_HTTP_PORT" platform-api "${PAPI_PID:-}"
 
 if [ -n "$WORK" ]; then
   if [ "${1:-}" = "--purge" ]; then rm -rf "$WORK" "$WORK_POINTER"; log "removed $WORK"
