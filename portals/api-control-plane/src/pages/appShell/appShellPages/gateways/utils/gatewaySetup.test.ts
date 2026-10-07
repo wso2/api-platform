@@ -72,8 +72,9 @@ describe('gatewaySetup', () => {
     const target = setupTarget(aGateway({ functionalityType: 'regular', version: '1.0' }), HOST);
 
     expect(downloadCommand(target)).toBe(
-      'curl -fLO https://github.com/wso2/api-platform/releases/download/gateway/v2026.09.24/wso2apip-api-gateway-2026.09.24.zip && \\\n' +
-        'unzip wso2apip-api-gateway-2026.09.24.zip',
+      'mkdir -p ~/wso2-gateways && cd ~/wso2-gateways && \\\n' +
+        'curl -fsSLO https://github.com/wso2/api-platform/releases/download/gateway/v2026.09.24/wso2apip-api-gateway-2026.09.24.zip && \\\n' +
+        'unzip -oq wso2apip-api-gateway-2026.09.24.zip',
     );
   });
 

@@ -42,6 +42,7 @@ import { environmentForGateway } from '../utils/gatewayEnvironments';
 import {
   configureCommand,
   downloadCommand,
+  GATEWAY_FOLDER,
   helmInstallCommand,
   prepareCommand,
   runtimeCheckCommand,
@@ -65,7 +66,8 @@ const messages = defineMessages({
   },
   downloadIntro: {
     id: 'gateways.detail.GetStarted.download.intro',
-    defaultMessage: 'Run this command in your terminal to download the gateway:',
+    defaultMessage:
+      'Run this in your terminal. It downloads the gateway into its own folder, {folder}, and is safe to run again:',
   },
   environmentLabel: {
     id: 'gateways.detail.GetStarted.environment.label',
@@ -506,7 +508,10 @@ export function GatewayGetStartedPanel({
             <>
               <SetupStep title={messages.stepDownload}>
                 <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage {...messages.downloadIntro} />
+                  <FormattedMessage
+                    {...messages.downloadIntro}
+                    values={{ folder: <code>{GATEWAY_FOLDER}</code> }}
+                  />
                 </Typography>
                 <CopyableCommand code={downloadCommand(target)} />
                 <Typography color="text.secondary" variant="body2">

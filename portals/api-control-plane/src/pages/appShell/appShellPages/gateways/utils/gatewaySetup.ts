@@ -136,13 +136,26 @@ export const dockerControlPlaneHost = (host: string): string =>
   host.replace(LOOPBACK_HOST, 'host.docker.internal');
 
 /**
- * Fetches and unpacks the release archive. `-f` makes a missing release fail
- * with an HTTP error; without it curl saves the 404 page as the zip and the
- * failure surfaces later as a confusing unzip error.
+ * The folder every gateway is downloaded into, so the commands don't depend on
+ * where the terminal happens to be. Run from a folder that already held an
+ * earlier download, `unzip` stopped to ask about overwriting every file.
+ */
+export const GATEWAY_FOLDER = '~/wso2-gateways';
+
+/**
+ * Fetches and unpacks the release archive into {@link GATEWAY_FOLDER}.
+ *
+ * `-f` makes a missing release fail with an HTTP error; without it curl saves
+ * the 404 page as the zip and the failure surfaces later as a confusing unzip
+ * error. `-sS` drops the progress meter, which stays on screen once the
+ * download is done and reads as stuck, but still prints errors. `unzip -o`
+ * makes running the command again safe: the archive holds none of the files
+ * setup writes, so overwriting it keeps them.
  */
 export const downloadCommand = (target: GatewaySetupTarget): string =>
-  `curl -fLO ${RELEASE_BASE}/${target.releaseTag}/${target.distribution}.zip && \\\n` +
-  `unzip ${target.distribution}.zip`;
+  `mkdir -p ${GATEWAY_FOLDER} && cd ${GATEWAY_FOLDER} && \\\n` +
+  `curl -fsSLO ${RELEASE_BASE}/${target.releaseTag}/${target.distribution}.zip && \\\n` +
+  `unzip -oq ${target.distribution}.zip`;
 
 /**
  * Enters the unpacked distribution and, where the distribution has one, runs

@@ -3685,7 +3685,7 @@
     "description": "One entry in the gateway version list; {version} is a number such as 1.0."
   },
   "gateways.detail.GetStarted.download.intro": {
-    "defaultMessage": "Run this command in your terminal to download the gateway:"
+    "defaultMessage": "Run this in your terminal. It downloads the gateway into its own folder, {folder}, and is safe to run again:"
   },
   "gateways.detail.GetStarted.environment.label": {
     "defaultMessage": "Associated Environment"
