@@ -202,6 +202,8 @@ module.exports = {
             '**/applications/**',
             '**/api-keys',
             '**/api-keys?**',
+            '**/oauth2-keys',
+            '**/oauth2-keys?**',
             '**/subscriptions',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
@@ -213,6 +215,8 @@ module.exports = {
             '**/applications/**',
             '**/api-keys',
             '**/api-keys?**',
+            '**/oauth2-keys',
+            '**/oauth2-keys?**',
             '**/subscriptions',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
