@@ -80,12 +80,12 @@ func validConfig() *Config {
 		// receiver defaults mirror production so transport validation passes and the
 		// deprecated alias stays neutral (no spurious migration).
 		Collector: CollectorConfig{
-			Server: defaultAccessLogsServiceConfig(),
+			Server:           defaultAccessLogsServiceConfig(),
+			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:              false,
 			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
-			Correlation:          defaultCorrelationStoreConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled: false,
@@ -1783,35 +1783,35 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 func TestValidate_CorrelationStoreConfig(t *testing.T) {
 	t.Run("not validated when collector disabled", func(t *testing.T) {
 		cfg := validConfig()
-		cfg.Analytics.Correlation.Capacity = 0
+		cfg.Collector.CorrelationStore.Capacity = 0
 		require.NoError(t, cfg.Validate())
 	})
 
 	t.Run("capacity must be positive when collector enabled", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.TrafficLogging.Enabled = true
-		cfg.Analytics.Correlation.Capacity = 0
+		cfg.Collector.CorrelationStore.Capacity = 0
 		err := cfg.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "analytics.correlation.capacity")
+		assert.Contains(t, err.Error(), "collector.correlation_store.capacity")
 	})
 
 	t.Run("ttl must be positive when collector enabled", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.TrafficLogging.Enabled = true
-		cfg.Analytics.Correlation.TTL = 0
+		cfg.Collector.CorrelationStore.TTL = 0
 		err := cfg.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "analytics.correlation.ttl")
+		assert.Contains(t, err.Error(), "collector.correlation_store.ttl")
 	})
 
 	t.Run("shards must be positive when collector enabled", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.TrafficLogging.Enabled = true
-		cfg.Analytics.Correlation.Shards = 0
+		cfg.Collector.CorrelationStore.Shards = 0
 		err := cfg.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "analytics.correlation.shards")
+		assert.Contains(t, err.Error(), "collector.correlation_store.shards")
 	})
 
 	t.Run("valid correlation config with collector enabled", func(t *testing.T) {

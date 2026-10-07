@@ -77,7 +77,7 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		Analytics: analytics,
 	}
 	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
-	cfg.Analytics.Correlation = config.CorrelationStoreConfig{Capacity: 100, TTL: time.Second, Shards: 2}
+	cfg.Collector.CorrelationStore = config.CorrelationStoreConfig{Capacity: 100, TTL: time.Second, Shards: 2}
 	cfg.Collector.Server = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,
