@@ -15,51 +15,29 @@
  *
  */
 
-package normalizer
+package kinds
 
-import (
-	"fmt"
+import "github.com/wso2/api-platform/platform-api/api"
 
-	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/dto"
+// The LLM provider and proxy kinds share one policy shape and therefore one
+// pair of transforms, defined here and called from llmprovider.go and
+// llmproxy.go:
+//
+//   - splitLegacyPolicies brings the flat `policies` list of a legacy stored
+//     artifact up to the split globalPolicies/operationPolicies shape;
+//   - flattenPolicyLists is its exact inverse, for gateways that only
+//     understand the flat list.
+
+// Policy names used when ordering the flattened list. Must stay in sync with
+// service/llm_deployment.go's constants.
+const (
+	policyNameLLMCost               = "llm-cost"
+	policyNameLLMCostBasedRateLimit = "llm-cost-based-ratelimit"
 )
 
-func init() {
-	shapeHandlers[constants.LLMProvider] = normalizeLLMProviderPolicies
-	shapeHandlers[constants.LLMProxy] = normalizeLLMProxyPolicies
-}
-
-func normalizeLLMProviderPolicies(_ string, payload any) error {
-	artifact, ok := payload.(*dto.LLMProviderDeploymentYAML)
-	if !ok {
-		return fmt.Errorf("expected *dto.LLMProviderDeploymentYAML, got %T", payload)
-	}
-	if len(artifact.Spec.Policies) == 0 {
-		return nil
-	}
-	splitLegacyPolicies(artifact.Spec.Policies, &artifact.Spec.GlobalPolicies, &artifact.Spec.OperationPolicies)
-	artifact.Spec.Policies = nil
-	return nil
-}
-
-func normalizeLLMProxyPolicies(_ string, payload any) error {
-	artifact, ok := payload.(*dto.LLMProxyDeploymentYAML)
-	if !ok {
-		return fmt.Errorf("expected *dto.LLMProxyDeploymentYAML, got %T", payload)
-	}
-	if len(artifact.Spec.Policies) == 0 {
-		return nil
-	}
-	splitLegacyPolicies(artifact.Spec.Policies, &artifact.Spec.GlobalPolicies, &artifact.Spec.OperationPolicies)
-	artifact.Spec.Policies = nil
-	return nil
-}
-
 // splitLegacyPolicies folds a legacy flat policies list into the split
-// globalPolicies/operationPolicies lists — the exact inverse of
-// versiontranslator/v1alpha1's flattenPolicyLists — mirroring the rule
-// already used by service.migrateLegacyPolicies (service/llm.go):
+// globalPolicies/operationPolicies lists, mirroring the rule already used by
+// service.migrateLegacyPolicies (service/llm.go):
 //   - a path entry "/*" with methods ["*"] -> a global policy (deduped by name)
 //   - any other path entry                 -> an operation policy path (merged
 //     by name+version)
@@ -133,4 +111,61 @@ func paramsPtr(m map[string]interface{}) *map[string]interface{} {
 		return nil
 	}
 	return &m
+}
+
+// flattenPolicyLists flattens globalPolicies and operationPolicies into the
+// legacy policies slice:
+//   - each global policy    -> a legacy entry with a single {path:"/*", methods:["*"]} path
+//   - each operation policy -> a legacy entry with its paths copied 1:1
+//
+// The result is appended to *legacyPolicies (which may already contain
+// security/consumer entries the generator assembled), then re-ordered so that
+// llm-cost-based-ratelimit always precedes llm-cost.
+func flattenPolicyLists(globalPolicies []api.Policy, operationPolicies []api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) {
+	for _, gp := range globalPolicies {
+		params := map[string]interface{}{}
+		if gp.Params != nil {
+			params = *gp.Params
+		}
+		*legacyPolicies = append(*legacyPolicies, api.LLMPolicy{
+			Name:    gp.Name,
+			Version: gp.Version,
+			Paths:   []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: params}},
+		})
+	}
+	for _, op := range operationPolicies {
+		paths := make([]api.LLMPolicyPath, 0, len(op.Paths))
+		for _, pp := range op.Paths {
+			methods := make([]api.LLMPolicyPathMethods, 0, len(pp.Methods))
+			for _, m := range pp.Methods {
+				methods = append(methods, api.LLMPolicyPathMethods(m))
+			}
+			paths = append(paths, api.LLMPolicyPath{Path: pp.Path, Methods: methods, Params: pp.Params})
+		}
+		*legacyPolicies = append(*legacyPolicies, api.LLMPolicy{
+			Name:    op.Name,
+			Version: op.Version,
+			Paths:   paths,
+		})
+	}
+	*legacyPolicies = orderLegacyPolicies(*legacyPolicies)
+}
+
+// orderLegacyPolicies ensures llm-cost-based-ratelimit always precedes
+// llm-cost in the legacy policy list (llm-cost depends on the ratelimit
+// policy running first).
+func orderLegacyPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
+	costIdx, rateLimitIdx := -1, -1
+	for i, p := range policies {
+		switch p.Name {
+		case policyNameLLMCost:
+			costIdx = i
+		case policyNameLLMCostBasedRateLimit:
+			rateLimitIdx = i
+		}
+	}
+	if costIdx != -1 && rateLimitIdx != -1 && costIdx < rateLimitIdx {
+		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
+	}
+	return policies
 }

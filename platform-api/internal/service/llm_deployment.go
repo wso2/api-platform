@@ -272,6 +272,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProvider, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	// Get LLM provider
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
@@ -356,13 +361,8 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	}
 
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(
-		constants.LLMProvider,
-		sourceDataVersion,
-		targetDataVersion,
-		providerDeployment,
-	); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, gateway.Version, providerDeployment)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
 	}
 	contentBytes, err := yaml.Marshal(providerDeployment)
@@ -375,6 +375,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.LLMProvider, deploymentID, gatewayID, gateway.Version)
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
@@ -508,6 +509,10 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProvider, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
@@ -1685,6 +1690,11 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProxy, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	// Get LLM proxy
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
@@ -1737,13 +1747,8 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, fmt.Errorf("artifact %s did not render as an LLM proxy definition", proxy.UUID)
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(
-		constants.LLMProxy,
-		sourceDataVersion,
-		targetDataVersion,
-		proxyDeployment,
-	); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.LLMProxy, sourceDataVersion, gateway.Version, proxyDeployment)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
 	}
 	contentBytes, err := yaml.Marshal(proxyDeployment)
@@ -1756,6 +1761,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate deployment ID: %w", err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.LLMProxy, deploymentID, gatewayID, gateway.Version)
 	deployed := model.DeploymentStatusDeployed
 
 	deployment := &model.Deployment{
@@ -1880,6 +1886,10 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.LLMProxy, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
