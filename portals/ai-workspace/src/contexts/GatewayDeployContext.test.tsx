@@ -61,6 +61,9 @@ beforeEach(() => {
   vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
     count: 0, list: [],
   } as never);
+  vi.mocked(agentDeploy.getAgentProxyDeployment).mockResolvedValue({
+    id: 'dep-1', status: 'DEPLOYED',
+  } as never);
   vi.mocked(agentDeploy.deployAgentProxy).mockResolvedValue({ id: 'dep-1' } as never);
   vi.mocked(agentDeploy.undeployAgentProxyDeployment).mockResolvedValue({ id: 'dep-1' } as never);
   vi.mocked(agentDeploy.restoreAgentProxyDeployment).mockResolvedValue({ id: 'dep-1' } as never);
@@ -146,5 +149,97 @@ describe('who may deploy', () => {
 
     await settled(result);
     expect(result.current.readOnly).toBe(true);
+  });
+});
+
+describe('naming a new deployment', () => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  it('continues the numbering already used for today', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 2,
+      list: [
+        { deploymentId: 'd1', gatewayId: 'gw-1', status: 'DEPLOYED', name: `proxy-1_${today}_1` },
+        { deploymentId: 'd2', gatewayId: 'gw-1', status: 'DEPLOYED', name: `proxy-1_${today}_2` },
+      ],
+    } as never);
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await act(async () => { await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    const [, body] = vi.mocked(agentDeploy.deployAgentProxy).mock.calls[0];
+    expect(JSON.stringify(body)).toContain(`${today}_3`);
+  });
+
+  it('starts from one when nothing was deployed today', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'd1', gatewayId: 'gw-1', status: 'DEPLOYED', name: 'proxy-1_2020-01-01_7' }],
+    } as never);
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await act(async () => { await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    const [, body] = vi.mocked(agentDeploy.deployAgentProxy).mock.calls[0];
+    expect(JSON.stringify(body)).toContain(`${today}_1`);
+  });
+
+  it('ignores a deployment whose name carries no number', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'd1', gatewayId: 'gw-1', status: 'DEPLOYED', name: 'hand-named' }],
+    } as never);
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await act(async () => { await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    expect(agentDeploy.deployAgentProxy).toHaveBeenCalled();
+  });
+});
+
+describe('a deployment still settling', () => {
+  it('is watched until its status stops being transitional', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'dep-1', gatewayId: 'gw-1', status: 'DEPLOYING', name: 'proxy-1_x_1' }],
+    } as never);
+
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await waitFor(() =>
+      expect(agentDeploy.getAgentProxyDeployment).toHaveBeenCalledWith(
+        'proxy-1', 'dep-1', expect.any(String)
+      )
+    );
+  });
+
+  it('reports the gateway as still settling while it is watched', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'dep-2', gatewayId: 'gw-1', status: 'UNDEPLOYING', name: 'proxy-1_x_2' }],
+    } as never);
+
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await waitFor(() => expect(agentDeploy.getAgentProxyDeployment).toHaveBeenCalled());
+  });
+
+  it('keeps watching when a status read fails rather than giving up at once', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'dep-3', gatewayId: 'gw-1', status: 'DEPLOYING', name: 'proxy-1_x_3' }],
+    } as never);
+    vi.mocked(agentDeploy.getAgentProxyDeployment).mockRejectedValue(new Error('blip'));
+
+    const { result } = renderDeploy();
+    await settled(result);
+
+    await waitFor(() => expect(agentDeploy.getAgentProxyDeployment).toHaveBeenCalled());
+    expect(result.current.error).toBeNull();
   });
 });

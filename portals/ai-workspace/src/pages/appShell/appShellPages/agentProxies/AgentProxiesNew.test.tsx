@@ -33,8 +33,9 @@ vi.mock('../../../../contexts/AppShellContext', () => ({
     projectsForCurrentOrganization: [{ id: 'proj-1', name: 'Project One' }],
   }),
 }));
+const createAgentProxy = vi.fn();
 vi.mock('../../../../contexts/agentProxy', () => ({
-  useAgentProxies: () => ({ createAgentProxy: vi.fn() }),
+  useAgentProxies: () => ({ createAgentProxy }),
 }));
 vi.mock('../../../../contexts/AppAuthContext', () => ({
   useAppAuth: () => ({ hasPermission: () => true }),
@@ -71,6 +72,7 @@ const probeThenContinue = async (url: string) => {
 
 beforeEach(() => {
   vi.mocked(agentProxiesApis.fetchAgentCard).mockReset();
+  createAgentProxy.mockReset();
 });
 
 describe('seeding transports from the advertised card', () => {
@@ -164,5 +166,85 @@ describe('probing the agent url', () => {
     await waitFor(() =>
       expect(screen.getByText(/Could not reach the upstream agent/)).toBeInTheDocument()
     );
+  });
+});
+
+describe('the built-in sample agent', () => {
+  it('fills the url and probes it without the user typing anything', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://sample.test/rpc' }]) as never
+    );
+    const view = renderWithProviders(<AgentProxiesNew />);
+
+    await view.user.click(screen.getByRole('button', { name: 'Try with Sample Agent' }));
+
+    await waitFor(() => expect(agentProxiesApis.fetchAgentCard).toHaveBeenCalled());
+    const [request] = vi.mocked(agentProxiesApis.fetchAgentCard).mock.calls[0];
+    expect((request as { url: string }).url).toMatch(/^https?:\/\//);
+  });
+});
+
+describe('choosing transports', () => {
+  it('selects every binding the card advertised', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([
+        { protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' },
+        { protocolBinding: 'HTTP+JSON', url: 'https://agent.test/rest' },
+      ]) as never
+    );
+    await probeThenContinue('https://agent.test');
+
+    await waitFor(() => expect(screen.getByText('/rpc')).toBeInTheDocument());
+    expect(screen.getByText('/rest')).toBeInTheDocument();
+    screen.getAllByRole('checkbox').forEach((box) => expect(box).toBeChecked());
+  });
+
+  it('adds a binding the card never advertised when it is turned on', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' }]) as never
+    );
+    const view = await probeThenContinue('https://agent.test');
+    await waitFor(() => screen.getByText('/rpc'));
+
+    await view.user.click(screen.getByText('HTTP+JSON'));
+
+    await waitFor(() => expect(screen.getByText('/rest')).toBeInTheDocument());
+  });
+});
+
+describe('creating the proxy', () => {
+  const fillAndSubmit = async (view: Awaited<ReturnType<typeof probeThenContinue>>) => {
+    await view.user.type(
+      screen.getByPlaceholderText('Trip Planning Agent'),
+      'My Agent'
+    );
+    await view.user.click(screen.getByRole('button', { name: 'Create', exact: true }));
+  };
+
+  it('submits the named proxy to the control plane', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' }]) as never
+    );
+    createAgentProxy.mockResolvedValue({ id: 'my-agent' });
+    const view = await probeThenContinue('https://agent.test');
+    await waitFor(() => screen.getByPlaceholderText('Trip Planning Agent'));
+
+    await fillAndSubmit(view);
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalled());
+  });
+
+  it('keeps the user on the form when the control plane refuses', async () => {
+    vi.mocked(agentProxiesApis.fetchAgentCard).mockResolvedValue(
+      cardWith([{ protocolBinding: 'JSONRPC', url: 'https://agent.test/rpc' }]) as never
+    );
+    createAgentProxy.mockRejectedValue(new Error('name already taken'));
+    const view = await probeThenContinue('https://agent.test');
+    await waitFor(() => screen.getByPlaceholderText('Trip Planning Agent'));
+
+    await fillAndSubmit(view);
+
+    await waitFor(() => expect(createAgentProxy).toHaveBeenCalled());
+    expect(screen.getByPlaceholderText('Trip Planning Agent')).toBeInTheDocument();
   });
 });

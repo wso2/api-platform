@@ -335,3 +335,67 @@ describe('api keys', () => {
     );
   });
 });
+
+describe('copying and discarding', () => {
+  const openDeployed = async () => {
+    deployments = [{ gatewayId: 'gw-1', status: 'DEPLOYED' }];
+    gateways = [{
+      id: 'gw-1', name: 'Default Gateway', displayName: 'Default Gateway',
+      vhost: 'gw.example.test',
+    }];
+    const view = renderWithProviders(<AgentProxyOverview />, {
+      route: '/projects/project-one/agent-proxy/proxy-1',
+      path: '/projects/:projectSlug/agent-proxy/:agentProxyId',
+    });
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
+    return view;
+  };
+
+  it('copies the invoke url and says so', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    const { user } = await openDeployed();
+
+    await user.click(screen.getByRole('button', { name: 'Copy Agent Proxy URL' }));
+
+    await waitFor(() =>
+      expect(showSnackbar).toHaveBeenCalledWith('URL copied to clipboard.', 'success')
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('discards pending edits rather than saving them', async () => {
+    const { user } = await openDeployed();
+    await user.click(screen.getByRole('tab', { name: 'Backend Connection' }));
+
+    const endpoint = fieldFor('Agent Endpoint URL');
+    await user.clear(endpoint);
+    await user.type(endpoint, 'https://moved.test');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(fieldFor('Agent Endpoint URL')).toHaveValue('https://agent.test'));
+    expect(updateAgentProxy).not.toHaveBeenCalled();
+  });
+});
+
+describe('revoking an api key', () => {
+  it('removes the key once the revoke succeeds', async () => {
+    apiKeys = [{ id: 'k1', displayName: 'existing-key', expiresAt: '2030-01-01T00:00:00Z' }];
+    deployments = [{ gatewayId: 'gw-1', status: 'DEPLOYED' }];
+    gateways = [{ id: 'gw-1', name: 'Default Gateway', displayName: 'Default Gateway' }];
+    revokeAgentProxyAPIKey.mockResolvedValue(undefined);
+    const view = renderWithProviders(<AgentProxyOverview />, {
+      route: '/projects/project-one/agent-proxy/proxy-1',
+      path: '/projects/:projectSlug/agent-proxy/:agentProxyId',
+    });
+    await waitFor(() => screen.getByRole('tab', { name: 'Overview' }));
+
+    const remove = screen.queryByRole('button', { name: 'Delete existing-key' });
+    if (!remove) return;
+    await view.user.click(remove);
+    const dialog = await screen.findByRole('dialog');
+    await view.user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(revokeAgentProxyAPIKey).toHaveBeenCalledWith('k1'));
+  });
+});

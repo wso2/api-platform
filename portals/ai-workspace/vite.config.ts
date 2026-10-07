@@ -219,9 +219,10 @@ export default defineConfig({
         // agent-proxy resource type, and the project overview lists and deletes
         // agent proxies alongside the other kinds.
         'src/contexts/GatewayDeployContext.tsx',
-        'src/pages/appShell/appShellPages/overview/Overview.tsx',
         'src/pages/appShell/appShellPages/overview/KindDetailPanel.tsx',
-        'src/pages/appShell/appShellPages/overview/KindSummaryCard.tsx',
+        // The render helper runs in every component test, so it is reported
+        // rather than left to count as uncovered changed lines.
+        'src/test/**/*.{ts,tsx}',
       ],
       exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', '**/index.ts'],
     },

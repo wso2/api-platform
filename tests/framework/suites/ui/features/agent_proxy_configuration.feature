@@ -66,7 +66,7 @@ Feature: Configuring an agent proxy through its overview tabs
     When the user deploys it to the gateway
     Then the user sees the deployment is active
 
-  Scenario: An administrator serves an authored card instead of the upstream's
+  Scenario: The two cards are served independently of one another
     When the user opens the agent proxy's "Agent Card" tab
     Then the "Public Card" is served "Passthrough"
     And the "Protected Card" is served "Passthrough"
@@ -75,9 +75,11 @@ Feature: Configuring an agent proxy through its overview tabs
     Then the "Public Card" is served "Managed"
     And the "Protected Card" is served "Passthrough"
 
-    When the user saves the agent proxy
-    And the user opens the agent proxy's "Agent Card" tab
-    Then the "Public Card" is served "Managed"
+  Scenario: A managed card with nothing authored in it is refused
+    When the user opens the agent proxy's "Agent Card" tab
+    And the user sets the "Public Card" to "Managed"
+    And the user saves the agent proxy
+    Then the user sees an error notification
 
   Scenario: An administrator stops the gateway rewriting the card's urls
     When the user opens the agent proxy's "Agent Card" tab

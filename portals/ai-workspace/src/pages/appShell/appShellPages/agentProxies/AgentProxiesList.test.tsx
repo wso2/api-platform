@@ -36,12 +36,17 @@ const proxy = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+let currentProject: { id: string; name: string } | null = { id: 'proj-1', name: 'Project One' };
+const setCurrentProject = vi.fn();
 vi.mock('../../../../contexts/AppShellContext', () => ({
   useAppShell: () => ({
-    currentProject: { id: 'proj-1', name: 'Project One' },
+    currentProject,
     currentOrganization: { id: 'org-1', uuid: 'org-1', handle: 'acme' },
-    projectsForCurrentOrganization: [{ id: 'proj-1', name: 'Project One' }],
-    setCurrentProject: vi.fn(),
+    projectsForCurrentOrganization: [
+      { id: 'proj-1', name: 'project-one', displayName: 'Project One' },
+      { id: 'proj-2', name: 'project-two', displayName: 'Project Two' },
+    ],
+    setCurrentProject,
     isProjectsLoading: false,
   }),
 }));
@@ -69,6 +74,8 @@ const search = () => screen.getByPlaceholderText('Search Agent Proxies...');
 
 beforeEach(() => {
   permitted = true;
+  currentProject = { id: 'proj-1', name: 'Project One' };
+  setCurrentProject.mockReset();
   proxies = [proxy(), proxy({ id: 'weather', displayName: 'Weather Bot', description: 'forecasts', context: '/weather', version: '2.0.0' })];
   showSnackbar.mockReset();
   deleteAgentProxy.mockReset();
@@ -169,5 +176,53 @@ describe('without permission', () => {
 
     const deleteButton = screen.queryByRole('button', { name: 'Delete Trip Planner' });
     if (deleteButton) expect(deleteButton).toBeDisabled();
+  });
+});
+
+describe('at organization level', () => {
+  beforeEach(() => {
+    // No project in scope, so the list cannot show proxies and offers a chooser instead.
+    currentProject = null;
+  });
+
+  it('explains that proxies live inside a project', () => {
+    renderList();
+
+    expect(
+      screen.getByText(/Agent proxies are created and managed at the project level/)
+    ).toBeInTheDocument();
+  });
+
+  it('offers the projects in the organization to switch into', async () => {
+    const { user } = renderList();
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByRole('option', { name: 'Project One' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Project Two' })).toBeInTheDocument();
+  });
+
+  it('cannot switch until a project is chosen', () => {
+    renderList();
+
+    expect(screen.getByRole('button', { name: /Go to Project Level/ })).toBeDisabled();
+  });
+
+  it('switches into the project that was picked', async () => {
+    const { user } = renderList();
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Project Two' }));
+    await user.click(screen.getByRole('button', { name: /Go to Project Level/ }));
+
+    expect(setCurrentProject).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'proj-2' })
+    );
+  });
+
+  it('does not list any proxy while no project is in scope', () => {
+    renderList();
+
+    expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
   });
 });
