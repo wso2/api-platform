@@ -93,6 +93,13 @@ const DEFAULTS = {
             maximumProtocolVersion: 'TLS1_3',
             ciphers: '',
             ecdhCurves: 'X25519,P-256',
+            // Opt-in bypass for peer certificate verification on OUTBOUND
+            // calls (webhook delivery, Platform API login, IDP token). Required
+            // for local dev where Platform API serves a self-signed cert; a
+            // webhook delivery to it otherwise fails with "self-signed
+            // certificate" and the subscriber row sits with no deliveries. In
+            // production both sides have CA-issued certs and this stays false.
+            insecureSkipVerify: false,
         },
     },
     // driver selects the dialect adapter in db/driver.js. Aliases are accepted
