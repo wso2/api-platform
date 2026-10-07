@@ -96,7 +96,7 @@ scope = "openid ap:project:read"
 enabled = true
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -134,7 +134,7 @@ client_id = "exchange-client"
 client_secret = "exchange-secret"
 scope = "ap:project:read"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -168,7 +168,7 @@ audience = "platform-api"
 client_id = "public-exchange-client"
 client_auth = "none"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -210,7 +210,7 @@ enabled = true
 audience = "platform-api"
 client_id = "exchange-client"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err == nil {
@@ -242,7 +242,7 @@ client_id = "exchange-client"
 client_secret = "exchange-secret"
 client_auth = "none"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err == nil {
@@ -277,7 +277,7 @@ client_id = "login-client"
 client_secret = "login-secret"
 redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `
 	for _, tc := range []struct {
@@ -444,7 +444,7 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
@@ -466,7 +466,7 @@ grant_type = "jwt_bearer"
 scope = "api://platform-api/.default"
 token_endpoint = "https://login.microsoftonline.com/tenant/oauth2/v2.0/token"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
@@ -487,7 +487,7 @@ enabled = true
 grant_type = "Token_Exchange"
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
@@ -517,7 +517,7 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -555,7 +555,7 @@ requested_token_type = "urn:ietf:params:oauth:token-type:jwt"
 cache_enabled = false
 min_validity = "90s"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -601,7 +601,7 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -676,7 +676,7 @@ enabled = true
 grant_type = "`+tc.spelling+`"
 scope = "api://platform-api/.default"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 			if err != nil {
@@ -731,7 +731,7 @@ enabled        = true
 audience       = "platform-api"
 token_endpoint = "%s"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `
 
@@ -786,7 +786,7 @@ audience = "platform-api"
 organization = "organization.uuid"
 org_handle = "organization.handle"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
@@ -829,7 +829,7 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 audience = "platform-api"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {

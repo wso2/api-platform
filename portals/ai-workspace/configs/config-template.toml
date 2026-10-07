@@ -324,7 +324,9 @@ store = "cookie"
 # secret both authenticate this client to the IDP and protect every session record,
 # so its exposure would widen from "can impersonate the client" to "can also open any
 # session cookie". Changing this value logs everyone out once.
-encryption_key = "{{ env \"APIP_AIW_SESSION_ENCRYPTION_KEY\" \"\" }}"
+[ai_workspace.session.cookie]
+
+encryption_key = "{{ env \"APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY\" \"\" }}"
 
 # Sliding idle window (Go duration, e.g. "30m"). Reserved — not enforced yet.
 idle_timeout = "30m"

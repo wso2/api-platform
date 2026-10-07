@@ -22,7 +22,7 @@
 #     resources/keys/api-portal-encryption.key and api-portal-session-secret and
 #     read by config.toml via {{ file }} - never stored as an env var
 #   - the AI Workspace BFF's session encryption key, written to
-#     APIP_AIW_SESSION_ENCRYPTION_KEY in api-platform.env - an env var, unlike
+#     APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY in api-platform.env - an env var, unlike
 #     the key files above, because the AI Workspace config reads only {{ env }}
 #     tokens. Every replica must see the same value.
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
@@ -749,7 +749,7 @@ $AiwSessionKey = ([string]$AiwSessionKey).Trim()
 if ($AiwSessionKey -notmatch '^[0-9a-f]{64}$') {
     Invoke-Fail 'openssl produced an unexpected AI Workspace session encryption key (expected 64 hex characters).'
 }
-Set-EnvVar $EnvFile 'APIP_AIW_SESSION_ENCRYPTION_KEY' $AiwSessionKey
+Set-EnvVar $EnvFile 'APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY' $AiwSessionKey
 
 Write-Log 'Provisioning Platform API JWT signing keypair (RS256) ...'
 # Tokens are signed asymmetrically (RS256), not with a shared HMAC secret. The

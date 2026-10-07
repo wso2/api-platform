@@ -181,13 +181,32 @@ type SessionConfig struct {
 	// Store names the session backend. "cookie" is the only supported value; the key is
 	// kept so a config carrying the removed "memory" fails loudly instead of silently
 	// changing behaviour.
-	Store string `koanf:"store"`
-	// EncryptionKey is the key material the cookie store and the OIDC login
-	// transaction are sealed under. REQUIRED when Store is "cookie", and every replica
-	// must see the same value.
-	EncryptionKey string        `koanf:"encryption_key"`
-	IdleTimeout   time.Duration `koanf:"idle_timeout"` // sliding idle window
-	AbsoluteTTL   time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
+	Store  string              `koanf:"store"`
+	Cookie SessionCookieConfig `koanf:"cookie"`
+
+	// LegacyEncryptionKey catches a config still setting [session] encryption_key at
+	// the top level, where this key lived before it moved under [session.cookie].
+	// Detected rather than accepted, so an operator carrying the old spelling is told
+	// it moved instead of meeting a bare "required" error with the value plainly set.
+	LegacyEncryptionKey string `koanf:"encryption_key"`
+
+	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
+}
+
+// SessionCookieConfig is [ai_workspace.session.cookie]: the settings for the cookies
+// the session is carried in.
+type SessionCookieConfig struct {
+	// EncryptionKey seals every cookie this BFF writes that the browser must not read:
+	// the session-state cookies, and the OIDC login-transaction cookie — which is not
+	// part of a session, but is a cookie, which is why the key is named for the
+	// mechanism rather than for one of its users.
+	//
+	// REQUIRED in OIDC mode, and every replica must see the same value. Deliberately
+	// not defaulted to the OIDC client secret: reusing it would widen that secret's
+	// exposure from "can impersonate the client" to "can also open any session cookie".
+	// Changing it invalidates every live session.
+	EncryptionKey string `koanf:"encryption_key"`
 }
 
 // SessionStoreCookie is the only supported [session] store value.
@@ -287,7 +306,7 @@ func varietyScoreBits(v string) float64 {
 }
 
 // SealKeyMaterial is the secret the sealing keys derive from. No fallback.
-func (c *Config) SealKeyMaterial() string { return c.Session.EncryptionKey }
+func (c *Config) SealKeyMaterial() string { return c.Session.Cookie.EncryptionKey }
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
 type AuthConfig struct {
@@ -808,17 +827,25 @@ func (c *Config) validate() error {
 		return fmt.Errorf("invalid [session] store %q: the only supported value is %q",
 			c.Session.Store, SessionStoreCookie)
 	}
+	// Named specifically, like the removed store value above: a config carrying the old
+	// top-level spelling would otherwise meet "encryption_key is required" while the
+	// operator can plainly see it set.
+	if c.Session.LegacyEncryptionKey != "" {
+		return fmt.Errorf("[session] encryption_key has moved to [session.cookie] encryption_key " +
+			"(env APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY) — it seals the cookies, so it now sits " +
+			"with them")
+	}
 	// Required only where there is something to seal: file-based auth keeps no
 	// server-side session at all.
 	if c.Auth.OIDCEnabled() {
-		if c.Session.EncryptionKey == "" {
-			return fmt.Errorf("[session] encryption_key is required — generate one with " +
+		if c.Session.Cookie.EncryptionKey == "" {
+			return fmt.Errorf("[session.cookie] encryption_key is required — generate one with " +
 				"`openssl rand -base64 32` and give every replica the same value")
 		}
 		// A sanity check for a hand-made value, not proof of a strong one: generate the
 		// key with a CSPRNG (scripts/setup.sh does) rather than choosing it.
-		if reason := weakKeyReason(c.Session.EncryptionKey); reason != "" {
-			return fmt.Errorf("[session] encryption_key looks hand-made — %s. Generate one with "+
+		if reason := weakKeyReason(c.Session.Cookie.EncryptionKey); reason != "" {
+			return fmt.Errorf("[session.cookie] encryption_key looks hand-made — %s. Generate one with "+
 				"`openssl rand -base64 32` (scripts/setup.sh does this for you) and give every "+
 				"replica the same value", reason)
 		}

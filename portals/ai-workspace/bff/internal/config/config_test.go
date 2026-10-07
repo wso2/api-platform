@@ -157,7 +157,7 @@ client_id     = "client-id"
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 	t.Setenv("CUSTOM_SECRET_VAR", "s3cr3t")
@@ -192,7 +192,7 @@ client_id     = "client-id"
 client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 
@@ -281,7 +281,7 @@ client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 
@@ -399,7 +399,7 @@ client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
 
-[ai_workspace.session]
+[ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `)
 
@@ -653,5 +653,37 @@ func TestVarietyScoreCannotSeeRepetition(t *testing.T) {
 	}
 	if weakKeyReason(pattern) == "" {
 		t.Fatal("the repeated pattern was accepted — shortestPeriod did not catch it")
+	}
+}
+
+// The key moved from [session] to [session.cookie] before release. A config carrying
+// the old spelling must be told so, rather than meeting "encryption_key is required"
+// with the value plainly set in front of the operator.
+// validOIDCConfig is the smallest config that passes validate in OIDC mode.
+func validOIDCConfig(t *testing.T) *Config {
+	t.Helper()
+	c := defaultConfig()
+	c.Session.Cookie.EncryptionKey = strings.Repeat("Ab3!xY7#", 8)
+	c.Auth.Mode = AuthModeOIDC
+	c.Auth.Authorization.Mode = AuthzModeScope
+	c.Auth.OIDC.Issuer = "https://idp.example.com"
+	c.Auth.OIDC.ClientID = "client"
+	c.Auth.OIDC.ClientSecret = "a-client-secret-long-enough-to-pass"
+	c.Auth.OIDC.RedirectURL = "https://portal.example.com/cb"
+	c.Server.HTTPS.Enabled = false
+	c.Server.HTTP.Enabled = true
+	c.Server.HTTP.Port = 8080
+	c.ControlPlane.URL = "https://platform-api:9243"
+	return c
+}
+
+func TestLegacyTopLevelEncryptionKeyIsNamed(t *testing.T) {
+	cfg := validOIDCConfig(t)
+	cfg.Session.Cookie.EncryptionKey = ""
+	cfg.Session.LegacyEncryptionKey = strings.Repeat("k", MinSessionKeyLength)
+
+	err := cfg.validate()
+	if err == nil || !strings.Contains(err.Error(), "[session.cookie]") {
+		t.Fatalf("validate() = %v, want it to name the new location", err)
 	}
 }
