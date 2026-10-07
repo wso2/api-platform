@@ -82,7 +82,7 @@ func discoveryServer(t *testing.T, upstreamURL, defaultOrg string) *Server {
 			Session: config.SessionConfig{IdleTimeout: 30 * time.Minute, AbsoluteTTL: 8 * time.Hour},
 		},
 		claims:        session.DefaultClaimMapping(),
-		store:         session.NewMemoryStore(),
+		store:         newFakeStore(),
 		proxy:         proxy.ReverseProxy(nil, "", http.DefaultTransport),
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),

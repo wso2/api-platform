@@ -156,6 +156,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	t.Setenv("CUSTOM_SECRET_VAR", "s3cr3t")
 
@@ -188,6 +191,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -274,6 +280,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -389,6 +398,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -560,5 +572,86 @@ url = "https://platform-api:9243"
 	}
 	if got := cfg.RuntimeConfig["APIP_AIW_AUTH_MODE"]; got == "" {
 		t.Error("RuntimeConfig[APIP_AIW_AUTH_MODE] is empty, want the resolved auth mode")
+	}
+}
+
+// There is one store, so the default must be it.
+func TestSessionStoreDefaultsToCookie(t *testing.T) {
+	if got := defaultConfig().Session.Store; got != SessionStoreCookie {
+		t.Fatalf("default [session] store = %q, want %q", got, SessionStoreCookie)
+	}
+}
+
+// A config that omits the key entirely must land on the only store there is, rather
+// than on an empty string that nothing recognises.
+func TestConfigWithoutSessionStoreKeyDefaultsToCookie(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.toml")
+	if err := os.WriteFile(path, []byte(`
+[ai_workspace]
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+[ai_workspace.session]
+idle_timeout = "30m"
+absolute_ttl = "8h"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Session.Store != SessionStoreCookie {
+		t.Fatalf("[session] store = %q for a config that omits it, want %q",
+			cfg.Session.Store, SessionStoreCookie)
+	}
+}
+
+// The key checks are a sanity filter for a hand-made value, not a measurement of
+// entropy. The repeated-pattern cases are the ones that matter: a character-frequency
+// score rates "0123456789abcdef" four times exactly as highly as a genuinely random
+// 64-character hex key, so that check alone vouched for a value with no entropy at all.
+func TestEncryptionKeyRejectsHandMadeValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, key string
+		weak      bool
+	}{
+		{"too short", "short", true},
+		{"one repeated character", strings.Repeat("a", 64), true},
+		{"a two-character pattern", strings.Repeat("ab", 32), true},
+		{"a 16-character pattern", strings.Repeat("abcdefghijklmnop", 4), true},
+		{"a hex alphabet pattern", strings.Repeat("0123456789abcdef", 4), true},
+		{"a mixed-case pattern", strings.Repeat("aAbBcCdDeEfFgGhH", 4), true},
+		{"a repeated password", strings.Repeat("Passw0rd!", 8), true},
+		{"a repeated word", "passwordpasswordpasswordpassword", true},
+		{"a repeated placeholder", "changeme-changeme-changeme-changeme", true},
+
+		{"openssl rand -hex 32", "51e97c3a355ec9b8ffcb9bb0fdec8f1b9a7b1b3bef7d352e71d3f71ff2a484e0", false},
+		{"openssl rand -base64 32", "K7x+Qm2ZpL9vN4sR8tW1yU6oE3iA5bC0dF/gH=jK", false},
+		{"a long passphrase", "correct horse battery staple correct horse", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reason := weakKeyReason(tc.key)
+			if (reason != "") != tc.weak {
+				t.Fatalf("weakKeyReason() = %q, want weak=%v", reason, tc.weak)
+			}
+			// The reason is surfaced in a startup error, so it must never carry the
+			// secret or a fragment of it.
+			if reason != "" && len(tc.key) >= 4 && strings.Contains(reason, tc.key[:4]) {
+				t.Errorf("the rejection reason leaks part of the key: %q", reason)
+			}
+		})
+	}
+}
+
+// A pattern and real material of the same alphabet are indistinguishable by character
+// frequency alone — the gap shortestPeriod exists to close.
+func TestVarietyScoreCannotSeeRepetition(t *testing.T) {
+	pattern := strings.Repeat("0123456789abcdef", 4)
+	if varietyScoreBits(pattern) < minVarietyScoreBits {
+		t.Fatal("precondition: the pattern is expected to pass the variety check on its own")
+	}
+	if weakKeyReason(pattern) == "" {
+		t.Fatal("the repeated pattern was accepted — shortestPeriod did not catch it")
 	}
 }
