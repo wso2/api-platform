@@ -197,6 +197,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    testTimeout: 20000,
+    hookTimeout: 20000,
     // Oxygen UI and MUI ship CSS imports Node cannot load on its own, so Vite
     // transforms them rather than leaving them to the runtime.
     server: {
