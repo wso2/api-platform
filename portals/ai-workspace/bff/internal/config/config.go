@@ -204,20 +204,71 @@ const (
 	TxSealLabel    = "ai-workspace-bff/oidc-login-tx/v1"
 )
 
-// MinSessionKeyLength and minSessionKeyEntropyBits bound what the sealing key may be
-// derived from. HKDF produces the right key LENGTH from anything but adds no entropy: a
-// low-variety secret stays guessable offline against a captured record, and recovering
-// it would open every session sealed under it.
+// MinSessionKeyLength and minVarietyScoreBits are floors on the configured sealing key.
+//
+// They are sanity checks for an obviously hand-made value, NOT a measurement of
+// entropy: no test on a string can prove it was generated well, and passing them
+// guarantees nothing. The only real guarantee is generating the key from a CSPRNG,
+// which scripts/setup.sh does (`openssl rand -hex 32`). HKDF stretches whatever it is
+// given to the right key length and adds no entropy, so a weak value stays guessable
+// offline against a captured record — and recovering it opens every session sealed
+// under it.
 const (
-	MinSessionKeyLength      = 32
-	minSessionKeyEntropyBits = 128
+	MinSessionKeyLength = 32
+	minVarietyScoreBits = 128
+	minDistinctRunes    = 8
 )
 
-// estimatedEntropyBits is the Shannon entropy of the value's own character distribution
-// times its length. A crude proxy — it cannot see that "abcabcabc..." is a pattern — but
-// it separates generated material (64 hex chars is ~256 bits, 44 base64 chars ~264)
-// from the repeated words and single-case runs that a length check alone lets through.
-func estimatedEntropyBits(v string) float64 {
+// weakKeyReason names why a configured key looks hand-made, or "" if it passes every
+// check. It never includes the key or any part of it in what it returns.
+//
+// Three complementary checks, because each alone is blind to what the others catch —
+// most importantly varietyScoreBits, which scores a repeated pattern exactly as highly
+// as random material of the same alphabet ("0123456789abcdef" four times scores the
+// same 256 as a real 64-character hex key).
+func weakKeyReason(v string) string {
+	if len(v) < MinSessionKeyLength {
+		return fmt.Sprintf("it is %d characters, minimum %d", len(v), MinSessionKeyLength)
+	}
+	if p := shortestPeriod(v); p < MinSessionKeyLength {
+		return fmt.Sprintf("it is a %d-character sequence repeated to fill the length", p)
+	}
+	if n := distinctRunes(v); n < minDistinctRunes {
+		return fmt.Sprintf("it is built from only %d distinct characters, minimum %d", n, minDistinctRunes)
+	}
+	if bits := varietyScoreBits(v); bits < minVarietyScoreBits {
+		return fmt.Sprintf("its character variety scores ~%.0f, below the %d floor", bits, minVarietyScoreBits)
+	}
+	return ""
+}
+
+// shortestPeriod returns the length of the smallest string that, repeated, produces v —
+// or len(v) when v is not an exact repetition. This is what catches a short pattern
+// padded out to look long enough; varietyScoreBits cannot see it.
+func shortestPeriod(v string) int {
+	n := len(v)
+	for p := 1; p <= n/2; p++ {
+		if n%p == 0 && strings.Repeat(v[:p], n/p) == v {
+			return p
+		}
+	}
+	return n
+}
+
+func distinctRunes(v string) int {
+	seen := make(map[rune]struct{}, len(v))
+	for _, r := range v {
+		seen[r] = struct{}{}
+	}
+	return len(seen)
+}
+
+// varietyScoreBits is the Shannon entropy of the value's own character distribution
+// times its length. Despite the unit it is NOT a count of entropy bits — it is blind to
+// ordering, so any permutation of the same characters scores identically. It is kept
+// only because it catches repeated words and single-case runs that the other two checks
+// let through.
+func varietyScoreBits(v string) float64 {
 	if v == "" {
 		return 0
 	}
@@ -764,16 +815,12 @@ func (c *Config) validate() error {
 			return fmt.Errorf("[session] encryption_key is required — generate one with " +
 				"`openssl rand -base64 32` and give every replica the same value")
 		}
-		if len(c.Session.EncryptionKey) < MinSessionKeyLength {
-			return fmt.Errorf("[session] encryption_key is %d characters, minimum %d — "+
-				"generate one with `openssl rand -base64 32`",
-				len(c.Session.EncryptionKey), MinSessionKeyLength)
-		}
-		if bits := estimatedEntropyBits(c.Session.EncryptionKey); bits < minSessionKeyEntropyBits {
-			return fmt.Errorf("[session] encryption_key looks low-entropy (~%.0f bits, minimum %d): "+
-				"long enough, but made of too few distinct characters. HKDF cannot add entropy a "+
-				"secret does not have — generate one with `openssl rand -base64 32`",
-				bits, minSessionKeyEntropyBits)
+		// A sanity check for a hand-made value, not proof of a strong one: generate the
+		// key with a CSPRNG (scripts/setup.sh does) rather than choosing it.
+		if reason := weakKeyReason(c.Session.EncryptionKey); reason != "" {
+			return fmt.Errorf("[session] encryption_key looks hand-made — %s. Generate one with "+
+				"`openssl rand -base64 32` (scripts/setup.sh does this for you) and give every "+
+				"replica the same value", reason)
 		}
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
@@ -869,8 +916,8 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// isLoopbackHost reports whether host (possibly with a port) is the local machine.
-func isLoopbackHost(host string) bool {
+// IsLoopbackHost reports whether host (possibly with a port) is the local machine.
+func IsLoopbackHost(host string) bool {
 	h := host
 	if parsed, _, err := net.SplitHostPort(host); err == nil {
 		h = parsed
@@ -962,7 +1009,7 @@ func (c *Config) validateTokenExchange() error {
 		}
 		// The POST body carries the client secret and subject token. Loopback is
 		// exempt: the request never reaches a network there.
-		if u.Scheme == "http" && !isLoopbackHost(u.Host) {
+		if u.Scheme == "http" && !IsLoopbackHost(u.Host) {
 			return fmt.Errorf("[auth.oidc.token_exchange] token_endpoint must be https:// "+
 				"(the client secret and subject token are sent in the request body), got %q",
 				redactURL(te.TokenEndpoint))

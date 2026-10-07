@@ -181,7 +181,7 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 // config.toml is covered by the subtest below, which skips while that file is still
 // basic-auth-only (see skipWithoutOIDCTables).
 func TestShippedConfig_ReadsTheGeneratedSessionKey(t *testing.T) {
-	const generated = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const generated = "51e97c3a355ec9b8ffcb9bb0fdec8f1b9a7b1b3bef7d352e71d3f71ff2a484e0"
 
 	t.Run("template", func(t *testing.T) {
 		templateBytes, err := os.ReadFile(templateConfig)

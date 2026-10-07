@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 )
@@ -131,7 +132,7 @@ func NewOIDC(
 ) (*OIDC, error) {
 	discCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
 	defer cancel()
-	disco, err := fetchDiscovery(discCtx, client, issuer)
+	disco, err := fetchDiscovery(discCtx, noRedirectClient(client), issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +140,10 @@ func NewOIDC(
 		return nil, fmt.Errorf("oidc: a login-transaction sealer is required")
 	}
 	o := &OIDC{
-		client:                client,
+		// noRedirectClient: a 307/308 from the IDP would otherwise re-send the POST
+		// body to the redirect target, and that body carries the client secret and,
+		// on revocation, the refresh token.
+		client:                noRedirectClient(client),
 		clientID:              clientID,
 		clientSecret:          clientSecret,
 		redirectURL:           redirectURL,
@@ -188,7 +192,40 @@ func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (di
 	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" {
 		return discoveryDoc{}, fmt.Errorf("oidc discovery missing required endpoints")
 	}
+
+	// Only the two endpoints this BFF posts credentials to. The authorization and
+	// end-session endpoints are browser redirects and carry nothing of ours.
+	if err := requireSecureEndpoint("token_endpoint", d.TokenEndpoint); err != nil {
+		return discoveryDoc{}, err
+	}
+	// Optional, so a bad one is dropped rather than failing startup: logout still
+	// works without it, and SupportsRevocation then reports the loss.
+	if d.RevocationEndpoint != "" {
+		if err := requireSecureEndpoint("revocation_endpoint", d.RevocationEndpoint); err != nil {
+			slog.Warn("ignoring the issuer's revocation_endpoint", "err", err)
+			d.RevocationEndpoint = ""
+		}
+	}
 	return d, nil
+}
+
+// requireSecureEndpoint rejects an advertised endpoint this BFF would send the client
+// secret (and, for revocation, the refresh token) to in cleartext. Loopback is exempt:
+// the request never reaches a network there. Mirrors the check config.validate already
+// applies to an explicitly configured token_endpoint.
+func requireSecureEndpoint(name, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("oidc discovery returned an unusable %s", name)
+	}
+	if u.User != nil {
+		return fmt.Errorf("oidc discovery returned a %s containing userinfo", name)
+	}
+	if u.Scheme == "http" && !config.IsLoopbackHost(u.Host) {
+		return fmt.Errorf("oidc discovery returned a plaintext %s: the client secret is sent "+
+			"in the request body, so it must be https://", name)
+	}
+	return nil
 }
 
 // AuthCodeURL creates a new login transaction and returns the IDP authorize URL.

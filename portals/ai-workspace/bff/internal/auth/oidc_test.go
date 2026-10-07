@@ -19,6 +19,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -287,5 +288,94 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 		if got := q.Get(name); got != want {
 			t.Errorf("%s = %q, want %q — an extra parameter overrode a protocol one", name, got, want)
 		}
+	}
+}
+
+// A 307/308 from the IDP re-sends the POST body to the redirect target, and that body
+// carries the client secret and — on revocation — the refresh token. Verified by
+// observing what an attacker-controlled redirect target actually receives.
+func TestBackChannelPostsAreNotFollowedAcrossRedirects(t *testing.T) {
+	var attackerGot string
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		attackerGot = string(b)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer attacker.Close()
+
+	for _, code := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			attackerGot = ""
+			idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, attacker.URL, code)
+			}))
+			defer idp.Close()
+
+			o := testOIDC(t)
+			o.client = noRedirectClient(idp.Client())
+			o.clientID, o.clientSecret = "client-id", "the-client-secret"
+			o.disco = discoveryDoc{TokenEndpoint: idp.URL, RevocationEndpoint: idp.URL}
+
+			_ = o.RevokeRefreshToken(context.Background(), "the-refresh-token")
+			if attackerGot != "" {
+				t.Fatalf("the redirect target received the request body: %q", attackerGot)
+			}
+
+			_, _ = o.Refresh(context.Background(), "the-refresh-token")
+			if attackerGot != "" {
+				t.Fatalf("the redirect target received the refresh body: %q", attackerGot)
+			}
+		})
+	}
+}
+
+// Discovery must refuse to post the client secret to a plaintext endpoint. Loopback is
+// exempt — the request never reaches a network there, which is what keeps httptest and
+// local IDP setups working.
+func TestDiscoveryRejectsPlaintextCredentialEndpoints(t *testing.T) {
+	for name, tc := range map[string]struct {
+		endpoint string
+		wantErr  bool
+	}{
+		"https":               {"https://idp.example.com/token", false},
+		"loopback http":       {"http://127.0.0.1:9443/token", false},
+		"localhost http":      {"http://localhost:9443/token", false},
+		"remote http":         {"http://idp.example.com/token", true},
+		"userinfo in the URL": {"https://user:pw@idp.example.com/token", true},
+		"not a URL":           {"://nonsense", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := requireSecureEndpoint("token_endpoint", tc.endpoint)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("requireSecureEndpoint(%q) = %v, wantErr %v", tc.endpoint, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// A plaintext revocation_endpoint is optional, so it is dropped rather than failing
+// startup — logout still works, and SupportsRevocation reports the loss so the existing
+// startup warning tells the operator.
+func TestDiscoveryDropsAPlaintextRevocationEndpoint(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issuer":"` + srv.URL + `","authorization_endpoint":"` + srv.URL +
+			`/authorize","token_endpoint":"` + srv.URL +
+			`/token","revocation_endpoint":"http://idp.example.com/revoke"}`))
+	}))
+	defer srv.Close()
+
+	o, err := NewOIDC(context.Background(), srv.Client(), srv.URL, "c", "s",
+		"https://portal.example.com/cb", "", "openid",
+		session.DefaultClaimMapping(), time.Hour, testOIDC(t).sealer)
+	if err != nil {
+		t.Fatalf("NewOIDC: %v", err)
+	}
+	if o.SupportsRevocation() {
+		t.Fatal("a plaintext revocation_endpoint was kept — the refresh token would be sent in cleartext")
+	}
+	if err := o.RevokeRefreshToken(context.Background(), "rt"); err != nil {
+		t.Errorf("revocation should no-op, not error: %v", err)
 	}
 }

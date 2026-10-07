@@ -607,26 +607,51 @@ absolute_ttl = "8h"
 	}
 }
 
-// HKDF produces the right key length from anything but adds no entropy, so length alone
-// is not a usable bar: a long, low-variety secret stays guessable offline against a
-// captured record, and recovering it opens every session sealed under it.
-func TestEncryptionKeyEntropyFloor(t *testing.T) {
+// The key checks are a sanity filter for a hand-made value, not a measurement of
+// entropy. The repeated-pattern cases are the ones that matter: a character-frequency
+// score rates "0123456789abcdef" four times exactly as highly as a genuinely random
+// 64-character hex key, so that check alone vouched for a value with no entropy at all.
+func TestEncryptionKeyRejectsHandMadeValues(t *testing.T) {
 	for _, tc := range []struct {
 		name, key string
-		accepted  bool
+		weak      bool
 	}{
-		{"one repeated character", strings.Repeat("a", 64), false},
-		{"a repeated word", "passwordpasswordpasswordpassword", false},
-		{"a repeated placeholder", "changeme-changeme-changeme-changeme", false},
-		{"a long passphrase", "correct horse battery staple correct horse", true},
-		{"openssl rand -hex 32", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true},
-		{"openssl rand -base64 32", "K7x+Qm2ZpL9vN4sR8tW1yU6oE3iA5bC0dF/gH=jK", true},
+		{"too short", "short", true},
+		{"one repeated character", strings.Repeat("a", 64), true},
+		{"a two-character pattern", strings.Repeat("ab", 32), true},
+		{"a 16-character pattern", strings.Repeat("abcdefghijklmnop", 4), true},
+		{"a hex alphabet pattern", strings.Repeat("0123456789abcdef", 4), true},
+		{"a mixed-case pattern", strings.Repeat("aAbBcCdDeEfFgGhH", 4), true},
+		{"a repeated password", strings.Repeat("Passw0rd!", 8), true},
+		{"a repeated word", "passwordpasswordpasswordpassword", true},
+		{"a repeated placeholder", "changeme-changeme-changeme-changeme", true},
+
+		{"openssl rand -hex 32", "51e97c3a355ec9b8ffcb9bb0fdec8f1b9a7b1b3bef7d352e71d3f71ff2a484e0", false},
+		{"openssl rand -base64 32", "K7x+Qm2ZpL9vN4sR8tW1yU6oE3iA5bC0dF/gH=jK", false},
+		{"a long passphrase", "correct horse battery staple correct horse", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			bits := estimatedEntropyBits(tc.key)
-			if got := bits >= minSessionKeyEntropyBits; got != tc.accepted {
-				t.Fatalf("%q = ~%.0f bits, accepted=%v, want accepted=%v", tc.key, bits, got, tc.accepted)
+			reason := weakKeyReason(tc.key)
+			if (reason != "") != tc.weak {
+				t.Fatalf("weakKeyReason() = %q, want weak=%v", reason, tc.weak)
+			}
+			// The reason is surfaced in a startup error, so it must never carry the
+			// secret or a fragment of it.
+			if reason != "" && len(tc.key) >= 4 && strings.Contains(reason, tc.key[:4]) {
+				t.Errorf("the rejection reason leaks part of the key: %q", reason)
 			}
 		})
+	}
+}
+
+// A pattern and real material of the same alphabet are indistinguishable by character
+// frequency alone — the gap shortestPeriod exists to close.
+func TestVarietyScoreCannotSeeRepetition(t *testing.T) {
+	pattern := strings.Repeat("0123456789abcdef", 4)
+	if varietyScoreBits(pattern) < minVarietyScoreBits {
+		t.Fatal("precondition: the pattern is expected to pass the variety check on its own")
+	}
+	if weakKeyReason(pattern) == "" {
+		t.Fatal("the repeated pattern was accepted — shortestPeriod did not catch it")
 	}
 }
