@@ -19,9 +19,12 @@
 #
 #   - a self-signed TLS certificate shared by all three services
 #   - API Portal's own encryption key and session secret, written to
-#     APIP_AIW_SESSION_ENCRYPTION_KEY in api-platform.env and
 #     resources/keys/api-portal-encryption.key and api-portal-session-secret and
 #     read by config.toml via {{ file }} - never stored as an env var
+#   - the AI Workspace BFF's session encryption key, written to
+#     APIP_AIW_SESSION_ENCRYPTION_KEY in api-platform.env - an env var, unlike
+#     the key files above, because the AI Workspace config reads only {{ env }}
+#     tokens. Every replica must see the same value.
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
 #     and read by config.toml via {{ file }} - like the JWT keypair below, never stored
 #     as an env var
