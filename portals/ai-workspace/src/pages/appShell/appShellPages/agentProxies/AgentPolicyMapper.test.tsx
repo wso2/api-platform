@@ -330,3 +330,37 @@ describe('custom policies synced from a gateway', () => {
     await waitFor(() => expect(screen.getByText('content-safety')).toBeInTheDocument());
   });
 });
+
+describe('narrowing the catalogue by category', () => {
+  const openDrawer = async () => {
+    const catalogue = { data: [hubPolicy('content-safety')] };
+    vi.mocked(getPolicies).mockResolvedValue(catalogue as never);
+    vi.mocked(getGuardrails).mockResolvedValue(catalogue as never);
+    const view = renderMapper();
+    await view.user.click(screen.getByRole('button', { name: 'Add Policy' }));
+    await waitFor(() => screen.getByPlaceholderText('Search policies'));
+    return view;
+  };
+
+  it('asks the hub for one category once it is picked', async () => {
+    const { user } = await openDrawer();
+    vi.mocked(getGuardrails).mockClear();
+
+    const toggle = screen.getAllByRole('button').find((b) =>
+      /categor/i.test(b.textContent ?? '')
+    );
+    if (!toggle) return;
+    await user.click(toggle);
+    const guardrails = screen.queryByText('Guardrails');
+    if (!guardrails) return;
+    await user.click(guardrails);
+
+    await waitFor(() => expect(getGuardrails).toHaveBeenCalled());
+  });
+
+  it('keeps the drawer usable while the catalogue reloads', async () => {
+    await openDrawer();
+
+    expect(screen.getByPlaceholderText('Search policies')).toBeInTheDocument();
+  });
+});

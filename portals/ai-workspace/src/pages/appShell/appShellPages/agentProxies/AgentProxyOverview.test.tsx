@@ -33,6 +33,7 @@ let apiKeys: unknown[] = [];
 let deployments: unknown[] = [];
 let gateways: unknown[] = [];
 
+
 const PROXY = {
   id: 'proxy-1',
   displayName: 'Trip Planner',
@@ -399,3 +400,4 @@ describe('revoking an api key', () => {
     await waitFor(() => expect(revokeAgentProxyAPIKey).toHaveBeenCalledWith('k1'));
   });
 });
+

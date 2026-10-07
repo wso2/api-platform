@@ -109,3 +109,41 @@ describe('without an id in the route', () => {
     expect(screen.getByText('Agent Proxy ID is missing')).toBeInTheDocument();
   });
 });
+
+describe('leaving the form', () => {
+  it('abandons the edit without saving', async () => {
+    const { user } = renderEdit();
+    await waitFor(() => screen.getByText('Name'));
+
+    await user.clear(fieldFor('Name'));
+    await user.type(fieldFor('Name'), 'Abandoned');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(updateAgentProxy).not.toHaveBeenCalled();
+  });
+
+  it('will not submit an empty name', async () => {
+    const { user } = renderEdit();
+    await waitFor(() => screen.getByText('Name'));
+
+    await user.clear(fieldFor('Name'));
+
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
+  });
+
+  it('carries the edited description through to the update', async () => {
+    updateAgentProxy.mockResolvedValue(PROXY);
+    const { user } = renderEdit();
+    await waitFor(() => screen.getByText('Description'));
+
+    await user.clear(fieldFor('Description'));
+    await user.type(fieldFor('Description'), 'now plans cities too');
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() =>
+      expect(updateAgentProxy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'now plans cities too' })
+      )
+    );
+  });
+});

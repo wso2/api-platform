@@ -190,3 +190,34 @@ describe('without an id', () => {
     await expect(call(result.current)).rejects.toThrow('Agent proxy ID is missing');
   });
 });
+
+describe('used without a provider', () => {
+  // The default context exists so a stray consumer fails loudly rather than
+  // silently doing nothing with an unconfigured proxy.
+  const bare = () => renderHook(() => useAgentProxy()).result.current;
+
+  it('holds no proxy and is not loading', () => {
+    const c = bare();
+
+    expect(c.agentProxy).toBeNull();
+    expect(c.isLoading).toBe(false);
+    expect(c.error).toBeNull();
+  });
+
+  it.each([
+    ['updateAgentProxy', (c: ReturnType<typeof useAgentProxy>) => c.updateAgentProxy({} as never)],
+    ['deleteAgentProxy', (c: ReturnType<typeof useAgentProxy>) => c.deleteAgentProxy()],
+    ['getAgentProxyAPIKeys', (c: ReturnType<typeof useAgentProxy>) => c.getAgentProxyAPIKeys()],
+    ['createAgentProxyAPIKey', (c: ReturnType<typeof useAgentProxy>) => c.createAgentProxyAPIKey({} as never)],
+    ['revokeAgentProxyAPIKey', (c: ReturnType<typeof useAgentProxy>) => c.revokeAgentProxyAPIKey('k')],
+    ['refetch', (c: ReturnType<typeof useAgentProxy>) => c.refetch()],
+  ])('%s refuses rather than pretending to work', async (_label, call) => {
+    await expect(call(bare())).rejects.toThrow(/not initialized/i);
+  });
+
+  it('accepts a local write without a provider behind it', () => {
+    const c = bare();
+
+    expect(() => c.setLocalAgentProxy(null)).not.toThrow();
+  });
+});
