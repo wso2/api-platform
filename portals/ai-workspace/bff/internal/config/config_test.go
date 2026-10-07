@@ -655,35 +655,3 @@ func TestVarietyScoreCannotSeeRepetition(t *testing.T) {
 		t.Fatal("the repeated pattern was accepted — shortestPeriod did not catch it")
 	}
 }
-
-// The key moved from [session] to [session.cookie] before release. A config carrying
-// the old spelling must be told so, rather than meeting "encryption_key is required"
-// with the value plainly set in front of the operator.
-// validOIDCConfig is the smallest config that passes validate in OIDC mode.
-func validOIDCConfig(t *testing.T) *Config {
-	t.Helper()
-	c := defaultConfig()
-	c.Session.Cookie.EncryptionKey = strings.Repeat("Ab3!xY7#", 8)
-	c.Auth.Mode = AuthModeOIDC
-	c.Auth.Authorization.Mode = AuthzModeScope
-	c.Auth.OIDC.Issuer = "https://idp.example.com"
-	c.Auth.OIDC.ClientID = "client"
-	c.Auth.OIDC.ClientSecret = "a-client-secret-long-enough-to-pass"
-	c.Auth.OIDC.RedirectURL = "https://portal.example.com/cb"
-	c.Server.HTTPS.Enabled = false
-	c.Server.HTTP.Enabled = true
-	c.Server.HTTP.Port = 8080
-	c.ControlPlane.URL = "https://platform-api:9243"
-	return c
-}
-
-func TestLegacyTopLevelEncryptionKeyIsNamed(t *testing.T) {
-	cfg := validOIDCConfig(t)
-	cfg.Session.Cookie.EncryptionKey = ""
-	cfg.Session.LegacyEncryptionKey = strings.Repeat("k", MinSessionKeyLength)
-
-	err := cfg.validate()
-	if err == nil || !strings.Contains(err.Error(), "[session.cookie]") {
-		t.Fatalf("validate() = %v, want it to name the new location", err)
-	}
-}

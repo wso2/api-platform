@@ -184,12 +184,6 @@ type SessionConfig struct {
 	Store  string              `koanf:"store"`
 	Cookie SessionCookieConfig `koanf:"cookie"`
 
-	// LegacyEncryptionKey catches a config still setting [session] encryption_key at
-	// the top level, where this key lived before it moved under [session.cookie].
-	// Detected rather than accepted, so an operator carrying the old spelling is told
-	// it moved instead of meeting a bare "required" error with the value plainly set.
-	LegacyEncryptionKey string `koanf:"encryption_key"`
-
 	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
 	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 }
@@ -826,14 +820,6 @@ func (c *Config) validate() error {
 	default:
 		return fmt.Errorf("invalid [session] store %q: the only supported value is %q",
 			c.Session.Store, SessionStoreCookie)
-	}
-	// Named specifically, like the removed store value above: a config carrying the old
-	// top-level spelling would otherwise meet "encryption_key is required" while the
-	// operator can plainly see it set.
-	if c.Session.LegacyEncryptionKey != "" {
-		return fmt.Errorf("[session] encryption_key has moved to [session.cookie] encryption_key " +
-			"(env APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY) — it seals the cookies, so it now sits " +
-			"with them")
 	}
 	// Required only where there is something to seal: file-based auth keeps no
 	// server-side session at all.
