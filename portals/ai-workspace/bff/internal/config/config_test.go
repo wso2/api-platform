@@ -156,6 +156,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	t.Setenv("CUSTOM_SECRET_VAR", "s3cr3t")
 
@@ -188,6 +191,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -274,6 +280,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -389,6 +398,9 @@ authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
 redirect_url  = "https://localhost:9643/api/auth/callback"
+
+[ai_workspace.session]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -563,20 +575,16 @@ url = "https://platform-api:9243"
 	}
 }
 
-// Backward compatibility: the session store default must stay "memory". Every install
-// predating the cookie store omits the key, and an upgrade that silently moved them
-// onto client-carried state would add several KB to every request header — which an
-// ingress sized for the old traffic may reject outright. Moving to "cookie" is the
-// operator's decision, taken when they scale past one replica.
-func TestSessionStoreDefaultsToMemory(t *testing.T) {
-	if got := defaultConfig().Session.Store; got != SessionStoreMemory {
-		t.Fatalf("default [session] store = %q, want %q", got, SessionStoreMemory)
+// There is one store, so the default must be it.
+func TestSessionStoreDefaultsToCookie(t *testing.T) {
+	if got := defaultConfig().Session.Store; got != SessionStoreCookie {
+		t.Fatalf("default [session] store = %q, want %q", got, SessionStoreCookie)
 	}
 }
 
-// A config written before the cookie store existed — no [session] store key at all —
-// must still load and keep the behaviour it had.
-func TestConfigWithoutSessionStoreKeyKeepsMemory(t *testing.T) {
+// A config that omits the key entirely must land on the only store there is, rather
+// than on an empty string that nothing recognises.
+func TestConfigWithoutSessionStoreKeyDefaultsToCookie(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "legacy.toml")
 	if err := os.WriteFile(path, []byte(`
@@ -593,8 +601,8 @@ absolute_ttl = "8h"
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Session.Store != SessionStoreMemory {
+	if cfg.Session.Store != SessionStoreCookie {
 		t.Fatalf("[session] store = %q for a config that omits it, want %q",
-			cfg.Session.Store, SessionStoreMemory)
+			cfg.Session.Store, SessionStoreCookie)
 	}
 }

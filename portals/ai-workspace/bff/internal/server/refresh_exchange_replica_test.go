@@ -225,7 +225,7 @@ func newRotatingHarness(t *testing.T, accessTTL time.Duration) (*rotatingIDP, *S
 	}
 
 	build := func() *Server {
-		oidcClient := replicaOIDC(t, idp.url, auth.WithTxSealer(txSealer(t, testSealMaterial)))
+		oidcClient := replicaOIDC(t, idp.url, txSealer(t, testSealMaterial))
 		sealer, err := secure.NewSealer(secure.DeriveKey(testSealMaterial, config.StateSealLabel))
 		if err != nil {
 			t.Fatalf("NewSealer: %v", err)
@@ -234,7 +234,7 @@ func newRotatingHarness(t *testing.T, accessTTL time.Duration) (*rotatingIDP, *S
 			cfg: cfg, claims: session.DefaultClaimMapping(), oidc: oidcClient,
 			proxy:      proxy.ReverseProxy(target, paths.Base+paths.Proxy, http.DefaultTransport),
 			exchanger:  auth.NewExchanger(http.DefaultClient, teCfg, oidcClient.TokenEndpoint()),
-			stateCodec: session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks),
+			stateCodec: session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks, session.DefaultClaimMapping()),
 			store:      cookieStore{}, refreshLocks: make(map[string]*refreshLock),
 			exchangeLocks: make(map[string]*exchangeLock), sessionLocks: make(map[string]*sessionLock),
 			discoverLocks: make(map[string]*discoverLock),

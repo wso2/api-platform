@@ -24,10 +24,10 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,7 +58,7 @@ func replicaServer(t *testing.T, material string) *Server {
 				SameSite:    "lax",
 			},
 		},
-		stateCodec: session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks),
+		stateCodec: session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks, session.DefaultClaimMapping()),
 		store:      cookieStore{},
 	}
 }
@@ -248,12 +248,12 @@ func stubIssuer(t *testing.T, nonce *string) *httptest.Server {
 	return srv
 }
 
-func replicaOIDC(t *testing.T, issuer string, opts ...auth.Option) *auth.OIDC {
+func replicaOIDC(t *testing.T, issuer string, sealer *secure.Sealer) *auth.OIDC {
 	t.Helper()
 	o, err := auth.NewOIDC(context.Background(), http.DefaultClient,
 		issuer, "client-id", testSealMaterial,
 		"https://portal.example.com/ai-workspace/api/auth/callback", "", "openid",
-		session.DefaultClaimMapping(), 8*time.Hour, opts...)
+		session.DefaultClaimMapping(), 8*time.Hour, sealer)
 	if err != nil {
 		t.Fatalf("NewOIDC: %v", err)
 	}
@@ -295,8 +295,8 @@ func TestLoginStartedOnOneReplicaCompletesOnAnother(t *testing.T) {
 	idp := stubIssuer(t, &nonce)
 	sealer := txSealer(t, testSealMaterial)
 
-	replicaA := replicaOIDC(t, idp.URL, auth.WithTxSealer(sealer))
-	replicaB := replicaOIDC(t, idp.URL, auth.WithTxSealer(sealer))
+	replicaA := replicaOIDC(t, idp.URL, sealer)
+	replicaB := replicaOIDC(t, idp.URL, sealer)
 
 	// The stub echoes this login's nonce, which the callback checks the id_token
 	// against before trusting any of its claims.
@@ -315,32 +315,13 @@ func TestLoginStartedOnOneReplicaCompletesOnAnother(t *testing.T) {
 	}
 }
 
-// The behaviour this change exists to fix, pinned so it cannot quietly return: with
-// transactions in process memory, the same callback on another replica fails.
-func TestLoginAcrossReplicasFailsWithInMemoryTransactions(t *testing.T) {
-	nonce := ""
-	idp := stubIssuer(t, &nonce)
-
-	replicaA := replicaOIDC(t, idp.URL)
-	replicaB := replicaOIDC(t, idp.URL)
-
-	txID, state, n := startLogin(t, replicaA)
-	nonce = n
-	_, _, err := replicaB.Callback(context.Background(), txID, state, "auth-code")
-
-	var mismatch auth.ErrStateMismatch
-	if !errors.As(err, &mismatch) || mismatch.Reason != auth.ReasonNoTransaction {
-		t.Fatalf("error = %v, want a %q state mismatch", err, auth.ReasonNoTransaction)
-	}
-}
-
 // A sealed transaction from another deployment must not complete a login here.
 func TestSealedTransactionFromAnotherDeploymentIsRejected(t *testing.T) {
 	nonce := ""
 	idp := stubIssuer(t, &nonce)
 
-	stranger := replicaOIDC(t, idp.URL, auth.WithTxSealer(txSealer(t, "another-deployments-secret")))
-	ours := replicaOIDC(t, idp.URL, auth.WithTxSealer(txSealer(t, testSealMaterial)))
+	stranger := replicaOIDC(t, idp.URL, txSealer(t, "another-deployments-secret"))
+	ours := replicaOIDC(t, idp.URL, txSealer(t, testSealMaterial))
 
 	txID, state, n := startLogin(t, stranger)
 	nonce = n
@@ -370,7 +351,7 @@ func peerReplica(t *testing.T, origin *Server) *Server {
 		oidc:          origin.oidc,
 		proxy:         origin.proxy,
 		exchanger:     origin.exchanger,
-		stateCodec:    session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks),
+		stateCodec:    session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks, session.DefaultClaimMapping()),
 		store:         cookieStore{},
 		refreshLocks:  make(map[string]*refreshLock),
 		exchangeLocks: make(map[string]*exchangeLock),
@@ -389,7 +370,7 @@ func useCookieStore(t *testing.T, s *Server) {
 	}
 	_ = s.store.Close()
 	s.cfg.Cookie.StatePrefix = "_ai_workspace_state_"
-	s.stateCodec = session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks)
+	s.stateCodec = session.NewCookieCodec(sealer, stateChunkSize, stateMaxChunks, session.DefaultClaimMapping())
 	s.store = cookieStore{}
 }
 
@@ -523,5 +504,125 @@ func TestReadOnlyRequestLeavesStateCookiesAlone(t *testing.T) {
 	for _, c := range rec.Result().Cookies() {
 		t.Errorf("a read-only request rewrote cookie %q (MaxAge=%d); it must leave the "+
 			"browser holding exactly what it sent", c.Name, c.MaxAge)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Logout revocation
+// ---------------------------------------------------------------------------
+
+// Dropping the server's copy of the refresh token stopped being a revocation the moment
+// the browser started carrying one too. Logout has to tell the IDP.
+func TestLogoutRevokesTheRefreshTokenAtTheIDP(t *testing.T) {
+	var gotForm url.Values
+	var revocations atomic.Int32
+	var srv *httptest.Server
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issuer":"` + srv.URL + `","authorization_endpoint":"` + srv.URL +
+			`/authorize","token_endpoint":"` + srv.URL + `/token","revocation_endpoint":"` + srv.URL +
+			`/revoke","end_session_endpoint":"` + srv.URL + `/logout"}`))
+	})
+	mux.HandleFunc("/revoke", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotForm = r.PostForm
+		revocations.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	s := replicaServer(t, testSealMaterial)
+	s.oidc = replicaOIDC(t, srv.URL, txSealer(t, testSealMaterial))
+
+	const token = "access-token"
+	live := putOnReplica(t, s, func(ctx context.Context) {
+		_ = s.store.Put(ctx, &session.Session{
+			ID: token, AccessToken: token, RefreshToken: "refresh-to-revoke",
+			IDToken: "id-token", AbsoluteExpiry: time.Now().Add(time.Hour),
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+	addSessionCookies(req, s.cfg.Cookie, token)
+	for _, c := range live {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	s.withSessionState(http.HandlerFunc(s.handleLogout)).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout = %d (%s)", rec.Code, rec.Body)
+	}
+	if n := revocations.Load(); n != 1 {
+		t.Fatalf("revocation calls = %d, want 1 — a refresh token the browser still holds "+
+			"would otherwise stay usable after logout", n)
+	}
+	if got := gotForm.Get("token"); got != "refresh-to-revoke" {
+		t.Errorf("revoked token = %q, want the session's refresh token", got)
+	}
+	if got := gotForm.Get("token_type_hint"); got != "refresh_token" {
+		t.Errorf("token_type_hint = %q, want %q (RFC 7009)", got, "refresh_token")
+	}
+}
+
+// An IDP that is down, or that advertises no revocation endpoint, must not leave the
+// user unable to sign out — the cookies are cleared either way.
+func TestLogoutSucceedsWhenRevocationIsUnavailable(t *testing.T) {
+	for name, revoke := range map[string]string{
+		"no revocation endpoint advertised": "",
+		"revocation endpoint errors":        "/revoke",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var srv *httptest.Server
+			mux := http.NewServeMux()
+			mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+				rev := ""
+				if revoke != "" {
+					rev = `,"revocation_endpoint":"` + srv.URL + revoke + `"`
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"issuer":"` + srv.URL + `","authorization_endpoint":"` + srv.URL +
+					`/authorize","token_endpoint":"` + srv.URL + `/token"` + rev + `}`))
+			})
+			mux.HandleFunc("/revoke", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			})
+			srv = httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			s := replicaServer(t, testSealMaterial)
+			s.oidc = replicaOIDC(t, srv.URL, txSealer(t, testSealMaterial))
+
+			const token = "access-token"
+			live := putOnReplica(t, s, func(ctx context.Context) {
+				_ = s.store.Put(ctx, &session.Session{
+					ID: token, AccessToken: token, RefreshToken: "rt",
+					AbsoluteExpiry: time.Now().Add(time.Hour),
+				})
+			})
+			req := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+			addSessionCookies(req, s.cfg.Cookie, token)
+			for _, c := range live {
+				req.AddCookie(c)
+			}
+			rec := httptest.NewRecorder()
+			s.withSessionState(http.HandlerFunc(s.handleLogout)).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("logout = %d, want 200 — a failed revocation must not block sign-out", rec.Code)
+			}
+			cleared := 0
+			for _, c := range rec.Result().Cookies() {
+				if c.MaxAge < 0 {
+					cleared++
+				}
+			}
+			if cleared == 0 {
+				t.Error("logout cleared no cookies")
+			}
+		})
 	}
 }

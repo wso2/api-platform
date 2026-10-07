@@ -111,9 +111,15 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.clearSessionCookie(w)
 
 	if s.oidc != nil && jwt != "" {
-		idToken := ""
+		idToken, refreshToken := "", ""
 		if sess, ok, _ := s.store.Get(r.Context(), jwt); ok {
-			idToken = sess.IDToken
+			idToken, refreshToken = sess.IDToken, sess.RefreshToken
+		}
+		// Dropping our own copy is no longer a revocation: the browser holds the
+		// refresh token too. Best-effort — the cookies are already cleared above.
+		if err := s.oidc.RevokeRefreshToken(r.Context(), refreshToken); err != nil {
+			slog.Warn("could not revoke the refresh token at logout; the IDP end-session "+
+				"call is the remaining control", "err", err)
 		}
 		_ = s.store.Delete(r.Context(), jwt)
 		writeJSON(w, http.StatusOK, map[string]string{"logoutUrl": s.oidc.LogoutURL(idToken)})
@@ -275,23 +281,11 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		// tx_cookie_present is the field that separates "the browser never sent the
 		// cookie" (a Path/SameSite problem) from "the server forgot the transaction"
 		// (a restart) — the two look identical in the error alone.
-		// uptime and pending_transactions are what separate the three ways a
-		// transaction goes missing, which the error alone cannot: a small uptime
-		// means the process restarted mid-login and lost it; a healthy uptime with
-		// other logins in flight means this one specifically aged out or was
-		// replayed; zero pending on a long-lived process means nothing is being
-		// remembered at all.
 		slog.Warn("oidc callback failed", "err", err,
 			"path", r.URL.Path,
 			"tx_cookie_present", txID != "",
 			"tx_cookie_path", s.txCookiePath(),
 			"uptime", time.Since(processStart).Round(time.Second),
-			// stateless_login_tx says how to read pending_transactions: stateless
-			// transactions are held by the browser, so zero there is normal and says
-			// nothing, while zero on a long-lived process in memory mode means this
-			// replica is remembering no logins at all.
-			"stateless_login_tx", s.oidc.StatelessTransactions(),
-			"pending_transactions", s.oidc.PendingTransactions(),
 			"tx_ttl", auth.TxTTL)
 		http.Redirect(w, r, s.path("/login")+"?error="+loginErrAuthFailed, http.StatusFound)
 		return
@@ -383,15 +377,11 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 				jwt = refreshed.AccessToken
 				s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
 			case stillValid(exp):
-				// A failed refresh is not yet a dead session while the current token
-				// is still good. This is the ordinary outcome of running more than one
-				// replica: the single-flight that collapses a page-load burst into one
-				// refresh is per-process, so two replicas can both present the refresh
-				// token, and an IDP that rotates refresh tokens refuses the second.
-				// The replica that won has already set the rotated cookie pair; logging
-				// this user out over the loser's 400 would make scaling out look like
-				// random session loss. Serve this request on the token we still hold —
-				// the next one, carrying the rotated cookie, refreshes normally.
+				// The ordinary outcome of several replicas: the refresh single-flight
+				// is per-process, so two can both present the refresh token and an IDP
+				// that rotates them refuses the second. The winner has already set the
+				// rotated pair; logging this user out over the loser's 400 would make
+				// scaling out look like random session loss.
 				slog.Warn("token refresh failed but the current access token is still valid; "+
 					"serving this request on it", "err", err, "expires_in", time.Until(exp).Round(time.Second))
 			default:
@@ -542,9 +532,8 @@ func needsRefreshSoon(accessExpiry time.Time) bool {
 	return time.Now().Add(60 * time.Second).After(accessExpiry)
 }
 
-// stillValid reports whether an access token can still be forwarded upstream right
-// now. A zero expiry (no exp claim) counts as valid: the BFF does not verify tokens,
-// and the upstream is the authority on one it cannot date.
+// stillValid treats a zero expiry (no exp claim) as valid: the BFF does not verify
+// tokens, and the upstream is the authority on one it cannot date.
 func stillValid(accessExpiry time.Time) bool {
 	return accessExpiry.IsZero() || time.Now().Before(accessExpiry)
 }

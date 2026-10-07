@@ -177,51 +177,38 @@ type ControlPlaneConfig struct {
 // SessionConfig is [ai_workspace.session]: where the session's server-side state
 // lives and how long it lives for.
 type SessionConfig struct {
-	// Store selects the backend for the OIDC refresh/id tokens, the cached exchanged
-	// token and the selected org.
-	//
-	// "memory" (the default) is the process-local map: correct for a single replica,
-	// and broken for more than one — a login fails whenever the IDP callback lands on
-	// the replica that did not start it.
-	//
-	// "cookie" keeps none of it in this process. The record travels with the client,
-	// sealed under a key every replica derives identically, which is what lets the
-	// deployment run several replicas behind a plain load balancer with no shared
-	// infrastructure and no sticky sessions. Required to scale past one replica. The
-	// trade is a few KB added to every request header — see server/cookie_store.go.
+	// Store names the session backend. "cookie" is the only supported value; the key is
+	// kept so a config carrying the removed "memory" fails loudly instead of silently
+	// changing behaviour.
 	Store string `koanf:"store"`
 	// EncryptionKey is the key material the cookie store and the OIDC login
-	// transaction are sealed under. Every replica MUST see the same value. Left
-	// empty it is derived from [auth.oidc] client_secret, which every replica already
-	// shares byte-for-byte — so scaling out needs no new configuration, and setting
-	// this explicitly is for deployments that would rather the two not be related.
-	// Changing it invalidates every live session (users re-login once).
+	// transaction are sealed under. REQUIRED when Store is "cookie", and every replica
+	// must see the same value.
 	EncryptionKey string        `koanf:"encryption_key"`
 	IdleTimeout   time.Duration `koanf:"idle_timeout"` // sliding idle window
 	AbsoluteTTL   time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 }
 
-// SessionStoreCookie and SessionStoreMemory are the supported [session] store values.
-const (
-	SessionStoreCookie = "cookie"
-	SessionStoreMemory = "memory"
-)
+// SessionStoreCookie is the only supported [session] store value.
+const SessionStoreCookie = "cookie"
 
-// StateSealLabel and TxSealLabel separate the two HKDF-derived keys, so the key
-// sealing a session's tokens cannot open a login transaction or the reverse.
+// sessionStoreMemory is the removed process-local store. Named only so validate can
+// recognise a config that still asks for it and say what happened.
+const sessionStoreMemory = "memory"
+
+// StateSealLabel and TxSealLabel keep the two derived keys independent: neither opens
+// the other's records.
 const (
 	StateSealLabel = "ai-workspace-bff/session-state/v1"
 	TxSealLabel    = "ai-workspace-bff/oidc-login-tx/v1"
 )
 
-// SealKeyMaterial is the secret the sealing keys are derived from: the explicit
-// setting when present, otherwise the OIDC client secret (see EncryptionKey).
-func (c *Config) SealKeyMaterial() string {
-	if c.Session.EncryptionKey != "" {
-		return c.Session.EncryptionKey
-	}
-	return c.Auth.OIDC.ClientSecret
-}
+// MinSessionKeyLength guards the entropy an operator actually supplies; HKDF stretches
+// it from there.
+const MinSessionKeyLength = 32
+
+// SealKeyMaterial is the secret the sealing keys derive from. No fallback.
+func (c *Config) SealKeyMaterial() string { return c.Session.EncryptionKey }
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
 type AuthConfig struct {
@@ -475,8 +462,7 @@ type CookieConfig struct {
 	// defaultOIDCScopes below).
 	Name1 string
 	Name2 string
-	// StatePrefix names the sealed session-state cookies, which are numbered from it
-	// (_ai_workspace_state_0, _1, ...). See server/cookie_store.go.
+	// StatePrefix names the sealed session-state cookies, numbered from it.
 	StatePrefix string
 	Secure      bool
 	SameSite    string // "lax" | "strict" | "none"
@@ -730,9 +716,31 @@ func (c *Config) validate() error {
 	// store (or the reverse) is the difference between a deployment that survives
 	// scale-out and one that logs users out at random, with nothing in the logs
 	// connecting the two.
-	if c.Session.Store != SessionStoreCookie && c.Session.Store != SessionStoreMemory {
-		return fmt.Errorf("invalid [session] store %q: must be %q or %q",
-			c.Session.Store, SessionStoreCookie, SessionStoreMemory)
+	// "memory" is named specifically so an upgrade says what happened; silently
+	// accepting or ignoring it would both move a deployment without anyone deciding to.
+	switch c.Session.Store {
+	case SessionStoreCookie:
+	case sessionStoreMemory:
+		return fmt.Errorf("[session] store = %q is no longer supported: the session is now "+
+			"always carried by the client, which is what lets the BFF run more than one "+
+			"replica. Remove the key (or set it to %q) and set [session] encryption_key",
+			sessionStoreMemory, SessionStoreCookie)
+	default:
+		return fmt.Errorf("invalid [session] store %q: the only supported value is %q",
+			c.Session.Store, SessionStoreCookie)
+	}
+	// Required only where there is something to seal: file-based auth keeps no
+	// server-side session at all.
+	if c.Auth.OIDCEnabled() {
+		if c.Session.EncryptionKey == "" {
+			return fmt.Errorf("[session] encryption_key is required — generate one with " +
+				"`openssl rand -base64 32` and give every replica the same value")
+		}
+		if len(c.Session.EncryptionKey) < MinSessionKeyLength {
+			return fmt.Errorf("[session] encryption_key is %d characters, minimum %d — "+
+				"generate one with `openssl rand -base64 32`",
+				len(c.Session.EncryptionKey), MinSessionKeyLength)
+		}
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {

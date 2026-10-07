@@ -39,8 +39,8 @@ const (
 // User holds the pre-decoded claims surfaced by GET /api/session. It mirrors the
 // SPA's AppUser shape so the frontend can hydrate without seeing any token.
 type User struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name          string   `json:"name"`
+	Email         string   `json:"email"`
 	Picture       string   `json:"picture,omitempty"`
 	Role          string   `json:"role,omitempty"`
 	Scopes        []string `json:"scopes"`
@@ -126,14 +126,12 @@ func (s *Session) Expired(now time.Time) bool {
 	return !s.AbsoluteExpiry.IsZero() && !now.Before(s.AbsoluteExpiry)
 }
 
-// Store is the swappable session backend.
+// Store is the session backend. One implementation — server.cookieStore — which keeps
+// nothing in this process. The interface survives that on purpose: it is what let the
+// process-local map be replaced without touching a call site, and what a deployment
+// wanting a shared store would implement instead.
 //
-// MemoryStore below is the default, and is correct for a single replica.
-// server.cookieStore ([session] store = "cookie") keeps nothing in the process
-// instead: it seals this record into the client's own HttpOnly cookies, which is what
-// lets the BFF run with several replicas behind a plain load balancer without any
-// shared infrastructure. A Redis implementation could satisfy the same interface if a
-// deployment ever wanted one, but nothing here requires it.
+// File-based auth never reaches this: its JWT is self-contained in the cookie pair.
 type Store interface {
 	Put(ctx context.Context, s *Session) error
 	Get(ctx context.Context, id string) (*Session, bool, error)

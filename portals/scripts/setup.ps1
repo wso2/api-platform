@@ -19,6 +19,7 @@
 #
 #   - a self-signed TLS certificate shared by all three services
 #   - API Portal's own encryption key and session secret, written to
+#     APIP_AIW_SESSION_ENCRYPTION_KEY in api-platform.env and
 #     resources/keys/api-portal-encryption.key and api-portal-session-secret and
 #     read by config.toml via {{ file }} - never stored as an env var
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
@@ -732,6 +733,20 @@ if (-not $Force -and (Test-Path -LiteralPath $ApiPortalSessionSecret)) {
     New-HexSecretFile $ApiPortalSessionSecret
     Write-Log "  - API Portal session secret generated at $ApiPortalSessionSecret"
 }
+
+Write-Log 'Provisioning AI Workspace session encryption key ...'
+# Seals the BFF's session records into the browser's cookies, so EVERY REPLICA MUST SEE
+# THE SAME VALUE. In api-platform.env rather than a key file because the AI Workspace
+# config reads only {{ env }} tokens. Read only in OIDC mode, but generated always so
+# switching to OIDC needs no second run. Follows -Force like the API Portal session
+# secret: rotating it only invalidates live sessions. hex, not base64, so no character
+# can confuse an env-file parser.
+$AiwSessionKey = (Invoke-OpenSslQuiet { & openssl rand -hex 32 } 'openssl failed to generate the AI Workspace session encryption key')
+$AiwSessionKey = ([string]$AiwSessionKey).Trim()
+if ($AiwSessionKey -notmatch '^[0-9a-f]{64}$') {
+    Invoke-Fail 'openssl produced an unexpected AI Workspace session encryption key (expected 64 hex characters).'
+}
+Set-EnvVar $EnvFile 'APIP_AIW_SESSION_ENCRYPTION_KEY' $AiwSessionKey
 
 Write-Log 'Provisioning Platform API JWT signing keypair (RS256) ...'
 # Tokens are signed asymmetrically (RS256), not with a shared HMAC secret. The

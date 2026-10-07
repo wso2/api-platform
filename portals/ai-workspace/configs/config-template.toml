@@ -298,36 +298,33 @@ platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc
 # Where the session's server-side state lives — the OIDC refresh/id tokens, the
 # cached exchanged token, and the organization the user selected.
 #
-#   "memory" (default)  The process-local map. Correct ONLY with a SINGLE
-#                       replica — with two, a login fails whenever the IDP's
-#                       callback lands on the replica that did not start it,
-#                       and a user's org / exchanged-token state is lost every
-#                       time the load balancer picks the other one.
+# "cookie" is the only supported value. Nothing is kept in the BFF process: the
+# record is sealed (AES-256-GCM) and carried by the browser in HttpOnly cookies,
+# so ANY replica can serve ANY request. That is what lets this run with more than
+# one replica behind an ordinary load balancer — no shared store to operate, no
+# sticky sessions, and nothing extra to deploy on-prem.
 #
-#   "cookie"            Nothing is kept in this process. The record is sealed
-#                       (AES-256-GCM) and carried by the browser in HttpOnly
-#                       cookies, so ANY replica can serve ANY request: no
-#                       shared store to operate, no sticky sessions to
-#                       configure, and nothing extra to deploy on-prem.
+# File-based (basic) auth keeps no server-side session at all: its JWT is
+# self-contained in the session cookie pair, so that mode needs none of this and
+# no encryption_key.
 #
-# ---> Running more than one replica REQUIRES store = "cookie". <---
-#
-# It is not the default only because it adds a few KB to every request's Cookie
-# header, which an ingress in front of an existing single-replica install may
-# not be sized for — so switching is a decision taken when you scale out, not
-# one an upgrade makes for you. Before switching, check the request-header
+# The sealed record adds roughly 1-2 KB to every request. Check the request-header
 # buffers of anything in front of this BFF (nginx: large_client_header_buffers;
-# its 8k default is ample for the ~7 KB this produces at the default scope
-# set). Switching logs every user out once; they sign in again.
-store = "memory"
+# its 8k default leaves ample room for the ~6 KB this produces at the default
+# scope set).
+store = "cookie"
 
 # Key material the session-state cookies and the OIDC login transaction are sealed
-# under. EVERY REPLICA MUST SEE THE SAME VALUE. Left empty it is derived
-# (HKDF-SHA256) from [ai_workspace.auth.oidc] client_secret, which every replica
-# already shares byte-for-byte — so scaling out needs no new configuration. Set it
-# explicitly only if you would rather the two secrets not be related. Changing it
-# invalidates every live session (users log in again once).
-# encryption_key = "{{ env \"AI_WORKSPACE_SESSION_ENCRYPTION_KEY\" }}"
+# under. REQUIRED when store = "cookie" (startup fails without it), minimum 32
+# characters, and EVERY REPLICA MUST SEE THE SAME VALUE.
+#
+#     openssl rand -base64 32
+#
+# Deliberately not defaulted to the OIDC client secret: reusing that would make one
+# secret both authenticate this client to the IDP and protect every session record,
+# so its exposure would widen from "can impersonate the client" to "can also open any
+# session cookie". Changing this value logs everyone out once.
+encryption_key = "{{ env \"APIP_AIW_SESSION_ENCRYPTION_KEY\" \"\" }}"
 
 # Sliding idle window (Go duration, e.g. "30m"). Reserved — not enforced yet.
 idle_timeout = "30m"

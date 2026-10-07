@@ -63,10 +63,16 @@ func TestOpenRejectsTamperedAndForeignRecords(t *testing.T) {
 	s := newTestSealer(t, "material-one", "label/v1")
 	token, _ := s.Seal([]byte("session state"))
 
-	// Flipping any single character must fail the GCM tag rather than decode to
-	// something the caller would act on.
+	// Altered mid-ciphertext, not at the end: base64's final character carries
+	// discarded bits, so changing it can decode to the very same bytes and prove
+	// nothing. A character in the middle always changes the plaintext.
 	tampered := []byte(token)
-	tampered[len(tampered)-1] ^= 'A' ^ 'B'
+	mid := len(tampered) / 2
+	if tampered[mid] == 'A' {
+		tampered[mid] = 'B'
+	} else {
+		tampered[mid] = 'A'
+	}
 
 	for name, bad := range map[string]string{
 		"tampered":   string(tampered),

@@ -548,6 +548,15 @@ else
     log "  - API Portal session secret generated at $KEYS_DIR/api-portal-session-secret"
 fi
 
+log "Provisioning AI Workspace session encryption key ..."
+# Seals the BFF's session records into the browser's cookies, so EVERY REPLICA MUST SEE
+# THE SAME VALUE. In api-platform.env rather than a key file because the AI Workspace
+# config reads only {{ env }} tokens. Read only in OIDC mode, but generated always so
+# switching to OIDC needs no second run. Follows --force like the API Portal session
+# secret: rotating it only invalidates live sessions. hex, not base64, so no character
+# can confuse an env-file parser.
+set_env_var "$ENV_FILE" "APIP_AIW_SESSION_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
+
 log "Provisioning API Portal internal service-to-service key ..."
 # Two files: -hash is read by the portal at runtime; .raw is one-time-read for the
 # operator to paste into Platform-API's Create API Portal call, then delete.

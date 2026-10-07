@@ -17,7 +17,12 @@
 package session
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -31,17 +36,42 @@ func testCodec(t *testing.T, material string, chunkSize, maxChunks int) *CookieC
 	if err != nil {
 		t.Fatalf("NewSealer: %v", err)
 	}
-	return NewCookieCodec(sealer, chunkSize, maxChunks)
+	return NewCookieCodec(sealer, chunkSize, maxChunks, DefaultClaimMapping())
+}
+
+// testJWT builds a decodable (never verified) JWT, which the codec now needs for real:
+// the display User and the access expiry are recomputed from the tokens rather than
+// stored, so a placeholder string would decode to an empty user.
+func testJWT(claims map[string]any) string {
+	enc := func(v any) string {
+		b, _ := json.Marshal(v)
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	return enc(map[string]string{"alg": "RS256", "typ": "JWT"}) + "." + enc(claims) + ".c2lnbmF0dXJl"
+}
+
+var sampleAccessExp = time.Now().Add(time.Hour).Truncate(time.Second)
+
+func sampleAccessToken() string {
+	return testJWT(map[string]any{
+		"sub": "u-1", "exp": sampleAccessExp.Unix(),
+		"scope": "ap:project:read", "username": "alice",
+	})
+}
+
+func sampleIDToken() string {
+	return testJWT(map[string]any{"sub": "u-1", "email": "alice@example.com", "username": "alice"})
 }
 
 func sampleSession() *Session {
+	access := sampleAccessToken()
 	return &Session{
-		ID:             "access-token",
+		ID:             access,
 		Mode:           ModeOIDC,
-		AccessToken:    "access-token",
+		AccessToken:    access,
 		RefreshToken:   "refresh-token",
-		IDToken:        "id-token",
-		AccessExpiry:   time.Now().Add(time.Hour).Truncate(time.Second),
+		IDToken:        sampleIDToken(),
+		AccessExpiry:   sampleAccessExp,
 		AbsoluteExpiry: time.Now().Add(8 * time.Hour).Truncate(time.Second),
 		User:           User{Name: "alice", Email: "alice@example.com", Scopes: []string{"ap:project:read"}},
 		OrgHandle:      "acme",
@@ -82,8 +112,18 @@ func TestCookieStateRoundTripAcrossCodecs(t *testing.T) {
 	if got.OrgHandle != want.OrgHandle || !got.OrgDiscovered {
 		t.Errorf("org = %q discovered=%v, want %q true", got.OrgHandle, got.OrgDiscovered, want.OrgHandle)
 	}
-	if got.User.Name != "alice" || len(got.User.Scopes) != 1 {
-		t.Errorf("user = %+v, want alice with one scope", got.User)
+	// User is no longer stored — it is recomputed from the access token and id_token.
+	// The id_token is where the email lives, so finding it here proves both tokens
+	// survived the trip and were fed back through the same mapping the login path uses.
+	if got.User.Name != "alice" || got.User.Email != "alice@example.com" {
+		t.Errorf("user = %+v, want it rebuilt from the access token and id_token", got.User)
+	}
+	if len(got.User.Scopes) != 1 || got.User.Scopes[0] != "ap:project:read" {
+		t.Errorf("user scopes = %v, want the access token's own scope claim", got.User.Scopes)
+	}
+	if !got.AccessExpiry.Equal(sampleAccessExp) {
+		t.Errorf("access expiry = %v, want it read off the access token's exp claim (%v)",
+			got.AccessExpiry, sampleAccessExp)
 	}
 	if got.Exchanged.Token != want.Exchanged.Token || got.Exchanged.ConfigFingerprint != "fp" {
 		t.Errorf("exchanged = %+v", got.Exchanged)
@@ -93,6 +133,21 @@ func TestCookieStateRoundTripAcrossCodecs(t *testing.T) {
 	}
 	if !got.Exchanged.Expiry.Equal(want.Exchanged.Expiry) || !got.AbsoluteExpiry.Equal(want.AbsoluteExpiry) {
 		t.Errorf("expiries not preserved: %v / %v", got.Exchanged.Expiry, got.AbsoluteExpiry)
+	}
+
+	// What the record must NOT be carrying: the envelope fields that are derivations.
+	// Asserted on the envelope's own keys, not on values — the id_token's payload is
+	// stored as plain text (that is what makes it compressible), so a claim like the
+	// email does legitimately appear inside it.
+	raw := decodeEnvelopeForTest(t, reader, parts)
+	for key, derivation := range map[string]string{
+		`"u":`:  "the display user (rebuilt from the access token + id_token)",
+		`"ae":`: "the access expiry (read off the access token's exp claim)",
+		`"m":`:  "the session mode (always OIDC for a stored session)",
+	} {
+		if strings.Contains(raw, key) {
+			t.Errorf("the sealed record still carries %s — %s", key, derivation)
+		}
 	}
 }
 
@@ -104,7 +159,7 @@ func TestCookieStateRejectsRecordBoundToAnotherToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	if _, ok := c.Decode(parts, "some-other-access-token"); ok {
+	if _, ok := c.Decode(parts, testJWT(map[string]any{"sub": "u-2"})); ok {
 		t.Fatal("a record bound to a different access token was accepted")
 	}
 }
@@ -117,24 +172,24 @@ func TestCookieStateRejectsUnusableRecords(t *testing.T) {
 	}
 
 	t.Run("another deployment's key", func(t *testing.T) {
-		if _, ok := testCodec(t, "different", 3500, 4).Decode(parts, "access-token"); ok {
+		if _, ok := testCodec(t, "different", 3500, 4).Decode(parts, sampleAccessToken()); ok {
 			t.Fatal("a record sealed under another key was accepted")
 		}
 	})
 	t.Run("tampered", func(t *testing.T) {
 		bad := append([]string(nil), parts...)
 		bad[0] = "A" + bad[0][1:]
-		if _, ok := c.Decode(bad, "access-token"); ok {
+		if _, ok := c.Decode(bad, sampleAccessToken()); ok {
 			t.Fatal("a tampered record was accepted")
 		}
 	})
 	t.Run("missing chunk", func(t *testing.T) {
-		if _, ok := c.Decode([]string{parts[0], ""}, "access-token"); ok {
+		if _, ok := c.Decode([]string{parts[0], ""}, sampleAccessToken()); ok {
 			t.Fatal("a record with a missing chunk was accepted")
 		}
 	})
 	t.Run("no cookies", func(t *testing.T) {
-		if _, ok := c.Decode(nil, "access-token"); ok {
+		if _, ok := c.Decode(nil, sampleAccessToken()); ok {
 			t.Fatal("an absent record was accepted")
 		}
 	})
@@ -145,7 +200,7 @@ func TestCookieStateRejectsUnusableRecords(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encode: %v", err)
 		}
-		if _, ok := c.Decode(p, "access-token"); ok {
+		if _, ok := c.Decode(p, sampleAccessToken()); ok {
 			t.Fatal("a session past its absolute expiry was accepted")
 		}
 	})
@@ -165,7 +220,7 @@ func TestCookieStateChunksToTheConfiguredSize(t *testing.T) {
 			t.Fatalf("chunk %d is %d bytes, over the 64-byte budget", i, len(p))
 		}
 	}
-	if _, ok := c.Decode(parts, "access-token"); !ok {
+	if _, ok := c.Decode(parts, sampleAccessToken()); !ok {
 		t.Fatal("a chunked record did not reassemble")
 	}
 }
@@ -183,7 +238,7 @@ func TestCookieStateShedsOptionalFieldsToFitBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	got, ok := c.Decode(parts, "access-token")
+	got, ok := c.Decode(parts, sampleAccessToken())
 	if !ok {
 		t.Fatal("Decode reported no session")
 	}
@@ -201,4 +256,19 @@ func TestCookieStateFailsWhenNothingFits(t *testing.T) {
 	if _, err := testCodec(t, "shared", 64, 1).Encode(s); !errors.Is(err, ErrStateTooLarge) {
 		t.Fatalf("Encode error = %v, want ErrStateTooLarge", err)
 	}
+}
+
+// decodeEnvelopeForTest unseals and inflates a record back to its raw JSON, so a test
+// can assert on what the record does NOT contain.
+func decodeEnvelopeForTest(t *testing.T, c *CookieCodec, parts []string) string {
+	t.Helper()
+	plain, err := c.sealer.Open(joinChunks(parts))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	raw, err := io.ReadAll(flate.NewReader(bytes.NewReader(plain)))
+	if err != nil {
+		t.Fatalf("inflate: %v", err)
+	}
+	return string(raw)
 }

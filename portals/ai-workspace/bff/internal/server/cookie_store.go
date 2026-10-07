@@ -22,62 +22,87 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ai-workspace-bff/internal/session"
 )
 
-// The session-state cookies carry what used to live in the BFF's process memory: the
-// OIDC refresh/id tokens, the cached exchanged token, and the selected organization.
-// Sealed (AES-256-GCM) under a key every replica derives identically, so a request
-// that lands on a replica which has never seen this user still finds its state.
+// The session-state cookies carry the OIDC refresh/id tokens, the cached exchanged
+// token and the selected org, sealed under a key every replica derives identically.
 //
-// stateChunkSize stays under the ~4 KB per-cookie ceiling browsers and intermediate
-// proxies enforce; stateMaxChunks bounds the total so a session can never grow into a
-// request header no proxy will accept. A session needing more than
-// stateChunkWarnCount cookies is logged once per write — it still works, but it is
-// the point at which an ingress's header-buffer limits start to matter.
+// stateChunkSize stays under the ~4 KB per-cookie ceiling browsers and proxies enforce;
+// stateMaxChunks bounds the total.
 const (
 	stateChunkSize      = 3500
 	stateMaxChunks      = 4
 	stateChunkWarnCount = 2
+
+	// nginx, Apache, Tomcat and CloudFront all default to 8 KB for a single header line,
+	// shared with every other cookie on this host. 6 KB is where an operator should
+	// hear about it, while they still have room to act.
+	cookieHeaderWarnBytes = 6 << 10
+	cookieWarnInterval    = 10 * time.Minute
 )
 
-// stateCarrier is one request's view of the session-state cookies: it decodes them on
-// demand and writes replacements onto this request's response.
-//
-// Request-scoped rather than a process-wide map, because that is the whole point — it
-// holds nothing between requests. The session.Store implementation below reaches it
-// through the request context, so every existing store call site keeps working
-// unchanged.
+var lastCookieWarn atomic.Int64
+
+// warnIfHeaderLarge reports on what the NEXT request will carry, at most once per
+// cookieWarnInterval — this is a property of the deployment, not of one request.
+func warnIfHeaderLarge(r *http.Request, stateBytes int) {
+	incoming := len(r.Header.Get("Cookie"))
+	existingState := 0
+	for _, c := range r.Cookies() {
+		if strings.HasPrefix(c.Name, stateCookiePrefixOf(r)) {
+			existingState += len(c.Value)
+		}
+	}
+	projected := incoming - existingState + stateBytes
+	if projected < cookieHeaderWarnBytes {
+		return
+	}
+
+	now := time.Now().Unix()
+	prev := lastCookieWarn.Load()
+	if now-prev < int64(cookieWarnInterval/time.Second) || !lastCookieWarn.CompareAndSwap(prev, now) {
+		return
+	}
+	slog.Warn("the session's Cookie header is approaching the size most proxies accept on a "+
+		"single header line; raise the request-header buffers of any ingress in front of this "+
+		"BFF (nginx: large_client_header_buffers) before it starts rejecting requests",
+		"cookie_header_bytes", projected,
+		"sealed_state_bytes", stateBytes,
+		"typical_proxy_limit_bytes", 8<<10)
+}
+
+// stateCarrier is one request's view of the session-state cookies. The session.Store
+// below reaches it through the request context, which is what let the process-local map
+// be replaced without touching a single call site.
 type stateCarrier struct {
 	srv *Server
 	r   *http.Request
 
 	mu sync.Mutex
-	// staged is the state written during this request, which supersedes whatever
-	// arrived on it. Needed because a handler routinely writes and then re-reads a
-	// session within one request (exchange caches a token, hydration reads it back).
+	// staged supersedes whatever arrived: a handler routinely writes and then re-reads
+	// a session within one request (exchange caches a token, hydration reads it back).
 	staged  *session.Session
 	cleared bool
-	// pending is what the response will carry, replaced in place by each write and
-	// emitted once by flush. One authoritative Set-Cookie per name per response: a
-	// login writes the session twice (the refresh state, then the exchanged token
-	// cached onto it), and emitting both would leave two values for the same cookie
-	// on the wire for any intermediary to pick between.
+
+	// pending is emitted once by flush, so each cookie gets one authoritative value per
+	// response — a login writes the session twice and two values for one name is
+	// something an intermediary gets to choose between.
 	//
-	// dirty is what separates "this request rewrote the session" from "this request
-	// only read it". Without it, a read-only request (GET /api/session, or a proxied
-	// call that hit the exchanged-token cache and so wrote nothing) would reach flush
-	// with nothing pending and expire the very cookies it had just read — deleting
-	// the session's refresh token and cached exchange on every such request.
+	// dirty separates "this request rewrote the session" from "only read it". Without
+	// it a read-only request reaches flush with nothing pending, which is
+	// indistinguishable from a delete, and expires the cookies it just read.
 	dirty    bool
 	pending  []string
 	pendingA int
-	// present counts the chunk cookies that arrived. A shrinking record must expire
-	// the indices it no longer occupies, or a stale trailing chunk corrupts the next
-	// request's reassembly.
+
+	// present counts the chunk cookies that arrived; a shrinking record must expire the
+	// indices it no longer occupies or a stale trailing chunk corrupts reassembly.
 	present int
 	flushed bool
 }
@@ -95,6 +120,12 @@ func newStateCarrier(srv *Server, r *http.Request) *stateCarrier {
 
 func stateCookieName(prefix string, i int) string { return prefix + strconv.Itoa(i) }
 
+func stateCookiePrefixOf(*http.Request) string { return defaultStatePrefix }
+
+// defaultStatePrefix mirrors config's stateCookiePrefix. Duplicated rather than
+// imported because being wrong here costs an inaccurate log line and nothing else.
+const defaultStatePrefix = "_ai_workspace_state_"
+
 func (c *stateCarrier) get(id string) (*session.Session, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -104,9 +135,8 @@ func (c *stateCarrier) get(id string) (*session.Session, bool) {
 			cp := *c.staged
 			return &cp, true
 		}
-		// A state staged for a different token means the token just rotated under
-		// us (doRefresh). The record on the request still belongs to the old token,
-		// so fall through and let Decode's binding check decide.
+		// Staged under a different token means it just rotated (doRefresh); fall
+		// through and let Decode's binding check decide.
 	} else if c.cleared {
 		return nil, false
 	}
@@ -130,11 +160,15 @@ func (c *stateCarrier) put(s *session.Session) error {
 	if err != nil {
 		return err
 	}
-	if len(chunks) > stateChunkWarnCount {
-		slog.Warn("session state needs several cookies; make sure any ingress in front of "+
-			"this BFF accepts request headers of this size",
-			"cookies", len(chunks), "bytes", len(chunks[0])*(len(chunks)-1)+len(chunks[len(chunks)-1]))
+	stateBytes := 0
+	for _, c := range chunks {
+		stateBytes += len(c)
 	}
+	if len(chunks) > stateChunkWarnCount {
+		slog.Warn("session state needs several cookies",
+			"cookies", len(chunks), "bytes", stateBytes)
+	}
+	warnIfHeaderLarge(c.r, stateBytes)
 
 	maxAge := 0
 	if !s.AbsoluteExpiry.IsZero() {
@@ -158,10 +192,8 @@ func (c *stateCarrier) delete(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// A state written earlier in this request for a DIFFERENT token must survive: the
-	// refresh path puts the rotated session and then deletes the pre-rotation one,
-	// which in a cookie world is the same storage slot. Deleting here would throw away
-	// the session that was just renewed.
+	// The refresh path puts the rotated session then deletes the pre-rotation one,
+	// which here is the same storage slot. Deleting would discard the renewed session.
 	if c.staged != nil && c.staged.AccessToken != id {
 		return
 	}
@@ -172,10 +204,8 @@ func (c *stateCarrier) delete(id string) {
 	c.dirty = true
 }
 
-// flush emits this request's single verdict on the state cookies: the record staged
-// by the last write, or an expiry of everything that arrived when the session was
-// deleted (or shrank to fewer chunks). Called once, immediately before the response
-// headers go out.
+// flush emits this request's single verdict on the state cookies, immediately before
+// the response headers go out.
 func (c *stateCarrier) flush(w http.ResponseWriter) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -183,8 +213,7 @@ func (c *stateCarrier) flush(w http.ResponseWriter) {
 		return
 	}
 	c.flushed = true
-	// A request that only read the session says nothing about these cookies: leave
-	// the browser holding exactly what it sent.
+	// A read-only request says nothing about these cookies.
 	if !c.dirty {
 		return
 	}
@@ -192,15 +221,15 @@ func (c *stateCarrier) flush(w http.ResponseWriter) {
 	for i, value := range c.pending {
 		c.srv.writeStateCookie(w, i, value, c.pendingA)
 	}
-	// Everything the browser already holds beyond what this response sets. Covers both
-	// a record that got smaller and a session that was deleted outright (pending nil).
+	// Expire whatever the browser holds beyond what this response sets — covers both a
+	// shrunken record and an outright delete (pending nil).
 	for i := len(c.pending); i < c.present; i++ {
 		c.srv.expireStateCookie(w, i)
 	}
 }
 
-// stateWriter defers the state cookies to the last moment before the response starts,
-// so each name is set exactly once however many times a handler rewrote the session.
+// stateWriter defers the state cookies to just before the response starts, so each name
+// is set once however many times a handler rewrote the session.
 type stateWriter struct {
 	http.ResponseWriter
 	carrier *stateCarrier
@@ -216,8 +245,7 @@ func (w *stateWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-// Flush commits the response, so the cookies must be on it by then — a streamed
-// (SSE) proxied response flushes before it ever calls Write.
+// Flush commits the response: a streamed (SSE) proxied response flushes before Write.
 func (w *stateWriter) Flush() {
 	w.carrier.flush(w.ResponseWriter)
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
@@ -225,14 +253,13 @@ func (w *stateWriter) Flush() {
 	}
 }
 
-// Unwrap lets http.ResponseController reach the underlying writer's own
-// Flush/Hijack/deadline support, which the reverse proxy relies on.
+// Unwrap lets http.ResponseController reach the underlying writer, which the reverse
+// proxy relies on.
 func (w *stateWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// cookieStore is a session.Store whose storage is the client's own cookies. Every
-// method resolves the current request's carrier from the context; outside a request
-// (or in a code path that never went through withSessionState) it reports an empty
-// store rather than panicking — a miss costs a re-exchange, never a wrong session.
+// cookieStore is a session.Store whose storage is the client's own cookies. Outside a
+// request it reports an empty store rather than panicking — a miss costs a re-exchange,
+// never a wrong session.
 type cookieStore struct{}
 
 type stateCarrierKey struct{}
@@ -242,9 +269,9 @@ func carrierFrom(ctx context.Context) *stateCarrier {
 	return c
 }
 
-// errNoCarrier means a store write was attempted outside an HTTP request. Returned
-// rather than ignored, so the one caller that treats persistence as load-bearing
-// (login) fails loudly instead of handing out a session that cannot be renewed.
+// errNoCarrier is returned rather than ignored so the one caller that treats
+// persistence as load-bearing (login) fails loudly instead of handing out a session
+// that cannot be renewed.
 var errNoCarrier = errors.New("no session-state carrier on this request")
 
 func (cookieStore) Put(ctx context.Context, s *session.Session) error {
@@ -271,9 +298,8 @@ func (cookieStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Touch extends the record's absolute expiry by rewriting it. Unlike the in-memory
-// store it must re-seal and re-set the cookies, since the expiry it is extending is
-// part of the sealed record.
+// Touch must re-seal and re-set the cookies: the expiry it extends is inside the
+// sealed record.
 func (cookieStore) Touch(ctx context.Context, id string, extendTo time.Time) error {
 	c := carrierFrom(ctx)
 	if c == nil {
@@ -287,17 +313,13 @@ func (cookieStore) Touch(ctx context.Context, id string, extendTo time.Time) err
 	return c.put(s)
 }
 
-// Close is a no-op: there is nothing held between requests to release.
+// Close is a no-op: nothing is held between requests.
 func (cookieStore) Close() error { return nil }
 
-// withSessionState gives every request a carrier for the session-state cookies.
-// Installed for the whole mux rather than per route: the store is reached from
-// handlers, composite handlers and the proxy path alike, and a route that quietly
-// lacked a carrier would degrade to "no session" with nothing pointing at why.
+// withSessionState gives every request a carrier. Installed for the whole mux: a route
+// that quietly lacked one would degrade to "no session" with nothing pointing at why.
 func (s *Server) withSessionState(next http.Handler) http.Handler {
-	// No codec means the memory store (or file-based auth) is in use and there is
-	// nothing for a carrier to seal — skip it entirely rather than attach one that
-	// would have no codec to call.
+	// No codec means file-based auth, which has no server-side session to seal.
 	if s.stateCodec == nil {
 		return next
 	}
@@ -306,15 +328,13 @@ func (s *Server) withSessionState(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), stateCarrierKey{}, carrier)
 		sw := &stateWriter{ResponseWriter: w, carrier: carrier}
 		next.ServeHTTP(sw, r.WithContext(ctx))
-		// A handler that returned without writing anything: net/http sends the
-		// headers after this returns, so the cookies still make it onto the response.
+		// A handler that wrote nothing: net/http sends headers after this returns.
 		carrier.flush(w)
 	})
 }
 
-// writeStateCookie sets one chunk. Same attributes as the session cookie pair —
-// HttpOnly so script can never read the sealed record, and Path-scoped to this app so
-// a host serving several portals does not ship this one's state to the others.
+// writeStateCookie sets one chunk: HttpOnly so script can never read the sealed record,
+// Path-scoped so a host serving several portals keeps them apart.
 func (s *Server) writeStateCookie(w http.ResponseWriter, i int, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     stateCookieName(s.cfg.Cookie.StatePrefix, i),
@@ -337,19 +357,4 @@ func (s *Server) expireStateCookie(w http.ResponseWriter, i int) {
 		SameSite: sameSite(s.cfg.Cookie.SameSite),
 		MaxAge:   -1,
 	})
-}
-
-// clearOrphanStateCookies expires the sealed state cookies on a BFF that is NOT using
-// the cookie store. They can only be leftovers from a deployment that has since been
-// switched to store = "memory", and nothing would ever clear them otherwise — a
-// browser keeps a cookie until something expires it by name. With the cookie store in
-// use, the carrier owns these cookies and clears them itself on delete (see flush), so
-// writing them here as well would put two values for the same name on one response.
-func (s *Server) clearOrphanStateCookies(w http.ResponseWriter) {
-	if s.stateCodec != nil {
-		return
-	}
-	for i := 0; i < stateMaxChunks; i++ {
-		s.expireStateCookie(w, i)
-	}
 }

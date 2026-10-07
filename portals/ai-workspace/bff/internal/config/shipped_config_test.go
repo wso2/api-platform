@@ -125,6 +125,8 @@ func TestShippedConfig_TemplateEditedForOIDC(t *testing.T) {
 	}
 	edited := strings.NewReplacer(
 		`mode = "basic"`, `mode = "oidc"`,
+		`encryption_key = "{{ env \"APIP_AIW_SESSION_ENCRYPTION_KEY\" \"\" }}"`,
+		`encryption_key = "test-session-key-at-least-32-characters"`,
 		`authority = "https://accounts.example.com"`, `authority = "https://idp.example.com"`,
 		`client_id = "your-client-id"`, `client_id = "client-id"`,
 		`client_secret = ""`, `client_secret = "s3cr3t"`,
@@ -167,5 +169,34 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 	// certificate — it is the starting point for a real deployment.
 	if cfg.ControlPlane.TLSSkipVerify {
 		t.Error("ControlPlane.TLSSkipVerify = true, want false — the template must default to a verified upstream")
+	}
+}
+
+// The shipped config must actually read the key scripts/setup.sh generates. The two
+// sides are a string in a shell script and a token in a TOML file, so nothing but a
+// test connects them — get the name wrong and an OIDC deployment fails at startup with
+// "encryption_key is required" while the operator can see the value in their env file.
+func TestShippedConfig_ReadsTheGeneratedSessionKey(t *testing.T) {
+	const generated = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	t.Setenv("APIP_AIW_SESSION_ENCRYPTION_KEY", generated)
+	t.Setenv("APIP_AIW_AUTH_MODE", "oidc")
+	t.Setenv("APIP_AIW_AUTH_OIDC_AUTHORITY", "https://idp.example.com")
+	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_ID", "client-id")
+	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "client-secret")
+
+	cfg, err := Load(quickstartConfig)
+	if err != nil {
+		t.Fatalf("Load(configs/config.toml) in OIDC mode error = %v — the shipped config must "+
+			"read the key scripts/setup.sh writes to api-platform.env", err)
+	}
+	if cfg.Session.EncryptionKey != generated {
+		t.Errorf("Session.EncryptionKey = %q, want the generated value", cfg.Session.EncryptionKey)
+	}
+	if cfg.Session.Store != SessionStoreCookie {
+		t.Errorf("Session.Store = %q, want %q", cfg.Session.Store, SessionStoreCookie)
+	}
+	// It is a server-side secret: it must never be handed to the browser.
+	if _, ok := cfg.RuntimeConfig["APIP_AIW_SESSION_ENCRYPTION_KEY"]; ok {
+		t.Error("the session encryption key leaked into the browser runtime config")
 	}
 }

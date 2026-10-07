@@ -104,13 +104,9 @@ var legacyCookieNames = []string{config.LegacyCookieName}
 // clearSessionCookie expires every cookie the session may be carried in — the current
 // two-part pair plus any legacy single-cookie name — at every Path it may have been set
 // on: the current base-path-scoped one, plus the legacy origin-root Path. The sealed
-// session-state cookies go with them: they are bound to the token being cleared and
-// are dead weight on every subsequent request once it is gone. With the cookie store
-// in use that clearing belongs to the request's carrier — every call site here is
-// paired with a store.Delete — so only orphans from a previous store mode are swept
-// directly.
+// sealed session-state cookies are not cleared here: they belong to the request's
+// carrier, and every call site below is paired with a store.Delete that clears them.
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
-	s.clearOrphanStateCookies(w)
 	paths := []string{s.path("/")}
 	if paths[0] != legacyRootCookiePath {
 		paths = append(paths, legacyRootCookiePath)

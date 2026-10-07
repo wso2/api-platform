@@ -14,16 +14,12 @@
  * under the License.
  */
 
-// Package secure seals small server-owned records into authenticated,
-// URL-safe strings that can be handed to a browser and taken back unchanged.
+// Package secure seals small server-owned records into authenticated, URL-safe strings
+// that can be handed to a browser and taken back unchanged (AES-256-GCM).
 //
-// It exists so the BFF can run with more than one replica. Everything the BFF
-// used to keep in a process-local map — the in-flight OIDC login transaction and
-// the session's refresh/id/exchanged tokens — is instead carried by the client,
-// encrypted under a key every replica derives identically, so a request may land
-// on any replica and still find the state it needs. The browser holds ciphertext
-// it cannot read (AES-256-GCM, HttpOnly cookies) and cannot alter undetected: a
-// single flipped byte fails the GCM tag and the record is rejected outright.
+// It is what lets the BFF run with more than one replica: the session and the in-flight
+// login transaction are carried by the client under a key every replica derives
+// identically, so a request may land anywhere and still find its state.
 package secure
 
 import (
@@ -40,11 +36,9 @@ import (
 // KeySize is the AES-256 key length every Sealer uses.
 const KeySize = 32
 
-// ErrInvalid is returned by Open for anything that is not an intact record sealed
-// under this key: a truncated cookie, a value from a deployment with a different
-// key, or a forgery. Deliberately one error for all of them — the caller's only
-// sane response is to treat the record as absent, and distinguishing "wrong key"
-// from "tampered" for a caller would be an oracle.
+// ErrInvalid covers every way a record fails to open: truncated, sealed under another
+// key, or forged. One error for all of them — telling a caller which would be an oracle,
+// and the only sane response to any of them is to treat the record as absent.
 var ErrInvalid = errors.New("sealed record is missing, expired or not valid for this key")
 
 // Sealer seals and opens records under one AES-256-GCM key.
@@ -52,8 +46,7 @@ type Sealer struct {
 	aead cipher.AEAD
 }
 
-// NewSealer builds a Sealer from an exactly-KeySize key — use DeriveKey to turn
-// configured key material of any length into one.
+// NewSealer builds a Sealer from an exactly-KeySize key; see DeriveKey.
 func NewSealer(key []byte) (*Sealer, error) {
 	if len(key) != KeySize {
 		return nil, fmt.Errorf("sealer key must be %d bytes, got %d", KeySize, len(key))
@@ -69,28 +62,20 @@ func NewSealer(key []byte) (*Sealer, error) {
 	return &Sealer{aead: aead}, nil
 }
 
-// DeriveKey stretches arbitrary configured key material into a KeySize key via
-// HKDF-SHA256, with label separating one use from another so the login-transaction
-// key and the session-state key are independent even when both are derived from the
-// same configured secret.
-//
-// Derivation rather than "use the bytes as given" is what lets an operator supply a
-// human-chosen secret, and what lets the OIDC client secret serve as the default
-// source: it is already shared byte-for-byte by every replica, so a deployment scales
-// out without configuring anything new, while HKDF keeps the AES key from being the
-// client secret itself.
+// DeriveKey stretches configured key material into a KeySize key. label separates one
+// use from another, so the login-transaction key cannot open a session record even
+// though both come from the same configured secret.
 func DeriveKey(material, label string) []byte {
 	key, err := hkdf.Key(sha256.New, []byte(material), nil, label, KeySize)
 	if err != nil {
-		// hkdf.Key fails only on an unusable length/hash, both fixed constants here.
+		// Only possible on an unusable length/hash, both constants here.
 		panic("secure: key derivation failed: " + err.Error())
 	}
 	return key
 }
 
-// Seal encrypts plaintext and returns base64url(nonce || ciphertext||tag). A fresh
-// random nonce is drawn per call from crypto/rand — never a counter, which would
-// repeat across replicas that share the key and break GCM.
+// Seal returns base64url(nonce || ciphertext||tag). The nonce is random per call, never
+// a counter: replicas share the key and would repeat one.
 func (s *Sealer) Seal(plaintext []byte) (string, error) {
 	nonce := make([]byte, s.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {

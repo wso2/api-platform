@@ -204,48 +204,34 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// client's own cookies, and the login transaction with it, so any replica can
 		// serve any request of any session. That is the whole multi-replica story —
 		// there is no shared store to run and no sticky sessions to configure.
-		var txOpts []auth.Option
-		if cfg.Session.Store == config.SessionStoreCookie {
-			material := cfg.SealKeyMaterial()
-			if material == "" {
-				return nil, fmt.Errorf("[session] store = %q needs key material: set [session] "+
-					"encryption_key, or leave it empty to derive from [auth.oidc] client_secret",
-					config.SessionStoreCookie)
-			}
-			stateSealer, err := secure.NewSealer(secure.DeriveKey(material, config.StateSealLabel))
-			if err != nil {
-				return nil, err
-			}
-			txSealer, err := secure.NewSealer(secure.DeriveKey(material, config.TxSealLabel))
-			if err != nil {
-				return nil, err
-			}
-			s.stateCodec = session.NewCookieCodec(stateSealer, stateChunkSize, stateMaxChunks)
-			s.store = cookieStore{}
-			txOpts = append(txOpts, auth.WithTxSealer(txSealer))
-			slog.Info("[session] store = \"cookie\": session state is carried by the client, " +
-				"sealed per-deployment. This BFF keeps nothing per-session, so it can run with " +
-				"multiple replicas behind a plain load balancer — no sticky sessions required. " +
-				"Each request carries a few KB more in its Cookie header; size any ingress " +
-				"header buffers accordingly.")
-		} else {
-			s.store = session.NewMemoryStore()
-			// Info, not Warn: this is the default and it is correct for the
-			// single-replica deployment most installs are — warning on every boot
-			// would cry wolf. It still has to name the one condition under which it
-			// is wrong, because that failure (a login that works only sometimes) is
-			// almost impossible to diagnose from its symptoms.
-			slog.Info("[session] store = \"memory\": sessions and in-flight logins live in this " +
-				"process only, which is correct for a SINGLE replica. Running more than one " +
-				"requires [session] store = \"cookie\" — otherwise a login fails whenever the " +
-				"IDP callback lands on a replica other than the one that started it.")
+		// The session's server-side state is sealed into the client's own cookies
+		// rather than kept here, so any replica can serve any request. File-based auth
+		// never gets here and needs nothing: its JWT is self-contained in the pair.
+		material := cfg.SealKeyMaterial()
+		if material == "" {
+			// validate already refused to start; this guards the path through tests
+			// that build a Config directly.
+			return nil, fmt.Errorf("[session] encryption_key is required")
 		}
+		stateSealer, err := secure.NewSealer(secure.DeriveKey(material, config.StateSealLabel))
+		if err != nil {
+			return nil, err
+		}
+		txSealer, err := secure.NewSealer(secure.DeriveKey(material, config.TxSealLabel))
+		if err != nil {
+			return nil, err
+		}
+		s.stateCodec = session.NewCookieCodec(stateSealer, stateChunkSize, stateMaxChunks, claims)
+		s.store = cookieStore{}
+		slog.Info("session state is carried by the client, sealed per-deployment: this BFF " +
+			"keeps nothing per-session, so it can run with multiple replicas behind a plain " +
+			"load balancer — no sticky sessions required.")
 
 		o, err := auth.NewOIDC(
 			ctx, upstream,
 			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
 			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
-			claims, cfg.Session.AbsoluteTTL, txOpts...,
+			claims, cfg.Session.AbsoluteTTL, txSealer,
 		)
 		if err != nil {
 			return nil, err
@@ -297,8 +283,6 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"callback_served_at", s.path("/api/auth/callback"),
 			"tx_cookie_path", s.txCookiePath(),
 			"post_logout_redirect_uri", cfg.Auth.OIDC.PostLogoutRedirectURL,
-			"session_store", cfg.Session.Store,
-			"stateless_login_tx", s.oidc.StatelessTransactions(),
 		)
 	}
 	return s, nil

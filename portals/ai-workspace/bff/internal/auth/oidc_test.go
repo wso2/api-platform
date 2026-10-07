@@ -25,43 +25,73 @@ import (
 	"testing"
 	"time"
 
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 	"net/url"
 )
 
 // TestCallbackReasonsAreDistinct pins that the four ways a callback fails to match a
-// login are reported separately. They have different causes — a restarted process, a
-// cookie the browser never sent, a user who waited too long, and a genuinely wrong
-// state — and collapsing them into one string sends an operator looking for an attack
-// when the usual answer is a restart.
+// login are reported separately. They have different causes — a cookie the browser
+// never sent, a cookie this deployment's key cannot open, a user who waited too long,
+// and a genuinely wrong state — and collapsing them into one string sends an operator
+// looking for an attack when the usual answer is a misconfigured key or a slow login.
 func TestCallbackReasonsAreDistinct(t *testing.T) {
-	newOIDC := func() *OIDC {
-		return &OIDC{txs: make(map[string]*txn), done: make(chan struct{})}
-	}
-
 	t.Run("no tx cookie", func(t *testing.T) {
-		_, _, err := newOIDC().Callback(context.Background(), "", "some-state", "code")
+		_, _, err := testOIDC(t).Callback(context.Background(), "", "some-state", "code")
 		assertReason(t, err, ReasonNoTxCookie)
 	})
 
-	t.Run("no transaction (server restarted)", func(t *testing.T) {
-		_, _, err := newOIDC().Callback(context.Background(), "tx-gone", "some-state", "code")
+	t.Run("cookie will not open", func(t *testing.T) {
+		_, _, err := testOIDC(t).Callback(context.Background(), "not-a-sealed-record", "some-state", "code")
+		assertReason(t, err, ReasonNoTransaction)
+	})
+
+	t.Run("sealed under another deployment's key", func(t *testing.T) {
+		other := testOIDC(t)
+		mine, err := secure.NewSealer(secure.DeriveKey("different-material", "test/tx"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := &OIDC{sealer: mine}
+		tx := sealedTx(t, other, &txn{State: "s", Expiry: time.Now().Add(time.Minute)})
+		_, _, err = o.Callback(context.Background(), tx, "s", "code")
 		assertReason(t, err, ReasonNoTransaction)
 	})
 
 	t.Run("expired transaction", func(t *testing.T) {
-		o := newOIDC()
-		o.txs["tx-1"] = &txn{State: "s", Expiry: time.Now().Add(-time.Minute)}
-		_, _, err := o.Callback(context.Background(), "tx-1", "s", "code")
+		o := testOIDC(t)
+		tx := sealedTx(t, o, &txn{State: "s", Expiry: time.Now().Add(-time.Minute)})
+		_, _, err := o.Callback(context.Background(), tx, "s", "code")
 		assertReason(t, err, ReasonExpired)
 	})
 
 	t.Run("state differs", func(t *testing.T) {
-		o := newOIDC()
-		o.txs["tx-1"] = &txn{State: "expected", Expiry: time.Now().Add(time.Minute)}
-		_, _, err := o.Callback(context.Background(), "tx-1", "attacker-supplied", "code")
+		o := testOIDC(t)
+		tx := sealedTx(t, o, &txn{State: "expected", Expiry: time.Now().Add(time.Minute)})
+		_, _, err := o.Callback(context.Background(), tx, "attacker-supplied", "code")
 		assertReason(t, err, ReasonStateDiffers)
 	})
+}
+
+// testOIDC builds an authenticator with a real transaction sealer, which is now the
+// only way a login transaction exists.
+func testOIDC(t *testing.T) *OIDC {
+	t.Helper()
+	sealer, err := secure.NewSealer(secure.DeriveKey("test-material", "test/tx"))
+	if err != nil {
+		t.Fatalf("NewSealer: %v", err)
+	}
+	return &OIDC{sealer: sealer}
+}
+
+// sealedTx is the tx cookie value for a transaction, as AuthCodeURL would have written it.
+func sealedTx(t *testing.T, o *OIDC, tx *txn) string {
+	t.Helper()
+	v, err := o.sealTxn(tx)
+	if err != nil {
+		t.Fatalf("sealTxn: %v", err)
+	}
+	return v
 }
 
 func assertReason(t *testing.T, err error, want string) {
@@ -143,17 +173,14 @@ func TestRefreshKeepsIDTokenOnlyProfileClaims(t *testing.T) {
 	})
 }
 
-// A login that takes longer than the transaction lives must say so. Swept on
-// expiry, it would report "no such transaction" instead — indistinguishable from a
-// restart or a replay, which is the difference between a one-line diagnosis and an
-// afternoon of guessing.
+// A login that takes longer than the transaction lives must say so. Reported as
+// "cannot open" instead, it would be indistinguishable from a key mismatch — the
+// difference between a one-line diagnosis and an afternoon of guessing.
 func TestCallbackReportsExpiredRatherThanMissing(t *testing.T) {
-	o := &OIDC{txs: map[string]*txn{}, done: make(chan struct{})}
-	defer o.Close()
+	o := testOIDC(t)
+	tx := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(-time.Minute)})
 
-	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(-time.Minute)}
-
-	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	_, _, err := o.Callback(context.Background(), tx, "st", "code")
 	var mismatch ErrStateMismatch
 	if !errors.As(err, &mismatch) {
 		t.Fatalf("err = %v, want ErrStateMismatch", err)
@@ -173,40 +200,50 @@ func TestTxTTLIsGenerousEnoughForAnInteractiveLogin(t *testing.T) {
 		t.Errorf("TxTTL = %s, too short for an interactive IDP login", TxTTL)
 	}
 	if expiredRetention <= TxTTL {
-		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or expired transactions "+
-			"are swept before they can be reported as expired", expiredRetention, TxTTL)
+		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or the tx cookie dies "+
+			"before an expired login can be reported as expired", expiredRetention, TxTTL)
 	}
 }
 
-// A consumed transaction is gone: replaying the callback URL must not log anyone in
-// a second time.
-func TestCallbackConsumesTheTransaction(t *testing.T) {
-	// The code exchange is expected to fail — this is about the transaction, not the
-	// IDP — but it must reach a real endpoint rather than a nil client.
+// What still guards a replayed callback, now that a transaction lives in the client's
+// cookie and so cannot be consumed on first use.
+//
+// This is a deliberate trade and it is named here so nobody has to infer it: a sealed
+// transaction can be presented twice. What stops a replay mattering is that a
+// transaction is worthless without the authorization `code` the IDP hands back, that
+// code is single-use at the IDP and a second presentation is refused there, and the tx
+// cookie is cleared on every callback. The checks below — expiry, state, and (in
+// Callback) the id_token's nonce — all still apply on every presentation. Restoring
+// one-shot semantics would require shared server state, which is the thing the cookie
+// store exists to avoid.
+func TestReplayedCallbackStillFailsEveryOtherCheck(t *testing.T) {
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer idp.Close()
 
-	o := &OIDC{
-		client: idp.Client(),
-		disco:  discoveryDoc{TokenEndpoint: idp.URL},
-		txs:    map[string]*txn{},
-		done:   make(chan struct{}),
-	}
-	defer o.Close()
-	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(time.Hour)}
+	o := testOIDC(t)
+	o.client = idp.Client()
+	o.disco = discoveryDoc{TokenEndpoint: idp.URL}
 
-	// First use fails at the code exchange, but must still consume the transaction.
-	_, _, _ = o.Callback(context.Background(), "tx-1", "st", "code")
-	if n := o.PendingTransactions(); n != 0 {
-		t.Fatalf("pending transactions = %d after use, want 0", n)
+	// Expiry is re-checked on every presentation, not recorded as "already used".
+	expired := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(-time.Minute)})
+	for i := 0; i < 2; i++ {
+		_, _, err := o.Callback(context.Background(), expired, "st", "code")
+		var mismatch ErrStateMismatch
+		if !errors.As(err, &mismatch) || mismatch.Reason != ReasonExpired {
+			t.Fatalf("presentation %d: err = %v, want %s", i+1, err, ReasonExpired)
+		}
 	}
 
-	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
-	var mismatch ErrStateMismatch
-	if !errors.As(err, &mismatch) || mismatch.Reason != ReasonNoTransaction {
-		t.Errorf("replay err = %v, want %s", err, ReasonNoTransaction)
+	// A live transaction replayed with the wrong state is refused on state, every time.
+	live := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(time.Hour)})
+	for i := 0; i < 2; i++ {
+		_, _, err := o.Callback(context.Background(), live, "not-st", "code")
+		var mismatch ErrStateMismatch
+		if !errors.As(err, &mismatch) || mismatch.Reason != ReasonStateDiffers {
+			t.Fatalf("presentation %d: err = %v, want %s", i+1, err, ReasonStateDiffers)
+		}
 	}
 }
 
@@ -218,8 +255,7 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 		clientID:    "ai-workspace",
 		redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
 		scopes:      "openid profile email",
-		txs:         make(map[string]*txn),
-		done:        make(chan struct{}),
+		sealer:      testOIDC(t).sealer,
 		disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
 	}
 
