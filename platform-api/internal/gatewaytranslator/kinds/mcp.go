@@ -47,7 +47,7 @@ var MCP = translate.Kind{
 			Apply: mcpFoldSpecVersions,
 		},
 		{
-			Below: gwversion.MinUpstreamAuthTypeNoneOtherVersion,
+			Below: gwversion.MinMCPUpstreamAuthTypeNoneOtherVersion,
 			Name:  "adapt spec.upstream.auth to the auth types older validators accept",
 			Apply: mcpUpstreamAuth,
 		},
@@ -60,8 +60,8 @@ var MCP = translate.Kind{
 const mcpResourcePath = "/mcp"
 
 // mcpLegacySpecVersionsNewestFirst are the MCP specification revisions every
-// gateway below MinMCPSpecVersionListGatewayVersion accepts in its singular
-// spec.specVersion field, newest first.
+// LTS gateway accepts in its singular spec.specVersion field, newest first.
+// No LTS release knows the plural list (MinMCPSpecVersionListGatewayVersion).
 var mcpLegacySpecVersionsNewestFirst = []string{
 	constants.MCPSpecVersion20251125,
 	constants.MCPSpecVersion20250618,
@@ -144,12 +144,12 @@ func mcpFoldSpecVersions(artifact any, r *translate.Report) error {
 	switch {
 	case chosen == "":
 		r.Warn(constants.MCPProxy, field,
-			"none of the declared MCP spec versions %v is supported by gateways below %s; specVersion omitted so the gateway default applies",
-			declared, gwversion.MinMCPSpecVersionListGatewayVersion)
+			"none of the declared MCP spec versions %v is supported by %s; specVersion omitted so the gateway default applies",
+			declared, gwversion.Gateways(gwversion.MinMCPSpecVersionListGatewayVersion))
 	case len(dropped) > 0:
 		r.Warn(constants.MCPProxy, field,
-			"gateways below %s accept a single specVersion; using %s and dropping %v",
-			gwversion.MinMCPSpecVersionListGatewayVersion, chosen, dropped)
+			"%s accept a single specVersion; using %s and dropping %v",
+			gwversion.Gateways(gwversion.MinMCPSpecVersionListGatewayVersion), chosen, dropped)
 	}
 	return nil
 }
@@ -160,6 +160,6 @@ func mcpUpstreamAuth(artifact any, r *translate.Report) error {
 	if err != nil {
 		return err
 	}
-	downConvertModelUpstreamAuth(&a.Spec.Upstream.Auth, constants.MCPProxy, "spec.upstream.auth", r)
+	downConvertModelUpstreamAuth(mcpUpstreamAuthRule, &a.Spec.Upstream.Auth, constants.MCPProxy, "spec.upstream.auth", r)
 	return nil
 }

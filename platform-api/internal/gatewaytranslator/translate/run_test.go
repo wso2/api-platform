@@ -62,7 +62,7 @@ func kindWith(steps ...Step) Kind {
 func TestRun_AppliesOnlyStepsBelowTheGatewayVersion_InOrder(t *testing.T) {
 	k := kindWith(
 		recordingStep(gwversion.MinGatewayV1Version, "below-1.2.0"),
-		recordingStep(gwversion.MinMCPSpecVersionListGatewayVersion, "below-2026.09.24"),
+		recordingStep(gwversion.MinMCPSpecVersionListGatewayVersion, "below-no-lts"),
 		recordingStep(gwversion.MinGatewayV1Version, "also-below-1.2.0"),
 	)
 
@@ -70,23 +70,23 @@ func TestRun_AppliesOnlyStepsBelowTheGatewayVersion_InOrder(t *testing.T) {
 		a := newFake()
 		rep, err := Run(k, "1.0", "1.1.0", a)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"normalize", "below-1.2.0", "below-2026.09.24", "also-below-1.2.0"}, a.trail)
+		assert.Equal(t, []string{"normalize", "below-1.2.0", "below-no-lts", "also-below-1.2.0"}, a.trail)
 		assert.Equal(t, constants.GatewayApiVersionV1Alpha1, a.apiVersion)
 		assert.Len(t, rep.Warnings(), 3)
 	})
 
-	t.Run("gateway 1.2.0 runs only the CalVer-gated step and keeps v1", func(t *testing.T) {
+	t.Run("gateway 1.2.0 runs only the step no LTS release has and keeps v1", func(t *testing.T) {
 		a := newFake()
 		rep, err := Run(k, "1.0", "1.2.0", a)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"normalize", "below-2026.09.24"}, a.trail)
+		assert.Equal(t, []string{"normalize", "below-no-lts"}, a.trail)
 		assert.Equal(t, constants.GatewayApiVersion, a.apiVersion)
 		assert.Len(t, rep.Warnings(), 1)
 	})
 
-	t.Run("gateway 2026.09.24 only normalizes", func(t *testing.T) {
+	t.Run("unversioned gateway only normalizes", func(t *testing.T) {
 		a := newFake()
-		rep, err := Run(k, "1.0", "2026.09.24", a)
+		rep, err := Run(k, "1.0", "", a)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"normalize"}, a.trail)
 		assert.Equal(t, constants.GatewayApiVersion, a.apiVersion)

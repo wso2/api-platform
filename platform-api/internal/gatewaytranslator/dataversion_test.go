@@ -79,7 +79,6 @@ func TestGatewayDataVersionForGateway(t *testing.T) {
 		{"reported 1.2 is v1", "1.2", GatewayDataVersionV1},
 		{"reported 1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
 		{"reported 1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
-		{"CalVer release is v1", "2026.09.24", GatewayDataVersionV1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

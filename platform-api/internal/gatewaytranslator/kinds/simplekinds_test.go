@@ -79,7 +79,7 @@ func TestAgent_IsIdentityOnCurrentGateways(t *testing.T) {
 	}
 	before := *a
 
-	rep, err := translate.Run(Agent, "1.0", "2026.09.24", a)
+	rep, err := translate.Run(Agent, "1.0", "", a)
 	require.NoError(t, err)
 	assert.Equal(t, before, *a)
 	assert.True(t, rep.Empty())

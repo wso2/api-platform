@@ -467,29 +467,40 @@ adapts them, per deployment, to the release the target gateway reported in its m
 kind under `kinds/`, every gateway version literal in `gwversion/versions.go`, and the engine in
 `translate/`. To see what an artifact kind gets on an older gateway, open `kinds/<kind>.go`.
 
+This covers the LTS gateway releases `1.0.0`, `1.1.0` and `1.2.0`, which use semver. STS releases
+are named after their release date (e.g. `2026.05.13`) and do not share the LTS version line, so
+they are not compared against LTS releases: a gateway reporting a date is treated as a current build
+and receives artifacts unchanged, as before. Per-channel handling is tracked in
+[#3681](https://github.com/wso2/api-platform/issues/3681).
+
 | Gateway release | What changes for it |
 |---|---|
-| `1.0.0`, `1.1.0` | CRD `apiVersion` becomes `v1alpha1`. LLM provider/proxy `globalPolicies`/`operationPolicies` are flattened into `policies`. LLM proxy `additionalProviders` are dropped. MCP upstream URLs lose their trailing `/mcp` (the gateway appends it). MCP `specVersions` collapse to one `specVersion`. Upstream auth `type: none` becomes no auth block. `{{ secret "handle" }}` placeholders are replaced with the plaintext value when the gateway fetches the artifact, because these releases cannot pull secrets from the control plane. |
-| `1.2.0` | MCP `specVersions` collapse to one `specVersion`. Everything else ships unchanged; the gateway syncs secrets itself. |
-| `2026.09.24` and later | Unchanged. This is also the first release with the `Agent` kind. |
+| `1.0.0`, `1.1.0` | CRD `apiVersion` becomes `v1alpha1`. LLM provider/proxy `globalPolicies`/`operationPolicies` are flattened into `policies`. LLM proxy `additionalProviders` are dropped. MCP upstream URLs lose their trailing `/mcp` (the gateway appends it). LLM upstream auth `type: none` becomes no auth block. `{{ secret "handle" }}` placeholders are replaced with the plaintext value when the gateway fetches the artifact, because these releases cannot pull secrets from the control plane. |
+| `1.0.0`, `1.1.0`, `1.2.0` | MCP `specVersions` collapse to one `specVersion`. MCP upstream auth `type: none` becomes no auth block: no LTS MCP validator accepts an auth block without a header and value. |
+| `1.2.0` | Everything else ships unchanged; the gateway syncs secrets itself. |
 
 Rules the translator follows:
 
-- A kind the gateway does not have (`Agent` below `2026.09.24`, `WebBrokerApi` below `1.2.0`) is
+- A kind the gateway does not have (`Agent` on every LTS release, `WebBrokerApi` below `1.2.0`) is
   **refused** at deploy and restore time with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY`. Nothing
   is stored and no event is sent.
-- A field the gateway does not know is stripped, and a value it cannot accept (an upstream auth
+- A field the gateway does not know is stripped, and a value it cannot accept (an LLM upstream auth
   type other than `api-key` on `1.0.0`/`1.1.0`, an MCP upstream whose path does not end in `/mcp`)
-  is shipped unchanged so the gateway reports it. Each such decision is logged once at `WARN` as
+  is shipped unchanged so the gateway reports it. An MCP upstream auth type `other` also ships
+  unchanged with a warning: LTS releases apply it like `api-key`, with the configured header and
+  value. Each such decision is logged once at `WARN` as
   `Deployment artifact adapted for older gateway`, with `kind`, `field`, `deploymentID`,
   `gatewayID` and `gatewayVersion`.
 - Stored deployment content always keeps its `{{ secret }}` placeholders; plaintext is produced
   only in the response to the gateway's fetch. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
-  gateway only through a redeploy.
+  gateway only through a redeploy, and a `1.2.0` gateway only after its controller reconnects (it
+  caches each secret after the first fetch).
 - A gateway with no reported version (never connected, or a non-semver dev build) is treated as a
   current build.
 
 Known limitations: a plaintext secret containing `{{` is re-parsed by the `1.1.0` template engine;
+a `1.0.0` gateway keeps only the last policy of a given name on a route, so a global and an
+operation-level policy with the same name (e.g. two `set-headers`) do not both apply there;
 a `1.2.0` gateway with `mcp.append_resource_path_to_backend` enabled receives a doubled `/mcp`
 because Platform API cannot see that toggle.
 

@@ -43,7 +43,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
-	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 )
 
 // lockedBuffer is a bytes.Buffer safe to share with a slog handler.
@@ -73,6 +72,11 @@ func agentDeployConfig() *config.Server {
 
 // seedAgentGateway inserts a gateway new enough to receive the v1 artifact shape
 // and returns its UUID.
+// agentGatewayVersion is the version the Agent fixtures give their gateways. No
+// LTS gateway release has the Agent kind, so they are unversioned: a gateway that
+// reports no version is treated as a current build and accepts every kind.
+const agentGatewayVersion = ""
+
 func seedAgentGateway(t *testing.T, db *database.DB, org, handle, version string) string {
 	t.Helper()
 	gatewayUUID := "gw-" + org + "-" + handle
@@ -102,7 +106,7 @@ func setupAgentDeployEnv(t *testing.T) *agentDeployEnv {
 		agentProxyTestEnv: env,
 		proxy:             "weather-agent",
 		gateway:           "ai-gw",
-		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", gwversion.MinAgentKindGatewayVersion),
+		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", agentGatewayVersion),
 	}
 }
 
@@ -201,7 +205,7 @@ func TestAgentProxyDeployment_StoresTheGatewayArtifactAndReportsTargetVersion(t 
 	}
 
 	logs := env.deployLogs.String()
-	for _, want := range []string{`"deploymentID":"` + deploymentID + `"`, `"targetDataVersion":"v1"`, `"gatewayVersion":"` + gwversion.MinAgentKindGatewayVersion + `"`} {
+	for _, want := range []string{`"deploymentID":"` + deploymentID + `"`, `"targetDataVersion":"v1"`, `"gatewayVersion":"` + agentGatewayVersion + `"`} {
 		if !strings.Contains(logs, want) {
 			t.Fatalf("deploy log missing %s; logs: %s", want, logs)
 		}
@@ -210,8 +214,8 @@ func TestAgentProxyDeployment_StoresTheGatewayArtifactAndReportsTargetVersion(t 
 
 func TestAgentProxyDeployment_OneRecordAndOneStatusPerGateway(t *testing.T) {
 	env := setupAgentDeployEnv(t)
-	second := seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw-2", gwversion.MinAgentKindGatewayVersion)
-	third := seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw-3", "2026.12.01")
+	second := seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw-2", agentGatewayVersion)
+	third := seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw-3", agentGatewayVersion)
 
 	for _, gw := range []string{env.gateway, "ai-gw-2", "ai-gw-3"} {
 		env.deploy(t, gw)
@@ -407,7 +411,7 @@ func TestAgentProxyDeployment_RetentionPrunesInTheSameTransaction(t *testing.T) 
 
 func TestAgentProxyDeployment_RejectionContract(t *testing.T) {
 	env := setupAgentDeployEnv(t)
-	seedAgentGateway(t, env.db, agentProxyOtherOrg, "foreign-gw", gwversion.MinAgentKindGatewayVersion)
+	seedAgentGateway(t, env.db, agentProxyOtherOrg, "foreign-gw", agentGatewayVersion)
 	decodeAgentProxyJSON(t, callAgentProxyAs(t, env.handler, agentProxyOtherOrg, agentProxyActor,
 		http.MethodPost, agentProxyBase, minimalAgentProxyBody("foreign-agent", "Foreign")), http.StatusCreated)
 
@@ -460,7 +464,7 @@ func TestAgentProxyDeployment_RejectionContract(t *testing.T) {
 
 func TestAgentProxyDeployment_ActionsValidateTheBoundGateway(t *testing.T) {
 	env := setupAgentDeployEnv(t)
-	seedAgentGateway(t, env.db, agentProxyOrg, "other-gw", gwversion.MinAgentKindGatewayVersion)
+	seedAgentGateway(t, env.db, agentProxyOrg, "other-gw", agentGatewayVersion)
 	deploymentID := env.deploy(t, env.gateway)
 	itemPath := env.deploymentsPath() + "/" + deploymentID
 

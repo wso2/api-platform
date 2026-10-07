@@ -36,7 +36,6 @@ func TestParseVersion(t *testing.T) {
 		{"1.2.0-SNAPSHOT", Version{1, 2, 0}, true},
 		{"1.3.0", Version{1, 3, 0}, true},
 		{"2.0.0", Version{2, 0, 0}, true},
-		{"2026.09.24", Version{2026, 9, 24}, true},
 		{"1.1.9", Version{1, 1, 9}, false},
 		{"1.1.0", Version{1, 1, 0}, false},
 		{"1.0.0", Version{1, 0, 0}, false},
@@ -62,7 +61,7 @@ func TestParse_DistinguishesUnknownFromOld(t *testing.T) {
 		_, ok := Parse(raw)
 		assert.Falsef(t, ok, "%q must not parse", raw)
 	}
-	for _, raw := range []string{"1.0.0", "1.1", "v1.2.0-rc", "2026.09.24", "1"} {
+	for _, raw := range []string{"1.0.0", "1.1", "v1.2.0-rc", "1"} {
 		_, ok := Parse(raw)
 		assert.Truef(t, ok, "%q must parse", raw)
 	}
@@ -72,7 +71,6 @@ func TestVersion_AtLeast(t *testing.T) {
 	assert.True(t, Version{1, 2, 0}.AtLeast(Version{1, 2, 0}))
 	assert.True(t, Version{1, 3, 0}.AtLeast(Version{1, 2, 0}))
 	assert.True(t, Version{2, 0, 0}.AtLeast(Version{1, 9, 9}))
-	assert.True(t, Version{2026, 9, 24}.AtLeast(Version{1, 2, 0}), "CalVer is newer than every semver")
 	assert.False(t, Version{1, 1, 9}.AtLeast(Version{1, 2, 0}))
 	assert.False(t, Version{1, 2, 0}.AtLeast(Version{1, 2, 1}))
 }
@@ -86,4 +84,13 @@ func TestVersion_Below(t *testing.T) {
 func TestVersion_String(t *testing.T) {
 	assert.Equal(t, "2026.9.24", Version{2026, 9, 24}.String())
 	assert.Equal(t, "1.2.0", ParseVersion("v1.2.0-rc1").String())
+}
+
+// LTS releases are semver; a first field that is a year names a date-based STS
+// release, which the translator does not compare (issue #3681).
+func TestVersion_IsLTS(t *testing.T) {
+	for _, v := range []Version{{1, 0, 0}, {1, 2, 0}, {2, 0, 0}} {
+		assert.Truef(t, v.IsLTS(), "%s is LTS", v)
+	}
+	assert.False(t, Version{2026, 5, 13}.IsLTS())
 }

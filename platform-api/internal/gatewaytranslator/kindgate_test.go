@@ -64,8 +64,7 @@ func TestEnsureKindSupported(t *testing.T) {
 	}{
 		{"Agent on 1.2.0 is refused", constants.GatewayKindAgent, "1.2.0", true},
 		{"Agent on 1.1.0 is refused", constants.GatewayKindAgent, "1.1.0", true},
-		{"Agent on its first release is allowed", constants.GatewayKindAgent, gwversion.MinAgentKindGatewayVersion, false},
-		{"Agent on a later CalVer is allowed", constants.GatewayKindAgent, "2027.01.01", false},
+		{"Agent on 1.0.0 is refused", constants.GatewayKindAgent, "1.0.0", true},
 		{"Agent on an unversioned gateway is allowed", constants.GatewayKindAgent, "", false},
 		{"Agent on a dev build is allowed", constants.GatewayKindAgent, "it-e2e", false},
 		{"WebBroker on 1.1.0 is refused", constants.WebBrokerApi, "1.1.0", true},
@@ -87,12 +86,16 @@ func TestEnsureKindSupported(t *testing.T) {
 	}
 }
 
-// The user sees the control-plane kind they deployed and the release they need.
-func TestEnsureKindSupported_MessageNamesPlatformKindAndVersion(t *testing.T) {
+// The user sees the control-plane kind they deployed and what the gateway needs.
+func TestEnsureKindSupported_MessageNamesPlatformKindAndRequirement(t *testing.T) {
 	err := EnsureKindSupported(constants.GatewayKindAgent, "1.2.0")
 	require.Error(t, err)
 	msg := err.Error()
 	assert.Contains(t, msg, constants.AgentProxy)
 	assert.NotContains(t, msg, "Agent artifacts", "the gateway kind name is not what the user typed")
-	assert.Contains(t, msg, gwversion.MinAgentKindGatewayVersion)
+	assert.Contains(t, msg, gwversion.Requirement(gwversion.MinAgentKindGatewayVersion))
+
+	err = EnsureKindSupported(constants.WebBrokerApi, "1.1.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "gateway version 1.2.0 or newer is required")
 }

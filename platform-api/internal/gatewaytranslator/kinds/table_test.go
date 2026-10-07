@@ -28,19 +28,18 @@ import (
 )
 
 // Every definition is keyed by the gateway kind it declares, every Below and
-// MinGatewayVersion is a real version, and every step has a name — the
+// MinGatewayVersion is an LTS version or gwversion.NoLTSRelease, and every step
+// has a name — the
 // invariants the engine and the doc rely on.
 func TestAll_DefinitionsAreWellFormed(t *testing.T) {
 	require.NotEmpty(t, All)
 	for key, k := range All {
 		assert.Equalf(t, key, k.GatewayKind, "table key and GatewayKind must agree")
 		if k.MinGatewayVersion != "" {
-			_, ok := gwversion.Parse(k.MinGatewayVersion)
-			assert.Truef(t, ok, "%s: MinGatewayVersion %q must parse", key, k.MinGatewayVersion)
+			assert.Truef(t, isMinimum(k.MinGatewayVersion), "%s: MinGatewayVersion %q", key, k.MinGatewayVersion)
 		}
 		for i, s := range k.Steps {
-			_, ok := gwversion.Parse(s.Below)
-			assert.Truef(t, ok, "%s step %d: Below %q must parse", key, i, s.Below)
+			assert.Truef(t, isMinimum(s.Below), "%s step %d: Below %q", key, i, s.Below)
 			assert.NotEmptyf(t, s.Name, "%s step %d has no name", key, i)
 			assert.NotNilf(t, s.Apply, "%s step %d has no Apply", key, i)
 		}
@@ -67,4 +66,13 @@ func TestAll_MinimumGatewayVersions(t *testing.T) {
 	for _, kind := range []string{constants.RestApi, constants.MCPProxy, constants.LLMProvider, constants.LLMProxy, constants.WebSubApi} {
 		assert.Emptyf(t, All[kind].MinGatewayVersion, "%s exists on every gateway release", kind)
 	}
+}
+
+// isMinimum reports whether min is usable as a capability minimum.
+func isMinimum(min string) bool {
+	if min == gwversion.NoLTSRelease {
+		return true
+	}
+	v, ok := gwversion.Parse(min)
+	return ok && v.IsLTS()
 }

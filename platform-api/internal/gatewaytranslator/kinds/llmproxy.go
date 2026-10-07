@@ -45,7 +45,7 @@ var LLMProxy = translate.Kind{
 			Apply: llmProxyDropAdditionalProviders,
 		},
 		{
-			Below: gwversion.MinUpstreamAuthTypeNoneOtherVersion,
+			Below: gwversion.MinLLMUpstreamAuthTypeNoneOtherVersion,
 			Name:  "adapt spec.provider.auth to the auth types older validators accept",
 			Apply: llmProxyProviderAuth,
 		},
@@ -105,6 +105,6 @@ func llmProxyProviderAuth(artifact any, r *translate.Report) error {
 	if err != nil {
 		return err
 	}
-	downConvertAPIUpstreamAuth(&a.Spec.Provider.Auth, constants.LLMProxy, "spec.provider.auth", r)
+	downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.Provider.Auth, constants.LLMProxy, "spec.provider.auth", r)
 	return nil
 }

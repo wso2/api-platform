@@ -17,12 +17,17 @@
 
 package gwversion
 
-// The gateway release at which each capability first appeared. Each constant
-// is named after the capability, not the release, so a kind file reads as
-// "below the release that added X" and several capabilities may legitimately
-// share one release. Verified against the gateway source at tags
-// gateway/v1.0.0, gateway/v1.1.0, gateway/v1.2.0 and gateway/v2026.09.24.
+// The LTS gateway release at which each capability first appeared. Each
+// constant is named after the capability, not the release, so a kind file
+// reads as "below the release that added X" and several capabilities may
+// legitimately share one release. Verified against the gateway source at tags
+// gateway/v1.0.0, gateway/v1.1.0 and gateway/v1.2.0.
 const (
+	// NoLTSRelease is the minimum of a capability that no LTS release has
+	// yet: every gateway reporting an LTS version gets the adaptation (or the
+	// refusal). It is not a version and never parses.
+	NoLTSRelease = "no-lts-release"
+
 	// MinGatewayV1Version is the first release whose CRD apiVersion is
 	// "gateway.api-platform.wso2.com/v1"; older gateways accept only v1alpha1.
 	// Every artifact kind flips apiVersion together at this boundary.
@@ -39,35 +44,48 @@ const (
 	// releases append the "/mcp" operation path to the upstream path.
 	MinVerbatimMCPUpstreamPathVersion = "1.2.0"
 
-	// MinUpstreamAuthTypeNoneOtherVersion is the first release whose upstream
-	// auth validators accept type "none" and "other"; older releases accept
-	// only "api-key".
-	MinUpstreamAuthTypeNoneOtherVersion = "1.2.0"
+	// MinLLMUpstreamAuthTypeNoneOtherVersion is the first release whose LLM
+	// provider and proxy validators accept upstream auth type "none" and
+	// "other" (config/llm_validator.go); older releases accept only "api-key".
+	MinLLMUpstreamAuthTypeNoneOtherVersion = "1.2.0"
+
+	// MinMCPUpstreamAuthTypeNoneOtherVersion: no LTS release's MCP validator
+	// accepts auth type "none" or "other" without a header and value. 1.2.0
+	// lists both values in its MCP schema but still requires header and value
+	// for every type, so "none" fails there; every LTS release applies any
+	// type like api-key.
+	MinMCPUpstreamAuthTypeNoneOtherVersion = NoLTSRelease
 
 	// MinWebBrokerKindGatewayVersion is the first release with the WebBrokerApi
 	// artifact kind.
 	MinWebBrokerKindGatewayVersion = "1.2.0"
 
-	// MinMCPSpecVersionListGatewayVersion is the first release that understands
-	// the plural spec.specVersions list on an MCP proxy; older releases know
-	// only the singular spec.specVersion.
-	MinMCPSpecVersionListGatewayVersion = "2026.09.24"
+	// MinMCPSpecVersionListGatewayVersion: no LTS release understands the
+	// plural spec.specVersions list on an MCP proxy; they know only the
+	// singular spec.specVersion.
+	MinMCPSpecVersionListGatewayVersion = NoLTSRelease
 
-	// MinAgentKindGatewayVersion is the first release with the Agent artifact
-	// kind (gateway-controller commit 5f7cbc443).
-	MinAgentKindGatewayVersion = "2026.09.24"
+	// MinAgentKindGatewayVersion: no LTS release has the Agent artifact kind.
+	MinAgentKindGatewayVersion = NoLTSRelease
 )
 
-// AtLeast reports whether a gateway that reported rawVersion is at least the
-// release min. A blank or non-semver rawVersion is a current build (an
+// AtLeast reports whether a gateway that reported rawVersion has the
+// capability whose first LTS release is min. A blank or non-semver rawVersion is a current build (an
 // unregistered gateway, or a dev/e2e tag such as "it-e2e") and satisfies every
 // minimum: down-conversion is lossy, so it only applies when a gateway
 // positively reports an older release. This is the one rule every predicate
 // in the translator shares.
+//
+// An STS (date-named) release is not compared either: the channels do not
+// share a version line, so it is treated as a current build, as before the
+// translator existed (https://github.com/wso2/api-platform/issues/3681).
 func AtLeast(rawVersion, min string) bool {
 	v, ok := Parse(rawVersion)
-	if !ok {
+	if !ok || !v.IsLTS() {
 		return true
+	}
+	if min == NoLTSRelease {
+		return false
 	}
 	return v.AtLeast(ParseVersion(min))
 }
@@ -89,4 +107,22 @@ func SupportsSecretSync(rawVersion string) bool {
 // the artifact. It is the delivery-time counterpart of SupportsSecretSync.
 func RequiresInlineSecrets(rawVersion string) bool {
 	return !SupportsSecretSync(rawVersion)
+}
+
+// Gateways names the gateways below min for a warning, e.g. "gateways below
+// 1.2.0" or, for a capability no LTS release has, "LTS gateways".
+func Gateways(min string) string {
+	if min == NoLTSRelease {
+		return "LTS gateways"
+	}
+	return "gateways below " + min
+}
+
+// Requirement says what a gateway needs for a capability whose first LTS
+// release is min, for an error message.
+func Requirement(min string) string {
+	if min == NoLTSRelease {
+		return "no LTS gateway release supports them yet"
+	}
+	return "gateway version " + min + " or newer is required"
 }

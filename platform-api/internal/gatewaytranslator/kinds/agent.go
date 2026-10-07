@@ -27,8 +27,8 @@ import (
 // Agent is the Agent proxy kind: AgentProxy on the control plane, Agent in the
 // artifact the gateway receives.
 //
-// The kind first shipped in gateway 2026.09.24. A deploy to an older gateway is
-// refused before translation (see gatewaytranslator.EnsureKindSupported), so
+// No LTS gateway release has the kind (gwversion.MinAgentKindGatewayVersion), so
+// a deploy to an LTS gateway is refused before translation (see gatewaytranslator.EnsureKindSupported), so
 // no step is needed: every gateway that has the kind understands the current
 // shape. Normalize only checks the payload type.
 var Agent = translate.Kind{

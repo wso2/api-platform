@@ -29,6 +29,12 @@
 //   - the release of the gateway it is going to (model.Gateway.Version, the
 //     string the gateway reports in its manifest on connect).
 //
+// Only LTS gateway releases (semver: 1.0.0, 1.1.0, 1.2.0) are compared. STS
+// releases are named after their release date and do not share the LTS
+// version line, so a gateway reporting a date is treated as a current build
+// (https://github.com/wso2/api-platform/issues/3681). A capability that no
+// LTS release has yet uses gwversion.NoLTSRelease as its minimum.
+//
 // Generators always produce the gateway-latest shape. Translate first brings
 // the artifact up to that shape if it was stored earlier, then adapts it down
 // to what the target gateway understands, and reports every lossy decision.
@@ -59,13 +65,17 @@
 // # Adding a kind or a step
 //
 // A kind is one file in kinds/, one row in kinds.All and one test. A step is
-// one constant in gwversion/versions.go naming the release that made the step
-// unnecessary, and one translate.Step in the kind file.
+// one constant in gwversion/versions.go naming the LTS release that made the
+// step unnecessary (gwversion.NoLTSRelease if none has yet), and one
+// translate.Step in the kind file.
 //
 // # Known limitations
 //
 //   - A plaintext secret value containing "{{" is re-parsed by the 1.1.0
 //     gateway's template engine after secretinline has inlined it.
+//   - Gateway 1.0.0 keeps only the last policy of a given name on a route, so
+//     a flattened global policy and an operation-level policy with the same
+//     name do not both apply there.
 //   - Gateway 1.2.0 operators who enabled mcp.append_resource_path_to_backend
 //     get a doubled /mcp: platform-api sees the gateway version, not the toggle.
 //   - A gateway that has never pushed its manifest has no version and is

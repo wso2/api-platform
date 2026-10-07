@@ -107,6 +107,6 @@ func EnsureKindSupported(gatewayKind, gatewayVersion string) error {
 	if platformKind, ok := PlatformKindForGatewayKind(gatewayKind); ok {
 		displayKind = platformKind
 	}
-	return apperror.DeploymentKindUnsupportedByGateway.New(displayKind, min).
-		WithLogMessage(fmt.Sprintf("gateway reports version %q but kind %s requires %s or newer", gatewayVersion, gatewayKind, min))
+	return apperror.DeploymentKindUnsupportedByGateway.New(displayKind, gwversion.Requirement(min)).
+		WithLogMessage(fmt.Sprintf("gateway reports version %q but kind %s needs minimum %q", gatewayVersion, gatewayKind, min))
 }

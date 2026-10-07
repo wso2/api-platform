@@ -124,7 +124,7 @@ func TestLLMProxy_Run(t *testing.T) {
 		})
 	}
 
-	for _, current := range []string{"1.2.0", "2026.09.24", ""} {
+	for _, current := range []string{"1.2.0", ""} {
 		t.Run("gateway "+current+" is untouched", func(t *testing.T) {
 			a := newArtifact()
 			rep, err := translate.Run(LLMProxy, "1.1", current, a)

@@ -40,7 +40,7 @@ var LLMProvider = translate.Kind{
 			Apply: llmProviderFlattenPolicies,
 		},
 		{
-			Below: gwversion.MinUpstreamAuthTypeNoneOtherVersion,
+			Below: gwversion.MinLLMUpstreamAuthTypeNoneOtherVersion,
 			Name:  "adapt spec.upstream.auth to the auth types older validators accept",
 			Apply: llmProviderUpstreamAuth,
 		},
@@ -82,6 +82,6 @@ func llmProviderUpstreamAuth(artifact any, r *translate.Report) error {
 	if err != nil {
 		return err
 	}
-	downConvertAPIUpstreamAuth(&a.Spec.Upstream.Auth, constants.LLMProvider, "spec.upstream.auth", r)
+	downConvertAPIUpstreamAuth(llmUpstreamAuthRule, &a.Spec.Upstream.Auth, constants.LLMProvider, "spec.upstream.auth", r)
 	return nil
 }

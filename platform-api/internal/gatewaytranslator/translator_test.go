@@ -52,7 +52,7 @@ func TestTranslate_Matrix(t *testing.T) {
 			build: func() artifact {
 				return &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
 			},
-			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "": 0},
 		},
 		{
 			kind: constants.MCPProxy,
@@ -62,7 +62,7 @@ func TestTranslate_Matrix(t *testing.T) {
 				a.Spec.SpecVersions = []string{"2026-07-28", "2025-11-25"}
 				return a
 			},
-			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 1, "2026.09.24": 0},
+			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 1, "": 0},
 			assertOld: func(t *testing.T, a artifact) {
 				m := a.(*model.MCPProxyDeploymentYAML)
 				assert.Equal(t, "https://b/api", m.Spec.Upstream.URL)
@@ -81,7 +81,7 @@ func TestTranslate_Matrix(t *testing.T) {
 				a.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
 				return a
 			},
-			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "": 0},
 			assertOld: func(t *testing.T, a artifact) {
 				p := a.(*dto.LLMProviderDeploymentYAML)
 				assert.Nil(t, p.Spec.GlobalPolicies)
@@ -101,7 +101,7 @@ func TestTranslate_Matrix(t *testing.T) {
 				a.Spec.AdditionalProviders = []dto.LLMProxyDeploymentAdditionalProvider{{ID: "anthropic", As: "claude"}}
 				return a
 			},
-			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 0, "2026.09.24": 0},
+			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 0, "": 0},
 			assertOld: func(t *testing.T, a artifact) {
 				p := a.(*dto.LLMProxyDeploymentYAML)
 				assert.Nil(t, p.Spec.AdditionalProviders)
@@ -117,12 +117,12 @@ func TestTranslate_Matrix(t *testing.T) {
 			build: func() artifact {
 				return &model.WebSubAPIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.WebSubApi}
 			},
-			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "": 0},
 		},
 	}
 
 	for _, c := range checks {
-		for _, gw := range []string{"1.0.0", "1.1.0", "1.2.0", "2026.09.24"} {
+		for _, gw := range []string{"1.0.0", "1.1.0", "1.2.0", ""} {
 			t.Run(c.kind+"/gateway-"+gw, func(t *testing.T) {
 				a := c.build()
 				rep, err := Translate(c.kind, "1.1", gw, a)
@@ -174,11 +174,11 @@ func TestTranslate_WrongPayloadType_ReturnsError(t *testing.T) {
 // Agent proxies translate under their gateway kind.
 func TestTranslate_AgentUnderGatewayKind(t *testing.T) {
 	a := &model.AgentProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.GatewayKindAgent}
-	rep, err := Translate(constants.GatewayKindAgent, "1.0", "2026.09.24", a)
+	rep, err := Translate(constants.GatewayKindAgent, "1.0", "", a)
 	require.NoError(t, err)
 	assert.Equal(t, constants.GatewayApiVersion, a.ApiVersion)
 	assert.True(t, rep.Empty())
 
-	_, err = Translate(constants.AgentProxy, "1.0", "2026.09.24", a)
+	_, err = Translate(constants.AgentProxy, "1.0", "", a)
 	assert.Error(t, err, "AgentProxy is the control-plane name, not a gateway kind")
 }

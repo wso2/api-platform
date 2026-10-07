@@ -96,8 +96,8 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
-	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release predates
-	// the artifact kind (e.g. an Agent proxy on a gateway older than the Agent kind).
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
+	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
 	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
 )
 

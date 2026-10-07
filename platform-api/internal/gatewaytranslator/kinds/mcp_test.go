@@ -125,6 +125,7 @@ func TestMCP_UpstreamAuth(t *testing.T) {
 		{"none", true, 0},
 		{"other", false, 1},
 		{"basic", false, 1},
+		{"bearer", false, 0}, // MCP validators have handled bearer since 1.0.0
 	}
 	for _, tt := range tests {
 		t.Run("type="+tt.authType, func(t *testing.T) {
@@ -184,9 +185,32 @@ func TestMCP_Run(t *testing.T) {
 		assert.Len(t, rep.Warnings(), 1)
 	})
 
-	t.Run("gateway 2026.09.24 is untouched", func(t *testing.T) {
+	// 1.2.0 lists none/other in its MCP schema but its validator still demands
+	// a header and value for every type, so the auth step runs there too.
+	for _, gw := range []string{"1.0.0", "1.1.0", "1.2.0"} {
+		t.Run("gateway "+gw+" drops auth type none", func(t *testing.T) {
+			a := newMCPArtifact("https://b/api/mcp")
+			a.Spec.Upstream.Auth = &model.UpstreamAuth{Type: "none"}
+			rep, err := translate.Run(MCP, "1.1", gw, a)
+			require.NoError(t, err)
+			assert.Nil(t, a.Spec.Upstream.Auth)
+			assert.True(t, rep.Empty())
+		})
+	}
+
+	t.Run("unversioned gateway keeps auth type none", func(t *testing.T) {
+		a := newMCPArtifact("https://b/api/mcp")
+		a.Spec.Upstream.Auth = &model.UpstreamAuth{Type: "none"}
+		rep, err := translate.Run(MCP, "1.1", "", a)
+		require.NoError(t, err)
+		require.NotNil(t, a.Spec.Upstream.Auth)
+		assert.Equal(t, "none", a.Spec.Upstream.Auth.Type)
+		assert.True(t, rep.Empty())
+	})
+
+	t.Run("unversioned gateway is untouched", func(t *testing.T) {
 		a := newArtifact()
-		rep, err := translate.Run(MCP, "1.1", "2026.09.24", a)
+		rep, err := translate.Run(MCP, "1.1", "", a)
 		require.NoError(t, err)
 		assert.Equal(t, constants.GatewayApiVersion, a.ApiVersion)
 		assert.Equal(t, "https://b/api/mcp", a.Spec.Upstream.URL)

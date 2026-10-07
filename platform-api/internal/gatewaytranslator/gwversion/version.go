@@ -30,12 +30,23 @@ import (
 	"strings"
 )
 
-// Version is a parsed, comparable gateway version. Gateways report either a
-// semver ("1.2.0") or, from the 2026 releases on, a CalVer ("2026.09.24"); both
-// parse into the same three fields and compare major-first, so a CalVer release
-// is always newer than any semver one.
+// Version is a parsed, comparable gateway version.
 type Version struct {
 	Major, Minor, Patch int
+}
+
+// stsMinMajor separates the two gateway release channels. LTS releases use
+// semver ("1.2.0"); STS releases are named after their release date
+// ("YYYY.MM.DD"), so their first field is a year. The channels do not share a
+// version line: a date says nothing about which LTS capabilities a build has.
+const stsMinMajor = 2000
+
+// IsLTS reports whether v is an LTS (semver) release rather than a
+// date-named STS release. Only LTS versions are compared against capability
+// minimums; resolving STS capabilities is tracked in
+// https://github.com/wso2/api-platform/issues/3681.
+func (v Version) IsLTS() bool {
+	return v.Major < stsMinMajor
 }
 
 // Parse parses a gateway version string, reporting whether it carried a
