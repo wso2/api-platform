@@ -902,7 +902,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
-	if ec.policyChain.RequiresResponseBody {
+	if ec.policyChain.RequiresResponseBody || ec.needsErrorBodyForFormatting() {
 		if ec.isStreamingResponse {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
 			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
@@ -1498,6 +1498,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 			"status", ec.responseHeaderCtx.ResponseStatus,
 			"code_details", ec.responseCodeDetails)
 	}
+	if ec.needsErrorBodyForFormatting() {
+		// Buffered for the same reason as an upstream fault: the formatter needs the whole body.
+		ec.isStreamingResponse = false
+	}
 
 	headerPols, headerSpecs := ec.responsePolicies()
 	execResult, err := ec.server.executor.ExecuteResponseHeaderPolicies(
@@ -1621,6 +1625,21 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		// replacement, a status-override rejection, and a pass-through error — so this is the
 		// one call site that hands over more than a short-circuit. See faultFromResponseBody.
 		ec.handleFault(ctx, faultFromResponseBody(execResult, rejected))
+		return TranslateResponseBodyActions(execResult, ec)
+	}
+
+	// A response buffered only so the formatter can see it (needsErrorBodyForFormatting). No
+	// policy runs — none asked for the body — but the failure goes through handleFault like any
+	// other, so provenance, the backend-body rule and the formatter apply exactly as they do on
+	// a route that does buffer.
+	if ec.needsErrorBodyForFormatting() {
+		ec.responseBodyCtx.ResponseBody = &policy.Body{
+			Content:     body.Body,
+			EndOfStream: body.EndOfStream,
+			Present:     true,
+		}
+		execResult := &executor.ResponseExecutionResult{}
+		ec.handleFault(ctx, faultFromResponseBody(execResult, false))
 		return TranslateResponseBodyActions(execResult, ec)
 	}
 

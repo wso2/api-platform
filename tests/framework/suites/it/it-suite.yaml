@@ -748,6 +748,22 @@ blocks:
         features:
           - features/gateway/routes-policies/interceptor_service.feature
 
+  # Gateway-produced errors on LLM APIs are returned in the OpenAI error envelope only when the
+  # policy engine enables it; the overlay keeps that setting away from every other block.
+  - name: llm-openai-compatible-errors
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/llm-openai-compatible-errors.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: llm-openai-compatible-errors
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_openai_compatible_errors.feature
+
   - name: ai-workspace-cli
     components:
       - name: platform-api

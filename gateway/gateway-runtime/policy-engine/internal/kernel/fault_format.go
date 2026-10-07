@@ -21,6 +21,7 @@ package kernel
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -106,6 +107,18 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 	}
 }
 
+// actionBody returns the body a response action carries, or nil.
+func actionBody(action policy.ResponseAction) []byte {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return a.Body
+	case policy.DownstreamResponseModifications:
+		return a.Body
+	default:
+		return nil
+	}
+}
+
 // errorFor resolves what to render, preferring the error carried by the action being handled.
 //
 // The action in hand is the most direct source: it is the very response being formatted. The
@@ -147,17 +160,17 @@ func (ec *PolicyExecutionContext) errorResponseForFormatting() policy.FaultDetai
 // False when the server was built without the option, and false for a request that matched
 // no route — an unknown route has no kind, so no configuration could have named it, and the
 // reply Envoy already wrote stands.
-// isEngineFailure reports that the failure being handled is the engine's own — set by
-// engineError before the fault flow runs, so its description is the engine's, not a policy's.
-func (ec *PolicyExecutionContext) isEngineFailure() bool {
-	return ec.engineErrorID != ""
-}
-
 func (ec *PolicyExecutionContext) errorFormatterEnabled() bool {
 	if ec.server == nil {
 		return false
 	}
 	return ec.server.errorFormatterKinds.Enabled(ec.apiKind())
+}
+
+// isEngineFailure reports that the failure being handled is the engine's own — set by
+// engineError before the fault flow runs, so its description is the engine's, not a policy's.
+func (ec *PolicyExecutionContext) isEngineFailure() bool {
+	return ec.engineErrorID != ""
 }
 
 // apiKind reads the API kind, tolerating a context that has none (an unmatched request).
@@ -207,6 +220,53 @@ const (
 	headerContentType = "content-type"
 	headerAccept      = "accept"
 )
+
+// ─── Error bodies on routes with no response-body policy ─────────────────────
+
+// needsErrorBodyForFormatting reports whether this response's body must be buffered for the
+// formatter although no policy on the route reads response bodies.
+//
+// Without it an LLM route whose policies stop at headers — the common case for a provider with
+// only auth and rate limiting — never sees its body phase, so a router 503 reaches an OpenAI
+// SDK as Envoy's plain text. Decided per RESPONSE, not per chain: forcing RequiresResponseBody
+// would buffer every successful completion to serve the rare failure.
+//
+// Narrowed to the OpenAI option. The same gap exists for every formatted kind, but closing it
+// for Agent would change shipped behaviour, which is a decision for that feature to make.
+// An encoded body is left alone: rewriting it would mean also dropping Content-Encoding, and
+// the bodies this exists for (router replies) are never encoded.
+//
+// A backend's own error is never buffered: under the OpenAI option it passes through whether or
+// not it has a body, so reading it would cost a buffer for nothing.
+func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
+	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.policyChain.RequiresResponseBody {
+		return false
+	}
+	if ec.responseHeaderCtx == nil || ec.responseHeaderCtx.ResponseStatus < faultMinStatus {
+		return false
+	}
+	if ec.responseHasNoBody() || ec.responseContentEncoding != "" || ec.responseEncodingUnsupported {
+		return false
+	}
+	return classifyFaultSource(originUpstream, ec.responseCodeDetails) != sourceBackend
+}
+
+// llmOpenAIErrors reports whether this route's errors render in the OpenAI envelope: the
+// operator turned llm_openai_compatible_errors on, and the route serves an LLM API kind.
+func (ec *PolicyExecutionContext) llmOpenAIErrors() bool {
+	return ec.server != nil && ec.server.llmOpenAIErrors &&
+		slices.Contains(faultformat.OpenAIErrorKinds(), ec.apiKind())
+}
+
+// openAIPolicyBodyMessage returns the message to describe a failure with when the policy that
+// produced it wrote a body but no Fault, and true when that body is to be reshaped rather
+// than kept. Always false off an OpenAI route. See faultformat.OpenAIPolicyBodyMessage.
+func (ec *PolicyExecutionContext) openAIPolicyBodyMessage(body []byte) (string, bool) {
+	if !ec.llmOpenAIErrors() {
+		return "", false
+	}
+	return faultformat.OpenAIPolicyBodyMessage(body)
+}
 
 // ─── Sterile engine failures ─────────────────────────────────────────────────
 //

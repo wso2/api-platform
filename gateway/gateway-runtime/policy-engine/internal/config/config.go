@@ -510,6 +510,8 @@ type PolicyEngine struct {
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
+	// LLMOpenAICompatibleErrors is [policy_engine.llm_openai_compatible_errors].
+	LLMOpenAICompatibleErrors LLMOpenAICompatibleErrorsConfig `koanf:"llm_openai_compatible_errors"`
 	// HTTPClient configures the single shared outbound *http.Client built once at
 	// startup (see cmd/policy-engine/main.go) and injected into every policy
 	// instance via PolicyMetadata.SharedHTTPClient — see HTTPClientConfig's doc
@@ -556,6 +558,23 @@ type FaultPoliciesConfig struct {
 	//
 	// A failure is recognised by its status alone (>= 400).
 	HandleUpstreamFaults bool `koanf:"handle_upstream_faults"`
+}
+
+// LLMOpenAICompatibleErrorsConfig renders every gateway-produced error on an LlmProvider or
+// LlmProxy route in the OpenAI error envelope, {"error":{"message","type","param","code"}}, so
+// an OpenAI SDK can parse it ([policy_engine.llm_openai_compatible_errors]).
+//
+// Its own section rather than a key under fault_policies: that section decides which failures
+// reach an operator's fault policies, this one what the client receives, and it applies whether
+// or not an API declares any fault policies.
+type LLMOpenAICompatibleErrorsConfig struct {
+	// Enabled switches the OpenAI envelope on for LLM APIs.
+	//
+	// Off by default: LLM APIs have shipped with the bodies their policies write, and turning
+	// this on changes them. When on, a body a policy wrote in its own shape is reshaped (its
+	// message is kept). An operator's fault policy body and a backend's own error document are
+	// passed through unchanged, and the status code is never altered.
+	Enabled bool `koanf:"enabled"`
 }
 
 // BodyConfig holds body-processing limits for one direction
