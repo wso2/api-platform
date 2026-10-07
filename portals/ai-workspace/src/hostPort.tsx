@@ -68,6 +68,28 @@ export type ResourceLimitsPort = {
   canCreate: (component: LimitedComponent) => boolean;
   limitMessage: (component: LimitedComponent) => string;
   set: (limits: ResourceLimitSet | null) => void;
+  /**
+   * True when the organization may not create or update anything at all (in this
+   * product: its free trial ended and no paid plan replaced it). `canCreate`
+   * already answers `false` for every component while this holds; read this one
+   * to gate an edit or an update, which no count covers.
+   */
+  readOnly: boolean;
+  /** Why the workspace is read-only; '' when it is not. */
+  readOnlyMessage: string;
+  /** Supply the read-only verdict. Only the extension that supplies limits calls it. */
+  setReadOnly: (readOnly: boolean, reason?: string) => void;
+  /**
+   * Ask the supplier to re-read the limits — call it after an extension creates
+   * or deletes a capped component, so `canCreate` stops reflecting a count taken
+   * before the change.
+   */
+  refresh: () => void;
+  /**
+   * Bumped by `refresh`. Only the supplier watches it, to know a re-read was
+   * asked for; readers of `canCreate` have no use for it.
+   */
+  refreshSignal: number;
 };
 
 /**

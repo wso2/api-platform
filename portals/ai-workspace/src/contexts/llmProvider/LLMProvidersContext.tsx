@@ -46,6 +46,7 @@ import {
   trackLLMProviderUpdate,
   trackLLMProviderDelete,
 } from '../../utils/app-insights';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 
 // ============================================================================
 // LLM Providers List Context - For managing the list of all providers
@@ -104,6 +105,9 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
   const [error, setError] = useState<Error | null>(null);
 
   const organizationId = currentOrganization?.uuid ?? '';
+  // Asks whichever extension supplies the component ceilings to re-read them
+  // after a create or a delete — see hooks/useResourceLimits.
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   // Fetch all providers
   const fetchProviders = useCallback(async () => {
@@ -231,13 +235,18 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           provider.template ?? 'custom'
         );
 
+        // The organization's LLM-provider count behind `canCreate` was read before
+        // this create; without a re-read the create button stays enabled past the
+        // ceiling until the next navigation.
+        refreshResourceLimits();
+
         return newProvider;
       } catch (err) {
         logger.error('Failed to create LLM provider:', err);
         throw err;
       }
     },
-    [organizationId, PLATFORM_API_BASE_URL]
+    [organizationId, PLATFORM_API_BASE_URL, refreshResourceLimits]
   );
 
   const updateProvider = useCallback(
@@ -378,6 +387,10 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           },
         }));
 
+        // Frees a slot — re-read so a create button disabled on the ceiling comes
+        // back without a navigation.
+        refreshResourceLimits();
+
         // Track LLM Provider deletion
         trackLLMProviderDelete(
           organizationId,
@@ -389,7 +402,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         throw err;
       }
     },
-    [organizationId, PLATFORM_API_BASE_URL]
+    [organizationId, PLATFORM_API_BASE_URL, refreshResourceLimits]
   );
 
   const refreshProviders = useCallback(async (): Promise<void> => {
