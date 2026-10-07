@@ -1237,13 +1237,22 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
+	common := &extprocv3.CommonResponse{
+		HeaderMutation: headerMutation,
+		BodyMutation:   bodyMutation,
+	}
+	if bodyModified {
+		// This response has no body, and Envoy sends no body phase for it, so the body is being
+		// ADDED here. Envoy applies a body mutation on a headers response only under
+		// CONTINUE_AND_REPLACE; with plain CONTINUE it silently drops it while keeping the
+		// Content-Length set above, and the client hangs waiting for bytes that never come.
+		common.Status = extprocv3.CommonResponse_CONTINUE_AND_REPLACE
+	}
+
 	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 			ResponseHeaders: &extprocv3.HeadersResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: headerMutation,
-					BodyMutation:   bodyMutation,
-				},
+				Response: common,
 			},
 		},
 		ModeOverride: execCtx.getModeOverride(),

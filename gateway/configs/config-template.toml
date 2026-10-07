@@ -503,6 +503,21 @@ skip_verify = false
 [policy_engine.fault_policies]
 handle_upstream_faults = false
 
+# llm_openai_compatible_errors renders every gateway-produced error on an LlmProvider or
+# LlmProxy route in the OpenAI error envelope, so OpenAI SDKs can parse it:
+#   {"error":{"message":"...","type":"...","param":null,"code":"..."}}
+#
+# Off by default, because enabling it changes error bodies existing LLM clients
+# already receive. When on:
+#   - policy rejections, router failures (e.g. no healthy upstream) and engine
+#     errors are rendered in the OpenAI shape, including a body a policy wrote
+#     in its own format (its message is kept);
+#   - a body written by one of the API's own fault policies, and the backend
+#     provider's own error document, are passed through unchanged;
+#   - the HTTP status code is never changed.
+[policy_engine.llm_openai_compatible_errors]
+enabled = false
+
 # max_decompressed_bytes caps decompressed bytes buffered per body (buffered
 # mode) or per chunk (streaming) — not cumulative, so long-lived streams such
 # as SSE are unaffected. Each direction is configured independently.
