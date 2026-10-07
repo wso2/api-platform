@@ -88,6 +88,13 @@ jobs:
       - name: AI Workspace BFF unit tests
         working-directory: portals/ai-workspace/bff
         run: GOWORK=off go test -coverprofile=unit-test-coverage.txt ./...
+        
+      - name: AI Workspace UI unit tests
+        working-directory: portals/ai-workspace
+        run: |
+          npm ci
+          npm run test:unit:coverage
+          sed -i 's|^SF:|SF:portals/ai-workspace/|' coverage/lcov.info
 
       - name: API Portal unit tests
         working-directory: portals/api-portal
@@ -186,6 +193,16 @@ jobs:
           disable_search: true
           files: portals/ai-workspace/bff/unit-test-coverage.txt
           flags: ai-workspace-bff-unit
+
+      - name: Upload AI Workspace UI unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/ai-workspace/coverage/lcov.info
+          flags: ai-workspace-ui-unit
 
       - name: Upload AI Workspace BFF integration coverage to Codecov
         if: always()

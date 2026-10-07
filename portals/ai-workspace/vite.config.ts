@@ -16,6 +16,7 @@
  * under the License.
  */
 
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import type { PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -191,5 +192,38 @@ export default defineConfig({
         },
       ]),
     ),
-  }
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    globals: true,
+    // Oxygen UI and MUI ship CSS imports Node cannot load on its own, so Vite
+    // transforms them rather than leaving them to the runtime.
+    server: {
+      deps: {
+        inline: [/@wso2\/oxygen-ui/, /@mui\//],
+      },
+    },
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      all: true,
+      // Scoped to the Agent proxy surface. The browser suite stays the source of
+      // coverage for the rest of the portal and Codecov merges the two reports.
+      include: [
+        'src/apis/agent/**/*.ts',
+        'src/contexts/agentProxy/**/*.{ts,tsx}',
+        'src/pages/appShell/appShellPages/agentProxies/**/*.{ts,tsx}',
+        // Shared surfaces this feature extended: the deploy context gained an
+        // agent-proxy resource type, and the project overview lists and deletes
+        // agent proxies alongside the other kinds.
+        'src/contexts/GatewayDeployContext.tsx',
+        'src/pages/appShell/appShellPages/overview/Overview.tsx',
+        'src/pages/appShell/appShellPages/overview/KindDetailPanel.tsx',
+        'src/pages/appShell/appShellPages/overview/KindSummaryCard.tsx',
+      ],
+      exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', '**/index.ts'],
+    },
+  },
 })
