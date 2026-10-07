@@ -147,3 +147,36 @@ describe('deleting an item', () => {
     expect(screen.getByRole('button', { name: 'Delete Trip Planner' })).toBeDisabled();
   });
 });
+
+describe('an item carrying its optional detail', () => {
+  const detailed = {
+    id: 'weather',
+    displayName: 'Weather Bot',
+    subtitle: 'forecasts for any city',
+    chipLabel: 'A2A',
+    chipLogo: 'a2a.svg',
+    updatedAt: new Date().toISOString(),
+  };
+
+  it('shows the badge, the subtitle and when it last changed', () => {
+    renderPanel({ items: [detailed], totalCount: 1 });
+
+    expect(screen.getByText('Weather Bot')).toBeInTheDocument();
+    expect(screen.getByText('forecasts for any city')).toBeInTheDocument();
+    expect(screen.getByText('A2A')).toBeInTheDocument();
+  });
+
+  it('shortens a name too long to sit on one line', () => {
+    const wordy = Array.from({ length: 20 }, (_, i) => `word${i}`).join(' ');
+    renderPanel({ items: [{ id: 'wordy', displayName: wordy }], totalCount: 1 });
+
+    expect(screen.getByText(/word0/)).toBeInTheDocument();
+    expect(screen.queryByText(wordy)).not.toBeInTheDocument();
+  });
+
+  it('falls back to a placeholder when an item has no name', () => {
+    renderPanel({ items: [{ id: 'nameless', displayName: '' }], totalCount: 1 });
+
+    expect(screen.getByText('No Name')).toBeInTheDocument();
+  });
+});

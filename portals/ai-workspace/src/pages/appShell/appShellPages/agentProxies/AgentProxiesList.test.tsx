@@ -26,6 +26,7 @@ const showSnackbar = vi.fn();
 const deleteAgentProxy = vi.fn();
 let permitted = true;
 let proxies: unknown[] = [];
+let proxiesLoading = false;
 
 const proxy = (over: Record<string, unknown> = {}) => ({
   id: 'trip-planner',
@@ -61,7 +62,7 @@ vi.mock('../../../../contexts/agentProxy', () => ({
       list: proxies,
       pagination: { total: proxies.length, offset: 0, limit: 20 },
     },
-    isLoading: false,
+    isLoading: proxiesLoading,
     deleteAgentProxy,
   }),
 }));
@@ -74,6 +75,7 @@ const search = () => screen.getByPlaceholderText('Search Agent Proxies...');
 
 beforeEach(() => {
   permitted = true;
+  proxiesLoading = false;
   currentProject = { id: 'proj-1', name: 'Project One' };
   setCurrentProject.mockReset();
   proxies = [proxy(), proxy({ id: 'weather', displayName: 'Weather Bot', description: 'forecasts', context: '/weather', version: '2.0.0' })];
@@ -223,6 +225,18 @@ describe('at organization level', () => {
   it('does not list any proxy while no project is in scope', () => {
     renderList();
 
+    expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
+  });
+});
+
+describe('while the catalogue is still loading', () => {
+  it('shows a placeholder table instead of an empty listing', () => {
+    proxiesLoading = true;
+    proxies = [];
+    renderList();
+
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getByText('Last Updated')).toBeInTheDocument();
     expect(screen.queryByText('Trip Planner')).not.toBeInTheDocument();
   });
 });

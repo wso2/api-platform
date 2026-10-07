@@ -32,6 +32,12 @@ vi.mock('../apis/MCP/mcpServerDeployApis');
 vi.mock('../utils/logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
+vi.mock('../utils/app-insights', () => ({
+  trackHybridGatewayDeploymentCreate: vi.fn(),
+  trackHybridGatewayDeploymentRedeploy: vi.fn(),
+  trackHybridGatewayDeploymentUndeploy: vi.fn(),
+  trackHybridGatewayDeploymentDelete: vi.fn(),
+}));
 vi.mock('./AppShellContext', () => ({
   useAppShell: () => ({ currentOrganization: { uuid: 'org-1' } }),
 }));
@@ -64,9 +70,13 @@ beforeEach(() => {
   vi.mocked(agentDeploy.getAgentProxyDeployment).mockResolvedValue({
     id: 'dep-1', status: 'DEPLOYED',
   } as never);
-  vi.mocked(agentDeploy.deployAgentProxy).mockResolvedValue({ id: 'dep-1' } as never);
+  vi.mocked(agentDeploy.deployAgentProxy).mockResolvedValue({
+    deploymentId: 'dep-1', status: 'DEPLOYING',
+  } as never);
   vi.mocked(agentDeploy.undeployAgentProxyDeployment).mockResolvedValue({ id: 'dep-1' } as never);
-  vi.mocked(agentDeploy.restoreAgentProxyDeployment).mockResolvedValue({ id: 'dep-1' } as never);
+  vi.mocked(agentDeploy.restoreAgentProxyDeployment).mockResolvedValue({
+    deploymentId: 'dep-1', status: 'DEPLOYING',
+  } as never);
   vi.mocked(agentDeploy.deleteAgentProxyDeployment).mockResolvedValue(undefined as never);
 });
 
@@ -91,38 +101,46 @@ describe('an agent proxy in the deploy context', () => {
     const { result } = renderDeploy();
     await settled(result);
 
-    await act(async () => { await result.current.deployToGateway('gw-1', 'host.test'); });
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deployToGateway('gw-1', 'host.test'); });
 
     expect(agentDeploy.deployAgentProxy).toHaveBeenCalledWith(
       'proxy-1', expect.anything(), expect.any(String)
     );
+    expect(outcome).toBe(true);
   });
 
   it('undeploys through the agent proxy endpoint', async () => {
     const { result } = renderDeploy();
     await settled(result);
 
-    await act(async () => { await result.current.undeployDeployment('dep-1', 'gw-1'); });
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.undeployDeployment('dep-1', 'gw-1'); });
 
     expect(agentDeploy.undeployAgentProxyDeployment).toHaveBeenCalled();
+    expect(outcome).toBe(true);
   });
 
   it('redeploys through the agent proxy endpoint', async () => {
     const { result } = renderDeploy();
     await settled(result);
 
-    await act(async () => { await result.current.redeployDeployment('dep-1', 'gw-1'); });
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.redeployDeployment('dep-1', 'gw-1'); });
 
     expect(agentDeploy.restoreAgentProxyDeployment).toHaveBeenCalled();
+    expect(outcome).toBe(true);
   });
 
   it('deletes a deployment through the agent proxy endpoint', async () => {
     const { result } = renderDeploy();
     await settled(result);
 
-    await act(async () => { await result.current.deleteDeployment('dep-1'); });
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deleteDeployment('dep-1'); });
 
     expect(agentDeploy.deleteAgentProxyDeployment).toHaveBeenCalled();
+    expect(outcome).toBe(true);
   });
 
   it('records a failure to list gateways rather than leaving the caller loading', async () => {
@@ -241,5 +259,149 @@ describe('a deployment still settling', () => {
 
     await waitFor(() => expect(agentDeploy.getAgentProxyDeployment).toHaveBeenCalled());
     expect(result.current.error).toBeNull();
+  });
+});
+
+describe('a lifecycle call the gateway refuses', () => {
+  it('reports a failed deploy rather than throwing at the caller', async () => {
+    vi.mocked(agentDeploy.deployAgentProxy).mockRejectedValue(new Error('gateway down'));
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    expect(outcome).toBe(false);
+    expect(result.current.deployingGatewayId).toBeNull();
+  });
+
+  it('treats a deploy response without a deployment id as a failure', async () => {
+    vi.mocked(agentDeploy.deployAgentProxy).mockResolvedValue({ status: 'DEPLOYING' } as never);
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    expect(outcome).toBe(false);
+  });
+
+  it('reports a failed undeploy', async () => {
+    vi.mocked(agentDeploy.undeployAgentProxyDeployment).mockRejectedValue(new Error('refused'));
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.undeployDeployment('dep-1', 'gw-1'); });
+
+    expect(outcome).toBe(false);
+  });
+
+  it('reports a failed redeploy', async () => {
+    vi.mocked(agentDeploy.restoreAgentProxyDeployment).mockRejectedValue(new Error('refused'));
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.redeployDeployment('dep-1', 'gw-1'); });
+
+    expect(outcome).toBe(false);
+  });
+
+  it('reports a failed delete', async () => {
+    vi.mocked(agentDeploy.deleteAgentProxyDeployment).mockRejectedValue(new Error('refused'));
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deleteDeployment('dep-1'); });
+
+    expect(outcome).toBe(false);
+  });
+
+  it('still reports an undeploy as done when the follow-up status read fails', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployment).mockRejectedValue(new Error('blip'));
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.undeployDeployment('dep-1', 'gw-1'); });
+
+    expect(outcome).toBe(true);
+  });
+});
+
+describe('a read only surface', () => {
+  it('refuses a deploy without reaching the gateway', async () => {
+    const { result } = renderDeploy(true);
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deployToGateway('gw-1', 'host.test'); });
+
+    expect(outcome).toBe(false);
+    expect(agentDeploy.deployAgentProxy).not.toHaveBeenCalled();
+  });
+
+  it('refuses an undeploy without reaching the gateway', async () => {
+    const { result } = renderDeploy(true);
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.undeployDeployment('dep-1', 'gw-1'); });
+
+    expect(outcome).toBe(false);
+    expect(agentDeploy.undeployAgentProxyDeployment).not.toHaveBeenCalled();
+  });
+
+  it('refuses a redeploy without reaching the gateway', async () => {
+    const { result } = renderDeploy(true);
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.redeployDeployment('dep-1', 'gw-1'); });
+
+    expect(outcome).toBe(false);
+    expect(agentDeploy.restoreAgentProxyDeployment).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleting a deployment', () => {
+  it('refuses to delete one that is still deployed', async () => {
+    vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
+      count: 1,
+      list: [{ deploymentId: 'dep-live', gatewayId: 'gw-1', status: 'DEPLOYED', name: 'proxy-1_x_1' }],
+    } as never);
+    const { result } = renderDeploy();
+    await settled(result);
+    await waitFor(() => expect(result.current.deployments?.list).toHaveLength(1));
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deleteDeployment('dep-live'); });
+
+    expect(outcome).toBe(false);
+    expect(agentDeploy.deleteAgentProxyDeployment).not.toHaveBeenCalled();
+  });
+
+  it('refuses a delete from a caller without the scope', async () => {
+    permitted = false;
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deleteDeployment('dep-1'); });
+
+    expect(outcome).toBe(false);
+    expect(agentDeploy.deleteAgentProxyDeployment).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delete with no deployment to act on', async () => {
+    const { result } = renderDeploy();
+    await settled(result);
+
+    let outcome: boolean | undefined;
+    await act(async () => { outcome = await result.current.deleteDeployment(''); });
+
+    expect(outcome).toBe(false);
   });
 });
