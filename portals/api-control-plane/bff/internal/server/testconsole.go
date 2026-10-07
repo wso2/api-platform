@@ -86,8 +86,23 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 	// reads and must finish before the route's write deadline.
 	resolveCtx, cancelResolve := context.WithTimeout(r.Context(), testResolveTimeout)
 	target, err := s.testResolver.Resolve(resolveCtx, token, env.OrgHandle, env.RestAPIID, env.GatewayID)
+	// Captured before cancelling, so the deadline is distinguishable from the
+	// cancellation this defer-free call performs itself.
+	resolveErr := resolveCtx.Err()
 	cancelResolve()
 	if err != nil {
+		// Running out of time says nothing about whether this gateway may be
+		// tested, so it must not answer as though it did: a 403 would send the
+		// user off to check a deployment that is perfectly fine.
+		if errors.Is(resolveErr, context.DeadlineExceeded) {
+			slog.Warn("test console target resolution timed out",
+				"rest_api_id", env.RestAPIID,
+				"gateway_id", env.GatewayID,
+				"req_id", requestID)
+			writeServerErrorJSON(w, http.StatusGatewayTimeout, "UPSTREAM_TIMEOUT",
+				"the control plane did not respond in time", requestID)
+			return
+		}
 		// The specific reason stays server-side. Telling a caller whether the
 		// API id exists, whether the gateway is merely undeployed, or what the
 		// resolved address was would map the tenant's topology for them.
@@ -208,7 +223,8 @@ func relayedMethod(env testproxy.Envelope) string {
 // below the shared upstream client's own 60s ceiling, which is sized for user
 // -facing proxying rather than for a phase that has to finish before the relay
 // has even started.
-const testResolveTimeout = 10 * time.Second
+// A var rather than a const so a test can shorten it; nothing else writes it.
+var testResolveTimeout = 10 * time.Second
 
 // testInvokeWriteDeadline bounds how long this handler may take to write its
 // response. It is the sum of the two phases it actually performs — resolution

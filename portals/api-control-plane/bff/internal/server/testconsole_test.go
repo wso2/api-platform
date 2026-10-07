@@ -249,6 +249,29 @@ func TestInvoke404sWhenTheRelayIsDisabled(t *testing.T) {
 	assertStatus(t, res, http.StatusNotFound)
 }
 
+func TestInvokeReportsAResolutionTimeoutAsATimeout(t *testing.T) {
+	// A Platform API that never answers. The caller must not be told the
+	// gateway is not allowed — nothing about the target was established.
+	stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer stalled.Close()
+
+	original := testResolveTimeout
+	testResolveTimeout = 150 * time.Millisecond
+	defer func() { testResolveTimeout = original }()
+
+	f := newInvokeFixture(t, testConsoleConfig(stalled.URL))
+
+	res := f.post(t, `{"orgHandle":"acme","restApiId":"api-1","gatewayId":"gw-prod","method":"GET","path":"/"}`, true)
+
+	assertStatus(t, res, http.StatusGatewayTimeout)
+	raw, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(raw), "UPSTREAM_TIMEOUT") {
+		t.Errorf("body = %s, want UPSTREAM_TIMEOUT", raw)
+	}
+}
+
 func TestInvokeRefusesAGatewayOutsideAllowHosts(t *testing.T) {
 	// The resolver answers with a real, deployed gateway — Platform API is
 	// happy. The egress policy is the thing that refuses it, which is the

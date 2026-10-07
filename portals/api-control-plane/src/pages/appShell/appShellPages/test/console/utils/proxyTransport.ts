@@ -383,7 +383,18 @@ const isRelayResult = (value: unknown): value is RelayResult => {
   if (outcome !== 'response') return false;
   if (typeof response !== 'object' || response === null) return false;
   const { status, headers } = response as { status?: unknown; headers?: unknown };
-  return typeof status === 'number' && Array.isArray(headers);
+
+  return (
+    typeof status === 'number' &&
+    Array.isArray(headers) &&
+    headers.every(
+      (header) =>
+        typeof header === 'object' &&
+        header !== null &&
+        typeof header.name === 'string' &&
+        typeof header.value === 'string',
+    )
+  );
 };
 
 /**
