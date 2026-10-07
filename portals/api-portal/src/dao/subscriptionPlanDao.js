@@ -175,14 +175,15 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   const row = buildSubscriptionPlanRow(orgId, plan);
   const updatedAt = new Date();
 
-  // Don't update primary keys — org_uuid never changes; ref_id only changes
-  // when the caller explicitly supplied it.
-  const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
-  const params = [row.handle, row.display_name, row.description];
-  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
-    setCols.push('ref_id = ?');
-    params.push(row.ref_id);
-  }
+  // org_uuid never changes. ref_id is written unconditionally with the row's
+  // computed value (which defaults to handle in buildSubscriptionPlanRow), so
+  // a save from the admin UI - which omits refId from the payload - still
+  // backfills a null ref_id instead of leaving the plan unresolvable by
+  // Platform API's subscription webhook handler. Explicitly passing refId
+  // overrides the default; passing refId=null falls through to the handle too,
+  // so there is no admin API path that lands a null ref_id.
+  const setCols = ['handle = ?', 'display_name = ?', 'description = ?', 'ref_id = ?'];
+  const params = [row.handle, row.display_name, row.description, row.ref_id];
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
 
