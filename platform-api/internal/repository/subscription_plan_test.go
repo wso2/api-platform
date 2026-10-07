@@ -76,3 +76,85 @@ func TestSubscriptionPlanRepo_ListAndCountSearch(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscriptionPlanRepo_GetByHandles(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	orgRepo := NewOrganizationRepo(db)
+	for _, o := range []*model.Organization{
+		{ID: "org-1", Handle: "acme", Name: "Acme", Region: "us"},
+		{ID: "org-2", Handle: "globex", Name: "Globex", Region: "us"},
+	} {
+		if err := orgRepo.CreateOrganization(o); err != nil {
+			t.Fatalf("CreateOrganization %s: %v", o.ID, err)
+		}
+	}
+	repo := NewSubscriptionPlanRepo(db)
+	for _, p := range []struct {
+		handle, org string
+		status      model.SubscriptionPlanStatus
+	}{
+		{"gold", "org-1", model.SubscriptionPlanStatusActive},
+		{"silver", "org-1", model.SubscriptionPlanStatusInactive},
+		{"gold", "org-2", model.SubscriptionPlanStatusActive},
+		{"platinum", "org-2", model.SubscriptionPlanStatusActive},
+	} {
+		if err := repo.Create(&model.SubscriptionPlan{
+			Handle: p.handle, Name: p.handle, OrganizationUUID: p.org, Status: p.status,
+		}); err != nil {
+			t.Fatalf("Create %s/%s: %v", p.org, p.handle, err)
+		}
+	}
+
+	t.Run("returns requested plans keyed by handle with their status", func(t *testing.T) {
+		plans, err := repo.GetByHandles([]string{"gold", "silver"}, "org-1")
+		if err != nil {
+			t.Fatalf("GetByHandles: %v", err)
+		}
+		if len(plans) != 2 {
+			t.Fatalf("got %d plans, want 2", len(plans))
+		}
+		if plans["gold"].Status != model.SubscriptionPlanStatusActive || plans["silver"].Status != model.SubscriptionPlanStatusInactive {
+			t.Errorf("unexpected statuses: gold=%s silver=%s", plans["gold"].Status, plans["silver"].Status)
+		}
+		if plans["gold"].OrganizationUUID != "org-1" {
+			t.Errorf("gold org = %s, want org-1", plans["gold"].OrganizationUUID)
+		}
+	})
+
+	t.Run("omits an unknown handle", func(t *testing.T) {
+		plans, err := repo.GetByHandles([]string{"gold", "missing"}, "org-1")
+		if err != nil {
+			t.Fatalf("GetByHandles: %v", err)
+		}
+		if _, ok := plans["missing"]; ok || len(plans) != 1 {
+			t.Errorf("want only gold, got %v", plans)
+		}
+	})
+
+	t.Run("does not return another organization's plan", func(t *testing.T) {
+		plans, err := repo.GetByHandles([]string{"platinum"}, "org-1")
+		if err != nil {
+			t.Fatalf("GetByHandles: %v", err)
+		}
+		if len(plans) != 0 {
+			t.Errorf("want no plans, got %v", plans)
+		}
+	})
+
+	t.Run("empty input returns an empty map", func(t *testing.T) {
+		plans, err := repo.GetByHandles(nil, "org-1")
+		if err != nil || plans == nil || len(plans) != 0 {
+			t.Errorf("want an empty non-nil map, got %v (%v)", plans, err)
+		}
+	})
+
+	t.Run("database error is wrapped", func(t *testing.T) {
+		broken, brokenCleanup := setupTestDB(t)
+		brokenCleanup()
+		if _, err := NewSubscriptionPlanRepo(broken).GetByHandles([]string{"gold"}, "org-1"); err == nil {
+			t.Error("want an error from a closed database")
+		}
+	})
+}
