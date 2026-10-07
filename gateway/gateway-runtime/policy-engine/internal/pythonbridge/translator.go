@@ -273,6 +273,38 @@ func (t *Translator) ToGoResponseAction(resp *proto.StreamResponse) (policy.Resp
 	}
 }
 
+// ToGoFaultResponse converts an on_fault response payload into a *policy.FaultResponse.
+//
+// Returns nil for an absent payload, and nil for a payload whose action is unset. Both mean
+// the policy changed nothing, which is what nil means in the Go contract — so a Python fault
+// policy that only notifies needs no return value at all, exactly like its Go counterpart.
+func (t *Translator) ToGoFaultResponse(resp *proto.StreamResponse) (*policy.FaultResponse, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetFaultResponseAction()
+	if payload == nil {
+		return nil, nil
+	}
+	fault := payload.GetFaultResponse()
+	if fault == nil {
+		return nil, nil
+	}
+
+	return &policy.FaultResponse{
+		StatusCode:            int32PtrValue(fault.GetStatusCode()),
+		Body:                  bytesValue(fault.GetBody()),
+		Fault:                 toGoErrorResponse(fault.GetFault()),
+		HeadersToSet:          cloneStringMap(fault.GetHeadersToSet()),
+		HeadersToAppend:       stringListMapToSliceMap(fault.GetHeadersToAppend()),
+		HeadersToRemove:       append([]string(nil), fault.GetHeadersToRemove()...),
+		AnalyticsMetadata:     structToMap(fault.GetAnalyticsMetadata()),
+		DynamicMetadata:       structMapToNestedMap(fault.GetDynamicMetadata()),
+		AnalyticsHeaderFilter: t.toGoDropHeaderAction(fault.GetAnalyticsHeaderFilter()),
+	}, nil
+}
+
 // ToGoNeedsMoreDecision converts a needs-more response payload into a Go boolean.
 func (t *Translator) ToGoNeedsMoreDecision(resp *proto.StreamResponse) (bool, error) {
 	if err := executionErrorFromResponse(resp); err != nil {
@@ -384,6 +416,8 @@ func (t *Translator) toGoImmediateResponse(resp *proto.ImmediateResponse) policy
 		AnalyticsMetadata:     structToMap(resp.GetAnalyticsMetadata()),
 		DynamicMetadata:       structMapToNestedMap(resp.GetDynamicMetadata()),
 		AnalyticsHeaderFilter: t.toGoDropHeaderAction(resp.GetAnalyticsHeaderFilter()),
+		IsFault:               resp.GetIsFault(),
+		Fault:                 toGoErrorResponse(resp.GetFault()),
 	}
 }
 
@@ -451,6 +485,8 @@ func (t *Translator) toGoDownstreamResponseModifications(mod *proto.DownstreamRe
 		AnalyticsMetadata:     structToMap(mod.GetAnalyticsMetadata()),
 		DynamicMetadata:       structMapToNestedMap(mod.GetDynamicMetadata()),
 		AnalyticsHeaderFilter: t.toGoDropHeaderAction(mod.GetAnalyticsHeaderFilter()),
+		IsFault:               mod.GetIsFault(),
+		Fault:                 toGoErrorResponse(mod.GetFault()),
 	}
 }
 
@@ -484,7 +520,130 @@ func (t *Translator) toGoTerminateResponseChunk(chunk *proto.TerminateResponseCh
 		Body:              bytesValue(chunk.GetBody()),
 		AnalyticsMetadata: structToMap(chunk.GetAnalyticsMetadata()),
 		DynamicMetadata:   structMapToNestedMap(chunk.GetDynamicMetadata()),
+		IsFault:           chunk.GetIsFault(),
+		Fault:             toGoErrorResponse(chunk.GetFault()),
 	}
+}
+
+// toGoErrorResponse carries a Python policy's description of its own failure across the bridge.
+//
+// nil in, nil out: "described nothing" has to stay distinguishable from "described an empty
+// error", because the engine treats a non-nil Error as something to render.
+//
+// Policy is not read from the wire even though FaultDetails has the field. It is gateway-owned
+// — the engine overwrites it from the chain it just executed — so accepting a value here would
+// only let a Python policy submit an attribution that is then discarded.
+func toGoErrorResponse(err *proto.FaultDetails) *policy.FaultDetails {
+	if err == nil {
+		return nil
+	}
+	return &policy.FaultDetails{
+		Code:        err.GetCode(),
+		Type:        err.GetType(),
+		Direction:   err.GetDirection(),
+		Message:     err.GetMessage(),
+		Description: err.GetDescription(),
+		JSONRPC:     toGoJSONRPCError(err.GetJsonrpc()),
+		Guardrail:   toGoGuardrailError(err.GetGuardrail()),
+	}
+}
+
+// toGoGuardrailError carries a Python guardrail's assessment detail out across the bridge.
+//
+// nil in, nil out: absent means "no guardrail was involved", which is what the renderers test.
+// It does NOT mean the operator declined to show the assessment — that is expressed by an
+// present block with empty Assessments, and the two must stay distinguishable.
+func toGoGuardrailError(err *proto.GuardrailDetails) *policy.GuardrailDetails {
+	if err == nil {
+		return nil
+	}
+	return &policy.GuardrailDetails{
+		InterveningGuardrail: err.GetInterveningGuardrail(),
+		Action:               err.GetAction(),
+		ActionReason:         err.GetActionReason(),
+		Assessments:          structToMap(err.GetAssessments()),
+	}
+}
+
+// toGoJSONRPCError carries a Python policy's JSON-RPC detail out across the bridge.
+//
+// nil in, nil out, and an unset code stays unset: a Python policy that fills in an id but no
+// code is saying "echo my id, derive the code from the status", and flattening that to 0 would
+// silently override the engine's derivation with an invalid code.
+func toGoJSONRPCError(err *proto.JSONRPCError) *policy.JSONRPCError {
+	if err == nil {
+		return nil
+	}
+	return &policy.JSONRPCError{
+		Code: int32PtrValue(err.GetCode()),
+		ID:   err.GetId().AsInterface(), // nil-safe: a nil Value yields a nil any
+	}
+}
+
+// toProtoErrorResponse carries the gateway's description of a failure INTO a Python fault
+// handler — the mirror of toGoErrorResponse, which carries a policy's description back out.
+//
+// nil in, nil out, for the same reason: a handler must be able to tell "nothing described this
+// failure" from "an empty description", since only the former means it has to fall back to the
+// status. Policy is omitted from the wire message, so it is carried on FaultContext instead.
+func toProtoErrorResponse(err *policy.FaultDetails) *proto.FaultDetails {
+	if err == nil {
+		return nil
+	}
+	return &proto.FaultDetails{
+		Code:        err.Code,
+		Type:        err.Type,
+		Direction:   err.Direction,
+		Message:     err.Message,
+		Description: err.Description,
+		Jsonrpc:     toProtoJSONRPCError(err.JSONRPC),
+		Guardrail:   toProtoGuardrailError(err.Guardrail),
+	}
+}
+
+// toProtoGuardrailError carries guardrail detail INTO a Python fault handler, so a handler can
+// report which guardrail acted and why without re-deriving it.
+//
+// An assessment structpb cannot represent is dropped rather than failing the conversion: the
+// block's metadata is the part a handler needs most, and losing one field beats losing the
+// whole handler call.
+func toProtoGuardrailError(err *policy.GuardrailDetails) *proto.GuardrailDetails {
+	if err == nil {
+		return nil
+	}
+	out := &proto.GuardrailDetails{
+		InterveningGuardrail: err.InterveningGuardrail,
+		Action:               err.Action,
+		ActionReason:         err.ActionReason,
+	}
+	if len(err.Assessments) > 0 {
+		if s, convErr := structpb.NewStruct(err.Assessments); convErr == nil {
+			out.Assessments = s
+		}
+	}
+	return out
+}
+
+// toProtoJSONRPCError carries JSON-RPC detail INTO a Python fault handler, so a handler can
+// report the code and id the failing policy supplied rather than re-deriving them.
+//
+// An id that structpb cannot represent is dropped rather than failing the conversion: the id
+// is JSON that came off the wire in the first place, so this is unreachable in practice, and
+// losing correlation on one error beats losing the whole fault handler call.
+func toProtoJSONRPCError(err *policy.JSONRPCError) *proto.JSONRPCError {
+	if err == nil {
+		return nil
+	}
+	out := &proto.JSONRPCError{}
+	if err.Code != nil {
+		out.Code = wrapperspb.Int32(int32(*err.Code))
+	}
+	if err.ID != nil {
+		if v, convErr := structpb.NewValue(err.ID); convErr == nil {
+			out.Id = v
+		}
+	}
+	return out
 }
 
 func (t *Translator) toGoDropHeaderAction(action *proto.DropHeaderAction) policy.DropHeaderAction {

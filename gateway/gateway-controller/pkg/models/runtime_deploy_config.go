@@ -170,6 +170,11 @@ type RouteUpstream struct {
 // PolicyChain is an ordered list of policies for a route.
 type PolicyChain struct {
 	Policies []Policy
+
+	// FaultPolicies is the route's fault policies: policies executed only when the
+	// request is failing, in declaration order. Held separately from Policies so a
+	// fault policy can never run in the normal request/response phases.
+	FaultPolicies []Policy
 }
 
 // Policy represents a single policy instance within a chain.
