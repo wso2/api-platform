@@ -218,7 +218,7 @@ func (s *Store) MaxPayloadBytes() int {
 }
 
 // NewStoreFromConfig builds a Store from the operator-facing
-// [analytics.correlation] config (see config.CorrelationStoreConfig).
+// [collector.correlation_store] config (see config.CorrelationStoreConfig).
 func NewStoreFromConfig(cfg config.CorrelationStoreConfig) *Store {
 	return NewStoreWithBodyLimits(cfg.Capacity, cfg.TTL, cfg.Shards, cfg.MaxPayloadBytes, cfg.MaxBodyBytes)
 }

@@ -110,6 +110,14 @@ type CollectorConfig struct {
 	// configured under the shared [collector.server] section (the controller
 	// reads the same section to configure Envoy's sender side).
 	Server AccessLogsServiceConfig `koanf:"server"`
+	// CorrelationStore tunes the in-process ext_proc→ALS correlation store (see
+	// internal/analytics/correlation) that carries captured request/response headers
+	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
+	// per-stream token, instead of round-tripping them through Envoy dynamic
+	// metadata and the ALS filter_metadata echo. It serves every collector consumer
+	// (analytics and traffic logging) and is only consulted while the collector is
+	// active (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
+	CorrelationStore CorrelationStoreConfig `koanf:"correlation_store"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -129,13 +137,6 @@ type AnalyticsConfig struct {
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
-	// Correlation tunes the in-process ext_proc→ALS correlation store (see
-	// internal/analytics/correlation) that carries captured request/response headers
-	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
-	// per-stream token, instead of round-tripping them through Envoy dynamic
-	// metadata and the ALS filter_metadata echo. Only consulted while the collector is active
-	// (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
-	Correlation CorrelationStoreConfig `koanf:"correlation"`
 }
 
 // CorrelationStoreConfig tunes the in-process, sharded store the ext_proc handler
@@ -159,9 +160,9 @@ type CorrelationStoreConfig struct {
 	// buffer). Entries of in-flight requests are never reclaimed.
 	TTL time.Duration `koanf:"ttl"`
 	// Shards is the number of independently-locked partitions the store is split
-	// into, selected by hashing the request id. A single mutex would itself become
-	// a bottleneck at the request rates this store targets (several thousand
-	// req/s); splitting the lock lets concurrent writers/readers on different
+	// into, selected by hashing the per-stream correlation token. A single mutex
+	// would itself become a bottleneck at the request rates this store targets
+	// (several thousand req/s); splitting the lock lets concurrent writers/readers on different
 	// shards proceed without contending on each other. Rounded up to the next
 	// power of two if it is not one already.
 	Shards int `koanf:"shards"`
@@ -1324,9 +1325,10 @@ func defaultConfig() *Config {
 			},
 		},
 		Collector: CollectorConfig{
-			RequestBody:  false,
-			ResponseBody: false,
-			Server:       defaultAccessLogsServiceConfig(),
+			RequestBody:      false,
+			ResponseBody:     false,
+			Server:           defaultAccessLogsServiceConfig(),
+			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
 		TrafficLogging: TrafficLoggingConfig{
 			Enabled: false,
@@ -1385,7 +1387,6 @@ func defaultConfig() *Config {
 			AllowPayloads:        false,
 			SendRequestBody:      false,
 			SendResponseBody:     false,
-			Correlation:          defaultCorrelationStoreConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
@@ -1901,21 +1902,21 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 // validateCorrelationStoreConfig validates the ext_proc→ALS correlation-store
 // tuning. Only called while the collector is active (see call site in Validate).
 func (c *Config) validateCorrelationStoreConfig() error {
-	corr := c.Analytics.Correlation
+	corr := c.Collector.CorrelationStore
 	if corr.Capacity <= 0 {
-		return fmt.Errorf("analytics.correlation.capacity must be positive, got %d", corr.Capacity)
+		return fmt.Errorf("collector.correlation_store.capacity must be positive, got %d", corr.Capacity)
 	}
 	if corr.TTL <= 0 {
-		return fmt.Errorf("analytics.correlation.ttl must be positive, got %s", corr.TTL)
+		return fmt.Errorf("collector.correlation_store.ttl must be positive, got %s", corr.TTL)
 	}
 	if corr.Shards <= 0 {
-		return fmt.Errorf("analytics.correlation.shards must be positive, got %d", corr.Shards)
+		return fmt.Errorf("collector.correlation_store.shards must be positive, got %d", corr.Shards)
 	}
 	if corr.MaxPayloadBytes < 0 {
-		return fmt.Errorf("analytics.correlation.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)
+		return fmt.Errorf("collector.correlation_store.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)
 	}
 	if corr.MaxBodyBytes < 0 {
-		return fmt.Errorf("analytics.correlation.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
+		return fmt.Errorf("collector.correlation_store.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
 	}
 	return nil
 }
