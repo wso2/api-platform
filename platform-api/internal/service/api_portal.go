@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -79,16 +81,21 @@ func validateAndEncryptSharedKey(v vault.SecretVault, raw string) ([]byte, error
 
 // APIPortalService encapsulates business logic for the /api-portals resource.
 type APIPortalService struct {
-	portalRepo   repository.APIPortalRepository
-	orgRepo      repository.OrganizationRepository
-	auditRepo    repository.AuditRepository
-	vault        vault.SecretVault
-	authRegistry *APIPortalAuthRegistry
-	identity     *IdentityService
-	slogger      *slog.Logger
+	portalRepo        repository.APIPortalRepository
+	orgRepo           repository.OrganizationRepository
+	auditRepo         repository.AuditRepository
+	vault             vault.SecretVault
+	authRegistry      *APIPortalAuthRegistry
+	identity          *IdentityService
+	slogger           *slog.Logger
+	webhookCfg        config.Webhook
+	webhookHTTPClient *http.Client
 }
 
-// NewAPIPortalService constructs an APIPortalService.
+// NewAPIPortalService constructs an APIPortalService. webhookCfg + httpClient
+// drive the webhook subscriber auto-seed path (EnsureWebhookSubscriberOnPortal);
+// a nil httpClient falls back to http.DefaultClient and is adequate for the
+// one-shot POST/PUT the seed does.
 func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
@@ -96,16 +103,23 @@ func NewAPIPortalService(
 	secretVault vault.SecretVault,
 	authRegistry *APIPortalAuthRegistry,
 	identity *IdentityService,
+	webhookCfg config.Webhook,
+	httpClient *http.Client,
 	slogger *slog.Logger,
 ) *APIPortalService {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
 	return &APIPortalService{
-		portalRepo:   portalRepo,
-		orgRepo:      orgRepo,
-		auditRepo:    auditRepo,
-		vault:        secretVault,
-		authRegistry: authRegistry,
-		identity:     identity,
-		slogger:      slogger,
+		portalRepo:        portalRepo,
+		orgRepo:           orgRepo,
+		auditRepo:         auditRepo,
+		vault:             secretVault,
+		authRegistry:      authRegistry,
+		identity:          identity,
+		slogger:           slogger,
+		webhookCfg:        webhookCfg,
+		webhookHTTPClient: httpClient,
 	}
 }
 
@@ -222,6 +236,26 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
+
+	// Sync webhook-subscriber seed, OSS-create path only. Gating on
+	// status==active skips cloud-plugin callers that write status=pending for
+	// portals whose pods are not reachable yet - those run the same seed
+	// asynchronously through the provisioning poller after the pod boots.
+	// Fail-closed with row rollback: a half-configured portal (row exists but
+	// cannot notify platform-api of events) is worse than a visible failure
+	// the operator can retry.
+	if status == constants.APIPortalStatusActive && s.webhookCfg.Enabled && s.webhookCfg.AutoSeedSubscribers {
+		if seedErr := s.EnsureWebhookSubscriberOnPortal(context.Background(), portal.Handle, orgID); seedErr != nil {
+			if delErr := s.portalRepo.Delete(portal.ID, orgID); delErr != nil {
+				s.slogger.Error("portal webhook-subscriber auto-seed rollback failed; portal row orphaned",
+					slog.String("portalID", portal.ID), slog.String("handle", portal.Handle), slog.String("orgID", orgID),
+					slog.Any("seedErr", seedErr), slog.Any("rollbackErr", delErr))
+			}
+			return nil, apperror.Internal.Wrap(seedErr).
+				WithLogMessage(fmt.Sprintf("portal webhook-subscriber auto-seed failed for handle %q", portal.Handle))
+		}
+	}
+
 	return ModelToAPIPortalResponse(portal), nil
 }
 

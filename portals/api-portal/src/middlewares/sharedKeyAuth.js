@@ -71,7 +71,8 @@ function verifyHash(rawToken, configuredHashHex) {
 /**
  * Returns the fixed req.auth for a verified shared-key call.
  * preauthorized=false so the per-operation scope check still runs, limiting the mechanism
- * to the five dp:*:manage scopes the role grants.
+ * to the dp:*:manage scopes the platform-api-system role grants (see
+ * role-to-scope-mapping.yaml).
  */
 function synthesiseSharedKeyPrincipal() {
     const scopes = roleScopeMap.expandRoles([SHARED_KEY_ROLE]);

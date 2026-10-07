@@ -389,7 +389,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	webhookHTTPClient := &http.Client{
+		Timeout: 10 * time.Second,
+		// Respect the shared platform_api.http_client.tls block so webhook-
+		// subscriber POSTs reach a self-signed portal in local dev the same
+		// way the rest of the SSRF-guarded calls do. Dedicated client rather
+		// than reusing the SSRF-guarded shared one: the portal URL is
+		// provisioned by the plugin and already validated as a user-supplied
+		// portal address, so the hardened guards do not apply here.
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.HTTPClient.TLS.InsecureSkipVerify}, // #nosec G402 -- opt-in via config
+		},
+	}
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, cfg.Webhook, webhookHTTPClient, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)

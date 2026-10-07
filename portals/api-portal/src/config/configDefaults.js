@@ -93,6 +93,13 @@ const DEFAULTS = {
             maximumProtocolVersion: 'TLS1_3',
             ciphers: '',
             ecdhCurves: 'X25519,P-256',
+            // Opt-in bypass for peer certificate verification on OUTBOUND
+            // calls (webhook delivery, Platform API login, IDP token). Required
+            // for local dev where Platform API serves a self-signed cert; a
+            // webhook delivery to it otherwise fails with "self-signed
+            // certificate" and the subscriber row sits with no deliveries. In
+            // production both sides have CA-issued certs and this stays false.
+            insecureSkipVerify: false,
         },
     },
     // driver selects the dialect adapter in db/driver.js. Aliases are accepted
@@ -125,8 +132,9 @@ const DEFAULTS = {
         encryptionKey: '',
         sessionSecret: '',
     },
-    // Shared-key S2S auth for platform-api publishing calls. Portal compares sha256(raw) against `hash`.
-    // A match grants only the platform-api-system role's five dp:*:manage scopes.
+    // Shared-key S2S auth for platform-api publishing + self-registration calls.
+    // Portal compares sha256(raw) against `hash`; a match grants only the
+    // platform-api-system role's dp:*:manage scopes (see role-to-scope-mapping.yaml).
     // Empty disables shared-key auth entirely; OAuth / session paths keep working.
     internalAuth: {
         hash: '',

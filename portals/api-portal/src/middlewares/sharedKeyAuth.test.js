@@ -215,7 +215,7 @@ test('verifyHash rejects a non-hex configured hash without throwing', () => {
 // synthesiseSharedKeyPrincipal
 // ---------------------------------------------------------------------------
 
-test('synthesiseSharedKeyPrincipal returns a fixed shape carrying the five dp:*:manage scopes', () => {
+test('synthesiseSharedKeyPrincipal returns a fixed shape carrying the platform-api-system dp:*:manage scopes', () => {
     const principal = runProbe(KNOWN_HASH, `
         emit(sharedKeyAuth.synthesiseSharedKeyPrincipal());
     `);
@@ -223,22 +223,23 @@ test('synthesiseSharedKeyPrincipal returns a fixed shape carrying the five dp:*:
     // from oauth / session traffic.
     assert.equal(principal.mode, 'shared-key');
     // No preauthorized shortcut: the OpenAPI validator still runs the per-operation
-    // scope check against `scopes`, which is what limits shared-key to the five admin
-    // write operations rather than any hand-maintained list of routes.
+    // scope check against `scopes`, which is what limits shared-key to the platform-
+    // api-system role's write operations rather than any hand-maintained route list.
     assert.equal(principal.preauthorized, false);
     // No portal user represents this identity, so userId is null and rawSub records
     // the service role name for audit-log purposes.
     assert.equal(principal.userId, null);
     assert.equal(principal.rawSub, 'platform-api-system');
-    // The five scopes come from expanding the platform-api-system role through the
-    // shipped role-to-scope-mapping.yaml. Ordering is not stable across map iterations,
-    // so compare as sets.
+    // Scopes come from expanding the platform-api-system role through the shipped
+    // role-to-scope-mapping.yaml. Ordering is not stable across map iterations, so
+    // compare as sets.
     assert.deepEqual([...principal.scopes].sort(), [
         'dp:api:manage',
         'dp:api_content:manage',
         'dp:mcp_server:manage',
         'dp:mcp_server_content:manage',
         'dp:subscription_plan:manage',
+        'dp:webhook_subscriber:manage',
     ]);
 });
 
