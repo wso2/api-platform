@@ -369,6 +369,24 @@ const toWirePairs = (headers: Record<string, unknown> | undefined): WirePair[] =
     .map(([name, value]) => ({ name, value: value as string }));
 
 /**
+ * Narrows the relay's reply to the envelope this module knows how to convert.
+ *
+ * The body is cast, not trusted: a 200 carrying something else entirely is a
+ * realistic outcome when an intermediary — a corporate proxy, a service-mesh
+ * error page, a misconfigured ingress; answers in the BFF's place. Without
+ * this, a non-array `headers` reaches `forEach` and surfaces in the console as
+ * a raw TypeError rather than as a message anyone can act on.
+ */
+const isRelayResult = (value: unknown): value is RelayResult => {
+  if (typeof value !== 'object' || value === null) return false;
+  const { outcome, response } = value as { outcome?: unknown; response?: unknown };
+  if (outcome !== 'response') return false;
+  if (typeof response !== 'object' || response === null) return false;
+  const { status, headers } = response as { status?: unknown; headers?: unknown };
+  return typeof status === 'number' && Array.isArray(headers);
+};
+
+/**
  * Rebuilds the relayed response into the shape swagger-client expects.
  *
  * `url` is the real gateway URL, so the Request URL the console shows is the
@@ -482,8 +500,18 @@ export const createRelayFetch =
       throw new Error(localized(context.intl, body.code));
     }
 
-    const result = (await res.json()) as RelayResult;
-    return toResponseLike(result, gatewayUrl);
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch {
+      // A 200 whose body is not JSON at all; `json()` would otherwise reject
+      // with an untranslated SyntaxError.
+      throw new Error(context.intl.formatMessage(messages.unexpected));
+    }
+    if (!isRelayResult(parsed)) {
+      throw new Error(context.intl.formatMessage(messages.unexpected));
+    }
+    return toResponseLike(parsed, gatewayUrl);
   };
 
 /**

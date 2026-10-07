@@ -50,6 +50,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -374,8 +375,8 @@ func (p *Policy) Describe() string {
 // gateway.
 func targetPort(u *url.URL) (int, error) {
 	if explicit := u.Port(); explicit != "" {
-		port, err := net.LookupPort("tcp", explicit)
-		if err != nil {
+		port, err := strconv.Atoi(explicit)
+		if err != nil || port < 1 || port > 65535 {
 			return 0, fmt.Errorf("%w: %s", ErrPortNotAllowed, explicit)
 		}
 		return port, nil

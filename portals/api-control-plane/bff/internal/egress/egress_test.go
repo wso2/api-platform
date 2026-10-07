@@ -235,6 +235,9 @@ func TestCheckTargetPortConstraint(t *testing.T) {
 		{"https://gw.internal:9443/x", true},
 		{"https://gw.internal/x", true}, // https defaults to 443, which is listed
 		{"https://gw.internal:9200/x", false},
+		// Port 0 is not a dialable port. It used to be refused only because
+		// allow_ports can never contain it; targetPort now rejects it outright.
+		{"https://gw.internal:0/x", false},
 		{"http://gw.internal/x", false}, // http defaults to 80, which is not
 	} {
 		t.Run(tc.raw, func(t *testing.T) {

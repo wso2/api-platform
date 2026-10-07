@@ -426,3 +426,50 @@ describe('testConsoleRelayPlugin', () => {
     expect(original.mock.calls[1][0]).toHaveProperty('userFetch', expect.any(Function));
   });
 });
+
+describe('createRelayFetch — a reply that is not a relay envelope', () => {
+  it('reports a usable message when the body is not JSON at all', async () => {
+    // An intermediary answering 200 with an HTML error page in the BFF's
+    // place. `json()` would otherwise reject with an untranslated SyntaxError.
+    server.use(
+      http.post(
+        INVOKE_URL,
+        () => new HttpResponse('<html>gateway timeout</html>', { status: 200 }),
+      ),
+    );
+
+    await expect(
+      createRelayFetch(contextRef())('ignored', {
+        url: 'https://gw.example.com/pizza/v1/x',
+        method: 'GET',
+      }),
+    ).rejects.toThrow(/could not be sent/i);
+  });
+
+  it('reports a usable message when headers is not a list', async () => {
+    // toResponseLike calls headers.forEach; without the shape check this
+    // surfaced in the console as a raw TypeError.
+    respondWith({
+      outcome: 'response',
+      response: { status: 200, headers: {}, body: '', bodyEncoding: 'utf8' },
+    });
+
+    await expect(
+      createRelayFetch(contextRef())('ignored', {
+        url: 'https://gw.example.com/pizza/v1/x',
+        method: 'GET',
+      }),
+    ).rejects.toThrow(/could not be sent/i);
+  });
+
+  it('still converts a well-formed envelope', async () => {
+    respondWith(relayed());
+
+    const res = await createRelayFetch(contextRef())('ignored', {
+      url: 'https://gw.example.com/pizza/v1/x',
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(200);
+  });
+});

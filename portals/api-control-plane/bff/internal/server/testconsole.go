@@ -82,7 +82,11 @@ func (s *Server) handleTestInvoke(w http.ResponseWriter, r *http.Request) {
 
 	requestID := w.Header().Get("X-Request-Id")
 
-	target, err := s.testResolver.Resolve(r.Context(), token, env.OrgHandle, env.RestAPIID, env.GatewayID)
+	// Bound separately because resolution performs two sequential Platform API
+	// reads and must finish before the route's write deadline.
+	resolveCtx, cancelResolve := context.WithTimeout(r.Context(), testResolveTimeout)
+	target, err := s.testResolver.Resolve(resolveCtx, token, env.OrgHandle, env.RestAPIID, env.GatewayID)
+	cancelResolve()
 	if err != nil {
 		// The specific reason stays server-side. Telling a caller whether the
 		// API id exists, whether the gateway is merely undeployed, or what the
@@ -199,11 +203,19 @@ func relayedMethod(env testproxy.Envelope) string {
 	return "INVALID"
 }
 
+// testResolveTimeout bounds target resolution: two sequential Platform API
+// reads, against a control plane the BFF is co-deployed with. Deliberately far
+// below the shared upstream client's own 60s ceiling, which is sized for user
+// -facing proxying rather than for a phase that has to finish before the relay
+// has even started.
+const testResolveTimeout = 10 * time.Second
+
 // testInvokeWriteDeadline bounds how long this handler may take to write its
-// response. It sits modestly above the relay's own request timeout rather than
-// at the generic nonStreamingWriteDeadline, so a stuck gateway is caught by the
-// inner bound it was sized for — not by an outer one that would hold the
-// connection far longer than the call could legitimately take.
+// response. It is the sum of the two phases it actually performs — resolution
+// and the relayed call — plus a margin to write the result, rather than the
+// generic nonStreamingWriteDeadline. Sized this way the inner bounds always
+// fire first, so a stuck gateway or a slow control plane surfaces as a clean
+// error rather than a connection cut off mid-response.
 func (s *Server) testInvokeWriteDeadline() time.Duration {
-	return s.cfg.TestConsole.RequestTimeout + 5*time.Second
+	return testResolveTimeout + s.cfg.TestConsole.RequestTimeout + 5*time.Second
 }
