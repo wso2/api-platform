@@ -75,32 +75,15 @@ func TestGatewayDataVersionForGateway(t *testing.T) {
 		// A gateway that positively reports an old version still down-converts.
 		{"reported 1.1 is v1alpha1", "1.1", GatewayDataVersionV1Alpha1},
 		{"reported 1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
+		{"reported 1.0.0 is v1alpha1", "1.0.0", GatewayDataVersionV1Alpha1},
 		{"reported 1.2 is v1", "1.2", GatewayDataVersionV1},
 		{"reported 1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
 		{"reported 1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
+		{"CalVer release is v1", "2026.09.24", GatewayDataVersionV1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, GatewayDataVersionForGateway(tt.version))
-		})
-	}
-}
-
-func TestTargetGatewayDataVersion(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		want    GatewayDataVersion
-	}{
-		{"1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
-		{"1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
-		{"1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
-		{"1.1.0 is v1alpha1", "1.1.0", GatewayDataVersionV1Alpha1},
-		{"empty is v1alpha1", "", GatewayDataVersionV1Alpha1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, TargetGatewayDataVersion(ParseVersion(tt.version)))
 		})
 	}
 }

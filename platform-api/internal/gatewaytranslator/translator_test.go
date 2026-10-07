@@ -29,128 +29,156 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-// TestTranslate_LLMProvider_AllSourceTargetCombinations covers gateway 1.2.0
-// (v1) and 1.1.0 (v1alpha1) against a legacy (1.0, flat policies) and current
-// (1.1, split policies) stored source.
-func TestTranslate_LLMProvider_AllSourceTargetCombinations(t *testing.T) {
-	newLegacyArtifact := func() *dto.LLMProviderDeploymentYAML {
-		a := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.LLMProvider}
-		a.Spec.Policies = []api.LLMPolicy{{
-			Name:  "llm-cost-based-ratelimit",
-			Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
-		}}
-		return a
-	}
-	newSplitArtifact := func() *dto.LLMProviderDeploymentYAML {
-		a := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.LLMProvider}
-		a.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-		return a
-	}
-
-	t.Run("source 1.0 (legacy) target v1 (1.2.0): normalized up to split, apiVersion v1", func(t *testing.T) {
-		artifact := newLegacyArtifact()
-		err := Translate(constants.LLMProvider, "1.0", TargetGatewayDataVersion(ParseVersion("1.2.0")), artifact)
-		require.NoError(t, err)
-		assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
-		require.Len(t, artifact.Spec.GlobalPolicies, 1)
-		assert.Equal(t, "llm-cost-based-ratelimit", artifact.Spec.GlobalPolicies[0].Name)
-		assert.Empty(t, artifact.Spec.Policies)
-	})
-
-	t.Run("source 1.0 (legacy) target v1alpha1 (1.1.0): normalized then re-flattened, apiVersion v1alpha1", func(t *testing.T) {
-		artifact := newLegacyArtifact()
-		err := Translate(constants.LLMProvider, "1.0", TargetGatewayDataVersion(ParseVersion("1.1.0")), artifact)
-		require.NoError(t, err)
-		assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
-		assert.Nil(t, artifact.Spec.GlobalPolicies)
-		require.Len(t, artifact.Spec.Policies, 1)
-		assert.Equal(t, "llm-cost-based-ratelimit", artifact.Spec.Policies[0].Name)
-	})
-
-	t.Run("source 1.1 (split) target v1 (1.2.0): untouched, apiVersion v1", func(t *testing.T) {
-		artifact := newSplitArtifact()
-		err := Translate(constants.LLMProvider, "1.1", TargetGatewayDataVersion(ParseVersion("1.2.0")), artifact)
-		require.NoError(t, err)
-		assert.Equal(t, constants.GatewayApiVersion, artifact.ApiVersion)
-		require.Len(t, artifact.Spec.GlobalPolicies, 1)
-		assert.Empty(t, artifact.Spec.Policies)
-	})
-
-	t.Run("source 1.1 (split) target v1alpha1 (1.1.0): flattened, apiVersion v1alpha1", func(t *testing.T) {
-		artifact := newSplitArtifact()
-		err := Translate(constants.LLMProvider, "1.1", TargetGatewayDataVersion(ParseVersion("1.1.0")), artifact)
-		require.NoError(t, err)
-		assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
-		assert.Nil(t, artifact.Spec.GlobalPolicies)
-		require.Len(t, artifact.Spec.Policies, 1)
-	})
-}
-
-func TestTranslate_LLMProxy_OldGatewayFlattens(t *testing.T) {
-	artifact := &dto.LLMProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
-	artifact.Spec.GlobalPolicies = []api.Policy{{Name: "basic-ratelimit", Version: "v1"}}
-
-	err := Translate(constants.LLMProxy, "1.1", TargetGatewayDataVersion(ParseVersion("1.1.0")), artifact)
-
-	require.NoError(t, err)
-	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
-	require.Len(t, artifact.Spec.Policies, 1)
-}
-
-// TestTranslate_AllKinds_PassthroughOnNewGateway_ApiVersionOnlySwapOnOld covers
-// every kind × both target gateways, guarding the #2492/#2547 regression: every
-// kind must flip apiVersion on an old gateway, not just LLM.
-func TestTranslate_AllKinds_PassthroughOnNewGateway_ApiVersionOnlySwapOnOld(t *testing.T) {
-	newArtifacts := func() map[string]interface {
+// TestTranslate_Matrix drives every kind through the facade for each gateway
+// release the control plane supports and pins the artifact shape and the
+// warnings each one gets. The per-kind details are covered in kinds/; this is
+// the end-to-end contract the deploy services rely on.
+func TestTranslate_Matrix(t *testing.T) {
+	type artifact interface {
 		GetApiVersion() string
 		SetApiVersion(string)
-	} {
-		return map[string]interface {
-			GetApiVersion() string
-			SetApiVersion(string)
-		}{
-			constants.RestApi:      &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi},
-			constants.WebSubApi:    &model.WebSubAPIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.WebSubApi},
-			constants.WebBrokerApi: &model.WebBrokerAPIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.WebBrokerApi},
-			constants.MCPProxy:     &model.MCPProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.MCPProxy},
+	}
+	type check struct {
+		kind      string
+		build     func() artifact
+		warnings  map[string]int // gateway version -> expected warning count
+		assertOld func(t *testing.T, a artifact)
+		assertNew func(t *testing.T, a artifact)
+	}
+
+	checks := []check{
+		{
+			kind: constants.RestApi,
+			build: func() artifact {
+				return &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
+			},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+		},
+		{
+			kind: constants.MCPProxy,
+			build: func() artifact {
+				a := &model.MCPProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.MCPProxy}
+				a.Spec.Upstream.URL = "https://b/api/mcp"
+				a.Spec.SpecVersions = []string{"2026-07-28", "2025-11-25"}
+				return a
+			},
+			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 1, "2026.09.24": 0},
+			assertOld: func(t *testing.T, a artifact) {
+				m := a.(*model.MCPProxyDeploymentYAML)
+				assert.Equal(t, "https://b/api", m.Spec.Upstream.URL)
+				assert.Equal(t, "2025-11-25", m.Spec.SpecVersion)
+				assert.Nil(t, m.Spec.SpecVersions)
+			},
+			assertNew: func(t *testing.T, a artifact) {
+				m := a.(*model.MCPProxyDeploymentYAML)
+				assert.Equal(t, "https://b/api/mcp", m.Spec.Upstream.URL)
+			},
+		},
+		{
+			kind: constants.LLMProvider,
+			build: func() artifact {
+				a := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.LLMProvider}
+				a.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
+				return a
+			},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+			assertOld: func(t *testing.T, a artifact) {
+				p := a.(*dto.LLMProviderDeploymentYAML)
+				assert.Nil(t, p.Spec.GlobalPolicies)
+				assert.Len(t, p.Spec.Policies, 1)
+			},
+			assertNew: func(t *testing.T, a artifact) {
+				p := a.(*dto.LLMProviderDeploymentYAML)
+				assert.Len(t, p.Spec.GlobalPolicies, 1)
+				assert.Empty(t, p.Spec.Policies)
+			},
+		},
+		{
+			kind: constants.LLMProxy,
+			build: func() artifact {
+				a := &dto.LLMProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.LLMProxy}
+				a.Spec.GlobalPolicies = []api.Policy{{Name: "basic-ratelimit", Version: "v1"}}
+				a.Spec.AdditionalProviders = []dto.LLMProxyDeploymentAdditionalProvider{{ID: "anthropic", As: "claude"}}
+				return a
+			},
+			warnings: map[string]int{"1.0.0": 1, "1.1.0": 1, "1.2.0": 0, "2026.09.24": 0},
+			assertOld: func(t *testing.T, a artifact) {
+				p := a.(*dto.LLMProxyDeploymentYAML)
+				assert.Nil(t, p.Spec.AdditionalProviders)
+				assert.Len(t, p.Spec.Policies, 1)
+			},
+			assertNew: func(t *testing.T, a artifact) {
+				p := a.(*dto.LLMProxyDeploymentYAML)
+				assert.Len(t, p.Spec.AdditionalProviders, 1)
+			},
+		},
+		{
+			kind: constants.WebSubApi,
+			build: func() artifact {
+				return &model.WebSubAPIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.WebSubApi}
+			},
+			warnings: map[string]int{"1.0.0": 0, "1.1.0": 0, "1.2.0": 0, "2026.09.24": 0},
+		},
+	}
+
+	for _, c := range checks {
+		for _, gw := range []string{"1.0.0", "1.1.0", "1.2.0", "2026.09.24"} {
+			t.Run(c.kind+"/gateway-"+gw, func(t *testing.T) {
+				a := c.build()
+				rep, err := Translate(c.kind, "1.1", gw, a)
+				require.NoError(t, err)
+				assert.Len(t, rep.Warnings(), c.warnings[gw])
+				if GatewayDataVersionForGateway(gw) == GatewayDataVersionV1Alpha1 {
+					assert.Equal(t, constants.GatewayApiVersionV1Alpha1, a.GetApiVersion())
+					if c.assertOld != nil {
+						c.assertOld(t, a)
+					}
+				} else {
+					assert.Equal(t, constants.GatewayApiVersion, a.GetApiVersion())
+					if c.assertNew != nil {
+						c.assertNew(t, a)
+					}
+				}
+			})
 		}
 	}
+}
 
-	for kind, artifact := range newArtifacts() {
-		t.Run(kind+"/target-1.2.0", func(t *testing.T) {
-			err := Translate(kind, "1.0", TargetGatewayDataVersion(ParseVersion("1.2.0")), artifact)
-			require.NoError(t, err)
-			assert.Equal(t, constants.GatewayApiVersion, artifact.GetApiVersion())
-		})
-	}
-	for kind, artifact := range newArtifacts() {
-		t.Run(kind+"/target-1.1.0", func(t *testing.T) {
-			err := Translate(kind, "1.0", TargetGatewayDataVersion(ParseVersion("1.1.0")), artifact)
-			require.NoError(t, err)
-			assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.GetApiVersion())
-		})
+// A blank gateway version is a current build: the artifact keeps v1. This is
+// the regression guard for gateways that registered without a version or
+// report a non-semver dev tag.
+func TestTranslate_BlankGatewayVersionIsCurrent(t *testing.T) {
+	for _, raw := range []string{"", "   ", "it-e2e"} {
+		a := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
+		rep, err := Translate(constants.RestApi, "1.0", raw, a)
+		require.NoError(t, err)
+		assert.Equal(t, constants.GatewayApiVersion, a.ApiVersion)
+		assert.True(t, rep.Empty())
 	}
 }
 
-func TestTranslate_UnknownKind_StillSwapsApiVersionOnOldGateway(t *testing.T) {
-	artifact := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: "SomeFutureKind"}
-
-	err := Translate("SomeFutureKind", "1.0", TargetGatewayDataVersion(ParseVersion("1.1.0")), artifact)
-
-	require.NoError(t, err)
-	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
-}
-
-func TestTranslate_EmptyTargetGatewayVersion_TreatedAsOld(t *testing.T) {
-	artifact := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-
-	err := Translate(constants.RestApi, "1.0", TargetGatewayDataVersion(ParseVersion("")), artifact)
-
-	require.NoError(t, err)
-	assert.Equal(t, constants.GatewayApiVersionV1Alpha1, artifact.ApiVersion)
+// Every deployable kind has a definition, so a kind without one is a
+// programming error rather than something to pass through.
+func TestTranslate_UnknownKindIsAnError(t *testing.T) {
+	a := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: "SomeFutureKind"}
+	_, err := Translate("SomeFutureKind", "1.0", "1.1.0", a)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SomeFutureKind")
 }
 
 func TestTranslate_WrongPayloadType_ReturnsError(t *testing.T) {
-	err := Translate(constants.LLMProvider, "1.0", GatewayDataVersionV1Alpha1, &dto.LLMProxyDeploymentYAML{})
+	_, err := Translate(constants.LLMProvider, "1.0", "1.1.0", &dto.LLMProxyDeploymentYAML{})
 	assert.Error(t, err)
+}
+
+// Agent proxies translate under their gateway kind.
+func TestTranslate_AgentUnderGatewayKind(t *testing.T) {
+	a := &model.AgentProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.GatewayKindAgent}
+	rep, err := Translate(constants.GatewayKindAgent, "1.0", "2026.09.24", a)
+	require.NoError(t, err)
+	assert.Equal(t, constants.GatewayApiVersion, a.ApiVersion)
+	assert.True(t, rep.Empty())
+
+	_, err = Translate(constants.AgentProxy, "1.0", "2026.09.24", a)
+	assert.Error(t, err, "AgentProxy is the control-plane name, not a gateway kind")
 }

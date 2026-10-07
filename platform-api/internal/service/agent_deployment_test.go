@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
-	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -63,9 +63,9 @@ func depTSetup(t *testing.T) *depTEnv {
 		depTSecondGateway, importTestOrgID, depTSecondGWHandle, "Gateway 2"); err != nil {
 		t.Fatalf("seed second gateway: %v", err)
 	}
-	// Both gateways are new enough to receive the v1 Agent shape.
+	// Both gateways are new enough to have the Agent kind.
 	if _, err := d.db.Exec(`UPDATE gateways SET version = ? WHERE organization_uuid = ?`,
-		gatewaytranslator.MinGatewayV1Version, importTestOrgID); err != nil {
+		gwversion.MinAgentKindGatewayVersion, importTestOrgID); err != nil {
 		t.Fatalf("set gateway versions: %v", err)
 	}
 	if _, err := d.db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)

@@ -428,6 +428,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyService.WithSecretService(secretService)
 	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
+	// Gateways older than the secret-sync release receive artifacts with the
+	// placeholders already resolved; the internal fetch path needs the store for that.
+	internalGatewayService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{

@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 )
 
 func setupAgentBuildEnv(t *testing.T) *agentDeployEnv {
@@ -43,7 +44,7 @@ func setupAgentBuildEnv(t *testing.T) *agentDeployEnv {
 		agentProxyTestEnv: env,
 		proxy:             "weather-agent",
 		gateway:           "ai-gw",
-		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", "1.2.0"),
+		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", gwversion.MinAgentKindGatewayVersion),
 	}
 }
 

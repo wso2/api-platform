@@ -138,6 +138,9 @@ var (
 	DeploymentGatewayMismatch = def(CodeDeploymentGatewayMismatch, http.StatusBadRequest, "Deployment is bound to a different gateway.")
 	DeploymentActive          = def(CodeDeploymentActive, http.StatusConflict, "Cannot delete an active deployment - undeploy it first.")
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
+	// Args: the control-plane kind name, the first gateway release that has it.
+	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
+		"This gateway does not support %s artifacts; gateway version %s or newer is required.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP

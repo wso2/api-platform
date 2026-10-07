@@ -96,6 +96,9 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release predates
+	// the artifact kind (e.g. an Agent proxy on a gateway older than the Agent kind).
+	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
 )
 
 // REST API domain codes.

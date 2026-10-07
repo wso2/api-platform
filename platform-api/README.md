@@ -459,6 +459,40 @@ services:
         format: raw
 ```
 
+### Gateway version compatibility
+
+Platform API generates deployment artifacts in the shape the newest supported gateway expects and
+adapts them, per deployment, to the release the target gateway reported in its manifest
+(`model.Gateway.Version`). The code lives in `internal/gatewaytranslator`: one file per artifact
+kind under `kinds/`, every gateway version literal in `gwversion/versions.go`, and the engine in
+`translate/`. To see what an artifact kind gets on an older gateway, open `kinds/<kind>.go`.
+
+| Gateway release | What changes for it |
+|---|---|
+| `1.0.0`, `1.1.0` | CRD `apiVersion` becomes `v1alpha1`. LLM provider/proxy `globalPolicies`/`operationPolicies` are flattened into `policies`. LLM proxy `additionalProviders` are dropped. MCP upstream URLs lose their trailing `/mcp` (the gateway appends it). MCP `specVersions` collapse to one `specVersion`. Upstream auth `type: none` becomes no auth block. `{{ secret "handle" }}` placeholders are replaced with the plaintext value when the gateway fetches the artifact, because these releases cannot pull secrets from the control plane. |
+| `1.2.0` | MCP `specVersions` collapse to one `specVersion`. Everything else ships unchanged; the gateway syncs secrets itself. |
+| `2026.09.24` and later | Unchanged. This is also the first release with the `Agent` kind. |
+
+Rules the translator follows:
+
+- A kind the gateway does not have (`Agent` below `2026.09.24`, `WebBrokerApi` below `1.2.0`) is
+  **refused** at deploy and restore time with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY`. Nothing
+  is stored and no event is sent.
+- A field the gateway does not know is stripped, and a value it cannot accept (an upstream auth
+  type other than `api-key` on `1.0.0`/`1.1.0`, an MCP upstream whose path does not end in `/mcp`)
+  is shipped unchanged so the gateway reports it. Each such decision is logged once at `WARN` as
+  `Deployment artifact adapted for older gateway`, with `kind`, `field`, `deploymentID`,
+  `gatewayID` and `gatewayVersion`.
+- Stored deployment content always keeps its `{{ secret }}` placeholders; plaintext is produced
+  only in the response to the gateway's fetch. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
+  gateway only through a redeploy.
+- A gateway with no reported version (never connected, or a non-semver dev build) is treated as a
+  current build.
+
+Known limitations: a plaintext secret containing `{{` is re-parsed by the `1.1.0` template engine;
+a `1.2.0` gateway with `mcp.append_resource_path_to_backend` enabled receives a doubled `/mcp`
+because Platform API cannot see that toggle.
+
 ### Read-only (maintenance) mode — temporary
 
 > **TEMP-READ-ONLY-MODE.** This mode exists only for the Bijira v1 → v2 migration and is

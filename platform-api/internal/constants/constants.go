@@ -159,6 +159,14 @@ const (
 	GatewayApiVersion         = "gateway.api-platform.wso2.com/v1"
 )
 
+// MCP specification revisions named in more than one place: the MCP client in
+// utils speaks them, and the gateway translator folds a proxy's declared list
+// down to them for gateways that accept a single spec version.
+const (
+	MCPSpecVersion20250618 = "2025-06-18"
+	MCPSpecVersion20251125 = "2025-11-25"
+)
+
 // Platform-api resource URL version. APIBasePath is the single source of truth for
 // the prefix every handler route group is mounted under. NOTE: this is a DIFFERENT
 // axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
@@ -300,8 +308,8 @@ const DefaultOpenAPISpecJSONFileName = "openapi.json"
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type
 const (
-	DocumentTypeDefinition   = "DEFINITION"
-	DocumentHandleDefinition = "api-definition"
+	DocumentTypeDefinition        = "DEFINITION"
+	DocumentHandleDefinition      = "api-definition"
 	DocumentDisplayNameDefinition = "OpenAPI Definition"
 )
 
