@@ -44,6 +44,10 @@ export interface ResourceLimit {
   used: number;
 }
 
+/** Shown when a supplier reports read-only but gives no reason of its own. */
+const DEFAULT_READ_ONLY_MESSAGE =
+  'Your organization is read-only, so nothing can be created or changed.';
+
 /** No ceiling. */
 const UNLIMITED = -1;
 /** The supplier could not read the count. */
@@ -76,6 +80,39 @@ const COMPONENT_LABELS: Record<LimitedComponent, string> = {
 
 export interface ResourceLimitsContextType {
   /**
+   * True when the organization may not create or update ANYTHING — a different
+   * question from whether it has room for one more of something. In this product
+   * it means the free trial has ended and no paid plan replaced it; the control
+   * plane refuses every create and update while it holds, so this is a mirror of
+   * a decision made there, not one made here.
+   *
+   * `canCreate` already answers `false` for every component while this is true,
+   * so a page that gates creation on `canCreate` needs no change. Read this one
+   * directly to gate an EDIT or an update, which no count would cover.
+   */
+  readOnly: boolean;
+  /** Why the workspace is read-only; '' when it is not. */
+  readOnlyMessage: string;
+  /**
+   * Supply the read-only verdict. Called by the same extension that supplies the
+   * limits — nothing in the portal itself calls it.
+   */
+  setReadOnly: (readOnly: boolean, reason?: string) => void;
+  /**
+   * Bumped every time something asks for the limits to be re-read. The supplier
+   * watches it; nothing else should.
+   */
+  refreshSignal: number;
+  /**
+   * Ask the supplier to re-read the limits. Call it after a create or a delete:
+   * the counts behind `canCreate` were read when the supplier last ran, so
+   * without this a user who has just created their last allowed component keeps
+   * seeing an enabled create button until they navigate.
+   *
+   * A no-op when no supplier is mounted.
+   */
+  refresh: () => void;
+  /**
    * Whether another component of this type may be created.
    *
    * Answers `true` unless something has supplied a limit saying otherwise — so
@@ -100,6 +137,11 @@ const NOOP_SET = () => {
 };
 
 const NO_LIMITS: ResourceLimitsContextType = {
+  readOnly: false,
+  readOnlyMessage: '',
+  setReadOnly: NOOP_SET,
+  refreshSignal: 0,
+  refresh: NOOP_SET,
   canCreate: () => true,
   limitMessage: () => '',
   setResourceLimits: NOOP_SET,
@@ -122,9 +164,25 @@ const ResourceLimitsContext =
  */
 export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
   const [limits, setLimits] = useState<ResourceLimitSet | null>(null);
+  const [refreshSignal, setRefreshSignal] = useState(0);
+  const [readOnlyState, setReadOnlyState] = useState<{
+    readOnly: boolean;
+    message: string;
+  }>({ readOnly: false, message: '' });
 
   const setResourceLimits = useCallback(
     (next: ResourceLimitSet | null) => setLimits(next),
+    []
+  );
+
+  const refresh = useCallback(() => setRefreshSignal((n) => n + 1), []);
+
+  const setReadOnly = useCallback(
+    (readOnly: boolean, reason?: string) =>
+      setReadOnlyState({
+        readOnly,
+        message: readOnly ? reason ?? DEFAULT_READ_ONLY_MESSAGE : '',
+      }),
     []
   );
 
@@ -132,8 +190,19 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
     const limitOf = (component: LimitedComponent) => limits?.[component];
 
     return {
-      canCreate: (component) => !isAtLimit(limitOf(component)),
+      readOnly: readOnlyState.readOnly,
+      readOnlyMessage: readOnlyState.message,
+      setReadOnly,
+      refreshSignal,
+      refresh,
+      // Read-only outranks every count: an organization that may not write at all
+      // cannot create a component however much room its plan leaves. Answering it
+      // here is what makes every page that already gates on `canCreate` honour
+      // read-only without a change of its own.
+      canCreate: (component) =>
+        !readOnlyState.readOnly && !isAtLimit(limitOf(component)),
       limitMessage: (component) => {
+        if (readOnlyState.readOnly) return readOnlyState.message;
         const limit = limitOf(component);
         if (!isAtLimit(limit) || !limit) return '';
         return (
@@ -143,7 +212,14 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
       },
       setResourceLimits,
     };
-  }, [limits, setResourceLimits]);
+  }, [
+    limits,
+    readOnlyState,
+    refresh,
+    refreshSignal,
+    setReadOnly,
+    setResourceLimits,
+  ]);
 
   return (
     <ResourceLimitsContext.Provider value={value}>

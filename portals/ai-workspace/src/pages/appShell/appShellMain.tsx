@@ -116,10 +116,37 @@ export default function AppLayout(): JSX.Element {
   // Read rather than owned here: ResourceLimitsProvider sits above this component
   // (App.tsx) so the value can ride the Port. A cloud plugin mounted on app.gate
   // supplies the numbers through `resourceLimits.set`; this portal only carries them.
-  const { canCreate, limitMessage, setResourceLimits } = useResourceLimits();
+  const {
+    canCreate,
+    limitMessage,
+    setResourceLimits,
+    refresh,
+    refreshSignal,
+    readOnly,
+    readOnlyMessage,
+    setReadOnly,
+  } = useResourceLimits();
   const resourceLimits = useMemo(
-    () => ({ canCreate, limitMessage, set: setResourceLimits }),
-    [canCreate, limitMessage, setResourceLimits]
+    () => ({
+      canCreate,
+      limitMessage,
+      set: setResourceLimits,
+      refresh,
+      refreshSignal,
+      readOnly,
+      readOnlyMessage,
+      setReadOnly,
+    }),
+    [
+      canCreate,
+      limitMessage,
+      readOnly,
+      readOnlyMessage,
+      refresh,
+      refreshSignal,
+      setReadOnly,
+      setResourceLimits,
+    ]
   );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
