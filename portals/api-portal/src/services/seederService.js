@@ -100,6 +100,15 @@ async function seedDefaultOrg() {
         // handle. Config owns this field: the admin API refuses to change it, and
         // reconcileIdpOrgId re-applies the configured value on later boots.
         idpRefId: orgContext.getIdpOrgId(),
+        // Platform API's organization identifier that outbound webhook events
+        // carry in org.ref_id (deliveryWorker.js). Platform API's receiver
+        // resolves this handle to its own org UUID; a missing cp_ref_id
+        // sends the portal's internal org UUID instead and every event
+        // 404s with ORGANIZATION_NOT_FOUND. Defaults to the handle because
+        // that is what Platform API's org row carries. Admin API can
+        // override via settings; this seed value is only applied on org
+        // creation, not reconciled on later boots.
+        cpRefId: orgName,
         configuration: {},
         createdBy: constants.SYSTEM_ACTOR,
     };
