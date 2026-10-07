@@ -525,13 +525,24 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 		return nil, err
 	}
 	// One deployment whose secrets cannot be rendered must not block the
-	// gateway's whole startup sync: it is left out of the batch and logged,
-	// and the gateway retries it as a fetch that did not arrive.
+	// gateway's whole startup sync, so it is left out of the batch. The
+	// released gateways only log a missing batch entry and do not retry it,
+	// and they run this sync once per controller start, so the deployment
+	// would otherwise stay missing on the gateway while still showing as
+	// DEPLOYED here. Its status is therefore set to FAILED with a reason the
+	// operator can act on (restore the secret, redeploy); the desired state
+	// stays DEPLOYED so the next startup sync asks for it again.
 	for deploymentID, dc := range contentMap {
 		rendered, err := s.renderContentForGateway(orgID, gateway, dc.Content)
 		if err != nil {
 			s.slogger.Warn("Skipping deployment in batch: secret rendering failed",
-				"deploymentID", deploymentID, "gatewayID", gatewayID, "error", err)
+				"deploymentID", deploymentID, "artifactID", dc.ArtifactID, "gatewayID", gatewayID, "error", err)
+			if _, statusErr := s.deploymentRepo.SetCurrentWithDetails(dc.ArtifactID, orgID, gatewayID, deploymentID,
+				model.DeploymentStatusFailed, string(model.DeploymentStatusDeployed), nil,
+				model.DeploymentErrorSecretResolutionFailed); statusErr != nil {
+				s.slogger.Error("Failed to record secret resolution failure on deployment status",
+					"deploymentID", deploymentID, "gatewayID", gatewayID, "error", statusErr)
+			}
 			delete(contentMap, deploymentID)
 			continue
 		}

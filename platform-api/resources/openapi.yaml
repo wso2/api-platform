@@ -4968,8 +4968,10 @@ paths:
           with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
           (the gateway could not retrieve the deployment artifact), or
           `GATEWAY_PROCESSING_ERROR`.
-        - The control plane does not check the target gateway's version. A gateway that
-          predates Agent support never acknowledges the deployment, which ends `FAILED` with
+        - The control plane refuses a gateway that reports an LTS release without the Agent
+          kind with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY` before anything is stored. A
+          gateway that reports no version is taken to be a current build; if it still lacks
+          Agent support it never acknowledges the deployment, which ends `FAILED` with
           `DEPLOYMENT_TIMEOUT`.
       operationId: createAgentProxyDeployment
       security:
@@ -9666,6 +9668,9 @@ components:
           description: >-
             Error code explaining the failure reason. Null unless status is FAILED (e.g.
             DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text.
+            SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this
+            deployment in its startup sync and a referenced secret could not be resolved; the
+            gateway does not hold the deployment, restore the secret and redeploy.
             Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
             AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
             DEPLOYMENT_ID_MISMATCH.

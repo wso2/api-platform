@@ -78,6 +78,11 @@
 //     name do not both apply there.
 //   - Gateway 1.2.0 operators who enabled mcp.append_resource_path_to_backend
 //     get a doubled /mcp: platform-api sees the gateway version, not the toggle.
+//   - The released gateways run their deployment sync once per controller
+//     start and do not retry an entry missing from the batch. A deployment
+//     whose secret cannot be inlined is therefore marked FAILED
+//     (SECRET_RESOLUTION_FAILED) by the batch path in service/gateway_internal.go
+//     and needs a redeploy once the secret is restored.
 //   - A gateway that has never pushed its manifest has no version and is
 //     treated as a current build; artifacts deployed to it before its first
 //     connect are shaped for latest and need a redeploy once it reports an

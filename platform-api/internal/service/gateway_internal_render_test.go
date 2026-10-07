@@ -118,6 +118,15 @@ func (e *renderITEnv) deploy(t *testing.T, artifactID, gatewayID string, content
 	return deploymentID
 }
 
+// status returns the deployment_status row of a deployment.
+func (e *renderITEnv) status(t *testing.T, deploymentID string) (status, desired, reason string) {
+	t.Helper()
+	var reasonNull sql.NullString
+	require.NoError(t, e.db.QueryRow(`SELECT status, status_desired, status_reason FROM deployment_status WHERE deployment_uuid = ?`,
+		deploymentID).Scan(&status, &desired, &reasonNull))
+	return status, desired, reasonNull.String
+}
+
 func (e *renderITEnv) storedContent(t *testing.T, deploymentID string) []byte {
 	t.Helper()
 	var content []byte
@@ -200,6 +209,18 @@ func TestGatewayInternal_Delivery_BatchSkipsOnlyTheFailingDeployment(t *testing.
 	assert.Equal(t, renderITPlaintext, paramValue(t, batch[good].Content))
 	assert.Equal(t, "art-render-4a", batch[good].ArtifactID)
 	assert.Equal(t, constants.RestApi, batch[good].Type)
+
+	// The gateway will not retry a missing batch entry, so the skipped
+	// deployment is marked FAILED with a reason while its desired state and
+	// stored content are untouched; the delivered one keeps its status.
+	status, desired, reason := env.status(t, bad)
+	assert.Equal(t, string(model.DeploymentStatusFailed), status)
+	assert.Equal(t, string(model.DeploymentStatusDeployed), desired)
+	assert.Equal(t, model.DeploymentErrorSecretResolutionFailed, reason)
+	assert.Equal(t, renderITContent("does-not-exist"), env.storedContent(t, bad))
+	status, _, reason = env.status(t, good)
+	assert.Equal(t, "DEPLOYING", status)
+	assert.Empty(t, reason)
 
 	t.Run("a current gateway gets the batch untouched", func(t *testing.T) {
 		current := env.gateways["1.2.0"]
