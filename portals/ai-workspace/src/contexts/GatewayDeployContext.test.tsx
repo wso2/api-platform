@@ -17,7 +17,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
 import { getGateways } from '../apis/gatewayApis';
@@ -171,7 +171,16 @@ describe('who may deploy', () => {
 });
 
 describe('naming a new deployment', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = '2026-01-15';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${today}T12:00:00.000Z`));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('continues the numbering already used for today', async () => {
     vi.mocked(agentDeploy.getAgentProxyDeployments).mockResolvedValue({
