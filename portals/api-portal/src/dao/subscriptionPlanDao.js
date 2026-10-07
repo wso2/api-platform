@@ -244,7 +244,7 @@ const listByApi = async (apiId, t) => {
 const list = async (orgId, t) => {
   const exec = t || db;
   const plans = await exec.query(
-    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ? ORDER BY handle`,
     [orgId, getPortalId()]
   );
   await attachLimits(plans, t);

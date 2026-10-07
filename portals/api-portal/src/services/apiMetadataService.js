@@ -30,7 +30,6 @@ const apiKeyDao = require("../dao/apiKeyDao");
 const util = require("../utils/util");
 const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
-const { config } = require('../config/configLoader');
 const path = require("path");
 const fs = require("fs").promises;
 const fsDir = require("fs");
@@ -1325,44 +1324,36 @@ const createSubscriptionPlan = async (req, res) => {
 
 const createSubscriptionPlans = async (req, res) => {
     try {
-        if (config.organization.autoCreateSubscriptionPlans) {
-            const msg = "Bulk creation of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the API Portal.";
-            logger.info(msg, {
-                orgId: req.orgId
-            });
-            res.status(200).json({ message: msg });
-        } else {
-            const orgId = req.orgId;
-            const subscriptionPlans = req.body;
-            const userId = util.resolveActor(req);
+        const orgId = req.orgId;
+        const subscriptionPlans = req.body;
+        const userId = util.resolveActor(req);
 
-            if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
-            }
-
-            const createdRecords = [];
-
-            await db.withTransaction(async (t) => {
-                for (const plan of subscriptionPlans) {
-                    normalizePlanHandle(plan);
-                    const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
-                    if (!created) {
-                        throw new CustomError(
-                            500,
-                            constants.ERROR_CODE[500],
-                            `Failed to create plan: ${plan.handle || "unknown"}`
-                        );
-                    }
-                    createdRecords.push(created);
-                }
-            });
-            const audits = await userIdpReferenceDao.buildListAuditFields(createdRecords);
-            const createdPlans = createdRecords.map((created, i) => new subscriptionPlanDTO(created, audits[i]));
-            logger.info('Created subscription plans', {
-                orgId
-            });
-            res.status(201).send(createdPlans);
+        if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
+            return util.sendError(res, 400, "Missing or invalid fields in the request payload");
         }
+
+        const createdRecords = [];
+
+        await db.withTransaction(async (t) => {
+            for (const plan of subscriptionPlans) {
+                normalizePlanHandle(plan);
+                const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
+                if (!created) {
+                    throw new CustomError(
+                        500,
+                        constants.ERROR_CODE[500],
+                        `Failed to create plan: ${plan.handle || "unknown"}`
+                    );
+                }
+                createdRecords.push(created);
+            }
+        });
+        const audits = await userIdpReferenceDao.buildListAuditFields(createdRecords);
+        const createdPlans = createdRecords.map((created, i) => new subscriptionPlanDTO(created, audits[i]));
+        logger.info('Created subscription plans', {
+            orgId
+        });
+        res.status(201).send(createdPlans);
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1407,42 +1398,36 @@ const updateSubscriptionPlan = async (req, res) => {
 
 const updateSubscriptionPlans = async (req, res) => {
     try {
-        if (config.organization.autoCreateSubscriptionPlans) {
-            const msg = "Bulk updating of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the API Portal.";
-            logger.info(msg, {
-                orgId: req.orgId
-            });
-            res.status(200).json({ message: msg });
-        } else {
-            const orgId = req.orgId;
-            const subscriptionPlans = req.body;
-            const userId = util.resolveActor(req);
+        const orgId = req.orgId;
+        const subscriptionPlans = req.body;
+        const userId = util.resolveActor(req);
 
-            if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
-            }
-
-            const updatedRecords = [];
-
-            await db.withTransaction(async (t) => {
-                for (const plan of subscriptionPlans) {
-                    normalizePlanHandle(plan);
-                    const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
-                    if (!result?.subscriptionPlanResponse) {
-                        throw new CustomError(
-                            500,
-                            constants.ERROR_CODE[500],
-                            `Failed to upsert plan: ${plan.handle || "unknown"}`
-                        );
-                    }
-                    updatedRecords.push(result.subscriptionPlanResponse);
-                }
-            });
-            const audits = await userIdpReferenceDao.buildListAuditFields(updatedRecords);
-            const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
-
-            res.status(201).send(updatedPlans);
+        if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
+            return util.sendError(res, 400, "Missing or invalid fields in the request payload");
         }
+
+        const updatedRecords = [];
+        let anyCreated = false;
+
+        await db.withTransaction(async (t) => {
+            for (const plan of subscriptionPlans) {
+                normalizePlanHandle(plan);
+                const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
+                if (!result?.subscriptionPlanResponse) {
+                    throw new CustomError(
+                        500,
+                        constants.ERROR_CODE[500],
+                        `Failed to upsert plan: ${plan.handle || "unknown"}`
+                    );
+                }
+                updatedRecords.push(result.subscriptionPlanResponse);
+                if (result.statusCode === 201) anyCreated = true;
+            }
+        });
+        const audits = await userIdpReferenceDao.buildListAuditFields(updatedRecords);
+        const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
+
+        res.status(anyCreated ? 201 : 200).send(updatedPlans);
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
