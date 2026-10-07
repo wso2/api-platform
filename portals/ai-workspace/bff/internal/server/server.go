@@ -20,6 +20,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -31,6 +32,7 @@ import (
 	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 )
 
@@ -47,9 +49,12 @@ type refreshLock struct {
 
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
-	cfg          *config.Config
-	claims       session.ClaimMapping
-	store        session.Store
+	cfg    *config.Config
+	claims session.ClaimMapping
+	store  session.Store
+	// stateCodec is set exactly when store is the cookie store: it seals/opens the
+	// session-state cookies that carry what used to be process-local state.
+	stateCodec   *session.CookieCodec
 	fileBased    *auth.FileBased
 	oidc         *auth.OIDC
 	proxy        *httputil.ReverseProxy
@@ -191,14 +196,56 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	if cfg.Auth.OIDCEnabled() {
-		// The session store exists only to hold OIDC refresh/id tokens for renewal.
-		// File-based sessions are fully self-contained in the cookie JWT.
-		s.store = session.NewMemoryStore()
+		// The session store holds the OIDC refresh/id tokens for renewal, the cached
+		// exchanged token, and the selected org. File-based sessions are fully
+		// self-contained in the cookie JWT and never touch it.
+		//
+		// In the default cookie mode none of that is kept here: it is sealed into the
+		// client's own cookies, and the login transaction with it, so any replica can
+		// serve any request of any session. That is the whole multi-replica story —
+		// there is no shared store to run and no sticky sessions to configure.
+		var txOpts []auth.Option
+		if cfg.Session.Store == config.SessionStoreCookie {
+			material := cfg.SealKeyMaterial()
+			if material == "" {
+				return nil, fmt.Errorf("[session] store = %q needs key material: set [session] "+
+					"encryption_key, or leave it empty to derive from [auth.oidc] client_secret",
+					config.SessionStoreCookie)
+			}
+			stateSealer, err := secure.NewSealer(secure.DeriveKey(material, config.StateSealLabel))
+			if err != nil {
+				return nil, err
+			}
+			txSealer, err := secure.NewSealer(secure.DeriveKey(material, config.TxSealLabel))
+			if err != nil {
+				return nil, err
+			}
+			s.stateCodec = session.NewCookieCodec(stateSealer, stateChunkSize, stateMaxChunks)
+			s.store = cookieStore{}
+			txOpts = append(txOpts, auth.WithTxSealer(txSealer))
+			slog.Info("[session] store = \"cookie\": session state is carried by the client, " +
+				"sealed per-deployment. This BFF keeps nothing per-session, so it can run with " +
+				"multiple replicas behind a plain load balancer — no sticky sessions required. " +
+				"Each request carries a few KB more in its Cookie header; size any ingress " +
+				"header buffers accordingly.")
+		} else {
+			s.store = session.NewMemoryStore()
+			// Info, not Warn: this is the default and it is correct for the
+			// single-replica deployment most installs are — warning on every boot
+			// would cry wolf. It still has to name the one condition under which it
+			// is wrong, because that failure (a login that works only sometimes) is
+			// almost impossible to diagnose from its symptoms.
+			slog.Info("[session] store = \"memory\": sessions and in-flight logins live in this " +
+				"process only, which is correct for a SINGLE replica. Running more than one " +
+				"requires [session] store = \"cookie\" — otherwise a login fails whenever the " +
+				"IDP callback lands on a replica other than the one that started it.")
+		}
+
 		o, err := auth.NewOIDC(
 			ctx, upstream,
 			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
 			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
-			claims, cfg.Session.AbsoluteTTL,
+			claims, cfg.Session.AbsoluteTTL, txOpts...,
 		)
 		if err != nil {
 			return nil, err
@@ -250,6 +297,8 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"callback_served_at", s.path("/api/auth/callback"),
 			"tx_cookie_path", s.txCookiePath(),
 			"post_logout_redirect_uri", cfg.Auth.OIDC.PostLogoutRedirectURL,
+			"session_store", cfg.Session.Store,
+			"stateless_login_tx", s.oidc.StatelessTransactions(),
 		)
 	}
 	return s, nil

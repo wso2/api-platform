@@ -286,6 +286,11 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 			"tx_cookie_present", txID != "",
 			"tx_cookie_path", s.txCookiePath(),
 			"uptime", time.Since(processStart).Round(time.Second),
+			// stateless_login_tx says how to read pending_transactions: stateless
+			// transactions are held by the browser, so zero there is normal and says
+			// nothing, while zero on a long-lived process in memory mode means this
+			// replica is remembering no logins at all.
+			"stateless_login_tx", s.oidc.StatelessTransactions(),
 			"pending_transactions", s.oidc.PendingTransactions(),
 			"tx_ttl", auth.TxTTL)
 		http.Redirect(w, r, s.path("/login")+"?error="+loginErrAuthFailed, http.StatusFound)
@@ -373,15 +378,29 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 		exp := session.ExpiryFromClaims(session.DecodeJWTClaims(jwt))
 		if needsRefreshSoon(exp) {
 			refreshed, err := s.refreshByToken(r.Context(), jwt)
-			if err != nil {
+			switch {
+			case err == nil:
+				jwt = refreshed.AccessToken
+				s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
+			case stillValid(exp):
+				// A failed refresh is not yet a dead session while the current token
+				// is still good. This is the ordinary outcome of running more than one
+				// replica: the single-flight that collapses a page-load burst into one
+				// refresh is per-process, so two replicas can both present the refresh
+				// token, and an IDP that rotates refresh tokens refuses the second.
+				// The replica that won has already set the rotated cookie pair; logging
+				// this user out over the loser's 400 would make scaling out look like
+				// random session loss. Serve this request on the token we still hold —
+				// the next one, carrying the rotated cookie, refreshes normally.
+				slog.Warn("token refresh failed but the current access token is still valid; "+
+					"serving this request on it", "err", err, "expires_in", time.Until(exp).Round(time.Second))
+			default:
 				slog.Warn("token refresh failed", "err", err)
 				_ = s.store.Delete(r.Context(), jwt)
 				s.clearSessionCookie(w)
 				writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
 				return
 			}
-			jwt = refreshed.AccessToken
-			s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
 		}
 	}
 
@@ -521,6 +540,13 @@ func needsRefreshSoon(accessExpiry time.Time) bool {
 		return false
 	}
 	return time.Now().Add(60 * time.Second).After(accessExpiry)
+}
+
+// stillValid reports whether an access token can still be forwarded upstream right
+// now. A zero expiry (no exp claim) counts as valid: the BFF does not verify tokens,
+// and the upstream is the authority on one it cannot date.
+func stillValid(accessExpiry time.Time) bool {
+	return accessExpiry.IsZero() || time.Now().Before(accessExpiry)
 }
 
 // refreshByToken performs a single-flight refresh keyed by the current access

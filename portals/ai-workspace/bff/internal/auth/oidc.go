@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 )
 
@@ -77,10 +78,26 @@ type OIDC struct {
 	mapping               session.ClaimMapping
 	absTTL                time.Duration
 
+	// sealer, when set, makes login transactions stateless: the record below is
+	// sealed into the tx cookie itself instead of being held in txs. That is what
+	// lets the IDP's callback land on a different replica than the one that started
+	// the login — with a process-local map it lands on a replica that has never heard
+	// of this transaction and the user sees a failed login they cannot act on.
+	sealer *secure.Sealer
+
 	mu        sync.Mutex
 	txs       map[string]*txn
 	done      chan struct{}
 	closeOnce sync.Once
+}
+
+// Option customizes the OIDC authenticator.
+type Option func(*OIDC)
+
+// WithTxSealer stores login transactions in the tx cookie, sealed under the given
+// key, rather than in this process's memory. Required for a multi-replica deployment.
+func WithTxSealer(s *secure.Sealer) Option {
+	return func(o *OIDC) { o.sealer = s }
 }
 
 // discoveryTimeout bounds the startup discovery call so an unreachable issuer
@@ -127,6 +144,7 @@ func NewOIDC(
 	issuer, clientID, clientSecret, redirectURL, postLogoutRedirectURL, scopes string,
 	mapping session.ClaimMapping,
 	absTTL time.Duration,
+	opts ...Option,
 ) (*OIDC, error) {
 	discCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
 	defer cancel()
@@ -147,19 +165,30 @@ func NewOIDC(
 		txs:                   make(map[string]*txn),
 		done:                  make(chan struct{}),
 	}
-	go o.sweepTxns()
+	for _, opt := range opts {
+		opt(o)
+	}
+	// Nothing is retained in stateless mode, so there is nothing to sweep.
+	if o.sealer == nil {
+		go o.sweepTxns()
+	}
 	return o, nil
 }
 
 // PendingTransactions reports how many login transactions are held, expired ones
 // included. Zero on a callback failure says the process has served no login it still
 // remembers — a restart — which is what separates that case from a slow or replayed
-// one in the logs.
+// one in the logs. Always zero in stateless mode, where nothing is held; read it
+// alongside StatelessTransactions, which says which of the two zero means.
 func (o *OIDC) PendingTransactions() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return len(o.txs)
 }
+
+// StatelessTransactions reports whether login transactions travel in the tx cookie
+// rather than this process's memory — the mode a multi-replica deployment needs.
+func (o *OIDC) StatelessTransactions() bool { return o.sealer != nil }
 
 // Close stops the background transaction sweeper. Safe to call multiple times.
 func (o *OIDC) Close() {
@@ -223,15 +252,25 @@ func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID st
 		return "", "", err
 	}
 
-	o.mu.Lock()
-	o.txs[txID] = &txn{
+	record := &txn{
 		State:        state,
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
 		Expiry:       time.Now().Add(TxTTL),
 	}
-	o.mu.Unlock()
+	// Stateless: the cookie carries the sealed record, so any replica can complete
+	// the login. The browser holds ciphertext — the PKCE verifier inside it would
+	// otherwise be exactly the secret PKCE exists to keep from the browser.
+	if o.sealer != nil {
+		if txID, err = o.sealTxn(record); err != nil {
+			return "", "", err
+		}
+	} else {
+		o.mu.Lock()
+		o.txs[txID] = record
+		o.mu.Unlock()
+	}
 
 	challenge := pkceChallenge(verifier)
 	// Seeded with the caller's extras, then the protocol parameters are assigned over
@@ -305,13 +344,20 @@ func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session
 		return nil, "", ErrStateMismatch{Reason: ReasonNoTxCookie}
 	}
 
-	o.mu.Lock()
-	tx, ok := o.txs[txID]
-	if ok {
-		delete(o.txs, txID)
+	var tx *txn
+	var ok bool
+	pending := 0
+	if o.sealer != nil {
+		tx, ok = o.openTxn(txID)
+	} else {
+		o.mu.Lock()
+		tx, ok = o.txs[txID]
+		if ok {
+			delete(o.txs, txID)
+		}
+		pending = len(o.txs)
+		o.mu.Unlock()
 	}
-	pending := len(o.txs)
-	o.mu.Unlock()
 
 	// Each branch is separate so the log names the actual cause. The checks
 	// themselves are unchanged, and all four still fail the login.
@@ -489,6 +535,54 @@ func (o *OIDC) sweepTxns() {
 			o.mu.Unlock()
 		}
 	}
+}
+
+// sealTxn encodes and seals a login transaction for the tx cookie.
+func (o *OIDC) sealTxn(t *txn) (string, error) {
+	raw, err := json.Marshal(sealedTxn{
+		S: t.State, N: t.Nonce, V: t.CodeVerifier, R: t.ReturnURL, E: t.Expiry.Unix(),
+	})
+	if err != nil {
+		return "", err
+	}
+	return o.sealer.Seal(raw)
+}
+
+// openTxn reverses sealTxn. Anything that does not authenticate under this
+// deployment's key — a forged cookie, one from another deployment, a truncated value
+// — is reported the same way a missing map entry is, since a transaction that cannot
+// be opened is a transaction the server does not have.
+//
+// There is deliberately no one-shot consumption here: with nothing stored, there is
+// nothing to consume. Replaying a callback buys an attacker nothing, because the
+// authorization code it must carry is single-use at the IDP and a second presentation
+// is refused there.
+func (o *OIDC) openTxn(txID string) (*txn, bool) {
+	raw, err := o.sealer.Open(txID)
+	if err != nil {
+		return nil, false
+	}
+	var st sealedTxn
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return nil, false
+	}
+	return &txn{
+		State:        st.S,
+		Nonce:        st.N,
+		CodeVerifier: st.V,
+		ReturnURL:    st.R,
+		Expiry:       time.Unix(st.E, 0),
+	}, true
+}
+
+// sealedTxn is the wire form of txn. Short field names: this is base64'd into a
+// cookie that rides every request to the auth routes.
+type sealedTxn struct {
+	S string `json:"s"`
+	N string `json:"n"`
+	V string `json:"v"`
+	R string `json:"r,omitempty"`
+	E int64  `json:"e"`
 }
 
 func randString(n int) (string, error) {

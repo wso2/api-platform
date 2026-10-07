@@ -174,11 +174,53 @@ type ControlPlaneConfig struct {
 	BillingTLSSkipVerify bool   `koanf:"billing_tls_skip_verify"`
 }
 
-// SessionConfig is [ai_workspace.session]: server-side session lifetime.
+// SessionConfig is [ai_workspace.session]: where the session's server-side state
+// lives and how long it lives for.
 type SessionConfig struct {
-	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
-	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
-	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
+	// Store selects the backend for the OIDC refresh/id tokens, the cached exchanged
+	// token and the selected org.
+	//
+	// "memory" (the default) is the process-local map: correct for a single replica,
+	// and broken for more than one — a login fails whenever the IDP callback lands on
+	// the replica that did not start it.
+	//
+	// "cookie" keeps none of it in this process. The record travels with the client,
+	// sealed under a key every replica derives identically, which is what lets the
+	// deployment run several replicas behind a plain load balancer with no shared
+	// infrastructure and no sticky sessions. Required to scale past one replica. The
+	// trade is a few KB added to every request header — see server/cookie_store.go.
+	Store string `koanf:"store"`
+	// EncryptionKey is the key material the cookie store and the OIDC login
+	// transaction are sealed under. Every replica MUST see the same value. Left
+	// empty it is derived from [auth.oidc] client_secret, which every replica already
+	// shares byte-for-byte — so scaling out needs no new configuration, and setting
+	// this explicitly is for deployments that would rather the two not be related.
+	// Changing it invalidates every live session (users re-login once).
+	EncryptionKey string        `koanf:"encryption_key"`
+	IdleTimeout   time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL   time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
+}
+
+// SessionStoreCookie and SessionStoreMemory are the supported [session] store values.
+const (
+	SessionStoreCookie = "cookie"
+	SessionStoreMemory = "memory"
+)
+
+// StateSealLabel and TxSealLabel separate the two HKDF-derived keys, so the key
+// sealing a session's tokens cannot open a login transaction or the reverse.
+const (
+	StateSealLabel = "ai-workspace-bff/session-state/v1"
+	TxSealLabel    = "ai-workspace-bff/oidc-login-tx/v1"
+)
+
+// SealKeyMaterial is the secret the sealing keys are derived from: the explicit
+// setting when present, otherwise the OIDC client secret (see EncryptionKey).
+func (c *Config) SealKeyMaterial() string {
+	if c.Session.EncryptionKey != "" {
+		return c.Session.EncryptionKey
+	}
+	return c.Auth.OIDC.ClientSecret
 }
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
@@ -431,10 +473,13 @@ type CookieConfig struct {
 	// single Set-Cookie value stays under browsers' and intermediate proxies'
 	// per-cookie size ceiling even when the JWT's scope list is large (see
 	// defaultOIDCScopes below).
-	Name1    string
-	Name2    string
-	Secure   bool
-	SameSite string // "lax" | "strict" | "none"
+	Name1 string
+	Name2 string
+	// StatePrefix names the sealed session-state cookies, which are numbered from it
+	// (_ai_workspace_state_0, _1, ...). See server/cookie_store.go.
+	StatePrefix string
+	Secure      bool
+	SameSite    string // "lax" | "strict" | "none"
 }
 
 // cookieName1 and cookieName2 are the session cookie names. LegacyCookieName is the
@@ -442,9 +487,10 @@ type CookieConfig struct {
 // server.clearSessionCookie also expires it so a browser holding a pre-upgrade cookie
 // doesn't keep it alive forever (see cookies.go).
 const (
-	cookieName1      = "_ai_workspace_session_1"
-	cookieName2      = "_ai_workspace_session_2"
-	LegacyCookieName = "_ai_workspace_session"
+	cookieName1       = "_ai_workspace_session_1"
+	cookieName2       = "_ai_workspace_session_2"
+	stateCookiePrefix = "_ai_workspace_state_"
+	LegacyCookieName  = "_ai_workspace_session"
 )
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
@@ -614,7 +660,13 @@ func (c *Config) normalize() {
 		c.Auth.OIDC.TokenExchange.Scopes = c.Auth.OIDC.Scopes
 	}
 
-	c.Cookie = CookieConfig{Name1: cookieName1, Name2: cookieName2, Secure: true, SameSite: "lax"}
+	c.Cookie = CookieConfig{
+		Name1:       cookieName1,
+		Name2:       cookieName2,
+		StatePrefix: stateCookiePrefix,
+		Secure:      true,
+		SameSite:    "lax",
+	}
 }
 
 // TokenExchangeEnabled derives the switch from both flags, so the feature can never
@@ -673,6 +725,14 @@ func (c *Config) validate() error {
 		if _, err := ParseHTTPSEcdhCurves(c.Server.HTTPS.EcdhCurves); err != nil {
 			return fmt.Errorf("[server.https] ecdh_curves: %w", err)
 		}
+	}
+	// A typo'd store must not silently fall back: "memorry" landing on the cookie
+	// store (or the reverse) is the difference between a deployment that survives
+	// scale-out and one that logs users out at random, with nothing in the logs
+	// connecting the two.
+	if c.Session.Store != SessionStoreCookie && c.Session.Store != SessionStoreMemory {
+		return fmt.Errorf("invalid [session] store %q: must be %q or %q",
+			c.Session.Store, SessionStoreCookie, SessionStoreMemory)
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {

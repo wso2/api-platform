@@ -562,3 +562,39 @@ url = "https://platform-api:9243"
 		t.Error("RuntimeConfig[APIP_AIW_AUTH_MODE] is empty, want the resolved auth mode")
 	}
 }
+
+// Backward compatibility: the session store default must stay "memory". Every install
+// predating the cookie store omits the key, and an upgrade that silently moved them
+// onto client-carried state would add several KB to every request header — which an
+// ingress sized for the old traffic may reject outright. Moving to "cookie" is the
+// operator's decision, taken when they scale past one replica.
+func TestSessionStoreDefaultsToMemory(t *testing.T) {
+	if got := defaultConfig().Session.Store; got != SessionStoreMemory {
+		t.Fatalf("default [session] store = %q, want %q", got, SessionStoreMemory)
+	}
+}
+
+// A config written before the cookie store existed — no [session] store key at all —
+// must still load and keep the behaviour it had.
+func TestConfigWithoutSessionStoreKeyKeepsMemory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.toml")
+	if err := os.WriteFile(path, []byte(`
+[ai_workspace]
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+[ai_workspace.session]
+idle_timeout = "30m"
+absolute_ttl = "8h"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Session.Store != SessionStoreMemory {
+		t.Fatalf("[session] store = %q for a config that omits it, want %q",
+			cfg.Session.Store, SessionStoreMemory)
+	}
+}

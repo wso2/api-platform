@@ -14,11 +14,15 @@
  * under the License.
  */
 
-// Package session holds the BFF's session helpers. The access JWT now travels in
-// the HttpOnly cookie itself, so the proxy forwards it without any lookup. The
-// store survives only to hold OIDC refresh/id tokens (keyed by the access token)
-// so the proxy can renew the access token. The BFF does NOT validate tokens — it
-// forwards them, and only decodes (without verifying) their claims for display.
+// Package session holds the BFF's session helpers. The access JWT travels in the
+// HttpOnly cookie itself, so the proxy forwards it without any lookup. The store
+// holds what the cookie pair cannot: the OIDC refresh/id tokens (keyed by the access
+// token) used to renew it, the cached exchanged token, and the selected org. Under
+// [session] store = "cookie" that record is itself carried by the client, sealed — see
+// CookieCodec — so no replica has to be the one that served this user last, which is
+// what a multi-replica deployment needs. The BFF does NOT validate
+// tokens; it forwards them, and only decodes (without verifying) their claims for
+// display.
 package session
 
 import (
@@ -122,8 +126,14 @@ func (s *Session) Expired(now time.Time) bool {
 	return !s.AbsoluteExpiry.IsZero() && !now.Before(s.AbsoluteExpiry)
 }
 
-// Store is the swappable session backend. The default is in-memory; a Redis
-// implementation can satisfy the same interface for horizontal scaling.
+// Store is the swappable session backend.
+//
+// MemoryStore below is the default, and is correct for a single replica.
+// server.cookieStore ([session] store = "cookie") keeps nothing in the process
+// instead: it seals this record into the client's own HttpOnly cookies, which is what
+// lets the BFF run with several replicas behind a plain load balancer without any
+// shared infrastructure. A Redis implementation could satisfy the same interface if a
+// deployment ever wanted one, but nothing here requires it.
 type Store interface {
 	Put(ctx context.Context, s *Session) error
 	Get(ctx context.Context, id string) (*Session, bool, error)

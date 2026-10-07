@@ -78,7 +78,15 @@ func defaultConfig() *Config {
 			},
 		},
 		Session: SessionConfig{
-			Store:       "memory",
+			// Memory by default, unchanged from before the cookie store existed: it
+			// is correct for the single-replica deployment the great majority of
+			// installs are, and it costs nothing per request. The cookie store adds
+			// a few KB to every request header, which an ingress in front of an
+			// existing install may not be sized for — so moving to it is the
+			// operator's decision, taken when they scale out, not one an upgrade
+			// makes for them. Scaling past one replica REQUIRES store = "cookie";
+			// New logs that at startup.
+			Store:       SessionStoreMemory,
 			IdleTimeout: 30 * time.Minute,
 			AbsoluteTTL: 8 * time.Hour,
 		},

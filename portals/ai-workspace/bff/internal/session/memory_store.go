@@ -22,9 +22,12 @@ import (
 	"time"
 )
 
-// MemoryStore is the default in-process session store. Sessions are lost on
-// restart (users simply re-login), which is acceptable for the single-replica
-// distribution. A background sweeper evicts expired sessions.
+// MemoryStore is the default, single-replica, in-process session store ([session]
+// store = "memory"). Sessions are lost on restart (users simply re-login). It must not
+// be used with more than one replica: a request routed to another instance finds no
+// session, so logins fail at the IDP callback and org/exchanged-token state is lost at
+// random — store = "cookie" is what a scaled-out deployment uses instead. A background
+// sweeper evicts expired sessions.
 type MemoryStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
