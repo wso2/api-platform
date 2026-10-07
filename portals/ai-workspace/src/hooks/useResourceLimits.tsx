@@ -181,7 +181,10 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
     (readOnly: boolean, reason?: string) =>
       setReadOnlyState({
         readOnly,
-        message: readOnly ? reason ?? DEFAULT_READ_ONLY_MESSAGE : '',
+        // A supplier that reports read-only with a blank or whitespace-only reason
+        // still owes the user an explanation, so fall back to the default message
+        // rather than rendering an empty tooltip.
+        message: readOnly ? reason?.trim() || DEFAULT_READ_ONLY_MESSAGE : '',
       }),
     []
   );
