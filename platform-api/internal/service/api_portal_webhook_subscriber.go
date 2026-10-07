@@ -50,13 +50,9 @@ const webhookSubscribersPath = "/api-portal/api/v0.9/webhook-subscribers"
 
 // webhookEventPatterns are the event names platform-api subscribes to.
 // Narrower than the portal's full event set because platform-api only acts
-// on application + apikey + subscription lifecycle changes. The receiver's
-// handler map (webhook/receiver.go:120) already wires application.* to
-// handleApplicationCreated/Updated/Deleted; dropping application.* from this
-// subscription list left those handlers unreachable, so every portal "new app"
-// event sat with no delivery target and Platform API never learned about the
-// application that owned the API keys it did receive.
-var webhookEventPatterns = []string{"application.*", "apikey.*", "subscription.*"}
+// on apikey + subscription lifecycle changes; application events are not
+// consumed server-side today.
+var webhookEventPatterns = []string{"apikey.*", "subscription.*"}
 
 // webhookSubscriberBody is the portal's POST /webhook-subscribers request
 // shape. Omits optional fields the portal defaults sensibly.
