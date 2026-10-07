@@ -374,6 +374,14 @@ func (s *Server) serveProxy(rp *httputil.ReverseProxy, w http.ResponseWriter, r 
 			refreshed, err := s.refreshByToken(r.Context(), jwt)
 			switch {
 			case err == nil:
+				// The single-flight hands one result to every waiter, but only the
+				// owner's request wrote it to the store. Stage it here too, or a
+				// waiter's response sets the rotated token cookies with no matching
+				// state and leaves the browser holding a session it cannot renew.
+				// Idempotent for the owner.
+				if putErr := s.store.Put(r.Context(), refreshed); putErr != nil {
+					slog.Warn("could not persist the rotated session on this response", "err", putErr)
+				}
 				jwt = refreshed.AccessToken
 				s.setSessionCookie(w, jwt, refreshed.AbsoluteExpiry)
 			case stillValid(exp):
@@ -784,7 +792,12 @@ func (s *Server) exchangedToken(ctx context.Context, subjectToken string) (*auth
 			}, nil
 		}
 	}
-	return s.exchangeSingleFlight(ctx, subjectToken, fingerprint, orgHandle)
+	res, err := s.exchangeSingleFlight(ctx, subjectToken, fingerprint, orgHandle)
+	if err != nil {
+		return nil, err
+	}
+	s.cacheExchange(ctx, subjectToken, fingerprint, orgHandle, res)
+	return res, nil
 }
 
 // exchangeSingleFlight performs one exchange per (subject token, org) pair at a
@@ -837,32 +850,45 @@ func (s *Server) doExchange(ctx context.Context, subjectToken, fingerprint, orgH
 	if !s.exchanger.CacheEnabled() {
 		return res, nil
 	}
-
 	if res.Expiry.IsZero() {
 		slog.Warn("exchanged token has no expiry (no expires_in and no exp claim) — " +
 			"caching skipped, so every upstream request will perform its own exchange")
 		return res, nil
 	}
 
-	// Best-effort: a missing entry (BFF restarted mid-session, or one just rotated
-	// out from under us — see withSessionLock) only costs a re-exchange next
-	// request, so it must not fail this one.
+	return res, nil
+}
+
+// cacheExchange records a freshly minted token on the caller's own session.
+//
+// Called per request rather than once per exchange, because the single-flight hands one
+// result to every waiter: a waiter that never writes leaves its response carrying a
+// session with no cached token, costing an extra exchange on the next request.
+//
+// Best-effort — a missing entry (just rotated out from under us, see withSessionLock)
+// only costs a re-exchange, so it must not fail this request. The no-op check keeps a
+// request that changed nothing from rewriting its cookies.
+func (s *Server) cacheExchange(ctx context.Context, subjectToken, fingerprint, orgHandle string, res *auth.Result) {
+	if !s.exchanger.CacheEnabled() || res.Expiry.IsZero() {
+		return
+	}
 	s.withSessionLock(subjectToken, func() {
-		if sess, ok, _ := s.store.Get(ctx, subjectToken); ok {
-			sess.Exchanged = session.ExchangedToken{
-				Token:             res.AccessToken,
-				Expiry:            res.Expiry,
-				Scopes:            res.Scopes,
-				ConfigFingerprint: fingerprint,
-				OrgHandle:         orgHandle,
-				Org:               res.Org,
-			}
-			if err := s.store.Put(ctx, sess); err != nil {
-				slog.Warn("failed to cache exchanged token on the session", "err", err)
-			}
+		sess, ok, _ := s.store.Get(ctx, subjectToken)
+		if !ok || sess.Exchanged.Token == res.AccessToken {
+			return
+		}
+		sess.Exchanged = session.ExchangedToken{
+			Token:             res.AccessToken,
+			Expiry:            res.Expiry,
+			Scopes:            res.Scopes,
+			ConfigFingerprint: fingerprint,
+			OrgHandle:         orgHandle,
+			Org:               res.Org,
+		}
+		if err := s.store.Put(ctx, sess); err != nil {
+			slog.Warn("failed to cache exchanged token on the session", "err", err)
 		}
 	})
-	return res, nil
 }
 
 // writeExchangeError destroys the session on a rejection (it can never produce an
@@ -873,6 +899,14 @@ func (s *Server) writeExchangeError(w http.ResponseWriter, r *http.Request, err 
 	if errors.Is(err, auth.ErrExchangeRejected) {
 		if s.store != nil {
 			if tok, ok := s.tokenFromCookie(r); ok {
+				// Revoke before dropping our copy, for the same reason logout does:
+				// the browser holds the refresh token too, so deleting the record
+				// here would otherwise leave a copied cookie still renewable.
+				if sess, found, _ := s.store.Get(r.Context(), tok); found && s.oidc != nil {
+					if revErr := s.oidc.RevokeRefreshToken(r.Context(), sess.RefreshToken); revErr != nil {
+						slog.Warn("could not revoke the refresh token of a rejected session", "err", revErr)
+					}
+				}
 				_ = s.store.Delete(r.Context(), tok)
 			}
 		}

@@ -158,6 +158,10 @@ func NewOIDC(
 // that, and so a future resource has somewhere to be released.
 func (o *OIDC) Close() {}
 
+// SupportsRevocation reports whether the issuer advertises a revocation endpoint.
+// Without one, logout cannot invalidate a refresh token a copied cookie still carries.
+func (o *OIDC) SupportsRevocation() bool { return o.disco.RevocationEndpoint != "" }
+
 // TokenEndpoint is the endpoint discovered from the issuer. Exposed so a token
 // exchange configured without an explicit endpoint override can post to the same
 // IDP the user logged in to, without repeating discovery.

@@ -606,3 +606,27 @@ absolute_ttl = "8h"
 			cfg.Session.Store, SessionStoreCookie)
 	}
 }
+
+// HKDF produces the right key length from anything but adds no entropy, so length alone
+// is not a usable bar: a long, low-variety secret stays guessable offline against a
+// captured record, and recovering it opens every session sealed under it.
+func TestEncryptionKeyEntropyFloor(t *testing.T) {
+	for _, tc := range []struct {
+		name, key string
+		accepted  bool
+	}{
+		{"one repeated character", strings.Repeat("a", 64), false},
+		{"a repeated word", "passwordpasswordpasswordpassword", false},
+		{"a repeated placeholder", "changeme-changeme-changeme-changeme", false},
+		{"a long passphrase", "correct horse battery staple correct horse", true},
+		{"openssl rand -hex 32", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true},
+		{"openssl rand -base64 32", "K7x+Qm2ZpL9vN4sR8tW1yU6oE3iA5bC0dF/gH=jK", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bits := estimatedEntropyBits(tc.key)
+			if got := bits >= minSessionKeyEntropyBits; got != tc.accepted {
+				t.Fatalf("%q = ~%.0f bits, accepted=%v, want accepted=%v", tc.key, bits, got, tc.accepted)
+			}
+		})
+	}
+}

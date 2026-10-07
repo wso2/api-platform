@@ -275,6 +275,11 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// not serve, and a tx cookie whose Path the callback route falls outside of.
 	// They are only meaningful together, so they are logged together, at Info — a
 	// failing login should not require turning debug on first.
+	if cfg.Auth.OIDCEnabled() && !s.oidc.SupportsRevocation() {
+		slog.Warn("the issuer advertises no revocation_endpoint: logout clears this browser's " +
+			"cookies and ends the IDP session")
+	}
+
 	if cfg.Auth.OIDCEnabled() {
 		slog.Info("oidc login wiring",
 			"issuer", cfg.Auth.OIDC.Issuer,

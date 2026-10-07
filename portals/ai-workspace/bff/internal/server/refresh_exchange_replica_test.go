@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -487,3 +488,133 @@ func keysOf(j jar) []string {
 }
 
 var _ = context.Background
+
+// Concurrent requests that coalesce onto one refresh must EACH leave the browser with a
+// complete session.
+//
+// The single-flight hands one result to every waiter, but only the owner's request
+// writes it to the store. Without staging it per request, a waiter's response set the
+// rotated token cookies and no state cookie — so a browser applying that response last
+// held a new access token bound to a stale record: no refresh token, no cached
+// exchange, and a logout at the access token's expiry with nothing able to renew it.
+func TestConcurrentRefreshLeavesEveryResponseComplete(t *testing.T) {
+	idp, replica, _ := newRotatingHarness(t, 30*time.Second)
+	j := jar{}
+	idp.loginOn(t, replica, j)
+	oldToken := j.sessionToken(replica.cfg.Cookie)
+
+	const callers = 4
+	var wg sync.WaitGroup
+	recs := make([]*httptest.ResponseRecorder, callers)
+	start := make(chan struct{})
+	for i := range recs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, paths.Base+paths.Proxy+"/api/v0.9/projects", nil)
+			j.onto(req) // every caller carries the same pre-rotation cookies
+			rec := httptest.NewRecorder()
+			<-start
+			replica.withSessionState(http.HandlerFunc(replica.handleProxy)).ServeHTTP(rec, req)
+			recs[i] = rec
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	if n := idp.refreshes.Load(); n != 1 {
+		t.Fatalf("refreshes = %d, want 1 — the single-flight stopped coalescing", n)
+	}
+
+	for i, rec := range recs {
+		if rec.Code != http.StatusOK {
+			t.Errorf("response %d = %d", i, rec.Code)
+			continue
+		}
+		applied := jar{}
+		applied.apply(t, rec)
+		token := applied.sessionToken(replica.cfg.Cookie)
+		if token == "" || token == oldToken {
+			t.Errorf("response %d did not carry the rotated access token", i)
+			continue
+		}
+		state := applied.get("_ai_workspace_state_0")
+		if state == "" {
+			t.Errorf("response %d carries the rotated token with no session state — a browser "+
+				"applying it last would hold a session it cannot renew", i)
+			continue
+		}
+		sess, ok := replica.stateCodec.Decode([]string{state}, token)
+		if !ok {
+			t.Errorf("response %d: its state does not bind to the token it set", i)
+			continue
+		}
+		if sess.RefreshToken == "" {
+			t.Errorf("response %d: no refresh token — the session cannot be renewed", i)
+		}
+	}
+}
+
+// Every caller coalescing onto one exchange must also end up with it cached, or a
+// waiter's response leaves a session that re-exchanges on the very next request.
+func TestConcurrentExchangeCachesOnEveryResponse(t *testing.T) {
+	idp, replica, _ := newRotatingHarness(t, time.Hour)
+	j := jar{}
+	idp.loginOn(t, replica, j)
+	afterLogin := idp.exchanges.Load()
+
+	// A live session that has not exchanged yet — the state the waiters must end up
+	// updating. Rewriting the record rather than deleting it: with no record at all
+	// there is nothing to cache onto, which is a different (and already degraded) case.
+	token := j.sessionToken(replica.cfg.Cookie)
+	seed := httptest.NewRequest(http.MethodGet, "/", nil)
+	j.onto(seed)
+	seedRec := httptest.NewRecorder()
+	replica.withSessionState(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		sess, ok, _ := replica.store.Get(r.Context(), token)
+		if !ok {
+			t.Fatal("seed: no session")
+		}
+		sess.Exchanged = session.ExchangedToken{}
+		if err := replica.store.Put(r.Context(), sess); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	})).ServeHTTP(seedRec, seed)
+	j.apply(t, seedRec)
+
+	const callers = 4
+	var wg sync.WaitGroup
+	recs := make([]*httptest.ResponseRecorder, callers)
+	start := make(chan struct{})
+	for i := range recs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, paths.Base+paths.Proxy+"/api/v0.9/projects", nil)
+			j.onto(req)
+			rec := httptest.NewRecorder()
+			<-start
+			replica.withSessionState(http.HandlerFunc(replica.handleProxy)).ServeHTTP(rec, req)
+			recs[i] = rec
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	if n := idp.exchanges.Load() - afterLogin; n != 1 {
+		t.Fatalf("exchanges = %d for a burst of %d, want 1", n, callers)
+	}
+	for i, rec := range recs {
+		applied := jar{}
+		applied.apply(t, rec)
+		state := applied.get("_ai_workspace_state_0")
+		if state == "" {
+			t.Errorf("response %d wrote no session state", i)
+			continue
+		}
+		sess, ok := replica.stateCodec.Decode([]string{state}, token)
+		if !ok || sess.Exchanged.Token == "" {
+			t.Errorf("response %d did not cache the exchanged token it just used", i)
+		}
+	}
+}

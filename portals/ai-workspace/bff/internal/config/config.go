@@ -27,6 +27,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"slices"
@@ -203,9 +204,36 @@ const (
 	TxSealLabel    = "ai-workspace-bff/oidc-login-tx/v1"
 )
 
-// MinSessionKeyLength guards the entropy an operator actually supplies; HKDF stretches
-// it from there.
-const MinSessionKeyLength = 32
+// MinSessionKeyLength and minSessionKeyEntropyBits bound what the sealing key may be
+// derived from. HKDF produces the right key LENGTH from anything but adds no entropy: a
+// low-variety secret stays guessable offline against a captured record, and recovering
+// it would open every session sealed under it.
+const (
+	MinSessionKeyLength      = 32
+	minSessionKeyEntropyBits = 128
+)
+
+// estimatedEntropyBits is the Shannon entropy of the value's own character distribution
+// times its length. A crude proxy — it cannot see that "abcabcabc..." is a pattern — but
+// it separates generated material (64 hex chars is ~256 bits, 44 base64 chars ~264)
+// from the repeated words and single-case runs that a length check alone lets through.
+func estimatedEntropyBits(v string) float64 {
+	if v == "" {
+		return 0
+	}
+	counts := make(map[rune]int, len(v))
+	total := 0
+	for _, r := range v {
+		counts[r]++
+		total++
+	}
+	var perRune float64
+	for _, n := range counts {
+		p := float64(n) / float64(total)
+		perRune -= p * math.Log2(p)
+	}
+	return perRune * float64(total)
+}
 
 // SealKeyMaterial is the secret the sealing keys derive from. No fallback.
 func (c *Config) SealKeyMaterial() string { return c.Session.EncryptionKey }
@@ -740,6 +768,12 @@ func (c *Config) validate() error {
 			return fmt.Errorf("[session] encryption_key is %d characters, minimum %d — "+
 				"generate one with `openssl rand -base64 32`",
 				len(c.Session.EncryptionKey), MinSessionKeyLength)
+		}
+		if bits := estimatedEntropyBits(c.Session.EncryptionKey); bits < minSessionKeyEntropyBits {
+			return fmt.Errorf("[session] encryption_key looks low-entropy (~%.0f bits, minimum %d): "+
+				"long enough, but made of too few distinct characters. HKDF cannot add entropy a "+
+				"secret does not have — generate one with `openssl rand -base64 32`",
+				bits, minSessionKeyEntropyBits)
 		}
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
