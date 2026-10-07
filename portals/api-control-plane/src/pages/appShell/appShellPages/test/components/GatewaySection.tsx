@@ -26,19 +26,41 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Server } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Server, ShieldCheck, Waypoints } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
+import { segmentedSwitchSx } from '@/theme/receipes';
 import { CopyButton } from '../curl/components/CopyButton';
+import type { TestCallMode } from '../utils/callMode';
 
 const messages = defineMessages({
+  callModeLabel: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.callModeLabel',
+    defaultMessage: 'Send requests through the proxy or directly',
+    description: 'Accessible label for the toggle between the two ways of sending a request.',
+  },
   copyEndpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
     defaultMessage: 'Copy endpoint URL',
     description: 'Accessible label for the button copying the gateway invoke URL.',
+  },
+  directHint: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.directHint',
+    defaultMessage:
+      'Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.',
+    description:
+      'Caption under the endpoint while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway.',
+  },
+  directMode: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.directMode',
+    defaultMessage: 'Direct',
+    description:
+      'Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command.',
   },
   endpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
@@ -57,6 +79,18 @@ const messages = defineMessages({
     description:
       'Shown in place of the picker when the API is not deployed anywhere. States the fact only — the page-level banner carries the call to action, so this must not repeat it.',
   },
+  proxyHint: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.proxyHint',
+    defaultMessage: 'Requests go through a proxy, so the gateway does not need a CORS policy.',
+    description:
+      'Caption under the endpoint while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching.',
+  },
+  proxyMode: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.proxyMode',
+    defaultMessage: 'Through proxy',
+    description:
+      'Toggle option relaying the request via the portal server. Describes the route a request takes, not a command.',
+  },
   title: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.title',
     defaultMessage: 'Gateway',
@@ -65,47 +99,95 @@ const messages = defineMessages({
 });
 
 type GatewaySectionProps = {
+  /**
+   * How the Console view sends a request. Omitted — together with
+   * `onCallModeChange` — by the cURL view, which has no transport to choose:
+   * a copied command always leaves from the user's own terminal.
+   */
+  callMode?: TestCallMode;
   endpoint: string;
   gateways: Gateway[];
+  onCallModeChange?: (mode: TestCallMode) => void;
   onSelect: (gatewayId: string) => void;
   optionLabel: (gateway: Gateway) => string;
   selectedGatewayId: string;
 };
 
 /**
- * Picks which deployed gateway the console targets, and shows the resulting
- * invoke URL.
+ * Renders the gateway selector, request transport controls, and invoke URL.
  *
- * A section rather than a card: this and `TestKeySection` describe one thing
- * between them — where a request goes and what it carries — and two bordered
- * boxes side by side read as two unrelated settings. The page seats both in a
- * single card, which is why nothing here draws a border or a background of its
- * own beyond the endpoint well.
+ * This component is rendered as a section within the page card. Together with
+ * `TestKeySection`, it describes the request destination and credentials
+ * without introducing an additional card boundary.
  *
- * There is no health badge, and the "Deployed" one this used to carry went with
- * the redesign. `Gateway` has no health or status field to read, and deployment
- * is already implied: the page renders its deploy-first empty state instead of
- * this card when the API is deployed nowhere.
+ * The proxy/direct transport control is colocated with the endpoint because it
+ * specifies how that endpoint is reached. The endpoint caption describes the
+ * effect of the selected transport mode.
+ *
+ * The component does not render a health or deployment-status indicator.
+ * Deployment availability is represented by the page-level empty state when
+ * no gateways are deployed.
  */
 export function GatewaySection({
+  callMode,
   endpoint,
   gateways,
+  onCallModeChange,
   onSelect,
   optionLabel,
   selectedGatewayId,
 }: GatewaySectionProps) {
   const intl = useIntl();
 
+  /** Both halves arrive together or not at all; neither is useful alone. */
+  const showCallMode = callMode !== undefined && onCallModeChange !== undefined;
+
   return (
     <Box sx={{ px: 2, py: 2 }}>
       <Stack spacing={1.5}>
-        <Stack alignItems="center" direction="row" spacing={1}>
-          <Box sx={{ color: 'primary.main', display: 'flex' }}>
-            <Server size={18} />
-          </Box>
-          <Typography variant="subtitle2">
-            <FormattedMessage {...messages.title} />
-          </Typography>
+        <Stack
+          alignItems="center"
+          direction="row"
+          justifyContent="space-between"
+          spacing={1}
+          sx={{ minHeight: 36 }}
+        >
+          <Stack alignItems="center" direction="row" spacing={1}>
+            <Box sx={{ color: 'primary.main', display: 'flex' }}>
+              <Server size={18} />
+            </Box>
+            <Typography variant="subtitle2">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          </Stack>
+
+          {showCallMode && (
+            <ToggleButtonGroup
+              aria-label={intl.formatMessage(messages.callModeLabel)}
+              exclusive
+              onChange={(_event, next) => next && onCallModeChange(next as TestCallMode)}
+              size="small"
+              sx={segmentedSwitchSx}
+              value={callMode}
+            >
+              <ToggleButton value="proxy">
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  <Waypoints size={16} />
+                  <span>
+                    <FormattedMessage {...messages.proxyMode} />
+                  </span>
+                </Stack>
+              </ToggleButton>
+              <ToggleButton value="direct">
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  <ArrowRight size={16} />
+                  <span>
+                    <FormattedMessage {...messages.directMode} />
+                  </span>
+                </Stack>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          )}
         </Stack>
 
         {gateways.length === 0 ? (
@@ -113,51 +195,66 @@ export function GatewaySection({
             <FormattedMessage {...messages.noGateways} />
           </Typography>
         ) : (
-          <Grid container spacing={1}>
-            <Grid size={{ sm: 4, xs: 12 }}>
-              <FormControl fullWidth>
-                <FormLabel id="test-console-gateway-label" sx={{ display: 'none' }}>
-                  <FormattedMessage {...messages.gatewayLabel} />
-                </FormLabel>
-                <Select
-                  labelId="test-console-gateway-label"
-                  onChange={(event) => onSelect(String(event.target.value))}
+          <Stack spacing={1}>
+            <Grid container spacing={1}>
+              <Grid size={{ sm: 4, xs: 12 }}>
+                <FormControl fullWidth>
+                  <FormLabel id="test-console-gateway-label" sx={{ display: 'none' }}>
+                    <FormattedMessage {...messages.gatewayLabel} />
+                  </FormLabel>
+                  <Select
+                    labelId="test-console-gateway-label"
+                    onChange={(event) => onSelect(String(event.target.value))}
+                    size="small"
+                    value={selectedGatewayId}
+                  >
+                    {gateways.map((gateway) => (
+                      <MenuItem key={gateway.id} value={gateway.id ?? ''}>
+                        {optionLabel(gateway)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ sm: 8, xs: 12 }}>
+                <TextField
+                  fullWidth
                   size="small"
-                  value={selectedGatewayId}
-                >
-                  {gateways.map((gateway) => (
-                    <MenuItem key={gateway.id} value={gateway.id ?? ''}>
-                      {optionLabel(gateway)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  slotProps={{
+                    htmlInput: {
+                      'aria-label': intl.formatMessage(messages.endpoint),
+                    },
+                    input: {
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <CopyButton
+                            getValue={() => endpoint}
+                            label={intl.formatMessage(messages.copyEndpoint)}
+                            variant="icon"
+                          />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  value={endpoint}
+                />
+              </Grid>
             </Grid>
-            <Grid size={{ sm: 8, xs: 12 }}>
-              <TextField
-                fullWidth
-                size="small"
-                slotProps={{
-                  htmlInput: {
-                    'aria-label': intl.formatMessage(messages.endpoint),
-                  },
-                  input: {
-                    readOnly: true,
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <CopyButton
-                          getValue={() => endpoint}
-                          label={intl.formatMessage(messages.copyEndpoint)}
-                          variant="icon"
-                        />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                value={endpoint}
-              />
-            </Grid>
-          </Grid>
+
+            {showCallMode && (
+              <Stack alignItems="center" direction="row" spacing={0.75}>
+                <Box sx={{ color: 'text.secondary', display: 'flex', flexShrink: 0 }}>
+                  <ShieldCheck size={14} />
+                </Box>
+                <Typography color="text.secondary" variant="caption">
+                  <FormattedMessage
+                    {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
+                  />
+                </Typography>
+              </Stack>
+            )}
+          </Stack>
         )}
       </Stack>
     </Box>

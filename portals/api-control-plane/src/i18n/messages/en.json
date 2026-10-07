@@ -2290,14 +2290,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
-    "defaultMessage": "Grid view",
-    "description": "Accessible label for the button switching to the card grid."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.listView": {
-    "defaultMessage": "List view",
-    "description": "Accessible label for the button switching to the table rows."
-  },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
     "description": "Accessible label for the delete button on a project row."
@@ -3005,9 +2997,21 @@
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
   },
+  "apiControlPlane.pages.test.console.GatewaySection.callModeLabel": {
+    "defaultMessage": "Send requests through the proxy or directly",
+    "description": "Accessible label for the toggle between the two ways of sending a request."
+  },
   "apiControlPlane.pages.test.console.GatewaySection.copyEndpoint": {
     "defaultMessage": "Copy endpoint URL",
     "description": "Accessible label for the button copying the gateway invoke URL."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.directHint": {
+    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
+    "description": "Caption under the endpoint while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.directMode": {
+    "defaultMessage": "Direct",
+    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
   },
   "apiControlPlane.pages.test.console.GatewaySection.endpoint": {
     "defaultMessage": "Endpoint",
@@ -3020,6 +3024,14 @@
   "apiControlPlane.pages.test.console.GatewaySection.noGateways": {
     "defaultMessage": "No deployed gateway.",
     "description": "Shown in place of the picker when the API is not deployed anywhere. States the fact only — the page-level banner carries the call to action, so this must not repeat it."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.proxyHint": {
+    "defaultMessage": "Requests go through a proxy, so the gateway does not need a CORS policy.",
+    "description": "Caption under the endpoint while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
+  },
+  "apiControlPlane.pages.test.console.GatewaySection.proxyMode": {
+    "defaultMessage": "Through proxy",
+    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
   },
   "apiControlPlane.pages.test.console.GatewaySection.title": {
     "defaultMessage": "Gateway",
@@ -3077,6 +3089,20 @@
     "defaultMessage": "Test key",
     "description": "Accessible label for the field showing the test key."
   },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible label for the HTTP method filter above the resource list."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or description"
+  },
   "apiControlPlane.pages.test.console.TestKeySection.expired": {
     "defaultMessage": "The key has expired.",
     "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
@@ -3108,6 +3134,36 @@
   "apiControlPlane.pages.test.console.TestKeySection.title": {
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
+    "defaultMessage": "This API cannot be tested on the selected gateway. Check that it is still deployed there."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
   },
   "apiControlPlane.permissions.useCan.denied": {
     "defaultMessage": "You don't have permission to perform this action.",
@@ -3934,10 +3990,6 @@
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
   },
-  "project.card.actionsLabel": {
-    "defaultMessage": "Project actions",
-    "description": "Accessible label for the button opening the card overflow menu."
-  },
   "project.card.apiCount": {
     "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
@@ -3948,9 +4000,6 @@
   "project.card.defaultBadge": {
     "defaultMessage": "DEFAULT",
     "description": "Badge marking the organization’s default project."
-  },
-  "project.card.delete": {
-    "defaultMessage": "Delete"
   },
   "project.card.deleteNamed": {
     "defaultMessage": "Delete {name}"
@@ -3972,9 +4021,6 @@
   "project.card.updatedAt": {
     "defaultMessage": "Updated {relative}",
     "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
-  },
-  "project.list.count": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
   },
   "project.list.createProjectButton": {
     "defaultMessage": "Create Project"
@@ -4025,26 +4071,6 @@
   },
   "project.list.searchPlaceholder": {
     "defaultMessage": "Search projects"
-  },
-  "project.list.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by project name, ascending."
-  },
-  "project.list.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by project name, descending."
-  },
-  "project.list.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent project first."
-  },
-  "project.list.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest project first."
-  },
-  "project.list.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the project list order."
   },
   "project.list.subHeader.default": {
     "defaultMessage": "Select a project to manage APIs."

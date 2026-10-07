@@ -17,8 +17,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Card, PageTitle, Stack } from '@wso2/oxygen-ui';
-import { Rocket } from '@wso2/oxygen-ui-icons-react';
+import { Card, PageTitle, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
+import { LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -34,6 +34,7 @@ import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDes
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
+import { segmentedSwitchSx } from '@/theme/receipes';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -41,12 +42,14 @@ import { buildInvokeUrl } from '../apis/overview/InvokeUrlPanel';
 import { gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from '../gateways/utils/gatewayEnvironments';
 import { CurlBuilder } from './curl/CurlBuilder';
+import { useTestCallMode } from './utils/callMode';
 import { deployedGateways as deployedGatewaysOf } from './utils/deployedGateways';
 import { apiKeyAuthOf } from './utils/apiKeyAuth';
 import { GatewaySection } from './components/GatewaySection';
 import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest';
 import { TestKeySection } from './components/TestKeySection';
 import { emptyRequest, withTarget, type ConsoleRequest, type KeyValueRow } from './utils/types';
+import TestConsoleSpecViewer from './console/TestConsoleSpecViewer';
 
 const messages = defineMessages({
   apiNotFound: {
@@ -122,6 +125,8 @@ const messages = defineMessages({
   },
 });
 
+type ConsoleView = 'console' | 'curl';
+
 /** Refresh the test key countdown every 30 seconds. */
 const KEY_COUNTDOWN_TICK_MS = 30_000;
 
@@ -182,6 +187,14 @@ function TestConsole() {
 
   /** Mint only when a required key has a gateway to use. */
   const testApiKey = useTestApiKey(restApiId, needsApiKey && deploymentReady);
+
+  const [view, setView] = useState<ConsoleView>('console');
+
+  /**
+   * How the Console view sends a request. Persisted, because it tracks which
+   * gateways the user's browser can reach rather than anything about this API.
+   */
+  const [callMode, setCallMode] = useTestCallMode();
 
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
   const [request, setRequest] = useState<ConsoleRequest | undefined>(undefined);
@@ -308,6 +321,11 @@ function TestConsole() {
     [headerName],
   );
 
+  /** Live sync from the Console view's try-out form. */
+  const handleConsoleRequestChange = useCallback((next: ConsoleRequest) => {
+    setRequest(next);
+  }, []);
+
   // Wait for deployment and API state to avoid a console flash without an endpoint.
   if (apiQuery.isPending || deploymentUnknown) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -376,15 +394,50 @@ function TestConsole() {
       <PageTitle>
         {heading}
         <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subtitleCurlView} />
+          {view === 'console' ? (
+            <FormattedMessage {...messages.subtitleConsoleView} />
+          ) : (
+            <FormattedMessage {...messages.subtitleCurlView} />
+          )}
         </PageTitle.SubHeader>
+        <PageTitle.Actions>
+          <ToggleButtonGroup
+            aria-label={intl.formatMessage(messages.viewLabel)}
+            exclusive
+            onChange={(_event, next) => next && setView(next as ConsoleView)}
+            size="small"
+            sx={segmentedSwitchSx}
+            value={view}
+          >
+            <ToggleButton value="console">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <LucideBookOpenCheck size={16} />
+                <span>
+                  <FormattedMessage {...messages.consoleView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+            <ToggleButton value="curl">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <SquareTerminal size={16} />
+                <span>
+                  <FormattedMessage {...messages.curlView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </PageTitle.Actions>
       </PageTitle>
 
       <Stack spacing={2}>
         <Card variant="outlined">
           <GatewaySection
+            // Offered in the Console view only: a copied cURL command leaves
+            // from the user's terminal, so there is no transport to choose.
+            callMode={view === 'console' ? callMode : undefined}
             endpoint={baseUrl}
             gateways={gateways}
+            onCallModeChange={view === 'console' ? setCallMode : undefined}
             onSelect={setSelectedGatewayId}
             optionLabel={gatewayOptionLabel}
             selectedGatewayId={selectedGateway?.id ?? ''}
@@ -405,6 +458,23 @@ function TestConsole() {
 
         {!spec ? (
           <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
+        ) : view === 'console' ? (
+          <Card sx={{ p: 2 }} variant="outlined">
+            <TestConsoleSpecViewer
+              baseUrl={baseUrl}
+              callMode={callMode}
+              extraHeaders={extraHeaders}
+              extraQueryParams={extraQueryParams}
+              // The BFF resolves the target from these three values; see
+              // console/utils/proxyTransport.
+              gatewayId={selectedGateway?.id ?? ''}
+              onRequestChange={handleConsoleRequestChange}
+              orgHandle={params.orgHandle ?? ''}
+              restApiId={restApiId ?? ''}
+              secretHeaderName={headerName}
+              spec={spec}
+            />
+          </Card>
         ) : (
           <CurlBuilder
             onChange={handleBuilderChange}
