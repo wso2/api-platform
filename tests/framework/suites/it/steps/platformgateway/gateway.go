@@ -71,6 +71,23 @@ func ManagementBasePathForVersion(version string) string {
 	return ManagementBasePath
 }
 
+// SnapshotSettleDelay is how long to wait after deleting a resource before the next change on
+// a Gateway release with the xDS snapshot race.
+//
+// Releases before 1.2.0 apply each change from an event the controller polls for every three
+// seconds, and rebuild the route snapshot on a goroutine per event, without a lock (fixed in
+// 1.2.0 by "fix(xds): add mutex to SnapshotManager.UpdateSnapshot"). A deletion and the next
+// creation published inside one polling interval are applied together, and the deletion's
+// rebuild can finish last and publish a snapshot without the new resource, which then has no
+// route. Waiting longer than one interval puts the creation in a later poll. Later releases
+// need no wait.
+func SnapshotSettleDelay(version string) time.Duration {
+	if usesLegacyGatewayContract(version) {
+		return 4 * time.Second
+	}
+	return 0
+}
+
 func adminBasePathForVersion(version string) string {
 	if usesLegacyGatewayContract(version) {
 		return adminBasePathV11

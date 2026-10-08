@@ -131,6 +131,25 @@ func TestManagementBasePathForVersion(t *testing.T) {
 	}
 }
 
+// Releases before 1.2.0 lose a freshly created resource's route when a deletion's snapshot
+// rebuild finishes after it, so the framework waits after deleting there and nowhere else.
+func TestSnapshotSettleDelayOnlyForReleasesWithTheRace(t *testing.T) {
+	for _, tt := range []struct {
+		version string
+		wait    bool
+	}{
+		{version: "1.1.0", wait: true},
+		{version: "1.0.0", wait: true},
+		{version: "1.2.0", wait: false},
+		{version: "2026.09.24", wait: false},
+		{version: "", wait: false},
+	} {
+		t.Run(tt.version, func(t *testing.T) {
+			require.Equal(t, tt.wait, SnapshotSettleDelay(tt.version) > 0)
+		})
+	}
+}
+
 func TestConfigDumpContainsPolicy(t *testing.T) {
 	const routePath = "/orders/v1/test"
 

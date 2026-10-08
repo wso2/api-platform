@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -388,7 +389,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 		// A 404 means it is already gone, which is success for a sweep. Anything else is a
 		// real leak signal and is reported.
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return settleSnapshot(ctx, version)
 		}
 		return errFromResponse(resp)
 	})
@@ -429,10 +430,27 @@ func registerControllerDeleter(
 			return err
 		}
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return settleSnapshot(ctx, version)
 		}
 		return errFromResponse(resp)
 	})
+}
+
+// settleSnapshot waits out platformgateway.SnapshotSettleDelay after a gateway deletion, so
+// the next scenario's resource is not lost to the snapshot race of releases before 1.2.0.
+func settleSnapshot(ctx context.Context, version string) error {
+	delay := platformgateway.SnapshotSettleDelay(version)
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func basicAuthFor(topo *frameworkruntime.Topology) string {
