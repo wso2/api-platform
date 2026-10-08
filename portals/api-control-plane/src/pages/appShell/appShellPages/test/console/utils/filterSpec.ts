@@ -19,16 +19,7 @@
 /** Filters a specification document by search text and HTTP method. */
 
 /** OpenAPI path-item keys that denote operations. */
-export const SPEC_HTTP_METHODS = [
-  'get',
-  'post',
-  'put',
-  'delete',
-  'patch',
-  'head',
-  'options',
-  'trace',
-] as const;
+export const SPEC_HTTP_METHODS = ['get', 'post', 'put', 'delete', 'patch'] as const;
 
 export type SpecHttpMethod = (typeof SPEC_HTTP_METHODS)[number];
 
@@ -36,6 +27,27 @@ export type SpecHttpMethod = (typeof SPEC_HTTP_METHODS)[number];
 export type ResourceMethod = 'all' | SpecHttpMethod;
 
 type SpecDocument = Record<string, unknown>;
+
+/** Word-ish runs in prose, so a query can be matched against word starts. */
+const PROSE_WORD = /[a-z0-9]+/g;
+
+/**
+ * Splits prose into lowercase words for prefix matching.
+ *
+ * Substring matching is right for a path — people type URL fragments like
+ * "{id" or "/books" — but wrong for prose, because a short query is a
+ * substring of ordinary English: "id" is inside "valid" and "provide".
+ */
+const proseWords = (text: string): string[] => text.toLowerCase().match(PROSE_WORD) ?? [];
+
+/**
+ * Whether one search term matches an operation.
+ *
+ * The path is matched as a substring; the summary is matched on word starts,
+ * so "book" still finds "books" while "id" no longer finds "valid".
+ */
+const termMatches = (term: string, path: string, words: string[]): boolean =>
+  path.includes(term) || words.some((word) => word.startsWith(term));
 
 const isMethodKey = (key: string): key is SpecHttpMethod =>
   (SPEC_HTTP_METHODS as readonly string[]).includes(key);
@@ -53,6 +65,8 @@ export const filterSpecResources = (
   selectedMethod: ResourceMethod,
 ): SpecDocument => {
   const query = searchValue.trim().toLowerCase();
+  // Every term must match, so "list books" narrows rather than widens.
+  const terms = query === '' ? [] : query.split(/\s+/);
   if ((!query && selectedMethod === 'all') || !spec.paths || typeof spec.paths !== 'object') {
     return spec;
   }
@@ -63,18 +77,22 @@ export const filterSpecResources = (
     if (!pathValue || typeof pathValue !== 'object') return;
 
     const pathItem = pathValue as Record<string, unknown>;
-    const pathMatches = path.toLowerCase().includes(query);
+    const lowerPath = path.toLowerCase();
 
     const matchingOperations = SPEC_HTTP_METHODS.filter((method) => {
       const operation = pathItem[method];
       if (!operation || typeof operation !== 'object') return false;
       if (selectedMethod !== 'all' && method !== selectedMethod) return false;
-      if (pathMatches) return true;
+      if (terms.length === 0) return true;
 
-      const { summary, description } = operation as Record<string, unknown>;
-      return [summary, description].some(
-        (value) => typeof value === 'string' && value.toLowerCase().includes(query),
-      );
+      // Only what the collapsed operation row shows: its path and its
+      // summary. The description is behind the expand toggle, so matching it
+      // would leave rows in the list for a reason the user cannot see; the
+      // result reads as a filter that kept the wrong things.
+      const { summary } = operation as Record<string, unknown>;
+      const words = typeof summary === 'string' ? proseWords(summary) : [];
+
+      return terms.every((term) => termMatches(term, lowerPath, words));
     });
 
     if (matchingOperations.length === 0) return;

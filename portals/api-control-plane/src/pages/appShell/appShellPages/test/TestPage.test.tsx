@@ -529,7 +529,7 @@ describe('TestPage — proxy or direct', () => {
   it('relays by default, and says what that buys', async () => {
     server.use(...happyPath());
 
-    renderPage();
+    const { user } = renderPage();
 
     const viewer = await screen.findByTestId('spec-viewer');
     // The relay is what makes a cloud-managed gateway testable at all, so a
@@ -539,7 +539,10 @@ describe('TestPage — proxy or direct', () => {
       'aria-pressed',
       'true',
     );
-    expect(screen.getByText(/the gateway does not need a CORS policy/i)).toBeVisible();
+    // The hint lives behind the info button rather than on the card, so it
+    // has to be asked for.
+    await user.hover(screen.getByRole('button', { name: /what this routing choice means/i }));
+    expect(await screen.findByText(/the gateway does not need a CORS policy/i)).toBeVisible();
     expectNoRenderLoop();
   });
 
@@ -556,7 +559,9 @@ describe('TestPage — proxy or direct', () => {
     await waitFor(() =>
       expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
     );
-    expect(screen.getByText(/must be reachable from this machine/i)).toBeVisible();
+    // The hint follows the selected mode, so the tooltip now describes Direct.
+    await user.hover(screen.getByRole('button', { name: /what this routing choice means/i }));
+    expect(await screen.findByText(/must be reachable from this machine/i)).toBeVisible();
     expect(screen.queryByText(/does not need a CORS policy/i)).toBeNull();
     expectNoRenderLoop();
   });

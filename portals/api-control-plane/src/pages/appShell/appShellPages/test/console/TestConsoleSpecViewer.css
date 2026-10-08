@@ -46,3 +46,46 @@
 .test-console-spec-viewer.swagger-spec-viewer .swagger-ui .btn.execute.opblock-control__btn::after {
   content: none;
 }
+
+/*
+ * Make swagger's form fields legible in both colour schemes.
+ *
+ * Swagger ships fixed light-mode form colours (a white fill with near-black
+ * text). Under the app's dark palette the surrounding text colour wins on the
+ * value while the fill stays light — or the reverse — and either way the user
+ * cannot read what they are typing into a try-out parameter.
+ *
+ * The four values come from the theme via `--tc-field-*`, injected by the
+ * component, so this sheet never names a colour and both schemes follow the
+ * palette. `!important` is needed because swagger's own rules are equally
+ * specific and load from its bundled stylesheet.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='text'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='password'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='email'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='search'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='number'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input[type='file'],
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui select {
+  background-color: var(--tc-field-bg) !important;
+  color: var(--tc-field-text) !important;
+  border-color: var(--tc-field-border) !important;
+}
+
+/*
+ * The JSON body editor is a textarea swagger paints separately, and the
+ * "computed" variant it shows for a generated example keeps its own fill.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea.body-param__text,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .body-param__text,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea:focus {
+  background-color: var(--tc-field-bg) !important;
+  color: var(--tc-field-text) !important;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui input::placeholder,
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui textarea::placeholder {
+  color: var(--tc-field-placeholder) !important;
+  opacity: 1;
+}

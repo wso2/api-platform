@@ -96,11 +96,45 @@ describe('filterSpecResources — search', () => {
     expect(methodsOf(result, '/books')).toEqual(['post']);
   });
 
-  it('matches on an operation description', () => {
-    const result = filterSpecResources(spec, 'permanently', 'all');
+  it('does not let a short query match the middle of an ordinary word', () => {
+    // The reported bug: typing "id" kept every operation, because "id" is a
+    // substring of "valid", "provide" and "identifier". It read as the filter
+    // doing nothing at all.
+    const doc = {
+      paths: {
+        '/books': { get: { summary: 'Returns all valid books' } },
+        '/books/{id}': { get: { summary: 'Get a book' } },
+        '/authors': { get: { summary: 'Provide a page number' } },
+      },
+    };
 
-    expect(pathsOf(result)).toEqual(['/books/{id}']);
-    expect(methodsOf(result, '/books/{id}')).toEqual(['delete']);
+    expect(pathsOf(filterSpecResources(doc, 'id', 'all'))).toEqual(['/books/{id}']);
+  });
+
+  it('still matches a word by its start, so plurals and stems are found', () => {
+    const doc = {
+      paths: { '/books': { get: { summary: 'List paginated books' } } },
+    };
+
+    expect(pathsOf(filterSpecResources(doc, 'book', 'all'))).toEqual(['/books']);
+    expect(pathsOf(filterSpecResources(doc, 'pagin', 'all'))).toEqual(['/books']);
+  });
+
+  it('requires every term of a multi-word query to match', () => {
+    const doc = {
+      paths: {
+        '/books': { get: { summary: 'List books' } },
+        '/authors': { get: { summary: 'List authors' } },
+      },
+    };
+
+    expect(pathsOf(filterSpecResources(doc, 'list books', 'all'))).toEqual(['/books']);
+  });
+
+  it('does not match on a description, which the collapsed row does not show', () => {
+    // Matching hidden text leaves rows in the list for a reason the user
+    // cannot see, which reads as the filter keeping the wrong things.
+    expect(pathsOf(filterSpecResources(spec, 'permanently', 'all'))).toEqual([]);
   });
 
   it('is case-insensitive and ignores surrounding whitespace', () => {

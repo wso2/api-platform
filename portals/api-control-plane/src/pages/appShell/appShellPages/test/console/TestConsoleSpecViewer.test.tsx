@@ -123,10 +123,25 @@ describe('TestConsoleSpecViewer — resource search and method filter', () => {
       />,
     );
 
+  it('hides swagger\u2019s own tag headings and hands it the theme\u2019s field colours', () => {
+    const { container } = renderViewer();
+    const root = container.querySelector('.swagger-spec-viewer') as HTMLElement;
+
+    // The console lists and filters operations itself, so swagger's "default"
+    // grouping heading titles a grouping the user never chose.
+    expect(root.className).toContain('hide-tag-headers');
+
+    // Swagger ships fixed light-mode form colours; without these the value a
+    // user types into a try-out field is unreadable in the dark scheme.
+    const style = root.getAttribute('style') ?? '';
+    expect(style).toContain('--tc-field-bg');
+    expect(style).toContain('--tc-field-text');
+  });
+
   it('renders both controls', () => {
     renderViewer();
 
-    expect(screen.getByPlaceholderText(/Search resources by path or description/i)).toBeVisible();
+    expect(screen.getByPlaceholderText(/Search resources by path or summary/i)).toBeVisible();
     expect(screen.getByRole('combobox', { name: /Filter by method/i })).toBeVisible();
   });
 

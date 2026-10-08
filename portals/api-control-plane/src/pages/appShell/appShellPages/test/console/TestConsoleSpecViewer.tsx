@@ -117,7 +117,7 @@ const messages = defineMessages({
   },
   searchPlaceholder: {
     id: 'apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder',
-    defaultMessage: 'Search resources by path or description',
+    defaultMessage: 'Search resources by path or summary',
   },
 });
 
@@ -284,6 +284,14 @@ export default function TestConsoleSpecViewer({
     () =>
       ({
         '--tc-primary-contrast': theme.palette.primary.contrastText,
+        // Swagger ships its own light-mode form colours, which leave its
+        // inputs unreadable against the app's dark palette. Handing the
+        // stylesheet the theme's own values keeps the fields legible in both
+        // schemes without the sheet having to know which one is active.
+        '--tc-field-bg': theme.palette.background.paper,
+        '--tc-field-text': theme.palette.text.primary,
+        '--tc-field-border': theme.palette.divider,
+        '--tc-field-placeholder': theme.palette.text.secondary,
       }) as React.CSSProperties,
     [theme],
   );
@@ -390,7 +398,10 @@ export default function TestConsoleSpecViewer({
   return (
     <Box
       // Hide info header and server picker; console manages gateway selection
-      className="swagger-spec-viewer hide-info-section hide-servers test-console-spec-viewer"
+      // Tag headers are hidden too: the console filters and lists operations
+      // itself, so swagger's "default" grouping heading is a title for a
+      // grouping the user never chose.
+      className="swagger-spec-viewer hide-info-section hide-servers hide-tag-headers test-console-spec-viewer"
       style={themeVariables}
     >
       <Stack spacing={2}>

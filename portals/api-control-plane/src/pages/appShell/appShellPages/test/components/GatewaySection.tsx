@@ -21,6 +21,7 @@ import {
   FormControl,
   FormLabel,
   Grid,
+  IconButton,
   InputAdornment,
   MenuItem,
   Select,
@@ -28,9 +29,10 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, Server, ShieldCheck, Waypoints } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Info, Server, Waypoints } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
@@ -43,6 +45,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.test.console.GatewaySection.callModeLabel',
     defaultMessage: 'Send requests through the proxy or directly',
     description: 'Accessible label for the toggle between the two ways of sending a request.',
+  },
+  callModeHintLabel: {
+    id: 'apiControlPlane.pages.test.console.GatewaySection.callModeHintLabel',
+    defaultMessage: 'What this routing choice means',
+    description: 'Accessible label for the info button explaining the selected routing mode.',
   },
   copyEndpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
@@ -162,31 +169,63 @@ export function GatewaySection({
           </Stack>
 
           {showCallMode && (
-            <ToggleButtonGroup
-              aria-label={intl.formatMessage(messages.callModeLabel)}
-              exclusive
-              onChange={(_event, next) => next && onCallModeChange(next as TestCallMode)}
-              size="small"
-              sx={segmentedSwitchSx}
-              value={callMode}
-            >
-              <ToggleButton value="proxy">
-                <Stack alignItems="center" direction="row" spacing={1}>
-                  <Waypoints size={16} />
-                  <span>
-                    <FormattedMessage {...messages.proxyMode} />
-                  </span>
-                </Stack>
-              </ToggleButton>
-              <ToggleButton value="direct">
-                <Stack alignItems="center" direction="row" spacing={1}>
-                  <ArrowRight size={16} />
-                  <span>
-                    <FormattedMessage {...messages.directMode} />
-                  </span>
-                </Stack>
-              </ToggleButton>
-            </ToggleButtonGroup>
+            <Stack alignItems="center" direction="row" spacing={1}>
+              <ToggleButtonGroup
+                aria-label={intl.formatMessage(messages.callModeLabel)}
+                exclusive
+                onChange={(_event, next) => next && onCallModeChange(next as TestCallMode)}
+                size="small"
+                sx={segmentedSwitchSx}
+                value={callMode}
+              >
+                <ToggleButton value="proxy">
+                  <Stack alignItems="center" direction="row" spacing={1}>
+                    <Waypoints size={16} />
+                    <span>
+                      <FormattedMessage {...messages.proxyMode} />
+                    </span>
+                  </Stack>
+                </ToggleButton>
+                <ToggleButton value="direct">
+                  <Stack alignItems="center" direction="row" spacing={1}>
+                    <ArrowRight size={16} />
+                    <span>
+                      <FormattedMessage {...messages.directMode} />
+                    </span>
+                  </Stack>
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              {/* The consequence of the selected mode, on demand rather than
+                  as a permanent line under the endpoint: it is the same two
+                  sentences every time, so once read it is noise. */}
+              <Tooltip
+                arrow
+                placement="bottom-end"
+                title={
+                  <Stack spacing={0.5} sx={{ py: 0.5 }}>
+                    <Typography sx={{ fontWeight: 'fontWeightBold' }} variant="caption">
+                      <FormattedMessage
+                        {...(callMode === 'direct' ? messages.directMode : messages.proxyMode)}
+                      />
+                    </Typography>
+                    <Typography variant="caption">
+                      <FormattedMessage
+                        {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
+                      />
+                    </Typography>
+                  </Stack>
+                }
+              >
+                <IconButton
+                  aria-label={intl.formatMessage(messages.callModeHintLabel)}
+                  size="small"
+                  sx={{ color: 'primary.main' }}
+                >
+                  <Info size={18} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           )}
         </Stack>
 
@@ -195,66 +234,51 @@ export function GatewaySection({
             <FormattedMessage {...messages.noGateways} />
           </Typography>
         ) : (
-          <Stack spacing={1}>
-            <Grid container spacing={1}>
-              <Grid size={{ sm: 4, xs: 12 }}>
-                <FormControl fullWidth>
-                  <FormLabel id="test-console-gateway-label" sx={{ display: 'none' }}>
-                    <FormattedMessage {...messages.gatewayLabel} />
-                  </FormLabel>
-                  <Select
-                    labelId="test-console-gateway-label"
-                    onChange={(event) => onSelect(String(event.target.value))}
-                    size="small"
-                    value={selectedGatewayId}
-                  >
-                    {gateways.map((gateway) => (
-                      <MenuItem key={gateway.id} value={gateway.id ?? ''}>
-                        {optionLabel(gateway)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ sm: 8, xs: 12 }}>
-                <TextField
-                  fullWidth
+          <Grid container spacing={1}>
+            <Grid size={{ sm: 4, xs: 12 }}>
+              <FormControl fullWidth>
+                <FormLabel id="test-console-gateway-label" sx={{ display: 'none' }}>
+                  <FormattedMessage {...messages.gatewayLabel} />
+                </FormLabel>
+                <Select
+                  labelId="test-console-gateway-label"
+                  onChange={(event) => onSelect(String(event.target.value))}
                   size="small"
-                  slotProps={{
-                    htmlInput: {
-                      'aria-label': intl.formatMessage(messages.endpoint),
-                    },
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <CopyButton
-                            getValue={() => endpoint}
-                            label={intl.formatMessage(messages.copyEndpoint)}
-                            variant="icon"
-                          />
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                  value={endpoint}
-                />
-              </Grid>
+                  value={selectedGatewayId}
+                >
+                  {gateways.map((gateway) => (
+                    <MenuItem key={gateway.id} value={gateway.id ?? ''}>
+                      {optionLabel(gateway)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
-
-            {showCallMode && (
-              <Stack alignItems="center" direction="row" spacing={0.75}>
-                <Box sx={{ color: 'text.secondary', display: 'flex', flexShrink: 0 }}>
-                  <ShieldCheck size={14} />
-                </Box>
-                <Typography color="text.secondary" variant="caption">
-                  <FormattedMessage
-                    {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
-                  />
-                </Typography>
-              </Stack>
-            )}
-          </Stack>
+            <Grid size={{ sm: 8, xs: 12 }}>
+              <TextField
+                fullWidth
+                size="small"
+                slotProps={{
+                  htmlInput: {
+                    'aria-label': intl.formatMessage(messages.endpoint),
+                  },
+                  input: {
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <CopyButton
+                          getValue={() => endpoint}
+                          label={intl.formatMessage(messages.copyEndpoint)}
+                          variant="icon"
+                        />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+                value={endpoint}
+              />
+            </Grid>
+          </Grid>
         )}
       </Stack>
     </Box>
