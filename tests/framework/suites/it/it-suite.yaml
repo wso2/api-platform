@@ -1020,19 +1020,19 @@ blocks:
 
   # Multi-gateway consistency, like multigateway above: two platform-gateway replicas behind one
   # platform-api. Separate block and feature file for the same reasons as the restart block above.
-  # - name: gateway-controller-policies-multigateway
-  #   parallel: 1
-  #   components:
-  #     - name: platform-api
-  #       db: sqlite
-  #     - name: platform-gateway
-  #       dependsOn: [platform-api]
-  #       replicas: 2
-  #       db: sqlite
-  #       addPoliciesFrom: ../gateway-controllers/policies
-  #     - name: testbench
-  #   runners:
-  #     - name: api-key-auth-multigateway
-  #       tags: "gateway-version>=1.1.0"
-  #       features:
-  #         - features/gateway/security-policies/api_key_auth_multigateway.feature
+  - name: gateway-controller-policies-multigateway
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        replicas: 2
+        db: sqlite
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: api-key-auth-multigateway
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/security-policies/api_key_auth_multigateway.feature

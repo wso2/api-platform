@@ -453,7 +453,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 	}
 	require.NotEmpty(t, variants)
 	for source, got := range variants {
-		if source == "devportal-webhook" || source == "multigateway" || source == "ai-workspace-cli" {
+		if source == "devportal-webhook" || source == "multigateway" || source == "ai-workspace-cli" ||
+			source == "gateway-controller-policies-multigateway" {
 			require.Len(t, got, 1, "single-engine block %q", source)
 			continue
 		}
