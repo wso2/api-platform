@@ -366,8 +366,10 @@ export function GatewayGetStartedPanel({
   const activeTab = TABS.find((entry) => entry.value === tab) ?? TABS[0];
 
   // A gateway that has never had a token gets one without a confirmation:
-  // there is nothing to replace yet, so there is nothing to warn about.
-  const hasActiveToken = Boolean(token) || (tokensQuery.data?.list?.length ?? 0) > 0;
+  // there is nothing to replace yet, so there is nothing to warn about. If the
+  // token list couldn't be read, that isn't known, so the confirmation stays.
+  const hasActiveToken =
+    Boolean(token) || tokensQuery.isError || (tokensQuery.data?.list?.length ?? 0) > 0;
 
   const generateToken = () => {
     setConfirmOpen(false);

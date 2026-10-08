@@ -203,7 +203,11 @@ describe('toCurl', () => {
   it('skips the certificate check only for a gateway on this machine', () => {
     // A local gateway serves its setup's self-signed certificate; without -k
     // the copied command fails before it reaches the API.
-    for (const baseUrl of ['https://localhost:8443/api/v1', 'https://127.0.0.1:8443']) {
+    for (const baseUrl of [
+      'https://localhost:8443/api/v1',
+      'https://127.0.0.1:8443',
+      'https://[::1]:8443',
+    ]) {
       expect(toCurl(request({ baseUrl }), { revealSecrets: true })).toMatch(/^curl -k -X GET/);
     }
 
@@ -212,6 +216,9 @@ describe('toCurl', () => {
       'https://gw.example.com',
       'http://localhost:8080',
       'https://localhost.example.com',
+      // Text before an @ is a username: curl contacts remote.example.
+      'https://localhost:8443@remote.example',
+      'https://127.0.0.1@remote.example/api',
     ]) {
       expect(toCurl(request({ baseUrl }), { revealSecrets: true })).toMatch(/^curl -X GET/);
     }

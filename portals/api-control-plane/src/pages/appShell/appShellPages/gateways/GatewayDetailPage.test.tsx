@@ -24,6 +24,7 @@ import { resetHttpClient } from '@/api/core/http';
 import {
   aGateway,
   accepts,
+  failure,
   recorder,
   resource,
   type GatewayFixture,
@@ -250,6 +251,30 @@ describe('GatewayDetailPage', () => {
     await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
     expect(tokenRotations.count()).toBe(1);
   });
+  it('still asks before generating a token when the token list fails to load', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      failure('get', '/gateways/:gatewayId/tokens', 500, 'internal_error'),
+      accepts(
+        'post',
+        '/gateways/:gatewayId/tokens',
+        { id: 'token-1', token: 'plaintext-token-value' },
+        { record: tokenRotations },
+      ),
+    );
+
+    const { container, user } = renderPage();
+
+    // An unreadable list may hide an active token, so this can't be treated as
+    // a gateway's first token.
+    await user.click(await screen.findByRole('button', { name: 'Generate another token' }));
+    expect(tokenRotations.count()).toBe(0);
+    await user.click(screen.getByRole('button', { name: 'Generate new token' }));
+
+    await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
+    expect(tokenRotations.count()).toBe(1);
+  });
+
   it('lists the manifest policies on the Policies tab, sorted by name', async () => {
     server.use(
       resource('/gateways/:gatewayId', gateway()),

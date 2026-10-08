@@ -88,8 +88,18 @@ export const buildRequestUrl = (
  * it unless told to skip the check. Limited to loopback hosts: anywhere else,
  * skipping verification would hide a real certificate problem.
  */
-const skipsCertificateCheck = (url: string): boolean =>
-  /^https:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+const skipsCertificateCheck = (url: string): boolean => {
+  // Parsed rather than matched as text, so the host curl will actually contact
+  // decides: "https://localhost:8443@remote.example" is remote.example.
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === 'https:' && LOOPBACK_HOSTS.has(hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
 
 /**
  * A one-line summary of what the command does — "POST · 2 headers · JSON body".
