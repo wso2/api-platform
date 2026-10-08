@@ -132,8 +132,8 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*ap
 		Policies:          u.PoliciesModelToAPI(modelAPI.Configuration.Policies),
 		ProjectId:         projectHandle,
 		ReadOnly:          BoolPtr(modelAPI.Origin == constants.OriginDP),
-		SubscriptionPlans: stringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
-		Transport:         stringSlicePtr(modelAPI.Configuration.Transport),
+		SubscriptionPlans: StringSlicePtr(modelAPI.Configuration.SubscriptionPlans),
+		Transport:         StringSlicePtr(modelAPI.Configuration.Transport),
 		UpdatedAt:         TimePtrIfNotZero(modelAPI.UpdatedAt),
 		UpdatedBy:         StringPtrIfNotEmpty(modelAPI.UpdatedBy),
 		Upstream:          u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
@@ -788,7 +788,7 @@ func (u *APIUtil) APIYAMLDataToRESTAPI(yamlData *dto.APIYAMLData) *api.RESTAPI {
 		Upstream:        upstream,
 		LifeCycleStatus: &lifeCycleStatus,
 		Kind:            StringPtrIfNotEmpty(kind),
-		Transport:       stringSlicePtr([]string{"http", "https"}),
+		Transport:       StringSlicePtr([]string{"http", "https"}),
 		ProjectId:       "",
 
 		// Fields that may be set by caller:

@@ -186,6 +186,7 @@ func TestLoadConfig_SkipPathsDefaultsSurvive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, cfg.Auth.SkipPaths, "/health")
 	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/secrets")
+	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/agents")
 }
 
 // The encryption key is required and never generated — a config that omits it fails startup.

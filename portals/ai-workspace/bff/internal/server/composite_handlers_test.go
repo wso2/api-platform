@@ -109,7 +109,7 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
-		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
+		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
 	}
 
 	s := &Server{
@@ -118,9 +118,12 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
-	// Wrap the handler so we can inject the session cookie on every request.
+	// Wrap the handler so we can inject the session cookie (split across its two
+	// parts) on every request.
 	bffSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name, Value: jwt})
+		part1, part2 := splitSessionToken(jwt)
+		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name1, Value: part1})
+		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name2, Value: part2})
 		s.handleCreateWithSecretCompensation(w, r, "/llm-providers", paths.PlatformAPI)
 	}))
 	t.Cleanup(bffSrv.Close)
@@ -277,7 +280,7 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
-		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
+		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
 	}
 	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
 	// the zero value would instead apply httpclient's own 10MiB cap, which these
@@ -333,7 +336,7 @@ func buildPublishTestServer(t *testing.T, platformURL, jwt string) *httptest.Ser
 
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
-		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
+		Cookie:       config.CookieConfig{Name1: "_ai_workspace_session_1", Name2: "_ai_workspace_session_2"},
 	}
 	s := &Server{
 		cfg:          cfg,
@@ -348,12 +351,20 @@ func buildPublishTestServer(t *testing.T, platformURL, jwt string) *httptest.Ser
 
 	bffSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if jwt != "" {
-			r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name, Value: jwt})
+			addSessionCookies(r, cfg.Cookie, jwt)
 		}
 		mux.ServeHTTP(w, r)
 	}))
 	t.Cleanup(bffSrv.Close)
 	return bffSrv
+}
+
+// addSessionCookies attaches jwt to r the way the browser carries it: split across
+// the session cookie's two parts.
+func addSessionCookies(r *http.Request, c config.CookieConfig, jwt string) {
+	part1, part2 := splitSessionToken(jwt)
+	r.AddCookie(&http.Cookie{Name: c.Name1, Value: part1})
+	r.AddCookie(&http.Cookie{Name: c.Name2, Value: part2})
 }
 
 const publishTestPath = "/api/api-portals/acme-portal/mcp-proxies/my-proxy/publish"

@@ -22,7 +22,6 @@ import { Pencil } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
-import { hairline } from '@/theme/receipes';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
 
 /**
@@ -69,11 +68,16 @@ export type SpecificationTabProps = {
   disabled?: boolean;
   /** The serialization the text is in, which is also the one it is parsed as on save. */
   format: SpecFormat;
-  /** Every keystroke, or a format switch that re-prints the text, with the buffer's full text. */
-  onChange: (text: string) => void;
+  /**
+   * Every keystroke, or a format switch that re-prints the text, with the buffer's full text.
+   * Never called when `readOnly`: the caller re-prints the text itself on `onFormatChange`.
+   */
+  onChange?: (text: string) => void;
   onFormatChange: (format: SpecFormat) => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
+  /** Shows the definition without an Edit button, for a version that can't be changed. */
+  readOnly?: boolean;
   /** The definition's raw text, in `format`. */
   text: string;
 };
@@ -92,6 +96,7 @@ export function SpecificationTab({
   onChange,
   onFormatChange,
   parseError,
+  readOnly,
   text,
 }: SpecificationTabProps) {
   const intl = useIntl();
@@ -100,35 +105,25 @@ export function SpecificationTab({
   const hasText = text.trim() !== '';
   // A definition that failed to parse sends the user back here to fix it, so
   // it stays editable without another click.
-  const editable = isEditing || !hasText || Boolean(parseError);
+  const editable = !readOnly && (isEditing || !hasText || Boolean(parseError));
 
   const switchFormat = (next: SpecFormat) => {
     if (next === format || disabled) return;
     const parsed = parseSpecText(text, format);
     // A buffer that doesn't parse can't be re-printed; only the language
     // switches, and the error is reported when it is saved.
-    if (parsed.status === 'parsed') onChange(serializeSpec(parsed.spec, next));
+    if (parsed.status === 'parsed' && !readOnly) onChange?.(serializeSpec(parsed.spec, next));
     onFormatChange(next);
   };
 
   // Pins `editable` open past the error clearing on this same keystroke.
   const editText = (next: string) => {
     setIsEditing(true);
-    onChange(next);
+    onChange?.(next);
   };
 
   return (
-    <Box
-      sx={(theme) => ({
-        border: hairline(theme),
-        borderColor: 'divider',
-        borderRadius: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        overflow: 'hidden',
-      })}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <Stack
         alignItems="center"
         direction="row"
@@ -156,7 +151,7 @@ export function SpecificationTab({
           <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
           <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
         </ToggleButtonGroup>
-        {!editable && (
+        {!readOnly && !editable && (
           <Button
             disabled={disabled}
             onClick={() => setIsEditing(true)}

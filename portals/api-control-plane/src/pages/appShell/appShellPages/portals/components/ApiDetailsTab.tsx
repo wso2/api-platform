@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Form, FormControl, FormHelperText, FormLabel, Grid, OutlinedInput, Paper } from '@wso2/oxygen-ui';
+import { Box, Form, FormControl, FormHelperText, FormLabel, Grid, OutlinedInput } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import type { DraftFormField, DraftFormValues, FormFieldErrors } from '../utils/publicationForm';
@@ -50,9 +50,11 @@ const messages = defineMessages({
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
-  errors: FormFieldErrors;
-  onBlurField: (field: DraftFormField) => void;
-  onChange: (values: DraftFormValues) => void;
+  errors?: FormFieldErrors;
+  /** Shows the values without letting them be edited; `onBlurField` and `onChange` are then never called. */
+  readOnly?: boolean;
+  onBlurField?: (field: DraftFormField) => void;
+  onChange?: (values: DraftFormValues) => void;
   values: DraftFormValues;
 };
 
@@ -62,14 +64,15 @@ type DetailFieldProps = {
   field: DraftFormField;
   id: string;
   label: MessageDescriptor;
-  onBlur: (field: DraftFormField) => void;
+  onBlur?: (field: DraftFormField) => void;
   onChange: (field: DraftFormField, value: string) => void;
+  readOnly?: boolean;
   required?: boolean;
   value: string;
 };
 
 /** A single-line text field with its label and validation message. */
-function DetailField({ disabled, error, field, id, label, onBlur, onChange, required, value }: DetailFieldProps) {
+function DetailField({ disabled, error, field, id, label, onBlur, onChange, readOnly, required, value }: DetailFieldProps) {
   return (
     <FormControl disabled={disabled} error={Boolean(error)} fullWidth required={required}>
       <FormLabel htmlFor={id}>
@@ -78,8 +81,9 @@ function DetailField({ disabled, error, field, id, label, onBlur, onChange, requ
       <OutlinedInput
         aria-describedby={`${id}-error`}
         id={id}
-        onBlur={() => onBlur(field)}
+        onBlur={() => onBlur?.(field)}
         onChange={(event) => onChange(field, event.target.value)}
+        readOnly={readOnly}
         value={value}
       />
       <FormHelperText id={`${id}-error`}>{error && <FormattedMessage {...error} />}</FormHelperText>
@@ -92,11 +96,18 @@ function DetailField({ disabled, error, field, id, label, onBlur, onChange, requ
  * single card. The thumbnail control and the document picker are left out of
  * this release.
  */
-export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values }: ApiDetailsTabProps) {
+export function ApiDetailsTab({
+  disabled,
+  errors = {},
+  onBlurField,
+  onChange,
+  readOnly,
+  values,
+}: ApiDetailsTabProps) {
   const intl = useIntl();
 
   const setField = <K extends keyof DraftFormValues>(field: K, value: DraftFormValues[K]) =>
-    onChange({ ...values, [field]: value });
+    onChange?.({ ...values, [field]: value });
 
   const fieldProps = (field: DraftFormField, id: string, label: MessageDescriptor) => ({
     disabled,
@@ -106,17 +117,18 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
     label,
     onBlur: onBlurField,
     onChange: setField,
+    readOnly,
     value: values[field],
   });
 
   return (
-    <Paper component="section" sx={{ p: 3 }}>
+    <Box component="section" sx={{ p: 3 }}>
       <Form.Stack spacing={2}>
         <Grid container spacing={2}>
-          <Grid size={{ md: 8, xs: 12 }}>
+          <Grid size={{ md: 9, xs: 12 }}>
             <DetailField {...fieldProps('displayName', 'publicationDisplayName', messages.nameLabel)} required />
           </Grid>
-          <Grid size={{ md: 4, xs: 12 }}>
+          <Grid size={{ md: 3, xs: 12 }}>
             <DetailField {...fieldProps('version', 'publicationVersion', messages.versionLabel)} required />
           </Grid>
         </Grid>
@@ -127,7 +139,8 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
             id="publicationDescription"
             multiline
             onChange={(event) => setField('description', event.target.value)}
-            placeholder={intl.formatMessage(messages.descriptionPlaceholder)}
+            placeholder={readOnly ? undefined : intl.formatMessage(messages.descriptionPlaceholder)}
+            readOnly={readOnly}
             rows={3}
             value={values.description}
           />
@@ -142,6 +155,6 @@ export function ApiDetailsTab({ disabled, errors, onBlurField, onChange, values 
           </Grid>
         </Grid>
       </Form.Stack>
-    </Paper>
+    </Box>
   );
 }

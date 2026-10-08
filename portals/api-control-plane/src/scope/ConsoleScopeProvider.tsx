@@ -17,7 +17,7 @@
  */
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
 
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
 import { useAuth } from '../contexts/auth/AuthProvider';
@@ -31,6 +31,7 @@ import { getRouteParamsFromPathname } from './consoleRouteParams';
 import { useRestApi } from '../api/resources/restApis';
 import { useOrganizations } from '../api/resources/organizations';
 import { useProject, useProjects } from '../api/resources/projects';
+import { routes } from '../routes/paths';
 
 // Re-export so existing imports from this module keep working.
 export {
@@ -182,6 +183,26 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       tokenReadyOrgHandle,
     ]
   );
+
+  // The org in the URL is only a request: it can outlive the session that put
+  // it there (a login return path, a bookmark, another tab left open across an
+  // account switch). Once the signed-in user's organizations have settled and
+  // the URL's org is not among them, send them to the organization picker,
+  // which lands them on one they can actually reach. Waiting out `isFetching`
+  // keeps a refetch after onboarding registers the org from bouncing the user
+  // off it on stale data; a truncated list proves nothing, so it never redirects.
+  const organizationList = organizationsQuery.data?.list;
+  const isForeignOrganization =
+    Boolean(params.orgHandle) &&
+    organizationsQuery.isSuccess &&
+    !organizationsQuery.isFetching &&
+    !organization &&
+    (organizationsQuery.data?.pagination?.total ?? 0) <=
+      (organizationList?.length ?? 0);
+
+  if (isForeignOrganization) {
+    return <Navigate to={routes.organizations} replace />;
+  }
 
   return (
     <ConsoleScopeContext.Provider value={value}>

@@ -34,6 +34,10 @@ const (
 	EnvImageMockPlatformAPI = "IT_IMAGE_MOCK_PLATFORM_API"
 )
 
+// GatewayReleaseRegistry is the default image repository prefix for released
+// Platform Gateway images. Override it per run with -host.
+const GatewayReleaseRegistry = "ghcr.io/wso2/api-platform"
+
 // EnvCoverageMode marks a run that collects runtime coverage data.
 const EnvCoverageMode = "IT_COVERAGE"
 

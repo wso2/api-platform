@@ -91,7 +91,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           id: "trial-status",
           slot: AI_WORKSPACE_HEADER_ACTIONS_SLOT,
           order: 10,
-          render: () => <TrialStatusFeature />,
+          render: (port: AIWorkspaceHostPort) => <TrialStatusFeature port={port} />,
         },
       ],
     }),

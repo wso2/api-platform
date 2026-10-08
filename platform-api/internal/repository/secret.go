@@ -34,11 +34,44 @@ import (
 )
 
 type SecretRepo struct {
-	db *database.DB
+	db  *database.DB
+	reg *ArtifactTableRegistry
 }
 
-func NewSecretRepo(db *database.DB) SecretRepository {
-	return &SecretRepo{db: db}
+// NewSecretRepo creates a SecretRepo. When reg is provided it is used to resolve
+// the referencing artifact's handle and display name across every kind-specific
+// table; when omitted the core-only default registry is used.
+func NewSecretRepo(db *database.DB, reg ...*ArtifactTableRegistry) SecretRepository {
+	r := NewArtifactTableRegistry()
+	if len(reg) > 0 && reg[0] != nil {
+		r = reg[0]
+	}
+	return &SecretRepo{db: db, reg: r}
+}
+
+// secretRefsQuery builds the reference lookup used by FindRefs and by the
+// delete path.
+//
+// The referencing artifact's handle and display name live in whichever
+// kind-specific table backs it, so the query joins a UNION over every registered
+// artifact table rather than a hand-written LEFT JOIN per kind. That earlier
+// shape failed in the direction that looks like success: a kind missing from the
+// chain fell through to the raw artifact UUID for the handle and an empty display
+// name, so an operator was shown an unidentifiable referent rather than an error.
+// Driving it from the registry means a newly registered kind cannot repeat that.
+func (r *SecretRepo) secretRefsQuery() string {
+	return `
+		SELECT DISTINCT
+			COALESCE(src.handle, asr.artifact_uuid) AS handle,
+			COALESCE(src.display_name, '')          AS display_name,
+			art.type
+		FROM artifact_secret_refs asr
+		JOIN artifacts art ON art.uuid = asr.artifact_uuid
+		LEFT JOIN (
+			` + r.reg.UnionAllSelect("uuid", "handle", "display_name") + `
+		) src ON src.uuid = asr.artifact_uuid
+		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
+	`
 }
 
 func (r *SecretRepo) Create(s *model.Secret) error {
@@ -254,19 +287,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		return nil, fmt.Errorf("failed to lock secret row: %w", err)
 	}
 
-	refsQuery := r.db.Rebind(`
-		SELECT DISTINCT
-			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
-			COALESCE(ra.display_name,   lp.display_name,   lpr.display_name,   mcp.display_name,   '')               AS display_name,
-			art.type
-		FROM artifact_secret_refs asr
-		JOIN artifacts art ON art.uuid = asr.artifact_uuid
-		LEFT JOIN rest_apis     ra  ON ra.uuid  = asr.artifact_uuid
-		LEFT JOIN llm_providers lp  ON lp.uuid  = asr.artifact_uuid
-		LEFT JOIN llm_proxies   lpr ON lpr.uuid = asr.artifact_uuid
-		LEFT JOIN mcp_proxies   mcp ON mcp.uuid = asr.artifact_uuid
-		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
-	`)
+	refsQuery := r.db.Rebind(r.secretRefsQuery())
 	rows, err := tx.Query(refsQuery, orgID, handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find secret refs: %w", err)
@@ -313,19 +334,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 }
 
 func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, error) {
-	query := r.db.Rebind(`
-		SELECT DISTINCT
-			COALESCE(ra.handle, lp.handle, lpr.handle, mcp.handle, asr.artifact_uuid) AS handle,
-			COALESCE(ra.display_name,   lp.display_name,   lpr.display_name,   mcp.display_name,   '')               AS display_name,
-			art.type
-		FROM artifact_secret_refs asr
-		JOIN artifacts art ON art.uuid = asr.artifact_uuid
-		LEFT JOIN rest_apis     ra  ON ra.uuid  = asr.artifact_uuid
-		LEFT JOIN llm_providers lp  ON lp.uuid  = asr.artifact_uuid
-		LEFT JOIN llm_proxies   lpr ON lpr.uuid = asr.artifact_uuid
-		LEFT JOIN mcp_proxies   mcp ON mcp.uuid = asr.artifact_uuid
-		WHERE asr.organization_uuid = ? AND asr.secret_handle = ?
-	`)
+	query := r.db.Rebind(r.secretRefsQuery())
 
 	rows, err := r.db.Query(query, orgID, handle)
 	if err != nil {

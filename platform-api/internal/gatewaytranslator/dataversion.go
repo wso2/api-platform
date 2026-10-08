@@ -22,50 +22,35 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 )
 
-// MinGatewayV1Version is the first gateway release whose CRD apiVersion is
-// "gateway.api-platform.wso2.com/v1". Every artifact kind flips apiVersion
-// together at this boundary — it is a gateway-wide fact, not a per-kind one —
-// so it lives here, in exactly one place. Kind-specific data-shape transforms
-// (see versiontranslator/v1alpha1) never hardcode this constant; they are
-// reached only because GatewayDataVersion already resolved the target using it.
-const MinGatewayV1Version = "1.2.0"
-
 // GatewayDataVersion is the CRD apiVersion a target gateway accepts, in
-// normalized form.
+// normalized form. It is derived from the gateway's release and kept for
+// logging and for stamping imported artifacts; translation itself is driven by
+// the release version (see Translate).
 type GatewayDataVersion string
 
 const (
 	// GatewayDataVersionV1 is the latest gateway artifact shape
-	// (gateways >= MinGatewayV1Version).
+	// (gateways >= gwversion.MinGatewayV1Version).
 	GatewayDataVersionV1 GatewayDataVersion = "v1"
 	// GatewayDataVersionV1Alpha1 is the legacy shape understood by gateways
-	// older than MinGatewayV1Version.
+	// older than gwversion.MinGatewayV1Version.
 	GatewayDataVersionV1Alpha1 GatewayDataVersion = "v1alpha1"
 )
 
-// TargetGatewayDataVersion derives the gateway data version a target gateway
-// accepts from its semver.
-func TargetGatewayDataVersion(gatewayTargetVersion Version) GatewayDataVersion {
-	if gatewayTargetVersion.AtLeast(ParseVersion(MinGatewayV1Version)) {
+// GatewayDataVersionForGateway resolves the CRD apiVersion a target gateway
+// accepts from its raw reported version string (model.Gateway.Version).
+// Down-conversion is lossy, so it applies only when the gateway positively
+// reports a release below gwversion.MinGatewayV1Version; a blank or non-semver
+// version (unregistered, or dev/e2e build tags like "it-e2e") is assumed to be
+// a current build and resolves to latest (v1).
+func GatewayDataVersionForGateway(rawVersion string) GatewayDataVersion {
+	if gwversion.AtLeast(rawVersion, gwversion.MinGatewayV1Version) {
 		return GatewayDataVersionV1
 	}
 	return GatewayDataVersionV1Alpha1
-}
-
-// GatewayDataVersionForGateway resolves the gateway data version a target
-// gateway accepts from its raw reported version string (model.Gateway.Version).
-// Down-conversion is lossy, so it applies only when the gateway positively
-// reports a semver below MinGatewayV1Version; a blank or non-semver version
-// (unregistered, or dev/e2e build tags like "it-e2e") is assumed to be a
-// current build and resolves to latest (v1).
-func GatewayDataVersionForGateway(rawVersion string) GatewayDataVersion {
-	v, ok := parseVersion(rawVersion)
-	if !ok {
-		return GatewayDataVersionV1
-	}
-	return TargetGatewayDataVersion(v)
 }
 
 // PlatformDataVersion is the shape platform-api stored an entity as, recorded
@@ -86,9 +71,10 @@ var platformDataMinorVersions = map[string]int{
 	constants.RestApi:      0,
 	constants.WebSubApi:    0,
 	constants.WebBrokerApi: 0,
-	constants.MCPProxy:     0,
+	constants.MCPProxy:     1,
 	constants.LLMProxy:     1,
 	constants.LLMProvider:  1,
+	constants.AgentProxy:   0,
 }
 
 // majorFromApiVersion parses ".../v<N>..." and returns "N" (the leading

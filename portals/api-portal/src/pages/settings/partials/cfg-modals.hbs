@@ -235,21 +235,219 @@
       <label for="km-display">Name <span class="required">*</span></label>
       <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Production" />
     </div>
+    {{!-- Asked before the type, because it is the prior question: the type names
+          the driver, and this names what the key manager is for. It used to be one
+          of the type options, which read as a fifth driver and silently emptied the
+          form below when picked. Add only — a key manager's answer here is fixed at
+          creation, so editing shows the settled fact instead (km-creation-field). --}}
+    <div class="cfg-form-group" id="km-mode-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">Where are OAuth2 applications managed? <span class="required">*</span></span>
+      <div class="cfg-choice-group">
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-register" value="register" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">In the portal</span>
+            <span class="cfg-choice-desc">The portal registers an application on the identity server when a developer asks for keys, then updates and deletes it from here — so they get a client ID and secret without leaving the portal.</span>
+          </span>
+        </label>
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-import" value="import" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">In the identity server</span>
+            <span class="cfg-choice-desc">Applications are created and maintained there. A developer pastes the client ID here and the portal only records it, registering nothing.</span>
+          </span>
+        </label>
+      </div>
+    </div>
+    {{!-- Edit only, and only for a key manager that imports. Showing its driver
+          name — "Provision" — in a field labelled "Key manager type" reads as a
+          setting among the other drivers, which is the confusion this whole
+          section exists to remove. This states what the key manager is instead. --}}
+    <div class="cfg-form-group" id="km-creation-field" style="margin-bottom:16px;" hidden>
+      <label for="km-creation">OAuth2 applications</label>
+      <input type="text" id="km-creation" class="cfg-form-input" value="Managed in the identity server" disabled />
+      <p class="cfg-form-hint">Applications are created in the identity server and imported here. Fixed at creation — add a new key manager to register keys from the portal.</p>
+    </div>
+    <div class="cfg-form-group" id="km-type-field" style="margin-bottom:16px;">
+      <label for="km-type">Key manager type <span class="required">*</span></label>
+      <select id="km-type" class="cfg-form-input">
+        {{!-- Every option here registers applications: the one that does not is
+              filtered out by the controller and chosen with the control above. So
+              a default no longer risks quietly selecting a driver that cannot
+              register — which is what an empty placeholder used to guard against.
+              The script picks it, so a build without that driver falls back to the
+              first option rather than submitting an empty value. --}}
+        {{!-- Label only. The value stays the driver id exactly as the registry
+              spells it, which is what the API is given, so nothing has to undo
+              this on the way out. The label comes from the registry too, beside
+              the type it names. --}}
+        {{!-- The grant types this driver declares ride along on the option, so the
+              grant-type checkboxes below can be rebuilt when the type changes
+              without a second trip to the server. jsonAttr escapes it for an
+              attribute; the script parses it back. --}}
+        {{#each keyManagerTypes}}
+        <option value="{{value}}" data-grants="{{jsonAttr grantTypes}}">{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    {{!-- Which environment this key manager issues keys for. A deployment runs one
+          key manager per environment, so this is asked once here rather than on
+          every key — every key created on it inherits the answer.
+
+          Fixed at creation: the keys already issued were created as that kind, and
+          the API answers 409 to a change. Edit shows it disabled rather than
+          hiding it, so an admin can still see which one they are looking at. --}}
+    <div class="cfg-form-group" id="km-keytype-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">Key type <span class="required">*</span></span>
+      <div class="cfg-choice-group cfg-choice-group--inline">
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-production" value="PRODUCTION" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Production</span>
+            <span class="cfg-choice-desc">Keys for live traffic.</span>
+          </span>
+        </label>
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-sandbox" value="SANDBOX" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Sandbox</span>
+            <span class="cfg-choice-desc">Keys for testing against sandbox endpoints.</span>
+          </span>
+        </label>
+      </div>
+      <p class="cfg-form-hint" id="km-keytype-hint" hidden>Fixed when the key manager was created — add a new key manager for the other environment.</p>
+    </div>
+    {{!-- Add only. A shortcut for filling the endpoint fields below, not a setting:
+          nothing here is sent when the form is saved, and the key manager keeps no
+          record of where its endpoints were read from. Editing hides it, where the
+          endpoints are already settled and re-reading them would overwrite what an
+          admin may have corrected by hand. --}}
+    <div class="cfg-form-group" id="km-discovery-field" style="margin-bottom:16px;">
+      <label for="km-discovery-url">Discovery URL</label>
+      <div class="cfg-input-with-action">
+        <input type="text" id="km-discovery-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/token/.well-known/openid-configuration" />
+        {{!-- Icon only, so a long .well-known URL keeps the width. The word it
+              replaces lives in the title/aria-label, and the hint line below spells
+              out what the control does — so nothing rests on reading the glyph. --}}
+        <button type="button" class="cfg-icon-action" id="km-discovery-fetch"
+          title="Fetch endpoints" aria-label="Fetch endpoints from this discovery URL">
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p class="cfg-form-hint" id="km-discovery-status">Optional. Reads the server's own metadata document and fills in the endpoints below, so they need not be transcribed. They stay editable, and the URL itself is not saved.</p>
+    </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
       <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/token" />
     </div>
-    <div class="cfg-form-group" style="margin-bottom:24px;">
-      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
-        <span class="wh-toggle">
-          <input type="checkbox" id="km-enabled" checked />
-          <span class="wh-toggle-slider"></span>
-        </span>
-        Enabled
-      </label>
+    {{!-- Key generation. Name, type and the token endpoint are enough to proxy token
+          requests for an OAuth application created directly in the key manager; the
+          rest is what additionally lets the portal create those applications itself,
+          over Dynamic Client Registration.
+
+          No wrapper and no heading of its own: filling these in is the normal case.
+          Still optional — leaving them all blank saves a key manager that only
+          proxies token requests. --}}
+    {{!-- Dynamic Client Registration only. Hidden when the type is Provision,
+          where applications are created in the key manager and imported here,
+          so there is no endpoint for the portal to register at and no
+          credential for it to present. --}}
+    <div id="km-dcr-only">
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-authorize-endpoint">Authorization endpoint</label>
+        <input type="text" id="km-authorize-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/authorize" />
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-registration-endpoint">Registration endpoint <span class="required">*</span></label>
+        <input type="text" id="km-registration-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/dcr/register" />
+      </div>
+      {{!-- Which grants a developer may pick when creating a key here. Populated
+            from the chosen driver's own declared options, so it cannot name a grant
+            this key manager was never going to offer. Leaving every box clear means
+            no restriction — whatever the driver offers — which is the default and
+            what every existing key manager already does.
+
+            Not cosmetic: the same list is enforced on POST/PUT /oauth2-keys, so a
+            request sent by hand is refused too. --}}
+      <div class="cfg-form-group" id="km-grants-field" style="margin-bottom:16px;">
+        <span class="cfg-form-legend">Grant types developers may use</span>
+        <div class="cfg-check-group" id="km-grants"></div>
+        <p class="cfg-form-hint">Optional. Leave all clear to allow every grant type this key manager supports.</p>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-auth-method">How the portal authenticates to it <span class="required">*</span></label>
+        <select id="km-auth-method" class="cfg-form-input">
+          <option value="client_credentials">Client credentials</option>
+          <option value="basic">Basic authentication</option>
+          <option value="api_key">API key</option>
+        </select>
+      </div>
+
+      <div id="km-auth-cc">
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-client-id">Client ID <span class="required">*</span></label>
+          <input type="text" id="km-client-id" class="cfg-form-input cfg-form-input--mono" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-client-secret">Client secret <span class="required" id="km-client-secret-req">*</span></label>
+          <input type="password" id="km-client-secret" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-scopes">Scopes</label>
+          {{!-- Chip input, same markup and classes as the API wizard's Tags field.
+                A scope is an opaque token with no delimiter of its own, so the old
+                space-separated box gave no feedback about where one ended and the
+                next began -- a stray double space or a trailing one looked
+                identical to a correct value. --}}
+          <div class="cfg-chip-input-wrap cfg-chip-input-wrap--mono" id="km-scopes-wrap">
+            <div id="km-scopes-chips" style="display:contents;"></div>
+            <input type="text" class="cfg-chip-text-input" id="km-scopes"
+              placeholder="internal_client_management" autocomplete="off" aria-describedby="km-scopes-hint" />
+          </div>
+          <p class="cfg-form-hint" id="km-scopes-hint">Requested when minting the provisioning token. Press space or Enter to add; Backspace removes the last scope.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-resource">Resource indicator</label>
+          <input type="text" id="km-resource" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/api" />
+          <p class="cfg-form-hint">RFC 8707. Some key managers will not issue a usable token without it.</p>
+        </div>
+      </div>
+
+      <div id="km-auth-apikey" hidden>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-header-name">Header name</label>
+          <input type="text" id="km-header-name" class="cfg-form-input cfg-form-input--mono" placeholder="Authorization" />
+          <p class="cfg-form-hint">Where the key is sent. Defaults to Authorization.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-scheme">Scheme</label>
+          <input type="text" id="km-scheme" class="cfg-form-input cfg-form-input--mono" placeholder="Bearer" />
+          <p class="cfg-form-hint">The word before the key. Leave blank to send the key on its own.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-api-key">API key <span class="required" id="km-api-key-req">*</span></label>
+          <input type="password" id="km-api-key" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+      </div>
+
+      <div id="km-auth-basic" hidden>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-username">Username <span class="required">*</span></label>
+          <input type="text" id="km-username" class="cfg-form-input cfg-form-input--mono" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-password">Password <span class="required" id="km-password-req">*</span></label>
+          <input type="password" id="km-password" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+      </div>
     </div>
+
+
     <div class="cfg-modal-actions">
-      <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
+      {{!-- Enabling is not edited here. It is one flag, changed often and on its
+              own, so it lives as a control in the Status column of the list — a
+              modal round trip to flip it read as heavier than the change is. --}}
+              <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-km-modal-save">Add key manager</button>
     </div>
   </div>

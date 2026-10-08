@@ -54,15 +54,38 @@
           </span>
         </td>
         <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
-        <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
-        <td>
-          <div class="ak-actions">
-            <button type="button" class="ak-btn-app btn-app-key"
+        {{!-- An unassociated key is a normal state, not missing data: association
+              attributes usage and has no bearing on the key working.
+
+              The control that changes it lives here rather than in Actions,
+              beside the value it edits -- so the column shows the association and
+              is also where you change it. Small and icon-led because it repeats
+              on every row; the column header is what gives a bare "+" its
+              meaning, and the title/aria-label carry it for everyone else. --}}
+        <td class="ak-app">
+          <span class="ak-app-cell">
+            {{#if this.appDisplayName}}
+            <span class="ak-app-name">{{this.appDisplayName}}</span>
+            <button type="button" class="ak-app-btn btn-app-key"
               data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
               data-app-id="{{this.appId}}" data-app-display-name="{{this.appDisplayName}}"
-              {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
-              <i class="bi bi-grid"></i> {{#if this.appDisplayName}}Change app{{else}}Associate app{{/if}}
+              aria-label="Change the application this key is associated with"
+              {{#if (eq this.status 'active')}}title="Change application"{{else}}disabled title="Key is revoked"{{/if}}>
+              <i class="bi bi-pencil" aria-hidden="true"></i>
             </button>
+            {{else}}
+            <button type="button" class="ak-app-btn ak-app-btn--empty btn-app-key"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
+              data-app-id="{{this.appId}}" data-app-display-name="{{this.appDisplayName}}"
+              aria-label="Associate an application with this key"
+              {{#if (eq this.status 'active')}}title="Associate an application"{{else}}disabled title="Key is revoked"{{/if}}>
+              <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
+            {{/if}}
+          </span>
+        </td>
+        <td>
+          <div class="ak-actions">
             <button type="button" class="ak-btn-regen btn-regenerate-key"
               data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
               {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>

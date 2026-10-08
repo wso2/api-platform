@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -39,6 +40,7 @@ type GatewayInternalAPIService struct {
 	providerRepo         repository.LLMProviderRepository
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
+	agentProxyRepo       repository.AgentProxyRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -48,6 +50,7 @@ type GatewayInternalAPIService struct {
 	apiKeyRepo           repository.APIKeyRepository
 	artifactRepo         repository.ArtifactRepository
 	secretRepo           repository.SecretRepository
+	secretService        *SecretService // nil until SetSecretService; renders placeholders for gateways that cannot
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -59,6 +62,7 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
+	agentProxyRepo repository.AgentProxyRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
@@ -69,6 +73,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
+		agentProxyRepo:       agentProxyRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -156,11 +161,15 @@ func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, g
 		return nil, apperror.DeploymentNotActive.New("API")
 	}
 
-	// Deployment content is already stored as YAML, so return it directly
-	apiYaml := string(deployment.Content)
+	// Deployment content is stored as YAML; it is only rewritten for a gateway
+	// that cannot resolve secret placeholders itself.
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 
 	apiYamlMap := map[string]string{
-		apiID: apiYaml,
+		apiID: string(content),
 	}
 	return apiYamlMap, nil
 }
@@ -176,9 +185,12 @@ func (s *GatewayInternalAPIService) GetActiveLLMProviderDeploymentByGateway(prov
 		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
-	providerYaml := string(deployment.Content)
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 	providerYamlMap := map[string]string{
-		providerID: providerYaml,
+		providerID: string(content),
 	}
 	return providerYamlMap, nil
 }
@@ -194,9 +206,12 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
-	proxyYaml := string(deployment.Content)
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 	proxyYamlMap := map[string]string{
-		proxyID: proxyYaml,
+		proxyID: string(content),
 	}
 	return proxyYamlMap, nil
 }
@@ -300,7 +315,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
-		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, pageSize, offset)
+		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subscription plans for org %s: %w", orgID, err)
 		}
@@ -347,11 +362,49 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
-	proxyYaml := string(deployment.Content)
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 	proxyYamlMap := map[string]string{
-		proxyID: proxyYaml,
+		proxyID: string(content),
 	}
 	return proxyYamlMap, nil
+}
+
+// GetActiveAgentDeploymentByGateway returns the immutable artifact snapshot of the
+// Agent proxy's current deployment on the calling gateway, keyed by agentID.
+//
+// agentID is the internal artifact UUID carried in gateway events, not the
+// public handle; a handle does not resolve here. The lookup is scoped to the
+// gateway's organization, and only a deployment whose desired state is DEPLOYED
+// on this gateway is served. The stored snapshot is returned as-is: the Agent
+// proxy is never re-rendered at fetch time, so an edit to the Agent proxy
+// reaches the gateway only through a new deployment.
+func (s *GatewayInternalAPIService) GetActiveAgentDeploymentByGateway(agentID, orgID, gatewayID string) (map[string]string, error) {
+	proxy, err := s.agentProxyRepo.GetByUUID(agentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Agent proxy: %w", err)
+	}
+	if proxy == nil {
+		return nil, apperror.AgentProxyNotFound.New()
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, apperror.DeploymentNotActive.New("Agent proxy")
+	}
+
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		agentID: string(content),
+	}, nil
 }
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
@@ -376,9 +429,12 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 		return nil, apperror.DeploymentNotActive.New("WebSub API")
 	}
 
-	apiYaml := string(deployment.Content)
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 	apiYamlMap := map[string]string{
-		apiID: apiYaml,
+		apiID: string(content),
 	}
 	return apiYamlMap, nil
 }
@@ -405,9 +461,12 @@ func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(api
 		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
-	apiYaml := string(deployment.Content)
+	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	if err != nil {
+		return nil, err
+	}
 	apiYamlMap := map[string]string{
-		apiID: apiYaml,
+		apiID: string(content),
 	}
 	return apiYamlMap, nil
 }
@@ -426,10 +485,17 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 	items := make([]dto.GatewayDeploymentInfo, len(deployments))
 	for i, dep := range deployments {
 		deployedAt := dep.PerformedAt
+		// The gateway sorts and dispatches sync work on its own artifact kind, so
+		// a kind whose gateway name differs (AgentProxy -> Agent) is translated
+		// here; an unmapped kind is sent unchanged, as before.
+		kind := dep.Type
+		if gatewayKind, ok := gatewaytranslator.GatewayKindForPlatformKind(dep.Type); ok {
+			kind = gatewayKind
+		}
 		items[i] = dto.GatewayDeploymentInfo{
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
-			Kind:         dep.Type,
+			Kind:         kind,
 			// The gateway reconciles towards the desired terminal state; sending a
 			// transitional DEPLOYING/UNDEPLOYING would not parse as a desired state
 			// and the deployment would be silently skipped by its sync diff.
@@ -450,6 +516,37 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	contentMap, err := s.deploymentRepo.GetDeploymentContentByIDs(deploymentIDs, orgID, gatewayID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment content: %w", err)
+	}
+	if len(contentMap) == 0 {
+		return contentMap, nil
+	}
+	gateway, err := s.gatewayForDelivery(orgID, gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	// One deployment whose secrets cannot be rendered must not block the
+	// gateway's whole startup sync, so it is left out of the batch. The
+	// released gateways only log a missing batch entry and do not retry it,
+	// and they run this sync once per controller start, so the deployment
+	// would otherwise stay missing on the gateway while still showing as
+	// DEPLOYED here. Its status is therefore set to FAILED with a reason the
+	// operator can act on (restore the secret, redeploy); the desired state
+	// stays DEPLOYED so the next startup sync asks for it again.
+	for deploymentID, dc := range contentMap {
+		rendered, err := s.renderContentForGateway(orgID, gateway, dc.Content)
+		if err != nil {
+			s.slogger.Warn("Skipping deployment in batch: secret rendering failed",
+				"deploymentID", deploymentID, "artifactID", dc.ArtifactID, "gatewayID", gatewayID, "error", err)
+			if _, statusErr := s.deploymentRepo.SetCurrentWithDetails(dc.ArtifactID, orgID, gatewayID, deploymentID,
+				model.DeploymentStatusFailed, string(model.DeploymentStatusDeployed), nil,
+				model.DeploymentErrorSecretResolutionFailed); statusErr != nil {
+				s.slogger.Error("Failed to record secret resolution failure on deployment status",
+					"deploymentID", deploymentID, "gatewayID", gatewayID, "error", statusErr)
+			}
+			delete(contentMap, deploymentID)
+			continue
+		}
+		dc.Content = rendered
 	}
 	return contentMap, nil
 }

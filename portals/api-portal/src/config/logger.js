@@ -47,10 +47,42 @@ const logColors = {
 };
 winston.addColors(logColors);
 
+/*
+ * Serialize any Error passed as a metadata VALUE.
+ *
+ * `winston.format.errors({ stack: true })` below only unwraps an Error that IS
+ * the log record — `logger.error(err)`. The overwhelmingly common call here is
+ * `logger.error('something failed', { error })`, and there the Error is just
+ * another metadata value, which the printf formats hand to JSON.stringify.
+ * `message` and `stack` are non-enumerable on Error, so that yields
+ * `{"error":{}}` — the log line names the operation that failed and says nothing
+ * whatsoever about why.
+ *
+ * Fixed here rather than at the ~24 call sites: a convention that has to be
+ * remembered at every call site is one that will be forgotten at the next one,
+ * and the failure is silent.
+ */
+const expandErrors = winston.format((info) => {
+    for (const key of Object.keys(info)) {
+        const value = info[key];
+        if (value instanceof Error) {
+            info[key] = {
+                message: value.message,
+                // Enumerable extras a caller attached (statusCode, code, publicReason,
+                // detail) — kept, since they are usually the diagnostic.
+                ...value,
+                stack: value.stack,
+            };
+        }
+    }
+    return info;
+});
+
 // Custom format to include file name and line number
 const customFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
+    expandErrors(),
     winston.format.printf((info) => {
         const { timestamp, level, message, stack, filename, line, ...metadata } = info;
         const fileInfo = filename && line ? `[${path.basename(filename)}:${line}]` : '[unknown:0]';
@@ -72,6 +104,7 @@ const customFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
+    expandErrors(),
     // Disable colorization
     // winston.format.colorize({ all: true }),
     winston.format.printf((info) => {
@@ -96,6 +129,7 @@ const consoleFormat = winston.format.combine(
 const jsonFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
+    expandErrors(),
     winston.format.printf((info) => {
         const { timestamp, level, message, stack, filename, line, ...metadata } = info;
         return JSON.stringify({

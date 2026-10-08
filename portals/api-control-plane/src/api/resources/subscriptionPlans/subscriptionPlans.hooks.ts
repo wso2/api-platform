@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
@@ -43,7 +43,12 @@ import {
 
 export type SubscriptionPlanListFilters = ListSubscriptionPlansQuery;
 
-/** Plans available in the active organization. */
+/**
+ * Plans available in the active organization.
+ *
+ * `keepPreviousData` keeps the current page on screen while the next one loads,
+ * instead of unmounting the listing into a loading state on every page change.
+ */
 export const useSubscriptionPlans = (
   filters: SubscriptionPlanListFilters = {},
   overrides: { orgId?: string } = {}
@@ -53,6 +58,7 @@ export const useSubscriptionPlans = (
   return useQuery({
     ...subscriptionPlanQueries.list(org!, filters),
     enabled: Boolean(org),
+    placeholderData: keepPreviousData,
   });
 };
 

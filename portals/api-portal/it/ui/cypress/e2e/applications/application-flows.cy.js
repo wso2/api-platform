@@ -16,9 +16,13 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Applications require login. The "Manage Keys" section depends on an org-level
-// key manager: with none configured (the default) it shows an unavailable
-// message; once one is seeded, the key-manager card and its key controls render.
+// Applications require login. This spec covers the application lifecycle and the
+// key association sections on the detail page.
+//
+// Key generation itself is no longer tested here. It used to live on this page as
+// a per-key-manager "Manage Keys" card; that flow was removed when OAuth2 key
+// generation moved to its own page, and a key manager is no longer bound to an
+// application. The replacement is covered by the oauth2-keys specs.
 
 describe('Applications', () => {
     const DETAIL_APP = 'IT Detail App';
@@ -78,99 +82,14 @@ describe('Applications', () => {
         cy.contains('.app-card-name', RENAMED).should('not.exist');
     });
 
-    it('shows the "no key manager" message and the API keys association section', () => {
+    it('shows the key association sections on the application detail page', () => {
         cy.login();
         cy.visitPortal(`/applications/${detailHandle}`);
 
-        // Manage Keys section — no key manager configured yet.
-        cy.contains('.mk-title', 'Manage Keys').should('exist');
-        cy.get('.mk-unavailable').should('exist').and('contain', 'Key generation is unavailable');
-        cy.get('.mk-km-card').should('not.exist');
-
-        // The API keys association section is independent of key managers.
+        // Both sections are association surfaces: a key is created elsewhere (the
+        // API Keys and OAuth2 Keys pages) and attached to an application here.
         cy.get('.ak-title').should('exist');
         cy.get('#btn-open-associate-key').should('exist');
     });
 
-    context('with a key manager configured', () => {
-        // The Manage Keys card labels each key manager by its handle (kmName =
-        // km.handle), so seed a known id and assert on that.
-        const KM_ID = 'it-key-manager';
-        const KM_DISPLAY_NAME = 'IT Key Manager';
-        // Populated from the on-demand mock token server (started in before()).
-        let mockToken;
-
-        before(() => {
-            // Key managers are admin-only over the REST API, and seeding now
-            // authenticates with a session rather than the removed service API key.
-            cy.login();
-            // Start the mock OAuth2 token endpoint only for this context, and point
-            // the key manager at it so the token round-trip can actually resolve.
-            cy.task('startMockTokenServer').then((mock) => {
-                mockToken = mock;
-                cy.seedKeyManager({
-                    id: KM_ID,
-                    displayName: KM_DISPLAY_NAME,
-                    tokenEndpoint: mock.endpoint,
-                });
-            });
-        });
-
-        after(() => {
-            cy.login();
-            cy.deleteKeyManager(KM_ID);
-            cy.task('stopMockTokenServer');
-        });
-
-        it('loads the key manager section and its key controls', () => {
-            cy.login();
-            cy.visitPortal(`/applications/${detailHandle}`);
-
-            // The unavailable message is gone; a key-manager card renders instead.
-            cy.get('.mk-unavailable').should('not.exist');
-            cy.get('.mk-km-card').should('exist');
-            cy.get('.mk-km-name').should('contain', KM_DISPLAY_NAME);
-            // With no credentials yet, the card exposes the "add client ID" control
-            // (OAuth apps are created in the key manager itself, then linked here).
-            cy.get('[id^="addClientIdBtn-"]').should('exist');
-        });
-
-        it('adds a client ID, generates a token via the key manager, then revokes it', () => {
-            cy.login();
-            cy.visitPortal(`/applications/${detailHandle}`);
-
-            // 1. Add a client ID (PRODUCTION) — links the consumer key; no external call.
-            cy.get(`#addClientIdInput-${KM_ID}-PRODUCTION`).type('it-client-id');
-            cy.get(`#addClientIdBtn-${KM_ID}-PRODUCTION`).click();
-            // The page reloads showing the linked credentials.
-            cy.get(`#consumer-key-${KM_ID}-PRODUCTION-view`, { timeout: 15000 })
-                .should('have.value', 'it-client-id');
-
-            // 2. Generate a token with the consumer secret (portal → mock key manager).
-            cy.get(`#tab-btn-token-${KM_ID}-PRODUCTION`).click();
-            // Every id on the Manage Keys page is scoped by key manager as well as key
-            // type — see key-managers-multiple.cy.js for why.
-            cy.get(`#tokenKeyBtn-${KM_ID}-PRODUCTION`).click();
-            cy.get('#generateTokenPromptModal').should('be.visible');
-            cy.get('#generateTokenPromptSecretInput').type(mockToken.secret);
-            cy.get('#generateTokenPromptConfirmBtn').click();
-            cy.get(`#token_${KM_ID}_PRODUCTION`, { timeout: 15000 })
-                .should('contain', mockToken.accessToken);
-            cy.get(`[data-cyid="keysTokenModal-${KM_ID}-PRODUCTION-close"]`).click();
-
-            // 3. Revoke the keys — confirm in the shared delete-confirmation modal.
-            //    Scope the revoke button to the Production pane — the Sandbox card
-            //    renders its own revoke button too.
-            cy.get(`#tab-btn-creds-${KM_ID}-PRODUCTION`).click();
-            cy.get('#production').find('.mk-btn-danger').click();
-            cy.get('#deleteConfirmation').should('be.visible');
-            cy.get('#deleteConfirmationBtn').click();
-            // After the reload, the card is back to the empty "add client ID" state.
-            // (Both the credentials and empty-state blocks are always in the DOM —
-            // toggled by whether a consumer key exists — so assert the consumer key
-            // value is cleared rather than that its input is gone.)
-            cy.get(`#addClientIdBtn-${KM_ID}-PRODUCTION`, { timeout: 15000 }).should('exist');
-            cy.get(`#consumer-key-${KM_ID}-PRODUCTION-view`).should('have.value', '');
-        });
-    });
 });

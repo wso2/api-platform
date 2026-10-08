@@ -17,7 +17,7 @@
  */
 
 import type { ApiFetch } from './hostPort';
-import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
+import type { Environment, Gateway, GatewayInput, GatewayStatus, GatewayType } from './types';
 
 /** Reference-data shapes returned by the platform-api list endpoints. */
 type EnvironmentDTO = { id?: string; name: string; isProduction?: boolean };
@@ -35,6 +35,8 @@ type ManagedGatewayDTO = {
   version?: string;
   isCritical?: boolean;
   isActive?: boolean;
+  status?: string;
+  statusReason?: string;
   createdAt?: string;
   updatedAt?: string;
   environment?: string;
@@ -46,10 +48,33 @@ const normalizeType = (functionalityType?: string): GatewayType =>
   functionalityType === 'ai' || functionalityType === 'event' ? functionalityType : 'regular';
 
 /**
+ * Reads the gateway's status.
+ *
+ * `status` answers the whole question — whether it is still being built, whether
+ * building it failed, and otherwise whether its controller is connected. A server
+ * that does not report it can still answer the connectivity half from `isActive`,
+ * which is what this read before `status` existed; an unrecognized value is
+ * treated the same way, so a status added later shows as connectivity rather than
+ * as nothing at all.
+ */
+const normalizeStatus = (dto: ManagedGatewayDTO): GatewayStatus => {
+  switch (dto.status) {
+    case 'PROVISIONING':
+      return 'provisioning';
+    case 'FAILED':
+      return 'failed';
+    case 'ACTIVE':
+      return 'active';
+    case 'DISCONNECTED':
+      return 'inactive';
+    default:
+      return dto.isActive ? 'active' : 'inactive';
+  }
+};
+
+/**
  * Projects a `/managed-gateways` record into the view model. The host is
- * server-assigned (shown as the gateway's URL). Status comes from `isActive` —
- * whether the gateway's controller has dialled in to the control plane — so a
- * gateway still being provisioned reads as inactive until it is really up.
+ * server-assigned (shown as the gateway's URL).
  */
 const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   id: dto.id,
@@ -58,7 +83,8 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   type: normalizeType(dto.functionalityType),
   environmentId: dto.environment ?? '',
   url: dto.host ?? '',
-  status: dto.isActive ? 'active' : 'inactive',
+  status: normalizeStatus(dto),
+  statusReason: dto.statusReason,
   isCritical: dto.isCritical ?? false,
   isDefault: dto.isDefault ?? false,
   version: dto.version,

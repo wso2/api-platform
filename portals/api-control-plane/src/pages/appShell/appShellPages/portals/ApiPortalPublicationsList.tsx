@@ -17,11 +17,11 @@
  */
 
 import { useState } from 'react';
-import { Box, PageTitle, SearchBar, Stack } from '@wso2/oxygen-ui';
+import { Box, PageTitle, SearchBar, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { REST_API_TYPE, useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
+import { REST_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
@@ -43,6 +43,12 @@ const messages = defineMessages({
   searchPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.searchPlaceholder',
     defaultMessage: 'Search portals',
+  },
+  summary: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.summary',
+    defaultMessage:
+      'Published to {published} of {total, plural, one {# portal} other {# portals}}',
+    description: 'Page summary: how many of the organization\'s portals this API is published to.',
   },
   noMatchesTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.noMatchesTitle',
@@ -77,14 +83,14 @@ const messages = defineMessages({
   },
 });
 
+/** Portals are an org-wide, rarely-changing collection — one page is enough. */
+const LIST_LIMIT = 100;
+
 /**
  * Every portal registered in the organization, each annotated with this
  * API's own publication status — the rollup from `GET /api-publications`.
  * Only REST APIs are published end to end today, so the API type is fixed.
  */
-/** Portals are an org-wide, rarely-changing collection — one page is enough. */
-const LIST_LIMIT = 100;
-
 export function ApiPortalPublicationsList() {
   const intl = useIntl();
   const navigate = useNavigate();
@@ -102,15 +108,6 @@ export function ApiPortalPublicationsList() {
   const extensions = useExtensions();
   const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
 
-  const openPublication = (publication: PublicationSummaryItem) => {
-    if (!publication.apiPortalId) return;
-    navigate(
-      routes.apiPortalPublish(orgHandle, projectHandler, apiHandler, publication.apiPortalId),
-      // Hands the portal name to the publish page so it can title itself without a fetch.
-      { state: { portalName: publication.apiPortalName } },
-    );
-  };
-
   // `isPending`, not `isLoading`: a disabled query reports `isLoading: false`
   // with no data, which would flash the empty state while scope resolves.
   if (publicationsQuery.isPending) {
@@ -126,6 +123,7 @@ export function ApiPortalPublicationsList() {
   }
 
   const publications = publicationsQuery.data?.list ?? [];
+  const publishedCount = publications.filter(({ status }) => status === 'PUBLISHED').length;
   const term = search.trim().toLowerCase();
   const visiblePublications = term
     ? publications.filter((publication) =>
@@ -144,6 +142,14 @@ export function ApiPortalPublicationsList() {
         <PageTitle.SubHeader>
           <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
+        <PageTitle.Actions>
+          <Typography color="text.secondary" variant="body2">
+            <FormattedMessage
+              {...messages.summary}
+              values={{ published: publishedCount, total: publications.length }}
+            />
+          </Typography>
+        </PageTitle.Actions>
       </PageTitle>
 
       {publications.length === 0 ? (
@@ -182,8 +188,7 @@ export function ApiPortalPublicationsList() {
                 gridTemplateColumns: {
                   xs: '1fr',
                   sm: 'repeat(2, 1fr)',
-                  md: 'repeat(3, 1fr)',
-                  lg: 'repeat(4, 1fr)',
+                  lg: 'repeat(3, 1fr)',
                 },
                 // Allow cards to shrink so long names do not widen the grid.
                 '& > *': { minWidth: 0 },
@@ -193,8 +198,8 @@ export function ApiPortalPublicationsList() {
                 <PortalPublicationCard
                   apiHandle={apiHandler}
                   key={publication.apiPortalId}
-                  onOpen={openPublication}
                   orgHandle={orgHandle}
+                  projectHandle={projectHandler}
                   publication={publication}
                 />
               ))}

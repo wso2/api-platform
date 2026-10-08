@@ -929,7 +929,7 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 // current status and the desired terminal status. The gateway reconciles against
 // the desired status, so an operation still awaiting the gateway's acknowledgement
 // (DEPLOYING/UNDEPLOYING) is synced as the DEPLOYED/UNDEPLOYED it is driving towards.
-// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
+// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp -> AgentProxy) to ensure
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
 func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
@@ -963,7 +963,8 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 				WHEN 'LlmProvider' THEN 2
 				WHEN 'LlmProxy' THEN 3
 				WHEN 'Mcp' THEN 4
-				ELSE 5
+				WHEN 'AgentProxy' THEN 5
+				ELSE 6
 			END,
 			s.performed_at DESC`
 
@@ -1081,16 +1082,4 @@ func (r *DeploymentRepo) GetSecretHandlesByGateway(gatewayID, orgUUID string) ([
 		handles = append(handles, h)
 	}
 	return handles, rows.Err()
-}
-
-// joinStrings joins strings with a separator (helper for building IN clauses)
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
 }

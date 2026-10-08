@@ -1,0 +1,21 @@
+# Coverage overlay for the REST API integration suite.
+#
+# Applied with `-f docker-compose.test.yaml -f docker-compose.coverage.yaml` only
+# when IT_COVERAGE=1, so an ordinary run is byte-for-byte what it was: no volume,
+# no extra environment, no instrumented image.
+#
+# What it does is point Node's own V8 coverage at a directory on the host. The
+# portal image must have been built with ENABLE_COVERAGE=true for this to produce
+# anything useful — that build arg is what instruments the browser scripts and
+# creates /coverage inside the image (see portals/api-portal/Dockerfile). The
+# Makefile's coverage target does both together.
+#
+# The raw V8 output lands here with container paths (file:///app/src/...), which
+# is why it is normalised before being turned into lcov — see the
+# `rest-api-coverage` target.
+services:
+  api-portal:
+    environment:
+      NODE_V8_COVERAGE: /coverage
+    volumes:
+      - ./reports/coverage-raw:/coverage

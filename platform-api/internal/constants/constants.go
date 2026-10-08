@@ -87,7 +87,14 @@ const (
 	LLMProviderTemplate = "LlmProviderTemplate"
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
+	AgentProxy          = "AgentProxy"
 )
+
+// GatewayKindAgent is the gateway artifact kind an AgentProxy is deployed as.
+// Every other kind uses the same name on both sides of the CP↔gateway boundary;
+// AgentProxy is the one kind that does not, so the gateway's vocabulary is named
+// here and translated explicitly rather than stored as the CP kind.
+const GatewayKindAgent = "Agent"
 
 // Artifact origin values. Origin distinguishes control-plane created artifacts
 // (control_plane) from artifacts pushed up by a data-plane gateway (gateway_api).
@@ -150,6 +157,14 @@ const (
 const (
 	GatewayApiVersionV1Alpha1 = "gateway.api-platform.wso2.com/v1alpha1"
 	GatewayApiVersion         = "gateway.api-platform.wso2.com/v1"
+)
+
+// MCP specification revisions named in more than one place: the MCP client in
+// utils speaks them, and the gateway translator folds a proxy's declared list
+// down to them for gateways that accept a single spec version.
+const (
+	MCPSpecVersion20250618 = "2025-06-18"
+	MCPSpecVersion20251125 = "2025-11-25"
 )
 
 // Platform-api resource URL version. APIBasePath is the single source of truth for
@@ -251,6 +266,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProvider: true,
 	LLMProxy:    true,
 	MCPProxy:    true,
+	AgentProxy:  true,
 }
 
 // Throttle limit unit constants
@@ -292,8 +308,8 @@ const DefaultOpenAPISpecJSONFileName = "openapi.json"
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type
 const (
-	DocumentTypeDefinition   = "DEFINITION"
-	DocumentHandleDefinition = "api-definition"
+	DocumentTypeDefinition        = "DEFINITION"
+	DocumentHandleDefinition      = "api-definition"
 	DocumentDisplayNameDefinition = "OpenAPI Definition"
 )
 

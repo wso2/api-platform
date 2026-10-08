@@ -29,8 +29,9 @@ cd wso2apip-ai-workspace-1.0.0-alpha
 ```
 
 The script generates everything the stack requires: the encryption and JWT
-signing keys and the admin login credentials (written to `api-platform.env`), and the
-TLS certificate shared by both services (written to `resources/certificates/`).
+signing keys, the AI Workspace session encryption key and the admin login credentials
+(written to `api-platform.env`), and the TLS certificate shared by both services
+(written to `resources/certificates/`).
 
 > **Save the printed admin username and password** — the password is shown only
 > once and stored nowhere. Rerun `./scripts/setup.sh --force` to rotate it.

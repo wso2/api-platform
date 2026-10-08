@@ -34,6 +34,7 @@ import { LayoutGrid, List, Network, Plus, Shrub, Wifi, WifiOff } from '@wso2/oxy
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -152,6 +153,14 @@ const FILTER_MODE = {
 } as const;
 
 export function GatewaysPage() {
+  return (
+    <AppPage>
+      <GatewaysPageContent />
+    </AppPage>
+  );
+}
+
+function GatewaysPageContent() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();

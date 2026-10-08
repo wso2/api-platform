@@ -23,13 +23,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
+	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 )
 
@@ -39,6 +41,7 @@ type discoveryDoc struct {
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	EndSessionEndpoint    string `json:"end_session_endpoint"`
+	RevocationEndpoint    string `json:"revocation_endpoint"`
 }
 
 // tokenResponse is the IDP token endpoint response.
@@ -77,10 +80,10 @@ type OIDC struct {
 	mapping               session.ClaimMapping
 	absTTL                time.Duration
 
-	mu        sync.Mutex
-	txs       map[string]*txn
-	done      chan struct{}
-	closeOnce sync.Once
+	// sealer seals the in-flight login transaction into the tx cookie. There is no
+	// in-process alternative: the callback is a fresh browser navigation that any
+	// replica may receive.
+	sealer *secure.Sealer
 }
 
 // discoveryTimeout bounds the startup discovery call so an unreachable issuer
@@ -104,20 +107,18 @@ const discoveryTimeout = 15 * time.Second
 // is derived from it — see TxCookieTTL.
 const TxTTL = 30 * time.Minute
 
-// expiredRetention keeps an expired transaction in the map for a while after it
-// stops being usable, purely so the callback can say "expired" instead of "no such
-// transaction". Swept immediately, every slow login is indistinguishable from a
-// restart or a replay, which is the difference between a one-line diagnosis and an
-// afternoon. They are never accepted — Callback checks Expiry before State.
+// expiredRetention is how long past its validity the tx cookie is kept, purely so the
+// callback can say "expired" instead of "no cookie at all". The two look identical to
+// a user and completely different to whoever is debugging it. Such a transaction is
+// never accepted — Callback checks Expiry before State.
 const expiredRetention = 2 * time.Hour
 
 // TxCookieTTL is how long the browser keeps the login-transaction cookie. It
-// deliberately outlives the transaction by exactly expiredRetention: validity is
-// still governed by TxTTL (Callback checks Expiry and rejects anything past it),
-// but a cookie that died with the transaction would turn every aged-out login into
-// "no cookie at all" — a Path/SameSite-shaped fault — instead of the "expired" the
-// server is still able to report while the record is retained. A cookie that
-// outlives retention would be the mirror image, so the two move together.
+// deliberately outlives the transaction's validity by expiredRetention: validity is
+// still governed by TxTTL (Callback checks Expiry and rejects anything past it), but a
+// cookie that died with the transaction would turn every aged-out login into "no cookie
+// at all" — a Path/SameSite-shaped fault — instead of the "expired" the server can
+// still report while the cookie is there to read.
 const TxCookieTTL = TxTTL + expiredRetention
 
 // NewOIDC fetches the discovery document and returns a ready authenticator.
@@ -127,15 +128,22 @@ func NewOIDC(
 	issuer, clientID, clientSecret, redirectURL, postLogoutRedirectURL, scopes string,
 	mapping session.ClaimMapping,
 	absTTL time.Duration,
+	txSealer *secure.Sealer,
 ) (*OIDC, error) {
 	discCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
 	defer cancel()
-	disco, err := fetchDiscovery(discCtx, client, issuer)
+	disco, err := fetchDiscovery(discCtx, noRedirectClient(client), issuer)
 	if err != nil {
 		return nil, err
 	}
+	if txSealer == nil {
+		return nil, fmt.Errorf("oidc: a login-transaction sealer is required")
+	}
 	o := &OIDC{
-		client:                client,
+		// noRedirectClient: a 307/308 from the IDP would otherwise re-send the POST
+		// body to the redirect target, and that body carries the client secret and,
+		// on revocation, the refresh token.
+		client:                noRedirectClient(client),
 		clientID:              clientID,
 		clientSecret:          clientSecret,
 		redirectURL:           redirectURL,
@@ -144,27 +152,19 @@ func NewOIDC(
 		disco:                 disco,
 		mapping:               mapping,
 		absTTL:                absTTL,
-		txs:                   make(map[string]*txn),
-		done:                  make(chan struct{}),
+		sealer:                txSealer,
 	}
-	go o.sweepTxns()
 	return o, nil
 }
 
-// PendingTransactions reports how many login transactions are held, expired ones
-// included. Zero on a callback failure says the process has served no login it still
-// remembers — a restart — which is what separates that case from a slow or replayed
-// one in the logs.
-func (o *OIDC) PendingTransactions() int {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return len(o.txs)
-}
+// Close releases background resources. There are none — login transactions live in
+// the client's cookie, not in this process — but it stays so callers need not know
+// that, and so a future resource has somewhere to be released.
+func (o *OIDC) Close() {}
 
-// Close stops the background transaction sweeper. Safe to call multiple times.
-func (o *OIDC) Close() {
-	o.closeOnce.Do(func() { close(o.done) })
-}
+// SupportsRevocation reports whether the issuer advertises a revocation endpoint.
+// Without one, logout cannot invalidate a refresh token a copied cookie still carries.
+func (o *OIDC) SupportsRevocation() bool { return o.disco.RevocationEndpoint != "" }
 
 // TokenEndpoint is the endpoint discovered from the issuer. Exposed so a token
 // exchange configured without an explicit endpoint override can post to the same
@@ -192,7 +192,40 @@ func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (di
 	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" {
 		return discoveryDoc{}, fmt.Errorf("oidc discovery missing required endpoints")
 	}
+
+	// Only the two endpoints this BFF posts credentials to. The authorization and
+	// end-session endpoints are browser redirects and carry nothing of ours.
+	if err := requireSecureEndpoint("token_endpoint", d.TokenEndpoint); err != nil {
+		return discoveryDoc{}, err
+	}
+	// Optional, so a bad one is dropped rather than failing startup: logout still
+	// works without it, and SupportsRevocation then reports the loss.
+	if d.RevocationEndpoint != "" {
+		if err := requireSecureEndpoint("revocation_endpoint", d.RevocationEndpoint); err != nil {
+			slog.Warn("ignoring the issuer's revocation_endpoint", "err", err)
+			d.RevocationEndpoint = ""
+		}
+	}
 	return d, nil
+}
+
+// requireSecureEndpoint rejects an advertised endpoint this BFF would send the client
+// secret (and, for revocation, the refresh token) to in cleartext. Loopback is exempt:
+// the request never reaches a network there. Mirrors the check config.validate already
+// applies to an explicitly configured token_endpoint.
+func requireSecureEndpoint(name, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("oidc discovery returned an unusable %s", name)
+	}
+	if u.User != nil {
+		return fmt.Errorf("oidc discovery returned a %s containing userinfo", name)
+	}
+	if u.Scheme == "http" && !config.IsLoopbackHost(u.Host) {
+		return fmt.Errorf("oidc discovery returned a plaintext %s: the client secret is sent "+
+			"in the request body, so it must be https://", name)
+	}
+	return nil
 }
 
 // AuthCodeURL creates a new login transaction and returns the IDP authorize URL.
@@ -223,15 +256,18 @@ func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID st
 		return "", "", err
 	}
 
-	o.mu.Lock()
-	o.txs[txID] = &txn{
+	record := &txn{
 		State:        state,
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ReturnURL:    returnURL,
 		Expiry:       time.Now().Add(TxTTL),
 	}
-	o.mu.Unlock()
+	// Sealed: the browser must not read the PKCE verifier inside, which is exactly the
+	// secret PKCE exists to keep from it.
+	if txID, err = o.sealTxn(record); err != nil {
+		return "", "", err
+	}
 
 	challenge := pkceChallenge(verifier)
 	// Seeded with the caller's extras, then the protocol parameters are assigned over
@@ -277,11 +313,11 @@ func (e ErrStateMismatch) Error() string {
 
 // Reasons an OIDC callback cannot be matched to a login transaction.
 const (
-	// The BFF keeps login transactions in memory, so every in-flight login is lost
-	// when the process restarts — by far the most common cause in development, where
-	// a container restart lands between the redirect to the IDP and the callback.
-	ReasonNoTransaction = "no login transaction for this id (server restarted, or the " +
-		"transaction already used)"
+	// The tx cookie was present but did not open: it was sealed under a different
+	// [session] encryption_key (a key change, or a replica configured differently from
+	// its siblings), or it was truncated or altered in transit.
+	ReasonNoTransaction = "the login-transaction cookie could not be opened (sealed under " +
+		"a different encryption_key, or altered in transit)"
 	// The tx cookie never arrived: its Path does not cover the callback route, the
 	// browser dropped it (SameSite, Secure over plain http), or the user opened the
 	// callback URL directly.
@@ -305,20 +341,14 @@ func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session
 		return nil, "", ErrStateMismatch{Reason: ReasonNoTxCookie}
 	}
 
-	o.mu.Lock()
-	tx, ok := o.txs[txID]
-	if ok {
-		delete(o.txs, txID)
-	}
-	pending := len(o.txs)
-	o.mu.Unlock()
+	tx, ok := o.openTxn(txID)
 
 	// Each branch is separate so the log names the actual cause. The checks
 	// themselves are unchanged, and all four still fail the login.
 	switch {
 	case !ok:
-		slog.Debug("oidc callback: no matching login transaction",
-			"pending_transactions", pending, "state_present", state != "")
+		slog.Debug("oidc callback: the tx cookie did not open",
+			"state_present", state != "")
 		return nil, "", ErrStateMismatch{Reason: ReasonNoTransaction}
 	case tx.Expiry.Before(time.Now()):
 		slog.Debug("oidc callback: login transaction expired",
@@ -329,7 +359,7 @@ func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session
 			"state_present", state != "", "state_len", len(state), "stored_len", len(tx.State))
 		return nil, "", ErrStateMismatch{Reason: ReasonStateDiffers}
 	}
-	slog.Debug("oidc callback: login transaction matched", "pending_transactions", pending)
+	slog.Debug("oidc callback: login transaction opened and matched")
 
 	tok, err := o.exchange(ctx, code, tx.CodeVerifier)
 	if err != nil {
@@ -452,6 +482,56 @@ func (o *OIDC) sessionFromToken(tok *tokenResponse) *session.Session {
 	}
 }
 
+// revocationTimeout keeps logout from hanging on an unreachable IDP.
+const revocationTimeout = 5 * time.Second
+
+// RevokeRefreshToken invalidates a refresh token at the IDP (RFC 7009).
+//
+// Necessary because the session record lives in the client: when the refresh token was
+// held only in server memory, dropping it there WAS the revocation. A copy taken from
+// the browser before logout would otherwise stay usable until it expired on its own
+// (see authentication_authorization.md GO-AUTH-009).
+//
+// Errors are for logging only — the cookies are cleared regardless, and an IDP that is
+// down must not leave the user unable to sign out.
+func (o *OIDC) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	if refreshToken == "" {
+		return nil
+	}
+	if o.disco.RevocationEndpoint == "" {
+		slog.Debug("no revocation_endpoint advertised by the issuer — skipping refresh-token revocation")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, revocationTimeout)
+	defer cancel()
+
+	form := url.Values{
+		"token":           {refreshToken},
+		"token_type_hint": {"refresh_token"},
+		"client_id":       {o.clientID},
+		"client_secret":   {o.clientSecret},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		o.disco.RevocationEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	res, err := o.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("revocation request failed: %w", err)
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4<<10))
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("revocation endpoint returned status %d", res.StatusCode)
+	}
+	return nil
+}
+
 // LogoutURL returns the RP-initiated end-session URL, or the post-logout URL
 // directly when the IDP has no end_session_endpoint.
 func (o *OIDC) LogoutURL(idToken string) string {
@@ -469,26 +549,49 @@ func (o *OIDC) LogoutURL(idToken string) string {
 	return o.disco.EndSessionEndpoint + "?" + q.Encode()
 }
 
-func (o *OIDC) sweepTxns() {
-	t := time.NewTicker(2 * time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-o.done:
-			return
-		case now := <-t.C:
-			// Dropped only once it is too old to explain itself — see
-			// expiredRetention. Unusable long before that, and never accepted.
-			cutoff := now.Add(-expiredRetention)
-			o.mu.Lock()
-			for id, tx := range o.txs {
-				if tx.Expiry.Before(cutoff) {
-					delete(o.txs, id)
-				}
-			}
-			o.mu.Unlock()
-		}
+// sealTxn encodes and seals a login transaction for the tx cookie.
+func (o *OIDC) sealTxn(t *txn) (string, error) {
+	raw, err := json.Marshal(sealedTxn{
+		S: t.State, N: t.Nonce, V: t.CodeVerifier, R: t.ReturnURL, E: t.Expiry.Unix(),
+	})
+	if err != nil {
+		return "", err
 	}
+	return o.sealer.Seal(raw)
+}
+
+// openTxn reverses sealTxn.
+//
+// There is deliberately no one-shot consumption: with nothing stored, there is nothing
+// to consume. What still guards a replay is that the authorization code the callback
+// must carry is single-use at the IDP, and that expiry, state and the id_token nonce
+// are re-checked on every presentation.
+func (o *OIDC) openTxn(txID string) (*txn, bool) {
+	raw, err := o.sealer.Open(txID)
+	if err != nil {
+		return nil, false
+	}
+	var st sealedTxn
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return nil, false
+	}
+	return &txn{
+		State:        st.S,
+		Nonce:        st.N,
+		CodeVerifier: st.V,
+		ReturnURL:    st.R,
+		Expiry:       time.Unix(st.E, 0),
+	}, true
+}
+
+// sealedTxn is the wire form of txn; short field names because it rides every request
+// to the auth routes.
+type sealedTxn struct {
+	S string `json:"s"`
+	N string `json:"n"`
+	V string `json:"v"`
+	R string `json:"r,omitempty"`
+	E int64  `json:"e"`
 }
 
 func randString(n int) (string, error) {

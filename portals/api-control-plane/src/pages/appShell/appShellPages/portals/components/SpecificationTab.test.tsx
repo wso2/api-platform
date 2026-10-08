@@ -147,4 +147,32 @@ describe('SpecificationTab', () => {
     );
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
+
+  it('stays read-only with no Edit button, and a format switch reports only the format', async () => {
+    const onChange = vi.fn();
+    const onFormatChange = vi.fn();
+    const { user } = renderWithProviders(
+      <SpecificationTab
+        format="json"
+        onChange={onChange}
+        onFormatChange={onFormatChange}
+        readOnly
+        text={JSON_DEFINITION}
+      />,
+    );
+
+    expect(await screen.findByRole('textbox', { name: 'API definition (JSON)' })).toHaveAttribute('readonly');
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'YAML' }));
+
+    expect(onFormatChange).toHaveBeenCalledWith('yaml');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not open an empty definition for editing when read-only', async () => {
+    renderWithProviders(<SpecificationTab format="json" onFormatChange={vi.fn()} readOnly text="" />);
+
+    expect(await screen.findByRole('textbox', { name: 'API definition (JSON)' })).toHaveAttribute('readonly');
+  });
 });

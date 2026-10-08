@@ -22,21 +22,59 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"iter"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2asrv"
+	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/util/a2ax"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 )
+
+func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/testbench/health", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	definition := &components.Definition{
+		Name:  "testbench",
+		Alias: "testbench",
+		Endpoints: []components.Endpoint{{
+			Name: "capture", Port: capture.Port, Scheme: "http",
+		}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{capture.Port: port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	gateway := &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: time.Second}), 0, 0),
+	}
+	require.NoError(t, gateway.awaitMappedTestbenchService(context.Background(), "capture"))
+}
 
 func TestServiceUpstreamURLPreservesServiceBasePath(t *testing.T) {
 	definition := &components.Definition{
@@ -507,6 +545,88 @@ func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
 	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
 }
 
+// Overriding a mirrored header is how the negative MCP scenarios make a header disagree with its
+// body, so the scenario's value has to win outright. Without canonicalising, two spellings of one
+// header survive the merge as two map entries and collapse later inside Header.Set, leaving map
+// iteration order to choose - which reads as flakiness rather than as a wrong answer.
+func TestScenarioHeadersWinWhateverTheirSpelling(t *testing.T) {
+	stepLayer := map[string]string{
+		"MCP-Protocol-Version": "2026-07-28",
+		"Mcp-Name":             "add",
+	}
+	// The spellings a feature would plausibly write: Go's canonical form of the first, and a
+	// lowercase second.
+	scenarioLayer := map[string]string{
+		"Mcp-Protocol-Version": "2025-06-18",
+		"mcp-name":             "echo",
+	}
+
+	merged := mergeCanonicalHeaders(stepLayer, scenarioLayer)
+
+	require.Len(t, merged, 2, "one entry per header, whatever spelling reached it")
+	require.Equal(t, "2025-06-18", merged["Mcp-Protocol-Version"])
+	require.Equal(t, "echo", merged["Mcp-Name"])
+}
+
+// A 2026-07-28 server answers -32602 when any of the three _meta members is missing, so the
+// envelope is asserted here rather than discovered as a puzzling failure inside a scenario.
+func TestMcpModernBodyCarriesTheRequiredMetaMembers(t *testing.T) {
+	var named map[string]any
+	require.NoError(t, json.Unmarshal([]byte(mcpModernBody("tools/call", "echo", "2026-07-28")), &named))
+
+	params := named["params"].(map[string]any)
+	require.Equal(t, "echo", params["name"])
+	require.Equal(t, "Hello, World!", params["arguments"].(map[string]any)["message"])
+
+	meta := params["_meta"].(map[string]any)
+	require.Equal(t, "2026-07-28", meta["io.modelcontextprotocol/protocolVersion"])
+	require.Contains(t, meta, "io.modelcontextprotocol/clientInfo")
+	require.Contains(t, meta, "io.modelcontextprotocol/clientCapabilities")
+
+	// A resource is identified by uri, never by name, and that member is what a conformant
+	// server compares the mirrored Mcp-Name against.
+	var resource map[string]any
+	require.NoError(t, json.Unmarshal(
+		[]byte(mcpModernBody("resources/read", "file:///a.txt", "2026-07-28")), &resource))
+	resourceParams := resource["params"].(map[string]any)
+	require.Equal(t, "file:///a.txt", resourceParams["uri"])
+	require.NotContains(t, resourceParams, "name")
+
+	// A method that names no capability carries the same _meta and no name, which is what keeps
+	// Mcp-Name off the request as well.
+	var unnamed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(mcpModernBody("tools/list", "", "2026-07-28")), &unnamed))
+	unnamedParams := unnamed["params"].(map[string]any)
+	require.NotContains(t, unnamedParams, "name")
+	require.Contains(t, unnamedParams["_meta"], "io.modelcontextprotocol/protocolVersion")
+}
+
+// MCP analytics nests its fields under mcpAnalytics, so the metadata step resolves a dotted path.
+// A name with no dot must keep working, since every other event's fields are flat.
+func TestAnalyticsMetadataResolvesNestedPaths(t *testing.T) {
+	metadata := map[string]any{
+		"apiName": "mcp-proxy",
+		"mcpAnalytics": map[string]any{
+			"jsonRpcMethod":  "tools/call",
+			"capabilityName": "add",
+			"capability":     "TOOL",
+		},
+	}
+
+	value, ok := traverseJSON(metadata, "mcpAnalytics.jsonRpcMethod")
+	require.True(t, ok)
+	require.Equal(t, "tools/call", value)
+
+	value, ok = traverseJSON(metadata, "apiName")
+	require.True(t, ok)
+	require.Equal(t, "mcp-proxy", value)
+
+	_, ok = traverseJSON(metadata, "mcpAnalytics.missing")
+	require.False(t, ok)
+	_, ok = traverseJSON(metadata, "apiName.jsonRpcMethod")
+	require.False(t, ok)
+}
+
 func TestGatewayTemplatePathAndLiteralHelpers(t *testing.T) {
 	root := t.TempDir()
 	gateway := &Gateway{featureRoot: root}
@@ -690,4 +810,412 @@ func TestServiceUnhealthy(t *testing.T) {
 
 	local.Set(healthResultsKey, map[string]bool{"policy-engine": false})
 	require.ErrorContains(t, steps.serviceUnhealthy(ctx, "policy-engine"), "stored as map[string]bool")
+}
+
+// Every controller collection a step can create into has a cleanup kind, so a created resource
+// is always registered; the Agent collection maps to the gateway's own Agent kind.
+func TestControllerResourceKindsHaveCleanupKinds(t *testing.T) {
+	for stepKind, spec := range resourceKinds {
+		if spec.collection == "" {
+			continue // the API handlers register and deregister their own cleanup
+		}
+		_, ok := cleanupKindForCollection(spec.collection)
+		require.Truef(t, ok, "resource kind %q (collection %q) has no cleanup kind", stepKind, spec.collection)
+	}
+
+	agent, ok := resourceKinds["Agent"]
+	require.True(t, ok, "the Agent step kind is registered")
+	require.Equal(t, "Agent", agent.declared)
+	require.Equal(t, "/agents", agent.collection)
+	kind, ok := cleanupKindForCollection(agent.collection)
+	require.True(t, ok)
+	require.Equal(t, cleanup.KindAgent, kind)
+
+	_, ok = cleanupKindForCollection("/not-a-collection")
+	require.False(t, ok)
+}
+
+// agentTestBase is a Base whose data plane is one test server.
+type agentTestBase struct {
+	url     string
+	headers map[string]string
+}
+
+func (b *agentTestBase) FeatureRoot() string                    { return "" }
+func (b *agentTestBase) GatewayURL(path string) (string, error) { return b.url + path, nil }
+func (b *agentTestBase) GatewayURLAt(_, path string) (string, error) {
+	return b.url + path, nil
+}
+func (b *agentTestBase) ScenarioHeaders(context.Context) map[string]string {
+	out := map[string]string{}
+	for k, v := range b.headers {
+		out[k] = v
+	}
+	return out
+}
+func (b *agentTestBase) InvokeWith(context.Context, string, string, map[string]string, []byte) error {
+	return nil
+}
+func (b *agentTestBase) RequestHost(context.Context) string { return "" }
+func (b *agentTestBase) ResetRequest(context.Context) error { return nil }
+func (b *agentTestBase) SendUntilHeader(context.Context, string, string, string, string) error {
+	return nil
+}
+
+func agentTestContext() context.Context {
+	return tcontext.WithLocal(context.Background(), tcontext.NewLocal("agent-runner"))
+}
+
+func agentTestGateway(url string, headers map[string]string) *Gateway {
+	return &Gateway{
+		base:   &agentTestBase{url: url, headers: headers},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+	}
+}
+
+func TestA2ASSEData(t *testing.T) {
+	for line, want := range map[string]string{"data: {\"a\":1}": `{"a":1}`, "data:x": "x"} {
+		data, ok := a2aSSEData(line)
+		require.True(t, ok, line)
+		require.Equal(t, want, data)
+	}
+	for _, framing := range []string{"", ": ping", "event: message", "id: 3", "data:   ", "retry: 10"} {
+		_, ok := a2aSSEData(framing)
+		require.False(t, ok, framing)
+	}
+}
+
+func TestOpenA2AStreamCapturesPacedEventsAndPublishes(t *testing.T) {
+	var gotAccept, gotType, gotAuth, gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAccept, gotType, gotAuth = r.Header.Get("Accept"), r.Header.Get("Content-Type"), r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		gotBody = string(raw)
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		for i, state := range []string{"TASK_STATE_WORKING", "TASK_STATE_WORKING", "TASK_STATE_COMPLETED"} {
+			if i > 0 {
+				time.Sleep(60 * time.Millisecond)
+			}
+			_, _ = w.Write([]byte(": ping\ndata: {\"state\":\"" + state + "\"}\n\n"))
+			flusher.Flush()
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	ctx := agentTestContext()
+	require.NoError(t, tcontext.Set(ctx, "task", "t-1"))
+	g := agentTestGateway(server.URL, map[string]string{"Authorization": "Bearer x"})
+
+	require.NoError(t, g.openA2AStream(ctx, "", "post", "/agent/v1/tasks/${CTX:task}:subscribe",
+		&godog.DocString{Content: `{"id":"${CTX:task}"}`}))
+	require.Equal(t, "text/event-stream", gotAccept)
+	require.Equal(t, "application/json", gotType)
+	require.Equal(t, "Bearer x", gotAuth)
+	require.Equal(t, `{"id":"t-1"}`, gotBody)
+
+	require.NoError(t, g.a2aStreamAtLeast(ctx, 3))
+	require.ErrorContains(t, g.a2aStreamAtLeast(ctx, 4), "expected at least 4")
+	require.NoError(t, g.a2aStreamFirstBeforeLast(ctx))
+	require.NoError(t, g.a2aStreamLastContains(ctx, "COMPLETED"))
+	require.ErrorContains(t, g.a2aStreamLastContains(ctx, "WORKING"), "last stream event did not contain")
+
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, published.StatusCode)
+	require.Contains(t, published.Headers.Get("Transfer-Encoding"), "chunked")
+	require.Contains(t, published.Text(), "TASK_STATE_COMPLETED")
+
+	require.NoError(t, g.openA2AStream(ctx, "1", "GET", "/agent/v1/tasks", nil))
+	require.Empty(t, gotType, "a stream without a body sends no content type")
+	stream, err := a2aStreamOf(ctx)
+	require.NoError(t, err)
+	require.Len(t, stream.Events, 1, "a bounded read stops at the requested count")
+	require.ErrorContains(t, g.a2aStreamFirstBeforeLast(ctx), "need at least 2 events")
+}
+
+func TestOpenA2AStreamRejectsBadInputAndFailures(t *testing.T) {
+	ctx := agentTestContext()
+	g := agentTestGateway("http://127.0.0.1:1", nil)
+	for _, count := range []string{"0", "-2", "many"} {
+		require.ErrorContains(t, g.openA2AStream(ctx, count, "GET", "/x", nil), "positive integer")
+	}
+	require.Error(t, g.openA2AStream(ctx, "", "GET", "/x", nil))
+	_, err := a2aStreamOf(ctx)
+	require.ErrorContains(t, err, "no A2A stream has been opened")
+	require.Error(t, g.a2aStreamAtLeast(ctx, 1))
+	require.Error(t, g.a2aStreamFirstBeforeLast(ctx))
+	require.Error(t, g.a2aStreamLastContains(ctx, "x"))
+	require.Error(t, g.openA2AStream(ctx, "", "GET", "${CTX:missing}", nil))
+}
+
+func TestA2AStreamDetectsABufferedResponse(t *testing.T) {
+	ctx := agentTestContext()
+	g := &Gateway{}
+	require.NoError(t, tcontext.Set(ctx, keyA2AStream, &a2aStream{Events: []a2aStreamEvent{
+		{Data: "a", Offset: time.Second}, {Data: "b", Offset: time.Second},
+	}}))
+	require.ErrorContains(t, g.a2aStreamFirstBeforeLast(ctx), "one buffered unit")
+	require.NoError(t, tcontext.Set(ctx, keyA2AStream, &a2aStream{}))
+	require.ErrorContains(t, g.a2aStreamLastContains(ctx, "a"), "no events")
+	require.Equal(t, "stream delivered no events", (&a2aStream{}).summary())
+	require.NoError(t, tcontext.Set(ctx, keyA2AStream, "not a stream"))
+	_, err := a2aStreamOf(ctx)
+	require.ErrorContains(t, err, "not a stream")
+}
+
+func TestA2AAnalyticsAssertions(t *testing.T) {
+	block := map[string]any{
+		"operation": "SendMessage", "transport": "JSONRPC", "agent_id": "a", "agent_name": "n",
+		"response": map[string]any{"task_state": "TASK_STATE_COMPLETED", "task_id": "t-1", "empty": ""},
+		"request":  map[string]any{"input_part_count": float64(2)},
+	}
+	require.NoError(t, a2aAnalyticsAssert(block, "have", "operation", "SendMessage"))
+	require.NoError(t, a2aAnalyticsAssert(block, "have", "request.input_part_count", "2"))
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "have", "operation", "GetTask"), `to be "GetTask"`)
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "have", "response.missing", "x"), "not found")
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "have", "nope.task_state", "x"), `no "nope" sub-block`)
+	require.NoError(t, a2aAnalyticsAssert(block, "not have", "request.history_length", ""))
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "not have", "operation", ""), "present with value")
+	require.NoError(t, a2aAnalyticsAssert(block, "have a non-empty", "response.task_id", ""))
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "have a non-empty", "response.empty", ""), "present but empty")
+	require.Error(t, a2aAnalyticsAssert(block, "have a non-empty", "response.absent", ""))
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "count", "operation", ""), "unsupported")
+
+	card := map[string]any{"operation": "Unknown", "transport": "UNKNOWN", "agent_id": "a", "agent_name": "n", "request_type": "agentCard"}
+	require.NoError(t, a2aAnalyticsAssert(card, "carry only", "request_type", ""))
+	require.ErrorContains(t, a2aAnalyticsAssert(block, "carry only", "request_type", ""), "catch-all")
+	leaky := map[string]any{"operation": "Unknown", "transport": "UNKNOWN", "agent_id": "a", "agent_name": "n",
+		"request_type": "agentCard", "outcome": "SUCCESS"}
+	require.ErrorContains(t, a2aAnalyticsAssert(leaky, "carry only", "request_type", ""), "carry only")
+	anonymous := map[string]any{"operation": "Unknown", "transport": "UNKNOWN", "agent_id": "", "agent_name": "n", "request_type": "x"}
+	require.ErrorContains(t, a2aAnalyticsAssert(anonymous, "carry only", "request_type", ""), "agent identity")
+	missing := map[string]any{"operation": "Unknown", "transport": "UNKNOWN", "agent_id": "a", "agent_name": "n"}
+	require.Error(t, a2aAnalyticsAssert(missing, "carry only", "request_type", ""))
+}
+
+func TestA2AAnalyticsBlockRejectsRetiredShapes(t *testing.T) {
+	_, err := a2aAnalyticsBlock(&analyticsEvent{Metadata: map[string]any{"agentAnalytics": map[string]any{}}, A2A: map[string]any{}})
+	require.ErrorContains(t, err, "retired metadata key")
+	_, err = a2aAnalyticsBlock(&analyticsEvent{Metadata: map[string]any{"apiName": "x"}})
+	require.ErrorContains(t, err, "no a2a block (metadata keys: apiName)")
+	block, err := a2aAnalyticsBlock(&analyticsEvent{A2A: map[string]any{"operation": "GetTask"}})
+	require.NoError(t, err)
+	require.Equal(t, "GetTask", block["operation"])
+	require.Equal(t, "none", sortedAnyKeys(nil))
+}
+
+func TestAnalyticsA2AFieldValidatesTheValueClause(t *testing.T) {
+	g := &Gateway{}
+	ctx := agentTestContext()
+	require.ErrorContains(t, g.analyticsA2AField(ctx, "/p", "have", "operation", ""), "requires a value")
+	require.ErrorContains(t, g.analyticsA2AField(ctx, "/p", "not have", "operation", "x"), "takes no value")
+}
+
+func TestA2ACredentialsCarryOnlyCredentialHeaders(t *testing.T) {
+	got := a2aCredentials(map[string]string{
+		"authorization": "Bearer t", "API-KEY": "k", "Accept": "application/json",
+		"A2A-Version": "0.3", "X-API-Key": "", "Content-Type": "text/plain",
+	})
+	require.Equal(t, a2ax.Headers{"Authorization": "Bearer t", "API-Key": "k"}, got)
+	require.Empty(t, a2aCredentials(nil))
+}
+
+func TestA2ASessionBookkeeping(t *testing.T) {
+	session := newA2ASession()
+	_, err := session.client("rpc")
+	require.ErrorContains(t, err, "created: none")
+	_, err = session.requireTaskID()
+	require.ErrorContains(t, err, "no A2A task")
+
+	first, err := a2ax.NewClient(context.Background(), a2ax.BindingJSONRPC, "http://127.0.0.1:1/a", a2ax.Options{ProtocolVersion: "1.0"})
+	require.NoError(t, err)
+	require.NoError(t, session.put("rpc", first))
+	second, err := a2ax.NewClient(context.Background(), a2ax.BindingHTTPJSON, "http://127.0.0.1:1/a/v1", a2ax.Options{ProtocolVersion: "1.0"})
+	require.NoError(t, err)
+	require.NoError(t, session.put("rpc", second), "a reused name replaces the earlier client")
+	require.Equal(t, []string{"rpc"}, session.names())
+
+	client, err := session.client("rpc")
+	require.NoError(t, err)
+	_, _, err = session.outcome("rpc")
+	require.ErrorContains(t, err, "has not made a call")
+
+	session.record(client, &a2ax.Outcome{Method: "SendMessage", Task: &a2ax.Task{ID: "t-1"}})
+	taskID, err := session.requireTaskID()
+	require.NoError(t, err)
+	require.Equal(t, "t-1", taskID)
+	session.record(client, &a2ax.Outcome{Method: "ListTasks", Tasks: []a2ax.Task{}})
+	taskID, _ = session.requireTaskID()
+	require.Equal(t, "t-1", taskID, "a call naming no task keeps the scenario's task")
+
+	session.record(client, &a2ax.Outcome{Method: "GetTask", Err: errors.New("refused")})
+	_, err = session.succeeded("rpc")
+	require.ErrorContains(t, err, "GetTask over HTTP+JSON through http://127.0.0.1:1/a/v1 failed: refused")
+
+	require.NoError(t, session.close())
+	require.Empty(t, session.names())
+	_, err = session.requireTaskID()
+	require.Error(t, err)
+
+	ctx := agentTestContext()
+	_, err = a2aSessionOf(ctx)
+	require.ErrorContains(t, err, "no A2A session")
+	require.NoError(t, tcontext.Set(ctx, keyA2ASession, "wrong"))
+	_, err = a2aSessionOf(ctx)
+	require.ErrorContains(t, err, "not an A2A session")
+}
+
+func TestA2AGatewayEndpointAcceptsOnlyGatewayPaths(t *testing.T) {
+	ctx := agentTestContext()
+	require.NoError(t, tcontext.Set(ctx, "agentContext", "/agent-x"))
+	g := agentTestGateway("http://gateway:8080", nil)
+	url, err := g.a2aGatewayEndpoint(ctx, "${CTX:agentContext}/v1")
+	require.NoError(t, err)
+	require.Equal(t, "http://gateway:8080/agent-x/v1", url)
+	_, err = g.a2aGatewayEndpoint(ctx, "http://a2a-trip-planner:9099")
+	require.ErrorContains(t, err, "must be a gateway path")
+	_, err = g.a2aGatewayEndpoint(ctx, "${CTX:missing}")
+	require.Error(t, err)
+}
+
+// tripAgent is a minimal in-process agent on the reference server SDK: every message completes
+// with an artifact echoing its text, and every call is made by one authenticated user.
+func tripAgent(t *testing.T) (*httptest.Server, *[]string) {
+	t.Helper()
+	executor := a2asrv.AgentExecutorFunc(func(_ context.Context, execCtx *a2asrv.ExecutorContext) iter.Seq2[a2a.Event, error] {
+		return func(yield func(a2a.Event, error) bool) {
+			if !yield(a2a.NewSubmittedTask(execCtx, execCtx.Message), nil) {
+				return
+			}
+			text := ""
+			for _, part := range execCtx.Message.Parts {
+				text += part.Text()
+			}
+			if !yield(a2a.NewArtifactEvent(execCtx, a2a.NewTextPart("plan: "+text)), nil) {
+				return
+			}
+			yield(a2a.NewStatusUpdateEvent(execCtx, a2a.TaskStateCompleted, nil), nil)
+		}
+	})
+	handler := a2asrv.NewHandler(executor,
+		a2asrv.WithExtendedAgentCard(&a2a.AgentCard{Name: "Trip Planner", Skills: []a2a.AgentSkill{{ID: "plan_trip"}}}))
+	mux := http.NewServeMux()
+	mux.Handle("/agent", a2asrv.NewJSONRPCHandler(handler))
+	mux.Handle("/agent/v1/", http.StripPrefix("/agent/v1", a2asrv.NewRESTHandler(handler)))
+	var auth []string
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/agent/.well-known/agent-card.json" {
+			_, _ = w.Write([]byte(`{"name":"Trip Planner","supportedInterfaces":[` +
+				`{"protocolBinding":"JSONRPC","protocolVersion":"1.0","url":"` + "http://" + r.Host + `/agent"}]}`))
+			return
+		}
+		mu.Lock()
+		auth = append(auth, r.Header.Get("Authorization"))
+		mu.Unlock()
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+	return server, &auth
+}
+
+func TestA2AClientStepsDriveBothBindingsWithoutPublishingResponses(t *testing.T) {
+	server, auth := tripAgent(t)
+	ctx := agentTestContext()
+	require.NoError(t, tcontext.Set(ctx, keyA2ASession, newA2ASession()))
+	require.NoError(t, tcontext.Set(ctx, "agentContext", "/agent"))
+	g := agentTestGateway(server.URL, map[string]string{"Authorization": "Bearer jwt", "A2A-Version": "0.3"})
+
+	require.NoError(t, g.createA2AClient(ctx, "rpc", a2ax.BindingJSONRPC, "${CTX:agentContext}"))
+	require.NoError(t, g.createA2AClient(ctx, "rest", a2ax.BindingHTTPJSON, "${CTX:agentContext}/v1"))
+	require.ErrorContains(t, g.createA2AClient(ctx, " ", a2ax.BindingJSONRPC, "/agent"), "needs a name")
+	require.NoError(t, g.a2aClientTalksTo(ctx, "rest", "${CTX:agentContext}/v1"))
+	require.ErrorContains(t, g.a2aClientTalksTo(ctx, "rest", "/elsewhere"), "is talking to")
+
+	require.NoError(t, tcontext.Set(ctx, httpx.ResponseKey, &httpx.Response{StatusCode: 200}))
+	for _, name := range []string{"rpc", "rest"} {
+		require.NoError(t, g.a2aSendMessage(ctx, name, "Kandy", ""))
+		require.NoError(t, g.a2aCallResult(ctx, name, "succeeded"))
+		require.ErrorContains(t, g.a2aCallResult(ctx, name, "failed"), "to be refused")
+		require.NoError(t, g.a2aTaskState(ctx, name, "TASK_STATE_COMPLETED"))
+		require.ErrorContains(t, g.a2aTaskState(ctx, name, "TASK_STATE_WORKING"), "to be in state")
+		require.ErrorContains(t, g.a2aTaskRunning(ctx, name), "terminal state")
+		require.NoError(t, g.a2aArtifactContains(ctx, name, "plan: Kandy"))
+		require.ErrorContains(t, g.a2aArtifactContains(ctx, name, "Galle"), "expected an artifact")
+	}
+	_, err := httpx.Published(ctx)
+	require.Error(t, err, "an SDK call must clear the published response")
+	require.NoError(t, g.a2aSameArtifact(ctx, "rpc", "rest"))
+	require.Contains(t, *auth, "Bearer jwt")
+
+	require.NoError(t, g.a2aActOnTask(ctx, "rest", "gets"))
+	require.NoError(t, g.a2aTaskState(ctx, "rest", "TASK_STATE_COMPLETED"))
+	require.NoError(t, g.a2aStreamMessage(ctx, "rpc", "Ella"))
+	require.NoError(t, g.a2aStreamEventCount(ctx, "rpc", 2))
+	require.ErrorContains(t, g.a2aStreamEventCount(ctx, "rpc", 50), "expected at least 50")
+	require.NoError(t, g.a2aStreamEndState(ctx, "rpc", "TASK_STATE_COMPLETED"))
+	require.ErrorContains(t, g.a2aStreamEndState(ctx, "rpc", "TASK_STATE_FAILED"), "to end in state")
+	require.NoError(t, g.a2aStreamContains(ctx, "rpc", "plan: Ella"))
+	require.ErrorContains(t, g.a2aStreamContains(ctx, "rpc", "Galle"), "no stream event contained")
+	require.ErrorContains(t, g.a2aTaskState(ctx, "rpc", "x"), "returned no task")
+
+	require.NoError(t, g.a2aExtendedCard(ctx, "rest"))
+	require.NoError(t, g.a2aCardName(ctx, "rest", "Trip Planner"))
+	require.ErrorContains(t, g.a2aCardName(ctx, "rest", "Other"), "named")
+	require.NoError(t, g.a2aCardSkill(ctx, "rest", "with", "plan_trip"))
+	require.NoError(t, g.a2aCardSkill(ctx, "rest", "without", "extended_only"))
+	require.ErrorContains(t, g.a2aCardSkill(ctx, "rest", "with", "extended_only"), "to declare skill")
+	require.ErrorContains(t, g.a2aCardSkill(ctx, "rest", "without", "plan_trip"), "must not")
+
+	require.NoError(t, g.a2aPushConfig(ctx, "rest", "creates", "push-1"))
+	require.NoError(t, g.a2aCallResult(ctx, "rest", "failed"), "the agent was built without push support")
+	require.ErrorContains(t, g.a2aSubscribe(ctx, "rest", 0), "must be positive")
+	require.ErrorContains(t, g.a2aSendMessage(ctx, "missing", "x", ""), "no A2A client named")
+	require.ErrorContains(t, g.a2aPushConfigIs(ctx, "rpc", "push-1"), "no push notification config")
+	require.ErrorContains(t, g.a2aPushConfigCount(ctx, "rpc", 0), "no push notification config list")
+	require.ErrorContains(t, g.a2aCardName(ctx, "rpc", "Trip Planner"), "no Agent Card")
+	require.ErrorContains(t, g.a2aStreamPaced(ctx, "rest"), "push") // the failed call is reported first
+
+	require.NoError(t, g.createA2AClientFromCard(ctx, "card", a2ax.BindingJSONRPC, "${CTX:agentContext}/.well-known/agent-card.json"))
+	require.NoError(t, g.a2aClientTalksTo(ctx, "card", "/agent"))
+	require.Error(t, g.createA2AClientFromCard(ctx, "card", a2ax.BindingHTTPJSON, "/agent/.well-known/agent-card.json"))
+	require.Error(t, g.createA2AClientFromCard(ctx, "card", a2ax.BindingJSONRPC, "/missing"))
+
+	session, err := a2aSessionOf(ctx)
+	require.NoError(t, err)
+	require.NoError(t, session.close())
+}
+
+func TestA2ATaskListedAndPushConfigAssertions(t *testing.T) {
+	ctx := agentTestContext()
+	session := newA2ASession()
+	require.NoError(t, tcontext.Set(ctx, keyA2ASession, session))
+	client, err := a2ax.NewClient(context.Background(), a2ax.BindingJSONRPC, "http://127.0.0.1:1", a2ax.Options{ProtocolVersion: "1.0"})
+	require.NoError(t, err)
+	require.NoError(t, session.put("rpc", client))
+	t.Cleanup(func() { _ = session.close() })
+	entry, _ := session.client("rpc")
+	g := &Gateway{}
+
+	session.record(entry, &a2ax.Outcome{Method: "SendMessage", Task: &a2ax.Task{ID: "t-2", State: "TASK_STATE_WORKING"}})
+	require.NoError(t, g.a2aTaskRunning(ctx, "rpc"))
+	session.record(entry, &a2ax.Outcome{Method: "ListTasks", Tasks: []a2ax.Task{{ID: "t-1"}, {ID: "t-2"}}})
+	require.NoError(t, g.a2aTaskListed(ctx, "rpc"))
+	session.record(entry, &a2ax.Outcome{Method: "ListTasks", Tasks: []a2ax.Task{{ID: "t-1"}}})
+	require.ErrorContains(t, g.a2aTaskListed(ctx, "rpc"), "absent from the 1 listed")
+
+	session.record(entry, &a2ax.Outcome{Method: "GetTaskPushNotificationConfig", PushConfig: &a2ax.PushConfig{ID: "p-1"}})
+	require.NoError(t, g.a2aPushConfigIs(ctx, "rpc", "p-1"))
+	require.ErrorContains(t, g.a2aPushConfigIs(ctx, "rpc", "p-2"), `expected push notification config "p-2"`)
+	session.record(entry, &a2ax.Outcome{Method: "ListTaskPushNotificationConfigs", PushConfigs: []a2ax.PushConfig{{ID: "p-1"}}})
+	require.NoError(t, g.a2aPushConfigCount(ctx, "rpc", 1))
+	require.ErrorContains(t, g.a2aPushConfigCount(ctx, "rpc", 0), "expected 0")
+
+	session.record(entry, &a2ax.Outcome{Method: "SubscribeToTask", Events: []a2ax.Event{{Offset: time.Second}, {Offset: time.Second}}})
+	require.ErrorContains(t, g.a2aStreamPaced(ctx, "rpc"), "one buffered unit")
+	session.record(entry, &a2ax.Outcome{Method: "SubscribeToTask", Events: []a2ax.Event{{Offset: 0}, {Offset: time.Second}}})
+	require.NoError(t, g.a2aStreamPaced(ctx, "rpc"))
+	session.record(entry, &a2ax.Outcome{Method: "SubscribeToTask", Events: []a2ax.Event{{Offset: 0}}})
+	require.ErrorContains(t, g.a2aStreamPaced(ctx, "rpc"), "need at least 2")
 }

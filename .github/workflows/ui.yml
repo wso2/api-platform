@@ -99,7 +99,33 @@ jobs:
             echo 'No API Portal unit-test files found' >&2
             exit 1
           fi
-          node --test "${test_files[@]}"
+          # --experimental-test-coverage with the lcov reporter so these tests
+          # count toward the api-portal coverage Codecov reports. Without it the
+          # suite is a pass/fail gate only: it runs, it blocks the build on a
+          # failure, and every line it covers is discarded. The lcov reporter
+          # writes the report; --test-reporter=spec keeps the human-readable
+          # output on stdout, which a single reporter would otherwise replace.
+          node --test \
+            --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
+            "${test_files[@]}"
+
+      # Prints what the unit run actually produced. The Codecov upload below is
+      # continue-on-error, so a report that was never written, or written empty,
+      # uploads nothing and leaves the job green — which is precisely how a
+      # missing api-portal-unit flag stayed invisible. This makes the producing
+      # side visible in the log without being able to fail the build.
+      - name: Report API Portal unit coverage size
+        if: always()
+        working-directory: portals/api-portal
+        run: |
+          if [ -s unit-test-coverage.info ]; then
+            echo "unit-test-coverage.info: $(wc -c < unit-test-coverage.info) bytes, $(grep -c '^SF:' unit-test-coverage.info) files"
+            grep -m 5 '^SF:' unit-test-coverage.info
+          else
+            echo "unit-test-coverage.info is MISSING or EMPTY — nothing will be uploaded for the api-portal-unit flag" >&2
+          fi
 
       - name: Build testbench image
         run: make -C tests/framework testbench
@@ -143,6 +169,19 @@ jobs:
           path: tests/framework/suites/ui/logs-out/**/*.log
           if-no-files-found: warn
           include-hidden-files: true
+
+      # The page a failing scenario was actually looking at, saved by
+      # saveFailureArtifacts (steps/artifacts.go) as <scenario>.html + <scenario>.png.
+      # Without this the evidence is written on the runner and thrown away with it,
+      # which leaves a UI failure diagnosable only by re-running and guessing: the
+      # container logs say what the server did, not what the browser was showing.
+      - name: Upload UI failure page captures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-failure-pages
+          path: tests/framework/suites/ui/artifacts/**
+          if-no-files-found: ignore
 
       # Unit coverage for the Go services is already produced by their make targets.
       # Codecov uploads are best-effort, while the tests and report generation remain
@@ -216,6 +255,21 @@ jobs:
           disable_search: true
           files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
           flags: api-portal-server-integration
+
+      # Unit coverage, kept as its own flag rather than merged into the
+      # integration ones: the two runs cover different halves of the same files —
+      # the UI suite enters the handlers through real requests, these enter the
+      # validators and error branches directly — and Codecov unions the flags.
+      # Reporting them separately is also what shows which half moved.
+      - name: Upload API Portal unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/api-portal/unit-test-coverage.info
+          flags: api-portal-unit
 
       - name: Upload API Portal UI integration coverage to Codecov
         if: always()

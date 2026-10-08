@@ -211,8 +211,8 @@ type SubscriptionPlanRepository interface {
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
-	ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error)
-	CountByOrganization(orgUUID string) (int, error)
+	ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID, search string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
@@ -427,6 +427,21 @@ type MCPProxyRepository interface {
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
 	Update(p *model.MCPProxy) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
+}
+
+// AgentProxyRepository defines the interface for Agent proxy persistence
+type AgentProxyRepository interface {
+	Create(p *model.AgentProxy) error
+	GetByHandle(handle, orgUUID string) (*model.AgentProxy, error)
+	GetByUUID(uuid, orgUUID string) (*model.AgentProxy, error)
+	List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error)
+	Count(orgUUID string, opts AgentProxyListOptions) (int, error)
+	ListByProject(orgUUID, projectUUID string) ([]*model.AgentProxy, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(p *model.AgentProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)

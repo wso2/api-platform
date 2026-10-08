@@ -20,6 +20,7 @@ import { Divider, Grid } from '@wso2/oxygen-ui';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useProject } from '@/api/resources/projects';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { ApiList } from '@/pages/appShell/appShellPages/apis/listing';
@@ -29,6 +30,14 @@ import { ProjectStatistics } from './components/ProjectStatistics';
 
 // No `ScopeGate`: Overview falls back to the org tier without a project.
 export function ProjectHomePage() {
+  return (
+    <AppPage>
+      <ProjectHomePageContent />
+    </AppPage>
+  );
+}
+
+function ProjectHomePageContent() {
   const [apiTypeFilter, setApiTypeFilter] = useState<ApiTypeFilter | null>(null);
   const { orgHandle = '', projectHandler = '' } = useParams();
   const projectQuery = useProject(projectHandler);
