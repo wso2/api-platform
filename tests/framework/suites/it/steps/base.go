@@ -2288,7 +2288,9 @@ func (b *Base) stopBackgroundTraffic(ctx context.Context, name string) error {
 
 // stopAllBackgroundTraffic is the end-of-scenario safety net: it stops every probe the scenario
 // started, whether or not it was already stopped explicitly, so a failing scenario can never
-// leave a goroutine polling a URL a later scenario in the same runner also addresses.
+// leave a goroutine polling a URL a later scenario in the same runner also addresses. It also
+// deletes each probe from the map, since tcontext.Local persists across a runner's scenarios and
+// a leftover name would block the next scenario from reusing it.
 func (b *Base) stopAllBackgroundTraffic(ctx context.Context) {
 	probes, err := b.backgroundProbes(ctx)
 	if err != nil {
@@ -2299,6 +2301,9 @@ func (b *Base) stopAllBackgroundTraffic(ctx context.Context) {
 	}
 	for _, probe := range probes {
 		<-probe.done
+	}
+	for name := range probes {
+		delete(probes, name)
 	}
 }
 

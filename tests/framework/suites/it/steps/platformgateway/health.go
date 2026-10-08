@@ -204,6 +204,99 @@ func (s *Steps) serviceUnhealthy(ctx context.Context, service string) error {
 	return nil
 }
 
+const keyStoppedProcesses = "stoppedProcesses"
+
+// stoppedProcess identifies one process a scenario has paused with SIGSTOP.
+type stoppedProcess struct {
+	service string
+	process string
+}
+
+func (s *Steps) stoppedProcessList(ctx context.Context) ([]stoppedProcess, error) {
+	v, ok := tcontext.Get(ctx, keyStoppedProcesses)
+	if !ok {
+		return nil, nil
+	}
+	list, ok := v.([]stoppedProcess)
+	if !ok {
+		return nil, fmt.Errorf("stopped-process list has an unexpected type %T", v)
+	}
+	return list, nil
+}
+
+func (s *Steps) rememberStoppedProcess(ctx context.Context, service, process string) error {
+	list, err := s.stoppedProcessList(ctx)
+	if err != nil {
+		return err
+	}
+	list = append(list, stoppedProcess{service: service, process: process})
+	return tcontext.Set(ctx, keyStoppedProcesses, list)
+}
+
+func (s *Steps) forgetStoppedProcess(ctx context.Context, service, process string) error {
+	list, err := s.stoppedProcessList(ctx)
+	if err != nil {
+		return err
+	}
+	kept := list[:0]
+	for _, p := range list {
+		if p.service != service || p.process != process {
+			kept = append(kept, p)
+		}
+	}
+	return tcontext.Set(ctx, keyStoppedProcesses, kept)
+}
+
+// processSignalScript scans /proc for a process by its cmdline argv[0] suffix and signals it,
+// avoiding a pkill/pgrep dependency the gateway images don't package.
+func processSignalScript(signal, process string) string {
+	return fmt.Sprintf(`for p in /proc/[0-9]*; do
+  pid=$(basename "$p")
+  if [ -r "$p/cmdline" ] && tr '\0' '\n' < "$p/cmdline" 2>/dev/null | head -n1 | grep -q '/%s$'; then
+    kill -%s "$pid" && exit 0
+  fi
+done
+echo "no process named %s found" >&2
+exit 1`, process, signal, process)
+}
+
+// sendProcessSignal exercises failure modes (a hung or killed policy engine) that compose
+// itself cannot trigger.
+func (s *Steps) sendProcessSignal(ctx context.Context, signal, process, service string) error {
+	stack, resolved, err := s.topo.ServiceControl(service)
+	if err != nil {
+		return err
+	}
+	if _, err := stack.Exec(ctx, resolved, []string{"bash", "-c", processSignalScript(signal, process)}); err != nil {
+		return fmt.Errorf("sending %s to process %q in service %q: %w", signal, process, service, err)
+	}
+	switch signal {
+	case "STOP":
+		return s.rememberStoppedProcess(ctx, service, process)
+	case "CONT":
+		return s.forgetStoppedProcess(ctx, service, process)
+	default:
+		return nil
+	}
+}
+
+// resumeStoppedProcesses is the end-of-scenario safety net: it CONTs every process the scenario
+// SIGSTOPped and clears the list, since tcontext.Local persists across a runner's scenarios.
+func (s *Steps) resumeStoppedProcesses(ctx context.Context) {
+	list, err := s.stoppedProcessList(ctx)
+	if err != nil {
+		return
+	}
+	for _, p := range list {
+		stack, resolved, err := s.topo.ServiceControl(p.service)
+		if err != nil {
+			continue
+		}
+		_, _ = stack.Exec(ctx, resolved, []string{"bash", "-c", processSignalScript("CONT", p.process)})
+	}
+	_ = tcontext.Set(ctx, keyStoppedProcesses, []stoppedProcess(nil))
+}
+
 func healthyStatus(body []byte) bool {
 	var payload struct {
 		Status string `json:"status"`
@@ -237,10 +330,11 @@ func responseIsHealthy(service string, resp *httpx.Response) (bool, string) {
 	return true, "status healthy"
 }
 
-func (s *Steps) checkAllHealth(ctx context.Context) error {
+// checkAllHealthOnce runs one round of health checks without publishing the results.
+func (s *Steps) checkAllHealthOnce(ctx context.Context) (map[string]healthResult, error) {
 	targets, err := s.healthTargets()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	results := make(map[string]healthResult, len(targets))
 	for name, url := range targets {
@@ -256,7 +350,36 @@ func (s *Steps) checkAllHealth(ctx context.Context) error {
 		}
 		results[name] = result
 	}
+	return results, nil
+}
+
+func (s *Steps) checkAllHealth(ctx context.Context) error {
+	results, err := s.checkAllHealthOnce(ctx)
+	if err != nil {
+		return err
+	}
 	return tcontext.Set(ctx, healthResultsKey, results)
+}
+
+// checkAllHealthUntilUnhealthy polls until the named service reports unhealthy, since a
+// signalled process can take a moment before a supervised component reflects it.
+func (s *Steps) checkAllHealthUntilUnhealthy(ctx context.Context, service string) error {
+	return retry.Await(ctx, retry.Options{},
+		func(ctx context.Context) (map[string]healthResult, error) {
+			results, err := s.checkAllHealthOnce(ctx)
+			if err != nil {
+				return nil, retry.Transient(err)
+			}
+			if err := tcontext.Set(ctx, healthResultsKey, results); err != nil {
+				return nil, err
+			}
+			return results, nil
+		},
+		func(results map[string]healthResult) bool {
+			result, ok := results[service]
+			return ok && !result.healthy
+		},
+		fmt.Sprintf("waiting for service %q to become unhealthy", service))
 }
 
 func (s *Steps) allServicesHealthy(ctx context.Context) error {

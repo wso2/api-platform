@@ -1,0 +1,2 @@
+[router.policy_engine]
+message_timeout_ms = 5000

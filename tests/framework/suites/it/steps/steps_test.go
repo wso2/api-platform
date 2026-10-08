@@ -529,17 +529,30 @@ func TestStopAllBackgroundTrafficStopsEveryProbe(t *testing.T) {
 	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "a"))
 	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "b"))
 
+	probesBefore, err := b.backgroundProbes(ctx)
+	require.NoError(t, err)
+	snapshot := make(map[string]*backgroundTrafficProbe, len(probesBefore))
+	for name, probe := range probesBefore {
+		snapshot[name] = probe
+	}
+	require.Len(t, snapshot, 2)
+
 	b.stopAllBackgroundTraffic(ctx)
 
-	probes, err := b.backgroundProbes(ctx)
-	require.NoError(t, err)
-	for name, probe := range probes {
+	for name, probe := range snapshot {
 		select {
 		case <-probe.done:
 		default:
 			t.Fatalf("probe %q did not stop", name)
 		}
 	}
+
+	// tcontext.Local persists across a runner's scenarios, so the map must end up empty, not
+	// merely drained, or a later scenario reusing a probe name would fail as already running.
+	probesAfter, err := b.backgroundProbes(ctx)
+	require.NoError(t, err)
+	require.Empty(t, probesAfter)
+	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "a"))
 }
 
 func TestSendRequestOverHTTP2RejectsNonHTTP2Server(t *testing.T) {
