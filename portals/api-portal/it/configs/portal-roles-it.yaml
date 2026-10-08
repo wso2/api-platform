@@ -36,7 +36,7 @@
 # --------------------------------------------------------------------
 
 roles:
-  # Mirror of dp_admin_it in roles-platform-api-it.yaml (84 scopes).
+  # Mirror of dp_admin_it in roles-platform-api-it.yaml (85 scopes).
   - name: dp_admin_it
     scopes:
       - dp:organization:read
@@ -92,6 +92,10 @@ roles:
       - dp:application_key_mapping:read
       - dp:application_key_mapping:create
       - dp:application_key_mapping:manage
+      # OAuth2 keys. Granted to the same two roles the shipped mapping gives
+      # dp:oauth2_key:manage to (dp_admin and dp_subscriber): an admin to
+      # administer them, a developer because they own the keys they create.
+      - dp:oauth2_key:manage
       - dp:subscription:create
       - dp:subscription:read
       - dp:subscription:update
@@ -190,7 +194,7 @@ roles:
       - dp:webhook_subscriber:manage
       - dp:event:read
 
-  # Mirror of dp_developer_it in roles-platform-api-it.yaml (29 scopes).
+  # Mirror of dp_developer_it in roles-platform-api-it.yaml (30 scopes).
   - name: dp_developer_it
     scopes:
       - dp:organization:read
@@ -214,6 +218,10 @@ roles:
       - dp:application_key_mapping:read
       - dp:application_key_mapping:create
       - dp:application_key_mapping:manage
+      # OAuth2 keys. Granted to the same two roles the shipped mapping gives
+      # dp:oauth2_key:manage to (dp_admin and dp_subscriber): an admin to
+      # administer them, a developer because they own the keys they create.
+      - dp:oauth2_key:manage
       - dp:subscription:create
       - dp:subscription:read
       - dp:subscription:update

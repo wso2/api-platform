@@ -14,11 +14,15 @@
  * under the License.
  */
 
-// Package session holds the BFF's session helpers. The access JWT now travels in
-// the HttpOnly cookie itself, so the proxy forwards it without any lookup. The
-// store survives only to hold OIDC refresh/id tokens (keyed by the access token)
-// so the proxy can renew the access token. The BFF does NOT validate tokens — it
-// forwards them, and only decodes (without verifying) their claims for display.
+// Package session holds the BFF's session helpers. The access JWT travels in the
+// HttpOnly cookie itself, so the proxy forwards it without any lookup. The store
+// holds what the cookie pair cannot: the OIDC refresh/id tokens (keyed by the access
+// token) used to renew it, the cached exchanged token, and the selected org. Under
+// [session] store = "cookie" that record is itself carried by the client, sealed — see
+// CookieCodec — so no replica has to be the one that served this user last, which is
+// what a multi-replica deployment needs. The BFF does NOT validate
+// tokens; it forwards them, and only decodes (without verifying) their claims for
+// display.
 package session
 
 import (
@@ -35,8 +39,8 @@ const (
 // User holds the pre-decoded claims surfaced by GET /api/session. It mirrors the
 // SPA's AppUser shape so the frontend can hydrate without seeing any token.
 type User struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name          string   `json:"name"`
+	Email         string   `json:"email"`
 	Picture       string   `json:"picture,omitempty"`
 	Role          string   `json:"role,omitempty"`
 	Scopes        []string `json:"scopes"`
@@ -122,8 +126,12 @@ func (s *Session) Expired(now time.Time) bool {
 	return !s.AbsoluteExpiry.IsZero() && !now.Before(s.AbsoluteExpiry)
 }
 
-// Store is the swappable session backend. The default is in-memory; a Redis
-// implementation can satisfy the same interface for horizontal scaling.
+// Store is the session backend. One implementation — server.cookieStore — which keeps
+// nothing in this process. The interface survives that on purpose: it is what let the
+// process-local map be replaced without touching a call site, and what a deployment
+// wanting a shared store would implement instead.
+//
+// File-based auth never reaches this: its JWT is self-contained in the cookie pair.
 type Store interface {
 	Put(ctx context.Context, s *Session) error
 	Get(ctx context.Context, id string) (*Session, bool, error)

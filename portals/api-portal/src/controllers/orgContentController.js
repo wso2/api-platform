@@ -62,7 +62,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
                 firstName: req.user.firstName,
                 lastName: req.user.lastName,
                 email: req.user.email,
-                isAdmin: req.user.isAdmin,
+                isAdmin: req.user.isAdmin && !req.foreignOrgSession,
             }
         }
         templateContent = {

@@ -171,6 +171,35 @@ blocks:
         features:
           - features/apiportal/security/grant_table_parity.feature
 
+  # Multi-organization mode: IDP sign-in through the testbench identity provider, every
+  # organization under the portal's portal_id served.
+  - name: api-portal-multi-organization
+    parallel: 3
+    components:
+      - name: testbench
+      - name: api-portal-multi-organization
+        db:
+          matrix: [postgres, sqlserver]
+    runners:
+      - name: claims
+        features:
+          - features/apiportal_multi_organization_claims.feature
+      - name: isolation
+        features:
+          - features/apiportal_multi_organization_isolation.feature
+      - name: login
+        features:
+          - features/apiportal_multi_organization_login.feature
+      - name: webhooks
+        features:
+          - features/apiportal_multi_organization_webhooks.feature
+      - name: publishing
+        features:
+          - features/apiportal_multi_organization_publishing.feature
+      - name: portals
+        features:
+          - features/apiportal_multi_organization_portals.feature
+
   - name: api-portal-foreign-org
     parallel: 1
     components:
@@ -383,6 +412,25 @@ blocks:
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
+      - name: mcp-spec-versions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_spec_versions.feature
+      - name: mcp-resolver
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_resolver.feature
+      # No version gate: a session surviving the gateway is behaviour every supported release
+      # has, and the era a proxy declares is what these scenarios vary instead.
+      - name: mcp-legacy-upstream
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_legacy_upstream.feature
+      # Gated where its sibling above is not: this feature deploys a 2026-07-28 proxy, and 1.2.0
+      # rejects that specVersion outright, so the era comparison is unreachable on that release.
+      - name: mcp-legacy-upstream-modern-client
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
       - name: oauth2-auth
         tags: "gateway-version>1.2.0"
         features:
@@ -553,6 +601,9 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
+  # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
+  # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
+  # Gateway 1.2.0.
   - name: mcp-policies
     parallel: 2
     components:
@@ -561,11 +612,60 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
+      - name: agent-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_deploy.feature
+      - name: agent-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent-policies/agent_policies.feature
+      - name: agent-card
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_card.feature
+      - name: agent-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_api_keys.feature
+      - name: agent-streaming
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_streaming.feature
+      # One runner per MCP policy, each file holding that policy's behaviour in both protocol
+      # eras. They are gated later than 1.2.0 because their 2026-07-28 scenarios need the
+      # operation resolver, which no released 1.2.0 carries - so this block's MCP policy
+      # coverage is source-build only, while mcp_policies.feature still runs on the release leg.
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
+      - name: mcp-auth-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_auth.feature
+      - name: mcp-authz-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_authz.feature
+      - name: mcp-ratelimit-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
+      - name: mcp-acl-list-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_acl_list.feature
+      - name: mcp-rewrite-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_rewrite.feature
+      - name: mcp-spec-validation-policy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp-policies/mcp_spec_validation.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
@@ -595,10 +695,16 @@ blocks:
     parallel: 1
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
+      - name: agent-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_analytics.feature
       - name: analytics-basic
         features:
           - features/gateway/observability/analytics_basic.feature
@@ -612,6 +718,10 @@ blocks:
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
+      - name: mcp-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/mcp_analytics.feature
 
   - name: backend-timeout
     parallel: 2
@@ -637,6 +747,19 @@ blocks:
       - name: interceptor-service
         features:
           - features/gateway/routes-policies/interceptor_service.feature
+
+  - name: ai-workspace-cli
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+    runners:
+      - name: ai-workspace-cli
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
 
   - name: platform-api-sqlite
     parallel: 2

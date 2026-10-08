@@ -3,6 +3,7 @@ package testbench
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +34,14 @@ func (s *fakeService) Stateful() bool        { return s.stateful }
 func (s *fakeService) PartitionKey() string  { return s.partition }
 
 type unpartitionedService fakeService
+
+// tlsService is a fakeService that serves HTTPS with the given configuration.
+type tlsService struct {
+	fakeService
+	config *tls.Config
+}
+
+func (s *tlsService) TLSConfig() *tls.Config { return s.config }
 
 func (s *unpartitionedService) Name() string          { return s.name }
 func (s *unpartitionedService) Port() int             { return s.port }
@@ -346,4 +356,65 @@ func TestFailLogsStructuredDetailAlongsideTheResponse(t *testing.T) {
 	require.Contains(t, out, `"client_id":"test-client"`)
 	require.Contains(t, out, `"auth_style":"basic"`)
 	require.Contains(t, out, `"message":"invalid client credentials"`)
+}
+
+func TestRegistryRejectsATLSServiceWithoutACertificate(t *testing.T) {
+	for name, config := range map[string]*tls.Config{"nil config": nil, "no certificate": {}} {
+		t.Run(name, func(t *testing.T) {
+			err := (&Registry{}).Register(&tlsService{
+				fakeService: fakeService{name: "secure", port: 1, handler: http.NotFoundHandler()},
+				config:      config,
+			})
+			require.ErrorContains(t, err, "has no certificate")
+		})
+	}
+}
+
+func TestServeServesATLSServiceOverHTTPS(t *testing.T) {
+	probe := httptest.NewTLSServer(http.NotFoundHandler())
+	certificate := probe.TLS.Certificates[0]
+	pool := probe.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	probe.Close()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+
+	registry := &Registry{}
+	require.NoError(t, registry.Register(&tlsService{
+		fakeService: fakeService{name: "secure", port: port, handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("secure"))
+		})},
+		config: &tls.Config{Certificates: []tls.Certificate{certificate}},
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, registry, slog.New(slog.NewTextHandler(io.Discard, nil))) }()
+	defer func() {
+		cancel()
+		require.NoError(t, <-done)
+	}()
+
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "example.com"},
+	}}
+	var body []byte
+	require.Eventually(t, func() bool {
+		resp, err := client.Get("https://127.0.0.1:" + strconv.Itoa(port) + "/anything")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		body, _ = io.ReadAll(resp.Body)
+		return resp.StatusCode == http.StatusOK
+	}, 5*time.Second, 50*time.Millisecond)
+	require.Equal(t, "secure", string(body))
+
+	plain := &http.Client{Timeout: time.Second}
+	resp, err := plain.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/anything")
+	if err == nil {
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a plain HTTP request must not be served")
+	}
 }

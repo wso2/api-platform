@@ -37,6 +37,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { MCPServer } from '../../../../utils/types';
@@ -95,6 +96,9 @@ export default function EditExternalServer() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isReadOnlyServer = Boolean(server?.readOnly);
+  // Organization-wide read-only (e.g. an expired trial) disables every edit here;
+  // `server.readOnly` is the separate, artifact-level restriction above.
+  const { readOnly: isReadOnlyOrg, readOnlyMessage } = useResourceLimits();
 
   useEffect(() => {
     if (!serverId || !organizationId) return;
@@ -255,6 +259,9 @@ export default function EditExternalServer() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyOrg ? (
+              <Alert severity="info">{readOnlyMessage}</Alert>
+            ) : null}
             {isReadOnlyServer ? (
               <Alert severity="info">
                 This MCP proxy was created from a gateway. The name and
@@ -275,7 +282,7 @@ export default function EditExternalServer() {
                 fullWidth
                 required
                 value={name}
-                disabled={isReadOnlyServer}
+                disabled={isReadOnlyServer || isReadOnlyOrg}
                 onChange={(e) => {
                   setName(e.target.value);
                   setFieldErrors((prev) => ({ ...prev, name: '' }));
@@ -296,6 +303,7 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={description}
+                disabled={isReadOnlyOrg}
                 onChange={(e) => {
                   setDescription(e.target.value);
                   setFieldErrors((prev) => ({ ...prev, description: '' }));
@@ -318,7 +326,7 @@ export default function EditExternalServer() {
               <TextField
                 fullWidth
                 value={context}
-                disabled={isReadOnlyServer}
+                disabled={isReadOnlyServer || isReadOnlyOrg}
                 onChange={(e) => {
                   setContext(e.target.value);
                   setFieldErrors((prev) => ({ ...prev, context: '' }));
@@ -343,7 +351,7 @@ export default function EditExternalServer() {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
+            disabled={isSubmitting || isReadOnlyOrg || !isFormValid()}
           >
             {isSubmitting ? 'Updating...' : 'Update'}
           </Button>

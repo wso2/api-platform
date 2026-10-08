@@ -4680,7 +4680,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:create
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4722,18 +4721,18 @@ paths:
         Lists the Agent proxies in the caller's organization. Items are the lightweight
         `AgentProxyListItem` projection; read an individual Agent proxy for the full resource,
         including its protocol configuration and any managed Agent Card content. The `protocol`
-        filter, when supplied, is applied to both the returned page and `pagination.total`.
-        Filtering by A2A protocol version is not supported.
+        and `projectId` filters, when supplied, are applied to both the returned page and
+        `pagination.total`. Filtering by A2A protocol version is not supported.
       operationId: listAgentProxies
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
       parameters:
         - $ref: '#/components/parameters/agentProxyProtocol-Q'
+        - $ref: '#/components/parameters/agentProxyProjectId-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
         - $ref: '#/components/parameters/sortBy-Q'
@@ -4750,6 +4749,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4776,7 +4777,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4844,7 +4844,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:read
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4889,7 +4888,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:update
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4934,7 +4932,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:delete
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxies
@@ -4974,16 +4971,16 @@ paths:
           with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
           (the gateway could not retrieve the deployment artifact), or
           `GATEWAY_PROCESSING_ERROR`.
-        - The control plane does not check the target gateway's version. A gateway that
-          predates Agent support never acknowledges the deployment, which ends `FAILED` with
+        - The control plane refuses a gateway that reports an LTS release without the Agent
+          kind with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY` before anything is stored. A
+          gateway that reports no version is taken to be a current build; if it still lacks
+          Agent support it never acknowledges the deployment, which ends `FAILED` with
           `DEPLOYMENT_TIMEOUT`.
       operationId: createAgentProxyDeployment
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:create
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5032,9 +5029,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:read
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5072,9 +5067,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:read
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5106,9 +5099,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:delete
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5145,9 +5136,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:undeploy
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5198,9 +5187,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:deployment:restore
-        - OAuth2Security:
             - ap:agent_proxy:deployment:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5258,9 +5245,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:create
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5306,9 +5291,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:read
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5342,9 +5325,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:read
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5392,9 +5373,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:build:delete
-        - OAuth2Security:
             - ap:agent_proxy:build:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
       tags:
         - Agent Proxy Deployments
@@ -5432,11 +5411,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:read
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5480,11 +5456,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:create
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5537,11 +5510,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:update
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -5594,11 +5564,8 @@ paths:
       security:
         - OAuth2Security:
             - ap:agent_proxy:api_key:delete
-        - OAuth2Security:
             - ap:agent_proxy:api_key:manage
-        - OAuth2Security:
             - ap:agent_proxy:manage
-        - OAuth2Security:
             - ap:api_key:all:manage
       tags:
         - Agent Proxies
@@ -6580,6 +6547,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: List of subscription plans
@@ -9272,6 +9240,10 @@ components:
         expiryTime:
           type: string
           format: date-time
+          nullable: true
+          description: >-
+            Optional plan expiry time. On update, omit the field to keep the current
+            value or send null to clear it.
         organizationId:
           type: string
           pattern: '^[a-z0-9-]+$'
@@ -9699,6 +9671,9 @@ components:
           description: >-
             Error code explaining the failure reason. Null unless status is FAILED (e.g.
             DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text.
+            SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this
+            deployment in its startup sync and a referenced secret could not be resolved; the
+            gateway does not hold the deployment, restore the secret and redeploy.
             Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
             AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
             DEPLOYMENT_ID_MISMATCH.
@@ -13244,6 +13219,20 @@ components:
         type: string
         minLength: 1
         example: "my-api-key"
+
+    agentProxyProjectId-Q:
+      name: projectId
+      in: query
+      required: false
+      description: |
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+        Agent proxies should be returned. Omit to list Agent proxies across every project in the
+        organization. An empty value is rejected with 400, and a handle that does not resolve to a
+        project in the authenticated organization is rejected with 404. The filter applies to the
+        returned page and to `pagination.total` alike.
+      schema:
+        type: string
+        example: "default-project"
 
     agentProxyProtocol-Q:
       name: protocol

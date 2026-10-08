@@ -91,7 +91,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             lastName: req.user.lastName,
             email: req.user.email,
             imageURL: req.user.imageURL,
-            isAdmin: req.user.isAdmin,
+            isAdmin: req.user.isAdmin && !req.foreignOrgSession,
         } : null;
         const resolvedFlows = apiWorkflows.map(flow => {
             const sources = extractSourceDescriptions(flow);
@@ -174,7 +174,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             lastName: req.user.lastName,
             email: req.user.email,
             imageURL: req.user.imageURL,
-            isAdmin: req.user.isAdmin,
+            isAdmin: req.user.isAdmin && !req.foreignOrgSession,
         } : null;
         const rawContent = apiWorkflow.file_content;
         let fileContentStr = '';

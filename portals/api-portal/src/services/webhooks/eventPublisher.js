@@ -17,7 +17,7 @@
  */
 const EventEmitter = require('events');
 const eventDao = require('../../dao/eventDao');
-const { matchSubscribers } = require('./subscriberRegistry');
+const { matchSubscribers, UNREADABLE_SECRET } = require('./subscriberRegistry');
 const { encryptField } = require('./envelopeCrypto');
 const logger = require('../../config/logger');
 
@@ -80,7 +80,7 @@ async function publish(eventType, payload, opts) {
     // When secretFields is provided, encrypt each field per subscriber and write delivery
     // rows inside the same TX so plaintext never leaves this call's stack.
     if (secretFields) {
-        const subscribers = await matchSubscribers(orgId, eventType);
+        const { subscribers, unreadable } = await matchSubscribers(orgId, eventType);
         const perSubscriberEncrypted = {};
         // Subscribers without a secret (or where encryption fully fails) still get
         // delivered — just without the encrypted fields — per the warning logged below.
@@ -118,11 +118,12 @@ async function publish(eventType, payload, opts) {
         }
 
         const deliverableSubscribers = subscribers.filter(s => perSubscriberEncrypted[s.id] || noEncryptedFieldsSubscriberIds.has(s.id));
+        await eventDao.recordUndeliverable(event.uuid, unreadable, UNREADABLE_SECRET, transaction);
         if (deliverableSubscribers.length > 0) {
             await eventDao.createDeliveries(event.uuid, deliverableSubscribers, perSubscriberEncrypted, transaction);
             event.status = 'DISPATCHED';
         } else {
-            event.status = 'ALL_DELIVERED';
+            event.status = unreadable.length > 0 ? 'FAILED' : 'ALL_DELIVERED';
         }
         await event.save({ transaction });
 

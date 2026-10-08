@@ -2862,7 +2862,7 @@ type DeploymentResponse struct {
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `json:"status" yaml:"status"`
 
-	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
+	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment in its startup sync and a referenced secret could not be resolved; the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
 	StatusReason *string `json:"statusReason,omitempty" yaml:"statusReason,omitempty"`
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
@@ -4660,8 +4660,10 @@ type SubscriptionPlan struct {
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
-	DisplayName string     `json:"displayName" yaml:"displayName"`
-	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// ExpiryTime Optional plan expiry time. On update, omit the field to keep the current value or send null to clear it.
+	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
 	// Id Handle (slug) for the subscription plan
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
@@ -4940,6 +4942,9 @@ type AgentProxyApiKeyId = string
 // AgentProxyId defines model for agentProxyId.
 type AgentProxyId = string
 
+// AgentProxyProjectIdQ defines model for agentProxyProjectId-Q.
+type AgentProxyProjectIdQ = string
+
 // AgentProxyProtocolQ defines model for agentProxyProtocol-Q.
 type AgentProxyProtocolQ string
 
@@ -5072,6 +5077,13 @@ type ListAgentProxiesParams struct {
 	// An empty or unsupported value is rejected with 400. The filter applies to the returned
 	// page and to `pagination.total` alike, always within the authenticated organization.
 	Protocol *ListAgentProxiesParamsProtocol `form:"protocol,omitempty" json:"protocol,omitempty" yaml:"protocol,omitempty"`
+
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+	// Agent proxies should be returned. Omit to list Agent proxies across every project in the
+	// organization. An empty value is rejected with 400, and a handle that does not resolve to a
+	// project in the authenticated organization is rejected with 404. The filter applies to the
+	// returned page and to `pagination.total` alike.
+	ProjectId *AgentProxyProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Limit Maximum number of items to return per page.
 	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
@@ -5679,6 +5691,9 @@ type ListSubscriptionPlansParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.

@@ -328,6 +328,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
 | `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
+| `[platform_api.read_only]` | **Temporary** (`TEMP-READ-ONLY-MODE`): freeze every organization except an allowlist during the v1 → v2 migration — see [Read-only mode](#read-only-maintenance-mode--temporary) |
 
 #### Authentication modes
 
@@ -457,6 +458,128 @@ services:
         required: true
         format: raw
 ```
+
+### Gateway version compatibility
+
+Platform API generates deployment artifacts in the shape the newest supported gateway expects and
+adapts them, per deployment, to the release the target gateway reported in its manifest
+(`model.Gateway.Version`). The code lives in `internal/gatewaytranslator`: one file per artifact
+kind under `kinds/`, every gateway version literal in `gwversion/versions.go`, and the engine in
+`translate/`. To see what an artifact kind gets on an older gateway, open `kinds/<kind>.go`.
+
+This covers the LTS gateway releases `1.0.0`, `1.1.0` and `1.2.0`, which use semver. STS releases
+are named after their release date (e.g. `2026.05.13`) and do not share the LTS version line, so
+they are not compared against LTS releases: a gateway reporting a date is treated as a current build
+and receives artifacts unchanged, as before. Per-channel handling is tracked in
+[#3681](https://github.com/wso2/api-platform/issues/3681).
+
+| Gateway release | What changes for it |
+|---|---|
+| `1.0.0`, `1.1.0` | CRD `apiVersion` becomes `v1alpha1`. LLM provider/proxy `globalPolicies`/`operationPolicies` are flattened into `policies`. LLM proxy `additionalProviders` are dropped. MCP upstream URLs lose their trailing `/mcp` (the gateway appends it). LLM upstream auth `type: none` becomes no auth block. `{{ secret "handle" }}` placeholders are replaced with the plaintext value when the gateway fetches the artifact, because these releases cannot pull secrets from the control plane. |
+| `1.0.0`, `1.1.0`, `1.2.0` | MCP `specVersions` collapse to one `specVersion`. MCP upstream auth `type: none` becomes no auth block: no LTS MCP validator accepts an auth block without a header and value. |
+| `1.2.0` | Everything else ships unchanged; the gateway syncs secrets itself. |
+
+Rules the translator follows:
+
+- A kind the gateway does not have (`Agent` on every LTS release, `WebBrokerApi` below `1.2.0`) is
+  **refused** at deploy and restore time with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY`. Nothing
+  is stored and no event is sent.
+- A field the gateway does not know is stripped, and a value it cannot accept (an LLM upstream auth
+  type other than `api-key` on `1.0.0`/`1.1.0`, an MCP upstream whose path does not end in `/mcp`)
+  is shipped unchanged so the gateway reports it. An MCP upstream auth type `other` also ships
+  unchanged with a warning: LTS releases apply it like `api-key`, with the configured header and
+  value. Each such decision is logged once at `WARN` as
+  `Deployment artifact adapted for older gateway`, with `kind`, `field`, `deploymentID`,
+  `gatewayID` and `gatewayVersion`.
+- Stored deployment content always keeps its `{{ secret }}` placeholders; plaintext is produced
+  only in the response to the gateway's fetch. A single fetch whose secret cannot be resolved fails.
+  In a startup-sync batch the deployment is left out instead, so one missing secret cannot block
+  the whole sync, and its status is set to `FAILED` with reason `SECRET_RESOLUTION_FAILED` (the
+  released gateways do not retry a missing batch entry): restore the secret and redeploy. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
+  gateway only through a redeploy, and a `1.2.0` gateway only after its controller reconnects (it
+  caches each secret after the first fetch).
+- A gateway with no reported version (never connected, or a non-semver dev build) is treated as a
+  current build.
+
+Known limitations: a plaintext secret containing `{{` is re-parsed by the `1.1.0` template engine;
+a `1.0.0` gateway keeps only the last policy of a given name on a route, so a global and an
+operation-level policy with the same name (e.g. two `set-headers`) do not both apply there;
+a `1.2.0` gateway with `mcp.append_resource_path_to_backend` enabled receives a doubled `/mcp`
+because Platform API cannot see that toggle.
+
+### Read-only (maintenance) mode — temporary
+
+> **TEMP-READ-ONLY-MODE.** This mode exists only for the Bijira v1 → v2 migration and is
+> removed once the migration is complete. Every line it adds is marked with the
+> `TEMP-READ-ONLY-MODE` comment token; see the removal checklist at the end of this section.
+
+`[platform_api.read_only]` freezes **every** organization except an allowlist:
+
+```toml
+[platform_api.read_only]
+enabled                = true                          # off by default
+writable_organizations = ["<org-uuid>", "<org-uuid>"]  # platform UUIDs, never handles
+```
+
+While enabled, a `POST`/`PUT`/`PATCH`/`DELETE` for an organization that is not listed is
+rejected with **HTTP 503** and the error code `ORGANIZATION_READ_ONLY`; `GET`/`HEAD`/`OPTIONS`
+keep working, so portals stay usable. Listed organizations are unaffected. With the list empty
+every organization is read-only. Entries must be platform organization UUIDs (the
+`organization_uuid` every tenant-scoped table carries — the value the token's organization
+claim resolves to); a non-UUID entry fails startup so a handle passed by mistake cannot
+silently leave an organization read-only. The mode is a restart-time setting: give every
+replica identical values — the startup log announces the mode and the list, which is how
+per-replica drift shows up.
+
+What the freeze covers, beyond the HTTP routes:
+
+- **Gateway-token routes** (`/api/internal/v1/...`): the manifest push and the artifact import
+  return 503 for a frozen organization — 503 deliberately, because the gateway-controller treats
+  401/403/404/409/422 as permanent failures and exits, but retries 503. The gateway sync reads
+  (`deployments/fetch-batch`, `artifacts/exists`) and every `GET` stay available, so a frozen
+  organization's gateways keep running and syncing.
+- **WebSocket connections**: a frozen organization's gateway may still connect, but the
+  `is_active` flag is not updated and in-band `deployment.ack` messages are dropped — an
+  in-flight deployment stays in its transitional status until the mode is lifted.
+- **Background jobs**: the deployment timeout job and the startup LLM-template seeding skip
+  frozen organizations.
+- **API Portal webhook** (`/api/internal/v0.9/webhook/events`): events for a frozen
+  organization are refused with 503 so the portal can retry after maintenance.
+- **Requests without an organization** in the context pass the guard only on the auth skip
+  paths (gateway token, webhook signature, login), where the handler applies the check itself
+  once the organization is known; on any other route a write without an organization is
+  rejected (fail closed). In `internal_token` mode the auth middleware already refuses a token
+  without the organization claim, so this matters for IDP tokens that omit it.
+- **Read-style POSTs** that never write stay available: `rest-apis/validate-openapi`,
+  `mcp-proxies/fetch-server-info`, `agent-proxies/fetch-agent-card`, the two gateway sync reads
+  above, and login. The list is
+  fail-closed (an unlisted read-style POST is blocked) and checked against the registered routes
+  at startup.
+
+Deliberate exceptions: identity and membership bookkeeping rows (`user_idp_references`,
+`user_organization_mappings`) may still be created on a first-seen caller's behalf, including
+by `GET` requests — they are idempotent and derived from the verified token, and the membership
+row is the only way a migrated user sees their organization at all. The EventHub replica-sync
+tables keep churning. External `pdk` plugins call services directly and are not covered by the
+guard (Bijira's cloud build runs none). `POST /organizations` is judged by the caller's token
+organization, so only a writable organization's caller can register a new one.
+
+Removal checklist (once the migration is done):
+
+1. `grep -rn "TEMP-READ-ONLY-MODE" platform-api/`
+2. Delete every file whose header carries the marker: `config/readonly.go`,
+   `internal/apperror/readonly.go`, `internal/middleware/readonly.go`,
+   `internal/handler/gateway_internal_readonly.go`, `internal/handler/websocket_readonly.go`,
+   `internal/service/deployment_timeout_readonly.go`, `internal/webhook/receiver_readonly.go`,
+   and every `*_readonly_test.go`.
+3. Remove each remaining marked line/block, restoring the original statement where the comment
+   names one (`config/config.go`, `config/default_config.go`,
+   `internal/handler/gateway_internal.go`, `internal/handler/websocket.go`,
+   `internal/service/deployment_timeout.go`, `internal/webhook/receiver.go`,
+   `internal/server/server.go`).
+4. Delete the `[platform_api.read_only]` section of `config/config-template.toml` and this
+   README section (plus its row in the table above).
+5. `go build ./... && go vet ./... && go test ./...` — the compiler flags anything missed.
 
 ---
 

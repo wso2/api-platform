@@ -28,12 +28,44 @@ const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
 const { seedDefaultOrg } = require('./services/seederService');
 const orgContext = require('./utils/orgContext');
+const orgDao = require('./dao/organizationDao');
 const constants = require('./utils/constants');
 const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
 
 const PORT = process.env.PORT || config.server.port;
+
+// Multi-organization mode serves, and delivers webhooks for, every organization under
+// this portal_id, so any other deployment started with the same portal_id would have
+// its organizations served by this one too (portals under other portal_ids are
+// unaffected). That can't be detected reliably from here — an auto-provisioned
+// organization and another deployment's configured one look alike — so state the
+// assumption and list what this instance will serve, for the operator to check.
+// Informational only.
+async function logMultiOrganizationMode() {
+    if (!orgContext.isMultiOrganizationEnabled()) return;
+    let orgs = [];
+    try {
+        orgs = await orgDao.list();
+    } catch (err) {
+        logger.warn('Multi-organization: could not list organizations', { error: err.message });
+    }
+    logger.info('Multi-organization mode: serving every organization under this portal_id. This deployment must own ' +
+        'the portal_id — other instances may use it only as replicas with identical configuration ' +
+        '(including security.encryption_key).', {
+        portalId: orgContext.getPortalId(),
+        configured: orgContext.getHandle(),
+        organizations: orgs.map((o) => o.handle),
+    });
+    // Sign-ins naming a shared idp_ref_id are refused as ambiguous, so none of these
+    // organizations can be used until the data is fixed. The identifier itself is left
+    // out of the log (it is the IDP's organization id); the handles are enough to find it.
+    for (const { handles } of orgContext.findSharedIdpRefIds(orgs)) {
+        logger.error('Multi-organization: organizations share an idp_ref_id — sign-ins to them are refused as ambiguous ' +
+            'until one is changed (see docs/administer/multi-organization.md)', { organizations: handles });
+    }
+}
 
 function startBackgroundServices() {
     if (config.designMode?.enabled) return;
@@ -158,6 +190,7 @@ async function startServer() {
     // above and the designMode branch in app.js.
     if (!config.designMode?.enabled) {
         await seedDefaultOrg();
+        await logMultiOrganizationMode();
     }
 
     if (!config.server.https.enabled || config.designMode?.enabled) {

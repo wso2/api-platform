@@ -52,6 +52,7 @@ tmp/
 *.test
 *.out
 **/unit-test-coverage.txt
+**/unit-test-coverage.info
 **/integration-test-coverage.txt
 **/integration-test-coverage.html
 

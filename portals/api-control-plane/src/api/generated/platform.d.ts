@@ -152,9 +152,12 @@ export interface paths {
         put?: never;
         /**
          * Validate an OpenAPI specification
-         * @description Validates an OpenAPI 3.x or Swagger 2.x specification without creating
-         *     or modifying any resource. Returns a structured result indicating whether
-         *     the spec is valid and, if not, the list of validation errors.
+         * @description Validates an OpenAPI 3.x specification without creating
+         *     or modifying any resource. The spec may be supplied either as a
+         *     multipart file upload (`file`) or as a URL (`url`) that the backend
+         *     fetches server-side. Exactly one of `file` or `url` is required.
+         *     Returns a structured result indicating whether the spec is valid and,
+         *     if not, the list of validation errors.
          */
         post: operations["ValidateOpenAPISpec"];
         delete?: never;
@@ -174,9 +177,12 @@ export interface paths {
         put?: never;
         /**
          * Create a REST API from an OpenAPI specification
-         * @description Creates a new REST API by parsing an OpenAPI 3.x or Swagger 2.x specification supplied
-         *     as a multipart file upload The backend extracts operations from the spec,
-         *     creates the API, and persists the raw spec as the API definition document.
+         * @description Creates a new REST API by parsing an OpenAPI 3.x
+         *     specification. The spec may be supplied either as a multipart file
+         *     upload (`file`) or as a URL (`url`) that the backend fetches
+         *     server-side. Exactly one of `file` or `url` is required. The backend
+         *     extracts operations from the spec, creates the API, and persists the
+         *     raw spec as the API definition document.
          */
         post: operations["ImportOpenAPI"];
         delete?: never;
@@ -1885,6 +1891,10 @@ export interface paths {
          *     auth configuration, and `auth.type: none` removes auth; an auth configuration that
          *     changes without complete credentials is rejected. There is no implicit PATCH
          *     behaviour.
+         *
+         *     For a gateway-originated Agent proxy (`readOnly: true`), only `description` and
+         *     `associatedGateways` are replaced from the body; every other field keeps the value
+         *     imported from the gateway, and `readOnly` in the body is ignored.
          */
         put: operations["updateAgentProxy"];
         post?: never;
@@ -2030,6 +2040,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-proxies/{agentProxyId}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get builds for an Agent proxy
+         * @description Lists the Agent proxy's builds, newest first. The rendered artifact itself is not
+         *     included; a listing is for choosing which build to deploy.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["listAgentProxyBuilds"];
+        put?: never;
+        /**
+         * Prepare a build of an Agent proxy
+         * @description Renders the Agent proxy's current definition into an immutable snapshot and stores it,
+         *     without deploying it anywhere.
+         *
+         *     Preparing and deploying are separate steps so that what reaches a gateway is a
+         *     snapshot taken at a known moment: a deploy that names a build cannot silently
+         *     pick up edits made to the Agent proxy since, and the same build can be deployed to
+         *     any number of gateways, and promoted onward, without being re-rendered.
+         *
+         *     The artifact is stored at the platform's own data version; it is translated to
+         *     the target gateway's version when it is deployed.
+         *
+         *     An Agent proxy keeps at most `deployments.max_builds_per_api` builds. Preparing
+         *     another first removes the oldest builds no current deployment is using; if every one
+         *     is in use, the request is refused with a `409` and a build has to be deleted to
+         *     make room.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        post: operations["createAgentProxyBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-proxies/{agentProxyId}/builds/{buildId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent proxy build by ID
+         * @description Retrieves metadata for a single build.
+         *     Access is validated against the organization in the JWT token.
+         */
+        get: operations["getAgentProxyBuild"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an Agent proxy build
+         * @description Deletes one of the Agent proxy's builds, freeing a slot when the Agent proxy is at its
+         *     build limit.
+         *
+         *     Refused with a conflict while a gateway is serving the build — that is, while
+         *     any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+         *     first.
+         *
+         *     Undeployed, failed and superseded deployments release the build. They keep the
+         *     artifact they were created with, so they can still be redeployed, but they stop
+         *     reporting a `buildId` and can no longer be promoted to a later environment.
+         *
+         *     Access is validated against the organization in the JWT token.
+         */
+        delete: operations["deleteAgentProxyBuild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agent-proxies/{agentProxyId}/api-keys": {
         parameters: {
             query?: never;
@@ -2085,13 +2173,14 @@ export interface paths {
         put: operations["updateAgentProxyAPIKey"];
         post?: never;
         /**
-         * Revoke an API key for an Agent proxy
-         * @description Revokes the API key in the control plane, with the same behavior as REST API keys.
-         *     Revocation propagates to the gateways through the existing gateway event mechanism, so
-         *     a 204 confirms the control-plane revocation, not that every gateway has already dropped
-         *     the key. Only the key's creator may revoke it, unless the caller holds
-         *     `ap:api_key:all:manage`. The Agent proxy must be associated with at least one gateway;
-         *     otherwise the revocation is refused with 503.
+         * Delete an API key for an Agent proxy
+         * @description Deletes the API key from the control plane and records the deletion in the audit log.
+         *     A revocation is then propagated to the gateways the
+         *     Agent proxy is associated with through the existing gateway event mechanism, so a 204
+         *     confirms the control-plane deletion, not that every gateway has already dropped the key.
+         *     An Agent proxy associated with no gateway has nothing to notify, and the key is still
+         *     deleted. Only the key's creator may delete it, unless the caller holds
+         *     `ap:api_key:all:manage`.
          */
         delete: operations["revokeAgentProxyAPIKey"];
         options?: never;
@@ -3725,12 +3814,24 @@ export interface components {
             revokedAt?: string | null;
         };
         CreateRESTAPIRequest: components["schemas"]["RESTAPI"] & Record<string, never>;
+        /**
+         * @description Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
+         *     `file` or `url` must be provided; the backend rejects requests that
+         *     supply both or neither.
+         */
         ImportOpenAPIRequest: {
             /**
              * Format: binary
-             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             * @description OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
              */
-            file: string;
+            file?: string;
+            /**
+             * Format: uri
+             * @description HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+             *     from.
+             * @example https://petstore3.swagger.io/api/v3/openapi.json
+             */
+            url?: string;
             /**
              * @description Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
              * @example my-rest-api-handle
@@ -3754,12 +3855,25 @@ export interface components {
             projectId: string;
             upstream: components["schemas"]["Upstream"];
         };
+        /**
+         * @description Multipart form for `POST /rest-apis/validate-openapi` and
+         *     `PUT /rest-apis/{restApiId}/openapi`. Exactly one of `file` or `url`
+         *     must be provided; the backend rejects requests that supply both or
+         *     neither.
+         */
         OpenAPISpecFileRequest: {
             /**
              * Format: binary
-             * @description OpenAPI 3.x or Swagger 2.x spec file (.json, .yaml, .yml)
+             * @description OpenAPI 3.x spec file (.json, .yaml, .yml). Mutually exclusive with `url`.
              */
-            file: string;
+            file?: string;
+            /**
+             * Format: uri
+             * @description HTTPS (or HTTP, in dev) URL the backend fetches the OpenAPI spec
+             *     from. Mutually exclusive with `file`.
+             * @example https://petstore3.swagger.io/api/v3/openapi.json
+             */
+            url?: string;
         };
         ValidateOpenAPIResponse: {
             /** @description Whether the spec passed validation */
@@ -3767,6 +3881,11 @@ export interface components {
             /** @description Validation errors; empty when isValid is true */
             errors: components["schemas"]["OpenAPIValidationError"][];
             info?: components["schemas"]["OpenAPISpecInfo"];
+            /**
+             * @description The exact bytes the validator ran against. Always echoed for file
+             *     uploads; for URL sources it is echoed only when isValid is true.
+             */
+            content?: string;
         };
         OpenAPIValidationError: {
             /** @description Human-readable description of the validation error */
@@ -3975,8 +4094,11 @@ export interface components {
             displayName: string;
             /** @description Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple. */
             limits?: components["schemas"]["SubscriptionPlanLimit"][];
-            /** Format: date-time */
-            expiryTime?: string;
+            /**
+             * Format: date-time
+             * @description Optional plan expiry time. On update, omit the field to keep the current value or send null to clear it.
+             */
+            expiryTime?: string | null;
             /**
              * @description Handle (URL-friendly slug) of the organization this plan belongs to
              * @example acme
@@ -5520,10 +5642,26 @@ export interface components {
             vhost?: string;
             upstream: components["schemas"]["Upstream"];
             /**
-             * @description MCP specification version supported by this proxy
-             * @enum {string}
+             * @deprecated
+             * @description DEPRECATED - use mcpSpecVersions. Still honoured when mcpSpecVersions is absent.
              */
-            mcpSpecVersion?: "2025-06-18" | "2025-11-25";
+            mcpSpecVersion?: string;
+            /**
+             * @description MCP specification versions this proxy declares. Any MCP revision date is accepted.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            mcpSpecVersions?: string[];
+            /**
+             * @description MCP specification versions the upstream server reported when it was discovered by /mcp-proxies/fetch-server-info. A snapshot of what the server said, recorded for reference: it restricts nothing and is not sent to a gateway.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            upstreamMcpSpecVersions?: string[];
             /** @description List of policies to be applied */
             policies?: components["schemas"]["Policy"][];
             /**
@@ -5589,8 +5727,19 @@ export interface components {
              * @enum {string}
              */
             status?: "pending" | "deployed" | "failed";
-            /** @example 2025-11-25 */
+            /**
+             * @deprecated
+             * @description DEPRECATED - use mcpSpecVersions.
+             * @example 2025-11-25
+             */
             mcpSpecVersion?: string;
+            /**
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            mcpSpecVersions?: string[];
             /**
              * Format: date-time
              * @example 2025-11-25T10:30:00Z
@@ -5643,6 +5792,16 @@ export interface components {
         } | unknown | unknown;
         MCPServerInfoFetchResponse: {
             serverInfo?: Record<string, never>;
+            /**
+             * @description MCP protocol versions the server reported. A modern server answers server/discover
+             *     with the full set; a legacy one yields the single version its initialize handshake
+             *     negotiated. Absent when neither could be determined.
+             * @example [
+             *       "2025-06-18",
+             *       "2026-07-28"
+             *     ]
+             */
+            supportedVersions?: string[];
             tools?: Record<string, never>[];
             resources?: Record<string, never>[];
             prompts?: Record<string, never>[];
@@ -5865,7 +6024,7 @@ export interface components {
         /** API Portal detail */
         ApiPortalResponse: {
             /**
-             * @description Handle (URL-friendly slug) of the API Portal, primary identifier.
+             * @description URL-friendly identifier for the portal. Equal to the handle chosen at creation time; immutable thereafter.
              * @example acme-portal
              */
             readonly id: string;
@@ -5874,11 +6033,6 @@ export interface components {
              * @example Acme Developer Portal
              */
             name: string;
-            /**
-             * @description URL-friendly slug. Immutable after creation. Equal to `id`.
-             * @example acme-portal
-             */
-            readonly handle: string;
             description?: string | null;
             /**
              * Format: uri
@@ -5903,17 +6057,20 @@ export interface components {
          * @description Lightweight projection returned in collection responses (excludes the metadata blob).
          */
         ApiPortalListItem: {
-            /** @example acme-portal */
+            /**
+             * @description URL-friendly identifier for the portal. Equal to the handle chosen at creation time.
+             * @example acme-portal
+             */
             id: string;
             /** @example Acme Developer Portal */
             name: string;
-            /** @example acme-portal */
-            handle: string;
             description?: string | null;
             /** Format: uri */
             url: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: date-time */
+            updatedAt?: string | null;
         };
         /** Create API Portal request */
         CreateApiPortalRequest: {
@@ -6050,7 +6207,7 @@ export interface components {
              */
             readonly updatedBy?: string;
             /**
-             * @description True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
+             * @description True if the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane. False for control-plane created Agent proxies.
              * @example false
              */
             readonly readOnly?: boolean;
@@ -6316,7 +6473,7 @@ export interface components {
             /** @example john.doe */
             readonly updatedBy?: string;
             /**
-             * @description True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+             * @description True when the Agent proxy originated from a data-plane gateway (origin gateway_api); only its description and gateway associations are editable in the control plane.
              * @example false
              */
             readonly readOnly?: boolean;
@@ -10688,6 +10845,127 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    listAgentProxyBuilds: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Builds retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Build prepared successfully */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteAgentProxyBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Agent Proxy ID** consisting of the **handle** (unique slug identifier) of the Agent proxy. */
+                agentProxyId: components["parameters"]["agentProxyId"];
+                /** @description Identifier of the build */
+                buildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Build deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     listAgentProxyAPIKeys: {
         parameters: {
             query?: {
@@ -10809,7 +11087,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description API key revoked successfully (no content) */
+            /** @description API key deleted successfully (no content) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10820,7 +11098,6 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
-            503: components["responses"]["GatewayConnectionUnavailable"];
         };
     };
     ListGateways: {
@@ -11630,6 +11907,8 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;

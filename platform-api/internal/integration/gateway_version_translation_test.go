@@ -90,8 +90,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	newGw120 := seedGateway(t, it, orgID, "1.2.0")
 	artifactForNew := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, newGw120))
-	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetNew, artifactForNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, newGw120AsVersion(t, it, newGw120), artifactForNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactForNew.ApiVersion != constants.GatewayApiVersion {
@@ -100,8 +99,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	oldGw110 := seedGateway(t, it, orgID, "1.1.0")
 	artifactForOld := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, oldGw110))
-	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetOld, artifactForOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, newGw120AsVersion(t, it, oldGw110), artifactForOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactForOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -155,8 +153,7 @@ func TestIT_MCPProxy_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifact := &model.MCPProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.MCPProxy}
-	target := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.MCPProxy, gatewaytranslator.PlatformDataVersion(stored.DataVersion), target, artifact); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.MCPProxy, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwOld), artifact); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifact.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -214,8 +211,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwNew := seedGateway(t, it, orgID, "1.2.0")
 	artifactNew := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactNew.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetNew, artifactNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, newGw120AsVersion(t, it, gwNew), artifactNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactNew.ApiVersion != constants.GatewayApiVersion {
@@ -229,8 +225,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifactOld := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactOld.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetOld, artifactOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, newGw120AsVersion(t, it, gwOld), artifactOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
@@ -291,8 +286,7 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 		Name:  "llm-cost-based-ratelimit",
 		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 	}}
-	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetNew, artifactNew); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwNew), artifactNew); err != nil {
 		t.Fatalf("[%s] Translate legacy source to 1.2.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactNew.ApiVersion != constants.GatewayApiVersion {
@@ -312,8 +306,7 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 		Name:  "llm-cost-based-ratelimit",
 		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 	}}
-	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
-	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetOld, artifactOld); err != nil {
+	if _, err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), newGw120AsVersion(t, it, gwOld), artifactOld); err != nil {
 		t.Fatalf("[%s] Translate legacy source to 1.1.0 gateway failed: %v", it.driver, err)
 	}
 	if artifactOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {

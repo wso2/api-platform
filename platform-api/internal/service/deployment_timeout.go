@@ -38,6 +38,7 @@ type DeploymentTimeoutConfig struct {
 type DeploymentTimeoutService struct {
 	deploymentRepo repository.DeploymentRepository
 	config         DeploymentTimeoutConfig
+	readOnly       readOnlyMode // TEMP-READ-ONLY-MODE: remove with deployment_timeout_readonly.go
 	slogger        *slog.Logger
 }
 
@@ -98,9 +99,17 @@ func (s *DeploymentTimeoutService) processStaleStatuses(timeout time.Duration) {
 		return
 	}
 
-	s.slogger.Info("Processing stale deployment statuses", "count", len(stale))
+	// TEMP-READ-ONLY-MODE: when removing the mode, replace this block (down to the
+	// "end" marker) with the original two lines:
+	//   s.slogger.Info("Processing stale deployment statuses", "count", len(stale))
+	//   for _, entry := range stale {
+	actionable, skipped := s.partitionReadOnly(stale)
+	if len(actionable) == 0 {
+		return
+	}
+	s.slogger.Info("Processing stale deployment statuses", "count", len(actionable), "skippedReadOnly", skipped)
 
-	for _, entry := range stale {
+	for _, entry := range actionable { // TEMP-READ-ONLY-MODE: end
 		newStatus := model.DeploymentStatusFailed
 		statusReason := model.DeploymentErrorTimeout
 

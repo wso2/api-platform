@@ -26,6 +26,12 @@ const (
 	// DeploymentErrorIDMismatch is acked by a gateway asked to undeploy a
 	// deployment other than the one it holds.
 	DeploymentErrorIDMismatch = "DEPLOYMENT_ID_MISMATCH"
+	// DeploymentErrorSecretResolutionFailed is set by platform-api itself when
+	// a gateway that needs secrets inlined fetched this deployment in a batch
+	// and a referenced secret could not be resolved (deleted or deprecated).
+	// The deployment was left out of the batch, so the gateway does not hold
+	// it; restore the secret and redeploy.
+	DeploymentErrorSecretResolutionFailed = "SECRET_RESOLUTION_FAILED"
 )
 
 // Agent proxy failure reasons acked by the gateway, as the ack's errorCode

@@ -56,6 +56,11 @@ const plans: SubscriptionPlanFixture[] = [
 
 let requests: Recorder;
 
+const manyPlans = (count: number): SubscriptionPlanFixture[] =>
+  Array.from({ length: count }, (_, index) =>
+    aSubscriptionPlan({ displayName: `Plan ${index + 1}`, id: `plan-${index + 1}` }),
+  );
+
 /**
  * The page's hooks read `ApiScopeContext`, not the console scope, so the
  * provider has to be mounted here — without it the query stays
@@ -90,17 +95,73 @@ describe('SubscriptionPlansSettingsPage', () => {
     expect(screen.getByText('req · ∞')).toBeInTheDocument();
   });
 
-  it('filters the loaded list by name without asking the server again', async () => {
+  it('searches on the server, not only in the plans already loaded', async () => {
     server.use(collection(PLANS, plans, { record: requests }));
     const { user } = renderPage();
 
     await screen.findByText('Bronze');
-    const requestsBefore = requests.count();
     await user.type(screen.getByPlaceholderText('Search plans'), 'gold');
 
-    expect(screen.getByText('Gold')).toBeInTheDocument();
+    await waitFor(() => expect(requests.last()!.params.get('query')).toBe('gold'));
+    expect(await screen.findByText('Gold')).toBeInTheDocument();
     expect(screen.queryByText('Bronze')).not.toBeInTheDocument();
-    expect(requests.count()).toBe(requestsBefore);
+  });
+
+  it('pages through plans on the server, 5 at a time by default', async () => {
+    server.use(collection(PLANS, manyPlans(12), { record: requests }));
+    const { user } = renderPage();
+
+    expect(await screen.findByText('Plan 1')).toBeInTheDocument();
+    expect(screen.queryByText('Plan 6')).not.toBeInTheDocument();
+    expect(screen.getByText('1–5 of 12')).toBeInTheDocument();
+    expect(requests.last()!.params.get('limit')).toBe('5');
+    expect(requests.last()!.params.get('offset')).toBe('0');
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+
+    expect(await screen.findByText('Plan 6')).toBeInTheDocument();
+    expect(screen.queryByText('Plan 1')).not.toBeInTheDocument();
+    expect(screen.getByText('6–10 of 12')).toBeInTheDocument();
+    expect(requests.last()!.params.get('offset')).toBe('5');
+  });
+
+  it('changes the page size from the selector and returns to the first page', async () => {
+    server.use(collection(PLANS, manyPlans(30), { record: requests }));
+    const { user } = renderPage();
+
+    await screen.findByText('Plan 1');
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByText('Plan 6');
+
+    await user.click(screen.getByRole('combobox', { name: /Plans per page/ }));
+    await user.click(await screen.findByRole('option', { name: '15' }));
+
+    expect(await screen.findByText('1–15 of 30')).toBeInTheDocument();
+    expect(requests.last()!.params.get('limit')).toBe('15');
+    expect(requests.last()!.params.get('offset')).toBe('0');
+  });
+
+  it('starts a new search from the first page', async () => {
+    server.use(collection(PLANS, manyPlans(12), { record: requests }));
+    const { user } = renderPage();
+
+    await screen.findByText('Plan 1');
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    await screen.findByText('Plan 6');
+    expect(requests.last()!.params.get('offset')).toBe('5');
+
+    await user.type(screen.getByPlaceholderText('Search plans'), 'Plan 1');
+
+    await waitFor(() => expect(requests.last()!.params.get('query')).toBe('Plan 1'));
+    expect(requests.last()!.params.get('offset')).toBe('0');
+  });
+
+  it('hides the pager when everything fits on one page', async () => {
+    server.use(collection(PLANS, plans));
+    renderPage();
+
+    await screen.findByText('Bronze');
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
   });
 
   it('shows the create prompt when the organization has no plans', async () => {

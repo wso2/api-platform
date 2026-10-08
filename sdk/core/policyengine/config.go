@@ -28,6 +28,15 @@ type PolicyChain struct {
 
 	// Policies to execute for this route (in order)
 	Policies []PolicyInstance `json:"policies" yaml:"policies"`
+
+	// FaultPolicies are the policies to execute only when the request is failing, in
+	// order. Kept in their own field rather than mixed into Policies so the engine can
+	// keep them out of the normal request/response phases entirely — a fault policy that
+	// could also run on a successful response would be a different feature.
+	//
+	// Omitted when empty, so a route configuring none produces the same snapshot it did
+	// before this field existed.
+	FaultPolicies []PolicyInstance `json:"faultPolicies,omitempty" yaml:"faultPolicies,omitempty"`
 }
 
 // PolicyInstance represents a single policy instance in a chain.
