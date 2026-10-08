@@ -28,6 +28,7 @@ import (
 	"github.com/moesif/moesifapi-go"
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
@@ -204,14 +205,13 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// and has emitted the (already allow/deny filtered) header set into event metadata.
 	// When it is not configured, no headers are sent at all.
 	//
-	// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] arrives as
-	// EITHER a map[string]string (the steady-state correlation-store-hit path -- see
-	// internal/analytics/correlation and prepareAnalyticEvent -- already decoded, no
-	// JSON step needed) or a string (the fallback path: JSON-encoded, decoded from the
-	// access-log entry's own metadata exactly as before this store existed). Moesif's
-	// own model wants map[string]interface{}, so the typed map is copied in.
+	// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] arrives in
+	// any of the shapes hdrs.Flatten handles: a map from the correlation store, or a
+	// JSON string from the access-log entry's own metadata. A repeated header keeps
+	// every value, joined with ", ". Moesif's own model wants
+	// map[string]interface{}, so the flattened map is copied in.
 	headers := map[string]interface{}{}
-	if h := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); len(h) > 0 {
+	if h := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); len(h) > 0 {
 		slog.Debug("Request headers (PUBLISHER): ", "requestHeaders", h)
 		for k, v := range h {
 			headers[k] = v
@@ -219,7 +219,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 
 	rspHeaders := map[string]interface{}{}
-	if h := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); len(h) > 0 {
+	if h := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); len(h) > 0 {
 		slog.Debug("Response headers (PUBLISHER): ", "responseHeaders", h)
 		for k, v := range h {
 			rspHeaders[k] = v

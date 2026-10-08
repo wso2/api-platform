@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
@@ -40,12 +41,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestStore_PutGet_Hit(t *testing.T) {
+func TestStore_PutTake_Hit(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
 	p := Payload{RequestHeaders: map[string]string{"host": "example.com"}}
 	s.Put("req-1", p)
 
-	got, ok := s.Get("req-1")
+	got, ok := s.Take("req-1")
 	if !ok {
 		t.Fatal("expected a hit")
 	}
@@ -54,19 +55,19 @@ func TestStore_PutGet_Hit(t *testing.T) {
 	}
 }
 
-func TestStore_Get_MissForUnknownKey(t *testing.T) {
+func TestStore_Take_MissForUnknownKey(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
-	if _, ok := s.Get("never-written"); ok {
+	if s.Has("never-written") {
 		t.Fatal("expected a miss for a key never written")
 	}
 }
 
-func TestStore_Get_MissForEmptyKey(t *testing.T) {
+func TestStore_Take_MissForEmptyKey(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
 	// An empty key models the ext_proc side's uuid fallback when x-request-id was
 	// absent -- the write path must never call Put with it (see the kernel-side
-	// skip logic), but Get must also refuse to "match" on it defensively.
-	if _, ok := s.Get(""); ok {
+	// skip logic), but Take must also refuse to "match" on it defensively.
+	if s.Has("") {
 		t.Fatal("expected a miss for an empty key")
 	}
 }
@@ -74,7 +75,7 @@ func TestStore_Get_MissForEmptyKey(t *testing.T) {
 func TestStore_Put_EmptyPayloadIsNoop(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
 	s.Put("req-1", Payload{})
-	if _, ok := s.Get("req-1"); ok {
+	if s.Has("req-1") {
 		t.Fatal("expected an empty payload to never be stored")
 	}
 }
@@ -82,7 +83,7 @@ func TestStore_Put_EmptyPayloadIsNoop(t *testing.T) {
 func TestStore_Put_EmptyKeyIsNoop(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
 	s.Put("", Payload{RequestHeaders: map[string]string{"a": "b"}})
-	if _, ok := s.Get(""); ok {
+	if s.Has("") {
 		t.Fatal("expected an empty key to never be stored")
 	}
 }
@@ -94,14 +95,14 @@ func TestStore_TTLMakesCompletedEntryReclaimableNotInvisible(t *testing.T) {
 	s.Put("req-1", Payload{RequestHeaders: map[string]string{"host": "example.com"}})
 
 	time.Sleep(30 * time.Millisecond)
-	if _, ok := s.Get("req-1"); !ok {
+	if !s.Has("req-1") {
 		t.Fatal("past the TTL but not reclaimed: must still be readable")
 	}
 
 	if !s.Merge("req-2", Payload{RequestHeaders: map[string]string{"host": "b"}}) {
 		t.Fatal("expected the stale completed entry's slot to be reclaimed")
 	}
-	if _, ok := s.Get("req-1"); ok {
+	if s.Has("req-1") {
 		t.Fatal("expected req-1 to have been reclaimed")
 	}
 }
@@ -121,7 +122,7 @@ func TestStore_FullShardRefusesInsteadOfEvicting(t *testing.T) {
 		t.Fatal("expected a full shard to refuse a new entry")
 	}
 	for i := 0; i < capacity; i++ {
-		if _, ok := s.Get(fmt.Sprintf("req-%d", i)); !ok {
+		if !s.Has(fmt.Sprintf("req-%d", i)) {
 			t.Fatalf("expected unread req-%d to survive", i)
 		}
 	}
@@ -161,7 +162,7 @@ func TestStore_PutTwiceUpdatesInPlace(t *testing.T) {
 	s.Put("req-1", Payload{RequestHeaders: map[string]string{"v": "1"}})
 	s.Put("req-1", Payload{RequestHeaders: map[string]string{"v": "2"}})
 
-	got, ok := s.Get("req-1")
+	got, ok := s.Take("req-1")
 	if !ok {
 		t.Fatal("expected a hit")
 	}
@@ -170,11 +171,11 @@ func TestStore_PutTwiceUpdatesInPlace(t *testing.T) {
 	}
 }
 
-// TestStore_ConcurrentPutGet exercises concurrent writers and readers across many
+// TestStore_ConcurrentPutHas exercises concurrent writers and readers across many
 // shards under -race: each writer only ever writes (and each reader only ever
 // reads) its own key, so no assertion about content is made beyond "no race and
 // no panic" -- the correctness of individual Put/Get pairs is covered above.
-func TestStore_ConcurrentPutGet(t *testing.T) {
+func TestStore_ConcurrentPutHas(t *testing.T) {
 	s := NewStore(1000, 200*time.Millisecond, 16)
 
 	const goroutines = 50
@@ -191,7 +192,7 @@ func TestStore_ConcurrentPutGet(t *testing.T) {
 					RequestHeaders:  map[string]string{"host": "example.com"},
 					ResponseHeaders: map[string]string{"content-type": "application/json"},
 				})
-				s.Get(key)
+				s.Has(key)
 			}
 		}(g)
 	}
@@ -206,24 +207,26 @@ func TestStore_Take_RemovesEntryAndFreesSlot(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "1", got.RequestHeaders["h"])
 
-	_, ok = s.Get("a")
-	assert.False(t, ok, "taken entry must be gone")
+	assert.False(t, s.Has("a"), "taken entry must be gone")
 
 	// The single ring slot was freed by Take, so this write must not count as an
 	// eviction of "a" and must not disturb a different, live key.
 	s.Put("b", Payload{RequestHeaders: map[string]string{"h": "2"}})
-	got, ok = s.Get("b")
+	got, ok = s.Take("b")
 	require.True(t, ok)
 	assert.Equal(t, "2", got.RequestHeaders["h"])
 }
 
-func TestStore_Get_DoesNotRemove(t *testing.T) {
+func TestStore_Has_DoesNotRemove(t *testing.T) {
 	s := NewStoreWithBodyLimits(10, time.Minute, 1, 10, 100)
 	s.Put("a", Payload{RequestBody: "x"})
-	_, ok := s.Get("a")
+	assert.True(t, s.Has("a"))
+	assert.True(t, s.Has("a"), "Has only reports presence")
+	got, ok := s.Take("a")
 	require.True(t, ok)
-	_, ok = s.Get("a")
-	assert.True(t, ok, "Get only peeks")
+	assert.Equal(t, "x", got.RequestBody)
+	assert.False(t, s.Has("a"))
+	assert.False(t, s.Has(""))
 }
 
 // Over the byte budget, a body is refused unless stale completed bodies can be
@@ -232,15 +235,14 @@ func TestStore_BodyBudget_RefusesOrReclaimsStale(t *testing.T) {
 	s := NewStoreWithBodyLimits(100, 10*time.Millisecond, 1, 10, 10)
 	require.True(t, s.Merge("in-flight", Payload{RequestBody: "123456"}))
 	assert.False(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "no room, and the existing body is in flight")
-	_, ok := s.Get("new")
+	_, ok := s.Take("new")
 	assert.False(t, ok, "a refused merge stores nothing")
 	assert.True(t, s.Merge("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}}), "headers are not charged")
 
 	s.Complete("in-flight")
 	time.Sleep(30 * time.Millisecond)
 	assert.True(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "stale completed body reclaimed")
-	_, ok = s.Get("in-flight")
-	assert.False(t, ok)
+	assert.False(t, s.Has("in-flight"))
 	assert.Equal(t, int64(6), s.shards[0].bodyBytes)
 }
 
@@ -258,8 +260,7 @@ func TestStore_BodyBudget_TakeReleasesBytes(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
 	s.Put("b", Payload{RequestBody: "abcdef"})
-	_, ok = s.Get("b")
-	assert.True(t, ok)
+	assert.True(t, s.Has("b"))
 }
 
 func TestStore_BodyBudget_UpdateInPlaceAccounting(t *testing.T) {
@@ -280,4 +281,77 @@ func TestStore_MaxPayloadBytes(t *testing.T) {
 	assert.Equal(t, 100, NewStoreWithBodyLimits(10, time.Minute, 1, 100, 1000).MaxPayloadBytes())
 	// 4 shards x 50 bytes: a body larger than one shard's budget is capped.
 	assert.Equal(t, 50, NewStoreWithBodyLimits(10, time.Minute, 4, 100, 200).MaxPayloadBytes())
+}
+
+// An entry that never completes is not reclaimable by the TTL, only by the hard
+// cap -- the access-log entry of a long streamed response must still find it.
+func TestStore_IncompleteEntryOnlyReclaimedAfterHardCap(t *testing.T) {
+	s := NewStore(1, time.Nanosecond, 1)
+	require.True(t, s.Merge("streaming", Payload{RequestHeaders: map[string]string{"h": "1"}}))
+	time.Sleep(time.Millisecond)
+	assert.False(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}),
+		"past the TTL but never completed: not reclaimable")
+
+	s.maxIncompleteAge = time.Millisecond
+	time.Sleep(2 * time.Millisecond)
+	assert.True(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}), "past the hard cap: reclaimed")
+	assert.False(t, s.Has("streaming"))
+}
+
+func TestStore_HardCapIsAtLeastTTL(t *testing.T) {
+	assert.Equal(t, incompleteEntryMaxAge, NewStore(10, time.Minute, 1).maxIncompleteAge)
+	assert.Equal(t, 2*time.Hour, NewStore(10, 2*time.Hour, 1).maxIncompleteAge)
+}
+
+func totalSlots(s *Store) int {
+	n := 0
+	for _, sh := range s.shards {
+		n += len(sh.ring)
+	}
+	return n
+}
+
+// More shards than capacity must not silently raise the capacity to one slot per
+// shard; the shard count is reduced instead.
+func TestStore_ShardsNeverExceedCapacity(t *testing.T) {
+	s := NewStore(4, time.Minute, 64)
+	assert.Equal(t, 4, len(s.shards))
+	assert.Equal(t, 4, totalSlots(s))
+
+	s = NewStore(5, time.Minute, 64)
+	assert.Equal(t, 4, len(s.shards), "largest power of two within capacity")
+	assert.LessOrEqual(t, totalSlots(s), 5)
+}
+
+func TestStore_ShardCountIsCapped(t *testing.T) {
+	s := NewStore(10_000_000, time.Minute, 1<<40)
+	assert.Equal(t, config.MaxCorrelationStoreShards, len(s.shards))
+}
+
+func TestNextPowerOfTwo(t *testing.T) {
+	assert.Equal(t, 1, nextPowerOfTwo(1))
+	assert.Equal(t, 32, nextPowerOfTwo(17))
+	assert.Equal(t, 64, nextPowerOfTwo(64))
+	done := make(chan int, 1)
+	go func() { done <- nextPowerOfTwo(1<<62 + 1) }()
+	select {
+	case got := <-done:
+		assert.Equal(t, config.MaxCorrelationStoreShards, got, "huge inputs are capped, never loop")
+	case <-time.After(time.Second):
+		t.Fatal("nextPowerOfTwo did not return for a huge input")
+	}
+}
+
+func TestStore_IgnoresPath(t *testing.T) {
+	s := NewStoreFromConfig(config.CollectorConfig{
+		CorrelationStore:   config.CorrelationStoreConfig{Capacity: 10, TTL: time.Minute, Shards: 1},
+		IgnorePathPrefixes: []string{"/health", "  ", " /metrics "},
+	})
+	assert.True(t, s.IgnoresPath("/health"))
+	assert.True(t, s.IgnoresPath("/health/live?x=1"))
+	assert.True(t, s.IgnoresPath("/metrics"))
+	assert.False(t, s.IgnoresPath("/api/health"))
+	assert.False(t, s.IgnoresPath(""), "blank prefixes are dropped, never matching everything")
+	var nilStore *Store
+	assert.False(t, nilStore.IgnoresPath("/health"))
 }

@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 )
 
 // Constants for analytics metadata
@@ -142,14 +143,19 @@ func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) b
 // built, before that response is sent, so Envoy cannot emit the request's
 // access-log entry before the data is in the store. A field the store refuses (no
 // free slot, a body over the size or byte budget) or a header value of an
-// unrecognised shape stays in metadata, the pre-store path.
+// unrecognised shape stays in metadata, the pre-store path. Requests on
+// collector.ignore_path_prefixes are never stored: Envoy sends no access-log entry
+// for them, so nothing would ever take the entry.
 func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool {
+	if execCtx.server.correlationStore.IgnoresPath(execCtx.clientPath) {
+		return false
+	}
 	var p correlation.Payload
 	switch key {
 	case analyticsRequestHeadersKey:
-		p.RequestHeaders = normalizeAnalyticsHeaderValue(value)
+		p.RequestHeaders = headers.Flatten(value)
 	case analyticsResponseHeadersKey:
-		p.ResponseHeaders = normalizeAnalyticsHeaderValue(value)
+		p.ResponseHeaders = headers.Flatten(value)
 	case analyticsRequestPayloadKey:
 		p.RequestBody, _ = value.(string)
 	case analyticsResponsePayloadKey:
@@ -250,74 +256,6 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	}
 
 	return &structpb.Struct{Fields: fields}, nil
-}
-
-// normalizeAnalyticsHeaderValue converts a captured header value out of
-// analytics metadata into the flat map[string]string shape the correlation store
-// carries. Before this store existed, EVERY shape below reached the ALS side only
-// after a JSON-encode (here) -> Envoy echo -> JSON-decode round trip; this
-// reproduces that same flattening natively, so switching to the in-process store
-// is not a behavior change for any policy's contribution regardless of its shape:
-//
-//   - map[string]string -- the analytics system policy's own capture (see
-//     flattenHeaders in gateway/system-policies/analytics/analytics.go) and any
-//     third-party policy already producing this shape: used as-is.
-//   - map[string][]string -- finalizeAnalyticsHeaders' output (the
-//     AnalyticsHeaderFilter path in translator.go): flattened to each header's
-//     FIRST value only, matching what the old round trip produced (JSON-encoding
-//     a map[string][]string, then decoding it back, discarded every value but the
-//     first -- see parseHeadersFromString's multi-value fallback branch in
-//     internal/analytics/publishers/log.go).
-//   - string -- a policy that already JSON-encodes its own capture (e.g. a
-//     third-party/Python policy mirroring the pre-existing convention): decoded
-//     the same way parseHeadersFromString always has.
-//
-// Any other shape yields nil, exactly as today's metadata-decode path would
-// silently ignore a value it doesn't recognize.
-func normalizeAnalyticsHeaderValue(v any) map[string]string {
-	switch headers := v.(type) {
-	case nil:
-		return nil
-	case map[string]string:
-		return headers
-	case map[string][]string:
-		out := make(map[string]string, len(headers))
-		for k, vs := range headers {
-			if len(vs) > 0 {
-				out[k] = vs[0]
-			}
-		}
-		return out
-	case string:
-		return parseJSONHeaderString(headers)
-	default:
-		return nil
-	}
-}
-
-// parseJSONHeaderString mirrors internal/analytics/publishers/log.go's
-// parseHeadersFromString exactly (duplicated rather than imported: that package
-// depends on this one's sibling internal/analytics tree, and importing it here
-// would risk a cycle for a four-line helper).
-func parseJSONHeaderString(raw string) map[string]string {
-	if raw == "" {
-		return nil
-	}
-	var single map[string]string
-	if err := json.Unmarshal([]byte(raw), &single); err == nil {
-		return single
-	}
-	var multi map[string][]string
-	if err := json.Unmarshal([]byte(raw), &multi); err == nil {
-		out := make(map[string]string, len(multi))
-		for k, vs := range multi {
-			if len(vs) > 0 {
-				out[k] = vs[0]
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 // extractMetadataFromRouteMetadata extracts the metadata from the route metadata

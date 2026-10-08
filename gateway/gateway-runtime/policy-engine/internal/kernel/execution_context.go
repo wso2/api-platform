@@ -107,6 +107,20 @@ type PolicyExecutionContext struct {
 	// offered to the store.
 	correlationToken string
 
+	// responseFinished is set once this stream has seen the end of the response:
+	// the gateway answered with an immediate response, or Envoy sent the last
+	// response headers/body message (end_of_stream) or the response trailers. Only
+	// then is the correlation entry completed (see completeCorrelationEntry). The
+	// stream can close earlier -- when response body processing is skipped, Envoy
+	// ends it after the response headers while the body is still streaming to the
+	// client -- and that must not start the entry's TTL.
+	responseFinished bool
+
+	// clientPath is the request's :path as the client sent it, before any policy
+	// rewrites it; matched against collector.ignore_path_prefixes the same way the
+	// controller's access-log filter matches the client-facing path.
+	clientPath string
+
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without
 	// contaminating the policy-visible metadata map.
@@ -1978,6 +1992,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Scheme:    scheme,
 	}}
 
+	ec.clientPath = path
 	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
 		Headers:       wrappedHeaders,

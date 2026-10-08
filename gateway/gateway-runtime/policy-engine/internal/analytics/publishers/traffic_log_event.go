@@ -19,6 +19,7 @@ package publishers
 
 import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 )
 
 // trafficLogTimestampFormat is RFC 3339 with millisecond precision.
@@ -186,7 +187,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	// exclude_fields alone, with every request_*/response_* toggle left at its
 	// false default, still logs no headers/bodies.
 	if dir.Request != nil && dir.Request.Headers {
-		if headers := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
 			tl.RequestHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedRequestHeaders())
 		}
 	}
@@ -196,7 +197,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 
 	// Response flow
 	if dir.Response != nil && dir.Response.Headers {
-		if headers := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
 			tl.ResponseHeaders = filterAndMaskHeaders(headers, l.maskedHeaders, l.exclusions.excludedResponseHeaders())
 		}
 	}

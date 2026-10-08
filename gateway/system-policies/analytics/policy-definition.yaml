@@ -51,6 +51,14 @@ parameters:
         store keyed per request), not through Envoy dynamic metadata, and is
         then forwarded through the analytics pipeline (including the
         stdout/log and Moesif publishers).
+    api_kind:
+      type: string
+      description: >
+        Injected by the gateway controller (not set by users): the kind of API
+        this policy chain belongs to (RestApi, Mcp, LlmProvider, LlmProxy, ...).
+        Used to decide whether request/response bodies must be processed even
+        when body capture is off -- MCP and LLM analytics are derived from the
+        body. Missing or unknown values fall back to processing the body.
     allow_payloads:
       type: boolean
       default: false

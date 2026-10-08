@@ -492,7 +492,7 @@ func initMetrics() {
 		prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "correlation_store_evictions_total",
-			Help:      "Total number of unread correlation-store entries reclaimed after their request finished more than the TTL ago",
+			Help:      "Total number of unread correlation-store entries reclaimed to make room: response finished more than the TTL ago, or older than the one-hour hard cap",
 		},
 	)
 }

@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
@@ -841,23 +842,12 @@ func (o *OTel) buildRecord(event *dto.Event) *otelLogRecord {
 // otelMaxHeaderAttributes prevents overly broad header allowlists from
 // exceeding OTel’s attribute limit and causing silent truncation
 func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
-	serialized, ok := raw.(string)
-	if !ok || serialized == "" {
-		return
-	}
-	// Single-value format first, then fall back to the multi-value format
-	// ({"name":["v1","v2"]}) the policy engine produces (e.g. when
-	// analytics-header-filter is applied). Every value is kept, since the
-	// attribute is already a string array.
-	var headers map[string][]string
-	var single map[string]string
-	if err := json.Unmarshal([]byte(serialized), &single); err == nil {
-		headers = make(map[string][]string, len(single))
-		for name, value := range single {
-			headers[name] = []string{value}
-		}
-	} else if err := json.Unmarshal([]byte(serialized), &headers); err != nil {
-		slog.Debug("OTel publisher could not parse analytics headers", "error", err, "prefix", prefix)
+	// raw arrives in any shape hdrs.Values handles: a map from the correlation
+	// store, or a JSON string from the access-log entry's own metadata (single- or
+	// multi-value, e.g. when analytics-header-filter is applied). Every value is
+	// kept, since the attribute is already a string array.
+	headers := hdrs.Values(raw)
+	if len(headers) == 0 {
 		return
 	}
 
@@ -964,7 +954,7 @@ func (o *OTel) appendMCPAttributes(event *dto.Event, attrs *otelAttrs) {
 	attrs.anyStr("mcp.session.id", take("sessionId"))
 	attrs.anyStr("jsonrpc.request.id", take("jsonRpcId"))
 
-	// Emit tool/prompt names or resource URIs only for recognized capabilities; 
+	// Emit tool/prompt names or resource URIs only for recognized capabilities;
 	// leave unrecognized fields for the sweep.
 	switch capability, _ := take("capability").(string); capability {
 	case "TOOL":

@@ -1642,8 +1642,45 @@ func headerEventRaw(serialized string) *dto.Event {
 
 func headerEventWrongType() *dto.Event {
 	event := restEvent()
-	event.Properties[dto.PropKeyRequestHeaders] = map[string]string{"not": "a string"}
+	event.Properties[dto.PropKeyRequestHeaders] = 42
 	return event
+}
+
+// On a correlation-store hit, prepareAnalyticEvent hands the headers over as an
+// already-decoded map rather than a JSON string. Both shapes must produce the same
+// attributes (regression: the map shape used to produce none).
+func TestBuildRecordHeaderAttributesFromStoreMap(t *testing.T) {
+	event := restEvent()
+	event.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Content-Type": "application/json", "X-Tenant": "acme"}
+	event.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Cache-Control": "no-store"}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string]string{
+		"http.request.header.content-type":   "application/json",
+		"http.request.header.x-tenant":       "acme",
+		"http.response.header.cache-control": "no-store",
+	} {
+		values, ok := got[key].([]string)
+		if !ok || len(values) != 1 || values[0] != want {
+			t.Errorf("%s = %#v, want [%q]", key, got[key], want)
+		}
+	}
+}
+
+// A repeated header from the analytics-header-filter path keeps every value.
+func TestBuildRecordHeaderAttributesKeepRepeatedValues(t *testing.T) {
+	event := restEvent()
+	event.Properties[dto.PropKeyRequestHeaders] = `{"x-multi":["a=1","b=2"]}`
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	values, ok := got["http.request.header.x-multi"].([]string)
+	if !ok || len(values) != 2 || values[0] != "a=1" || values[1] != "b=2" {
+		t.Errorf("http.request.header.x-multi = %#v, want [\"a=1\" \"b=2\"]", got["http.request.header.x-multi"])
+	}
 }
 
 // HTTP/2 pseudo-headers are not headers. Envoy surfaces them next to the real

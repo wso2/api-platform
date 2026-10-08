@@ -344,6 +344,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
+		if execCtx != nil && endsResponse(req, resp) {
+			execCtx.responseFinished = true
+		}
 
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
@@ -358,20 +361,43 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	}
 }
 
-// completeCorrelationEntry tells the correlation store that execCtx's request is
-// finished on the ext_proc side. Captured fields were already merged into the store
-// as each phase's response was built (see storeInProcess); completing the entry
-// only makes it eligible for reclaim if its access-log entry never arrives.
+// completeCorrelationEntry tells the correlation store that execCtx's response has
+// finished, as seen by the ext_proc side. Captured fields were already merged into
+// the store as each phase's response was built (see storeInProcess); completing the
+// entry only makes it eligible for reclaim after the TTL if its access-log entry
+// never arrives.
 //
 // Called from a defer registered before every other per-stream teardown defer in
-// Process, so it runs on every terminal path out of that function. Requests that
-// never used the store (no store, nothing captured, or the LLM proxy's loopback
-// hop) are skipped.
+// Process, so it runs on every terminal path out of that function. An entry is
+// completed only if the stream saw the response end (responseFinished): when the
+// stream closes first, the response may still be streaming to the client and its
+// access-log entry is still to come, so the entry is left for the ALS handler to
+// take (or for the store's hard cap). Any stream that issued a token is
+// considered, whatever later phases carry -- a loopback hop never stores, so it
+// has no token.
 func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
-	if !correlatesInProcess(execCtx, nil) || execCtx.correlationToken == "" {
+	if s.correlationStore == nil || execCtx.correlationToken == "" || !execCtx.responseFinished {
 		return
 	}
 	s.correlationStore.Complete(execCtx.correlationToken)
+}
+
+// endsResponse reports whether this exchange ends the response as seen by
+// ext_proc: the gateway answered with an immediate response, or Envoy sent the
+// last response headers/body message (end_of_stream) or the response trailers.
+func endsResponse(req *extprocv3.ProcessingRequest, resp *extprocv3.ProcessingResponse) bool {
+	if resp.GetImmediateResponse() != nil {
+		return true
+	}
+	switch r := req.GetRequest().(type) {
+	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		return r.ResponseHeaders.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseBody:
+		return r.ResponseBody.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseTrailers:
+		return true
+	}
+	return false
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler

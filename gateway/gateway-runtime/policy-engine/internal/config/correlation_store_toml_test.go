@@ -74,3 +74,35 @@ capacity = 0
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "collector.correlation_store.capacity")
 }
+
+func TestValidate_CorrelationStoreBounds(t *testing.T) {
+	cases := map[string]struct {
+		toml string
+		want string
+	}{
+		"too many shards":         {"shards = 2048\ncapacity = 50000", "collector.correlation_store.shards must not exceed 1024"},
+		"capacity over the limit": {"capacity = 20000000", "collector.correlation_store.capacity must not exceed 10000000"},
+		"capacity below shards":   {"capacity = 8\nshards = 64", "collector.correlation_store.capacity (8) must be at least shards (64)"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeOTelTOML(t, "[traffic_logging]\nenabled = true\n\n[collector.correlation_store]\n"+tc.toml+"\n")
+			_, err := Load(path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestLoad_CollectorIgnorePathPrefixesBindsFromTOML(t *testing.T) {
+	path := writeOTelTOML(t, `
+[traffic_logging]
+enabled = true
+
+[collector]
+ignore_path_prefixes = ["/_gateway-health", "/metrics"]
+`)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/_gateway-health", "/metrics"}, cfg.Collector.IgnorePathPrefixes)
+}
