@@ -1253,6 +1253,182 @@ Feature: API key authentication policy
     Then the response should be successful
     And I send a "GET" request to "${CTX:akaCtx}/s28/probe" until status 404
 
+  # Group 10 - Ambiguous / duplicate credentials
+  @aka-g10 @aka-34
+  Scenario: Duplicate identical API key headers are handled consistently
+    Given I generate a unique value from "aka-s34" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s34" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s34/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s34/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "akaKey"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s34/probe" with headers:
+      | API-Key | ${CTX:akaKey} |
+      | API-Key | ${CTX:akaKey} |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s34/probe" with headers:
+      | API-Key | ${CTX:akaKey} |
+      | API-Key | ${CTX:akaKey} |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s34/probe" with headers:
+      | API-Key | ${CTX:akaKey} |
+      | API-Key | ${CTX:akaKey} |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s34/probe" with headers:
+      | API-Key | bad |
+      | API-Key | bad |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s34/probe" until status 404
+
+  @aka-g10 @aka-35
+  Scenario: A duplicate header with one invalid value is not rescued by the other
+    Given I generate a unique value from "aka-s35" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s35" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s35/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s35/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "akaKey"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s35/probe" with headers:
+      | API-Key | bad           |
+      | API-Key | ${CTX:akaKey} |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I send a raw "GET" request to "${CTX:akaCtx}/s35/probe" with headers:
+      | API-Key | ${CTX:akaKey} |
+      | API-Key | bad           |
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s35/probe" until status 404
+
+  @aka-g10 @aka-36
+  Scenario: Comma-separated API key values in a single header are rejected
+    Given I generate a unique value from "aka-s36" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s36" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s36/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "akaKey"
+    And I set header "API-Key" to "${CTX:akaKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe" until status 200
+    When I set header "API-Key" to "${CTX:akaKey},${CTX:akaKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I set header "API-Key" to "bad,${CTX:akaKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I set header "API-Key" to "${CTX:akaKey}, bad"
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I set header "API-Key" to "${CTX:akaKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe"
+    Then the response status code should be 200
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s36/probe" until status 404
+
+  @aka-g10 @aka-37
+  Scenario: Unrelated authentication headers are preserved and do not override API key auth
+    Given I generate a unique value from "aka-s37" and store it as "akaApi"
+    And I generate a unique API context from "/aka-s37" and store it as "akaCtx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:akaApi}             |
+      | spec.displayName       | ${CTX:akaApi}             |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:akaCtx}             |
+      | spec.upstream.main.url | ${CTX:captureUpstream}    |
+      | spec.operations        | [{"method":"GET","path":"/s37/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}]}] |
+    Then the resource creation response should indicate successful deployment
+    And I send a "GET" request to "${CTX:akaCtx}/s37/probe" until status 401
+    When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:akaApi}/api-keys" with body:
+      """
+      {"name":"key-one"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "apiKey.apiKey" as "akaKey"
+    And I set header "API-Key" to "${CTX:akaKey}"
+    And I send a "GET" request to "${CTX:akaCtx}/s37/probe" until status 200
+    When I set header "Authorization" to "Bearer garbage"
+    And I set header "X-API-Key" to "other"
+    And I set header "Cookie" to "session=abc"
+    And I send a "GET" request to "${CTX:akaCtx}/s37/probe"
+    Then the response status code should be 200
+    And the response should contain echoed header "Authorization" with value "Bearer garbage"
+    And the response should not contain echoed header "API-Key"
+    When I reset the request
+    And I set header "API-Key" to "bad"
+    And I send a "GET" request to "${CTX:akaCtx}/s37/probe"
+    Then the response status code should be 401
+    And the JSON response field "error" should be "Unauthorized"
+    And the JSON response field "message" should be "Valid API key required"
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I delete the API "${CTX:akaApi}"
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:akaCtx}/s37/probe" until status 404
+
   # Group 11 - Policy chaining
   @aka-g11 @aka-38
   Scenario: Valid authentication lets rate limiting execute normally afterward
@@ -1932,30 +2108,7 @@ Feature: API key authentication policy
       | in-cookie     | {"key":"API-Key","in":"cookie"}                | must be one of      |
       | in-number     | {"key":"API-Key","in":5}                       | Invalid type        |
       | unknown-param | {"key":"API-Key","in":"header","header":"X"}   | Additional property |
-
-  # F2: the "key" minLength/maxLength constraint lives in a non-standard "validation:" block
-  # that the controller's gojsonschema validator ignores, so an empty key name is suspected to
-  # be accepted at deploy time rather than rejected - a real product gap, not a test gap. Kept
-  # as @known-issue: it asserts the correct behavior and is excluded from the default run until
-  # that gap is fixed.
-  @aka-g17 @aka-56 @known-issue
-  Scenario: An empty key name is rejected at deploy time
-    Given I generate a unique value from "aka-s56-empty" and store it as "akaApi"
-    And I generate a unique API context from "/aka-s56-empty" and store it as "akaCtx"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion} |
-      | name                   | ${CTX:akaApi}             |
-      | spec.displayName       | ${CTX:akaApi}             |
-      | spec.version           | v1.0                      |
-      | spec.context           | ${CTX:akaCtx}             |
-      | spec.upstream.main.url | ${CTX:captureUpstream}    |
-      | spec.operations        | [{"method":"GET","path":"/s56/empty/probe","policies":[{"name":"api-key-auth","version":"v1","params":{"key":"","in":"header"}}]}] |
-    Then the response status code should be 400
-    And the JSON response field "status" should be "error"
-    And the JSON response field "message" should be "Configuration validation failed"
-    And the response body should contain "key"
-    When I get the API "${CTX:akaApi}"
-    Then the response status should be 404
+      # | key-empty     | {"key":"","in":"header"}                       | key                 |
 
   @aka-g17 @aka-57
   Scenario Outline: An unsupported policy version "<version>" is rejected, not silently unauthenticated
