@@ -174,6 +174,54 @@ Feature: Agent proxies are authored and managed through the control plane
     Then the response status code should be 400
     And the JSON response field "code" should be "VALIDATION_FAILED"
 
+  @cp14-02
+  Scenario: Agent proxies are listed by project, alone and combined with the protocol filter
+    Given I generate a unique resource name from "agent-list-other-project" and store it as "otherProject"
+    And I create a project "${CTX:otherProject}" on the control plane
+    And I generate a unique resource name from "agent-in-project" and store it as "inProjectHandle"
+    And I generate a unique resource name from "agent-in-other" and store it as "otherProjectHandle"
+    And I generate a unique API context from "/agent-in-project" and store it as "inProjectContext"
+    And I generate a unique API context from "/agent-in-other" and store it as "otherProjectContext"
+    And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
+      | id          | ${CTX:inProjectHandle}                           |
+      | displayName | Project Agent                                    |
+      | projectId   | ${CTX:projectHandle}                             |
+      | context     | ${CTX:inProjectContext}                          |
+      | upstreamUrl | http://a2a-trip-planner:9099                     |
+      | transports  | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
+    And the response status code should be 201
+    And I create an Agent proxy via the control plane from "resources/templates/agent-proxy.yaml" with values:
+      | id          | ${CTX:otherProjectHandle}                        |
+      | displayName | Other Project Agent                              |
+      | projectId   | ${CTX:otherProject}                              |
+      | context     | ${CTX:otherProjectContext}                       |
+      | upstreamUrl | http://a2a-trip-planner:9099                     |
+      | transports  | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
+    And the response status code should be 201
+
+    When I send a "GET" request to the control plane at "/agent-proxies?projectId=${CTX:projectHandle}&limit=100"
+    Then the response status code should be 200
+    And the JSON response field "count" should be 1
+    And the JSON response field "pagination.total" should be 1
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:inProjectHandle}"
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:otherProjectHandle}"
+    And the JSON response array "list" item with "id" equal to "${CTX:inProjectHandle}" should have "projectId" equal to "${CTX:projectHandle}"
+
+    When I send a "GET" request to the control plane at "/agent-proxies?projectId=${CTX:otherProject}&protocol=a2a&limit=100"
+    Then the response status code should be 200
+    And the JSON response field "count" should be 1
+    And the JSON response field "pagination.total" should be 1
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:otherProjectHandle}"
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:inProjectHandle}"
+
+    When I send a "GET" request to the control plane at "/agent-proxies?projectId="
+    Then the response status code should be 400
+    And the JSON response field "code" should be "VALIDATION_FAILED"
+
+    When I send a "GET" request to the control plane at "/agent-proxies?projectId=no-such-agent-project"
+    Then the response status code should be 404
+    And the JSON response field "code" should be "PROJECT_NOT_FOUND"
+
   @cp14-03
   Scenario: A replacement PUT clears omitted optional configuration and is idempotent
     Given I generate a unique resource name from "agent-put" and store it as "agentHandle"

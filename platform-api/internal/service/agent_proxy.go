@@ -186,18 +186,31 @@ func (s *AgentProxyService) Get(orgUUID, handle string) (*api.A2AAgentProxy, err
 }
 
 // List returns the organization's Agent proxies, optionally restricted to one
-// protocol. The filter is applied to the page and to the total alike, so
-// pagination.total always counts the same set the page is drawn from.
+// protocol and/or one project. The filters are applied to the page and to the
+// total alike, so pagination.total always counts the same set the page is drawn
+// from.
 //
-// protocol is nil when the caller omitted the parameter entirely. That is not
-// the same as supplying it empty, which is an invalid filter value rather than
-// "no filter" — so the two cannot be collapsed into one empty string.
-func (s *AgentProxyService) List(orgUUID string, protocol *string, limit, offset int) (*api.AgentProxyListResponse, error) {
+// protocol and projectHandle are nil when the caller omitted the parameter
+// entirely. That is not the same as supplying it empty, which is an invalid
+// filter value rather than "no filter" — so the two cannot be collapsed into one
+// empty string. A project handle that does not resolve within the organization
+// is a 404, never an empty page.
+func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string, limit, offset int) (*api.AgentProxyListResponse, error) {
 	filter, err := parseAgentProxyProtocolFilter(protocol)
 	if err != nil {
 		return nil, err
 	}
 	opts := repository.AgentProxyListOptions{Limit: limit, Offset: offset, Protocol: filter}
+	if projectHandle != nil {
+		if strings.TrimSpace(*projectHandle) == "" {
+			return nil, apperror.ValidationFailed.New("The projectId filter must not be empty.")
+		}
+		projectUUID, err := s.resolveProjectUUID(orgUUID, *projectHandle)
+		if err != nil {
+			return nil, err
+		}
+		opts.ProjectUUID = projectUUID
+	}
 
 	proxies, err := s.repo.List(orgUUID, opts)
 	if err != nil {
