@@ -161,6 +161,148 @@ func TestTokenEndpointPartitionsStateAndSupportsFailureResponses(t *testing.T) {
 	}
 }
 
+func TestTokenEndpointSupportsTokenExchangeGrant(t *testing.T) {
+	s := New()
+	h := s.Handler()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/block-a/oauth2/token", strings.NewReader(
+		"grant_type=urn:ietf:params:oauth:grant-type:token-exchange"+
+			"&subject_token=caller-token"+
+			"&subject_token_type=urn:ietf:params:oauth:token-type:access_token"+
+			"&requested_token_type=urn:ietf:params:oauth:token-type:jwt"+
+			"&audience=backend-api&resource=https://backend.example.com",
+	))
+	req.SetBasicAuth(clientID, clientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %q", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var resp struct {
+		AccessToken     string `json:"access_token"`
+		IssuedTokenType string `json:"issued_token_type"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.AccessToken == "" {
+		t.Fatalf("access_token missing from response %q", recorder.Body.String())
+	}
+	if want := "urn:ietf:params:oauth:token-type:jwt"; resp.IssuedTokenType != want {
+		t.Errorf("issued_token_type = %q, want %q", resp.IssuedTokenType, want)
+	}
+
+	stats := httptest.NewRecorder()
+	h.ServeHTTP(stats, httptest.NewRequest(http.MethodGet, "/block-a/debug/stats", nil))
+	body := stats.Body.String()
+	for _, want := range []string{"backend-api", "backend.example.com", "call...oken"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stats body = %q, want it to contain %q", body, want)
+		}
+	}
+	if strings.Contains(body, "caller-token") {
+		t.Errorf("stats body leaked the raw subject token: %q", body)
+	}
+}
+
+func TestTokenEndpointSupportsJWTBearerGrant(t *testing.T) {
+	s := New()
+	h := s.Handler()
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/block-a/oauth2/token", strings.NewReader(
+		"grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=header.payload.signature",
+	))
+	req.SetBasicAuth(clientID, clientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "access_token") {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "issued_token_type") {
+		t.Errorf("jwt-bearer response should not carry issued_token_type (that's token-exchange-only): %q", recorder.Body.String())
+	}
+}
+
+func TestTokenEndpointRejectsMalformedTokenExchangeAndJWTBearerRequests(t *testing.T) {
+	tests := []struct {
+		name       string
+		form       string
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "token-exchange missing subject_token",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token_type=urn:ietf:params:oauth:token-type:access_token",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "token-exchange missing subject_token_type",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=caller-token",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "token-exchange unsupported requested_token_type",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=caller-token&subject_token_type=urn:ietf:params:oauth:token-type:access_token&requested_token_type=not-a-urn",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "token-exchange sentinel invalid subject_token",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=invalid-subject-token&subject_token_type=urn:ietf:params:oauth:token-type:access_token",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_grant",
+		},
+		{
+			name:       "jwt-bearer missing assertion",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_request",
+		},
+		{
+			name:       "jwt-bearer sentinel invalid assertion",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=invalid-assertion",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_grant",
+		},
+		{
+			name:       "unsupported grant type",
+			form:       "grant_type=urn:ietf:params:oauth:grant-type:device_code",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "unsupported_grant_type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/block-a/oauth2/token", strings.NewReader(tt.form))
+			req.SetBasicAuth(clientID, clientSecret)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			New().Handler().ServeHTTP(recorder, req)
+
+			if recorder.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d, body = %q", recorder.Code, tt.wantStatus, recorder.Body.String())
+			}
+			var got struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got.Error != tt.wantError {
+				t.Errorf("error = %q, want %q", got.Error, tt.wantError)
+			}
+		})
+	}
+}
+
 func TestTokenEndpointRetainsOnlyTheNewestHistory(t *testing.T) {
 	s := New()
 	p := &partition{}
