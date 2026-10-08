@@ -326,13 +326,13 @@ url = "https://platform-api:9243"
 	}
 }
 
-// When [control_plane] cloud_url is set, the SPA learns only that the cloud proxy
-// hop exists — never the upstream URL itself.
-func TestLoad_CloudProxyEnabledWhenCloudURLConfigured(t *testing.T) {
+// When [control_plane] moesif_url is set, the SPA learns only that the Moesif
+// proxy hop exists — never the upstream URL itself.
+func TestLoad_CloudProxyEnabledWhenMoesifURLConfigured(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
-cloud_url = "http://localhost:8081/cloud"
+moesif_url = "https://localhost:8081/cloud"
 `)
 
 	cfg, err := Load(cfgPath)

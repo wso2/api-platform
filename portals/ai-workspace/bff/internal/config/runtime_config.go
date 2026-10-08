@@ -100,9 +100,11 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
 
-	// Cloud analytics proxy: set when [control_plane] cloud_url is configured so the
-	// SPA can call /proxy/cloud/... without learning the real upstream URL.
-	if cfg.ControlPlane.CloudURL != "" {
+	// Collector-key and Insights viewer-token both use the Moesif hop. The SPA
+	// calls /proxy/moesif/... and never learns the upstream URL. For wso2cloud,
+	// moesif_url itself ends in /cloud so the joined path is still
+	// …/cloud/analytics/….
+	if cfg.ControlPlane.MoesifURL != "" {
 		out[runtimeKey("cloud_proxy_enabled")] = "true"
 	}
 

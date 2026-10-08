@@ -18,7 +18,8 @@
 
 /**
  * Client for WSO2 Cloud Moesif analytics endpoints (wso2cloud platform-api).
- * Requests go through the AI Workspace BFF same-origin proxy (/ai-workspace/proxy/cloud/...).
+ * Requests go through the AI Workspace BFF same-origin proxy (/ai-workspace/proxy/moesif/...).
+ * moesif_url ends in /cloud, so the upstream path is still …/cloud/analytics/….
  */
 
 import { MOESIF_ENV_ID } from '../../config.env';
@@ -73,7 +74,8 @@ export function isShellSafeCollectorKey(key: string): boolean {
 }
 
 /**
- * GET /cloud/analytics/internal/collector-key?env={envId}
+ * GET /moesif/analytics/internal/collector-key?env={envId}
+ * (BFF strips /ai-workspace/proxy/moesif and joins onto control_plane.moesif_url.)
  * Returns the full Moesif collector JWT for gateway event publishing.
  */
 export async function fetchCollectorKey(
@@ -85,7 +87,7 @@ export async function fetchCollectorKey(
   }
 
   const response = await fetch(
-    `${cloudApiBase()}/cloud/analytics/internal/collector-key?env=${encodeURIComponent(trimmedEnv)}`,
+    `${cloudApiBase()}/moesif/analytics/internal/collector-key?env=${encodeURIComponent(trimmedEnv)}`,
     {
       credentials: 'include',
       headers: { accept: 'application/json' },

@@ -156,8 +156,8 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
 );
 
 /**
- * True when the BFF has [control_plane] cloud_url configured. The SPA then calls
- * Moesif analytics via the same-origin /proxy/cloud/... hop.
+ * True when the BFF has [control_plane] moesif_url configured. The SPA then calls
+ * collector-key and Insights via the same-origin /proxy/moesif/... hop.
  */
 export const CLOUD_PROXY_ENABLED = getEnvOrDefault(
   'APIP_AIW_CLOUD_PROXY_ENABLED',
