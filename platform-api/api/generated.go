@@ -4942,6 +4942,9 @@ type AgentProxyApiKeyId = string
 // AgentProxyId defines model for agentProxyId.
 type AgentProxyId = string
 
+// AgentProxyProjectIdQ defines model for agentProxyProjectId-Q.
+type AgentProxyProjectIdQ = string
+
 // AgentProxyProtocolQ defines model for agentProxyProtocol-Q.
 type AgentProxyProtocolQ string
 
@@ -5074,6 +5077,13 @@ type ListAgentProxiesParams struct {
 	// An empty or unsupported value is rejected with 400. The filter applies to the returned
 	// page and to `pagination.total` alike, always within the authenticated organization.
 	Protocol *ListAgentProxiesParamsProtocol `form:"protocol,omitempty" json:"protocol,omitempty" yaml:"protocol,omitempty"`
+
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+	// Agent proxies should be returned. Omit to list Agent proxies across every project in the
+	// organization. An empty value is rejected with 400, and a handle that does not resolve to a
+	// project in the authenticated organization is rejected with 404. The filter applies to the
+	// returned page and to `pagination.total` alike.
+	ProjectId *AgentProxyProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Limit Maximum number of items to return per page.
 	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
