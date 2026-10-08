@@ -54,41 +54,47 @@ const messages = defineMessages({
  * spec without a label here fails the type check rather than rendering blank.
  */
 export const DOCUMENT_TYPES = [
-  'HOW_TO',
-  'SAMPLE_SDK',
-  'PUBLIC_FORUM',
-  'SUPPORT_FORUM',
-  'OTHER',
+  'HowTo',
+  'Samples',
+  'PublicForum',
+  'SupportForum',
+  'Other',
 ] as const satisfies readonly ApiDocumentType[];
 
 const LABELS: Record<ApiDocumentType, MessageDescriptor> = {
-  HOW_TO: messages.howTo,
-  SAMPLE_SDK: messages.sampleSdk,
-  PUBLIC_FORUM: messages.publicForum,
-  SUPPORT_FORUM: messages.supportForum,
-  OTHER: messages.other,
+  HowTo: messages.howTo,
+  Samples: messages.sampleSdk,
+  PublicForum: messages.publicForum,
+  SupportForum: messages.supportForum,
+  Other: messages.other,
 };
 
 /** Label for a document type; an unknown value from a newer server falls back to "Other". */
 export const documentTypeLabel = (type: string): MessageDescriptor =>
   LABELS[type as ApiDocumentType] ?? messages.other;
 
-export const DEFAULT_DOCUMENT_TYPE: ApiDocumentType = 'HOW_TO';
+export const DEFAULT_DOCUMENT_TYPE: ApiDocumentType = 'HowTo';
 
 /* -------------------------------------------------------------------------- */
 /* Custom "Other" types                                                        */
 /* -------------------------------------------------------------------------- */
 
 /**
- * `api_documents.type` is VARCHAR(20). Custom types are stored as the bare
- * name the user typed, so the full column width is available.
+ * `api_documents.type` is VARCHAR(20), stored as `DOC_<name>`, so a custom
+ * name has at most 20 − len("DOC_") = 16 **bytes** available.
  */
-export const MAX_CUSTOM_TYPE_LENGTH = 20;
+export const MAX_CUSTOM_TYPE_BYTES = 16;
 
 /** Letters, digits, spaces, hyphens and underscores. */
 const CUSTOM_TYPE_PATTERN = /^[\p{L}\p{N} _-]+$/u;
 
-const RESERVED_CUSTOM_TYPE_NAMES = new Set(DOCUMENT_TYPES.map((t) => t.toUpperCase()));
+const RESERVED_CUSTOM_TYPE_NAMES = new Set<string>([
+  ...DOCUMENT_TYPES.map((t) => t.toUpperCase()),
+  'DEFINITION',
+  'THUMBNAIL',
+]);
+
+const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).length;
 
 export type CustomTypeError = 'required' | 'tooLong' | 'invalid' | 'reserved';
 
@@ -97,7 +103,7 @@ export const validateCustomType = (name: string): CustomTypeError | undefined =>
   const trimmed = name.trim();
   if (!trimmed) return 'required';
   if (!CUSTOM_TYPE_PATTERN.test(trimmed)) return 'invalid';
-  if (trimmed.length > MAX_CUSTOM_TYPE_LENGTH) return 'tooLong';
+  if (utf8ByteLength(trimmed) > MAX_CUSTOM_TYPE_BYTES) return 'tooLong';
   if (RESERVED_CUSTOM_TYPE_NAMES.has(trimmed.toUpperCase())) return 'reserved';
   return undefined;
 };

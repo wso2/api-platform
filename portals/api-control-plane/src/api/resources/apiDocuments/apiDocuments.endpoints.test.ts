@@ -57,7 +57,7 @@ const aDocument = (overrides: Partial<ApiDocument> = {}): ApiDocument => ({
   contentType: 'text/markdown; charset=utf-8',
   displayName: 'Getting started',
   id: 'getting-started',
-  type: 'HOW_TO',
+  type: 'HowTo',
   ...overrides,
 });
 
@@ -72,14 +72,14 @@ describe('listApiDocuments', () => {
   it('GETs the API’s collection with paging and type filter', async () => {
     server.use(resource(COLLECTION, listEnvelope([]), { record: requests }));
 
-    await listApiDocuments('rest-api', 'orders-api', { limit: 5, offset: 10, type: 'HOW_TO' });
+    await listApiDocuments('rest-api', 'orders-api', { limit: 5, offset: 10, type: 'HowTo' });
 
     const request = requests.last();
     expect(request?.method).toBe('GET');
     expect(request?.url.pathname).toBe('/api/v0.9/apis/rest-api/orders-api/docs');
     expect(request?.params.get('limit')).toBe('5');
     expect(request?.params.get('offset')).toBe('10');
-    expect(request?.params.get('type')).toBe('HOW_TO');
+    expect(request?.params.get('type')).toBe('HowTo');
   });
 
   it('URL-encodes the API handle', async () => {
@@ -153,7 +153,7 @@ describe('createApiDocument', () => {
       displayName: 'Getting started',
       fileName: undefined,
       inlineContent: '# Getting started',
-      type: 'HOW_TO',
+      type: 'HowTo',
     });
 
     const request = requests.last();
@@ -167,7 +167,7 @@ describe('updateApiDocument', () => {
   it('PUTs to the document', async () => {
     server.use(accepts('put', `${COLLECTION}/getting-started`, aDocument(), { record: requests }));
 
-    await updateApiDocument('rest-api', 'orders-api', 'getting-started', { displayName: 'Start here' });
+    await updateApiDocument('rest-api', 'orders-api', 'getting-started', { displayName: 'Start here', type: 'HowTo' });
 
     expect(requests.last()?.method).toBe('PUT');
     expect(requests.last()?.url.pathname).toBe('/api/v0.9/apis/rest-api/orders-api/docs/getting-started');

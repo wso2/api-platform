@@ -117,6 +117,10 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 		doc.Handle = handle
 	}
 
+	if doc.FileName == "" && strings.HasPrefix(doc.ContentType, "text/markdown") {
+		doc.FileName = doc.Handle + ".md"
+	}
+
 	if err := s.documentRepo.CreateDocument(doc); err != nil {
 		if repository.IsUniqueViolation(err) {
 			return "", apperror.Conflict.New().WithLogMessage("document handle already exists for artifact")
@@ -131,19 +135,38 @@ func (s *APIDocumentService) CreateDocument(req *dto.CreateAPIDocumentRequest, o
 	return doc.Handle, nil
 }
 
+var normalizeDocTypeMap = map[string]string{
+	"howto":        constants.DocumentTypeHowTo,
+	"samples":      constants.DocumentTypeSamples,
+	"supportforum": constants.DocumentTypeSupportForum,
+	"publicforum":  constants.DocumentTypePublicForum,
+	"other":        constants.DocumentTypeOther,
+}
+
+func NormalizeAPIDocumentType(input string) (string, bool) {
+	canonical, ok := normalizeDocTypeMap[strings.ToLower(strings.TrimSpace(input))]
+	return canonical, ok
+}
+
+func decodeStoredDocType(stored string) string {
+	if after, found := strings.CutPrefix(stored, constants.DocumentTypePrefix); found {
+		return after
+	}
+	return stored
+}
+
 // resolveStoredDocType computes the value to persist in the type column.
-// For OTHER with a non-empty otherTypeName it stores the bare custom name
-// (e.g. "FAQ") so the fixed type enum never appears in the database as a
-// custom name. For OTHER with no otherTypeName it stores "OTHER" itself,
-// which the UI renders as "Other". Fixed types are stored as-is.
+// All types are stored with the DOC_ prefix so the api-portal can identify
+// them as documents after the API is published. decodeStoredDocType strips
+// the prefix on read, so the API always returns the bare name (e.g. "FAQ").
 func resolveStoredDocType(docType, otherTypeName string) string {
 	if docType != constants.DocumentTypeOther {
-		return docType
+		return constants.DocumentTypePrefix + docType
 	}
 	if trimmed := strings.TrimSpace(otherTypeName); trimmed != "" {
-		return trimmed
+		return constants.DocumentTypePrefix + trimmed
 	}
-	return constants.DocumentTypeOther
+	return constants.DocumentTypePrefix + constants.DocumentTypeOther
 }
 
 // CreateApiDocument creates a user-authored document attached to an artifact.
@@ -160,12 +183,12 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	if req.Type == constants.DocumentTypeOther {
 		trimmed := strings.TrimSpace(req.OtherTypeName)
 		if trimmed != "" {
-			if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+			if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
 				return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
 			}
-			if len(trimmed) > maxDocTypeLen {
-				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
-			}
+			if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
+				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
+ 			}
 		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
@@ -177,14 +200,6 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	}
 	if len(req.FileName) > maxDocFileNameLen {
 		return "", apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
-	}
-	nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, req.DisplayName, "")
-	if nameErr != nil {
-		s.slogger.Error("Failed to check document display name existence", "artifactUUID", artifactUUID, "error", nameErr)
-		return "", apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
-	}
-	if nameExists {
-		return "", apperror.APIDocumentNameExists.New()
 	}
 	if req.Handle != "" {
 		if err := utils.ValidateHandle(req.Handle); err != nil {
@@ -229,7 +244,6 @@ func (s *APIDocumentService) UpsertDocument(req *dto.CreateAPIDocumentRequest, o
 		UpdatedBy:        userId,
 	}
 
-	// existing, err := s.documentRepo.GetDocumentByArtifactAndType(doc.ArtifactUUID, doc.Type, doc.OrganizationUUID)
 	existing, err := s.documentRepo.GetDocument(doc.ArtifactUUID, doc.Handle, doc.OrganizationUUID, doc.Type)
 	if err != nil {
 		s.slogger.Error("Failed to check existing document", "artifactUUID", doc.ArtifactUUID, "error", err)
@@ -344,10 +358,8 @@ func (s *APIDocumentService) GetAllApiDocuments(artifactUUID, orgID, docType str
 }
 
 // GetDocument retrieves document metadata by handle, scoped to artifactUUID + orgID.
-// docType is optional: pass a reserved type constant to fetch a singleton document
-// (DEFINITION, THUMBNAIL); leave empty for user-facing endpoints where the repository
-// excludes reserved types at the SQL layer.
-func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType string) (*api.APIDocumentMetadata, error) {
+// Reserved types (DEFINITION, THUMBNAIL) are excluded by the repository.
+func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID string) (*api.APIDocumentMetadata, error) {
 	if artifactUUID == "" {
 		return nil, apperror.ValidationFailed.New("artifact UUID is required")
 	}
@@ -355,7 +367,7 @@ func (s *APIDocumentService) GetDocument(artifactUUID, handle, orgID, docType st
 		return nil, apperror.ValidationFailed.New("document handle is required")
 	}
 
-	doc, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, docType)
+	doc, err := s.documentRepo.GetDocument(artifactUUID, handle, orgID, "")
 	if err != nil {
 		s.slogger.Error("Failed to get document", "artifactUUID", artifactUUID, "handle", handle, "error", err)
 		return nil, err
@@ -392,7 +404,7 @@ func (s *APIDocumentService) GetDocumentWithContent(artifactUUID, handle, orgID,
 func modelToAPIMetadata(d *model.Document) api.APIDocumentMetadata {
 	return api.APIDocumentMetadata{
 		Id:          d.Handle,
-		Type:        d.Type,
+		Type:        decodeStoredDocType(d.Type),
 		DisplayName: d.DisplayName,
 		FileName:    utils.StringPtrIfNotEmpty(d.FileName),
 		ContentType: utils.StringPtrIfNotEmpty(d.ContentType),
@@ -445,11 +457,11 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		if newType == constants.DocumentTypeOther {
 			trimmed := strings.TrimSpace(req.OtherTypeName)
 			if trimmed != "" {
-				if constants.ForbiddenOtherTypeNames[strings.ToUpper(trimmed)] {
+				if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
 					return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
 				}
-				if len(trimmed) > maxDocTypeLen {
-					return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxDocTypeLen))
+				if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
+					return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
 				}
 			}
 		}
@@ -462,14 +474,6 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		}
 		if len(trimmed) > maxDocDisplayNameLen {
 			return apperror.ValidationFailed.New(fmt.Sprintf("displayName must be at most %d characters", maxDocDisplayNameLen))
-		}
-		nameExists, nameErr := s.documentRepo.DocumentDisplayNameExistsForArtifact(artifactUUID, trimmed, handle)
-		if nameErr != nil {
-			s.slogger.Error("Failed to check document display name existence", "artifactUUID", artifactUUID, "error", nameErr)
-			return apperror.Internal.Wrap(nameErr).WithLogMessage("failed to validate document display name")
-		}
-		if nameExists {
-			return apperror.APIDocumentNameExists.New()
 		}
 		updatedDocument.DisplayName = trimmed
 	}

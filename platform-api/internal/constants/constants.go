@@ -17,7 +17,10 @@
 
 package constants
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // SecretPlaceholderRe matches {{ secret "handle" }} (and the escaped-quote variant
 // {{ secret \"handle\" }}) in artifact config blobs.  A single definition here ensures
@@ -189,6 +192,11 @@ const (
 	ScopeDocsManage = "ap:docs:manage"
 )
 
+const (
+	ScopeThumbnailRead   = "ap:thumbnail:read"
+	ScopeThumbnailManage = "ap:thumbnail:manage"
+)
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"
@@ -329,19 +337,28 @@ const (
 )
 
 const (
-	DocumentTypeHowTo        = "HOW_TO"
-	DocumentTypeSampleAndSdk = "SAMPLE_SDK"
-	DocumentTypeSupportForum = "SUPPORT_FORUM"
-	DocumentTypePublicForum  = "PUBLIC_FORUM"
-	DocumentTypeOther        = "OTHER"
+	DocumentTypeHowTo        = "HowTo"
+	DocumentTypeSamples      = "Samples"
+	DocumentTypeSupportForum = "SupportForum"
+	DocumentTypePublicForum  = "PublicForum"
+	DocumentTypeOther        = "Other"
+	DocumentTypePrefix     = "DOC_"
 )
 
 var ValidAPIDocumentUserTypes = map[string]bool{
 	DocumentTypeHowTo:        true,
-	DocumentTypeSampleAndSdk: true,
+	DocumentTypeSamples:      true,
 	DocumentTypeSupportForum: true,
 	DocumentTypePublicForum:  true,
 	DocumentTypeOther:        true,
+}
+
+// Fixed types (HowTo, Samples, …) are stored with the DOC_ prefix to be compatible with the api-portal.
+var FixedAPIDocumentStoredTypes = []string{
+	DocumentTypePrefix + DocumentTypeHowTo,
+	DocumentTypePrefix + DocumentTypeSamples,
+	DocumentTypePrefix + DocumentTypeSupportForum,
+	DocumentTypePrefix + DocumentTypePublicForum,
 }
 
 var ReservedAPIDocumentTypes = []string{
@@ -354,16 +371,14 @@ var ReservedAPIDocumentHandles = map[string]bool{
 	DocumentHandleThumbnail:  true,
 }
 
-// ForbiddenOtherTypeNames is the set of type names that may not be used as
-// custom doc types when creating a document with type=OTHER.
 var ForbiddenOtherTypeNames = map[string]bool{
-	DocumentTypeDefinition:   true,
-	DocumentTypeThumbnail:    true,
-	DocumentTypeHowTo:        true,
-	DocumentTypeSampleAndSdk: true,
-	DocumentTypeSupportForum: true,
-	DocumentTypePublicForum:  true,
-	DocumentTypeOther:        true,
+	strings.ToLower(DocumentTypeDefinition):   true,
+	strings.ToLower(DocumentTypeThumbnail):    true,
+	strings.ToLower(DocumentTypeHowTo):        true,
+	strings.ToLower(DocumentTypeSamples):      true,
+	strings.ToLower(DocumentTypeSupportForum): true,
+	strings.ToLower(DocumentTypePublicForum):  true,
+	strings.ToLower(DocumentTypeOther):        true,
 }
 
 // Metadata key constants for deployment metadata

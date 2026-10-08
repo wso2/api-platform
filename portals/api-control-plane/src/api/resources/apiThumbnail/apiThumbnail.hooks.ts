@@ -89,7 +89,6 @@ type UseApiThumbnailResult = {
   error: ApiError | null;
 };
 
-/** Fetch and expose the artifact's thumbnail as a `blob:` URL ready for `<img src>`. */
 export const useApiThumbnail = (
   apiType: string,
   apiId: string | undefined,

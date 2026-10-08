@@ -40,12 +40,12 @@ export function DocumentsPanel() {
   const show = useCallback(
     (next: DocumentsView, options: { replace?: boolean } = {}) =>
       setSearchParams(documentsSearchParams(next), options),
-    [setSearchParams]
+    [setSearchParams],
   );
 
   const selectDocument = useCallback(
     (docId: string, options?: { replace?: boolean }) => show({ docId, mode: 'browse' }, options),
-    [show]
+    [show],
   );
 
   // `ScopeGate` only renders this once an API is in scope.
@@ -57,7 +57,9 @@ export function DocumentsPanel() {
         apiHandle={apiHandle}
         docId={view.mode === 'edit' ? view.docId : undefined}
         // Back to the document it came from; a fresh create lands on the new one.
-        onCancel={() => show({ docId: view.mode === 'edit' ? view.docId : undefined, mode: 'browse' })}
+        onCancel={() =>
+          show({ docId: view.mode === 'edit' ? view.docId : undefined, mode: 'browse' })
+        }
         // `replace`, so Back from the saved document does not reopen the form.
         onSaved={(docId) => show({ docId, mode: 'browse' }, { replace: true })}
       />

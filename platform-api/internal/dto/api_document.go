@@ -25,12 +25,12 @@ type CreateAPIDocumentRequest struct {
 	DisplayName   string
 	FileName      string
 	Content       []byte
-	OtherTypeName string // only meaningful when Type == "OTHER"; stored as-is in the type column
+	OtherTypeName string // only meaningful when Type == "Other"; stored as-is in the type column
 }
 
 type UpdateAPIDocumentRequest struct {
 	Type          *string // nil = leave unchanged; pointer to "" is rejected
-	OtherTypeName string  // only meaningful when Type == "OTHER"
+	OtherTypeName string  // only meaningful when Type == "Other"
 	DisplayName   *string
 	FileName      *string
 	Content       []byte

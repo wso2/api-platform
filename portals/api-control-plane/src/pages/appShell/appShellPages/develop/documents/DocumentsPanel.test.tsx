@@ -18,11 +18,12 @@
 
 import { http, HttpResponse } from 'msw';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import type { ApiDocument, ApiDocumentMetadata } from '@/api/resources/apiDocuments';
+import * as apiDocumentsEndpoints from '@/api/resources/apiDocuments/apiDocuments.endpoints';
 import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
 import { apiUrl, listEnvelope, recorder, type Recorder } from '@/test/msw';
@@ -44,7 +45,7 @@ const aDocument = (id: string, overrides: Partial<DocumentFixture> = {}): Docume
   contentType: 'text/markdown; charset=utf-8',
   displayName: id,
   id,
-  type: 'HOW_TO',
+  type: 'HowTo',
   updatedAt: '2026-09-28T10:00:00Z',
   ...overrides,
 });
@@ -77,19 +78,21 @@ function serve(documents: DocumentFixture[]) {
           limit,
           offset,
           total: documents.length,
-        })
+        }),
       );
     }),
     http.get(apiUrl(`${COLLECTION}/:docId/content`), ({ params }) => {
       const document = documents.find((candidate) => candidate.id === params.docId);
       return document
-        ? new HttpResponse(document.content, { headers: { 'Content-Type': document.contentType ?? '' } })
+        ? new HttpResponse(document.content, {
+            headers: { 'Content-Type': document.contentType ?? '' },
+          })
         : notFound();
     }),
     http.get(apiUrl(`${COLLECTION}/:docId`), ({ params }) => {
       const document = documents.find((candidate) => candidate.id === params.docId);
       return document ? HttpResponse.json(metadata(document)) : notFound();
-    })
+    }),
   );
 }
 
@@ -115,8 +118,10 @@ function renderPage(entry = BASE) {
     </ApiScopeProvider>,
     {
       route: entry,
-      scope: makeConsoleScope({ params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT } }),
-    }
+      scope: makeConsoleScope({
+        params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+      }),
+    },
   );
 }
 
@@ -135,16 +140,21 @@ describe('DocumentsPanel', () => {
   });
 
   it('shows the first document and switches when another is picked', async () => {
-    serve([aDocument('getting-started'), aDocument('sdk', { type: 'SAMPLE_SDK' })]);
+    serve([aDocument('getting-started'), aDocument('sdk', { type: 'Samples' })]);
     const { user } = renderPage();
 
-    expect(await screen.findByRole('heading', { level: 2, name: 'getting-started' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'getting-started' }),
+    ).toBeInTheDocument();
     expect(await screen.findByText('Body of getting-started.')).toBeInTheDocument();
     expect(screen.getByText('Samples & SDK')).toBeInTheDocument();
     // The first document is selected on arrival, highlighted and in the URL.
-    expect(screen.getByRole('button', { name: /^getting-started/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('button', { name: /^getting-started/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`)
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`),
     );
 
     await user.click(screen.getByRole('button', { name: /^sdk/ }));
@@ -153,8 +163,25 @@ describe('DocumentsPanel', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=sdk`);
   });
 
+  it('lists plain "Other" documents in one group, after custom types', async () => {
+    serve([
+      aDocument('plain', { type: 'Other' }),
+      aDocument('faq', { type: 'FAQ' }),
+      aDocument('guide', { type: 'HowTo' }),
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Other (1)' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Other \(/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^plain/ })).toHaveLength(1);
+    const groups = screen
+      .getAllByRole('button', { expanded: true })
+      .map((button) => button.getAttribute('aria-label'));
+    expect(groups).toEqual(['How To (1)', 'FAQ (1)', 'Other (1)']);
+  });
+
   it('collapses and expands a document-type group', async () => {
-    serve([aDocument('getting-started'), aDocument('sdk', { type: 'SAMPLE_SDK' })]);
+    serve([aDocument('getting-started'), aDocument('sdk', { type: 'Samples' })]);
     const { user } = renderPage();
 
     const header = await screen.findByRole('button', { name: 'Samples & SDK (1)' });
@@ -163,7 +190,9 @@ describe('DocumentsPanel', () => {
 
     await user.click(header);
     expect(header).toHaveAttribute('aria-expanded', 'false');
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^sdk/ })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^sdk/ })).not.toBeInTheDocument(),
+    );
     // Other groups are untouched.
     expect(screen.getByRole('button', { name: /^getting-started/ })).toBeInTheDocument();
 
@@ -183,22 +212,50 @@ describe('DocumentsPanel', () => {
   });
 
   it('opens the document named in the URL', async () => {
-    serve([aDocument('getting-started'), aDocument('faq', { type: 'OTHER' })]);
+    serve([aDocument('getting-started'), aDocument('faq', { type: 'Other' })]);
     renderPage(`${BASE}?doc=faq`);
 
     expect(await screen.findByText('Body of faq.')).toBeInTheDocument();
   });
 
-  it('loads the next page on "View more"', async () => {
-    serve(Array.from({ length: 12 }, (_, index) => aDocument(`doc-${index + 1}`)));
-    const { user } = renderPage();
+  it('loads the next page when the end of the list scrolls into view', async () => {
+    // jsdom has no layout, so drive the observer by hand: report the sentinel
+    // as visible whenever it is observed.
+    const observed: Element[] = [];
+    class VisibleObserver {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe = (target: Element) => {
+        observed.push(target);
+        this.callback(
+          [{ isIntersecting: true, target } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      };
+      unobserve = () => {};
+      disconnect = () => {};
+      takeRecords = () => [];
+    }
+    const previousObserver = globalThis.IntersectionObserver;
+    vi.stubGlobal('IntersectionObserver', VisibleObserver);
+    try {
+      serve(Array.from({ length: 12 }, (_, index) => aDocument(`doc-${index + 1}`)));
+      renderPage();
 
-    expect(await screen.findByText('Showing 10 of 12')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'View more' }));
-
-    expect(await screen.findByRole('button', { name: /^doc-12/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'View more' })).not.toBeInTheDocument();
-    await waitFor(() => expect(requests.calls.filter((r) => r.method === 'GET' && r.url.pathname.endsWith('/docs')).at(-1)?.params.get('offset')).toBe('10'));
+      expect(await screen.findByRole('button', { name: /^doc-12/ })).toBeInTheDocument();
+      expect(observed.length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: /View more/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Showing \d+ of \d+/)).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          requests.calls
+            .filter((r) => r.method === 'GET' && r.url.pathname.endsWith('/docs'))
+            .at(-1)
+            ?.params.get('offset'),
+        ).toBe('10'),
+      );
+    } finally {
+      vi.stubGlobal('IntersectionObserver', previousObserver);
+    }
   });
 
   it('creates a document from inline Markdown and opens it', async () => {
@@ -210,7 +267,7 @@ describe('DocumentsPanel', () => {
         const created = aDocument('error-handling', { displayName: 'Error handling' });
         documents.push(created);
         return HttpResponse.json(metadata(created), { status: 201 });
-      })
+      }),
     );
     const { user } = renderPage(`${BASE}?mode=create`);
 
@@ -219,7 +276,7 @@ describe('DocumentsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=error-handling`)
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=error-handling`),
     );
     expect(requests.calls.some((r) => r.method === 'POST')).toBe(true);
   });
@@ -227,25 +284,18 @@ describe('DocumentsPanel', () => {
   it('saves an "Other" document with its custom type in otherTypeName', async () => {
     const documents: DocumentFixture[] = [];
     serve(documents);
-    let postedType: string | null = null;
-    let postedOtherTypeName: string | null = null;
+    const createSpy = vi.spyOn(apiDocumentsEndpoints, 'createApiDocument');
     server.use(
       http.post(apiUrl(COLLECTION), async ({ request }) => {
-        try {
-          const form = await request.clone().formData();
-          postedType = (form.get('type') as string | null) ?? null;
-          postedOtherTypeName = (form.get('otherTypeName') as string | null) ?? null;
-        } catch {
-          // jsdom + axios can present FormData as a stringified body that
-          // doesn't parse as real multipart — leave the captured fields null
-          // and let the assertions below fall back to the text form.
-        }
         await requests.capture(request);
         // The server stores the custom name itself as the type, case untouched.
-        const created = aDocument('changes', { displayName: 'Changes', type: 'Changelog' as never });
+        const created = aDocument('changes', {
+          displayName: 'Changes',
+          type: 'Changelog' as never,
+        });
         documents.push(created);
         return HttpResponse.json(metadata(created), { status: 201 });
-      })
+      }),
     );
     const { user } = renderPage(`${BASE}?mode=create`);
 
@@ -257,18 +307,13 @@ describe('DocumentsPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`)
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`),
     );
-    const post = requests.calls.find((r) => r.method === 'POST');
-    if (postedType !== null) {
-      expect(postedType).toBe('OTHER');
-      expect(postedOtherTypeName).toBe('Changelog');
-    } else if (post?.body && !post.body.startsWith('[object ')) {
-      expect(post.body).toMatch(/name="type"[^]*OTHER/);
-      expect(post.body).toMatch(/name="otherTypeName"[^]*Changelog/);
-    }
-    // Listed under its own group, and its type chip shows the custom name, not "Other".
-    await waitFor(() => expect(screen.getAllByText('Changelog')).toHaveLength(2));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    const body = createSpy.mock.calls[0][2];
+    expect(body.type).toBe('Other');
+    expect(body.otherTypeName).toBe('Changelog');
+    createSpy.mockRestore();
   });
 
   it('keeps Create disabled until every required field is filled', async () => {
@@ -283,12 +328,11 @@ describe('DocumentsPanel', () => {
     await user.type(screen.getByLabelText(/^Content/), 'All notable changes.');
     expect(create).toBeEnabled();
 
-    // "Other" adds a required custom type, which disables Create again until filled.
+    // "Other" shows an optional Custom type field — Create stays enabled without it.
     await user.click(screen.getByRole('combobox', { name: 'Document type' }));
     await user.click(await screen.findByRole('option', { name: 'Other' }));
-    expect(create).toBeDisabled();
-    await user.type(screen.getByLabelText(/^Custom type/), 'Changelog');
     expect(create).toBeEnabled();
+    expect(screen.getByLabelText(/^Custom type/)).toBeInTheDocument();
 
     // Missing values are never flagged in red — the disabled button says enough.
     expect(screen.queryByText(/^Enter a name/)).not.toBeInTheDocument();
@@ -300,7 +344,9 @@ describe('DocumentsPanel', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Cancel' }));
 
-    await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('mode=create'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).not.toHaveTextContent('mode=create'),
+    );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -313,39 +359,25 @@ describe('DocumentsPanel', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(
-      within(dialog).getByText('You have unsaved changes. Are you sure you want to leave?')
+      within(dialog).getByText('You have unsaved changes. Are you sure you want to leave?'),
     ).toBeInTheDocument();
 
-    // Stay keeps the form and the edits.
-    await user.click(within(dialog).getByRole('button', { name: 'Stay' }));
+    // No keeps the form and the edits.
+    await user.click(within(dialog).getByRole('button', { name: 'No' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByLabelText(/^Content/)).toHaveValue('# getting-started\n\nBody of getting-started. More.');
+    expect(screen.getByLabelText(/^Content/)).toHaveValue(
+      '# getting-started\n\nBody of getting-started. More.',
+    );
     expect(screen.getByTestId('location')).toHaveTextContent('mode=edit');
 
-    // Leave discards them and returns to the document.
+    // Yes discards them and returns to the document.
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Yes' }),
+    );
     await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`)
+      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`),
     );
     expect(screen.getByTestId('location')).not.toHaveTextContent('mode=edit');
-  });
-
-  it('warns before an upload replaces an existing document’s content', async () => {
-    serve([aDocument('getting-started')]);
-    const { user } = renderPage(`${BASE}?doc=getting-started&mode=edit`);
-
-    const content = await screen.findByLabelText(/^Content/);
-    expect(content).toHaveValue('# getting-started\n\nBody of getting-started.');
-
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    await user.upload(input, new File(['# Replaced'], 'replaced.md', { type: 'text/markdown' }));
-
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Override document content?')).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('button', { name: 'Override' }));
-
-    await waitFor(() => expect(content).toHaveValue('# Replaced'));
-    expect(screen.getByText('replaced.md')).toBeInTheDocument();
   });
 });

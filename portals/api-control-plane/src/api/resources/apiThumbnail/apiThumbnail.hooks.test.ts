@@ -61,16 +61,10 @@ const PATH = `/apis/${API_TYPE}/${API_ID}/thumbnail`;
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 let requests: Recorder;
-let createdObjectURLs: string[];
-let revokedObjectURLs: string[];
+const createdObjectURLs: string[] = [];
+const revokedObjectURLs: string[] = [];
 
-// jsdom has no URL.createObjectURL / URL.revokeObjectURL at all, so install
-// stubs once at file scope rather than per test. Per-test restore would wipe
-// them while React's passive cleanup effects (which fire during unmount
-// scheduled by the test harness) are still trying to revoke a URL.
-createdObjectURLs = [];
-revokedObjectURLs = [];
-URL.createObjectURL = vi.fn((_blob: Blob | MediaSource): string => {
+URL.createObjectURL = vi.fn((): string => {
   const url = `blob:test/${createdObjectURLs.length}`;
   createdObjectURLs.push(url);
   return url;

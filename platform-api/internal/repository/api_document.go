@@ -117,22 +117,21 @@ func (r *DocumentRepo) ListDocumentsByArtifact(artifactUUID, orgUUID, docType st
 	whereClause := `WHERE artifact_uuid = ? AND organization_uuid = ?`
 	args := []interface{}{artifactUUID, orgUUID}
 	if docType != "" {
+		// get all docs whose type is not a fixed type (HowTo, Samples, …) when docType=Other
 		if docType == constants.DocumentTypeOther {
-			// Sort the user-type keys so the generated SQL text is deterministic
-			// across invocations — a map iteration order would churn the
-			// placeholder order and defeat the DB driver's prepared-statement cache.
-			userTypes := sortedMapKeys(constants.ValidAPIDocumentUserTypes)
-			placeholders := make([]string, len(userTypes))
-			for i, t := range userTypes {
+			fixedTypes := constants.FixedAPIDocumentStoredTypes
+			placeholders := make([]string, len(fixedTypes))
+			for i, t := range fixedTypes {
 				placeholders[i] = "?"
 				args = append(args, t)
 			}
 			whereClause += ` AND type NOT IN (` + strings.Join(placeholders, ", ") + `)`
 		} else {
 			whereClause += ` AND type = ?`
-			args = append(args, docType)
+			args = append(args, constants.DocumentTypePrefix + docType)
 		}
 	}
+	// exclude reserved types (DEFINITION, THUMBNAIL) from listing because they have dedicated endpoints
 	if len(constants.ReservedAPIDocumentTypes) > 0 {
 		placeholders := make([]string, len(constants.ReservedAPIDocumentTypes))
 		for i, t := range constants.ReservedAPIDocumentTypes {
@@ -220,12 +219,19 @@ func (r *DocumentRepo) UpsertDocument(doc *model.Document) error {
 	if err := r.CreateDocument(doc); err != nil {
 		if IsUniqueViolation(err) {
 			// A concurrent writer inserted between our UPDATE and INSERT; retry the UPDATE.
-			_, err = r.db.Exec(updateQuery,
+			retryResult, retryErr := r.db.Exec(updateQuery,
 				doc.FileName, doc.ContentType, doc.Content, doc.UpdatedBy, now,
 				doc.ArtifactUUID, doc.Handle, doc.Type, doc.OrganizationUUID,
 			)
-			if err != nil {
-				return fmt.Errorf("failed to upsert document (retry update): %w", err)
+			if retryErr != nil {
+				return fmt.Errorf("failed to upsert document (retry update): %w", retryErr)
+			}
+			retryRows, retryErr := retryResult.RowsAffected()
+			if retryErr != nil {
+				return fmt.Errorf("failed to upsert document (retry rows affected): %w", retryErr)
+			}
+			if retryRows == 0 {
+				return fmt.Errorf("upsert document retry affected 0 rows — concurrent delete during insert/update race")
 			}
 			return nil
 		}

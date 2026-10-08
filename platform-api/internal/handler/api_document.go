@@ -19,7 +19,6 @@ package handler
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -110,7 +109,19 @@ func (h *APIDocumentHandler) ListDocuments(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	docType := strings.TrimSpace(r.URL.Query().Get("type"))
+	rawDocType := strings.TrimSpace(r.URL.Query().Get("type"))
+	var docType string
+	if rawDocType != "" {
+		if normalized, ok := service.NormalizeAPIDocumentType(rawDocType); ok {
+			docType = normalized
+		} else if constants.ForbiddenOtherTypeNames[strings.ToLower(rawDocType)] {
+			return apperror.ValidationFailed.New("invalid document type filter")
+		} else {
+			// Custom type name — pass through as-is; the repository will query
+			// type = 'DOC_<rawDocType>' which matches how custom types are stored.
+			docType = rawDocType
+		}
+	}
 	limit, offset := parsePagination(r)
 
 	docs, total, err := h.service.GetAllApiDocuments(artifactUUID, orgID, docType, limit, offset)
@@ -142,8 +153,11 @@ func (h *APIDocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request)
 	if docID == "" {
 		return apperror.ValidationFailed.New("document ID is required")
 	}
+	if constants.ReservedAPIDocumentHandles[docID] {
+		return apperror.ValidationFailed.New("cannot access a system-managed document via this endpoint")
+	}
 
-	doc, err := h.service.GetDocument(artifactUUID, docID, orgID, "")
+	doc, err := h.service.GetDocument(artifactUUID, docID, orgID)
 	if err != nil {
 		return serviceError(err, "failed to get document")
 	}
@@ -162,6 +176,9 @@ func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.R
 	if docID == "" {
 		return apperror.ValidationFailed.New("document ID is required")
 	}
+	if constants.ReservedAPIDocumentHandles[docID] {
+		return apperror.ValidationFailed.New("cannot access a system-managed document via this endpoint")
+	}
 
 	doc, content, err := h.service.GetDocumentWithContent(artifactUUID, docID, orgID, "")
 	if err != nil {
@@ -178,6 +195,7 @@ func (h *APIDocumentHandler) GetDocumentContent(w http.ResponseWriter, r *http.R
 		ct = *doc.ContentType
 	}
 	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if doc.FileName != nil && *doc.FileName != "" {
 		fn := strings.NewReplacer(`"`, `\"`, `\`, `\\`).Replace(*doc.FileName)
 		w.Header().Set("Content-Disposition", `inline; filename="`+fn+`"`)
@@ -204,8 +222,13 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 
+	// converts the user-supplied type to the canonical camelCase form, if valid type
+	normalizedType, typeOK := service.NormalizeAPIDocumentType(parsed.docType)
+	if !typeOK {
+		return apperror.ValidationFailed.New("invalid document type")
+	}
 	req := &dto.CreateAPIDocumentRequest{
-		Type:          strings.ToUpper(parsed.docType),
+		Type:          normalizedType,
 		Handle:        parsed.handle,
 		DisplayName:   parsed.displayName,
 		FileName:      parsed.fileName,
@@ -218,7 +241,7 @@ func (h *APIDocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Reque
 		return serviceError(err, "failed to create document")
 	}
 
-	doc, err := h.service.GetDocument(artifactUUID, handle, orgID, "")
+	doc, err := h.service.GetDocument(artifactUUID, handle, orgID)
 	if err != nil {
 		return serviceError(err, "failed to load created document")
 	}
@@ -257,7 +280,11 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 
 	req := &dto.UpdateAPIDocumentRequest{}
 	if parsed.docTypeSet {
-		req.Type = &parsed.docType
+		normalizedType, typeOK := service.NormalizeAPIDocumentType(parsed.docType)
+		if !typeOK {
+			return apperror.ValidationFailed.New("invalid document type")
+		}
+		req.Type = &normalizedType
 		req.OtherTypeName = parsed.otherTypeName
 	}
 	if parsed.displayNameSet {
@@ -268,10 +295,7 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 		if parsed.contentTypeSet {
 			req.ContentType = &parsed.contentType
 		}
-		// A new upload may bring a new filename too; reflect it when set.
 		if parsed.fileNameSet {
-			req.FileName = &parsed.fileName
-		} else if parsed.fileName != "" {
 			req.FileName = &parsed.fileName
 		}
 	} else if parsed.fileNameSet {
@@ -283,7 +307,7 @@ func (h *APIDocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Reque
 		return serviceError(err, "failed to update document")
 	}
 
-	doc, err := h.service.GetDocument(artifactUUID, docID, orgID, "")
+	doc, err := h.service.GetDocument(artifactUUID, docID, orgID)
 	if err != nil {
 		return serviceError(err, "failed to load updated document")
 	}
@@ -319,7 +343,7 @@ func (h *APIDocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Reque
 type parsedDocForm struct {
 	docType        string
 	docTypeSet     bool
-	otherTypeName  string // only meaningful when docType == "OTHER"
+	otherTypeName  string // only meaningful when docType == "Other"
 	handle         string
 	handleSet      bool
 	displayName    string
@@ -373,10 +397,6 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	// `file` wins over `inlineContent` when both are supplied — but we reject
-	// outright rather than silently pick, matching the openapi import pattern.
-	file, header, fileErr := r.FormFile("file")
-	hasFile := fileErr == nil
 	var inlineContent string
 	hasInline := false
 	if form != nil {
@@ -388,32 +408,14 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	if hasFile && hasInline {
-		file.Close()
-		return parsedDocForm{}, apperror.ValidationFailed.New("provide either `file` or `inlineContent`, not both")
-	}
-	if requireContent && !hasFile && !hasInline {
-		return parsedDocForm{}, apperror.ValidationFailed.New("one of `file` or `inlineContent` is required")
+	if requireContent && !hasInline {
+		return parsedDocForm{}, apperror.ValidationFailed.New("`inlineContent` is required")
 	}
 
-	if hasFile {
-		defer file.Close()
-		data, readErr := io.ReadAll(io.LimitReader(file, h.maxBodyBytes+1))
-		if readErr != nil {
-			return parsedDocForm{}, apperror.ValidationFailed.New("failed to read uploaded file")
-		}
-		if int64(len(data)) > h.maxBodyBytes {
-			return parsedDocForm{}, apperror.PayloadTooLarge.New("file exceeds maximum allowed size")
-		}
-		parsed.content = data
-		parsed.fileName = sanitizeUploadFileName(header.Filename)
-		parsed.fileNameSet = parsed.fileName != ""
-		// Leave parsed.contentType unset — the service's DetectContentType
-		// does the sniff from bytes + filename, in one place.
-	} else if hasInline {
+	if hasInline {
 		parsed.content = []byte(inlineContent)
-		// Inline content has no uploaded filename; the caller may supply one
-		// alongside inlineContent to keep an existing filename on PUT.
+		// The caller may supply an explicit fileName field alongside inlineContent
+		// (e.g. to keep or rename the stored filename on PUT).
 		if form != nil {
 			if vals, ok := form.Value["fileName"]; ok {
 				parsed.fileNameSet = true
@@ -422,9 +424,6 @@ func (h *APIDocumentHandler) parseDocMultipart(w http.ResponseWriter, r *http.Re
 				}
 			}
 		}
-		// Inline content is markdown by convention. The explicit default
-		// survives even when no filename hint is supplied, so a plain
-		// inlineContent create still gets stored as markdown.
 		parsed.contentType = "text/markdown; charset=utf-8"
 		parsed.contentTypeSet = true
 	}

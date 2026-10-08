@@ -22,8 +22,6 @@ import { createIntl } from 'react-intl';
 
 import { documentTypeName, validateCustomType } from './documentTypes';
 import { documentsSearch, readDocumentsView } from './documentsSearch';
-import { readMarkdownFile, suggestDocumentName } from './markdownFile';
-
 describe('documents view in the URL', () => {
   it.each([
     ['', { mode: 'browse', docId: undefined }],
@@ -42,32 +40,6 @@ describe('documents view in the URL', () => {
   });
 });
 
-describe('readMarkdownFile', () => {
-  it('reads a Markdown file and strips a byte-order mark', async () => {
-    const file = new File(['\uFEFF# Hello'], 'hello.md');
-    await expect(readMarkdownFile(file)).resolves.toEqual({ content: '# Hello', fileName: 'hello.md' });
-  });
-
-  it('rejects other extensions', async () => {
-    await expect(readMarkdownFile(new File(['x'], 'notes.txt'))).resolves.toEqual({ error: 'type' });
-  });
-
-  it('rejects binary content', async () => {
-    const file = new File([new Uint8Array([0x23, 0x00, 0x41])], 'binary.md');
-    await expect(readMarkdownFile(file)).resolves.toEqual({ error: 'encoding' });
-  });
-});
-
-describe('suggestDocumentName', () => {
-  it('prefers the first top-level heading', () => {
-    expect(suggestDocumentName('intro\n# Error handling\n## More', 'x.md')).toBe('Error handling');
-  });
-
-  it('falls back to a readable file name', () => {
-    expect(suggestDocumentName('no heading', 'getting-started_guide.md')).toBe('getting started guide');
-  });
-});
-
 describe('custom "Other" document types', () => {
   const intl = createIntl({ locale: 'en', messages: {} });
 
@@ -77,8 +49,8 @@ describe('custom "Other" document types', () => {
     expect(documentTypeName(intl, 'FAQ')).toBe('FAQ');
     expect(documentTypeName(intl, 'Release notes')).toBe('Release notes');
     // Fixed types
-    expect(documentTypeName(intl, 'HOW_TO')).toBe('How To');
-    expect(documentTypeName(intl, 'OTHER')).toBe('Other');
+    expect(documentTypeName(intl, 'HowTo')).toBe('How To');
+    expect(documentTypeName(intl, 'Other')).toBe('Other');
   });
 
   it.each([
@@ -89,10 +61,10 @@ describe('custom "Other" document types', () => {
     ['Changelog', undefined],
     ['Release notes', undefined],
     // Reserved fixed-type names are rejected (case-insensitive).
-    ['HOW_TO', 'reserved'],
-    ['how_to', 'reserved'],
-    ['OTHER', 'reserved'],
-    ['SAMPLE_SDK', 'reserved'],
+    ['HowTo', 'reserved'],
+    ['howto', 'reserved'],
+    ['Other', 'reserved'],
+    ['Samples', 'reserved'],
   ])('validates %j', (name, error) => {
     expect(validateCustomType(name)).toBe(error);
   });

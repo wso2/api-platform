@@ -443,8 +443,9 @@ func TestDocumentRepo_GetDocument_WithEmptyDocType_ExcludesReservedTypes(t *test
 	}
 }
 
-// ListDocumentsByArtifact with docType=OTHER returns only docs of non-fixed
-// and non-reserved types.
+// ListDocumentsByArtifact with docType=OTHER returns docs of non-fixed and
+// non-reserved types — both plain "Other" (stored as DOC_Other) and docs with
+// a user-chosen custom name (stored as DOC_<name>, e.g. "DOC_FAQ").
 func TestDocumentRepo_ListDocumentsByArtifact_WithOtherDocType_ExcludesFixedAndReservedTypes(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
@@ -455,11 +456,11 @@ func TestDocumentRepo_ListDocumentsByArtifact_WithOtherDocType_ExcludesFixedAndR
 
 	insertDocumentRow(t, db, &model.Document{
 		ID: "doc-howto", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
-		Type: constants.DocumentTypeHowTo, Handle: "howto", DisplayName: "HowTo",
+		Type: "DOC_HowTo", Handle: "howto", DisplayName: "HowTo",
 	})
 	insertDocumentRow(t, db, &model.Document{
 		ID: "doc-sample", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
-		Type: constants.DocumentTypeSampleAndSdk, Handle: "sample", DisplayName: "Sample",
+		Type: "DOC_Samples", Handle: "sample", DisplayName: "Sample",
 	})
 	insertDocumentRow(t, db, &model.Document{
 		ID: "doc-thumb", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
@@ -469,8 +470,15 @@ func TestDocumentRepo_ListDocumentsByArtifact_WithOtherDocType_ExcludesFixedAndR
 	})
 	insertDocumentRow(t, db, &model.Document{
 		ID: "doc-faq", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
-		Type:        "FAQ", // user-chosen OTHER name stored as-is in the type column
-		Handle:      "faq", DisplayName: "FAQ",
+		Type:   constants.DocumentTypePrefix + "FAQ", // user-chosen OTHER name stored with DOC_ prefix
+		Handle: "faq", DisplayName: "FAQ",
+	})
+	// Plain "Other" with no custom type name is stored as DOC_Other and must
+	// also appear in ?type=OTHER results (regression for issue #3 fix).
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-plain-other", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type:   constants.DocumentTypePrefix + constants.DocumentTypeOther, // "DOC_Other"
+		Handle: "plain-other", DisplayName: "Plain Other",
 	})
 
 	repo := NewDocumentRepo(db)
@@ -478,11 +486,17 @@ func TestDocumentRepo_ListDocumentsByArtifact_WithOtherDocType_ExcludesFixedAndR
 	if err != nil {
 		t.Fatalf("ListDocumentsByArtifact(OTHER): %v", err)
 	}
-	if total != 1 || len(docs) != 1 {
-		t.Fatalf("expected only the FAQ row, got total=%d docs=%d", total, len(docs))
+	if total != 2 || len(docs) != 2 {
+		t.Fatalf("expected FAQ and DOC_Other rows (2 total), got total=%d docs=%d", total, len(docs))
 	}
-	if docs[0].Handle != "faq" {
-		t.Errorf("expected FAQ row, got handle=%q type=%q", docs[0].Handle, docs[0].Type)
+	handles := make(map[string]bool, len(docs))
+	for _, d := range docs {
+		handles[d.Handle] = true
+	}
+	for _, want := range []string{"faq", "plain-other"} {
+		if !handles[want] {
+			t.Errorf("expected handle %q in results; got %v", want, handles)
+		}
 	}
 }
 

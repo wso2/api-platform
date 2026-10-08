@@ -68,7 +68,8 @@ export const safeHref = (raw: string): string | undefined => {
   if (!href) return undefined;
   if (/^(https?:|mailto:)/i.test(href)) return href;
   if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return undefined;
-  if (href.startsWith('//')) return undefined;
+  const normalised = href.replace(/\\/g, '/');
+  if (normalised.startsWith('//')) return undefined;
   return href;
 };
 
@@ -183,8 +184,10 @@ const startsBlock = (line: string): boolean =>
   ORDERED.test(line) ||
   QUOTE.test(line);
 
+const MAX_QUOTE_DEPTH = 20;
+
 /** Parses a Markdown document into blocks. Never throws: unknown syntax becomes text. */
-export function parseMarkdown(source: string): MarkdownBlock[] {
+export function parseMarkdown(source: string, depth = 0): MarkdownBlock[] {
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
   const blocks: MarkdownBlock[] = [];
   let i = 0;
@@ -237,7 +240,12 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
         body.push(QUOTE.exec(lines[i])![1]);
         i += 1;
       }
-      blocks.push({ kind: 'quote', children: parseMarkdown(body.join('\n')) });
+      if (depth >= MAX_QUOTE_DEPTH) {
+        // Past the nesting cap: render the raw text instead of recursing.
+        blocks.push({ kind: 'paragraph', children: parseInline(body.join('\n')) });
+      } else {
+        blocks.push({ kind: 'quote', children: parseMarkdown(body.join('\n'), depth + 1) });
+      }
       continue;
     }
 

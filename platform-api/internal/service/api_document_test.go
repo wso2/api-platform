@@ -207,7 +207,6 @@ func TestAPIDocumentService_CreateApiDocument_RejectsReservedType(t *testing.T) 
 // CreateApiDocument refuses a caller-supplied reserved handle (api-thumbnail / api-definition) so a user can't shadow the system singletons.
 func TestAPIDocumentService_CreateApiDocument_RejectsReservedHandle(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
-	docRepo.displayNameExistsResult = false
 
 	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
 		Type:        constants.DocumentTypeHowTo,
@@ -249,28 +248,66 @@ func TestAPIDocumentService_CreateApiDocument_ForbiddenOtherNameRejected(t *test
 	}
 }
 
-// CreateApiDocument refuses a duplicate display name within the same artifact.
-func TestAPIDocumentService_CreateApiDocument_DuplicateDisplayNameRejected(t *testing.T) {
+// CreateApiDocument allows an otherTypeName that starts with DOC_ — custom doc types are not restricted by prefix.
+func TestAPIDocumentService_CreateApiDocument_AllowsDOCPrefixedOtherTypeName(t *testing.T) {
+	cases := []string{"DOC_HowTo", "doc_samples", "DOC_Other", "DOC_Custom"}
+	for _, name := range cases {
+		svc, docRepo, _, _ := newTestDocumentService()
+		_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+			Type:          constants.DocumentTypeOther,
+			OtherTypeName: name,
+			DisplayName:   "fine display",
+		}, "org-1", "alice", "artifact-1")
+		if err != nil {
+			t.Errorf("CreateApiDocument(OTHER, otherTypeName=%q) err = %v, want nil (DOC_ prefix is allowed)", name, err)
+		}
+		if len(docRepo.createdDocs) != 1 {
+			t.Errorf("CreateApiDocument(OTHER, otherTypeName=%q): got %d created docs, want 1", name, len(docRepo.createdDocs))
+		}
+	}
+}
+
+// UpdateApiDocument allows an otherTypeName that starts with DOC_ — custom doc types are not restricted by prefix.
+func TestAPIDocumentService_UpdateApiDocument_AllowsDOCPrefixedOtherTypeName(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
-	docRepo.displayNameExistsResult = true
+	docRepo.getDocResult = &model.Document{
+		ID: "doc-1", ArtifactUUID: "artifact-1", OrganizationUUID: "org-1",
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "guide", DisplayName: "Guide",
+	}
+	newType := constants.DocumentTypeOther
+	docPrefixed := "DOC_Custom"
+	err := svc.UpdateApiDocument(&dto.UpdateAPIDocumentRequest{
+		Type:          &newType,
+		OtherTypeName: docPrefixed,
+	}, "org-1", "alice", "artifact-1", "doc-1")
+	if err != nil {
+		t.Errorf("UpdateApiDocument(OTHER, otherTypeName=%q) err = %v, want nil (DOC_ prefix is allowed)", docPrefixed, err)
+	}
+	if len(docRepo.updateApiDocCalls) != 1 {
+		t.Errorf("UpdateApiDocument(OTHER, otherTypeName=%q): got %d update calls, want 1", docPrefixed, len(docRepo.updateApiDocCalls))
+	}
+}
+
+// CreateApiDocument allows a duplicate display name within the same artifact — uniqueness is not enforced.
+func TestAPIDocumentService_CreateApiDocument_DuplicateDisplayNameAllowed(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
 
 	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
 		Type:        constants.DocumentTypeHowTo,
 		DisplayName: "Getting started",
 	}, "org-1", "alice", "artifact-1")
 
-	if err == nil || !apperror.APIDocumentNameExists.Is(err) {
-		t.Fatalf("CreateApiDocument duplicate displayName err = %v, want APIDocumentNameExists", err)
+	if err != nil {
+		t.Fatalf("CreateApiDocument with duplicate displayName err = %v, want nil (duplicate display names are allowed)", err)
 	}
-	if len(docRepo.createdDocs) != 0 {
-		t.Errorf("CreateDocument called despite duplicate displayName")
+	if len(docRepo.createdDocs) != 1 {
+		t.Errorf("CreateDocument not called: got %d created docs, want 1", len(docRepo.createdDocs))
 	}
 }
 
 // CreateApiDocument refuses a caller-supplied handle that already exists on the same artifact (DB unique index enforced service-side first).
 func TestAPIDocumentService_CreateApiDocument_DuplicateHandleRejected(t *testing.T) {
 	svc, docRepo, _, _ := newTestDocumentService()
-	docRepo.displayNameExistsResult = false
 	docRepo.handleExistsResult = true
 
 	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
@@ -339,7 +376,6 @@ func TestAPIDocumentService_UpdateApiDocument_PreservesContentWhenRequestOmitsIt
 		ContentType:      "text/markdown; charset=utf-8",
 		Content:          []byte("# Overview"),
 	}
-	docRepo.displayNameExistsResult = false
 
 	newName := "Overview v2"
 	err := svc.UpdateApiDocument(&dto.UpdateAPIDocumentRequest{

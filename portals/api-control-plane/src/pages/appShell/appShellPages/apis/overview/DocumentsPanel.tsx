@@ -16,27 +16,16 @@
  * under the License.
  */
 
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  Divider,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { ChevronRight, FileText } from '@wso2/oxygen-ui-icons-react';
+import { Box, Card, Chip, Divider, Link, ListItemButton, Stack, Typography } from '@wso2/oxygen-ui';
+import { ChevronRight, FileText, Plus } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { useApiDocuments } from '@/api/resources/apiDocuments';
-import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useFormatters } from '@/i18n/useFormatters';
+import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { routes } from '@/routes/paths';
+import { Can } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { documentTypeName } from '../../develop/documents/documentTypes';
 import { documentsSearch } from '../../develop/documents/documentsSearch';
@@ -51,6 +40,11 @@ const messages = defineMessages({
     defaultMessage: 'View More',
     description: 'Opens the API’s Documents page to see every document.',
   },
+  create: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.create',
+    defaultMessage: 'Create Document',
+    description: 'Opens the form for a new API document. Shown when the API has none.',
+  },
   empty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.empty',
     defaultMessage: 'No Documents available for this API',
@@ -59,16 +53,24 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loading',
     defaultMessage: 'Loading documents…',
   },
-  loadError: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loadError',
-    defaultMessage: 'Unable to load documents.',
-  },
   updated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.updated',
     defaultMessage: 'Updated {when}',
     description: '{when} is a relative time, e.g. "2 days ago".',
   },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loadError',
+    defaultMessage: 'Unable to load documents.',
+  },
 });
+
+/** Icon and label of a header link sit on one line, centred on each other. */
+const HEADER_LINK_SX = {
+  alignItems: 'center',
+  display: 'inline-flex',
+  flexShrink: 0,
+  gap: 0.5,
+} as const;
 
 /** Documents shown on the overview; the rest are a click away on the Documents page. */
 const PREVIEW_COUNT = 5;
@@ -91,16 +93,46 @@ export function DocumentsPanel() {
 
   const documents = documentsQuery.data?.list ?? [];
   const total = documentsQuery.data?.pagination.total ?? 0;
+  const loaded = !documentsQuery.isPending && !documentsQuery.error;
 
   return (
     <Card>
       <Stack
+        alignItems="center"
         direction="row"
-        sx={{ alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.5 }}
+        justifyContent="space-between"
+        spacing={1.5}
+        sx={{ px: 2, py: 1.5 }}
       >
         <Typography component="h2" sx={{ fontWeight: 600 }} variant="h6">
           <FormattedMessage {...messages.title} />
         </Typography>
+        {documentsPath && loaded && total > PREVIEW_COUNT && (
+          <Link
+            component={RouterLink}
+            sx={HEADER_LINK_SX}
+            to={documentsPath}
+            underline="hover"
+            variant="body2"
+          >
+            <FormattedMessage {...messages.viewMore} />
+            <ChevronRight size={16} />
+          </Link>
+        )}
+        {documentsPath && loaded && total === 0 && (
+          <Can do="CreateAPIDocument" denied="hide">
+            <Link
+              component={RouterLink}
+              sx={HEADER_LINK_SX}
+              to={`${documentsPath}${documentsSearch({ mode: 'create' })}`}
+              underline="hover"
+              variant="body2"
+            >
+              <Plus size={16} />
+              <FormattedMessage {...messages.create} />
+            </Link>
+          </Can>
+        )}
       </Stack>
       <Divider />
 
@@ -117,59 +149,44 @@ export function DocumentsPanel() {
           <FormattedMessage {...messages.empty} />
         </Typography>
       ) : (
-        <>
-          <List disablePadding>
-            {documents.map((document, index) => {
-              const when = relativeTime(document.updatedAt ?? document.createdAt);
-              return (
-                <Box component="li" key={document.id} sx={{ listStyle: 'none' }}>
-                  {index > 0 && <Divider component="div" />}
-                  <ListItemButton
-                    component={RouterLink}
-                    sx={{ gap: 1.5, px: 2, py: 1.25 }}
-                    to={`${documentsPath ?? ''}${documentsSearch({ docId: document.id, mode: 'browse' })}`}
-                  >
-                    <ListItemIcon sx={{ minWidth: 0 }}>
-                      <FileText size={18} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={document.displayName}
-                      secondary={
-                        when ? intl.formatMessage(messages.updated, { when }) : undefined
-                      }
-                      slotProps={{
-                        primary: { noWrap: true, variant: 'body2' },
-                        secondary: { noWrap: true, variant: 'caption' },
-                      }}
-                      sx={{ minWidth: 0 }}
-                    />
-                    <Chip
-                      label={documentTypeName(intl, document.type)}
-                      size="small"
-                      sx={{ flexShrink: 0, typography: 'caption' }}
-                    />
-                  </ListItemButton>
+        <Stack
+          component="ul"
+          divider={<Divider component="li" />}
+          sx={{ listStyle: 'none', m: 0, p: 0 }}
+        >
+          {documents.map((document) => (
+            <Box component="li" key={document.id}>
+              <ListItemButton
+                component={RouterLink}
+                sx={{ alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}
+                to={`${documentsPath ?? ''}${documentsSearch({ docId: document.id, mode: 'browse' })}`}
+              >
+                <FileText color="currentColor" size={16} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography noWrap variant="body2">
+                    {document.displayName}
+                  </Typography>
                 </Box>
-              );
-            })}
-          </List>
-          {documentsPath && total > PREVIEW_COUNT && (
-            <>
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 1.5 }}>
-                <Button
-                  component={RouterLink}
-                  endIcon={<ChevronRight size={16} />}
+                <Chip
+                  label={documentTypeName(intl, document.type)}
                   size="small"
-                  to={documentsPath}
-                  variant="outlined"
+                  sx={{ flexShrink: 0, typography: 'caption' }}
+                />
+                <Typography
+                  color="text.secondary"
+                  noWrap
+                  sx={{ display: { sm: 'block', xs: 'none' }, flexShrink: 0 }}
+                  variant="caption"
                 >
-                  <FormattedMessage {...messages.viewMore} />
-                </Button>
-              </Box>
-            </>
-          )}
-        </>
+                  <FormattedMessage
+                    {...messages.updated}
+                    values={{ when: relativeTime(document.updatedAt ?? document.createdAt) }}
+                  />
+                </Typography>
+              </ListItemButton>
+            </Box>
+          ))}
+        </Stack>
       )}
     </Card>
   );

@@ -38,7 +38,7 @@ import type { FormBodyOf, PathOf, QueryOf, ResponseOf, Schema } from '../../core
  * in `fileName` when there was one.
  */
 
-export type ApiDocumentType = Schema<'APIDocumentType'>;
+export type ApiDocumentType = 'HowTo' | 'Samples' | 'PublicForum' | 'SupportForum' | 'Other';
 export type ApiDocumentMetadata = Schema<'APIDocumentMetadata'>;
 /** Metadata of one document — no body. */
 export type ApiDocument = ResponseOf<'GetAPIDocument'>;

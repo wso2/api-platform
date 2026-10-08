@@ -17,12 +17,13 @@
  */
 
 import { Box, Button, Grid, PageTitle } from '@wso2/oxygen-ui';
-import { FileText, Plus } from '@wso2/oxygen-ui-icons-react';
-import { useEffect } from 'react';
+import { Plus } from '@wso2/oxygen-ui-icons-react';
+import { useCallback, useEffect } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useApiDocumentPages } from '@/api/resources/apiDocuments';
+import { DocumentsIllustration } from '@/components/illustrations/DocumentsIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { Can } from '@/permissions';
 import { DocumentList } from './DocumentList';
@@ -56,7 +57,7 @@ const messages = defineMessages({
   },
 });
 
-/** Documents loaded per "View more". */
+/** Documents loaded per page as the list scrolls. */
 export const DOCUMENTS_PAGE_SIZE = 10;
 
 /**
@@ -88,6 +89,9 @@ export function DocumentsBrowser({
   const intl = useIntl();
   const pagesQuery = useApiDocumentPages(REST_API_TYPE, apiHandle, { limit: DOCUMENTS_PAGE_SIZE });
   const firstId = pagesQuery.data?.pages[0]?.list[0]?.id;
+  // Stable, so the list's infinite-scroll observer isn't rebuilt on every render.
+  const { fetchNextPage } = pagesQuery;
+  const loadMore = useCallback(() => void fetchNextPage(), [fetchNextPage]);
 
   // Arriving without a document in the URL selects the first one, and records
   // it (replacing, not pushing) so the highlight, the preview and the URL agree.
@@ -127,44 +131,46 @@ export function DocumentsBrowser({
         )}
       </PageTitle>
 
-      {isEmpty ? (
-        <EmptyState
-          actionIcon={<Plus size={18} />}
-          actionLabel={intl.formatMessage(messages.create)}
-          illustration={<FileText size={48} />}
-          onAction={onCreate}
-          operationId="CreateAPIDocument"
-          title={intl.formatMessage(messages.empty)}
-        />
-      ) : (
-        <Grid container spacing={2}>
-          <Grid size={{ md: 4, xs: 12 }}>
-            <DocumentList
-              documents={documents}
-              height={DOCUMENTS_PANEL_HEIGHT}
-              hasMore={pagesQuery.hasNextPage}
-              loadingMore={pagesQuery.isFetchingNextPage}
-              onLoadMore={() => void pagesQuery.fetchNextPage()}
-              onSelect={onSelect}
-              selectedId={activeId}
-              total={total}
-            />
+      <Box sx={{ pt: 2 }}>
+        {isEmpty ? (
+          <EmptyState
+            actionIcon={<Plus />}
+            actionLabel={intl.formatMessage(messages.create)}
+            illustration={<DocumentsIllustration />}
+            onAction={onCreate}
+            operationId="CreateAPIDocument"
+            title={intl.formatMessage(messages.empty)}
+          />
+        ) : (
+          <Grid container spacing={2}>
+            <Grid size={{ md: 4, xs: 12 }}>
+              <DocumentList
+                documents={documents}
+                height={DOCUMENTS_PANEL_HEIGHT}
+                hasMore={pagesQuery.hasNextPage}
+                loadingMore={pagesQuery.isFetchingNextPage}
+                onLoadMore={loadMore}
+                onSelect={onSelect}
+                selectedId={activeId}
+                total={total}
+              />
+            </Grid>
+            <Grid size={{ md: 8, xs: 12 }}>
+              <Box sx={{ height: DOCUMENTS_PANEL_HEIGHT, minWidth: 0 }}>
+                {activeId && (
+                  <DocumentViewer
+                    apiHandle={apiHandle}
+                    docId={activeId}
+                    key={activeId}
+                    onDeleted={onDeleted}
+                    onEdit={() => onEdit(activeId)}
+                  />
+                )}
+              </Box>
+            </Grid>
           </Grid>
-          <Grid size={{ md: 8, xs: 12 }}>
-            <Box sx={{ height: DOCUMENTS_PANEL_HEIGHT, minWidth: 0 }}>
-              {activeId && (
-                <DocumentViewer
-                  apiHandle={apiHandle}
-                  docId={activeId}
-                  key={activeId}
-                  onDeleted={onDeleted}
-                  onEdit={() => onEdit(activeId)}
-                />
-              )}
-            </Box>
-          </Grid>
-        </Grid>
-      )}
+        )}
+      </Box>
     </>
   );
 }

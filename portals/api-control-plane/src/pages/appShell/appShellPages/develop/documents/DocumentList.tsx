@@ -18,9 +18,9 @@
 
 import {
   Box,
-  Button,
   Card,
   Chip,
+  CircularProgress,
   Collapse,
   Divider,
   List,
@@ -34,7 +34,7 @@ import {
   type Theme,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, FileText } from '@wso2/oxygen-ui-icons-react';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { ApiDocumentMetadata } from '@/api/resources/apiDocuments';
@@ -63,21 +63,14 @@ const messages = defineMessages({
     description:
       'Secondary line of a document in the list. {when} is a relative time, e.g. "2 days ago".',
   },
-  viewMore: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.viewMore',
-    defaultMessage: 'View more',
-    description: 'Loads the next page of documents into the list.',
-  },
   loadingMore: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.loadingMore',
     defaultMessage: 'Loading documents…',
   },
-  showing: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.showing',
-    defaultMessage: 'Showing {shown} of {total}',
-    description: 'How many of the API’s documents are loaded into the list.',
-  },
 });
+
+/** The fixed catch-all type; documents with no more specific type group here, last. */
+const PLAIN_OTHER = 'Other';
 
 /**
  * The theme's `action.selected` fill is close to invisible on the dark acrylic
@@ -96,6 +89,9 @@ const selectedItemSx = (theme: Theme) =>
     },
   }) as const;
 
+/** Start loading the next page this far before the end of the list is reached. */
+const LOAD_AHEAD = '120px';
+
 type DocumentListProps = {
   documents: ApiDocumentMetadata[];
   /** Fixed panel height; the list scrolls inside it. */
@@ -110,8 +106,8 @@ type DocumentListProps = {
 };
 
 /**
- * The loaded documents, grouped by type, with "View more" appending the next
- * page. Groups are rebuilt from whatever has loaded so far — the server orders
+ * The loaded documents, grouped by type. Scrolling to the end of the list
+ * appends the next page. Groups are rebuilt from whatever has loaded so far — the server orders
  * by last update, so a later page can add to any group.
  */
 export function DocumentList({
@@ -126,6 +122,22 @@ export function DocumentList({
 }: DocumentListProps) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
+
+  const scrollRef = useRef<HTMLUListElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!hasMore || loadingMore || !root || !sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
+      },
+      { root, rootMargin: `0px 0px ${LOAD_AHEAD} 0px` },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [documents.length, hasMore, loadingMore, onLoadMore]);
   // Groups the user has collapsed, by type. Everything starts expanded, and a
   // collapsed group stays collapsed as more pages load into it.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -141,19 +153,20 @@ export function DocumentList({
   // the name the user typed) as its own group, alphabetically; then plain
   // "Other".
   const groups = useMemo(() => {
-    const fixed = DOCUMENT_TYPES.filter((type) => type !== 'OTHER');
+    const fixed = DOCUMENT_TYPES.filter((type) => type !== PLAIN_OTHER);
     const buckets = new Map<string, ApiDocumentMetadata[]>();
     for (const document of documents) {
       const key =
-        (fixed as readonly string[]).includes(document.type) || isCustomDocumentType(document.type)
+        (fixed as readonly string[]).includes(document.type) ||
+        (document.type && isCustomDocumentType(document.type))
           ? document.type
-          : 'OTHER';
+          : PLAIN_OTHER;
       buckets.set(key, [...(buckets.get(key) ?? []), document]);
     }
     const custom = [...buckets.keys()]
-      .filter(isCustomDocumentType)
+      .filter((type) => type !== PLAIN_OTHER && isCustomDocumentType(type))
       .sort((a, b) => documentTypeName(intl, a).localeCompare(documentTypeName(intl, b)));
-    return [...fixed, ...custom, 'OTHER']
+    return [...fixed, ...custom, PLAIN_OTHER]
       .filter((type) => buckets.has(type))
       .map((type) => ({ items: buckets.get(type)!, label: documentTypeName(intl, type), type }));
   }, [documents, intl]);
@@ -178,7 +191,12 @@ export function DocumentList({
         </Typography>
       </Stack>
       <Divider />
-      <List dense disablePadding sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, py: 0.5 }}>
+      <List
+        dense
+        disablePadding
+        ref={scrollRef}
+        sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1, py: 0.5 }}
+      >
         {groups.map((group, groupIndex) => {
           const open = !collapsed.has(group.type);
           return (
@@ -208,12 +226,11 @@ export function DocumentList({
                   <Box sx={{ color: 'text.secondary', display: 'flex' }}>
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </Box>
-                  {/* Shown exactly as stored — no case transform on custom type names. */}
                   <Typography
                     color="text.secondary"
                     sx={{ flex: 1, fontWeight: 600, minWidth: 0, textTransform: 'none' }}
                     noWrap
-                    variant="caption"
+                    variant="body2"
                   >
                     {group.label}
                   </Typography>
@@ -229,10 +246,11 @@ export function DocumentList({
                     selected={document.id === selectedId}
                     sx={(theme) => ({
                       ...selectedItemSx(theme),
-                      alignItems: 'flex-start',
+                      // Icon centred on the name + updated-time block.
+                      alignItems: 'center',
                     })}
                   >
-                    <ListItemIcon sx={{ minWidth: 32, pt: 0.5 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
                       <FileText size={16} />
                     </ListItemIcon>
                     <ListItemText
@@ -244,7 +262,8 @@ export function DocumentList({
                             })
                           : undefined
                       }
-                      slotProps={{ primary: { noWrap: true } }}
+                      // Updated time a step below the name: caption, not the default body2.
+                      slotProps={{ primary: { noWrap: true }, secondary: { variant: 'caption' } }}
                     />
                   </ListItemButton>
                 ))}
@@ -252,37 +271,25 @@ export function DocumentList({
             </Fragment>
           );
         })}
+        {hasMore && <Box aria-hidden component="li" ref={sentinelRef} sx={{ height: 1 }} />}
+        {loadingMore && (
+          <Box
+            component="li"
+            sx={{
+              alignItems: 'center',
+              display: 'flex',
+              gap: 1,
+              justifyContent: 'center',
+              py: 1.5,
+            }}
+          >
+            <CircularProgress size={14} />
+            <Typography color="text.secondary" variant="caption">
+              <FormattedMessage {...messages.loadingMore} />
+            </Typography>
+          </Box>
+        )}
       </List>
-      {(hasMore || documents.length < total) && (
-        <>
-          <Divider />
-          <Stack spacing={1} sx={{ alignItems: 'center', flexShrink: 0, p: 1.5 }}>
-            {hasMore && (
-              <Button
-                disabled={loadingMore}
-                onClick={onLoadMore}
-                size="small"
-                startIcon={loadingMore ? undefined : <ChevronDown size={16} />}
-                variant="outlined"
-              >
-                {loadingMore ? (
-                  <FormattedMessage {...messages.loadingMore} />
-                ) : (
-                  <FormattedMessage {...messages.viewMore} />
-                )}
-              </Button>
-            )}
-            <Box aria-live="polite">
-              <Typography color="text.secondary" variant="caption">
-                <FormattedMessage
-                  {...messages.showing}
-                  values={{ shown: documents.length, total }}
-                />
-              </Typography>
-            </Box>
-          </Stack>
-        </>
-      )}
     </Card>
   );
 }

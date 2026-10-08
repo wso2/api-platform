@@ -286,7 +286,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
 	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
-	" ap:docs:read ap:docs:manage"
+	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one
 // path is required and each must exist and parse — there is no default path and

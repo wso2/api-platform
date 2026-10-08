@@ -1938,10 +1938,6 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       parameters:
@@ -1971,10 +1967,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       requestBody:
@@ -2025,10 +2017,6 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -2054,10 +2042,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       requestBody:
@@ -2093,10 +2077,6 @@ paths:
       security:
         - OAuth2Security:
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -2130,10 +2110,6 @@ paths:
         - OAuth2Security:
             - ap:docs:read
             - ap:docs:manage
-            - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:mcp_proxy:manage
       tags:
         - API Documents
       responses:
@@ -2167,8 +2143,8 @@ paths:
       operationId: GetAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:docs:read
-            - ap:docs:manage
+            - ap:thumbnail:read
+            - ap:thumbnail:manage
       tags:
         - API Thumbnail
       responses:
@@ -2183,6 +2159,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        '204':
+          description: No thumbnail is set for this API
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2198,7 +2176,7 @@ paths:
       operationId: UpsertAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:docs:manage
+            - ap:thumbnail:manage
       tags:
         - API Thumbnail
       requestBody:
@@ -2225,12 +2203,12 @@ paths:
     delete:
       summary: Delete the API thumbnail
       description: |
-        Removes the stored thumbnail. Subsequent `GET` returns 404 and the
-        client falls back to rendering the API's name initials.
+        Removes the stored thumbnail. Subsequent `GET` returns `204` (no
+        thumbnail set) and the client falls back to rendering the API's name initials.
       operationId: DeleteAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:docs:manage
+            - ap:thumbnail:manage
       tags:
         - API Thumbnail
       responses:
@@ -7833,6 +7811,8 @@ components:
             ap:subscription_plan:manage: Full access to subscription plans
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
+            ap:thumbnail:manage: Create, update, and delete an API's thumbnail
+            ap:thumbnail:read: Read an API's thumbnail
   schemas:
     APIKeyItem:
       type: object
@@ -9302,20 +9282,6 @@ components:
           type: string
           description: Raw spec content
 
-    APIDocumentType:
-      type: string
-      description: |
-        User-authored document type. DEFINITION/THUMBNAIL are reserved and
-        are managed via separate dedicated endpoints.
-      enum:
-        - HOW_TO
-        - SAMPLE_SDK
-        - SUPPORT_FORUM
-        - PUBLIC_FORUM
-        # TODO: custom types
-        - OTHER
-      example: HOW_TO
-
     APIDocumentMetadata:
       type: object
       description: Metadata-only view of a document attached to an artifact.
@@ -9347,10 +9313,10 @@ components:
           example: text/markdown; charset=utf-8
         createdBy:
           type: string
-          description: User who created the docuement.
+          description: User who created the document.
         updatedBy:
           type: string
-          description: User who updated the docuement.
+          description: User who updated the document.
         createdAt:
           type: string
           format: date-time
@@ -9381,15 +9347,14 @@ components:
       description: |
         Multipart form for document create (`POST`) and update (`PUT`).
 
-        On **create**: `type` and `displayName` are required; exactly one of
-        `file` or `inlineContent` must carry the body. `id` is optional — the
-        server generates one from `displayName` when omitted.
+        On **create**: `type` and `displayName` are required; `inlineContent`
+        must carry the body. `id` is optional — the server generates one from
+        `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
 
         On **update**: every field is optional; omitted fields leave the stored
-        value unchanged. Supplying neither `file` nor `inlineContent` means a
-        metadata-only update — the stored bytes are not touched. If `id` is
-        supplied it must match the `{docId}` path parameter, otherwise the
-        request is rejected with 400.
+        value unchanged. Omitting `inlineContent` means a metadata-only update
+        — the stored bytes are not touched. If `id` is supplied it must match
+        the `{docId}` path parameter, otherwise the request is rejected with 400.
       required:
         - type
         - displayName
@@ -9402,31 +9367,27 @@ components:
             conflict). On update: if provided, must match the `{docId}` path parameter.
           example: payment-webhook-howto
         type:
-          $ref: '#/components/schemas/APIDocumentType'
+          type: string
+          description: |
+            Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+            `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+          example: HowTo
         otherTypeName:
           type: string
           description: |
-            Free-form qualifier used when `type` is `OTHER`. Stored and returned
+            Free-form qualifier used when `type` is `Other`. Stored and returned
             exactly as typed (no case conversion). Ignored for all other types.
-            Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
-            type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
           example: FAQ
         displayName:
           type: string
           example: Payment Webhook How-To
-        file:
-          type: string
-          format: binary
-          description: Document bytes. Mutually exclusive with `inlineContent`.
         inlineContent:
           type: string
-          description: Inline UTF-8 content (markdown). Mutually exclusive with `file`.
+          description: Inline UTF-8 Markdown content.
         fileName:
           type: string
           description: |
-            File name to associate with the content. When `file` is present the
-            uploaded file's name is used and this field is ignored; when
-            `inlineContent` is used this provides an explicit name.
+            File name to associate with the content. Defaults to `{handle}.md`.
           example: payment-webhook.md
 
     APIThumbnailRequest:
@@ -13643,7 +13604,8 @@ components:
         An unrecognised value yields an empty page rather than an error, and
         the reserved `DEFINITION` type is never returned via this endpoint.
       schema:
-        $ref: '#/components/schemas/APIDocumentType'
+        type: string
+        example: HowTo
 
     apiType-Q:
       name: apiType

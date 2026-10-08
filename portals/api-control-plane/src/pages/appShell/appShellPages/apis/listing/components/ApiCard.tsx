@@ -19,7 +19,7 @@
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { useIntl } from 'react-intl';
 
-import { REST_API_TYPE } from '@/api/resources/apiPublications/apiPublications.endpoints';
+import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 import { openableProps } from '@/components/openable';
 import { focusRingSx, interactiveCardSx } from '@/theme';

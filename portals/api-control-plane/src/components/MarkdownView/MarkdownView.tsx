@@ -113,8 +113,8 @@ function renderBlock(block: MarkdownBlock, index: number): ReactNode {
           sx={{
             bgcolor: 'action.hover',
             borderRadius: 1,
+            typography: 'body2',
             fontFamily: 'monospace',
-            fontSize: '0.8125rem',
             m: 0,
             mb: 2,
             overflowX: 'auto',
@@ -144,7 +144,15 @@ function renderBlock(block: MarkdownBlock, index: number): ReactNode {
         <Box
           component="blockquote"
           key={index}
-          sx={{ bgcolor: 'action.hover', borderRadius: 1, color: 'text.secondary', m: 0, mb: 2, px: 2, py: 1.5 }}
+          sx={{
+            bgcolor: 'action.hover',
+            borderRadius: 1,
+            color: 'text.secondary',
+            m: 0,
+            mb: 2,
+            px: 2,
+            py: 1.5,
+          }}
         >
           {block.children.map(renderBlock)}
         </Box>

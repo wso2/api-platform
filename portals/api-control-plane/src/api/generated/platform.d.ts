@@ -963,23 +963,19 @@ export interface paths {
         /**
          * Get API thumbnail
          * @description Streams the stored thumbnail bytes with the sniffed `Content-Type`
-         *     header (`image/jpeg` or `image/png`). Returns 404 when no thumbnail
-         *     is set — the client renders the API's name initials in that case.
+         *     header (`image/jpeg` or `image/png`).
          */
         get: operations["GetAPIThumbnail"];
         /**
          * Set or replace the API thumbnail
-         * @description Creates or replaces the API's singleton thumbnail. Accepts a single
-         *     `file` field in a multipart body; the server sniffs the uploaded
-         *     bytes and rejects anything that isn't `image/jpeg` or `image/png` —
-         *     the uploader's `Content-Type` and filename extension are not trusted.
+         * @description Creates or replaces the API's singleton thumbnail.
          */
         put: operations["UpsertAPIThumbnail"];
         post?: never;
         /**
          * Delete the API thumbnail
-         * @description Removes the stored thumbnail. Subsequent `GET` returns 404 and the
-         *     client falls back to rendering the API's name initials.
+         * @description Removes the stored thumbnail. Subsequent `GET` returns `204` (no
+         *     thumbnail set) and the client falls back to rendering the API's name initials.
          */
         delete: operations["DeleteAPIThumbnail"];
         options?: never;
@@ -4039,13 +4035,6 @@ export interface components {
             /** @description Raw spec content */
             content?: string;
         };
-        /**
-         * @description User-authored document type. DEFINITION/THUMBNAIL are reserved and
-         *     are managed via separate dedicated endpoints.
-         * @example HOW_TO
-         * @enum {string}
-         */
-        APIDocumentType: "HOW_TO" | "SAMPLE_SDK" | "SUPPORT_FORUM" | "PUBLIC_FORUM" | "OTHER";
         /** @description Metadata-only view of a document attached to an artifact. */
         APIDocumentMetadata: {
             /**
@@ -4070,9 +4059,9 @@ export interface components {
              * @example text/markdown; charset=utf-8
              */
             contentType?: string;
-            /** @description User who created the docuement. */
+            /** @description User who created the document. */
             createdBy?: string;
-            /** @description User who updated the docuement. */
+            /** @description User who updated the document. */
             updatedBy?: string;
             /** Format: date-time */
             createdAt?: string;
@@ -4091,15 +4080,14 @@ export interface components {
         /**
          * @description Multipart form for document create (`POST`) and update (`PUT`).
          *
-         *     On **create**: `type` and `displayName` are required; exactly one of
-         *     `file` or `inlineContent` must carry the body. `id` is optional — the
-         *     server generates one from `displayName` when omitted.
+         *     On **create**: `type` and `displayName` are required; `inlineContent`
+         *     must carry the body. `id` is optional — the server generates one from
+         *     `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
          *
          *     On **update**: every field is optional; omitted fields leave the stored
-         *     value unchanged. Supplying neither `file` nor `inlineContent` means a
-         *     metadata-only update — the stored bytes are not touched. If `id` is
-         *     supplied it must match the `{docId}` path parameter, otherwise the
-         *     request is rejected with 400.
+         *     value unchanged. Omitting `inlineContent` means a metadata-only update
+         *     — the stored bytes are not touched. If `id` is supplied it must match
+         *     the `{docId}` path parameter, otherwise the request is rejected with 400.
          */
         APIDocumentRequest: {
             /**
@@ -4109,28 +4097,24 @@ export interface components {
              * @example payment-webhook-howto
              */
             id?: string;
-            type: components["schemas"]["APIDocumentType"];
             /**
-             * @description Free-form qualifier used when `type` is `OTHER`. Stored and returned
+             * @description Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+             *     `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+             * @example HowTo
+             */
+            type: string;
+            /**
+             * @description Free-form qualifier used when `type` is `Other`. Stored and returned
              *     exactly as typed (no case conversion). Ignored for all other types.
-             *     Cannot be a reserved type name (DEFINITION, THUMBNAIL) or a fixed
-             *     type name (HOW_TO, SAMPLE_SDK, PUBLIC_FORUM, SUPPORT_FORUM, OTHER).
              * @example FAQ
              */
             otherTypeName?: string;
             /** @example Payment Webhook How-To */
             displayName: string;
-            /**
-             * Format: binary
-             * @description Document bytes. Mutually exclusive with `inlineContent`.
-             */
-            file?: string;
-            /** @description Inline UTF-8 content (markdown). Mutually exclusive with `file`. */
+            /** @description Inline UTF-8 Markdown content. */
             inlineContent?: string;
             /**
-             * @description File name to associate with the content. When `file` is present the
-             *     uploaded file's name is used and this field is ignored; when
-             *     `inlineContent` is used this provides an explicit name.
+             * @description File name to associate with the content. Defaults to `{handle}.md`.
              * @example payment-webhook.md
              */
             fileName?: string;
@@ -7154,7 +7138,7 @@ export interface components {
          *     An unrecognised value yields an empty page rather than an error, and
          *     the reserved `DEFINITION` type is never returned via this endpoint.
          */
-        "docType-Q": components["schemas"]["APIDocumentType"];
+        "docType-Q": string;
         /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         "apiType-Q": string;
         /** @description The API's handle, unique per organization within its own type. */
@@ -8960,6 +8944,13 @@ export interface operations {
                     "image/jpeg": string;
                     "image/png": string;
                 };
+            };
+            /** @description No thumbnail is set for this API */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];

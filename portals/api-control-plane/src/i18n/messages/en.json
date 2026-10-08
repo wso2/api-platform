@@ -795,7 +795,7 @@
     "defaultMessage": "Remove"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage": {
-    "defaultMessage": "Are you sure you want to delet the thumbnail of this API?"
+    "defaultMessage": "Are you sure you want to delete the thumbnail of this API?"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteTitle": {
     "defaultMessage": "Remove API thumbnail"
@@ -1123,6 +1123,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title": {
     "defaultMessage": "Deployed gateways"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.create": {
+    "defaultMessage": "Create Document",
+    "description": "Opens the form for a new API document. Shown when the API has none."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.empty": {
     "defaultMessage": "No Documents available for this API"
@@ -1503,9 +1507,6 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.created": {
     "defaultMessage": "Created \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeHint": {
-    "defaultMessage": "Up to {max} characters."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeInvalid": {
     "defaultMessage": "Use only letters, numbers, spaces, hyphens and underscores."
   },
@@ -1516,8 +1517,11 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypePlaceholder": {
     "defaultMessage": "e.g. Changelog"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeReserved": {
+    "defaultMessage": "This is a reserved document type."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeTooLong": {
-    "defaultMessage": "Use {max} characters or fewer."
+    "defaultMessage": "Keep under {max} bytes (non-Latin letters count as more than one)."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editSubtitle": {
     "defaultMessage": "Update the type, name or Markdown content of this document."
@@ -1525,28 +1529,24 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editTitle": {
     "defaultMessage": "Edit Document"
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.fileNotText": {
-    "defaultMessage": "The file could not be read as text."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.fileTooLarge": {
-    "defaultMessage": "The file is too large to upload."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.fileType": {
-    "defaultMessage": "Only Markdown files (.md, .markdown) can be uploaded."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.layout": {
     "defaultMessage": "Editor layout",
     "description": "Accessible name of the Source / Split / Preview switch."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leave": {
-    "defaultMessage": "Leave",
-    "description": "Confirms leaving the document form and discarding unsaved changes. Verb."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveMessage": {
     "defaultMessage": "You have unsaved changes. Are you sure you want to leave?"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveNo": {
+    "defaultMessage": "No",
+    "description": "Answers \"Are you sure you want to leave?\": stays on the form with the changes kept."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveTitle": {
-    "defaultMessage": "Discard changes?"
+    "defaultMessage": "Unsaved changes",
+    "description": "Title of the dialog asking whether to leave the document form without saving."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveYes": {
+    "defaultMessage": "Yes",
+    "description": "Answers \"Are you sure you want to leave?\": leaves the form and discards unsaved changes."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.loadError": {
     "defaultMessage": "Unable to load this document for editing."
@@ -1557,6 +1557,9 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.markdownPane": {
     "defaultMessage": "Markdown"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameExists": {
+    "defaultMessage": "A document with this name already exists for this API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameLabel": {
     "defaultMessage": "Name",
     "description": "Label for the document name field. Noun."
@@ -1566,16 +1569,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.notEditable": {
     "defaultMessage": "This document’s format can’t be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.override": {
-    "defaultMessage": "Override",
-    "description": "Confirms replacing the document content with an uploaded file. Verb."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.overrideMessage": {
-    "defaultMessage": "Uploading \"{fileName}\" will replace the current content of \"{name}\". Any changes made in the editor will be lost."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.overrideTitle": {
-    "defaultMessage": "Override document content?"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.preview": {
     "defaultMessage": "Preview"
@@ -1600,33 +1593,17 @@
     "defaultMessage": "Split",
     "description": "Editor layout showing the Markdown source and its preview side by side."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.stay": {
-    "defaultMessage": "Stay",
-    "description": "Keeps the user on the document form. Verb."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.tooLarge": {
     "defaultMessage": "The document is too large to save."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.typeLabel": {
     "defaultMessage": "Document type"
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.upload": {
-    "defaultMessage": "Upload",
-    "description": "Button that loads a Markdown (.md) file from disk into the editor. Verb."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.uploadedFile": {
-    "defaultMessage": "Source file: {fileName}",
-    "description": "Accessible label of the chip naming the file the content came from."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.heading": {
     "defaultMessage": "All documents"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.loadingMore": {
     "defaultMessage": "Loading documents…"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.showing": {
-    "defaultMessage": "Showing {shown} of {total}",
-    "description": "How many of the API’s documents are loaded into the list."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.toggleGroup": {
     "defaultMessage": "{type} ({count})",
@@ -1638,10 +1615,6 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.updated": {
     "defaultMessage": "Updated {when}",
     "description": "Secondary line of a document in the list. {when} is a relative time, e.g. \"2 days ago\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.viewMore": {
-    "defaultMessage": "View more",
-    "description": "Loads the next page of documents into the list."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.howTo": {
     "defaultMessage": "How To",
@@ -1701,10 +1674,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.unsupported": {
     "defaultMessage": "This document’s format can’t be previewed here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.updated": {
-    "defaultMessage": "Updated {when}",
-    "description": "{when} is a relative time, e.g. \"2 days ago\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.create": {
     "defaultMessage": "Create Document",

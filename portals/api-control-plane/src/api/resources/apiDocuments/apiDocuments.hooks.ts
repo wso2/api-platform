@@ -30,6 +30,7 @@ import {
   createApiDocument,
   deleteApiDocument,
   updateApiDocument,
+  type ApiDocumentListResponse,
   type CreateApiDocumentBody,
   type CreateApiDocumentResponse,
   type ListApiDocumentsQuery,
@@ -181,8 +182,36 @@ export const useDeleteApiDocument = (overrides: Overrides = {}) => {
         queryClient.removeQueries({
           queryKey: apiDocumentQueries.content(org, apiType, apiId, docId).queryKey,
         });
+        // Patch every cached list page so the auto-select effect can't pick
+        // the deleted doc from stale pages before the background refetch runs.
+        const parentId = apiDocumentParentId(apiType, apiId);
+        queryClient.setQueriesData<ApiDocumentListResponse>(
+          { queryKey: apiDocumentKeys.children(org, parentId, 'documents') },
+          (data) => (data ? removeDocFromPage(data, docId) : data),
+        );
+        queryClient.setQueriesData<{ pages: ApiDocumentListResponse[]; pageParams: unknown[] }>(
+          { queryKey: apiDocumentKeys.children(org, parentId, 'documentPages') },
+          (data) =>
+            data
+              ? { ...data, pages: data.pages.map((page) => removeDocFromPage(page, docId)) }
+              : data,
+        );
       }
       invalidate(apiType, apiId);
     },
   });
+};
+
+const removeDocFromPage = (
+  page: ApiDocumentListResponse,
+  docId: string,
+): ApiDocumentListResponse => {
+  const filtered = page.list.filter((doc) => doc.id !== docId);
+  if (filtered.length === page.list.length) return page;
+  return {
+    ...page,
+    list: filtered,
+    count: Math.max(0, page.count - 1),
+    pagination: { ...page.pagination, total: Math.max(0, page.pagination.total - 1) },
+  };
 };

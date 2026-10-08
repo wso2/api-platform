@@ -36,7 +36,7 @@ const COLLECTION = `/apis/rest-api/${API}/docs`;
 const aDocument = (id: string): ApiDocumentMetadata => ({
   displayName: `Doc ${id}`,
   id,
-  type: 'HOW_TO',
+  type: 'HowTo',
   updatedAt: '2026-09-28T10:00:00Z',
   updatedBy: 'admin',
 });
@@ -46,20 +46,28 @@ function renderPanel() {
     <ApiScopeProvider orgId={ORG} projectId={PROJECT}>
       <DocumentsPanel />
     </ApiScopeProvider>,
-    { scope: makeConsoleScope({ params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT } }) }
+    {
+      scope: makeConsoleScope({
+        params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+      }),
+    },
   );
 }
 
 beforeEach(() => resetHttpClient());
 
 describe('overview DocumentsPanel', () => {
-  it('shows only a message when there are no documents', async () => {
+  it('offers to create the first document when there are none', async () => {
     server.use(collection(COLLECTION, []));
     renderPanel();
 
     expect(await screen.findByText('No Documents available for this API')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /View More/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Create Document/ })).toHaveAttribute(
+      'href',
+      `${routes.apiDevelopDocuments(ORG, PROJECT, API)}?mode=create`,
+    );
   });
 
   it('links each row to that document on the Documents page', async () => {
@@ -68,12 +76,18 @@ describe('overview DocumentsPanel', () => {
 
     const row = await screen.findByRole('link', { name: /Doc one/ });
     expect(row).toHaveAttribute('href', `${routes.apiDevelopDocuments(ORG, PROJECT, API)}?doc=one`);
-    // Nothing more to see than what is listed, so no "View More".
+    // Nothing more to see than what is listed, so no "View More" — and documents exist, so no create link.
     expect(screen.queryByRole('link', { name: /View More/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Create Document/ })).not.toBeInTheDocument();
   });
 
   it('shows five documents and sends the rest to the Documents page', async () => {
-    server.use(collection(COLLECTION, Array.from({ length: 7 }, (_, index) => aDocument(`${index + 1}`))));
+    server.use(
+      collection(
+        COLLECTION,
+        Array.from({ length: 7 }, (_, index) => aDocument(`${index + 1}`)),
+      ),
+    );
     renderPanel();
 
     expect(await screen.findByRole('link', { name: /Doc 5/ })).toBeInTheDocument();
@@ -81,7 +95,7 @@ describe('overview DocumentsPanel', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View More/ })).toHaveAttribute(
       'href',
-      routes.apiDevelopDocuments(ORG, PROJECT, API)
+      routes.apiDevelopDocuments(ORG, PROJECT, API),
     );
   });
 });

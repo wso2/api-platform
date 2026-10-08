@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Button, Card, Chip, Divider, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, Divider, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Pencil, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
@@ -31,11 +31,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { MarkdownView } from '@/components/MarkdownView';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
-import { useFormatters } from '@/i18n/useFormatters';
 import { Can } from '@/permissions';
 import { isErrorCode } from '@/api/core/errors';
 import { isTextContent } from './documentContent';
-import { documentTypeName } from './documentTypes';
 
 const messages = defineMessages({
   loading: {
@@ -49,11 +47,6 @@ const messages = defineMessages({
   notFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.notFound',
     defaultMessage: 'This document no longer exists. It may have been deleted.',
-  },
-  updated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.updated',
-    defaultMessage: 'Updated {when}',
-    description: '{when} is a relative time, e.g. "2 days ago".',
   },
   edit: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.edit',
@@ -107,7 +100,6 @@ type DocumentViewerProps = {
 /** One document's metadata, its rendered Markdown, and the edit/delete actions. */
 export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: DocumentViewerProps) {
   const intl = useIntl();
-  const { relativeTime } = useFormatters();
   const { notify } = useNotifications();
   // Metadata and body load in parallel: the header renders as soon as the
   // metadata arrives, the body fills in below it.
@@ -127,14 +119,13 @@ export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: Document
     return (
       <ErrorState
         message={intl.formatMessage(
-          isErrorCode(documentQuery.error, 'NOT_FOUND') ? messages.notFound : messages.loadError
+          isErrorCode(documentQuery.error, 'NOT_FOUND') ? messages.notFound : messages.loadError,
         )}
       />
     );
   }
 
   const document = documentQuery.data;
-  const when = relativeTime(document.updatedAt ?? document.createdAt);
 
   const confirmDelete = () =>
     deleteMutation.mutate(
@@ -145,62 +136,59 @@ export function DocumentViewer({ apiHandle, docId, onDeleted, onEdit }: Document
           notify(intl.formatMessage(messages.deleted, { name: document.displayName }), 'success');
           onDeleted();
         },
-      }
+      },
     );
 
   return (
     <Card component="article" sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* A slim header: the name and when it last changed on one line, the
+          actions as icons. The content below is what the reader came for. */}
       <Stack
-        direction={{ sm: 'row', xs: 'column' }}
+        direction="row"
         spacing={2}
-        // A tinted band sets the document's metadata apart from its content.
         sx={{
-          alignItems: { sm: 'flex-start' },
+          alignItems: 'center',
           bgcolor: 'action.hover',
           flexShrink: 0,
           justifyContent: 'space-between',
           px: 3,
-          py: 2.5,
+          py: 1.5,
         }}
       >
-        <Stack spacing={1} sx={{ minWidth: 0 }}>
-          <Box>
-            <Chip
-              color="primary"
-              label={documentTypeName(intl, document.type)}
-              size="small"
-              variant="outlined"
-            />
-          </Box>
-          <Typography component="h2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }} variant="h5">
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+          <Typography
+            component="h2"
+            noWrap
+            sx={{ fontWeight: 600, minWidth: 0 }}
+            title={document.displayName}
+            variant="h6"
+          >
             {document.displayName}
           </Typography>
-          {when && (
-            <Typography color="text.secondary" variant="body2">
-              <FormattedMessage {...messages.updated} values={{ when }} />
-            </Typography>
-          )}
         </Stack>
-        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
           <Can do="UpdateAPIDocument" denied="hide">
-            <Button
-              color="secondary"
-              onClick={onEdit}
-              startIcon={<Pencil size={16} />}
-              variant="outlined"
-            >
-              <FormattedMessage {...messages.edit} />
-            </Button>
+            <Tooltip title={intl.formatMessage(messages.edit)}>
+              <IconButton
+                aria-label={intl.formatMessage(messages.edit)}
+                onClick={onEdit}
+                size="small"
+              >
+                <Pencil size={18} />
+              </IconButton>
+            </Tooltip>
           </Can>
           <Can do="DeleteAPIDocument" denied="hide">
-            <Button
-              color="error"
-              onClick={() => setConfirmOpen(true)}
-              startIcon={<Trash2 size={16} />}
-              variant="outlined"
-            >
-              <FormattedMessage {...messages.delete} />
-            </Button>
+            <Tooltip title={intl.formatMessage(messages.delete)}>
+              <IconButton
+                aria-label={intl.formatMessage(messages.delete)}
+                color="error"
+                onClick={() => setConfirmOpen(true)}
+                size="small"
+              >
+                <Trash2 size={18} />
+              </IconButton>
+            </Tooltip>
           </Can>
         </Stack>
       </Stack>

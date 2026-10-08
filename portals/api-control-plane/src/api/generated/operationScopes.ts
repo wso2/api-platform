@@ -195,7 +195,9 @@ export type ApScope =
   | 'ap:subscription_plan:delete'
   | 'ap:subscription_plan:manage'
   | 'ap:subscription_plan:read'
-  | 'ap:subscription_plan:update';
+  | 'ap:subscription_plan:update'
+  | 'ap:thumbnail:manage'
+  | 'ap:thumbnail:read';
 
 /**
  * The full scope catalog, for building test personas and for validating an
@@ -371,6 +373,8 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:subscription_plan:manage',
   'ap:subscription_plan:read',
   'ap:subscription_plan:update',
+  'ap:thumbnail:manage',
+  'ap:thumbnail:read',
 ];
 
 /**
@@ -419,13 +423,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
-  CreateAPIDocument: [
-    'ap:docs:manage',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
+  CreateAPIDocument: ['ap:docs:manage'],
   CreateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:create',
@@ -483,17 +481,9 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:manage',
     'ap:agent_proxy:manage',
   ],
-  DeleteAPIDocument: [
-    'ap:docs:manage',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
+  DeleteAPIDocument: ['ap:docs:manage'],
   DeleteApiPortal: ['ap:api_portal:delete', 'ap:api_portal:manage'],
-  DeleteAPIThumbnail: [
-    'ap:docs:manage',
-  ],
+  DeleteAPIThumbnail: ['ap:thumbnail:manage'],
   DeleteApplication: ['ap:application:delete', 'ap:application:manage'],
   DeleteBuild: ['ap:rest_api:build:delete', 'ap:rest_api:build:manage', 'ap:rest_api:manage'],
   DeleteDeployment: [
@@ -591,22 +581,8 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
-  GetAPIDocument: [
-    'ap:docs:manage',
-    'ap:docs:read',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
-  GetAPIDocumentContent: [
-    'ap:docs:manage',
-    'ap:docs:read',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
+  GetAPIDocument: ['ap:docs:manage', 'ap:docs:read'],
+  GetAPIDocumentContent: ['ap:docs:manage', 'ap:docs:read'],
   GetApiPortal: ['ap:api_portal:manage', 'ap:api_portal:read'],
   getApiPublication: ['ap:api_portal:publication:read'],
   getApiPublicationDefinition: ['ap:api_portal:publication:read'],
@@ -616,10 +592,7 @@ export const OPERATION_SCOPES = {
   getApiPublicationDraftThumbnail: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:read'],
   getApiPublicationLandingPage: ['ap:api_portal:publication:read'],
   getApiPublicationThumbnail: ['ap:api_portal:publication:read'],
-  GetAPIThumbnail: [
-    'ap:docs:manage',
-    'ap:docs:read',
-  ],
+  GetAPIThumbnail: ['ap:thumbnail:manage', 'ap:thumbnail:read'],
   GetApplication: ['ap:application:manage', 'ap:application:read'],
   GetBuild: ['ap:rest_api:build:manage', 'ap:rest_api:build:read', 'ap:rest_api:manage'],
   GetBuilds: ['ap:rest_api:build:manage', 'ap:rest_api:build:read', 'ap:rest_api:manage'],
@@ -725,14 +698,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:deployment:read',
     'ap:agent_proxy:manage',
   ],
-  ListAPIDocuments: [
-    'ap:docs:manage',
-    'ap:docs:read',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
+  ListAPIDocuments: ['ap:docs:manage', 'ap:docs:read'],
   ListApiPortals: ['ap:api_portal:manage', 'ap:api_portal:read'],
   listApiPublications: ['ap:api_publication:read'],
   ListApplicationAPIKeys: [
@@ -879,13 +845,7 @@ export const OPERATION_SCOPES = {
     'ap:agent_proxy:manage',
     'ap:api_key:all:manage',
   ],
-  UpdateAPIDocument: [
-    'ap:docs:manage',
-    'ap:llm_provider:manage',
-    'ap:llm_proxy:manage',
-    'ap:mcp_proxy:manage',
-    'ap:rest_api:manage',
-  ],
+  UpdateAPIDocument: ['ap:docs:manage'],
   UpdateAPIKey: [
     'ap:api_key:all:manage',
     'ap:rest_api:api_key:manage',
@@ -904,8 +864,6 @@ export const OPERATION_SCOPES = {
   UpdateRESTAPISpec: ['ap:rest_api:manage', 'ap:rest_api:update'],
   UpdateSubscription: ['ap:subscription:manage', 'ap:subscription:update'],
   UpdateSubscriptionPlan: ['ap:subscription_plan:manage', 'ap:subscription_plan:update'],
-  UpsertAPIThumbnail: [
-    'ap:docs:manage',
-  ],
+  UpsertAPIThumbnail: ['ap:thumbnail:manage'],
   ValidateOpenAPISpec: ['ap:rest_api:create', 'ap:rest_api:manage'],
 } as const satisfies Record<keyof operations, readonly ApScope[]>;

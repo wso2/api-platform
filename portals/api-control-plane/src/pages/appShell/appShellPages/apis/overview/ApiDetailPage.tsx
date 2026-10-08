@@ -32,7 +32,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
-import { REST_API_TYPE } from '@/api/resources/apiPublications/apiPublications.endpoints';
+import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useRestApi } from '@/api/resources/restApis';
 import type { Gateway } from '@/api/resources/gateways';
 import { useDeployments } from '@/api/resources/restApis/deployments';
