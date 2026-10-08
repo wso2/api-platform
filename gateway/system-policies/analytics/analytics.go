@@ -67,6 +67,33 @@ const (
 	// traffic-logging publisher's global "$ctx:metadata['<key>']" property.
 	GenericMetadataKey = "x-wso2-metadata"
 
+	// Fault metadata keys, written ONLY by OnFault — the collector runs as the last entry
+	// in every API's fault chain, which is the first point at which the gateway has
+	// resolved what actually failed. Mirrored by the policy-engine's prepareAnalyticEvent
+	// (internal/analytics/analytics.go), which maps the code and class onto the event's
+	// own error object and leaves the rest as properties.
+	//
+	// FaultDetails.Description and GuardrailDetails.Assessments are deliberately absent
+	// from this set. For a guardrail rejection those hold the content the guardrail existed
+	// to stop — the reason every renderer withholds Description from the response body —
+	// and an analytics event is forwarded to external publishers (Moesif, Application
+	// Insights, stdout traffic logs). Sending the blocked content to a third party as a
+	// side effect of blocking it would defeat the guardrail. The guardrail's identity,
+	// action and reason carry the operationally useful part without the payload.
+	FaultCodeMetadataKey            = "x-wso2-fault-code"
+	FaultTypeMetadataKey            = "x-wso2-fault-type"
+	FaultDirectionMetadataKey       = "x-wso2-fault-direction"
+	FaultMessageMetadataKey         = "x-wso2-fault-message"
+	FaultPolicyMetadataKey          = "x-wso2-fault-policy"
+	FaultPolicyPhaseMetadataKey     = "x-wso2-fault-policy-phase"
+	FaultSourceMetadataKey          = "x-wso2-fault-source"
+	FaultStatusMetadataKey          = "x-wso2-fault-status"
+	FaultOriginalStatusMetadataKey  = "x-wso2-fault-original-status"
+	FaultGuardrailMetadataKey       = "x-wso2-fault-guardrail"
+	FaultGuardrailActionMetadataKey = "x-wso2-fault-guardrail-action"
+	FaultGuardrailReasonMetadataKey = "x-wso2-fault-guardrail-reason"
+	FaultJSONRPCCodeMetadataKey     = "x-wso2-fault-jsonrpc-code"
+
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 	// Lazy resource type for provider-to-template mapping
@@ -942,6 +969,146 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 	return policy.ForwardResponseChunk{AnalyticsMetadata: analyticsMetadata}
 }
+
+// populateFaultAnalyticsMetadata copies the resolved failure onto the analytics metadata.
+//
+// Every value here is one a status code cannot supply. The code and class are what the
+// own classifier files the event under; the failing policy and phase are what turn "446
+// happened" into "word-count-guardrail rejected the response body"; and the source
+// distinguishes a backend's own 503 from the router's, which are the same number and mean
+// opposite things.
+//
+// Description and Guardrail.Assessments are deliberately not copied — see the doc on the
+// Fault*MetadataKey block for why.
+func populateFaultAnalyticsMetadata(analyticsMetadata map[string]any, faultCtx *policy.FaultContext) {
+	analyticsMetadata[FaultStatusMetadataKey] = faultCtx.ResponseStatus
+	// Only meaningful when a policy changed it; equal values would just assert twice.
+	if faultCtx.OriginalStatus != 0 && faultCtx.OriginalStatus != faultCtx.ResponseStatus {
+		analyticsMetadata[FaultOriginalStatusMetadataKey] = faultCtx.OriginalStatus
+	}
+	// Attribution is absent for an infrastructure failure, and absent is the correct answer
+	// there rather than a placeholder: empty means "no policy caused this", never "unknown".
+	if faultCtx.Policy != "" {
+		analyticsMetadata[FaultPolicyMetadataKey] = faultCtx.Policy
+	}
+	if faultCtx.PolicyPhase != "" {
+		analyticsMetadata[FaultPolicyPhaseMetadataKey] = faultCtx.PolicyPhase
+	}
+	if faultCtx.Source != "" {
+		analyticsMetadata[FaultSourceMetadataKey] = faultCtx.Source
+	}
+
+	f := faultCtx.Fault
+	if f == nil {
+		return
+	}
+	if f.Code != "" {
+		analyticsMetadata[FaultCodeMetadataKey] = f.Code
+	}
+	if f.Type != "" {
+		analyticsMetadata[FaultTypeMetadataKey] = f.Type
+	}
+	if f.Direction != "" {
+		analyticsMetadata[FaultDirectionMetadataKey] = f.Direction
+	}
+	if f.Message != "" {
+		analyticsMetadata[FaultMessageMetadataKey] = f.Message
+	}
+	if g := f.Guardrail; g != nil {
+		if g.InterveningGuardrail != "" {
+			analyticsMetadata[FaultGuardrailMetadataKey] = g.InterveningGuardrail
+		}
+		if g.Action != "" {
+			analyticsMetadata[FaultGuardrailActionMetadataKey] = g.Action
+		}
+		if g.ActionReason != "" {
+			analyticsMetadata[FaultGuardrailReasonMetadataKey] = g.ActionReason
+		}
+	}
+	// Stored as the int, not the *int: the engine converts this metadata through structpb,
+	// which rejects a pointer, so the code would arrive as a string the classifier never
+	// reads. A nil Code means "derive from the status", which has nothing to record.
+	if f.JSONRPC != nil && f.JSONRPC.Code != nil {
+		analyticsMetadata[FaultJSONRPCCodeMetadataKey] = *f.JSONRPC.Code
+	}
+}
+
+// OnFault implements policy.FaultPolicy, which is what lets the controller append this
+// collector as the LAST entry of every API's fault chain (utils.FaultSystemPolicies).
+//
+// An event is emitted for every request regardless; what a response-phase hook cannot supply
+// is WHY it failed — a status cannot distinguish a backend's 503 from the router's, or say
+// which guardrail rejected a 446. The fault flow resolves that, and this is where it is read.
+//
+// Last, because the operator's own fault entries may change the status, body and description
+// first; recording before them would publish a failure that differs from the one delivered.
+//
+// It records and changes nothing: the returned FaultResponse carries analytics metadata only,
+// every read tolerates a nil, and nil is returned when there is nothing to add.
+func (a *AnalyticsPolicy) OnFault(
+	ctx context.Context,
+	faultCtx *policy.FaultContext,
+	params map[string]interface{},
+) *policy.FaultResponse {
+	slog.Debug("Analytics system policy: OnFault called")
+	if faultCtx == nil {
+		return nil
+	}
+
+	analyticsMetadata := make(map[string]any)
+
+	// The response-side set is collected by DELEGATING to OnResponseHeaders rather than by
+	// repeating what it does.
+	//
+	// Needed because for an upstream or router failure this policy is excluded from the
+	// response chain so it can run here instead (see kernel.responsePolicies) — without it
+	// the auth context and metadata bag would be missing from every backend-error event.
+	//
+	// Delegation rather than a shared helper keeps this file purely additive: the response
+	// hook that runs on every single successful response is not touched, so nothing on the
+	// hot path can regress from a change made for the failure path. It also cannot drift —
+	// there is one implementation, not two that must be kept in step.
+	//
+	// The synthesized context is COMPLETE, not a stub: every field of ResponseHeaderContext
+	// exists on FaultContext and is copied below, so OnResponseHeaders sees exactly what it
+	// would have seen had it run in the response chain. That is what makes delegating safe
+	// against a future field read being added there.
+	respCtx := &policy.ResponseHeaderContext{
+		SharedContext:   faultCtx.SharedContext,
+		RequestHeaders:  faultCtx.RequestHeaders,
+		RequestBody:     faultCtx.RequestBody,
+		RequestPath:     faultCtx.RequestPath,
+		RequestMethod:   faultCtx.RequestMethod,
+		ResponseHeaders: faultCtx.ResponseHeaders,
+		ResponseStatus:  faultCtx.ResponseStatus,
+		Downstream:      faultCtx.Downstream,
+		Upstream:        faultCtx.Upstream,
+	}
+	// OnResponseHeaders dereferences SharedContext unguarded, which is correct for the
+	// response chain — the engine always sets it there. The fault path can reach here with
+	// it nil (a bare FaultContext), so an empty one is substituted rather than letting a
+	// telemetry call panic on a request that is already failing.
+	if respCtx.SharedContext == nil {
+		respCtx.SharedContext = &policy.SharedContext{}
+	}
+	if mods, ok := a.OnResponseHeaders(ctx, respCtx, params).(policy.DownstreamResponseHeaderModifications); ok {
+		for k, v := range mods.AnalyticsMetadata {
+			analyticsMetadata[k] = v
+		}
+	}
+
+	populateFaultAnalyticsMetadata(analyticsMetadata, faultCtx)
+
+	if len(analyticsMetadata) == 0 {
+		return nil
+	}
+	return &policy.FaultResponse{AnalyticsMetadata: analyticsMetadata}
+}
+
+// Compile-time proof that the collector satisfies the fault contract. Without it a chain
+// built with this policy appended would drop it at chain-build time with a warning and then
+// silently never record a fault — the failure mode the assertion exists to make impossible.
+var _ policy.FaultPolicy = (*AnalyticsPolicy)(nil)
 
 // NeedsMoreResponseData always returns false: each chunk is processed immediately
 // and analytics data is accumulated internally in SharedContext.Metadata.

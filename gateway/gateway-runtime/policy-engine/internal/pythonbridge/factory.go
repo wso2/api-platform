@@ -34,6 +34,7 @@ type policyCapabilities struct {
 	responseBody      bool
 	streamingRequest  bool
 	streamingResponse bool
+	onFault           bool
 }
 
 // BridgeFactory creates Python bridge instances and validates the executor contract.
@@ -110,8 +111,26 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		instanceID:    resp.GetInstanceId(),
 	}
 
-	slogger.Info("Python policy instance created", "instance_id", resp.GetInstanceId())
-	return policyImpl, nil
+	slogger.Info("Python policy instance created", "instance_id", resp.GetInstanceId(),
+		"on_fault", capabilities.onFault)
+
+	return wrapBridge(policyImpl, capabilities), nil
+}
+
+// wrapBridge expresses the executor's on_fault answer as a Go TYPE.
+//
+// Whether a policy may be attached as a fault policy is decided by a type assertion to
+// policy.FaultPolicy at chain build, and a Go type either has the method or does not — so a
+// capability flag read at call time would not do. Without this, every Python policy would
+// satisfy the fault contract and the ones with no handler would be discovered only on the
+// fault path, where the client is already receiving an error.
+//
+// Split out from GetPolicy so the choice is testable without standing up an executor.
+func wrapBridge(b *bridge, caps policyCapabilities) policy.Policy {
+	if caps.onFault {
+		return &faultBridge{bridge: b}
+	}
+	return b
 }
 
 func processingModeFromProto(pm *proto.ProcessingMode) (policy.ProcessingMode, error) {
@@ -179,6 +198,7 @@ func capabilitiesFromProto(caps *proto.PolicyCapabilities) policyCapabilities {
 		responseBody:      caps.GetResponseBody(),
 		streamingRequest:  caps.GetStreamingRequest(),
 		streamingResponse: caps.GetStreamingResponse(),
+		onFault:           caps.GetOnFault(),
 	}
 }
 
