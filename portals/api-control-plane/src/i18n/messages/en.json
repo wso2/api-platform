@@ -2997,10 +2997,6 @@
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
   },
-  "apiControlPlane.pages.test.console.GatewaySection.callModeHintLabel": {
-    "defaultMessage": "What this routing choice means",
-    "description": "Accessible label for the info button explaining the selected routing mode."
-  },
   "apiControlPlane.pages.test.console.GatewaySection.callModeLabel": {
     "defaultMessage": "Send requests through the proxy or directly",
     "description": "Accessible label for the toggle between the two ways of sending a request."

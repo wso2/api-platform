@@ -21,7 +21,6 @@ import {
   FormControl,
   FormLabel,
   Grid,
-  IconButton,
   InputAdornment,
   MenuItem,
   Select,
@@ -32,7 +31,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, Info, Server, Waypoints } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Server, Waypoints } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
@@ -45,11 +44,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.test.console.GatewaySection.callModeLabel',
     defaultMessage: 'Send requests through the proxy or directly',
     description: 'Accessible label for the toggle between the two ways of sending a request.',
-  },
-  callModeHintLabel: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.callModeHintLabel',
-    defaultMessage: 'What this routing choice means',
-    description: 'Accessible label for the info button explaining the selected routing mode.',
   },
   copyEndpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
@@ -169,7 +163,28 @@ export function GatewaySection({
           </Stack>
 
           {showCallMode && (
-            <Stack alignItems="center" direction="row" spacing={1}>
+            // The consequence of the selected mode, on the control that sets
+            // it: hovering the switch is how someone asks "what does this do",
+            // and it is the same two sentences every time, so a permanent line
+            // under the endpoint would just be noise once read.
+            <Tooltip
+              arrow
+              placement="bottom-end"
+              title={
+                <Stack spacing={0.5} sx={{ py: 0.5 }}>
+                  <Typography sx={{ fontWeight: 'fontWeightBold' }} variant="caption">
+                    <FormattedMessage
+                      {...(callMode === 'direct' ? messages.directMode : messages.proxyMode)}
+                    />
+                  </Typography>
+                  <Typography variant="caption">
+                    <FormattedMessage
+                      {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
+                    />
+                  </Typography>
+                </Stack>
+              }
+            >
               <ToggleButtonGroup
                 aria-label={intl.formatMessage(messages.callModeLabel)}
                 exclusive
@@ -195,37 +210,7 @@ export function GatewaySection({
                   </Stack>
                 </ToggleButton>
               </ToggleButtonGroup>
-
-              {/* The consequence of the selected mode, on demand rather than
-                  as a permanent line under the endpoint: it is the same two
-                  sentences every time, so once read it is noise. */}
-              <Tooltip
-                arrow
-                placement="bottom-end"
-                title={
-                  <Stack spacing={0.5} sx={{ py: 0.5 }}>
-                    <Typography sx={{ fontWeight: 'fontWeightBold' }} variant="caption">
-                      <FormattedMessage
-                        {...(callMode === 'direct' ? messages.directMode : messages.proxyMode)}
-                      />
-                    </Typography>
-                    <Typography variant="caption">
-                      <FormattedMessage
-                        {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
-                      />
-                    </Typography>
-                  </Stack>
-                }
-              >
-                <IconButton
-                  aria-label={intl.formatMessage(messages.callModeHintLabel)}
-                  size="small"
-                  sx={{ color: 'primary.main' }}
-                >
-                  <Info size={18} />
-                </IconButton>
-              </Tooltip>
-            </Stack>
+            </Tooltip>
           )}
         </Stack>
 

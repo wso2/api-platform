@@ -539,9 +539,9 @@ describe('TestPage — proxy or direct', () => {
       'aria-pressed',
       'true',
     );
-    // The hint lives behind the info button rather than on the card, so it
-    // has to be asked for.
-    await user.hover(screen.getByRole('button', { name: /what this routing choice means/i }));
+    // The hint lives on the switch rather than on the card, so it has to be
+    // asked for.
+    await user.hover(screen.getByRole('button', { name: /Through proxy/i }));
     expect(await screen.findByText(/the gateway does not need a CORS policy/i)).toBeVisible();
     expectNoRenderLoop();
   });
@@ -560,7 +560,7 @@ describe('TestPage — proxy or direct', () => {
       expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
     );
     // The hint follows the selected mode, so the tooltip now describes Direct.
-    await user.hover(screen.getByRole('button', { name: /what this routing choice means/i }));
+    await user.hover(screen.getByRole('button', { name: /^Direct$/i }));
     expect(await screen.findByText(/must be reachable from this machine/i)).toBeVisible();
     expect(screen.queryByText(/does not need a CORS policy/i)).toBeNull();
     expectNoRenderLoop();
