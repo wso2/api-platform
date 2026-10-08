@@ -203,8 +203,8 @@ guardrail it is *the content the guardrail blocked*, so forwarding it would turn
 rejection into a disclosure of the thing that was stopped. No built-in renderer emits it, in
 any shape. A fault policy still receives it and can put it in a notification, an audit sink or
 a log; an operator who genuinely wants it in the client body asks for it with a
-`${Description}` placeholder in an `error-formatter` template — a template the operator wrote
-is the opt-in.
+`${Description}` placeholder in an `error-response-formatter` template — a template the
+operator wrote is the opt-in.
 
 `Fault.Guardrail` is the opposite: it **is** returned, and the operator's `showAssessment`
 parameter decides how much of it. The shipped guardrails attach the block on every intervention
@@ -758,17 +758,13 @@ Since the gateway does not format your kind, a fault policy is how an error body
 and it is the supported way to do it. **Any** fault policy that sets a response body has decided
 what the client receives.
 
-The examples use `error-formatter`, a general-purpose formatter policy. It is **not part of the
-gateway distribution** — it ships with the policy catalogue — so check it is in your build before
-copying these verbatim.
-
-The examples use `error-formatter`, a general-purpose formatter policy. It is **not part of the
-gateway distribution** — it ships with the policy catalogue — so check it is in your build before
-copying these verbatim.
+The examples use `error-response-formatter`, a general-purpose formatter policy. It is **not part
+of the gateway distribution** — it ships with the policy catalogue — so check it is in your build
+before copying these verbatim.
 
 ```yaml
 faultPolicies:
-  - name: error-formatter               # authors a body -> gateway formatting stands down
+  - name: error-response-formatter      # authors a body -> gateway formatting stands down
     version: v1
     params:
       template:                         # structured, so it cannot emit malformed JSON
@@ -781,7 +777,7 @@ For a client that needs a specific well-known envelope there are presets:
 
 ```yaml
 faultPolicies:
-  - name: error-formatter
+  - name: error-response-formatter
     version: v1
     params:
       preset: openai      # openai | canonical | jsonrpc | soap11 | soap12
@@ -890,9 +886,10 @@ policies and analytics — not for the client body, which it leaves as sent:
 | Kind | Declares fault policies | API-level field | Operation-level field |
 |---|---|---|---|
 | `RestApi` | ✅ | `faultPolicies` | `operations[].faultPolicies` |
-| `Mcp` | ✅ | `faultPolicies` | `operations[].faultPolicies` |
+| `Mcp` | ✅ | `faultPolicies` | — |
 | `LlmProvider` | ✅ | `globalFaultPolicies` | `operationFaultPolicies` |
 | `LlmProxy` | ✅ | `globalFaultPolicies` | `operationFaultPolicies` |
+| `Agent` | ✅ | `spec.a2a.operationConfigs.faultPolicies` | `spec.a2a.operationConfigs.operations[].faultPolicies` |
 | `WebSubApi` | ❌ | no policy support at all yet | — |
 
 Both levels run, and **the operation-level entries run first**. They are additive rather than an
@@ -922,10 +919,13 @@ two spellings, each consistent with the field beside it — the reverse of the e
 arrangement, where every kind used the LLM spelling and a `RestApi` ended up with `policies` and
 `globalFaultPolicies` side by side.
 
-Only `RestApi` has an operation scope. An MCP spec describes tools, resources and prompts
-rather than HTTP operations, and the LLM kinds express operation scope as a flat
-`operationPolicies` list keyed by path — neither has a nested operation to hang a fault entry
-on, so both take the API-level list only.
+Each kind expresses operation scope the way its normal policies do. A `RestApi` nests
+`faultPolicies` under each operation, and an `Agent` under each A2A operation; an `Agent` can also
+declare `faultPolicies` on its public Agent Card, which run only when serving the card fails. The
+LLM kinds have no nested operations, so `operationFaultPolicies` is a flat list whose entries
+select the operations they apply to by `paths`, exactly as `operationPolicies` entries do. An MCP
+spec describes tools, resources and prompts rather than HTTP operations, so `Mcp` takes the
+API-level list only.
 
 Everything downstream of the declaration is **kind-agnostic**. Each non-REST kind is
 normalised into a `RestApi` before route chains are built, so a kind only has to carry the list
@@ -946,7 +946,7 @@ guardrail has nothing more specific to say, or `906001` for hate, `906003` for s
 
 One thing to know before adding a code: the classifier assigns a fault **category** by testing
 which range the number falls in, so a code outside the relevant range is silently recategorised as
-`other`. And for a condition APIM has no code for, `960000`–`969999` is reserved for
+`other`. And for a condition APIM has no code for, `965000`–`969999` is reserved for
 deployment-specific codes — WSO2 never allocates there. Full reference, including the ranges,
 the block map and how to pick a code: **[Gateway error codes](error-codes.md)**.
 

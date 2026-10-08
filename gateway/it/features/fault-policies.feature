@@ -41,6 +41,17 @@ Feature: Per-API fault policies
   # Every negative scenario is paired with a positive control on the same policy
   # configuration. A fault-policy test that only asserts absence is indistinguishable
   # from one where the feature is switched off entirely.
+  #
+  # This feature is not in the default suite (see getFeaturePaths). Run it with
+  # IT_FEATURE_PATHS=features/fault-policies.feature, against a gateway build whose manifest
+  # registers fault-declarer, fault-notifier and error-response-formatter.
+  #
+  # The scenarios tagged @handle-upstream-faults expect an upstream or router error to reach
+  # the fault policies, which happens only with
+  #   [policy_engine.fault_policies] handle_upstream_faults = true
+  # in test-config.toml. It is off there because it moves every upstream error off the
+  # response policies, which the default suite's round-robin and interceptor features rely
+  # on. Set it for a run of this feature; with it off, those scenarios fail by design.
 
   Background:
     Given the gateway services are running
@@ -91,11 +102,10 @@ Feature: Per-API fault policies
     When I delete the API "fault-declared-api-v1.0"
     Then the response should be successful
 
-  Scenario: A described error does not reach the fault policies
-    # Error and IsFault answer different questions, and this is the case that forces them
-    # apart: a response that should LOOK like an error to the client without being reported
-    # as a failure — a canned 404, an auth challenge, a cache miss. Error shapes the body,
-    # IsFault routes the flow, and here only the first is set.
+  Scenario: A described error at an error status reaches the fault policies
+    # The status is what routes a rejection into the fault flow: 400 and above always does,
+    # whether or not the policy set IsFault. Describing the failure decides what the chain
+    # and analytics are told, not whether the chain runs.
     When I deploy this API configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -136,18 +146,17 @@ Feature: Per-API fault policies
     # describes its failure and writes no body sends no body. The description still reaches
     # the fault chain, the logs and analytics — it is simply not the client's copy.
     And the response body should be empty
-    # And NOT reported: the notifier never ran, so it set no marker.
-    And the response header "x-fault-handled" should not exist
+    # Reported: the 404 reached the chain, so the notifier ran and set its marker.
+    And the response header "x-fault-handled" should be "404"
 
     When I delete the API "fault-described-only-api-v1.0"
     Then the response should be successful
 
-  Scenario: A policy that declares nothing does not reach the fault policies
-    # The opt-in contract, and the migration gap it creates. api-key-auth is a real
-    # shipped policy that rejects with 401 and declares neither isFault nor error, so
-    # its rejection is invisible to the fault flow even with a notifier attached.
-    # Choosing the other default would instead route every unmigrated cache hit and
-    # preflight INTO the flow, which is the wrong behaviour rather than a missing one.
+  Scenario: A policy that declares nothing still reaches the fault policies by its status
+    # api-key-auth here declares neither isFault nor a fault description — the shape of every
+    # policy released before the fault contract. Its 401 reaches the chain all the same,
+    # because the status is enough, so a fault policy attached to an existing API sees the
+    # rejections of policies that were never migrated.
     When I deploy this API configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -181,11 +190,12 @@ Feature: Per-API fault policies
 
     When I send a GET request to "http://localhost:8080/fault-undeclared/v1.0/get"
     Then the response status code should be 401
-    And the response header "x-fault-handled" should not exist
+    And the response header "x-fault-handled" should be "401"
 
     When I delete the API "fault-undeclared-api-v1.0"
     Then the response should be successful
 
+  @handle-upstream-faults
   Scenario: Both a router failure and a backend error reach the fault policies
     # Both are a 5xx leaving the gateway, and no status rule can tell them apart — which one
     # it was comes from Envoy's response.code_details. They used to behave oppositely, the
@@ -257,9 +267,10 @@ Feature: Per-API fault policies
     Then the response status code should be 500
     And the response header "x-fault-handled" should be "500"
 
-    # What must NOT happen is the backend's own error document being rewritten. The backend
-    # said it, so it stands — the notifier annotates and does not author.
-    And the response body should not be empty
+    # What must NOT happen is the backend's own error being rewritten. The backend said it, so
+    # it stands — the notifier annotates and does not author. httpbin's /status/500 sends no
+    # body, so the client must receive none: nothing synthesized one in its place.
+    And the response body should be empty
 
     # And a healthy response fires nothing, on the same configuration again.
     When I send a GET request to "http://localhost:8080/fault-backend/v1.0/get"
@@ -369,6 +380,7 @@ Feature: Per-API fault policies
     When I delete the API "fault-cond-api-v1.0"
     Then the response should be successful
 
+  @handle-upstream-faults
   Scenario: An execution condition on the source separates gateway failures from the backend's
     # The narrowing that replaced the provenance gate. Both failures are now delivered to the
     # chain, so the condition — not the engine — is what decides which one an entry acts on.
@@ -387,6 +399,8 @@ Feature: Per-API fault policies
           main:
             url: http://echo-backend:80
         operations:
+          - method: GET
+            path: /get
           - method: GET
             path: /status/500
           - method: GET
@@ -412,7 +426,7 @@ Feature: Per-API fault policies
               markerHeader: x-fault-backend-only
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/fault-source/v1.0/status/500" to be ready
+    And I wait for the endpoint "http://localhost:8080/fault-source/v1.0/get" to be ready
 
     # A policy rejection: the gateway built this response.
     When I send a GET request to "http://localhost:8080/fault-source/v1.0/reject"
@@ -486,6 +500,7 @@ Feature: Per-API fault policies
     When I delete the API "fault-levels-api-v1.0"
     Then the response should be successful
 
+  @handle-upstream-faults
   Scenario: An API whose only configuration is fault policies still gets them
     When I deploy this API configuration:
       """
@@ -659,7 +674,7 @@ Feature: Per-API fault policies
                 type: "authentication"
                 message: "Valid credentials required"
         faultPolicies:
-          - name: error-formatter
+          - name: error-response-formatter
             version: v1
             params:
               template:
