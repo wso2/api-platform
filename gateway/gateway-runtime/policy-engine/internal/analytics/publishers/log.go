@@ -212,60 +212,6 @@ func (l *Log) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// headersFromEventProperty extracts a header map attached to an analytics
-// event's Properties (dto.PropKeyRequestHeaders / dto.PropKeyResponseHeaders),
-// regardless of which of the two shapes it arrived in:
-//
-//   - map[string]string -- the steady-state path: a correlation-store hit handed
-//     the policy engine's ALS handler an already-typed header map (see
-//     internal/analytics/correlation and internal/analytics's prepareAnalyticEvent),
-//     so there is nothing to decode.
-//   - string -- the fallback path: no store hit (collector disabled in this test/
-//     caller, the request never had an ext_proc stream, or a genuine store miss),
-//     so the value is the JSON string decoded from the access-log entry's own
-//     metadata, exactly as it always has been. Decoded via parseHeadersFromString.
-//
-// Returns nil when the property is absent or neither shape.
-func headersFromEventProperty(v interface{}) map[string]string {
-	switch headers := v.(type) {
-	case map[string]string:
-		return headers
-	case string:
-		return parseHeadersFromString(headers)
-	default:
-		return nil
-	}
-}
-
-// parseHeadersFromString converts the JSON-encoded header value stored in
-// event.Properties (a map[string]string or map[string][]string serialized by the
-// ext_proc layer) into a map[string]string so it embeds as a plain JSON object
-// in the log line. Other publishers (e.g. Moesif) read the raw string directly;
-// the Log publisher calls this only on the local TrafficLogEvent it builds, so
-// the shared event is never modified. Multi-value headers are flattened to their
-// first value. Returns nil on empty input or parse failure.
-func parseHeadersFromString(raw string) map[string]string {
-	if raw == "" {
-		return nil
-	}
-	var single map[string]string
-	if err := json.Unmarshal([]byte(raw), &single); err == nil {
-		return single
-	}
-	// Fallback: multi-value wire format — flatten to first value.
-	var multi map[string][]string
-	if err := json.Unmarshal([]byte(raw), &multi); err == nil {
-		out := make(map[string]string, len(multi))
-		for k, vs := range multi {
-			if len(vs) > 0 {
-				out[k] = vs[0]
-			}
-		}
-		return out
-	}
-	return nil
-}
-
 // truncatePayload returns up to maxPayloadSize bytes of the payload (0 = no
 // limit). Truncation is on a byte boundary, matching the previous capture-time
 // behavior.

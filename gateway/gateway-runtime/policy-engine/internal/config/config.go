@@ -46,6 +46,12 @@ const (
 	// streaming. Applied when max_decompressed_bytes is unset for a direction.
 	DefaultMaxDecompressedBytes int64 = 10 * 1024 * 1024 // 10 MiB
 
+	// MaxCorrelationStoreShards and MaxCorrelationStoreCapacity bound
+	// [collector.correlation_store]: the store allocates its shards and slots up
+	// front, so an unbounded value would exhaust memory at startup.
+	MaxCorrelationStoreShards   = 1024
+	MaxCorrelationStoreCapacity = 10_000_000
+
 	// ExtProcMessageOverheadBytes is the headroom an ext_proc message needs above the
 	// body it carries: request/response headers, Envoy attributes, dynamic metadata and
 	// protobuf framing all travel in the same message. The gRPC message limits are
@@ -110,6 +116,11 @@ type CollectorConfig struct {
 	// configured under the shared [collector.server] section (the controller
 	// reads the same section to configure Envoy's sender side).
 	Server AccessLogsServiceConfig `koanf:"server"`
+	// IgnorePathPrefixes is collector.ignore_path_prefixes, shared with the
+	// controller, which configures Envoy to send no access-log entry for these
+	// client paths. The policy engine reads it only so the correlation store does
+	// not hold fields for requests whose access-log entry will never arrive.
+	IgnorePathPrefixes []string `koanf:"ignore_path_prefixes"`
 	// CorrelationStore tunes the in-process ext_proc→ALS correlation store (see
 	// internal/analytics/correlation) that carries captured request/response headers
 	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
@@ -152,19 +163,22 @@ type CorrelationStoreConfig struct {
 	// When a shard has no free slot, new requests keep their captured fields in
 	// Envoy metadata instead.
 	Capacity int `koanf:"capacity"`
-	// TTL is how long an entry whose request has finished waits for its
-	// access-log entry before its slot may be reclaimed for a new request. It only
-	// matters for entries that are never read -- e.g. paths filtered by
-	// collector.ignore_path_prefixes -- since the ALS handler normally reads an
-	// entry about a second after the request ends (Envoy's 1s/16KiB access-log
-	// buffer). Entries of in-flight requests are never reclaimed.
+	// TTL is how long an entry whose response the ext_proc side saw finish waits
+	// for its access-log entry before its slot may be reclaimed for a new request.
+	// It only matters for entries that are never read, since the ALS handler
+	// normally reads an entry about a second after the request ends (Envoy's
+	// 1s/16KiB access-log buffer). An entry whose response was not seen to finish
+	// (for example a long streamed response after the ext_proc stream closed) is
+	// not affected by the TTL; it may only be reclaimed after a one-hour hard cap.
+	// Paths in collector.ignore_path_prefixes are not stored at all.
 	TTL time.Duration `koanf:"ttl"`
 	// Shards is the number of independently-locked partitions the store is split
 	// into, selected by hashing the per-stream correlation token. A single mutex
 	// would itself become a bottleneck at the request rates this store targets
 	// (several thousand req/s); splitting the lock lets concurrent writers/readers on different
 	// shards proceed without contending on each other. Rounded up to the next
-	// power of two if it is not one already.
+	// power of two if it is not one already; at most MaxCorrelationStoreShards, and
+	// at most Capacity.
 	Shards int `koanf:"shards"`
 	// MaxPayloadBytes is the largest captured request/response body carried
 	// in-process through the store; a larger body stays in Envoy dynamic metadata
@@ -1911,6 +1925,15 @@ func (c *Config) validateCorrelationStoreConfig() error {
 	}
 	if corr.Shards <= 0 {
 		return fmt.Errorf("collector.correlation_store.shards must be positive, got %d", corr.Shards)
+	}
+	if corr.Shards > MaxCorrelationStoreShards {
+		return fmt.Errorf("collector.correlation_store.shards must not exceed %d, got %d", MaxCorrelationStoreShards, corr.Shards)
+	}
+	if corr.Capacity > MaxCorrelationStoreCapacity {
+		return fmt.Errorf("collector.correlation_store.capacity must not exceed %d, got %d", MaxCorrelationStoreCapacity, corr.Capacity)
+	}
+	if corr.Capacity < corr.Shards {
+		return fmt.Errorf("collector.correlation_store.capacity (%d) must be at least shards (%d): every shard holds at least one entry", corr.Capacity, corr.Shards)
 	}
 	if corr.MaxPayloadBytes < 0 {
 		return fmt.Errorf("collector.correlation_store.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)

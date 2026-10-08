@@ -258,7 +258,7 @@ func main() {
 	// reads from.
 	var corrStore *correlation.Store
 	if cfg.IsCollectorEnabled() {
-		corrStore = correlation.NewStoreFromConfig(cfg.Collector.CorrelationStore)
+		corrStore = correlation.NewStoreFromConfig(cfg.Collector)
 	}
 
 	// Create and start ext_proc gRPC server

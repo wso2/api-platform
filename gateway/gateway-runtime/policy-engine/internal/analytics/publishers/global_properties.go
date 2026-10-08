@@ -31,6 +31,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 )
 
 // globalPropertyCtxPrefix marks a traffic_logging.properties value as a
@@ -313,7 +314,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		ctx["request.id"] = event.MetaInfo.CorrelationID
 	}
 	if referenced["request.header"] {
-		if headers := headersFromEventProperty(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
 			ctx["request.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
@@ -322,7 +323,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		ctx["response.status"] = event.ProxyResponseCode
 	}
 	if referenced["response.header"] {
-		if headers := headersFromEventProperty(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
+		if headers := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); headers != nil {
 			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}

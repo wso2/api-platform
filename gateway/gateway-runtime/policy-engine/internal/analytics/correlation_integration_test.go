@@ -234,7 +234,7 @@ func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
 
 	assert.Equal(t, "from-store", event.Properties[dto.PropKeyRequestPayload])
 	assert.Equal(t, "large-from-metadata", event.Properties[dto.PropKeyResponsePayload], "metadata still serves bodies the store did not take")
-	_, stillThere := store.Get("token-body-1")
+	_, stillThere := store.Take("token-body-1")
 	assert.False(t, stillThere, "entry consumed by the ALS read")
 }
 

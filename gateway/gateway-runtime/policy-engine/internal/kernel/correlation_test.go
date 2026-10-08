@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -63,7 +64,7 @@ func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) 
 	token := st.GetFields()[CorrelationTokenKey].GetStringValue()
 	require.NotEmpty(t, token, "the struct tells the ALS side where the fields went")
 	assert.Equal(t, execCtx.correlationToken, token)
-	payload, ok := store.Get(token)
+	payload, ok := store.Take(token)
 	require.True(t, ok, "stored synchronously, before the response is sent")
 	assert.Equal(t, "example.com", payload.RequestHeaders["host"])
 }
@@ -80,7 +81,7 @@ func TestBuildAnalyticsStruct_MergesPhasesIntoOneEntry(t *testing.T) {
 	_, err = buildAnalyticsStruct(map[string]any{"response_headers": map[string]string{"b": "2"}}, execCtx)
 	require.NoError(t, err)
 
-	payload, ok := store.Get(execCtx.correlationToken)
+	payload, ok := store.Take(execCtx.correlationToken)
 	require.True(t, ok)
 	assert.Equal(t, "1", payload.RequestHeaders["a"])
 	assert.Equal(t, "body", payload.RequestBody)
@@ -101,7 +102,7 @@ func TestBuildAnalyticsStruct_KeepsFieldsInMetadataWhenNotStored(t *testing.T) {
 		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, correlatedExecCtx(server, "next"))
 		require.NoError(t, err)
 		assert.Contains(t, st.GetFields(), "request_headers", "no slot, so the field stays in metadata")
-		_, ok := store.Get(inFlight.correlationToken)
+		_, ok := store.Take(inFlight.correlationToken)
 		assert.True(t, ok, "an unread, in-flight entry is never evicted")
 	})
 
@@ -166,13 +167,14 @@ func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 	assert.NotContains(t, st.GetFields(), CorrelationTokenKey)
 
 	loopback.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
+	loopback.responseFinished = true
 	server.completeCorrelationEntry(loopback)
 
-	payload, ok := store.Get(outer.correlationToken)
-	require.True(t, ok)
-	assert.Equal(t, "outer", payload.RequestHeaders["who"], "outer entry untouched")
 	assert.False(t, store.Merge("other", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}),
 		"outer entry is still in flight, so its slot is not reclaimable")
+	payload, ok := store.Take(outer.correlationToken)
+	require.True(t, ok)
+	assert.Equal(t, "outer", payload.RequestHeaders["who"], "outer entry untouched")
 }
 
 // Completing a finished request makes its unread entry reclaimable after the TTL.
@@ -183,10 +185,93 @@ func TestCompleteCorrelationEntry_MakesEntryReclaimable(t *testing.T) {
 	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, execCtx)
 	require.NoError(t, err)
 
+	execCtx.responseFinished = true
 	server.completeCorrelationEntry(execCtx)
 	time.Sleep(time.Millisecond)
 
 	assert.True(t, store.Merge("next", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}))
+}
+
+// A stream can close before the response ends (response body processing skipped:
+// Envoy ends the stream after the response headers while the body still streams).
+// Such an entry must not be completed, so the TTL cannot reclaim it before its
+// access-log entry arrives.
+func TestCompleteCorrelationEntry_WaitsForResponseEnd(t *testing.T) {
+	store := correlation.NewStore(1, time.Nanosecond, 1)
+	server := newTestServerWithStore(t, store)
+	execCtx := correlatedExecCtx(server, "streaming")
+	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, execCtx)
+	require.NoError(t, err)
+
+	server.completeCorrelationEntry(execCtx) // stream closed, response not seen to end
+	time.Sleep(time.Millisecond)
+
+	assert.False(t, store.Merge("next", correlation.Payload{RequestHeaders: map[string]string{"x": "y"}}),
+		"an entry whose response may still be streaming is not reclaimable")
+	payload, ok := store.Take(execCtx.correlationToken)
+	require.True(t, ok, "the ALS handler still finds it")
+	assert.Equal(t, "b", payload.RequestHeaders["a"])
+}
+
+func TestEndsResponse(t *testing.T) {
+	plain := &extprocv3.ProcessingResponse{}
+	immediate := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ImmediateResponse{ImmediateResponse: &extprocv3.ImmediateResponse{}}}
+	cases := []struct {
+		name string
+		req  *extprocv3.ProcessingRequest
+		resp *extprocv3.ProcessingResponse
+		want bool
+	}{
+		{"request headers", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}}}, plain, false},
+		{"immediate response", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}}}, immediate, true},
+		{"response headers, body follows", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{}}}, plain, false},
+		{"response headers, end of stream", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseHeaders{ResponseHeaders: &extprocv3.HttpHeaders{EndOfStream: true}}}, plain, true},
+		{"response body chunk", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: &extprocv3.HttpBody{}}}, plain, false},
+		{"last response body chunk", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseBody{ResponseBody: &extprocv3.HttpBody{EndOfStream: true}}}, plain, true},
+		{"response trailers", &extprocv3.ProcessingRequest{Request: &extprocv3.ProcessingRequest_ResponseTrailers{ResponseTrailers: &extprocv3.HttpTrailers{}}}, plain, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, endsResponse(tc.req, tc.resp))
+		})
+	}
+}
+
+// Requests on collector.ignore_path_prefixes never get an access-log entry, so
+// their fields are not stored (they stay in metadata and are dropped with it).
+func TestStoreInProcess_SkipsIgnoredPaths(t *testing.T) {
+	store := correlation.NewStoreFromConfig(config.CollectorConfig{
+		CorrelationStore:   config.CorrelationStoreConfig{Capacity: 100, TTL: time.Minute, Shards: 4},
+		IgnorePathPrefixes: []string{"/health"},
+	})
+	server := newTestServerWithStore(t, store)
+
+	ignored := correlatedExecCtx(server, "ignored")
+	ignored.clientPath = "/health/live"
+	st, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, ignored)
+	require.NoError(t, err)
+	assert.Contains(t, st.GetFields(), "request_headers", "ignored path: kept in metadata")
+	assert.Empty(t, ignored.correlationToken, "nothing stored")
+
+	logged := correlatedExecCtx(server, "logged")
+	logged.clientPath = "/api/v1/health"
+	st, err = buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, logged)
+	require.NoError(t, err)
+	assert.NotContains(t, st.GetFields(), "request_headers", "prefix match only: stored")
+}
+
+// A repeated header from the analytics-header-filter path is stored with every
+// value, joined with ", ".
+func TestStoreInProcess_KeepsRepeatedHeaderValues(t *testing.T) {
+	store := correlation.NewStore(100, time.Minute, 4)
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "multi")
+	_, err := buildAnalyticsStruct(map[string]any{
+		"request_headers": map[string][]string{"set-cookie": {"a=1", "b=2"}},
+	}, execCtx)
+	require.NoError(t, err)
+	payload, ok := store.Take(execCtx.correlationToken)
+	require.True(t, ok)
+	assert.Equal(t, "a=1, b=2", payload.RequestHeaders["set-cookie"])
 }
 
 func TestCorrelationTokenKey(t *testing.T) {
@@ -197,38 +282,4 @@ func TestCorrelationTokenKey(t *testing.T) {
 func TestCompleteCorrelationEntry_NilStoreIsNoop(t *testing.T) {
 	server := newTestServerWithStore(t, nil)
 	assert.NotPanics(t, func() { server.completeCorrelationEntry(correlatedExecCtx(server, "req-1")) })
-}
-
-// TestNormalizeAnalyticsHeaderValue covers every shape captured headers can
-// arrive in inside execCtx.analyticsMetadata (see its doc comment in
-// analytics.go), asserting the flattening matches exactly what the old
-// JSON-encode-then-decode-back round trip used to produce for each shape.
-func TestNormalizeAnalyticsHeaderValue(t *testing.T) {
-	t.Run("map[string]string is used as-is", func(t *testing.T) {
-		got := normalizeAnalyticsHeaderValue(map[string]string{"host": "example.com"})
-		assert.Equal(t, map[string]string{"host": "example.com"}, got)
-	})
-
-	t.Run("map[string][]string flattens to the first value", func(t *testing.T) {
-		got := normalizeAnalyticsHeaderValue(map[string][]string{"x-foo": {"a", "b"}})
-		assert.Equal(t, map[string]string{"x-foo": "a"}, got)
-	})
-
-	t.Run("JSON string (single-value map) is decoded", func(t *testing.T) {
-		got := normalizeAnalyticsHeaderValue(`{"host":"example.com"}`)
-		assert.Equal(t, map[string]string{"host": "example.com"}, got)
-	})
-
-	t.Run("JSON string (multi-value map) flattens to the first value", func(t *testing.T) {
-		got := normalizeAnalyticsHeaderValue(`{"x-foo":["a","b"]}`)
-		assert.Equal(t, map[string]string{"x-foo": "a"}, got)
-	})
-
-	t.Run("nil is nil", func(t *testing.T) {
-		assert.Nil(t, normalizeAnalyticsHeaderValue(nil))
-	})
-
-	t.Run("unrecognized shape is nil", func(t *testing.T) {
-		assert.Nil(t, normalizeAnalyticsHeaderValue(12345))
-	})
 }
