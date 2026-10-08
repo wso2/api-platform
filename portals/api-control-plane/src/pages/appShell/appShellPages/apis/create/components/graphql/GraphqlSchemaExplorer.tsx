@@ -103,10 +103,6 @@ const messages = defineMessages({
     id: 'api.create.graphql.schemaExplorer.invalidSdl',
     defaultMessage: 'This schema could not be parsed: {reason}',
   },
-  resolutionFailedGeneric: {
-    id: 'api.create.graphql.schemaExplorer.resolutionFailed.generic',
-    defaultMessage: 'Schema could not be resolved.',
-  },
   sdlErrorWithLocation: {
     id: 'api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation',
     defaultMessage: 'Line {line}, column {column}: {message}',
@@ -251,6 +247,11 @@ const OperationDetails = ({ field }: { field: GraphQLFieldSummary }) => (
             <Box component="span" sx={{ color: 'info.main' }}>
               {arg.type}
             </Box>
+            {arg.defaultValue !== undefined ? (
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                {` = ${arg.defaultValue}`}
+              </Box>
+            ) : null}
           </Typography>
         ))
       )}
@@ -312,7 +313,8 @@ const SCHEMA_PLACEHOLDER_ROWS: PlaceholderRow[] = [
 const typeCountLabel = (type: GraphQLTypeSummary) => {
   if (type.enumValues) return { count: type.enumValues.length, message: messages.valueCount };
   if (type.unionMembers) return { count: type.unionMembers.length, message: messages.memberCount };
-  return { count: type.fields?.length ?? 0, message: messages.fieldCount };
+  if (type.fields) return { count: type.fields.length, message: messages.fieldCount };
+  return undefined;
 };
 
 const typeMemberNames = (type: GraphQLTypeSummary): string[] => [
@@ -342,12 +344,18 @@ const TYPE_KEYWORDS: Record<GraphQLTypeKind, string> = {
  */
 const TypeRow = ({ defaultExpanded, type }: { defaultExpanded: boolean; type: GraphQLTypeSummary }) => {
   const intl = useIntl();
-  const { count, message } = typeCountLabel(type);
+  const countLabel = typeCountLabel(type);
+
+  // A scalar declares no members: no count to show and nothing to expand, so
+  // it renders as a flat row (SwaggerResourceRow is expandable only with children).
+  if (!countLabel) {
+    return <SwaggerResourceRow method={TYPE_KEYWORDS[type.kind]} path={type.name} pathVariant="text" />;
+  }
 
   return (
     <SwaggerResourceRow
       defaultExpanded={defaultExpanded}
-      description={intl.formatMessage(message, { count })}
+      description={intl.formatMessage(countLabel.message, { count: countLabel.count })}
       method={TYPE_KEYWORDS[type.kind]}
       path={type.name}
       pathVariant="text"
@@ -452,9 +460,10 @@ export type GraphqlSchemaExplorerProps = {
   /** e.g. "Imported from https://…" / "Fetched by introspection from https://…". */
   sourceDescription?: string;
   /**
-   * The source step's last validation failure, if any — shown here instead
-   * of the generic "Schema will show here" empty state once a check has
-   * actually been attempted and failed.
+   * The source step's last validation failure, if any. Its SDL errors (with
+   * line/column) are shown here instead of the "Schema will show here" empty
+   * state; a failure without them leaves the empty state in place, since the
+   * source form already reports it.
    */
   error?: GraphqlResolutionFailure | null;
   /**
@@ -487,7 +496,11 @@ export const GraphqlSchemaExplorer = ({
   const [kindFilter, setKindFilter] = useState<GraphQLTypeKind | 'all'>('all');
 
   // Nothing loaded and nothing attempted yet — only the placeholder shows.
-  const isEmpty = sdl === undefined && !error;
+  // Only the parser's own line/column errors are worth this pane: a failure
+  // without them carries just the backend's fixed, generic message, which the
+  // source form already states in its own words right next to the field.
+  const sdlErrors = error?.sdlErrors && error.sdlErrors.length > 0 ? error.sdlErrors : undefined;
+  const isEmpty = sdl === undefined && !sdlErrors;
   const isCard = variant === 'card';
   // The card's header strip is the section's own title, so it always shows;
   // the pane drops its heading over the empty state, where the placeholder
@@ -633,26 +646,20 @@ export const GraphqlSchemaExplorer = ({
             : { flex: 1, minHeight: 0, minWidth: 0, mt: showHeader ? 1.5 : 0, overflow: 'auto' }
         }
       >
-        {sdl === undefined && error ? (
+        {sdl === undefined && sdlErrors ? (
           <Stack spacing={1.5}>
-            {error.sdlErrors && error.sdlErrors.length > 0 ? (
-              error.sdlErrors.map((issue, index) => (
-                <Alert key={index} severity="error">
-                  {issue.line !== undefined && issue.column !== undefined ? (
-                    <FormattedMessage
-                      {...messages.sdlErrorWithLocation}
-                      values={{ column: issue.column, line: issue.line, message: issue.message }}
-                    />
-                  ) : (
-                    issue.message
-                  )}
-                </Alert>
-              ))
-            ) : (
-              <Alert severity="error">
-                {error.message ?? intl.formatMessage(messages.resolutionFailedGeneric)}
+            {sdlErrors.map((issue, index) => (
+              <Alert key={index} severity="error">
+                {issue.line !== undefined && issue.column !== undefined ? (
+                  <FormattedMessage
+                    {...messages.sdlErrorWithLocation}
+                    values={{ column: issue.column, line: issue.line, message: issue.message }}
+                  />
+                ) : (
+                  issue.message
+                )}
               </Alert>
-            )}
+            ))}
           </Stack>
         ) : sdl === undefined ? (
           <ResourcePreviewPlaceholder

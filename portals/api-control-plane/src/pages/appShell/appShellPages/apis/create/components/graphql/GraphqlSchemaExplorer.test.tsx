@@ -22,8 +22,11 @@ import { renderWithProviders, screen, within } from '@/test/utils';
 import { GraphqlSchemaExplorer } from './GraphqlSchemaExplorer';
 
 const SDL = `
+  scalar DateTime
+
   type Query {
     country(code: ID!): Country
+    countries(limit: Int = 20, region: String = "Asia"): [Country!]!
   }
 
   type Mutation {
@@ -86,18 +89,26 @@ describe('GraphqlSchemaExplorer — a failed validation attempt', () => {
     expect(screen.queryByText('Schema will show here')).not.toBeInTheDocument();
   });
 
-  it('falls back to the generic message when no sdlErrors are given (a url/introspection failure)', () => {
+  // The backend's message for a failure without SDL errors is a fixed,
+  // generic string ("…could not be used to derive a GraphQL schema…") that
+  // the source form already reports in its own words, so repeating it here
+  // only showed the same failure twice. The pane keeps its empty state.
+  it('keeps the empty state for a failure without SDL errors, rather than repeating the form', () => {
     renderWithProviders(
-      <GraphqlSchemaExplorer error={{ message: 'Introspection could not be completed.' }} />,
+      <GraphqlSchemaExplorer
+        error={{ message: 'The provided endpoint could not be used to derive a GraphQL schema.' }}
+      />,
     );
 
-    expect(screen.getByText('Introspection could not be completed.')).toBeInTheDocument();
+    expect(screen.getByText('Schema will show here')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be used to derive/)).not.toBeInTheDocument();
   });
 
-  it('shows a sterile fallback when neither sdlErrors nor a message is given', () => {
+  it('keeps the empty state for an empty failure object', () => {
     renderWithProviders(<GraphqlSchemaExplorer error={{}} />);
 
-    expect(screen.getByText('Schema could not be resolved.')).toBeInTheDocument();
+    expect(screen.getByText('Schema will show here')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 
@@ -210,14 +221,14 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
 
     // One badge per operation field, colored from the shared Swagger palette
     // so a GraphQL schema reads like a REST resource list.
-    expect(screen.getByText('QUERY')).toHaveStyle({ backgroundColor: '#4286de' });
+    expect(screen.getAllByText('QUERY')[0]).toHaveStyle({ backgroundColor: '#4286de' });
     expect(screen.getByText('MUTATION')).toHaveStyle({ backgroundColor: '#49cc90' });
   });
 
   it('wraps every non-root type in one collapsible Types group, each drawn like an operation row', async () => {
     const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
-    const group = screen.getByRole('button', { name: /Types.*3 types/ });
+    const group = screen.getByRole('button', { name: /Types.*4 types/ });
     expect(group).toHaveAttribute('aria-expanded', 'true');
     // Same row as QUERY/MUTATION, badged with the SDL keyword instead.
     expect(screen.getByRole('button', { name: 'Show details for TYPE Country' })).toBeInTheDocument();
@@ -232,7 +243,7 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
   it('wraps queries and mutations in their own collapsible groups, like Types, and omits an empty one', async () => {
     const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
-    const queries = screen.getByRole('button', { name: /Queries.*1 query/ });
+    const queries = screen.getByRole('button', { name: /Queries.*2 queries/ });
     expect(screen.getByRole('button', { name: /Mutations.*1 mutation/ })).toHaveAttribute('aria-expanded', 'true');
     // The schema declares no Subscription type, so no empty group is drawn for it.
     expect(screen.queryByRole('button', { name: /Subscriptions/ })).not.toBeInTheDocument();
@@ -240,6 +251,25 @@ describe('GraphqlSchemaExplorer — a resolved schema', () => {
     await user.click(queries);
 
     expect(queries).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('shows an argument\'s default value next to its type', async () => {
+    const { user } = renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    const toggle = screen.getByRole('button', { name: 'Show details for QUERY countries' });
+    await user.click(toggle);
+
+    const details = within(document.getElementById(toggle.getAttribute('aria-controls') ?? '')!);
+    expect(details.getByText('= 20')).toBeInTheDocument();
+    expect(details.getByText('= "Asia"')).toBeInTheDocument();
+  });
+
+  it('draws a scalar as a flat row: no member count and nothing to expand', () => {
+    renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
+
+    expect(screen.getByText('DateTime')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show details for SCALAR DateTime/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('0 fields')).not.toBeInTheDocument();
   });
 
   it('expands an operation row to show its arguments and return type', async () => {

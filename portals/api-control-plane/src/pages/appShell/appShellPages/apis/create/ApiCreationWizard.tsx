@@ -315,6 +315,10 @@ const ApiCreationWizardContent = () => {
     useState<GraphqlApiCreationFormState | null>(null);
   const [graphqlCreationStarted, setGraphqlCreationStarted] = useState(false);
   const [graphqlFormErrors, setGraphqlFormErrors] = useState<CreateApiFormErrors | null>(null);
+  // The GraphQL form's live identifier check: a taken identifier blocks its
+  // submit, so the footer's Create is disabled to match rather than clicking
+  // through to nothing.
+  const [graphqlSubmitBlocked, setGraphqlSubmitBlocked] = useState(false);
 
   const createGraphqlApi = (values: GraphqlApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -467,6 +471,7 @@ const ApiCreationWizardContent = () => {
                       initialValues={graphqlSubmittedValues ?? graphqlPrefilledData}
                       onSubmit={onGraphqlFormSubmit}
                       onBack={() => setStep('source')}
+                      onSubmitBlockedChange={setGraphqlSubmitBlocked}
                       serverErrors={graphqlFormErrors ?? undefined}
                     />
                   ) : (
@@ -524,6 +529,7 @@ const ApiCreationWizardContent = () => {
               </Button>
               {step === 'configure' ? (
                 <Button
+                  disabled={isGraphql && graphqlSubmitBlocked}
                   form={CONFIGURE_FORM_ID}
                   key="create-api"
                   type="submit"

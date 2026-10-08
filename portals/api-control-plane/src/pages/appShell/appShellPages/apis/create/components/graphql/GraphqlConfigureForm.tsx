@@ -59,6 +59,12 @@ export type GraphqlConfigureFormProps = {
   onBack: () => void;
   /** Why the last submission was rejected, when there was one. See `GeneralCreateApiForm`. */
   serverErrors?: CreateApiFormErrors;
+  /**
+   * Reports whether submitting is currently blocked by a taken identifier, for
+   * a host that renders its own Create button (`hideActions`) and should
+   * disable it exactly as this form's own button is disabled.
+   */
+  onSubmitBlockedChange?: (blocked: boolean) => void;
 };
 
 const messages = defineMessages({
@@ -341,6 +347,11 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
     if (first) document.getElementById(INPUT_ID[first])?.focus();
   }, [rejectedFields]);
 
+  const { onSubmitBlockedChange } = props;
+  useEffect(() => {
+    onSubmitBlockedChange?.(isUnavailable);
+  }, [isUnavailable, onSubmitBlockedChange]);
+
   const markTouched = (field: ValidatedField) =>
     setTouched((current) => ({ ...current, [field]: true }));
 
@@ -388,6 +399,9 @@ export const GraphqlConfigureForm = (props: GraphqlConfigureFormProps) => {
 
     if (Object.keys(errors).length > 0 || isUnavailable) {
       setTouched({ context: true, displayName: true, id: true, targetUrl: true, version: true });
+      // Never a silent no-op: take the reader to the field that blocks the submit.
+      const first = FIELD_ORDER.find((field) => errors[field] !== undefined) ?? (isUnavailable ? 'id' : undefined);
+      if (first) document.getElementById(INPUT_ID[first])?.focus();
       return;
     }
 

@@ -17,6 +17,7 @@
  */
 
 import {
+  astFromValue,
   buildSchema,
   GraphQLEnumType,
   GraphQLInputObjectType,
@@ -25,9 +26,11 @@ import {
   GraphQLScalarType,
   GraphQLUnionType,
   isSpecifiedScalarType,
+  print,
   printSchema,
   type GraphQLField,
   type GraphQLInputField,
+  type GraphQLArgument,
   type GraphQLNamedType,
   type GraphQLSchema,
 } from 'graphql';
@@ -54,6 +57,8 @@ export type GraphQLArgumentSummary = {
   name: string;
   /** The argument's type, e.g. `ID!`. */
   type: string;
+  /** The declared default, printed as SDL (`20`, `"en"`, `AVAILABLE`); absent when there is none. */
+  defaultValue?: string;
 };
 
 export type GraphQLFieldSummary = {
@@ -69,6 +74,19 @@ export type GraphQLFieldSummary = {
   deprecated: boolean;
 };
 
+/**
+ * An argument's default as it reads in SDL (`20`, `"all"`, `ACTIVE`), or
+ * `undefined` when it declares none. graphql-js 17 keeps a default as either
+ * the literal from the SDL (`default.literal`, what `buildSchema` produces)
+ * or a programmatic value (`default.value`); `defaultValue` is deprecated.
+ */
+const printDefaultValue = (arg: GraphQLArgument): string | undefined => {
+  if (arg.default === undefined) return undefined;
+  if (arg.default.literal !== undefined) return print(arg.default.literal);
+  const ast = astFromValue(arg.default.value, arg.type);
+  return ast ? print(ast) : undefined;
+};
+
 const describeArgs = (field: GraphQLField<unknown, unknown>): string => {
   if (field.args.length === 0) return '';
   return `(${field.args.map((arg) => `${arg.name}: ${arg.type.toString()}`).join(', ')})`;
@@ -79,7 +97,11 @@ const describeFields = (
 ): GraphQLFieldSummary[] =>
   Object.values(fields).map((field) => ({
     args: describeArgs(field),
-    arguments: field.args.map((arg) => ({ name: arg.name, type: arg.type.toString() })),
+    arguments: field.args.map((arg) => ({
+      defaultValue: printDefaultValue(arg),
+      name: arg.name,
+      type: arg.type.toString(),
+    })),
     deprecated: field.deprecationReason !== undefined && field.deprecationReason !== null,
     description: field.description ?? undefined,
     name: field.name,

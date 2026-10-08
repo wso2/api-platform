@@ -23,7 +23,7 @@ import { resetHttpClient } from '@/api/core/http';
 import { collection } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlConfigureForm } from './GraphqlConfigureForm';
 
 const scope = makeConsoleScope();
@@ -250,6 +250,46 @@ describe('GraphqlConfigureForm — client-side validation', () => {
     // it can't be submitted at all.
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // The creation wizard hides this form's own Create (`hideActions`) and
+  // renders its own, so it needs to be told when to disable it — otherwise a
+  // click on a taken identifier went through to a submit that silently did
+  // nothing. A blocked submit (Enter in a field) also moves focus to the field.
+  it('reports a taken identifier as a blocked submit to a host with its own Create', async () => {
+    server.use(
+      collection('/graphql-apis', [{ id: 'countries-api' }], {
+        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
+      }),
+    );
+    const onSubmitBlockedChange = vi.fn();
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId="api-platform-demo" projectId="retail-apis">
+        <GraphqlConfigureForm
+          hideActions
+          initialValues={{ schemaSource: 'introspection' }}
+          onBack={() => {}}
+          onSubmit={onSubmit}
+          onSubmitBlockedChange={onSubmitBlockedChange}
+        />
+      </ApiScopeProvider>,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+    await screen.findByText('This identifier is already in use.');
+    // The host's own Create submits this form by id; submitting it directly
+    // stands in for that click (this form renders no button of its own here).
+    fireEvent.submit(screen.getByLabelText(/^Name/).closest('form')!);
+
+    await waitFor(() => expect(onSubmitBlockedChange).toHaveBeenLastCalledWith(true));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/^Identifier\s*\*/)).toHaveFocus();
+
+    await user.type(screen.getByLabelText(/^Identifier\s*\*/), '-v2');
+    await waitFor(() => expect(onSubmitBlockedChange).toHaveBeenLastCalledWith(false));
   });
 
   it('clears the taken-identifier warning once it is edited to a free one', async () => {
