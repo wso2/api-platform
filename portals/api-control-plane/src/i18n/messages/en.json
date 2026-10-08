@@ -614,9 +614,6 @@
     "defaultMessage": "Queries",
     "description": "Heading of the collapsible group listing a GraphQL schema's query fields."
   },
-  "api.create.graphql.schemaExplorer.resolutionFailed.generic": {
-    "defaultMessage": "Schema could not be resolved."
-  },
   "api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation": {
     "defaultMessage": "Line {line}, column {column}: {message}",
     "description": "{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser's own error text."

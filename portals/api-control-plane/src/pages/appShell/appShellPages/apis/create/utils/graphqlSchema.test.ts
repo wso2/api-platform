@@ -145,6 +145,28 @@ describe('summarizeSchema', () => {
   });
 });
 
+describe('summarizeSchema — argument defaults', () => {
+  it('prints each argument default as it reads in SDL, and omits it when none is declared', () => {
+    const parsed = parseGraphQLSdl(`
+      enum Status { ACTIVE INACTIVE }
+      type Query {
+        items(limit: Int = 20, label: String = "all", status: Status = ACTIVE, ids: [ID!] = ["a"], cursor: String): [String!]!
+      }
+    `);
+    if (!('schema' in parsed)) throw new Error(parsed.error);
+
+    const [items] = summarizeSchema(parsed.schema).queryFields;
+
+    expect(items.arguments.map((arg) => [arg.name, arg.defaultValue])).toEqual([
+      ['limit', '20'],
+      ['label', '"all"'],
+      ['status', 'ACTIVE'],
+      ['ids', '["a"]'],
+      ['cursor', undefined],
+    ]);
+  });
+});
+
 describe('countNamedTypes', () => {
   it('counts every named type but not introspection meta types', () => {
     const parsed = parseGraphQLSdl(SDL);

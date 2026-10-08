@@ -239,10 +239,15 @@ describe('GraphqlDefinePanel — a schema that fails validation', () => {
     expect(onDraftChange).toHaveBeenLastCalledWith(null);
   });
 
-  it('shows the server’s reason when a schema URL cannot be fetched', async () => {
+  // The backend answers every resolution failure without SDL errors with one
+  // fixed, generic message (it also mentions an "endpoint", which reads wrong
+  // for a schema URL). The form already states the failure next to the field,
+  // so the schema pane no longer repeats it: it is reported once.
+  it('reports a schema URL that cannot be fetched once, in the form, not again in the schema pane', async () => {
     server.use(
       accepts('post', '/graphql-apis/validate-schema', {
-        message: 'The schema URL could not be fetched.',
+        message:
+          'The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.',
         resolved: false,
       }),
     );
@@ -251,7 +256,11 @@ describe('GraphqlDefinePanel — a schema that fails validation', () => {
     await user.type(screen.getByLabelText(/Schema URL/), 'https://raw.example.com/missing.graphql');
     await user.tab();
 
-    expect(await screen.findByText('The schema URL could not be fetched.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('That schema could not be resolved. Check it is valid GraphQL SDL.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not be used to derive a GraphQL schema/)).not.toBeInTheDocument();
+    expect(screen.getByText('Schema will show here')).toBeInTheDocument();
     expect(onDraftChange).toHaveBeenLastCalledWith(null);
   });
 });
