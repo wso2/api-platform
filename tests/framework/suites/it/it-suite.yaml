@@ -310,9 +310,6 @@ blocks:
       - name: url-guardrail
         features:
           - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: regex-guardrail
-        features:
-          - features/gateway/guardrails-policies/regex_guardrail.feature
       - name: json-schema-guardrail
         features:
           - features/gateway/guardrails-policies/json_schema_guardrail.feature
@@ -494,18 +491,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
-
-  - name: pii-masking-regex
-    parallel: 1
-    components:
-      - name: platform-gateway
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: pii-masking-regex
-        features:
-          - features/gateway/guardrails-policies/pii_masking_regex.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -992,3 +977,9 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
+      - name: pii-masking-regex
+        features:
+          - features/gateway/guardrails-policies/pii_masking_regex.feature
+      - name: regex-guardrail
+        features:
+          - features/gateway/guardrails-policies/regex_guardrail.feature
