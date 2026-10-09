@@ -236,8 +236,9 @@ const (
 // An encoded body is left alone: rewriting it would mean also dropping Content-Encoding, and
 // the bodies this exists for (router replies) are never encoded.
 //
-// A backend's own error is never buffered: under the OpenAI option it passes through whether or
-// not it has a body, so reading it would cost a buffer for nothing.
+// Only an error the router itself produced is buffered. A backend's own error passes through
+// whether or not it has a body, so reading it would cost a buffer for nothing — and so does one
+// whose provenance Envoy did not report, which may well be the provider's.
 func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
 	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.policyChain.RequiresResponseBody {
 		return false
@@ -248,7 +249,12 @@ func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
 	if ec.responseHasNoBody() || ec.responseContentEncoding != "" || ec.responseEncodingUnsupported {
 		return false
 	}
-	return classifyFaultSource(originUpstream, ec.responseCodeDetails) != sourceBackend
+	switch classifyFaultSource(originUpstream, ec.responseCodeDetails) {
+	case sourceRouter, sourceNoRoute:
+		return true
+	default:
+		return false
+	}
 }
 
 // llmOpenAIErrors reports whether this route's errors render in the OpenAI envelope: the

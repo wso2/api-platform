@@ -317,9 +317,18 @@ func withFallbackMessage(declared *policy.FaultDetails, msg string) *policy.Faul
 // A backend cannot mark its body as a fallback the way a policy can, so bytes from upstream
 // are a decision and no bytes are no decision. A backend 502 with an empty body is still
 // rendered on a formatted kind — except on an OpenAI route, where the provider owns its whole
-// error response, including the decision to send no body.
+// error response, including the decision to send no body. An OpenAI route also treats an upstream
+// error of unreported provenance as the provider's: rewriting a provider's error document is the
+// one outcome this option must never produce, so without proof the router made it, it stands.
 func (ec *PolicyExecutionContext) noteUpstreamAuthoredBody() {
-	if ec.faultBodyAuthored || ec.faultSource != sourceBackend {
+	if ec.faultBodyAuthored {
+		return
+	}
+	if ec.faultSource == sourceUnknown && ec.llmOpenAIErrors() {
+		ec.faultBodyAuthored = true
+		return
+	}
+	if ec.faultSource != sourceBackend {
 		return
 	}
 	if body := ec.responseBodyCtx; body != nil && body.ResponseBody != nil && len(body.ResponseBody.Content) > 0 {
