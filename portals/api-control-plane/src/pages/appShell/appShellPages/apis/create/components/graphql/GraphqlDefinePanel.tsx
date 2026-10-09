@@ -16,21 +16,12 @@
  * under the License.
  */
 
-import {
-  alpha,
-  Box,
-  Card,
-  Divider,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { Compass, Pencil } from '@wso2/oxygen-ui-icons-react';
-import { useEffect, useState, type ReactNode } from 'react';
-import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
+import { FileCode2, Pencil } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useState } from 'react';
+import { defineMessages, FormattedMessage } from 'react-intl';
 
 import type { GraphqlCreationWizardDraftState } from '../../types';
+import { DefineApproachLayout, type DefineApproach } from '../DefineApproachLayout';
 import { GraphqlIntrospectionForm } from './GraphqlIntrospectionForm';
 import { GraphqlSchemaExplorer } from './GraphqlSchemaExplorer';
 import { GraphqlUrlUploadForm } from './GraphqlUrlUploadForm';
@@ -39,10 +30,6 @@ import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlS
 type ApproachKey = 'schema' | 'scratch';
 
 const messages = defineMessages({
-  schemaLabel: {
-    id: 'api.create.graphql.definePanel.approach.label',
-    defaultMessage: 'How do you want to define this GraphQL API?',
-  },
   schemaDescription: {
     id: 'api.create.graphql.definePanel.schema.description',
     defaultMessage: 'Import from a URL or upload a schema file.',
@@ -61,25 +48,23 @@ const messages = defineMessages({
   },
 });
 
-type Approach = {
-  description: MessageDescriptor;
-  icon: ReactNode;
-  key: ApproachKey;
-  title: MessageDescriptor;
-};
-
-const APPROACHES: Approach[] = [
+/**
+ * GraphQL's approaches, in the same order and with the same icons as REST's
+ * (`DefineApiPanel`): Start from scratch, then the schema import that stands in
+ * for REST's contract import.
+ */
+const APPROACHES: DefineApproach<ApproachKey>[] = [
   {
-    description: messages.schemaDescription,
-    icon: <Compass size={18} />,
-    key: 'schema',
-    title: messages.schemaTitle,
+    description: <FormattedMessage {...messages.scratchDescription} />,
+    icon: <Pencil size={20} />,
+    key: 'scratch',
+    title: <FormattedMessage {...messages.scratchTitle} />,
   },
   {
-    description: messages.scratchDescription,
-    icon: <Pencil size={18} />,
-    key: 'scratch',
-    title: messages.scratchTitle,
+    description: <FormattedMessage {...messages.schemaDescription} />,
+    icon: <FileCode2 size={20} />,
+    key: 'schema',
+    title: <FormattedMessage {...messages.schemaTitle} />,
   },
 ];
 
@@ -118,22 +103,21 @@ const deriveDisplayName = (resolved: GraphqlResolvedSchema): string | undefined 
 };
 
 /**
- * The GraphQL wizard's "how do you want to define this API?" step.
+ * The GraphQL wizard's "how do you want to define this API?" step, built on
+ * the same `DefineApproachLayout` as REST's `DefineApiPanel`.
  *
- * Two approaches sit across the top and share one schema explorer: importing
- * a schema (URL/file) or introspecting a backend endpoint both funnel through
- * the same dry-run validation call and land in the same right-hand pane —
- * mirrors `DefineApiPanel`'s contract-vs-scratch split. Back and Next belong
- * to the wizard's shared footer, not this panel.
+ * Both approaches share one schema explorer as the preview: importing a schema
+ * (URL/file) or introspecting a backend endpoint funnel through the same
+ * dry-run validation call and land in the same right-hand pane. Back and Next
+ * belong to the wizard's shared footer, not this panel.
  */
 export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) => {
-  const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('schema');
   const [resolved, setResolved] = useState<GraphqlResolvedSchema | null>(null);
   const [failure, setFailure] = useState<GraphqlResolutionFailure | null>(null);
 
-  const handleApproachChange = (next: ApproachKey | null) => {
-    if (next === null) return;
+  const handleApproachChange = (next: ApproachKey) => {
+    if (next === approach) return;
     setApproach(next);
     setResolved(null);
     setFailure(null);
@@ -163,123 +147,18 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
   }, [onDraftChange, resolved]);
 
   return (
-    <Stack spacing={3}>
-      {/* One surface for the whole step: the two approaches sit flush on top of
-          the panels they open, like tabs on their own body, rather than
-          floating above as separate cards — mirrors `DefineApiPanel`'s own
-          selected-approach border treatment. */}
-      <Card sx={{ border: 0, overflow: 'visible' }} variant="outlined">
-        <ToggleButtonGroup
-          aria-label={intl.formatMessage(messages.schemaLabel)}
-          exclusive
-          fullWidth
-          onChange={(_event, next: ApproachKey | null) => handleApproachChange(next)}
-          sx={(theme) => ({
-            p: 0,
-            '& .MuiToggleButtonGroup-grouped': {
-              border: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-              borderBottom: 0,
-              borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
-              justifyContent: 'flex-start',
-              p: 2,
-              textTransform: 'none',
-              '&:not(:first-of-type)': {
-                borderLeft: `1px solid ${alpha(theme.palette.text.primary, 0.32)}`,
-                marginLeft: 0,
-              },
-              '&.Mui-selected, &.Mui-selected:hover': {
-                bgcolor: 'action.selected',
-                border: `1px solid ${theme.palette.primary.main}`,
-                borderBottom: 0,
-                borderRadius: `${theme.shape.borderRadius}px ${theme.shape.borderRadius}px 0 0`,
-              },
-            },
-          })}
-          value={approach}
-        >
-          {APPROACHES.map((candidate) => {
-            const selected = candidate.key === approach;
-
-            return (
-              <ToggleButton key={candidate.key} value={candidate.key}>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', width: '100%' }}>
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      bgcolor: selected ? 'primary.main' : 'action.hover',
-                      borderRadius: 1,
-                      color: selected ? 'primary.contrastText' : 'text.secondary',
-                      display: 'flex',
-                      flexShrink: 0,
-                      height: 34,
-                      justifyContent: 'center',
-                      width: 34,
-                    }}
-                  >
-                    {candidate.icon}
-                  </Box>
-                  <Stack spacing={0.25} sx={{ minWidth: 0, textAlign: 'left' }}>
-                    <Typography color="text.primary" sx={{ fontWeight: 700 }} variant="body1">
-                      <FormattedMessage {...candidate.title} />
-                    </Typography>
-                    <Typography color="text.secondary" variant="body2">
-                      <FormattedMessage {...candidate.description} />
-                    </Typography>
-                  </Stack>
-                </Stack>
-              </ToggleButton>
-            );
-          })}
-        </ToggleButtonGroup>
-
-        <Stack
-          direction={{ lg: 'row', xs: 'column' }}
-          divider={
-            <Divider
-              flexItem
-              orientation="vertical"
-              sx={{
-                borderBottomWidth: { lg: 0, xs: 'thin' },
-                borderRightWidth: { lg: 'thin', xs: 0 },
-              }}
-            />
-          }
-          sx={(theme) => ({
-            border: 1,
-            borderColor: 'primary.main',
-            borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
-            borderTop: 0,
-            position: 'relative',
-            // Covers the shared top border seam with the selected column's own
-            // color, so the primary-colored outline reads as wrapping only
-            // that column rather than the whole row.
-            '&::before': {
-              bgcolor: 'primary.main',
-              content: '""',
-              height: '1px',
-              left: approach === 'schema' ? '50%' : 0,
-              position: 'absolute',
-              top: 0,
-              width: '50%',
-            },
-          })}
-        >
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            {approach === 'schema' ? (
-              <GraphqlUrlUploadForm onResolved={setResolved} onValidationFailed={setFailure} />
-            ) : (
-              <GraphqlIntrospectionForm onResolved={setResolved} />
-            )}
-          </Box>
-
-          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-            <GraphqlSchemaExplorer
-              error={failure}
-              sdl={resolved?.sdl}
-            />
-          </Box>
-        </Stack>
-      </Card>
-    </Stack>
+    <DefineApproachLayout
+      approaches={APPROACHES}
+      form={
+        approach === 'schema' ? (
+          <GraphqlUrlUploadForm onResolved={setResolved} onValidationFailed={setFailure} />
+        ) : (
+          <GraphqlIntrospectionForm onResolved={setResolved} />
+        )
+      }
+      onChange={handleApproachChange}
+      preview={<GraphqlSchemaExplorer error={failure} sdl={resolved?.sdl} />}
+      value={approach}
+    />
   );
 };

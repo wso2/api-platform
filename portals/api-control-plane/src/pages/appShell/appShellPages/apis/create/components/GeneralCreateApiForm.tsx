@@ -20,21 +20,25 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   Divider,
   Form,
   FormControl,
   FormHelperText,
   Grid,
   FormLabel,
+  InputAdornment,
   OutlinedInput,
   Paper,
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
+import { CircleAlert, CircleCheck } from '@wso2/oxygen-ui-icons-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { versionLabel as toVersionSegment } from '@/utils/versionLabel';
 import {
@@ -67,6 +71,18 @@ export type GeneralCreateApiFormProps = {
   onSubmit: (values: GeneralApiCreationFormState) => void;
   onBack: () => void;
   /**
+   * What differs per API type — the derived context, the endpoint's wording,
+   * a live identifier check. Omitted, the form is REST's (`REST_FORM_PROFILE`).
+   */
+  profile?: CreateApiFormProfile;
+  /**
+   * Reports whether submitting is currently blocked by a taken identifier, for
+   * a host that renders its own Create button (`hideActions`) and should
+   * disable it exactly as this form's own button is disabled. Only a profile
+   * with a live identifier check ever blocks.
+   */
+  onSubmitBlockedChange?: (blocked: boolean) => void;
+  /**
    * Why the last submission was rejected, when there was one. Rendered as a
    * summary and pinned to the inputs it names, so the user fixes the problem
    * where they made it rather than reading about it in a toast that has
@@ -82,7 +98,7 @@ const messages = defineMessages({
   },
   rejectedTitle: {
     id: 'api.create.generalForm.rejected.title',
-    defaultMessage: 'We could not create this API proxy',
+    defaultMessage: 'We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}',
     description: 'Heading of the summary shown when the server rejected the submitted form.',
   },
   contextErrorPattern: {
@@ -163,6 +179,15 @@ const messages = defineMessages({
     id: 'api.create.generalForm.identifier.status.availableIcon',
     defaultMessage: 'Identifier is available',
     description: 'Accessible label for the tick shown beside a free identifier.',
+  },
+  identifierStatusUnavailable: {
+    id: 'api.create.graphql.configureForm.identifier.status.unavailable',
+    defaultMessage: 'This identifier is already in use.',
+  },
+  identifierStatusUnavailableIcon: {
+    id: 'api.create.graphql.configureForm.identifier.status.unavailableIcon',
+    defaultMessage: 'Identifier is already in use',
+    description: 'Accessible label for the warning icon shown beside a taken identifier.',
   },
   identifierStatusChecking: {
     id: 'api.create.generalForm.identifier.status.checking',
@@ -247,6 +272,47 @@ const toBasePath = (
   return `/${segments.join('/')}`;
 };
 
+/** A live "is this identifier free?" check: `data` is the answer once known. */
+export type IdentifierAvailability = { data?: boolean; isFetching: boolean };
+
+/**
+ * What one API type changes about this form. Everything else — the fields,
+ * the derivation of identifier from name, validation, server-error mapping,
+ * layout — is shared, so REST and GraphQL configure the same form.
+ */
+export type CreateApiFormProfile = {
+  /** Names the API in the rejection summary ("this API proxy" / "this GraphQL API"). */
+  apiKind: 'graphql' | 'rest';
+  /** Whether an empty context is a validation error rather than "let the server decide". */
+  contextRequired: boolean;
+  /** The context derived from the project, identifier and version until the user edits it. */
+  deriveContext: (projectHandler: string | undefined, apiHandle: string, version: string) => string;
+  endpointErrorInvalid: MessageDescriptor;
+  endpointErrorRequired: MessageDescriptor;
+  endpointLabel: MessageDescriptor;
+  endpointSection: MessageDescriptor;
+  /**
+   * A live identifier check, called on every render with the debounced
+   * candidate (`''` while there is none). Must be a hook and stable for the
+   * form's lifetime. Omitted, a taken identifier is caught by the server.
+   */
+  useIdentifierAvailability?: (candidate: string) => IdentifierAvailability;
+};
+
+/** REST's profile — the form's default. */
+export const REST_FORM_PROFILE: CreateApiFormProfile = {
+  apiKind: 'rest',
+  contextRequired: true,
+  deriveContext: (projectHandler, apiHandle, version) => toBasePath(projectHandler, apiHandle, version),
+  endpointErrorInvalid: messages.targetUrlErrorInvalid,
+  endpointErrorRequired: messages.targetUrlErrorRequired,
+  endpointLabel: messages.targetUrlLabel,
+  endpointSection: messages.endpointSection,
+};
+
+/** Stands in for a profile without a live identifier check, so the hook call count never changes. */
+const useNoIdentifierAvailability = (): IdentifierAvailability => ({ isFetching: false });
+
 /**
  * Where the form starts: the wizard's draft over the defaults, with the two
  * derived fields filled in so the first render already shows the handle and
@@ -260,6 +326,7 @@ const toBasePath = (
 const getInitialValues = (
   draftData: ApiCreationWizardDraftState,
   projectHandler: string | undefined,
+  profile: CreateApiFormProfile,
 ): GeneralApiCreationFormState => {
   const merged = {
     ...DEFAULT_FORM_STATE,
@@ -277,7 +344,7 @@ const getInitialValues = (
     id,
     context:
       merged.context.trim() === ''
-        ? toBasePath(projectHandler, id, merged.version)
+        ? profile.deriveContext(projectHandler, id, merged.version)
         : merged.context,
   };
 };
@@ -327,7 +394,7 @@ type FieldErrors = Partial<Record<ValidatedField, MessageDescriptor>>;
  * Every rule in one pure pass, so the same answer drives the field errors and
  * the submit gate — there is no second, drifting copy of the rules.
  */
-const validate = (state: GeneralApiCreationFormState): FieldErrors => {
+const validate = (state: GeneralApiCreationFormState, profile: CreateApiFormProfile): FieldErrors => {
   const errors: FieldErrors = {};
 
   if (state.displayName.trim() === '') {
@@ -352,16 +419,16 @@ const validate = (state: GeneralApiCreationFormState): FieldErrors => {
 
   const context = state.context.trim();
   if (context === '' || context === '/') {
-    errors.context = messages.contextErrorRequired;
+    if (profile.contextRequired) errors.context = messages.contextErrorRequired;
   } else if (!CONTEXT_PATTERN.test(context)) {
     errors.context = messages.contextErrorPattern;
   }
 
   const targetUrl = state.upstream.main.url.trim();
   if (targetUrl === '') {
-    errors.targetUrl = messages.targetUrlErrorRequired;
+    errors.targetUrl = profile.endpointErrorRequired;
   } else if (!isHttpUrl(targetUrl)) {
-    errors.targetUrl = messages.targetUrlErrorInvalid;
+    errors.targetUrl = profile.endpointErrorInvalid;
   }
 
   return errors;
@@ -372,11 +439,13 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   // The base path opens with the project this wizard is running in.
   const { activeScope } = useConsoleScope();
   const projectHandler = activeScope.projectHandler;
+  const profile = props.profile ?? REST_FORM_PROFILE;
+  const { deriveContext } = profile;
 
   // Lazy initialiser: `getInitialValues` runs once, on mount, instead of on
   // every render only to have its result thrown away.
   const [submittedState] = useState<GeneralApiCreationFormState>(() =>
-    getInitialValues(props.initialValues || {}, projectHandler),
+    getInitialValues(props.initialValues || {}, projectHandler, profile),
   );
   // The form remounts from what was last submitted, so `submittedState` is
   // exactly the payload any `serverErrors` were raised against — which is what
@@ -398,7 +467,21 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   // of them the user is ready to see, so nothing shouts before it is typed in.
   const [touched, setTouched] = useState<Partial<Record<ValidatedField, boolean>>>({});
 
-  const errors = validate(formState);
+  const errors = validate(formState, profile);
+
+  // The live identifier check, for a profile that has one: probes only a
+  // well-formed handle, debounced, and knows when its answer is current.
+  const useIdentifierAvailability = profile.useIdentifierAvailability ?? useNoIdentifierAvailability;
+  const probeCandidate = errors.id ? '' : formState.id.trim().toLowerCase();
+  const debouncedCandidate = useDebouncedValue(probeCandidate, 400);
+  const availability = useIdentifierAvailability(debouncedCandidate);
+  const probeSettled = debouncedCandidate === probeCandidate && !availability.isFetching;
+  const availabilityAnswered = probeCandidate !== '' && probeSettled && availability.data !== undefined;
+  const isChecking = profile.useIdentifierAvailability !== undefined && probeCandidate !== '' && !probeSettled;
+  const isAvailable = availabilityAnswered && availability.data === true;
+  // Known-taken: surfaced inline and blocks submission, rather than only being
+  // caught by the server's own rejection afterward.
+  const isUnavailable = availabilityAnswered && availability.data === false;
 
   const errorFor = (field: ValidatedField): MessageDescriptor | undefined => {
     return touched[field] ? errors[field] : undefined;
@@ -435,6 +518,11 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
     if (first) document.getElementById(INPUT_ID[first])?.focus();
   }, [rejectedFields]);
 
+  const { onSubmitBlockedChange } = props;
+  useEffect(() => {
+    onSubmitBlockedChange?.(isUnavailable);
+  }, [isUnavailable, onSubmitBlockedChange]);
+
   const markTouched = (field: ValidatedField) =>
     setTouched((current) => ({ ...current, [field]: true }));
 
@@ -454,7 +542,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
         ...current,
         displayName,
         id,
-        context: basePathEdited ? current.context : toBasePath(projectHandler, id, current.version),
+        context: basePathEdited ? current.context : deriveContext(projectHandler, id, current.version),
       };
     });
   };
@@ -467,7 +555,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
     setFormState((current) => ({
       ...current,
       id,
-      context: basePathEdited ? current.context : toBasePath(projectHandler, id, current.version),
+      context: basePathEdited ? current.context : deriveContext(projectHandler, id, current.version),
     }));
   };
 
@@ -475,7 +563,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
     setFormState((current) => ({
       ...current,
       version,
-      context: basePathEdited ? current.context : toBasePath(projectHandler, current.id, version),
+      context: basePathEdited ? current.context : deriveContext(projectHandler, current.id, version),
     }));
   };
 
@@ -501,7 +589,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(errors).length > 0 || isUnavailable) {
       // Reveal every rule at once rather than one field per attempt.
       setTouched({
         context: true,
@@ -510,6 +598,10 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
         targetUrl: true,
         version: true,
       });
+      // Never a silent no-op: take the reader to the field that blocks the submit.
+      const first =
+        FIELD_ORDER.find((field) => errors[field] !== undefined) ?? (isUnavailable ? 'id' : undefined);
+      if (first) document.getElementById(INPUT_ID[first])?.focus();
       return;
     }
 
@@ -538,7 +630,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const versionLabel = intl.formatMessage(messages.versionLabel);
   const contextLabel = intl.formatMessage(messages.contextLabel);
   const descriptionLabel = intl.formatMessage(messages.descriptionLabel);
-  const targetUrlLabel = intl.formatMessage(messages.targetUrlLabel);
+  const targetUrlLabel = intl.formatMessage(profile.endpointLabel);
 
   return (
     <Stack component="form" id={props.formId} noValidate spacing={3} onSubmit={onFormSubmit}>
@@ -547,7 +639,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
       {showRejection && (
         <Alert severity="error">
           <Typography sx={{ fontWeight: 600 }} variant="body2">
-            <FormattedMessage {...messages.rejectedTitle} />
+            <FormattedMessage {...messages.rejectedTitle} values={{ kind: profile.apiKind }} />
           </Typography>
           {props.serverErrors?.message && (
             <Typography variant="body2">{props.serverErrors.message}</Typography>
@@ -588,10 +680,35 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
             </Grid>
 
             <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl error={Boolean(fieldErrors.id)} fullWidth required>
+              <FormControl error={Boolean(fieldErrors.id) || isUnavailable} fullWidth required>
                 <FormLabel htmlFor="identifier">{identifierLabel}</FormLabel>
                 <OutlinedInput
                   aria-describedby="identifier-error"
+                  endAdornment={
+                    isChecking || isAvailable || isUnavailable ? (
+                      <InputAdornment position="end">
+                        {isChecking ? <CircularProgress size={16} /> : null}
+                        {isAvailable ? (
+                          <Box
+                            aria-label={intl.formatMessage(messages.identifierStatusAvailableIcon)}
+                            role="img"
+                            sx={{ color: 'success.main', display: 'flex' }}
+                          >
+                            <CircleCheck size={18} />
+                          </Box>
+                        ) : null}
+                        {isUnavailable ? (
+                          <Box
+                            aria-label={intl.formatMessage(messages.identifierStatusUnavailableIcon)}
+                            role="img"
+                            sx={{ color: 'error.main', display: 'flex' }}
+                          >
+                            <CircleAlert size={18} />
+                          </Box>
+                        ) : null}
+                      </InputAdornment>
+                    ) : undefined
+                  }
                   id="identifier"
                   name="identifier"
                   sx={{ mt: 0.75 }}
@@ -601,7 +718,10 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
                 />
                 {/* The identifier is the field a duplicate-handle rejection
                     lands on, so it needs somewhere to say so. */}
-                <FormHelperText id="identifier-error">{fieldErrors.id}</FormHelperText>
+                <FormHelperText id="identifier-error">
+                  {fieldErrors.id ??
+                    (isUnavailable ? <FormattedMessage {...messages.identifierStatusUnavailable} /> : null)}
+                </FormHelperText>
               </FormControl>
             </Grid>
 
@@ -622,7 +742,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
             </Grid>
           </Grid>
 
-          <FormControl error={Boolean(fieldErrors.context)} fullWidth required>
+          <FormControl error={Boolean(fieldErrors.context)} fullWidth required={profile.contextRequired}>
             <FormLabel htmlFor="context">{contextLabel}</FormLabel>
             <OutlinedInput
               aria-describedby="context-error"
@@ -653,7 +773,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
 
       <Paper component="section" sx={{ p: 3, mt: 1 }}>
         <Typography sx={{ fontWeight: 600 }} variant="body2">
-          <FormattedMessage {...messages.endpointSection} />
+          <FormattedMessage {...profile.endpointSection} />
         </Typography>
 
         <Form.Stack spacing={2} sx={{ mt: 1.5 }}>
@@ -692,7 +812,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
           <Button onClick={props.onBack} type="button" variant="text">
             <FormattedMessage {...messages.back} />
           </Button>
-          <Button type="submit" variant="contained">
+          <Button disabled={isUnavailable} type="submit" variant="contained">
             <FormattedMessage {...messages.create} />
           </Button>
         </Stack>
