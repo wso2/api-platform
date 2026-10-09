@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"net"
@@ -257,9 +258,99 @@ func TestConfigDumpContainsPolicy(t *testing.T) {
 			var dump configDump
 			require.NoError(t, json.Unmarshal([]byte(tt.body), &dump))
 			require.Equal(t, tt.want,
-				dump.containsPolicy(configDumpSchemaFor(tt.version), routePath, tt.policyName))
+				dump.containsPolicy(configDumpSchemaFor(tt.version), routePath, policyNamed(tt.policyName)))
 		})
 	}
+}
+
+func TestConfigDumpContainsPolicyWithParameter(t *testing.T) {
+	const routePath = "/orders/v1/test"
+	const current = `{
+		"route_metadata":{"routes":[{"route_key":"GET|/orders/v1/test|localhost","chain_key":"chain-123"}]},
+		"policy_chains":{"policy_chains":[
+			{"chain_key":"chain-123","policies":[
+				{"name":"set-headers","parameters":{"request":{"mode":"allow"}}},
+				{"name":"analytics-header-filter","parameters":{"request":{"mode":"allow","headers":["x-first"]}}}
+			]}
+		]}
+	}`
+	const legacy = `{
+		"policy_chains":{"policy_chains":[
+			{"route_key":"GET|/orders/v1/test|localhost","policies":[
+				{"name":"analytics-header-filter","parameters":{"request":{"mode":"deny","headers":["x-first"]}}}
+			]}
+		]}
+	}`
+	tests := []struct {
+		name      string
+		version   string
+		body      string
+		policy    string
+		paramPath string
+		want      string
+		expected  bool
+	}{
+		{name: "current gateway matches a scalar parameter", version: "1.3.0", body: current,
+			policy: "analytics-header-filter", paramPath: "request.mode", want: "allow", expected: true},
+		{name: "current gateway matches an array element", version: "1.3.0", body: current,
+			policy: "analytics-header-filter", paramPath: "request.headers.0", want: "x-first", expected: true},
+		{name: "current gateway rejects a stale parameter value", version: "1.3.0", body: current,
+			policy: "analytics-header-filter", paramPath: "request.headers.0", want: "x-second"},
+		{name: "parameter on another policy does not match", version: "1.3.0", body: current,
+			policy: "prompt-compressor", paramPath: "request.mode", want: "allow"},
+		{name: "empty parameter path matches by name", version: "1.3.0", body: current,
+			policy: "analytics-header-filter", expected: true},
+		{name: "gateway 1.2 matches a parameter on the route-keyed chain", version: "1.2.0", body: legacy,
+			policy: "analytics-header-filter", paramPath: "request.mode", want: "deny", expected: true},
+		{name: "gateway 1.1 rejects a different parameter value", version: "1.1.0", body: legacy,
+			policy: "analytics-header-filter", paramPath: "request.mode", want: "allow"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dump configDump
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &dump))
+			match := policyNamedWithParameter(tt.policy, tt.paramPath, tt.want)
+			require.Equal(t, tt.expected, dump.containsPolicy(configDumpSchemaFor(tt.version), routePath, match))
+		})
+	}
+}
+
+func TestPolicyParameterValue(t *testing.T) {
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"request":{"mode":"deny","headers":["x-first","x-second"],"empty":null},
+		"limits":[{"requests":3,"enabled":true}]
+	}`), &parameters))
+	tests := []struct {
+		name  string
+		path  string
+		want  string
+		found bool
+	}{
+		{name: "nested string", path: "request.mode", want: "deny", found: true},
+		{name: "array element", path: "request.headers.1", want: "x-second", found: true},
+		{name: "number inside an array object", path: "limits.0.requests", want: "3", found: true},
+		{name: "boolean", path: "limits.0.enabled", want: "true", found: true},
+		{name: "missing key", path: "response.mode"},
+		{name: "index out of range", path: "request.headers.2"},
+		{name: "negative index", path: "request.headers.-1"},
+		{name: "non-numeric index", path: "request.headers.first"},
+		{name: "path ends at an object", path: "request"},
+		{name: "path ends at an array", path: "request.headers"},
+		{name: "null value", path: "request.empty"},
+		{name: "path descends through a scalar", path: "request.mode.value"},
+		{name: "empty segment", path: "request..mode"},
+		{name: "empty path", path: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := policyParameterValue(parameters, tt.path)
+			require.Equal(t, tt.found, found)
+			require.Equal(t, tt.want, got)
+		})
+	}
+	_, found := policyParameterValue(nil, "request.mode")
+	require.False(t, found)
 }
 
 func TestHealthyStatus(t *testing.T) {
@@ -543,6 +634,172 @@ func TestGatewayLazyAndAnalyticsHelpers(t *testing.T) {
 		return value
 	}())
 	require.True(t, analyticsEventMatchesPath("/test", "/analytics/v1.0/test"))
+}
+
+func TestAnalyticsHeaderValuesMatch(t *testing.T) {
+	headers := map[string][]string{
+		"X-Multi-Response": {"first", "second"},
+		"X-Empty":          {},
+		"Content-Type":     {"application/json"},
+	}
+	tests := []struct {
+		name    string
+		header  string
+		want    string
+		wantErr string
+	}{
+		{name: "exact values", header: "X-Multi-Response", want: "first,second"},
+		{name: "case-insensitive name and trimmed values", header: "x-multi-response", want: " first , second "},
+		{name: "single value", header: "content-type", want: "application/json"},
+		{name: "wrong order", header: "X-Multi-Response", want: "second,first", wantErr: "has values"},
+		{name: "missing value", header: "X-Multi-Response", want: "first", wantErr: "has values"},
+		{name: "extra value", header: "X-Multi-Response", want: "first,second,third", wantErr: "has values"},
+		{name: "joined value is not split", header: "X-Multi-Response", want: "first, second, extra", wantErr: "has values"},
+		{name: "empty recorded values", header: "X-Empty", want: "first", wantErr: "has values"},
+		{name: "absent header", header: "X-Absent", want: "first", wantErr: "is absent"},
+		{name: "no expected values", header: "X-Multi-Response", want: " , ", wantErr: "no expected values"},
+		{name: "empty expectation", header: "X-Multi-Response", want: "", wantErr: "no expected values"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := analyticsHeaderValuesMatch(headers, tt.header, tt.want)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+	require.ErrorContains(t, analyticsHeaderValuesMatch(nil, "X-Multi-Response", "first"), "is absent")
+}
+
+func analyticsTable(t *testing.T, rows ...[]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{}
+	for _, values := range rows {
+		r := row{}
+		for _, v := range values {
+			r.Cells = append(r.Cells, cell{Value: v})
+		}
+		payload.Rows = append(payload.Rows, r)
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	table := &godog.Table{}
+	require.NoError(t, json.Unmarshal(raw, table))
+	return table
+}
+
+func TestPerRequestAnalyticsHeaders(t *testing.T) {
+	local := tcontext.NewLocal("runner")
+	local.Set("uid", "run")
+	ctx := tcontext.WithLocal(context.Background(), local)
+
+	got, err := perRequestAnalyticsHeaders(ctx, analyticsTable(t,
+		[]string{"request", "x-tenant-data", "contain", "${CTX:uid}-data"},
+		[]string{"response", "x-denied-response", "not contain", ""}))
+	require.NoError(t, err)
+	require.Equal(t, []perRequestAnalyticsHeader{
+		{plane: "request", header: "x-tenant-data", present: true, prefix: "run-data"},
+		{plane: "response", header: "x-denied-response"},
+	}, got)
+
+	tests := []struct {
+		name  string
+		table *godog.Table
+		want  string
+	}{
+		{name: "nil table", want: "table is required"},
+		{name: "empty table", table: &godog.Table{}, want: "table is required"},
+		{name: "wrong cell count", table: analyticsTable(t, []string{"request", "x-a", "contain"}), want: "must contain"},
+		{name: "bad plane", table: analyticsTable(t, []string{"body", "x-a", "contain", "p"}), want: "plane must be"},
+		{name: "empty header", table: analyticsTable(t, []string{"request", " ", "contain", "p"}), want: "header name is empty"},
+		{name: "bad presence", table: analyticsTable(t, []string{"request", "x-a", "have", "p"}), want: "presence must be"},
+		{name: "contain without prefix", table: analyticsTable(t, []string{"request", "x-a", "contain", ""}), want: "needs a value prefix"},
+		{name: "absent with prefix", table: analyticsTable(t, []string{"request", "x-a", "not contain", "p"}), want: "takes no value prefix"},
+		{name: "missing context", table: analyticsTable(t, []string{"request", "x-a", "contain", "${CTX:missing}"}), want: "missing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := perRequestAnalyticsHeaders(ctx, tt.table)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func perRequestEvent(uri string, index int, secret bool) analyticsEvent {
+	event := analyticsEvent{}
+	event.Request.URI = uri
+	event.Request.Headers = map[string][]string{
+		"X-Correlation-Id": {fmt.Sprintf("run-%d", index)},
+		"X-Tenant-Data":    {fmt.Sprintf("data-%d", index)},
+	}
+	if secret {
+		event.Request.Headers["X-Secret-Token"] = []string{"leaked"}
+	}
+	event.Response.Headers = map[string][]string{"X-Correlation-Response": {fmt.Sprintf("run-%d", index)}}
+	return event
+}
+
+func TestVerifyPerRequestAnalyticsEvents(t *testing.T) {
+	expectations := []perRequestAnalyticsHeader{
+		{plane: "request", header: "x-tenant-data", present: true, prefix: "data"},
+		{plane: "request", header: "x-secret-token"},
+		{plane: "response", header: "x-correlation-response", present: true, prefix: "run"},
+	}
+	valid := func() []analyticsEvent {
+		return []analyticsEvent{perRequestEvent("/p", 2, false), perRequestEvent("/p", 1, false)}
+	}
+	require.NoError(t, verifyPerRequestAnalyticsEvents(valid(), 2, "X-Correlation-Id", "run", expectations))
+
+	leaked := valid()
+	leaked[0].Request.Headers["X-Tenant-Data"] = []string{"data-1"}
+	missing := valid()
+	delete(missing[1].Response.Headers, "X-Correlation-Response")
+	noKey := valid()
+	delete(noKey[0].Request.Headers, "X-Correlation-Id")
+	tests := []struct {
+		name   string
+		events []analyticsEvent
+		n      int
+		want   string
+	}{
+		{name: "too few events", events: valid()[:1], n: 2, want: "expected 2 analytics events, got 1"},
+		{name: "too many events", events: valid(), n: 1, want: "expected 1 analytics events, got 2"},
+		{name: "zero count", events: nil, n: 0, want: "must be positive"},
+		{name: "duplicate request", events: []analyticsEvent{perRequestEvent("/p", 1, false), perRequestEvent("/p", 1, false)}, n: 2, want: "more than one"},
+		{name: "out of range key", events: []analyticsEvent{perRequestEvent("/p", 3, false), perRequestEvent("/p", 1, false)}, n: 2, want: "unexpected value"},
+		{name: "missing key", events: noKey, n: 2, want: "has no request header"},
+		{name: "cross-request value", events: leaked, n: 2, want: `value "data-1", want "data-2"`},
+		{name: "denied header present", events: []analyticsEvent{perRequestEvent("/p", 1, true)}, n: 1, want: "contains denied request header"},
+		{name: "expected header absent", events: missing, n: 2, want: "does not contain response header"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := verifyPerRequestAnalyticsEvents(tt.events, tt.n, "X-Correlation-Id", "run", expectations)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+
+	badPrefix := []analyticsEvent{perRequestEvent("/p", 1, false)}
+	require.ErrorContains(t, verifyPerRequestAnalyticsEvents(badPrefix, 1, "X-Correlation-Id", "other", expectations),
+		"unexpected value")
+}
+
+func TestAnalyticsEventsForPath(t *testing.T) {
+	events := []analyticsEvent{perRequestEvent("/a/v1/p", 1, false), perRequestEvent("/other", 2, false), perRequestEvent("/a/v1/p", 3, false)}
+	matched := analyticsEventsForPath(events, "/a/v1/p")
+	require.Len(t, matched, 2)
+	require.Empty(t, analyticsEventsForPath(nil, "/a/v1/p"))
+	require.Empty(t, analyticsEventsForPath(events, ""))
 }
 
 // Overriding a mirrored header is how the negative MCP scenarios make a header disagree with its

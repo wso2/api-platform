@@ -20,14 +20,26 @@ package steps
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"gopkg.in/yaml.v3"
@@ -346,6 +358,188 @@ func TestJSONArrayItemSteps(t *testing.T) {
 		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{"list":{}}`), "list", "contain", "id", "a"), "not an array")
 		require.ErrorContains(t, base.jsonArrayItemPresence(publish(t, `{}`), "list", "contain", "id", "a"), "absent")
 	})
+}
+
+func headerTable(t *testing.T, rows ...[]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{}
+	for _, values := range rows {
+		r := row{}
+		for _, v := range values {
+			r.Cells = append(r.Cells, cell{Value: v})
+		}
+		payload.Rows = append(payload.Rows, r)
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	table := &godog.Table{}
+	require.NoError(t, json.Unmarshal(raw, table))
+	return table
+}
+
+func TestPerRequestHeaders(t *testing.T) {
+	local := tcontext.NewLocal("runner")
+	local.Set("uid", "run-1")
+	ctx := tcontext.WithLocal(context.Background(), local)
+
+	headers, err := perRequestHeaders(ctx, headerTable(t,
+		[]string{"x-correlation-id", "${CTX:uid}"}, []string{" X-Secret ", "secret"}))
+	require.NoError(t, err)
+	require.Equal(t, []perRequestHeader{
+		{name: "X-Correlation-Id", prefix: "run-1"}, {name: "X-Secret", prefix: "secret"},
+	}, headers)
+
+	tests := []struct {
+		name  string
+		table *godog.Table
+		want  string
+	}{
+		{name: "nil table", want: "table is required"},
+		{name: "empty table", table: &godog.Table{}, want: "table is required"},
+		{name: "wrong cell count", table: headerTable(t, []string{"X-A"}), want: "exactly two cells"},
+		{name: "empty name", table: headerTable(t, []string{" ", "a"}), want: "empty header name"},
+		{name: "empty prefix", table: headerTable(t, []string{"X-A", " "}), want: "empty value prefix"},
+		{name: "duplicate", table: headerTable(t, []string{"X-A", "a"}, []string{"x-a", "b"}), want: "duplicate"},
+		{name: "missing context", table: headerTable(t, []string{"X-A", "${CTX:missing}"}), want: "missing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := perRequestHeaders(ctx, tt.table)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestConcurrentRequests(t *testing.T) {
+	shared := map[string]string{"Authorization": "Basic x"}
+	requests := concurrentRequests(3, "GET", "http://gw/p", "host.local", shared,
+		[]perRequestHeader{{name: "X-Correlation-Id", prefix: "run"}})
+
+	require.Len(t, requests, 3)
+	for i, req := range requests {
+		require.Equal(t, "GET", req.Method)
+		require.Equal(t, "http://gw/p", req.URL)
+		require.Equal(t, "host.local", req.Host)
+		require.Equal(t, "Basic x", req.Headers["Authorization"])
+		require.Equal(t, fmt.Sprintf("run-%d", i+1), req.Headers["X-Correlation-Id"])
+	}
+	require.Len(t, shared, 1, "shared headers must not be modified")
+	require.NotNil(t, concurrentRequests(1, "GET", "u", "", nil, nil)[0].Headers)
+}
+
+func TestSendAllConcurrently(t *testing.T) {
+	var inFlight, peak atomic.Int32
+	var mu sync.Mutex
+	seen := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			old := peak.Load()
+			if current <= old || peak.CompareAndSwap(old, current) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		id := r.Header.Get("X-Correlation-Id")
+		mu.Lock()
+		seen[id]++
+		mu.Unlock()
+		if strings.HasSuffix(id, "-fail") {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+	client := httpx.NewClient(httpx.Options{})
+
+	requests := concurrentRequests(12, "GET", server.URL, "", nil,
+		[]perRequestHeader{{name: "X-Correlation-Id", prefix: "req"}})
+	require.NoError(t, sendAllConcurrently(context.Background(), client, requests, 4))
+	require.Len(t, seen, 12)
+	for id, count := range seen {
+		require.Equal(t, 1, count, "request %s", id)
+	}
+	require.LessOrEqual(t, peak.Load(), int32(4))
+	require.Greater(t, peak.Load(), int32(1))
+
+	failing := []httpx.Request{
+		{Method: "GET", URL: server.URL, Headers: map[string]string{"X-Correlation-Id": "ok"}},
+		{Method: "GET", URL: server.URL, Headers: map[string]string{"X-Correlation-Id": "b-fail"}},
+	}
+	err := sendAllConcurrently(context.Background(), client, failing, 2)
+	require.ErrorContains(t, err, "request 2 of 2 returned")
+
+	require.ErrorContains(t, sendAllConcurrently(context.Background(), client, requests, 0), "must be positive")
+	require.ErrorContains(t, sendAllConcurrently(context.Background(), nil, requests, 1), "client is required")
+	require.NoError(t, sendAllConcurrently(context.Background(), client, nil, 1))
+}
+
+func TestSendConcurrentRejectsInvalidCount(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	table := headerTable(t, []string{"X-A", "a"})
+	for _, n := range []int{0, -1, maxConcurrentSendRequests + 1} {
+		require.ErrorContains(t, (&Base{}).sendConcurrent(ctx, n, "GET", "/p", table), "must be between")
+	}
+}
+
+// sendConcurrent is a funnel exception: it clears the previously published response and
+// publishes none of its own, whether its requests succeed or fail, so a later response
+// assertion can neither pass against a stale response nor read an arbitrary concurrent one.
+func TestSendConcurrentLeavesNoPublishedResponse(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Correlation-Id")
+		mu.Lock()
+		seen[id] = r.Method + " " + r.URL.Path
+		mu.Unlock()
+		if id == "fail-2" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	const gatewayPort = 8080
+	definition := &components.Definition{
+		Name:      "platform-gateway",
+		Alias:     "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: gatewayPort, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1",
+		map[int]int{gatewayPort: server.Listener.Addr().(*net.TCPAddr).Port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	base := &Base{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+	}
+	stale := &httpx.Response{StatusCode: http.StatusTeapot}
+
+	ctx := publishedContext(t, stale)
+	require.NoError(t, base.sendConcurrent(ctx, 3, "get", "/api/v1/resource",
+		headerTable(t, []string{"X-Correlation-Id", "req"})))
+	require.Equal(t, map[string]string{
+		"req-1": "GET /api/v1/resource",
+		"req-2": "GET /api/v1/resource",
+		"req-3": "GET /api/v1/resource",
+	}, seen)
+	_, err = httpx.Published(ctx)
+	require.ErrorContains(t, err, "no response has been published")
+
+	ctx = publishedContext(t, stale)
+	require.ErrorContains(t, base.sendConcurrent(ctx, 2, "GET", "/api/v1/resource",
+		headerTable(t, []string{"X-Correlation-Id", "fail"})), "request 2 of 2 returned")
+	_, err = httpx.Published(ctx)
+	require.ErrorContains(t, err, "no response has been published")
 }
 
 func publishedContext(t *testing.T, resp *httpx.Response) context.Context {

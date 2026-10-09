@@ -24,7 +24,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/textproto"
 	"os"
@@ -32,6 +34,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -295,6 +298,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.generateUniqueContext)
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
+	sc.Step(`^I send (\d+) concurrent "([^"]*)" requests to "([^"]*)" with per-request headers:$`,
+		b.sendConcurrent)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
@@ -488,6 +493,117 @@ func (b *Base) sendRepeated(ctx context.Context, n int, method, path string) err
 		}
 	}
 	return nil
+}
+
+const (
+	maxConcurrentSendRequests = 1000
+	maxConcurrentSendInFlight = 25
+)
+
+type perRequestHeader struct {
+	name   string
+	prefix string
+}
+
+// sendConcurrent invokes a data-plane path n times concurrently. Request i (1-based) sends
+// each table header with the value "<prefix>-<i>". Every response must succeed. None is
+// published, so a later response assertion cannot read an arbitrary one of them.
+func (b *Base) sendConcurrent(ctx context.Context, n int, method, path string, table *godog.Table) error {
+	if n <= 0 || n > maxConcurrentSendRequests {
+		return fmt.Errorf("the concurrent request count must be between 1 and %d, got %d",
+			maxConcurrentSendRequests, n)
+	}
+	perRequest, err := perRequestHeaders(ctx, table)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	httpx.ClearPublished(ctx)
+	return sendAllConcurrently(ctx, b.funnel.Client(),
+		concurrentRequests(n, strings.ToUpper(method), url, b.requestHost(ctx), b.scenarioHeaders(ctx), perRequest),
+		maxConcurrentSendInFlight)
+}
+
+func perRequestHeaders(ctx context.Context, table *godog.Table) ([]perRequestHeader, error) {
+	if table == nil || len(table.Rows) == 0 {
+		return nil, fmt.Errorf("a per-request headers table is required")
+	}
+	seen := map[string]bool{}
+	headers := make([]perRequestHeader, 0, len(table.Rows))
+	for i, row := range table.Rows {
+		if row == nil || len(row.Cells) != 2 {
+			return nil, fmt.Errorf("per-request headers row %d must contain exactly two cells", i+1)
+		}
+		name := textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(row.Cells[0].Value))
+		if name == "" {
+			return nil, fmt.Errorf("per-request headers row %d has an empty header name", i+1)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("duplicate per-request header %q", name)
+		}
+		seen[name] = true
+		prefix, err := stepscommon.Expand(ctx, strings.TrimSpace(row.Cells[1].Value))
+		if err != nil {
+			return nil, err
+		}
+		if prefix == "" {
+			return nil, fmt.Errorf("per-request header %q has an empty value prefix", name)
+		}
+		headers = append(headers, perRequestHeader{name: name, prefix: prefix})
+	}
+	return headers, nil
+}
+
+func concurrentRequests(
+	n int, method, url, host string, shared map[string]string, perRequest []perRequestHeader,
+) []httpx.Request {
+	requests := make([]httpx.Request, n)
+	for i := range requests {
+		headers := maps.Clone(shared)
+		if headers == nil {
+			headers = map[string]string{}
+		}
+		for _, header := range perRequest {
+			headers[header.name] = fmt.Sprintf("%s-%d", header.prefix, i+1)
+		}
+		requests[i] = httpx.Request{Method: method, URL: url, Headers: headers, Host: host}
+	}
+	return requests
+}
+
+// sendAllConcurrently issues every request, at most inFlight at a time, without retrying.
+func sendAllConcurrently(ctx context.Context, client *httpx.Client, requests []httpx.Request, inFlight int) error {
+	if client == nil {
+		return fmt.Errorf("an HTTP client is required")
+	}
+	if inFlight <= 0 {
+		return fmt.Errorf("the in-flight request limit must be positive, got %d", inFlight)
+	}
+	slots := make(chan struct{}, inFlight)
+	errs := make([]error, len(requests))
+	var wg sync.WaitGroup
+	for i, req := range requests {
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			resp, err := client.Do(ctx, req, 0, 0)
+			switch {
+			case err != nil:
+				errs[i] = fmt.Errorf("request %d of %d: %w", i+1, len(requests), err)
+			case !resp.Succeeded():
+				errs[i] = fmt.Errorf("request %d of %d returned %s", i+1, len(requests), resp.Describe())
+			}
+		})
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 // sendUntilStatus invokes a data-plane path until it answers with the wanted status.

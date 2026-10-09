@@ -37,8 +37,22 @@ func TestAnalyticsResponseHeadersAreDeterministic(t *testing.T) {
 			require.Equal(t, http.StatusOK, recorder.Code)
 			require.Equal(t, "allowed", recorder.Header().Get("X-Allowed-Response"))
 			require.Equal(t, "denied", recorder.Header().Get("X-Denied-Response"))
+			require.Equal(t, "removed", recorder.Header().Get("X-Removed-Response"))
+			require.Equal(t, []string{"first", "second"}, recorder.Header().Values("X-Multi-Response"))
+			require.Empty(t, recorder.Header().Values("X-Correlation-Response"))
 		})
 	}
+}
+
+func TestAnalyticsResponseReflectsCorrelationID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/analytics-headers/concurrent", nil)
+	req.Header.Set("X-Correlation-Id", "req-7")
+	recorder := httptest.NewRecorder()
+
+	New().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []string{"req-7"}, recorder.Header().Values("X-Correlation-Response"))
 }
 
 func TestAnalyticsResponseHeadersAreNotAddedToOtherPaths(t *testing.T) {
@@ -50,4 +64,17 @@ func TestAnalyticsResponseHeadersAreNotAddedToOtherPaths(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Empty(t, recorder.Header().Get("X-Allowed-Response"))
 	require.Empty(t, recorder.Header().Get("X-Denied-Response"))
+	require.Empty(t, recorder.Header().Get("X-Removed-Response"))
+	require.Empty(t, recorder.Header().Values("X-Multi-Response"))
+}
+
+func TestCorrelationIDIsNotReflectedOnOtherPaths(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ordinary", nil)
+	req.Header.Set("X-Correlation-Id", "req-7")
+	recorder := httptest.NewRecorder()
+
+	New().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Header().Values("X-Correlation-Response"))
 }

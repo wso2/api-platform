@@ -246,6 +246,9 @@ blocks:
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature
+      - name: analytics-header-filter-validation
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_validation.feature
       - name: search-deployments
         features:
           - features/gateway/core/search_deployments.feature
@@ -473,7 +476,7 @@ blocks:
         features:
           - features/gateway/core/config_dump.feature
 
-  # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
+  # Restart-behavior isolation: every runner here restarts a gateway service mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
   # reachable - see dp-to-cp-reconnect's own comment for the flake that mixing them caused.
   - name: gateway-restart
@@ -494,6 +497,20 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
+      - name: analytics-header-filter-restart
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart.feature
+      # Gateway 1.2.0 lets the system analytics header capture overwrite the response
+      # headers an analytics-header-filter kept (wso2/api-platform#3513). The next two
+      # runners together run every release except 1.2.0.
+      - name: analytics-header-filter-restart-response-filtering
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart_response_filtering.feature
+      - name: analytics-header-filter-restart-response-filtering-pre-1-2-0
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart_response_filtering.feature
 
   - name: pii-masking-regex
     parallel: 1
@@ -715,6 +732,27 @@ blocks:
       - name: analytics-header-filter
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
+      # Gateway 1.2.0 lets the system analytics header capture overwrite the response
+      # headers an analytics-header-filter kept (wso2/api-platform#3513). The next two
+      # runners together run every release except 1.2.0.
+      - name: analytics-header-filter-response-filtering
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering.feature
+      - name: analytics-header-filter-response-filtering-pre-1-2-0
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering.feature
+      # Gateway releases before 1.2.0 publish headers only for a request or response
+      # side that has an analytics-header-filter configured.
+      - name: analytics-header-filter-unfiltered-side-capture
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_unfiltered_side_capture.feature
+      - name: analytics-header-filter-response-filtering-unfiltered-side-capture
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering_unfiltered_side_capture.feature
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
@@ -722,6 +760,19 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/observability/mcp_analytics.feature
+
+  - name: analytics-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/analytics-disabled.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: analytics-header-filter-analytics-disabled
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_analytics_disabled.feature
 
   - name: backend-timeout
     parallel: 2
@@ -992,3 +1043,64 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
+      - name: analytics-header-filter-validation
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_validation.feature
+      - name: analytics-header-filter
+        features:
+          - features/gateway/observability-policies/analytics_header_filter.feature
+      # Gateway 1.2.0 lets the system analytics header capture overwrite the response
+      # headers an analytics-header-filter kept (wso2/api-platform#3513). The next two
+      # runners together run every release except 1.2.0.
+      - name: analytics-header-filter-response-filtering
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering.feature
+      - name: analytics-header-filter-response-filtering-pre-1-2-0
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering.feature
+      # Gateway releases before 1.2.0 publish headers only for a request or response
+      # side that has an analytics-header-filter configured.
+      - name: analytics-header-filter-unfiltered-side-capture
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_unfiltered_side_capture.feature
+      - name: analytics-header-filter-response-filtering-unfiltered-side-capture
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_response_filtering_unfiltered_side_capture.feature
+      # The restart runners stay in this block, unlike the gateway-restart block used for the
+      # bundled policy, only because parallel: 1 runs its runners one at a time, so a restart
+      # never interrupts another runner. If this block runs runners in parallel, move them to a
+      # block reserved for restarts.
+      - name: analytics-header-filter-restart
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart.feature
+      # Gateway 1.2.0 lets the system analytics header capture overwrite the response
+      # headers an analytics-header-filter kept (wso2/api-platform#3513). The next two
+      # runners together run every release except 1.2.0.
+      - name: analytics-header-filter-restart-response-filtering
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart_response_filtering.feature
+      - name: analytics-header-filter-restart-response-filtering-pre-1-2-0
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_restart_response_filtering.feature
+
+  # Like gateway-controller-policies, but for runners that need non-default gateway
+  # configuration. Its overlay applies to every runner here, so read its header before adding one.
+  - name: gateway-controller-policies-config-overrides
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-controller-policies-config-overrides.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: analytics-header-filter-analytics-disabled
+        features:
+          - features/gateway/observability-policies/analytics_header_filter_analytics_disabled.feature

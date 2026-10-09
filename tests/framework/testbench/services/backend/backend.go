@@ -106,6 +106,14 @@ func (s *Service) reflect(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/analytics-headers" || strings.HasPrefix(r.URL.Path, "/analytics-headers/") {
 		w.Header().Set("X-Allowed-Response", "allowed")
 		w.Header().Set("X-Denied-Response", "denied")
+		w.Header().Set("X-Removed-Response", "removed")
+		// Two separate header lines exercise filtering of a multi-valued response header.
+		w.Header().Add("X-Multi-Response", "first")
+		w.Header().Add("X-Multi-Response", "second")
+		// Lets a test tie a response header to the request that produced it.
+		if id := r.Header.Get("X-Correlation-Id"); id != "" {
+			w.Header().Set("X-Correlation-Response", id)
+		}
 	}
 
 	// statusCode lets tests request a specific upstream response status.

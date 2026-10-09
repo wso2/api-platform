@@ -1,0 +1,8 @@
+# Non-default Platform Gateway configuration for the gateway-controller-policies-config-overrides
+# block. Every setting applies to every runner in that block, so add a setting only when no
+# runner there depends on its default, and name the runners that need it. A runner whose
+# setting conflicts with one here needs its own block and overlay.
+
+# analytics-header-filter-analytics-disabled: analytics collection is disabled globally.
+[analytics]
+enabled = false
