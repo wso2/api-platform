@@ -326,6 +326,10 @@
   "api.create.fromContract.spec.validationFailed": {
     "defaultMessage": "We couldn’t read an OpenAPI spec at that address. Check that the link opens the raw file in a browser, or upload the file instead."
   },
+  "api.create.fromContract.spec.validationProblems": {
+    "defaultMessage": "Problems found in the spec",
+    "description": "Accessible name for the scrolling list of validation problems."
+  },
   "api.create.fromContract.status.checked": {
     "defaultMessage": "{dialect} {version} · {routes, plural, one {# route} other {# routes}} found",
     "description": "Quiet line under the source once a spec is accepted, e.g. \"OpenAPI 3.0.2 · 6 routes found\". {dialect} is a product name (OpenAPI, Swagger) and is not translated."
@@ -725,6 +729,10 @@
     "defaultMessage": "All methods",
     "description": "Option that leaves the resource list unfiltered by HTTP method."
   },
+  "apiControlPlane.components.SwaggerSpecViewer.methodFilterLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible name for the HTTP method filter beside the resource search."
+  },
   "apiControlPlane.components.SwaggerSpecViewer.noResources": {
     "defaultMessage": "No resources match your search."
   },
@@ -735,6 +743,10 @@
   "apiControlPlane.components.SwaggerSpecViewer.requestUrl": {
     "defaultMessage": "Request URL",
     "description": "Heading above the URL a generated request would be sent to."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.searchLabel": {
+    "defaultMessage": "Search resources",
+    "description": "Accessible name for the resource search box; its placeholder vanishes on input."
   },
   "apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder": {
     "defaultMessage": "Search resources by path or description"

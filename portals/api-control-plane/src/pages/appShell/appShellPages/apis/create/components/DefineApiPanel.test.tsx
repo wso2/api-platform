@@ -146,3 +146,11 @@ describe('DefineApiPanel — the two tabs', () => {
     );
   });
 });
+
+describe('DefineApiPanel — accessibility', () => {
+  it('marks the backend URL as required', () => {
+    renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
+
+    expect(screen.getByLabelText(/Backend URL/)).toBeRequired();
+  });
+});

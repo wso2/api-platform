@@ -18,7 +18,7 @@
 
 import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { DefineApiPanel } from './components/DefineApiPanel';
@@ -133,6 +133,20 @@ const ApiCreationWizardContent = () => {
   const configuredFromRef = useRef<ApiCreationWizardDraftState | null>(null);
   /** Bumped when the details step must start over from a new source. */
   const [configureKey, setConfigureKey] = useState(0);
+
+  /**
+   * Each step's heading takes focus when the step changes, so keyboard and
+   * screen-reader users land at the top of the new step rather than on the
+   * page body, and the page scrolls back to where the step begins. Not on
+   * first render: arriving at the page is the browser's to announce.
+   */
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const shownStepRef = useRef(step);
+  useEffect(() => {
+    if (shownStepRef.current === step) return;
+    shownStepRef.current = step;
+    headingRef.current?.focus();
+  }, [step]);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
   /**
@@ -385,7 +399,10 @@ const ApiCreationWizardContent = () => {
           display: showProgress ? 'none' : 'flex',
           flexDirection: 'column',
           minHeight: 620,
-          overflow: 'hidden',
+          // `clip`, not `hidden`: it still rounds the corners, but doesn't make
+          // the card a scroll container, which is what stopped the footer
+          // below from sticking.
+          overflow: 'clip',
           width: '100%',
         }}
       >
@@ -407,7 +424,12 @@ const ApiCreationWizardContent = () => {
             sx={{ alignItems: 'flex-start' }}
           >
             <Box>
-              <Typography variant="h1" sx={{ textAlign: 'left', fontWeight: 700 }}>
+              <Typography
+                ref={headingRef}
+                sx={{ fontWeight: 700, outline: 'none', textAlign: 'left' }}
+                tabIndex={-1}
+                variant="h1"
+              >
                 {getTitleForStep(step)}
               </Typography>
               <Typography variant="body1" sx={{ opacity: 0.65, textAlign: 'left' }}>
@@ -470,10 +492,16 @@ const ApiCreationWizardContent = () => {
           </Stack>
         </Box>
 
+        {/* Back and Continue stay in view: the footer sticks to the bottom of
+            the window while a long step scrolls beneath it. */}
         <Stack
           sx={{
-            borderTop: 1,
+            bgcolor: 'background.paper',
             borderColor: 'divider',
+            borderTop: 1,
+            bottom: 0,
+            position: 'sticky',
+            zIndex: 1,
           }}
         >
           <Stack

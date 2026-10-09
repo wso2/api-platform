@@ -17,7 +17,7 @@
  */
 
 import { alpha, Box, Button, CircularProgress, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { ErrorState } from '@/components/StateViews';
@@ -356,10 +356,22 @@ export const ApiCreationProgress = ({
 
   const rounded = Math.round(percent);
 
+  // Create replaces the form with this screen; without this, focus falls back
+  // to the page body and a screen reader hears nothing about the change.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <Stack spacing={3} sx={{ alignItems: 'center', py: 6, textAlign: 'center', width: '100%' }}>
       <Stack sx={{ alignItems: 'center', maxWidth: 'md' }}>
-        <Typography sx={{ fontWeight: 700 }} variant="h2">
+        <Typography
+          ref={headingRef}
+          sx={{ fontWeight: 700, outline: 'none' }}
+          tabIndex={-1}
+          variant="h2"
+        >
           <FormattedMessage
             {...(displayName ? messages.titleWithName : messages.title)}
             values={displayName ? { name: displayName } : undefined}

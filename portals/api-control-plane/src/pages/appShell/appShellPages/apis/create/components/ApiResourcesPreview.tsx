@@ -230,6 +230,15 @@ export const ApiResourcesPreview = ({
       ) : null}
 
       <Box
+        // The resource list scrolls inside the pane, so the pane itself has to
+        // take keyboard focus for arrow keys to reach what is below the fold.
+        {...(hasContract && !showSource
+          ? {
+              'aria-label': intl.formatMessage(messages.title),
+              role: 'region',
+              tabIndex: 0,
+            }
+          : {})}
         sx={{
           flex: 1,
           minHeight: 0,

@@ -235,6 +235,11 @@ const messages = defineMessages({
     description:
       'Quiet line under the source once a spec is accepted, e.g. "OpenAPI 3.0.2 · 6 routes found". {dialect} is a product name (OpenAPI, Swagger) and is not translated.',
   },
+  validationProblems: {
+    id: 'api.create.fromContract.spec.validationProblems',
+    defaultMessage: 'Problems found in the spec',
+    description: 'Accessible name for the scrolling list of validation problems.',
+  },
   liveApi: {
     id: 'api.create.fromContract.url.liveApi',
     defaultMessage:
@@ -1868,7 +1873,13 @@ export const ContractSourceForm = ({
           sx={{ borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 } }}
         >
           <FormattedMessage {...messages.specInvalidByBackend} />
-          <Box component="ul" sx={{ m: 0, pl: 2.5, maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
+          <Box
+            aria-label={intl.formatMessage(messages.validationProblems)}
+            component="ul"
+            sx={{ m: 0, pl: 2.5, maxHeight: 100, mt: 0.5, overflowY: 'auto' }}
+            // Scrolls inside the notice, so it has to be reachable by keyboard.
+            tabIndex={0}
+          >
             {backendValidationErrors.map((e, i) => (
               <Typography component="li" key={i} variant="body2">
                 {formatValidationError(e)}

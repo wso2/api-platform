@@ -150,6 +150,13 @@ type ApproachTabProps = {
 
 const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
 
+/**
+ * How long the endpoint must stop changing before the routes preview redraws.
+ * Every redraw re-renders Swagger UI, and nothing it shows depends on the URL
+ * mid-word, so redrawing per keystroke only made the pane flicker.
+ */
+const PREVIEW_SETTLE_MS = 300;
+
 /** A bare example, not instructions: placeholders vanish on focus. */
 const ENDPOINT_PLACEHOLDER = 'https://api.example.com/v1';
 
@@ -283,17 +290,25 @@ export const DefineApiPanel = ({
     };
   }, [endpointUrl]);
 
+  const [settledEndpoint, setSettledEndpoint] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledEndpoint(endpointUrl.trim()), PREVIEW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [endpointUrl]);
+
   // The definition an endpoint API would be created with, for the preview.
   // Built only once the URL parses: before that the pane explains itself.
+  // Drawn from the settled URL; the draft behind Continue never waits.
   const endpointPreview = useMemo(() => {
-    if (scratchDraft === null) return null;
+    if (!isHttpUrl(settledEndpoint)) return null;
+    const defaults = extractApiDetails(DEFAULT_API_SKELETON);
     const spec = skeletonFor({
-      displayName: scratchDraft.displayName ?? 'Untitled API',
-      upstreamUrl: endpointUrl.trim(),
-      version: scratchDraft.version ?? '1.0.0',
+      displayName: nameFromEndpoint(settledEndpoint) ?? defaults.displayName ?? 'Untitled API',
+      upstreamUrl: settledEndpoint,
+      version: versionFromEndpoint(settledEndpoint) ?? defaults.version ?? '1.0.0',
     });
-    return { rawText: JSON.stringify(spec, null, 2), spec };
-  }, [endpointUrl, scratchDraft]);
+    return { forwardsTo: settledEndpoint, rawText: JSON.stringify(spec, null, 2), spec };
+  }, [settledEndpoint]);
 
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
     if (contract?.spec === undefined) return null;
@@ -489,7 +504,7 @@ export const DefineApiPanel = ({
                     sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
                     variant="body2"
                   >
-                    {endpointUrl.trim()}
+                    {endpointPreview.forwardsTo}
                   </Typography>
                 </Box>
                 <ApiResourcesPreview

@@ -273,3 +273,14 @@ describe('ApiCreationWizard — Back', () => {
     expect(screen.getByLabelText(/^Name/)).toHaveValue('Untitled API');
   });
 });
+
+describe('ApiCreationWizard — focus', () => {
+  it('moves focus to the new step’s heading', async () => {
+    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+  });
+});

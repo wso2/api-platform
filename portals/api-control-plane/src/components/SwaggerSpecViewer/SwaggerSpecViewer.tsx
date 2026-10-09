@@ -48,6 +48,16 @@ const messages = defineMessages({
     defaultMessage: 'This resource is not allowed',
     description: 'Tooltip on an operation the access-control settings exclude.',
   },
+  methodFilterLabel: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.methodFilterLabel',
+    defaultMessage: 'Filter by method',
+    description: 'Accessible name for the HTTP method filter beside the resource search.',
+  },
+  searchLabel: {
+    id: 'apiControlPlane.components.SwaggerSpecViewer.searchLabel',
+    defaultMessage: 'Search resources',
+    description: 'Accessible name for the resource search box; its placeholder vanishes on input.',
+  },
   searchPlaceholder: {
     id: 'apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder',
     defaultMessage: 'Search resources by path or description',
@@ -641,6 +651,8 @@ export default function SwaggerSpecViewer({
             onChange={(event) => setResourceSearchValue(event.target.value)}
             placeholder={intl.formatMessage(messages.searchPlaceholder)}
             slotProps={{
+              // A placeholder disappears once typed into, so it can't be the name.
+              htmlInput: { 'aria-label': intl.formatMessage(messages.searchLabel) },
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
@@ -655,6 +667,13 @@ export default function SwaggerSpecViewer({
             size="small"
             value={selectedResourceMethod}
             onChange={(event) => setSelectedResourceMethod(event.target.value as ResourceMethod)}
+            slotProps={{
+              select: {
+                SelectDisplayProps: {
+                  'aria-label': intl.formatMessage(messages.methodFilterLabel),
+                },
+              },
+            }}
             sx={{ width: 180, flexShrink: 0 }}
           >
             <MenuItem value="all">
