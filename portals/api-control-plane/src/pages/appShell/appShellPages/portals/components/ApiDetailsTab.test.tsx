@@ -97,6 +97,16 @@ describe('ApiDetailsTab', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...VALUES, sandboxUrl: '' });
   });
 
+  it('offers the gateway URL list only on a field that has URLs to pick from', () => {
+    const options = [{ gatewayName: 'Gateway A', url: 'https://gw-a.example.com/loans' }];
+    const { unmount } = renderWithProviders(<ApiDetailsTab values={VALUES} />);
+    expect(screen.queryByRole('button', { name: 'Show gateway URLs' })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<ApiDetailsTab productionUrlOptions={options} values={VALUES} />);
+    expect(screen.getAllByRole('button', { name: 'Show gateway URLs' })).toHaveLength(1);
+  });
+
   it('reports the agent visibility switch as VISIBLE or HIDDEN', async () => {
     const onChange = vi.fn();
     const { user } = renderWithProviders(<ApiDetailsTab onChange={onChange} values={VALUES} />);

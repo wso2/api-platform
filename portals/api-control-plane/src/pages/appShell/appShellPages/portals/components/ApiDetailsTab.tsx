@@ -234,7 +234,7 @@ function UrlField({
                       <X size={18} />
                     </IconButton>
                   )}
-                  {!custom && (
+                  {pickable && (
                     <IconButton
                       aria-label={intl.formatMessage(messages.showGatewayUrls)}
                       onClick={() => setOpen((current) => !current)}
