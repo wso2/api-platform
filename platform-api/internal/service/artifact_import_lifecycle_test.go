@@ -640,6 +640,115 @@ func TestImport_LLMProxy_MapsProviderAuth(t *testing.T) {
 	}
 }
 
+// TestImport_LLMProxy_MapsAdditionalProviders verifies a gateway-pushed proxy's
+// additionalProviders (id, alias, transformer and loopback auth) are stored rather
+// than dropped.
+func TestImport_LLMProxy_MapsAdditionalProviders(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, dpTemplateReq("dp-t", "prx-tmpl", "T"))
+	mustImport(t, d, dpProviderReq("dp-p", "prx-prov", "Prov", "prx-tmpl"))
+	mustImport(t, d, dpProviderReq("dp-p2", "prx-prov-2", "Prov 2", "prx-tmpl"))
+
+	req := dpProxyReq("dp-proxy-1", "chat-proxy", "Chat v1", "prx-prov")
+	req.Configuration.Spec["additionalProviders"] = []interface{}{
+		map[string]interface{}{
+			"id": "prx-prov-2",
+			"as": "gpt-4o",
+			"auth": map[string]interface{}{
+				"type": "api-key", "header": "X-API-Key", "value": "loopback_key_xyz",
+			},
+			"transformer": map[string]interface{}{
+				"type": "openai-to-anthropic", "version": "v1",
+				"params": map[string]interface{}{"model": "claude-sonnet-4-5"},
+			},
+		},
+	}
+	mustImport(t, d, req)
+
+	proxy, err := repository.NewLLMProxyRepo(d.db).GetByID("chat-proxy", importTestOrgID)
+	if err != nil || proxy == nil {
+		t.Fatalf("load proxy: (%v, %v)", proxy, err)
+	}
+	if len(proxy.Configuration.AdditionalProviders) != 1 {
+		t.Fatalf("AdditionalProviders = %+v, want the pushed entry mapped through", proxy.Configuration.AdditionalProviders)
+	}
+	ap := proxy.Configuration.AdditionalProviders[0]
+	if ap.ID != "prx-prov-2" || ap.As != "gpt-4o" {
+		t.Errorf("additional provider = %+v, want id prx-prov-2 as gpt-4o", ap)
+	}
+	if ap.Auth == nil || ap.Auth.Type != "api-key" || ap.Auth.Header != "X-API-Key" || ap.Auth.Value != "loopback_key_xyz" {
+		t.Errorf("additional provider auth = %+v, want the pushed loopback auth", ap.Auth)
+	}
+	if ap.Transformer == nil || ap.Transformer.Type != "openai-to-anthropic" || ap.Transformer.Params["model"] != "claude-sonnet-4-5" {
+		t.Errorf("additional provider transformer = %+v, want the pushed transformer", ap.Transformer)
+	}
+}
+
+func TestImport_LLMProxy_UnknownAdditionalProviderRejected(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, dpTemplateReq("dp-t", "prx-tmpl", "T"))
+	mustImport(t, d, dpProviderReq("dp-p", "prx-prov", "Prov", "prx-tmpl"))
+
+	req := dpProxyReq("dp-proxy-1", "chat-proxy", "Chat", "prx-prov")
+	req.Configuration.Spec["additionalProviders"] = []interface{}{map[string]interface{}{"id": "no-such-provider"}}
+
+	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed for an unknown additional provider, got: %v", err)
+	}
+}
+
+// TestImport_LLMProxy_CPOwnedTakesOnlyAdditionalProviderAuth verifies a push onto a
+// CP-owned proxy updates each additional provider's gateway-specific auth (matched by
+// ID) but leaves the CP-owned entries themselves unchanged.
+func TestImport_LLMProxy_CPOwnedTakesOnlyAdditionalProviderAuth(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, dpTemplateReq("dp-t", "prx-tmpl", "T"))
+	mustImport(t, d, dpProviderReq("dp-p", "prx-prov", "Prov", "prx-tmpl"))
+	mustImport(t, d, dpProviderReq("dp-p2", "prx-prov-2", "Prov 2", "prx-tmpl"))
+
+	repo := repository.NewLLMProxyRepo(d.db)
+	if err := repo.Create(&model.LLMProxy{
+		ID:               "cp-proxy",
+		OrganizationUUID: importTestOrgID,
+		ProjectUUID:      importTestProjectID,
+		Name:             "CP Proxy",
+		Version:          "v1.0",
+		ProviderUUID:     artifactByHandle(t, d, "prx-prov").UUID,
+		Origin:           constants.OriginCP,
+		Configuration: model.LLMProxyConfig{
+			Provider:            "prx-prov",
+			AdditionalProviders: []model.LLMProxyAdditionalProvider{{ID: "prx-prov-2", As: "cp-alias"}},
+		},
+	}); err != nil {
+		t.Fatalf("seed CP proxy: %v", err)
+	}
+
+	req := dpProxyReq("dp-cp-proxy", "cp-proxy", "Gateway Name", "prx-prov")
+	req.Configuration.Spec["additionalProviders"] = []interface{}{
+		map[string]interface{}{
+			"id": "prx-prov-2", "as": "gateway-alias",
+			"auth": map[string]interface{}{"type": "api-key", "header": "X-API-Key", "value": "gw_loopback_key"},
+		},
+	}
+	mustImport(t, d, withDeployedAt(req, newerDeployedAt))
+
+	proxy, err := repo.GetByID("cp-proxy", importTestOrgID)
+	if err != nil || proxy == nil {
+		t.Fatalf("load proxy: (%v, %v)", proxy, err)
+	}
+	if len(proxy.Configuration.AdditionalProviders) != 1 {
+		t.Fatalf("AdditionalProviders = %+v, want the CP-owned entry only", proxy.Configuration.AdditionalProviders)
+	}
+	ap := proxy.Configuration.AdditionalProviders[0]
+	if ap.As != "cp-alias" {
+		t.Errorf("alias = %q, want CP-owned 'cp-alias' unchanged", ap.As)
+	}
+	if ap.Auth == nil || ap.Auth.Value != "gw_loopback_key" {
+		t.Errorf("auth = %+v, want the gateway-pushed loopback auth", ap.Auth)
+	}
+}
+
 func TestImport_LLMProxy_StalePushPreservesMetadata(t *testing.T) {
 	d := setupImportTest(t)
 	mustImport(t, d, dpTemplateReq("dp-t", "prx-tmpl", "T"))

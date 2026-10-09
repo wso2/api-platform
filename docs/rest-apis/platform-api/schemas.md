@@ -4475,6 +4475,11 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -4703,6 +4708,11 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 {
   "id": "anthropic-provider",
   "as": "anthropic-upstream",
+  "auth": {
+    "type": "api-key",
+    "header": "X-API-Key",
+    "value": "my-api-key-value"
+  },
   "transformer": {
     "type": "openai-to-anthropic",
     "version": "v1",
@@ -4712,7 +4722,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
+Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). `auth` is the credential the proxy sends when it calls this provider over the internal loopback, so it must be accepted by the provider's own inbound security (for api-key, a key issued for this provider). Its value is write-only and omitted from responses.
 
 #### Properties
 
@@ -4720,6 +4730,7 @@ Additional LLM provider attached to this proxy as a selectable upstream. Policie
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
 |as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.|
+|auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for upstream endpoints|
 |transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
 
 ## LLMProxyTransformer
