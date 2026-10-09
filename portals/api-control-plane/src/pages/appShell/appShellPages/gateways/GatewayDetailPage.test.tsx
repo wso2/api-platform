@@ -60,7 +60,7 @@ let manifestReads: Recorder;
  * provider is mounted here — without it every query stays `enabled: false` and
  * the page renders its loading state forever.
  */
-function renderPage() {
+function renderPage(search = '') {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
@@ -71,11 +71,14 @@ function renderPage() {
       </Routes>
     </ApiScopeProvider>,
     {
-      route: `/organizations/${ORG}/gateways/${GATEWAY_ID}`,
+      route: `/organizations/${ORG}/gateways/${GATEWAY_ID}${search}`,
       scope: makeConsoleScope(),
     },
   );
 }
+
+/** An empty token list: a gateway that has never been given a token. */
+const noTokens = { count: 0, list: [], pagination: { limit: 20, offset: 0, total: 0 } };
 
 beforeEach(() => {
   updates = recorder();
@@ -85,6 +88,9 @@ beforeEach(() => {
   // The banner's dismissal outlives a reload by design, so a test that closes
   // it would otherwise leak into the next one.
   window.localStorage.clear();
+  // The setup panel reads the token list to pick its button; by default the
+  // gateway has never had one.
+  server.use(resource('/gateways/:gatewayId/tokens', noTokens));
 });
 
 describe('GatewayDetailPage', () => {
@@ -106,10 +112,22 @@ describe('GatewayDetailPage', () => {
     expect(screen.getByText('Regular')).toBeInTheDocument();
     expect(screen.getByText('v1.0')).toBeInTheDocument();
 
-    // The panel's commands are built from the gateway's own type and version.
+    // The panel's commands are built from the gateway's type. "1.0" is a
+    // product line, not a published release, so the download points at the
+    // current release instead of a 404.
     expect(
-      screen.getByText(/wso2apip-api-gateway-1\.0\.zip/, { exact: false }),
+      screen.getByText(/wso2apip-api-gateway-2026\.09\.24\.zip/, { exact: false }),
     ).toBeInTheDocument();
+  });
+
+  it('leads back to the Deploy page the user came from', async () => {
+    server.use(resource('/gateways/:gatewayId', gateway()));
+    const deploy = `/organizations/${ORG}/projects/shop/apis/orders/deploy`;
+
+    renderPage(`?returnTo=${encodeURIComponent(deploy)}`);
+
+    const back = await screen.findByRole('link', { name: /Back to Deploy/ });
+    expect(back).toHaveAttribute('href', deploy);
   });
 
   it('counts setup complete once the gateway agent has connected', async () => {
@@ -119,6 +137,17 @@ describe('GatewayDetailPage', () => {
 
     expect(await screen.findByText('Your Default GW gateway is connected')).toBeInTheDocument();
     expect(screen.getByText('2/2')).toBeInTheDocument();
+    expect(
+      screen.getByText('Connected. This gateway is ready for deployments.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says it is waiting under the start command until the gateway connects', async () => {
+    server.use(resource('/gateways/:gatewayId', gateway()));
+
+    renderPage();
+
+    expect(await screen.findByText('Waiting for your gateway to connect…')).toBeInTheDocument();
   });
 
   it('keeps the setup banner closed after it is dismissed', async () => {
@@ -187,7 +216,7 @@ describe('GatewayDetailPage', () => {
     expect(updates.count()).toBe(0);
   });
 
-  it('reveals the registration token only after Reconfigure is confirmed', async () => {
+  it('generates a first token straight away, with no warning to confirm', async () => {
     server.use(
       resource('/gateways/:gatewayId', gateway()),
       accepts(
@@ -202,15 +231,43 @@ describe('GatewayDetailPage', () => {
 
     // Nothing is issued on load: step 2 offers the button and no env file, so
     // a token never reaches the page unless the user asks for one.
-    await screen.findByRole('button', { name: 'Reconfigure' });
-    expect(container.textContent).not.toContain('GATEWAY_REGISTRATION_TOKEN');
+    const generate = await screen.findByRole('button', { name: 'Generate token' });
+    await waitFor(() => expect(generate).toBeEnabled());
+    expect(container.textContent).not.toContain('APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN');
     expect(tokenRotations.count()).toBe(0);
 
-    await user.click(screen.getByRole('button', { name: 'Reconfigure' }));
-    await user.click(screen.getByRole('button', { name: 'Generate new token' }));
+    await user.click(generate);
 
     // The plaintext token is returned once, so it has to be rendered straight
     // from the response rather than read back from the cache.
+    await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
+    expect(container.textContent).toContain('APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=');
+    expect(tokenRotations.count()).toBe(1);
+  });
+
+  it('asks before generating another token when one is already active', async () => {
+    server.use(
+      resource('/gateways/:gatewayId', gateway()),
+      resource('/gateways/:gatewayId/tokens', {
+        ...noTokens,
+        count: 1,
+        list: [{ createdAt: '2026-07-01T10:00:00Z', id: 'token-0', status: 'active' }],
+        pagination: { ...noTokens.pagination, total: 1 },
+      }),
+      accepts(
+        'post',
+        '/gateways/:gatewayId/tokens',
+        { id: 'token-1', token: 'plaintext-token-value' },
+        { record: tokenRotations },
+      ),
+    );
+
+    const { container, user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Generate another token' }));
+    expect(tokenRotations.count()).toBe(0);
+    await user.click(screen.getByRole('button', { name: 'Generate new token' }));
+
     await waitFor(() => expect(container.textContent).toContain('plaintext-token-value'));
     expect(tokenRotations.count()).toBe(1);
   });

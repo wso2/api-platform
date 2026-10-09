@@ -17,10 +17,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
-import { useNavigate } from 'react-router-dom';
+import { Alert, Box, Button, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { useGateways } from '@/api/resources/gateways';
+import { withReturnTo } from '@/pages/appShell/appShellPages/gateways/utils/returnTo';
+import { hasInboundAuth } from '@/pages/appShell/appShellPages/test/utils/apiKeyAuth';
 import { useRestApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
 import { AppPage } from '@/components/AppPage';
@@ -74,6 +76,17 @@ const messages = defineMessages({
     defaultMessage: 'Add Gateway',
     description: 'Empty-state action opening the gateway creation page. Verb phrase.',
   },
+  publicWarning: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarning',
+    defaultMessage:
+      'Anyone with this API’s URL will be able to call it. To restrict access, add an authentication policy such as API Key Auth, then deploy.',
+    description: 'Warning on the Deploy page when the API has no caller-authentication policy.',
+  },
+  publicWarningAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarningAction',
+    defaultMessage: 'Add a policy',
+    description: 'Link in the public-API warning that opens the API’s policies.',
+  },
 });
 
 /**
@@ -99,6 +112,7 @@ function Deploy() {
   const { params } = useConsoleScope();
   const orgHandle = params.orgHandle ?? '';
   const navigate = useNavigate();
+  const location = useLocation();
   const apiQuery = useRestApi(params.apiHandler);
   const gatewaysQuery = useGateways();
   // The deployments query is gated on the handle rather than on the loaded API:
@@ -169,11 +183,38 @@ function Deploy() {
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {/* A deployed API with no caller authentication is open to anyone who
+          has its URL, and nothing else on this page says so. A warning, not a
+          block: a public API can be exactly what the user wants. */}
+      {!hasInboundAuth(api) && (
+        <Alert
+          action={
+            <Button
+              color="inherit"
+              component={Link}
+              size="small"
+              to={routes.apiDevelopPolicies(
+                orgHandle,
+                params.projectHandler ?? null,
+                params.apiHandler ?? null,
+              )}
+            >
+              <FormattedMessage {...messages.publicWarningAction} />
+            </Button>
+          }
+          severity="warning"
+          sx={{ mb: 3 }}
+        >
+          <FormattedMessage {...messages.publicWarning} />
+        </Alert>
+      )}
+
       {sortedGateways.length === 0 ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.addGateway)}
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={() => navigate(routes.newGateway(orgHandle))}
+          // Bring the user back here once the new gateway is connected.
+          onAction={() => navigate(withReturnTo(routes.newGateway(orgHandle), location.pathname))}
           title={intl.formatMessage(messages.emptyTitle)}
           operationId="CreateGateway"
         />

@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import { aRestApi } from '@/test/msw';
 import type { RestApi } from '@/api/resources/restApis';
-import { apiKeyAuthOf, DEFAULT_API_KEY_HEADER, requiresApiKey } from './apiKeyAuth';
+import { apiKeyAuthOf, DEFAULT_API_KEY_HEADER, hasInboundAuth, requiresApiKey } from './apiKeyAuth';
 
 /**
  * Whether the API under test requires a key, and where that key goes.
@@ -174,5 +174,36 @@ describe('requiresApiKey', () => {
     expect(requiresApiKey(withPolicies([{ name: 'cors', version: 'v1' }]))).toBe(false);
     expect(requiresApiKey(aRestApi())).toBe(false);
     expect(requiresApiKey(undefined)).toBe(false);
+  });
+});
+
+describe('hasInboundAuth', () => {
+  it('counts any policy that authenticates the caller', () => {
+    for (const name of [
+      'api-key-auth',
+      'basic-auth',
+      'jwt-auth',
+      'opaque-token-auth',
+      'JWT-Auth',
+    ]) {
+      expect(hasInboundAuth(withPolicies([{ name, version: 'v1' }]))).toBe(true);
+    }
+  });
+
+  it('counts auth attached to a single operation', () => {
+    const api = aRestApi({
+      operations: [
+        { request: { method: 'GET', path: '/*', policies: [{ name: 'jwt-auth', version: 'v1' }] } },
+      ] as RestApi['operations'],
+    });
+
+    expect(hasInboundAuth(api)).toBe(true);
+  });
+
+  it('treats outbound-only and unrelated policies as public', () => {
+    expect(hasInboundAuth(withPolicies([{ name: 'backend-jwt', version: 'v1' }]))).toBe(false);
+    expect(hasInboundAuth(withPolicies([{ name: 'cors', version: 'v1' }]))).toBe(false);
+    expect(hasInboundAuth(aRestApi())).toBe(false);
+    expect(hasInboundAuth(undefined)).toBe(false);
   });
 });

@@ -52,7 +52,7 @@ const messages = defineMessages({
   endpointDescription: {
     id: 'api.create.defineApi.scratch.endpoint.description',
     defaultMessage:
-      'Route every resource to a running service. Calls are proxied through as soon as you publish.',
+      'Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway.',
   },
   endpointLabel: {
     id: 'api.create.defineApi.scratch.endpoint.label',

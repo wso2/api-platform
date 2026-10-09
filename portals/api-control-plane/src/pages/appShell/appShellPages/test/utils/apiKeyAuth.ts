@@ -93,3 +93,27 @@ export const apiKeyAuthOf = (api: RestApi | undefined): ApiKeyAuth | undefined =
 /** Whether the API requires a key at all. */
 export const requiresApiKey = (api: RestApi | undefined): boolean =>
   apiKeyAuthOf(api) !== undefined;
+
+/**
+ * Gateway policies that authenticate the caller. Outbound ones such as
+ * `backend-jwt` and `aws-authentication` don't count: they secure the call to
+ * the backend, not who may call the API.
+ */
+export const INBOUND_AUTH_POLICIES = new Set([
+  API_KEY_AUTH_POLICY,
+  'basic-auth',
+  'jwt-auth',
+  'mcp-auth',
+  'opaque-token-auth',
+]);
+
+/**
+ * Whether any caller-authenticating policy is attached, at API or operation
+ * level. An API without one is public: anyone with its URL can call it.
+ */
+export const hasInboundAuth = (api: RestApi | undefined): boolean =>
+  api !== undefined &&
+  allPolicies(api).some((policy) => {
+    const name = text(policy?.name)?.toLowerCase();
+    return name !== undefined && INBOUND_AUTH_POLICIES.has(name);
+  });

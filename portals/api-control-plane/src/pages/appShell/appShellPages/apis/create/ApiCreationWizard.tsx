@@ -27,6 +27,7 @@ import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } fro
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
 import { AppPage } from '@/components/AppPage';
+import { useNotifications } from '@/components/Notifications';
 import { useImportOpenApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
@@ -57,6 +58,15 @@ const messages = defineMessages({
   apiTypeTitle: {
     id: 'api.create.ApiCreationWizard.apiType.title',
     defaultMessage: 'What kind of API are you exposing?',
+  },
+  createdNextStep: {
+    id: 'api.create.ApiCreationWizard.created.nextStep',
+    defaultMessage: 'API created. Deploy it to a gateway to start serving traffic.',
+  },
+  createdNextStepAction: {
+    id: 'api.create.ApiCreationWizard.created.nextStepAction',
+    defaultMessage: 'Deploy',
+    description: 'Button in the "API created" notification that opens the Deploy page.',
   },
   configureSubtitle: {
     id: 'api.create.ApiCreationWizard.configure.subtitle',
@@ -173,6 +183,7 @@ const ApiCreationWizardContent = () => {
   };
 
   const navigate = useNavigate();
+  const { notify } = useNotifications();
   // `handlesErrors`: a rejection this screen puts back on the form must not
   // also arrive as a snackbar that has faded by the time the user looks up.
   const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });
@@ -273,7 +284,15 @@ const ApiCreationWizardContent = () => {
           routes.apis(orgHandle, projectHandler),
       { replace: true },
     );
-  }, [activeMutation.data?.id, navigate, params]);
+    if (createdId) {
+      // Hand off to the next activation step rather than leaving the user to
+      // find Deploy on their own.
+      notify(intl.formatMessage(messages.createdNextStep), 'success', {
+        label: intl.formatMessage(messages.createdNextStepAction),
+        onClick: () => navigate(routes.apiDeploy(orgHandle, projectHandler, createdId)),
+      });
+    }
+  }, [activeMutation.data?.id, intl, navigate, notify, params]);
 
   const creationStatus: ApiCreationProgressStatus = activeMutation.isError
     ? 'failed'
