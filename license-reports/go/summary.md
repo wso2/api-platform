@@ -14,14 +14,14 @@
 ## License Counts
 
 ### gateway-controller
-- Apache-2.0: 23
+- Apache-2.0: 22
 - BSD-0-Clause: 1
 - BSD-2-Clause: 1
 - BSD-3-Clause: 14
 - MIT: 29
 
 ### gateway-runtime
-- Apache-2.0: 24
+- Apache-2.0: 23
 - BSD-3-Clause: 18
 - MIT: 15
 
@@ -34,5 +34,5 @@
 - Apache-2.0: 4
 - BSD-2-Clause: 1
 - BSD-3-Clause: 10
-- MIT: 25
+- MIT: 27
 

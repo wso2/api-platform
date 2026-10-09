@@ -262,6 +262,30 @@ func (e CreateGatewayRequestFunctionalityType) Valid() bool {
 	}
 }
 
+// Defines values for CreateGraphQLAPIRequestSchemaSource.
+const (
+	CreateGraphQLAPIRequestSchemaSourceFile          CreateGraphQLAPIRequestSchemaSource = "file"
+	CreateGraphQLAPIRequestSchemaSourceInline        CreateGraphQLAPIRequestSchemaSource = "inline"
+	CreateGraphQLAPIRequestSchemaSourceIntrospection CreateGraphQLAPIRequestSchemaSource = "introspection"
+	CreateGraphQLAPIRequestSchemaSourceUrl           CreateGraphQLAPIRequestSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the CreateGraphQLAPIRequestSchemaSource enum.
+func (e CreateGraphQLAPIRequestSchemaSource) Valid() bool {
+	switch e {
+	case CreateGraphQLAPIRequestSchemaSourceFile:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceInline:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceIntrospection:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateRESTAPIRequestLifeCycleStatus.
 const (
 	CreateRESTAPIRequestLifeCycleStatusBLOCKED    CreateRESTAPIRequestLifeCycleStatus = "BLOCKED"
@@ -439,6 +463,48 @@ func (e GatewayResponseFunctionalityType) Valid() bool {
 	case GatewayResponseFunctionalityTypeEvent:
 		return true
 	case GatewayResponseFunctionalityTypeRegular:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GraphQLAPISchemaSource.
+const (
+	GraphQLAPISchemaSourceFile          GraphQLAPISchemaSource = "file"
+	GraphQLAPISchemaSourceInline        GraphQLAPISchemaSource = "inline"
+	GraphQLAPISchemaSourceIntrospection GraphQLAPISchemaSource = "introspection"
+	GraphQLAPISchemaSourceUrl           GraphQLAPISchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPISchemaSource enum.
+func (e GraphQLAPISchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPISchemaSourceFile:
+		return true
+	case GraphQLAPISchemaSourceInline:
+		return true
+	case GraphQLAPISchemaSourceIntrospection:
+		return true
+	case GraphQLAPISchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GraphQLIntrospectionMode.
+const (
+	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
+	SDL      GraphQLIntrospectionMode = "SDL"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLIntrospectionMode enum.
+func (e GraphQLIntrospectionMode) Valid() bool {
+	switch e {
+	case ENDPOINT:
+		return true
+	case SDL:
 		return true
 	default:
 		return false
@@ -1249,6 +1315,7 @@ func (e UpstreamAuthType) Valid() bool {
 // Defines values for UserAPIKeyItemArtifactType.
 const (
 	UserAPIKeyItemArtifactTypeAgentProxy  UserAPIKeyItemArtifactType = "AgentProxy"
+	UserAPIKeyItemArtifactTypeGraphQLApi  UserAPIKeyItemArtifactType = "GraphQLApi"
 	UserAPIKeyItemArtifactTypeLlmProvider UserAPIKeyItemArtifactType = "LlmProvider"
 	UserAPIKeyItemArtifactTypeLlmProxy    UserAPIKeyItemArtifactType = "LlmProxy"
 	UserAPIKeyItemArtifactTypeRestApi     UserAPIKeyItemArtifactType = "RestApi"
@@ -1258,6 +1325,8 @@ const (
 func (e UserAPIKeyItemArtifactType) Valid() bool {
 	switch e {
 	case UserAPIKeyItemArtifactTypeAgentProxy:
+		return true
+	case UserAPIKeyItemArtifactTypeGraphQLApi:
 		return true
 	case UserAPIKeyItemArtifactTypeLlmProvider:
 		return true
@@ -1285,6 +1354,30 @@ func (e UserAPIKeyItemStatus) Valid() bool {
 	case UserAPIKeyItemStatusExpired:
 		return true
 	case UserAPIKeyItemStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidateGraphQLSchemaRequestSchemaSource.
+const (
+	ValidateGraphQLSchemaRequestSchemaSourceFile          ValidateGraphQLSchemaRequestSchemaSource = "file"
+	ValidateGraphQLSchemaRequestSchemaSourceInline        ValidateGraphQLSchemaRequestSchemaSource = "inline"
+	ValidateGraphQLSchemaRequestSchemaSourceIntrospection ValidateGraphQLSchemaRequestSchemaSource = "introspection"
+	ValidateGraphQLSchemaRequestSchemaSourceUrl           ValidateGraphQLSchemaRequestSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the ValidateGraphQLSchemaRequestSchemaSource enum.
+func (e ValidateGraphQLSchemaRequestSchemaSource) Valid() bool {
+	switch e {
+	case ValidateGraphQLSchemaRequestSchemaSourceFile:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceInline:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceIntrospection:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceUrl:
 		return true
 	default:
 		return false
@@ -1627,6 +1720,72 @@ func (e ListGatewaysParamsSortOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListGraphQLAPIsParamsSortBy.
+const (
+	ListGraphQLAPIsParamsSortByCreatedAt ListGraphQLAPIsParamsSortBy = "createdAt"
+	ListGraphQLAPIsParamsSortByName      ListGraphQLAPIsParamsSortBy = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListGraphQLAPIsParamsSortBy enum.
+func (e ListGraphQLAPIsParamsSortBy) Valid() bool {
+	switch e {
+	case ListGraphQLAPIsParamsSortByCreatedAt:
+		return true
+	case ListGraphQLAPIsParamsSortByName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListGraphQLAPIsParamsSortOrder.
+const (
+	ListGraphQLAPIsParamsSortOrderAsc  ListGraphQLAPIsParamsSortOrder = "asc"
+	ListGraphQLAPIsParamsSortOrderDesc ListGraphQLAPIsParamsSortOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListGraphQLAPIsParamsSortOrder enum.
+func (e ListGraphQLAPIsParamsSortOrder) Valid() bool {
+	switch e {
+	case ListGraphQLAPIsParamsSortOrderAsc:
+		return true
+	case ListGraphQLAPIsParamsSortOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetGraphQLAPIDeploymentsParamsStatus.
+const (
+	GetGraphQLAPIDeploymentsParamsStatusARCHIVED    GetGraphQLAPIDeploymentsParamsStatus = "ARCHIVED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYED    GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYING   GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYING"
+	GetGraphQLAPIDeploymentsParamsStatusFAILED      GetGraphQLAPIDeploymentsParamsStatus = "FAILED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYED  GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYING GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYING"
+)
+
+// Valid indicates whether the value is a known member of the GetGraphQLAPIDeploymentsParamsStatus enum.
+func (e GetGraphQLAPIDeploymentsParamsStatus) Valid() bool {
+	switch e {
+	case GetGraphQLAPIDeploymentsParamsStatusARCHIVED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusDEPLOYED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusDEPLOYING:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusFAILED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -1720,6 +1879,7 @@ func (e GetMCPProxyDeploymentsParamsStatus) Valid() bool {
 // Defines values for ListUserAPIKeysParamsType.
 const (
 	ListUserAPIKeysParamsTypeAgentProxy  ListUserAPIKeysParamsType = "AgentProxy"
+	ListUserAPIKeysParamsTypeGraphQLApi  ListUserAPIKeysParamsType = "GraphQLApi"
 	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
 	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
 	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
@@ -1729,6 +1889,8 @@ const (
 func (e ListUserAPIKeysParamsType) Valid() bool {
 	switch e {
 	case ListUserAPIKeysParamsTypeAgentProxy:
+		return true
+	case ListUserAPIKeysParamsTypeGraphQLApi:
 		return true
 	case ListUserAPIKeysParamsTypeLlmProvider:
 		return true
@@ -2603,6 +2765,115 @@ type CreateGatewayRequest struct {
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
 
+// CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
+type CreateGraphQLAPIRequest struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
+	Context     string     `json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *CreateGraphQLAPIRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// CreateGraphQLAPIRequestSchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type CreateGraphQLAPIRequestSchemaSource string
+
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
 	// AllowedTargets Comma-separated list of gateways this key is valid for.
@@ -3149,6 +3420,219 @@ type GatewayTokenListResponse struct {
 	List       []TokenInfoResponse `json:"list" yaml:"list"`
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
+
+// GraphQLAPI defines model for GraphQLAPI.
+type GraphQLAPI struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
+	Context     string     `json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *GraphQLAPISchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// GraphQLAPISchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type GraphQLAPISchemaSource string
+
+// GraphQLAPIDetail defines model for GraphQLAPIDetail.
+type GraphQLAPIDetail struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
+	Context     string     `json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How the schema was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy         *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// GraphQLAPIListItem defines model for GraphQLAPIListItem.
+type GraphQLAPIListItem struct {
+	Context           string                    `json:"context" yaml:"context"`
+	CreatedAt         *time.Time                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                   `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       *string                   `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName       string                    `json:"displayName" yaml:"displayName"`
+	Id                *string                   `json:"id,omitempty" yaml:"id,omitempty"`
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+	Kind              *string                   `json:"kind,omitempty" yaml:"kind,omitempty"`
+	ProjectId         string                    `json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                     `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt         *time.Time                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+	Version  string    `json:"version" yaml:"version"`
+}
+
+// GraphQLAPIListResponse defines model for GraphQLAPIListResponse.
+type GraphQLAPIListResponse struct {
+	Count      int                  `json:"count" yaml:"count"`
+	List       []GraphQLAPIListItem `json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
+}
+
+// GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
+type GraphQLAPIMultipartRequest struct {
+	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+	// GraphQLAPI fields for update, including `schemaSource`. When
+	// `schemaSource` is `file`, the `sdlFile` part below is required and any
+	// `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+	// silent override — every schema-source variant is expressed
+	// consistently through the `schemaSource` field rather than by which
+	// part happens to be present.
+	Metadata string `json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).
+	// Required when `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// GraphQLAPISDLResponse defines model for GraphQLAPISDLResponse.
+type GraphQLAPISDLResponse struct {
+	// Sdl The GraphQL schema in SDL form, resolved at create/update time (either
+	// supplied directly or derived via upstream introspection) — see
+	// `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+	Sdl string `json:"sdl" yaml:"sdl"`
+}
+
+// GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
+type GraphQLIntrospectionMode string
 
 // ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
 // `file` or `url` must be provided; the backend rejects requests that
@@ -4996,6 +5480,59 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateGraphQLSchemaMultipartRequest defines model for ValidateGraphQLSchemaMultipartRequest.
+type ValidateGraphQLSchemaMultipartRequest struct {
+	// Metadata JSON-encoded ValidateGraphQLSchemaRequest.
+	Metadata string `json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload. Required when
+	// `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequest defines model for ValidateGraphQLSchemaRequest.
+type ValidateGraphQLSchemaRequest struct {
+	// SchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+	// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+	// supplies the schema to resolve.
+	SchemaSource *ValidateGraphQLSchemaRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to fetch the SDL from, when `schemaSource` is `url`.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// Upstream Only relevant when `schemaSource` is `introspection` (explicit or
+	// inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+	// since a validation request for `inline`/`url`/`file` has no use
+	// for it.
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequestSchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+// supplies the schema to resolve.
+type ValidateGraphQLSchemaRequestSchemaSource string
+
+// ValidateGraphQLSchemaResponse defines model for ValidateGraphQLSchemaResponse.
+type ValidateGraphQLSchemaResponse struct {
+	// IntrospectionMode Only set when `resolved` is `true`.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Message A generic explanation, set only when `resolved` is `false`. Never
+	// the specific parser/fetch/introspection failure reason — reuses
+	// the same sterile message `GraphQLAPISchemaResolveFailed` uses
+	// elsewhere (`error-handling.md`).
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+
+	// Resolved Whether the declared schemaSource actually resolved to a usable schema.
+	Resolved bool `json:"resolved" yaml:"resolved"`
+
+	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
+	Sdl string `json:"sdl" yaml:"sdl"`
+}
+
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
 	// Content The exact bytes the validator ran against. Always echoed for file
@@ -5438,6 +5975,81 @@ type ListGatewayTokensParams struct {
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
+
+// ListGraphQLAPIsParams defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParams struct {
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListGraphQLAPIsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListGraphQLAPIsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListGraphQLAPIsParamsSortBy defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortBy string
+
+// ListGraphQLAPIsParamsSortOrder defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortOrder string
+
+// GetGraphQLAPIBuildsParams defines parameters for GetGraphQLAPIBuilds.
+type GetGraphQLAPIBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
+// GetGraphQLAPIDeploymentsParams defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+	Status *GetGraphQLAPIDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetGraphQLAPIDeploymentsParamsStatus defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParamsStatus string
+
+// RestoreGraphQLAPIDeploymentParams defines parameters for RestoreGraphQLAPIDeployment.
+type RestoreGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployGraphQLAPIDeploymentParams defines parameters for UndeployGraphQLAPIDeployment.
+type UndeployGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// GetGraphQLAPIGatewaysParams defines parameters for GetGraphQLAPIGateways.
+type GetGraphQLAPIGatewaysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// AddGatewaysToGraphQLAPIJSONBody defines parameters for AddGatewaysToGraphQLAPI.
+type AddGatewaysToGraphQLAPIJSONBody = []AddGatewayToRESTAPIRequest
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -5888,6 +6500,30 @@ type CreateGatewayJSONRequestBody = CreateGatewayRequest
 
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
 type UpdateGatewayJSONRequestBody = GatewayResponse
+
+// CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
+type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// ValidateGraphQLSchemaMultipartRequestBody defines body for ValidateGraphQLSchema for multipart/form-data ContentType.
+type ValidateGraphQLSchemaMultipartRequestBody = ValidateGraphQLSchemaMultipartRequest
+
+// UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
+type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// CreateGraphQLAPIKeyJSONRequestBody defines body for CreateGraphQLAPIKey for application/json ContentType.
+type CreateGraphQLAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateGraphQLAPIKeyJSONRequestBody defines body for UpdateGraphQLAPIKey for application/json ContentType.
+type UpdateGraphQLAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateGraphQLAPIBuildJSONRequestBody defines body for CreateGraphQLAPIBuild for application/json ContentType.
+type CreateGraphQLAPIBuildJSONRequestBody = BuildRequest
+
+// DeployGraphQLAPIJSONRequestBody defines body for DeployGraphQLAPI for application/json ContentType.
+type DeployGraphQLAPIJSONRequestBody = DeployRequest
+
+// AddGatewaysToGraphQLAPIJSONRequestBody defines body for AddGatewaysToGraphQLAPI for application/json ContentType.
+type AddGatewaysToGraphQLAPIJSONRequestBody = AddGatewaysToGraphQLAPIJSONBody
 
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate

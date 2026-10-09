@@ -91,6 +91,11 @@ const (
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
 	AgentProxy          = "AgentProxy"
+	// GraphQLApi is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp) —
+	// always compiled in, pre-seeded in NewArtifactTableRegistry(), no build tag.
+	// This is a different axis from the APITypeGraphQL/APISubTypeGraphQL dev-portal
+	// content-type constants below — do not conflate the two.
+	GraphQLApi = "GraphQLApi"
 )
 
 // GatewayKindAgent is the gateway artifact kind an AgentProxy is deployed as.
@@ -281,6 +286,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProxy:    true,
 	MCPProxy:    true,
 	AgentProxy:  true,
+	GraphQLApi:  true,
 }
 
 // Throttle limit unit constants

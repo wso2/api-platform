@@ -1097,12 +1097,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1428,6 +1428,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"MCP proxy":             {"Mcp", collMCPProxies},
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
+	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2323,6 +2324,7 @@ const (
 	collMCPProxies   = "/mcp-proxies"
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
+	collGraphQLAPIs  = "/graphql-apis"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2487,6 +2489,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindMCPProxy, true
 	case collAgents:
 		return cleanup.KindAgent, true
+	case collGraphQLAPIs:
+		return cleanup.KindGraphQLAPI, true
 	default:
 		return cleanup.Kind{}, false
 	}
