@@ -1,7 +1,9 @@
 # Gateway error codes
 
-Every error the gateway produces carries a `code` in its `FaultDetails`. This is the reference
-for what those codes are and how to pick one when adding a new failure.
+Every error the gateway describes carries a `code` in its `FaultDetails` — a policy's rejection
+that declared one, an engine failure, or a router failure with `handle_upstream_faults` on. A
+backend's own error and a rejection from a policy that declares nothing carry none. This is the
+reference for what the codes are and how to pick one when adding a new failure.
 
 The short version: **codes are six-digit numeric strings, drawn from an existing registry
 wherever one already covers the condition.** They are not a new namespace.
@@ -13,22 +15,23 @@ wherever one already covers the condition.** They are not a new namespace.
 This is the part that is easy to miss, and the reason a code cannot simply be allocated at
 will.
 
-A code's **category** is the range it falls in (`start <= code < end`). A code outside every
-range is categorised as `other`, however specific its meaning. Anything that groups failures by
-code relies on this — a dashboard reading the analytics event's `wso2ErrorCode`, or a client
-reading the `code` in an error body. (The analytics event's own `errorType` is unaffected: it
-comes from the HTTP status, as it did before fault codes existed.)
+A code's **category** is the range it falls in (`start <= code < end`). The gateway itself does
+not classify by code, but anything consuming the codes does — a dashboard or alert grouping the
+analytics event's `wso2ErrorCode`, or a client reading the `code` in an error body — and a code
+outside every range reads as `other` there, however specific its meaning. The SDK exports the
+bounds as `policy.*RangeStart` / `*RangeEnd` so consumers can test against them. (The analytics
+event's own `errorType` is unaffected: it comes from Envoy's response flags and the HTTP status,
+as it did before fault codes existed.)
 
 | Category | Range |
 |---|---|
 | Authentication | `900900` – `901000` |
 | Throttling | `900800` – `900900` |
 | Target (upstream) connectivity | `101500` – `101600` |
-| WebSocket target | `1002` – `1015` |
 
 So a new code for an upstream failure has to land **inside** `101500`–`101600`, or anything
-grouping by range stops seeing it as an upstream failure at all. Picking a number outside the range does not just
-lose a label — it silently reclassifies the event.
+grouping by range stops seeing it as an upstream failure at all. Picking a number outside the
+range does not just lose a label — it silently reclassifies the event for every consumer.
 
 ## Who owns which block
 
@@ -41,7 +44,7 @@ Ranges above decide the *category*. This decides who may allocate a number at al
 | `900000`–`904999` | Reserved (data plane) | Reuse only. Frontier is `904015`. |
 | `905000`–`905999` | This gateway (engine) | Conditions the reserved blocks do not cover. |
 | `906000`–`906399` | This gateway (guardrail) | Every guardrail rejection. See below. |
-| `960000`–`964999` | WSO2-shipped policies | Allocated per policy. Frontier is `962401`. |
+| `960000`–`964999` | WSO2-shipped policies | `960000` and `960001` are shared by every shipped policy; see below. |
 | `965000`–`969999` | **Reserved for users** | See below. |
 | `990000`–`999999` | Reserved (control plane) | Not for data-plane bodies. |
 
@@ -52,7 +55,10 @@ information than the HTTP status beside it, and forecloses the block for whoever
 
 ## The codes the gateway emits
 
-### Upstream and routing — produced by the router, described by the engine
+### Upstream — produced by the router, described by the engine
+
+The engine describes a router failure only when `handle_upstream_faults` is on; with it off, the
+failure is an ordinary response and carries no code.
 
 | Condition | Code | Origin |
 |---|---|---|
@@ -60,12 +66,12 @@ information than the HTTP status beside it, and forecloses the block for whoever
 | Upstream did not respond in time | `101504` | Synapse `NHTTP_CONNECTION_TIMEOUT` |
 | No healthy host to route to | `303001` | endpoint suspended |
 | Router failure, no more specific cause | `101599` | top of the target-failure range |
-| Request matched no API | `900906` | resource not found |
 
-`303001` sits outside the target range but is still classified as a target fault, because
-the classifier handles it with an explicit case. It is a *distinct sub-category* —
-`CONNECTION_SUSPENDED` rather than `CONNECTION_TIMEOUT` — which mirrors the distinction the
-router itself draws between `no_healthy_upstream` and `upstream_reset`.
+`303001` sits outside the target range, so a consumer grouping by range does not see it as an
+upstream failure. Analytics still classifies a no-healthy-host failure as
+`TARGET_CONNECTIVITY` / `CONNECTION_SUSPENDED`, from Envoy's own `no_healthy_upstream` flag
+rather than from the code — the same distinction the router draws between
+`no_healthy_upstream` and `upstream_reset`.
 
 `101599` is the top of the target range on purpose: it has to be inside the range to classify
 correctly, and Synapse allocates upward from `101500`, so the top is the far end from whatever
@@ -80,6 +86,7 @@ it takes next.
 | Route has no policy chain | `905005` |
 | Resolver could not turn the request into an operation | `905006` |
 | Content coding the gateway cannot decode | `905007` |
+| Resolver found no operation for the request | `900906` |
 
 `905005` is distinct from `905003` because it is a different thing to fix: the chain never
 arrived, rather than arrived and failed. Both are opaque 500s to the caller.
@@ -88,8 +95,8 @@ Resolution failures are coded by the **status**, never one code per internal fai
 status already tells a caller which class of thing went wrong, so a code tracking it discloses
 nothing further — whereas a code per kind would let a caller tell an unparseable body from an
 invalid one, which is resolver internals. So the four conditions that all mean `400` share
-`905006`, a missing operation reuses `900906` (the same event as a request that matched no API),
-an oversized payload reuses `905004`, and every 500 among them is `905003`. The kind still
+`905006`, a missing operation reuses `900906` (APIM's resource-not-found code), an oversized
+payload reuses `905004`, and every 500 among them is `905003`. The kind still
 reaches the log, the metric and the span.
 
 No reserved block has a code or a category for these, so they are allocated in `905xxx` —
@@ -118,6 +125,8 @@ A policy describes its own rejection, so these are the policy's to choose. Reuse
 | Throttled — application level | `900803` | `APPLICATION_THROTTLE_OUT_ERROR_CODE` |
 | Throttled — subscription level | `900804` | `SUBSCRIPTION_THROTTLE_OUT_ERROR_CODE` |
 | Blocked by policy | `900805` | `BLOCKED_ERROR_CODE` |
+| The policy could not do its own job | `960000` | `FaultCodeMediationFailed` |
+| The request body could not be read | `960001` | `FaultCodeInvalidRequestBody` |
 
 ### Guardrail codes: `906000`–`906399`
 
@@ -175,16 +184,16 @@ so the `96xxxx` space carries both, split so the two can never collide:
 
 | Sub-block | Who allocates |
 |---|---|
-| `960000`–`964999` | **WSO2-shipped policies.** One base code per policy, with `+1`/`+2` for that policy's own sub-conditions (e.g. `962000` invalid body, `962001` translation failed, `962002` provider stream error). |
+| `960000`–`964999` | **WSO2-shipped policies.** |
 | `965000`–`969999` | **Customer policies.** WSO2 does not allocate here, so a code placed here will not later collide with a product code. |
 
-> **The split exists because the shipped policies needed it.** An earlier revision of this
-> document reserved the whole of `960000`–`969999` for users and promised WSO2 would never
-> allocate inside it — while the shipped policies were already using 44 codes from `960200` to
-> `962401`. A customer following that promise and picking `960800` would have collided with
-> `mcp-ratelimit`. Splitting the block was chosen over renumbering 44 client-visible codes
-> across twenty policy modules; the user-facing guarantee is unchanged in substance, only
-> narrowed to a sub-block WSO2 is committed to staying out of.
+Shipped policies share two codes rather than allocating one per policy, because the failing
+policy's name already reaches the fault chain and analytics as `FaultDetails.Policy`:
+
+| Code | Constant | Use it when |
+|---|---|---|
+| `960000` | `FaultCodeMediationFailed` | the policy could not do its own job — a transformation, credential or rewrite it could not complete. The failure is the gateway's. |
+| `960001` | `FaultCodeInvalidRequestBody` | the caller's payload could not be read — malformed JSON, a body whose shape the configuration does not fit. The failure is the caller's. |
 
 The block is deliberately outside every classification range, so a code in it is categorised as
 `other`. That is the correct outcome rather than a limitation — the ranges encode an existing
@@ -208,8 +217,7 @@ const (
 
 `965000`–`969999` is for deployment-specific conditions. A code that would be useful to every
 user of the product belongs in the shared registry instead — raise it rather than allocating it
-privately. Note `961000` is **not** available for this: it is `redirect`'s misconfiguration
-code, which is exactly the collision the split above prevents.
+privately.
 
 ---
 
@@ -226,13 +234,12 @@ codes as string literals **seventy-one times**, with no declaration to check the
 
 **The engine reads analytics**: `gateway/gateway-runtime/policy-engine/internal/analytics/constants.go`
 holds the **integer** form of the few codes it declared before the SDK's vocabulary existed —
-the throttling and Synapse transport codes. The classification ranges are not copied there:
-the analytics classifier reads the SDK's directly.
+the throttling and Synapse transport codes. The classification ranges are not copied there.
 
 For the codes declared in both places, agreement is enforced by test rather than by
 construction, because neither can import the other. `internal/kernel` is the only package that
 sees both: `TestSDKFaultCodesMatchAnalytics` and `TestGatewayFaultCodes` fail if the two drift.
-The engine's own private constants (`internal/kernel/error_source.go`) are now aliases for the
+The engine's own private constants (`internal/kernel/fault_source.go`) are now aliases for the
 SDK's, so the string form has exactly one declaration in the product.
 
 Note the asymmetry, and that it is the direction to prefer: `constants.go` holds only the
@@ -248,8 +255,8 @@ is no second copy in `constants.go`, so for this family there is no drift to gua
 classification range and no engine code, and `test_guardrail_codes_match_the_go_sdk`
 (Python SDK) checks the two languages spell every code the same way.
 
-Other policy codes have no such home yet: a policy in a separate module repeats the literal.
-That is a real gap — see the note at the end of [fault-policies.md](fault-policies.md).
+A deployment's own codes (`965000`–`969999`) have no SDK home by design: keep them as constants
+in the policy that uses them, allocated as shown above.
 
 ---
 
@@ -261,11 +268,11 @@ That is a real gap — see the note at the end of [fault-policies.md](fault-poli
    guardrail failure, the code must fall inside that range or it will be categorised as
    `other`.
 3. **Only if neither applies**, allocate a new code: `905xxx` for a condition inherent to the
-   gateway, `96xxxx` for one specific to a deployment. Both classify as `other`.
-4. Declare it in the SDK (`fault_codes.go`), derive it where it is used, and extend
-   `TestGatewayFaultCodes`.
+   gateway, `965000`–`969999` for one specific to a deployment. Both fall in no category.
+4. For a gateway code, declare it in the SDK (`fault_codes.go`), derive it where it is used, and
+   extend `TestGatewayFaultCodes`. Keep a deployment code in the policy that uses it.
 
-### Two codes deliberately not reused
+### A code deliberately not reused
 
 `900967` is a control-plane internal-error code, and reaches a data-plane body only through one
 policy's bug. It is not a data-plane code.

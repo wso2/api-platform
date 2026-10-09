@@ -33,29 +33,35 @@ spec:
       params:
         request:
           enabled: true
-          pattern: "^[A-Za-z0-9 ]+$"
+          regex: "^[A-Za-z0-9 ]+$"
 
   faultPolicies:                # run only when the request fails
-    - name: log-message
+    - name: log-message           # log the failure
       version: v1
       params:
-        fault:                    # a fault entry takes a `fault` block
-          logLevel: error
-    - name: set-headers           # annotate the error response
+        fault:                    # log-message's fault-path settings
+          payload: true
+          headers: true
+    - name: error-response-formatter   # shape the error the client receives
       version: v1
       params:
-        fault:
-          headers:
-            - name: x-fault-handled
-              value: "true"
+        preset: canonical
+        headersToSet:
+          - name: x-error-code
+            value: ${Code}
 ```
 
 A `POST /orders/v1.0/submit` rejected by the guardrail now returns its 422 **and** invokes the
-fault policies: the failure is logged and the response is annotated. A successful request runs
-neither entry.
+fault policies: the failure is logged, and the client receives it in the canonical error shape
+with its code in `x-error-code`. A successful request runs neither entry.
 
-A fault entry is configured with a `fault` block, not `request` or `response` — those carry
-success-path semantics, and a policy attached as a fault entry never sees them.
+Each fault policy takes its own parameters. `log-message` takes a `fault` block, kept apart from
+its `request` and `response` blocks, because an attachment is either in the normal flow or the
+fault flow and never both.
+
+A policy is usable here only if it implements the `OnFault` contract below. Of the shipped
+policies, `log-message` and `error-response-formatter` do; a header policy such as `set-headers`
+does not, and is dropped from a fault list.
 
 ---
 
@@ -83,13 +89,14 @@ Otherwise set only the fields you mean to change:
 |---|---|
 | `StatusCode *int` | Overrides the error's status. `nil` keeps it. |
 | `Body []byte` | Replaces the body. `nil` keeps it, `[]byte{}` clears it. Setting it also switches the gateway's own protocol formatting off for this response. |
-| `Fault *FaultDetails` | Re-describes the failure: later entries read it as `FaultContext.Fault`, and the gateway's own error body is rendered from it. Its `Policy` is ignored — that always names the policy that caused the failure. |
+| `Fault *FaultDetails` | Re-describes the failure: later entries read it as `FaultContext.Fault`, analytics records it, and on a kind the gateway formats (`Agent`) the gateway's own error body is rendered from it. Its `Policy` is ignored — that always names the policy that caused the failure. |
 | `HeadersToSet` / `HeadersToAppend` / `HeadersToRemove` | Applied **over** the error's existing headers rather than replacing them. |
 | `AnalyticsMetadata` / `DynamicMetadata` / `AnalyticsHeaderFilter` | As on the response path. |
 
-One field from `ImmediateResponse` is deliberately absent: `Headers` replaces the whole map,
+Two fields from `ImmediateResponse` are deliberately absent. `Headers` replaces the whole map,
 where an entry annotating an error wants to add a header without discarding the ones the error
-already carries.
+already carries. `IsFault` decides whether a response is a failure, and the fault chain only runs
+once that is settled.
 
 Nothing a fault policy returns stops the chain. Every entry runs, in order, and sees what the
 entries before it did. To keep an entry off failures it should not handle, give it an
@@ -120,8 +127,9 @@ and failing there.
 `FaultPolicy` is independent of every other interface. A notifier can implement it and nothing
 else, leaving `mode()` fully SKIP, and it will cost nothing on the normal path. `ctx` carries the
 response fields directly — `ctx.response_status` and `ctx.response_body` read exactly as they do
-in `on_response_body` — with the fault fields (`ctx.policy`, `ctx.original_status`, `ctx.error`,
-`ctx.response_committed`, `ctx.route_key`) alongside them. It does **not** subclass
+in `on_response_body` — with the fault fields (`ctx.fault`, `ctx.source`, `ctx.policy`,
+`ctx.policy_version`, `ctx.policy_phase`, `ctx.original_status`, `ctx.response_committed`,
+`ctx.route_key`) alongside them. It does **not** subclass
 `ResponseContext`: the names match so a handler reads the same values, but the types are distinct,
 because a fault handler reads a response that has already failed and cannot forward it. Returning
 `None` leaves the error untouched.
@@ -165,6 +173,7 @@ Typed fields on the context, not string metadata keys:
 | `Policy`, `PolicyVersion` | **which policy caused the failure**; empty when none did |
 | `PolicyPhase` | **which phase that policy was in** — `request_headers`, `request_body`, `response_headers`, `response_body`; empty when `Policy` is |
 | `OriginalStatus` | the status before a policy changed it; 0 when unchanged |
+| `Source` | **who produced the failure** — `gateway`, `router`, `backend` or `unknown`; see [below](#which-failures-reach-the-chain-and-how-each-says-where-it-came-from) |
 | `ResponseCommitted` | the client already has the response — see [streaming](#failures-during-a-streamed-response) |
 | `RouteKey` | the matched route |
 
@@ -180,23 +189,22 @@ name; a failure raised mid-stream names neither, because once chunks are flowing
 knows which entry interrupted them. The values come from `policy.PolicyPhase*` in the SDK, which are
 the same strings the Python SDK's `ExecutionPhase` carries.
 
-There is deliberately **no `Trigger` or `Source` field**, and `PolicyPhase` is not one in disguise.
-The distinction is which question is being answered. `PolicyPhase` is *attribution* — it belongs
-beside `Policy` and describes the policy that failed. A `Source`/`Trigger` field would report **where
-the gateway noticed the failure**, which is engine routing state: it decides whether this chain runs
-at all, is already settled by the time a handler is called, and invites handlers to branch on
-internals. That is why `PolicyPhase` is empty rather than falling back to the engine's current phase
-when no policy is involved — reporting one there would quietly turn it into the field we did not
-add. Everything else a handler needs is answerable from what is there:
+There is deliberately **no `Trigger` field**, and `PolicyPhase` is not one in disguise.
+`PolicyPhase` is *attribution* — it belongs beside `Policy` and describes the policy that failed.
+A `Trigger` field would report **where the gateway noticed the failure**, which is engine routing
+state: it decides whether this chain runs at all, is already settled by the time a handler is
+called, and invites handlers to branch on internals. That is why `PolicyPhase` is empty rather
+than falling back to the engine's current phase when no policy is involved. What a handler needs
+instead is *who produced* the failure, and that is `Source`:
 
 | Question | Read |
 |---|---|
-| Was this the router or a policy? | `Policy == ""` means no policy caused it |
+| Was this the gateway, the router or the backend? | `Source` |
 | Which failure exactly? | `Fault.Code` — e.g. `101503` unreachable, `101504` timeout |
 | What class of failure? | `Fault.Type` — `upstream`, `routing`, `internal`, a guardrail class |
 | Can I still change the response? | `ResponseCommitted` |
 
-### `Fault.Description` never reaches the client; `Fault.Guardrail` does
+### `Fault.Description` never reaches the client; `Fault.Guardrail` can
 
 `Fault.Message` is the client-facing summary. `Fault.Description` is not: for a response
 guardrail it is *the content the guardrail blocked*, so forwarding it would turn every
@@ -206,8 +214,9 @@ a log; an operator who genuinely wants it in the client body asks for it with a
 `${Description}` placeholder in an `error-response-formatter` template — a template the
 operator wrote is the opt-in.
 
-`Fault.Guardrail` is the opposite: it **is** returned, and the operator's `showAssessment`
-parameter decides how much of it. The shipped guardrails attach the block on every intervention
+`Fault.Guardrail` is the opposite: where the gateway renders the error body — today only for
+`Agent` APIs, see [Protocol-specific error bodies](#protocol-specific-error-bodies) — it **is**
+returned, and the operator's `showAssessment` parameter decides how much of it. The shipped guardrails attach the block on every intervention
 — `interveningGuardrail`, `action` and `actionReason` name which guardrail fired and why, which
 is safe to return — and fill in `assessments` only when `showAssessment` permits, because that
 field carries the content the guardrail existed to stop.
@@ -238,13 +247,13 @@ would be worse than serialising it awkwardly.
 
 `data` carries the `code` and `type` as well, for the same reason. A JSON-RPC error object's own
 `code` is the protocol's — `-32602`, `-32603` — so the six-digit APIM code has nowhere else to
-go, and without this an MCP caller would be the one caller that cannot see it:
+go, and without this an Agent's JSON-RPC caller would be the one caller that cannot see it:
 
 ```json
 {"jsonrpc":"2.0","id":"call-7","error":{
   "code":-32602,
-  "message":"Invalid MCP request params",
-  "data":{"code":"960800","type":"validation"}}}
+  "message":"Invalid request params",
+  "data":{"code":"960001","type":"validation"}}}
 ```
 
 Yes, that is two fields named `code` in one document. They are different things at different
@@ -278,8 +287,9 @@ jsonRPCCode := -32602
 return policy.ImmediateResponse{
     StatusCode: 400,
     Fault: &policy.FaultDetails{
-        Code: "960800", Type: "validation", Direction: policy.DirectionRequest,
-        Message: "Invalid MCP request params",
+        Code: policy.FaultCodeInvalidRequestBody, Type: policy.FaultTypeValidation,
+        Direction: policy.DirectionRequest,
+        Message: "Invalid request params",
         JSONRPC: &policy.JSONRPCError{Code: &jsonRPCCode, ID: requestID},
     },
 }
@@ -290,7 +300,7 @@ status-derived one; an absent `ID` renders as `null`, which JSON-RPC requires fo
 whose id could not be determined — guessing would be worse, since a wrong id correlates the
 error with the wrong call.
 
-This is the first of a per-protocol pattern rather than a special case for MCP. A SOAP fault
+This is the first of a per-protocol pattern rather than a special case for JSON-RPC. A SOAP fault
 needs the same treatment for the same reason: `faultcode`/`faultsubcode` are no more derivable
 from an HTTP status than a JSON-RPC code is.
 
@@ -300,7 +310,7 @@ from an HTTP status than a JSON-RPC code is.
 |---|---|
 | A policy or guardrail rejects the request (401, 403, 422, 429 …) | ✅ Always |
 | A guardrail rejects the **response** (`word-count`, `content-length`, `regex` …) | ✅ Always |
-| A policy **chain fails to execute** (500) or a body exceeds the size ceiling (413) | ✅ Always — side effects only, see below |
+| A policy **chain fails to execute** (500) or a body exceeds the size ceiling (413) | ✅ Always — the gateway does not reformat the body, see below |
 | The backend is unreachable or times out (503, 504) | ⚙️ Only when `handle_upstream_faults` is on |
 | **The backend returns an error status** (4xx or 5xx) | ⚙️ Only when `handle_upstream_faults` is on — narrow further with a condition |
 | An error raised while **streaming** a response | ⚠️ Side effects only — see [below](#failures-during-a-streamed-response) |
@@ -320,7 +330,7 @@ A fault entry is told who produced the failure, in `FaultContext.Source`:
 | `gateway` | a policy or guardrail rejection, or an engine failure — the gateway built this response |
 | `router` | the proxy could not complete the attempt: connection refused, timeout, no healthy host |
 | `backend` | the upstream returned this error status itself |
-| `noRoute` | the request matched no API |
+| `noRoute` | the request matched no API — reserved: such a request never reaches the policy engine today, so no chain sees it |
 | `unknown` | the router sent no provenance — an older router, or a phase where it is not populated |
 
 This is a distinction a status code cannot express: a backend answering `503` and the router
@@ -330,8 +340,8 @@ produced the response, so the two are told apart correctly rather than by thresh
 **A policy's own rejection always reaches the chain.** That is the contract a policy opts into
 by declaring the fault, and it needs no configuration.
 
-**Upstream and router failures are opt-in.** A backend `503`, a connection refused, a request
-that matched no API — these reach your fault policies only when the engine is configured for it:
+**Upstream and router failures are opt-in.** A backend `503`, a connection refused, an upstream
+timeout — these reach your fault policies only when the engine is configured for it:
 
 ```toml
 [policy_engine.fault_policies]
@@ -363,9 +373,12 @@ assume:
 
 ```yaml
 faultPolicies:
-  - name: fault-notifier
+  - name: log-message
     version: v1
     executionCondition: fault.Source == "gateway"   # skip the backend's own errors
+    params:
+      fault:
+        payload: true
 ```
 
 Use `fault.Source != "backend"` to include `unknown` alongside gateway and router failures, which
@@ -375,10 +388,12 @@ matters if your router predates the provenance attribute.
 formatting: no policy described it, so it reaches the client as the backend (or the router) sent
 it. Only a fault policy can reshape it.
 
-**Engine failures are reported, not reshaped.** Their body carries the correlation id that the
-`x-error-id` header and the internal error log also carry, and that id is the whole mechanism for
-tracing a 500 back to its cause — re-rendering the body would drop it. Fault policies still run,
-so a notifier reports the failure with its code.
+**Engine failures are reported, not reshaped by the gateway.** Their body carries the correlation
+id that the `x-error-id` header and the internal error log also carry, and that id is the whole
+mechanism for tracing a 500 back to its cause — so the gateway's own formatting never re-renders
+it. Fault policies still run, so a notifier reports the failure with its code; a fault policy
+that writes a body does replace it, and should carry the `x-error-id` value forward if callers
+need it.
 
 ### An error status, or the policy's own word
 
@@ -436,9 +451,12 @@ answering a configured `404`, `interceptor-service` applying an external interce
 
 ```yaml
 faultPolicies:
-  - name: fault-notifier
+  - name: log-message
     version: v1
     executionCondition: 'fault.Status >= 500'     # skip configured 4xx responses
+    params:
+      fault:
+        payload: true
 ```
 
 Which is the same place a deployment already narrows backend errors, and for the same reason:
@@ -457,7 +475,9 @@ classify every mid-stream guardrail intervention as a success. See
 With `handle_upstream_faults` on, an upstream or router error runs **only** the fault policies.
 None of the API's response policies run over it — not the header phase, not the body phase — so
 a backend `503` no longer reaches a response transformer, a response guardrail, or a header
-policy such as CORS. Anything that response still needs, declare as a fault policy.
+policy such as CORS. Header policies cannot run as fault policies, so a header that response
+still needs must come from a fault policy that sets it — `error-response-formatter`'s
+`headersToSet`, or a custom policy returning `FaultResponse.HeadersToSet`.
 
 A backend that streams its error response (`text/event-stream`, chunked) is buffered, so the
 fault policies see the whole body.
@@ -513,21 +533,25 @@ You can still narrow further with `executionCondition`:
 
 ```yaml
 faultPolicies:
-  - name: log-message                # every failure
+  - name: log-message                # every failure, without its payload
     version: v1
     params:
       fault:
-        logLevel: error
+        headers: true
 
-  - name: log-message                # 5xx only
+  - name: log-message                # 5xx only, with the payload
     version: v1
-    executionCondition: "response.ResponseStatus >= 500"
+    executionCondition: 'fault.Status >= 500'
+    params:
+      fault:
+        payload: true
 ```
 
 ### Narrowing on the failure itself
 
 A condition on a fault entry can read the failure, not just the request that caused it. These
-are the `error.*` variables:
+are the `fault.*` variables; the `request.*` and `response.*` variables a normal policy's condition
+reads are available too:
 
 | Variable | Type | Notes |
 |---|---|---|
@@ -545,20 +569,21 @@ are the `error.*` variables:
 
 ```yaml
 faultPolicies:
-  # Page on-call for infrastructure failures, not for a caller sending a bad token.
-  - name: set-headers
+  # Log infrastructure failures with their payload, not a caller sending a bad token.
+  - name: log-message
     version: v1
     executionCondition: 'fault.Type == "upstream" || fault.Type == "internal"'
     params:
       fault:
-        headers:
-          - name: x-page-oncall
-            value: "true"
+        payload: true
 
   # Audit content rejections separately, and only outbound ones.
   - name: log-message
     version: v1
     executionCondition: 'fault.Type == "guardrail" && fault.Direction == "Response"'
+    params:
+      fault:
+        headers: true
 ```
 
 #### Which variables are always populated, and which are not
@@ -568,8 +593,9 @@ This is the one thing to get right when writing a condition, because getting it 
 
 `fault.Status`, `fault.Source` and `fault.RouteKey` are always set — the gateway derives them
 from the exchange itself. Everything under `fault.Code`, `fault.Type`, `fault.Direction`
-and `fault.Message` comes from the *producing policy's* `Fault`, and is
-empty whenever nothing described the failure. Three cases where that happens, and none of them
+and `fault.Message` comes from the *producing policy's* `Fault` — or, for a router failure, from
+the gateway's own description of it (see [Router failures are described too](#router-failures-are-described-too))
+— and is empty whenever nothing described the failure. Three cases where that happens, and none of them
 is unusual:
 
 - **A policy that does not describe its rejection.** Any policy released before `FaultDetails`
@@ -614,24 +640,23 @@ it either — the entry stayed silent then too. What changed is that uncondition
 
 ### Ordering
 
-Entries execute **in the order declared**, top to bottom. Repeating a policy is allowed and is
-often what you want:
+Entries execute **in the order declared**, top to bottom, and each sees what the entries before
+it did. Repeating a policy is allowed and is often what you want:
 
 ```yaml
 faultPolicies:
-  - name: set-headers              # tag the response
+  - name: error-response-formatter   # shape the error first
+    version: v1
+    params:
+      preset: canonical
+  - name: log-message                # then record it, as the client receives it
     version: v1
     params:
       fault:
-        headers:
-          - name: x-fault-tagged
-            value: "true"
-  - name: log-message              # and record it
-    version: v1
-    params:
-      fault:
-        logLevel: error
+        payload: true
 ```
+
+Here `log-message` logs the canonical body the formatter wrote, because it runs second.
 
 ### Per-operation fault policies
 
@@ -644,19 +669,19 @@ spec:
       version: v1
       params:
         fault:
-          logLevel: error
+          payload: true
 
   operations:
     - method: POST
       path: /payments
       faultPolicies:
-        - name: set-headers              # this operation's failures, additionally
+        - name: error-response-formatter # this operation's failures, additionally
           version: v1
           params:
-            fault:
-              headers:
-                - name: x-payments-fault
-                  value: "true"
+            template:
+              error: ${Message}
+              code: ${Code}
+              support: payments-oncall@example.com
 ```
 
 **Both levels run — the operation does not override the API.** A fault entry is a handler rather
@@ -665,8 +690,8 @@ both want to fire, and neither is a "more specific value" that should suppress t
 
 **Operation-level entries execute first**, then API-level ones. That matches the order response
 policies execute in: the operation is the more specific scope, so it acts on the error before the
-API-wide handler sees it. For the example above, a failure on `POST /payments` notifies the payments
-on-call hook, then the SIEM; a failure anywhere else notifies only the SIEM.
+API-wide handler sees it. For the example above, a failure on `POST /payments` is rendered in the
+payments team's envelope and then logged as rendered; a failure anywhere else is only logged.
 
 An operation with no fault policies of its own inherits the API's unchanged.
 
@@ -743,19 +768,21 @@ thing.
 
 ## Protocol-specific error bodies
 
-Some clients cannot read the gateway's default JSON error body at all. An MCP client speaks
-JSON-RPC, so `{"error":"Unauthorized"}` is not an error object it is required to understand; a SOAP
-client needs a fault envelope matching the version it used.
+Some clients cannot read a REST-shaped JSON error body at all. A JSON-RPC client needs an error
+object it is required to understand, and a SOAP client needs a fault envelope matching the
+version it used.
 
-So the gateway can supply one itself, **for the API kinds whose callers cannot read anything
-else, when no policy authored a body**. A policy that rejects a request describes the failure in
-its error object — code, type, message — and leaves the body alone; the gateway renders that into
-whatever shape the caller's protocol needs.
+The gateway supplies one itself **only for `Agent` APIs**, whose A2A callers speak JSON-RPC, and
+only **when a policy described the failure**: a policy that rejects a request describes it in its
+`Fault` — code, type, message — and the gateway renders that as a JSON-RPC error. Every other kind
+is left as the policy, the backend or the router wrote it: MCP policies already write their own
+JSON-RPC envelope, and a SOAP API gets a conformant fault only from a fault policy such as
+`error-response-formatter`.
 
 ### Shaping an error body yourself
 
-Since the gateway does not format your kind, a fault policy is how an error body gets shaped —
-and it is the supported way to do it. **Any** fault policy that sets a response body has decided
+For every kind other than `Agent`, a fault policy is how an error body gets shaped — and it is
+the supported way to do it on an `Agent` API too. **Any** fault policy that sets a response body has decided
 what the client receives.
 
 The examples use `error-response-formatter`, a general-purpose formatter policy. It is **not part
@@ -841,8 +868,8 @@ body you had is what an older gateway has always sent, so keeping it means that 
 change at all. Inventing a *new* fallback shape would change what old gateways emit — churn on
 the one path the fallback exists to protect.
 
-If the fallback suppressed rendering, it would defeat its own purpose — every MCP API back to
-REST-shaped JSON, every SOAP API back to whatever the policy happened to write. So it does not.
+If the fallback suppressed rendering, it would defeat its own purpose — every `Agent` API back to
+whatever JSON the policy wrote, which its JSON-RPC callers cannot read. So it does not.
 
 #### A body written by a fault policy IS authored
 
@@ -859,27 +886,28 @@ reply Envoy already wrote is what the client gets.
 #### Router failures
 
 A router failure carries a body Envoy wrote (`no healthy upstream`, as plain text). No policy
-described it, so it is **not** replaced — the client gets what released gateways sent. A fault
-policy that re-describes it (returns `Fault`) does get it rendered, which is the way to give such
-a caller a body in its own protocol.
+described it, so it is **not** replaced — the client gets what released gateways sent. On an
+`Agent` API with `handle_upstream_faults` on, a fault policy that re-describes it (returns `Fault`)
+does get it rendered, which is the way to give such a caller a body in its own protocol.
 
-### It never changes the status
+### The gateway's formatting never changes the status
 
 Collapsing a 401 into a SOAP-conformant 500 would destroy the signal your analytics and client
-retry logic depend on.
+retry logic depend on. A fault policy can still change it deliberately — `FaultResponse.StatusCode`,
+or `error-response-formatter`'s `statusCode` parameter.
 
 ### Router failures are described too
 
 An unreachable upstream, a timeout or a no-healthy-host reply has no policy behind it, so nothing
-would otherwise describe it. The gateway fills that in from the proxy's own account, for fault
-policies and analytics — not for the client body, which it leaves as sent:
+would otherwise describe it. With `handle_upstream_faults` on, the gateway fills that in from the
+proxy's own account, for fault policies and analytics — not for the client body, which it leaves
+as sent:
 
 | Failure | `code` | `type` |
 |---|---|---|
 | no healthy upstream | `303001` | `upstream` |
 | could not connect / reset | `101503` | `upstream` |
 | upstream timeout | `101504` | `upstream` |
-| no API matched | `900906` | `routing` |
 
 ### Which API kinds can declare fault policies
 
@@ -929,9 +957,8 @@ API-level list only.
 
 Everything downstream of the declaration is **kind-agnostic**. Each non-REST kind is
 normalised into a `RestApi` before route chains are built, so a kind only has to carry the list
-across that conversion; chain building, the engine, and protocol rendering already work for
-every kind. That is also why the JSON-RPC error shape has always applied to MCP APIs with no
-configuration at all.
+across that conversion; chain building and the engine already work for every kind. Which kinds
+the gateway renders an error body for is a separate setting — today only `Agent`.
 
 ### Where the codes come from
 
@@ -944,9 +971,10 @@ guardrail has nothing more specific to say, or `906001` for hate, `906003` for s
 `906201` for a word-count limit — via `policy.GuardrailCode*`. See
 [Guardrail codes](error-codes.md#guardrail-codes-906000906399).
 
-One thing to know before adding a code: the classifier assigns a fault **category** by testing
-which range the number falls in, so a code outside the relevant range is silently recategorised as
-`other`. And for a condition APIM has no code for, `965000`–`969999` is reserved for
+One thing to know before adding a code: the ranges are a convention consumers rely on. A
+dashboard or alert that groups failures by code range — the SDK exports the bounds as
+`policy.*RangeStart`/`*RangeEnd` — files a code outside the relevant range under the wrong
+category. And for a condition APIM has no code for, `965000`–`969999` is reserved for
 deployment-specific codes — WSO2 never allocates there. Full reference, including the ranges,
 the block map and how to pick a code: **[Gateway error codes](error-codes.md)**.
 
@@ -994,7 +1022,9 @@ gateway does not guess.
   there is no schema for it yet. That is a gap in WebSub's policy support generally, not in the
   fault flow.
 - **A non-empty fault chain turns response-body processing on for the route.** The fault path runs
-  in that phase, so it has to. Declaring no fault policies avoids that cost entirely.
+  in that phase, so it has to. Declaring no fault policies avoids that cost only while analytics
+  and traffic logging are off: with either on, the analytics collector is part of every API's
+  fault chain.
 - **Upstream and router failures reach a declared chain only when
   `policy_engine.fault_policies.handle_upstream_faults` is on** (default: off) — with it off they stay on
   the response policies, as in every previous generation of this gateway. With it on, the
@@ -1014,15 +1044,15 @@ none of the fields the event already had — `errorType`, `error.errorCode` (the
 
 | Field | Carries |
 |---|---|
-| `wso2ErrorCode` | The fault code, e.g. `900902`. Absent when the failure had none, such as a router failure. |
+| `wso2ErrorCode` | The fault code, e.g. `900902`. Absent when nothing described the failure — a backend error, or a policy that set no `Fault`. |
 | `type` | The failure class (`authentication`, `guardrail`, `upstream`, …). |
 | `direction` | `Request` or `Response` — which side was rejected. |
 | `summary` | The client-facing message. |
 | `policy`, `policyPhase` | The policy that failed and its phase. Absent when no policy did. |
-| `source` | `gateway`, `backend`, `router` or `noRoute`. |
+| `source` | `gateway`, `backend`, `router` or `unknown`. |
 | `originalStatus` | The backend's status before a policy changed it. |
 | `guardrail` | `{name, action, reason}` for a guardrail rejection. |
-| `jsonRpcCode` | The JSON-RPC error code, for MCP and A2A. |
+| `jsonRpcCode` | The JSON-RPC error code, when the failing policy stated one in `Fault.JSONRPC`. |
 
 A word-count guardrail rejecting a backend response:
 
@@ -1059,9 +1089,9 @@ failure budget:
 
 - **Keep it short.** Every entry adds work to the error path. Under a burst of guardrail
   rejections that cost is paid per rejected request.
-- **Watch outbound calls.** `interceptor-service` makes a network call. A slow or unreachable
-  destination extends the time your client waits for an error it is already going to receive.
-  Give it a tight timeout.
+- **Watch outbound calls.** A custom fault policy that notifies an external system makes a network
+  call. A slow or unreachable destination extends the time your client waits for an error it is
+  already going to receive. Give it a tight timeout.
 - **Do not put the rejected content in the notification.** This matters most for guardrails: the
   payload a PII or prompt-injection guardrail blocked is precisely the data you do not want
   leaving the gateway. Send metadata — status, API, request id — not the body.
