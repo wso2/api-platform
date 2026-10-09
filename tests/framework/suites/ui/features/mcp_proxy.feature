@@ -16,10 +16,11 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: MCP proxy lifecycle from the sample endpoint
-  The journey ported from the product's own Cypress suite (002-mcp-proxy-sample-url),
-  creating an MCP proxy from the form's built-in sample endpoint and retiring both the
-  proxy and its owning project through the UI.
+Feature: MCP proxy lifecycle
+  MCP proxy journeys driven through the UI: creating a proxy from the form's built-in sample
+  endpoint and retiring both the proxy and its owning project (ported from the product's own
+  Cypress suite, 002-mcp-proxy-sample-url), and deploying a proxy with an upstream credential
+  to the block's gateway.
 
   Scenario: An administrator creates an MCP proxy from the sample endpoint, then removes it and its project
     Given the user is signed in
@@ -40,3 +41,17 @@ Feature: MCP proxy lifecycle from the sample endpoint
     And the user opens the projects list
     And the user deletes the project "${UNIQUE:E2E-MCP-Project}"
     Then the user no longer sees "${UNIQUE:E2E-MCP-Project}"
+
+  Scenario: A proxy created with an auth header deploys and sends its credential upstream
+    Given the user is signed in
+    And the user creates a project named "${UNIQUE:MCP-Upstream-Auth}"
+    And the user opens the project "${UNIQUE:MCP-Upstream-Auth}"
+    And the user opens MCP Proxies
+    When the user creates the MCP proxy "${UNIQUE:MCP-Upstream-Auth-Proxy}" at the capture upstream with the auth header "X-API-Key" set to "mcp-upstream-credential"
+    Then the user is on the MCP proxy's overview page
+
+    When the user deploys it to the gateway
+    Then the user sees the deployment is active
+
+    When the MCP proxy is invoked through the gateway
+    Then the MCP proxy's upstream received the header "X-API-Key" with the value "mcp-upstream-credential"
