@@ -98,6 +98,7 @@ const renderedPaths = (): string[] => {
  */
 const relayProps = {
   callMode: 'proxy' as const,
+  onCallModeChange: () => {},
   gatewayId: 'gw-prod',
   orgHandle: 'acme',
   restApiId: 'api-1',
@@ -410,14 +411,22 @@ describe('TestConsoleSpecViewer', () => {
     // `spec.executeRequest` *action* and nothing else. An action wrapper never
     // participates in rendering, so swagger still renders exactly as it ships.
     const plugins = (captured.plugins ?? []) as Array<() => Record<string, unknown>>;
-    expect(plugins).toHaveLength(1);
+    expect(plugins).toHaveLength(2);
 
     const built = plugins.map((plugin) => plugin());
-    built.forEach((definition) => {
-      expect(definition.wrapComponents).toBeUndefined();
-      expect(definition.components).toBeUndefined();
-      expect(Object.keys(definition)).toEqual(['statePlugins']);
-    });
+
+    // The relay is still an *action* wrapper and nothing else: it never
+    // participates in rendering, which is what keeps it clear of the
+    // dual-React problem that reverted an earlier component wrap.
+    expect(Object.keys(built[0])).toEqual(['statePlugins']);
+
+    // The mode switch wraps exactly one component, and it is the Execute
+    // button — a leaf, like the shared viewer's `authorizeBtn`. Wrapping
+    // `OperationContainer`, which owns expand/collapse, is what broke before
+    // and must stay unwrapped.
+    const wrapped = built[1].wrapComponents as Record<string, unknown>;
+    expect(Object.keys(wrapped)).toEqual(['execute']);
+    expect(built[1].statePlugins).toBeUndefined();
 
     const specPlugin = (built[0].statePlugins as { spec: Record<string, unknown> }).spec;
     expect(Object.keys(specPlugin)).toEqual(['wrapActions']);

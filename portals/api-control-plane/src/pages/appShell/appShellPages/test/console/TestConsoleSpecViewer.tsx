@@ -51,6 +51,8 @@ import {
   specJsonOf,
   type SwaggerSystemLike,
 } from './utils/shownOperation';
+import { executeModeSwitchPlugin } from './ExecuteModeSwitch';
+import { createCallModeStore } from './utils/callModeStore';
 import { testConsoleRelayPlugin, type RelayContext } from './utils/proxyTransport';
 import { withServerUrl } from './utils/specServers';
 import { fromSwaggerRequest } from './utils/swaggerRequest';
@@ -162,6 +164,8 @@ export type TestConsoleSpecViewerProps = {
    * Read per Execute, so flipping it never remounts swagger or loses the form.
    */
   callMode: TestCallMode;
+  /** Changes the mode. Driven by the switch swagger renders beside Execute. */
+  onCallModeChange: (mode: TestCallMode) => void;
   /** The API under test. Sent to the relay, which resolves the target itself. */
   restApiId: string;
   /** Which of the API's deployed gateways to send to. */
@@ -190,6 +194,7 @@ type LiveProps = {
 export default function TestConsoleSpecViewer({
   baseUrl,
   callMode,
+  onCallModeChange,
   extraHeaders,
   extraQueryParams,
   gatewayId,
@@ -245,7 +250,21 @@ export default function TestConsoleSpecViewer({
    * only the transport; the request swagger built, displayed and put in the
    * curl snippet is the real gateway call, untouched. See proxyTransport.ts.
    */
-  const plugins = useMemo(() => [testConsoleRelayPlugin(relay)], []);
+  /**
+   * Backs the switch swagger renders beside Execute. Created once, like every
+   * other mount-time value swagger keeps, and kept current through its own
+   * subscription rather than through props it can never receive again.
+   */
+  const callModeStore = useRef(createCallModeStore(callMode)).current;
+  callModeStore.setRequestHandler(onCallModeChange);
+  useEffect(() => {
+    callModeStore.setMode(callMode);
+  }, [callMode, callModeStore]);
+
+  const plugins = useMemo(
+    () => [testConsoleRelayPlugin(relay), executeModeSwitchPlugin(callModeStore)],
+    [callModeStore],
+  );
 
   /** Swagger's system, handed over once it has finished initialising. */
   const system = useRef<SwaggerSystemLike | undefined>(undefined);

@@ -50,9 +50,26 @@ vi.mock('./console/TestConsoleSpecViewer', () => ({
   // `callMode` is surfaced as an attribute because it is what the page hands
   // the transport: asserting the switch's own highlight would only prove the
   // button moved, not that the next request would travel differently.
-  default: ({ baseUrl, callMode }: { baseUrl: string; callMode: string }) => (
+  //
+  // The switch itself now lives inside the viewer, beside swagger's Execute
+  // button, so the page can no longer reach it. The stand-in button below
+  // plays its part: it exercises the page's half of the wiring — callback to
+  // state to persistence — while the control's own behaviour is covered in
+  // console/ExecuteModeSwitch.test.tsx.
+  default: ({
+    baseUrl,
+    callMode,
+    onCallModeChange,
+  }: {
+    baseUrl: string;
+    callMode: string;
+    onCallModeChange: (mode: string) => void;
+  }) => (
     <div data-callmode={callMode} data-testid="spec-viewer">
       {baseUrl}
+      <button onClick={() => onCallModeChange('direct')} type="button">
+        stand-in: switch to direct
+      </button>
     </div>
   ),
 }));
@@ -529,20 +546,12 @@ describe('TestPage — proxy or direct', () => {
   it('relays by default, and says what that buys', async () => {
     server.use(...happyPath());
 
-    const { user } = renderPage();
+    renderPage();
 
     const viewer = await screen.findByTestId('spec-viewer');
     // The relay is what makes a cloud-managed gateway testable at all, so a
     // first visit must not land on the mode that needs a CORS policy.
     expect(viewer).toHaveAttribute('data-callmode', 'proxy');
-    expect(screen.getByRole('button', { name: /Through proxy/i })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    // The hint lives on the switch rather than on the card, so it has to be
-    // asked for.
-    await user.hover(screen.getByRole('button', { name: /Through proxy/i }));
-    expect(await screen.findByText(/the gateway does not need a CORS policy/i)).toBeVisible();
     expectNoRenderLoop();
   });
 
@@ -552,17 +561,13 @@ describe('TestPage — proxy or direct', () => {
     const { user } = renderPage();
     await screen.findByTestId('spec-viewer');
 
-    await user.click(screen.getByRole('button', { name: /^Direct$/i }));
+    await user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
 
     // The attribute is the whole point: the switch has to reach the transport,
     // not just repaint.
     await waitFor(() =>
       expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
     );
-    // The hint follows the selected mode, so the tooltip now describes Direct.
-    await user.hover(screen.getByRole('button', { name: /^Direct$/i }));
-    expect(await screen.findByText(/must be reachable from this machine/i)).toBeVisible();
-    expect(screen.queryByText(/does not need a CORS policy/i)).toBeNull();
     expectNoRenderLoop();
   });
 
@@ -571,7 +576,7 @@ describe('TestPage — proxy or direct', () => {
 
     const first = renderPage();
     await screen.findByTestId('spec-viewer');
-    await first.user.click(screen.getByRole('button', { name: /^Direct$/i }));
+    await first.user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
     await waitFor(() =>
       expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
     );
@@ -597,11 +602,11 @@ describe('TestPage — proxy or direct', () => {
     await user.click(screen.getByRole('button', { name: /cURL view/i }));
 
     // A copied command leaves from the user's own terminal, so neither mode
-    // applies to it. A switch that changed nothing would be a lie.
+    // applies to it — and the switch lives inside the console view, which is
+    // not rendered here at all.
     await waitFor(() => expect(curlText()).toContain('curl -X'));
+    expect(screen.queryByTestId('spec-viewer')).toBeNull();
     expect(screen.queryByRole('button', { name: /Through proxy/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Direct$/i })).toBeNull();
-    expect(screen.queryByText(/does not need a CORS policy/i)).toBeNull();
     expectNoRenderLoop();
   });
 });

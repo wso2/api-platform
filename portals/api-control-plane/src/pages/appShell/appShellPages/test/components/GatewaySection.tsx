@@ -26,42 +26,19 @@ import {
   Select,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, Server, Waypoints } from '@wso2/oxygen-ui-icons-react';
+import { Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
-import { segmentedSwitchSx } from '@/theme/receipes';
 import { CopyButton } from '../curl/components/CopyButton';
-import type { TestCallMode } from '../utils/callMode';
 
 const messages = defineMessages({
-  callModeLabel: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.callModeLabel',
-    defaultMessage: 'Send requests through the proxy or directly',
-    description: 'Accessible label for the toggle between the two ways of sending a request.',
-  },
   copyEndpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
     defaultMessage: 'Copy endpoint URL',
     description: 'Accessible label for the button copying the gateway invoke URL.',
-  },
-  directHint: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.directHint',
-    defaultMessage:
-      'Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.',
-    description:
-      'Caption under the endpoint while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway.',
-  },
-  directMode: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.directMode',
-    defaultMessage: 'Direct',
-    description:
-      'Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command.',
   },
   endpoint: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.endpoint',
@@ -80,18 +57,6 @@ const messages = defineMessages({
     description:
       'Shown in place of the picker when the API is not deployed anywhere. States the fact only — the page-level banner carries the call to action, so this must not repeat it.',
   },
-  proxyHint: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.proxyHint',
-    defaultMessage: 'Requests go through a proxy, so the gateway does not need a CORS policy.',
-    description:
-      'Caption under the endpoint while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching.',
-  },
-  proxyMode: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.proxyMode',
-    defaultMessage: 'Through proxy',
-    description:
-      'Toggle option relaying the request via the portal server. Describes the route a request takes, not a command.',
-  },
   title: {
     id: 'apiControlPlane.pages.test.console.GatewaySection.title',
     defaultMessage: 'Gateway',
@@ -100,15 +65,8 @@ const messages = defineMessages({
 });
 
 type GatewaySectionProps = {
-  /**
-   * How the Console view sends a request. Omitted — together with
-   * `onCallModeChange` — by the cURL view, which has no transport to choose:
-   * a copied command always leaves from the user's own terminal.
-   */
-  callMode?: TestCallMode;
   endpoint: string;
   gateways: Gateway[];
-  onCallModeChange?: (mode: TestCallMode) => void;
   onSelect: (gatewayId: string) => void;
   optionLabel: (gateway: Gateway) => string;
   selectedGatewayId: string;
@@ -130,18 +88,13 @@ type GatewaySectionProps = {
  * no gateways are deployed.
  */
 export function GatewaySection({
-  callMode,
   endpoint,
   gateways,
-  onCallModeChange,
   onSelect,
   optionLabel,
   selectedGatewayId,
 }: GatewaySectionProps) {
   const intl = useIntl();
-
-  /** Both halves arrive together or not at all; neither is useful alone. */
-  const showCallMode = callMode !== undefined && onCallModeChange !== undefined;
 
   return (
     <Box sx={{ px: 2, py: 2 }}>
@@ -161,57 +114,6 @@ export function GatewaySection({
               <FormattedMessage {...messages.title} />
             </Typography>
           </Stack>
-
-          {showCallMode && (
-            // The consequence of the selected mode, on the control that sets
-            // it: hovering the switch is how someone asks "what does this do",
-            // and it is the same two sentences every time, so a permanent line
-            // under the endpoint would just be noise once read.
-            <Tooltip
-              arrow
-              placement="bottom-end"
-              title={
-                <Stack spacing={0.5} sx={{ py: 0.5 }}>
-                  <Typography sx={{ fontWeight: 'fontWeightBold' }} variant="caption">
-                    <FormattedMessage
-                      {...(callMode === 'direct' ? messages.directMode : messages.proxyMode)}
-                    />
-                  </Typography>
-                  <Typography variant="caption">
-                    <FormattedMessage
-                      {...(callMode === 'direct' ? messages.directHint : messages.proxyHint)}
-                    />
-                  </Typography>
-                </Stack>
-              }
-            >
-              <ToggleButtonGroup
-                aria-label={intl.formatMessage(messages.callModeLabel)}
-                exclusive
-                onChange={(_event, next) => next && onCallModeChange(next as TestCallMode)}
-                size="small"
-                sx={segmentedSwitchSx}
-                value={callMode}
-              >
-                <ToggleButton value="proxy">
-                  <Stack alignItems="center" direction="row" spacing={1}>
-                    <Waypoints size={16} />
-                    <span>
-                      <FormattedMessage {...messages.proxyMode} />
-                    </span>
-                  </Stack>
-                </ToggleButton>
-                <ToggleButton value="direct">
-                  <Stack alignItems="center" direction="row" spacing={1}>
-                    <ArrowRight size={16} />
-                    <span>
-                      <FormattedMessage {...messages.directMode} />
-                    </span>
-                  </Stack>
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Tooltip>
-          )}
         </Stack>
 
         {gateways.length === 0 ? (

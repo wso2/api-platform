@@ -89,3 +89,91 @@
   color: var(--tc-field-placeholder) !important;
   opacity: 1;
 }
+
+/*
+ * The proxy/direct switch, on its own line above swagger's action buttons.
+ *
+ * Swagger renders Execute and Clear into a single container whose class flips
+ * once a response exists: `execute-wrapper` while there is none, `btn-group`
+ * afterwards, with Clear appearing alongside Execute. Both states are made
+ * wrapping flex rows here so the switch can claim a full-width line of its
+ * own and the buttons keep their own line underneath — before and after
+ * executing alike, with no reflow when Clear appears.
+ *
+ * The buttons themselves are left entirely to swagger: inside `.btn-group` it
+ * styles them as a joined pair, and nothing here interferes with that.
+ */
+/*
+ * `.execute-wrapper` needs nothing: it is a block, so the switch's own div
+ * already takes a line and swagger's full-width Execute follows underneath.
+ * `.btn-group` is a flex row, so it only needs permission to wrap — the
+ * switch then claims the first line and Execute/Clear keep the second,
+ * still paired by swagger's own `flex: 1` and shared radii.
+ */
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .btn-group {
+  flex-wrap: wrap;
+  row-gap: 12px;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer .swagger-ui .test-console-mode-row {
+  flex: 0 0 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+
+  /*
+   * Mirrors swagger's own `.btn.execute`, which this app relabels but never
+   * re-themes. Declared here so the selected segment and the Execute button
+   * cannot drift apart.
+   */
+  --tc-execute-bg: #4990e2;
+  --tc-execute-text: #fff;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root {
+  background: transparent;
+  border: 2px solid var(--tc-field-border);
+  color: var(--tc-field-text);
+  font-family: sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 5px 16px;
+  text-transform: none;
+  transition: all 0.3s;
+}
+
+/* Collapse the shared edge so the pair reads as one control. */
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root:first-of-type {
+  border-radius: 4px 0 0 4px;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root:last-of-type {
+  border-radius: 0 4px 4px 0;
+  border-left-width: 0;
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root.Mui-selected {
+  background: var(--tc-execute-bg);
+  border-color: var(--tc-execute-bg);
+  color: var(--tc-execute-text);
+}
+
+.test-console-spec-viewer.swagger-spec-viewer
+  .swagger-ui
+  .test-console-mode-row
+  .MuiToggleButton-root.Mui-selected:hover {
+  background: var(--tc-execute-bg);
+}

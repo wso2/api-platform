@@ -2997,21 +2997,29 @@
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
   },
-  "apiControlPlane.pages.test.console.GatewaySection.callModeLabel": {
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.callModeLabel": {
     "defaultMessage": "Send requests through the proxy or directly",
     "description": "Accessible label for the toggle between the two ways of sending a request."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directHint": {
+    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
+    "description": "Tooltip shown while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directMode": {
+    "defaultMessage": "Direct",
+    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyHint": {
+    "defaultMessage": "Requests go through a WSO2 Managed proxy, so the gateway does not need a CORS policy.",
+    "description": "Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyMode": {
+    "defaultMessage": "Through proxy",
+    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
   },
   "apiControlPlane.pages.test.console.GatewaySection.copyEndpoint": {
     "defaultMessage": "Copy endpoint URL",
     "description": "Accessible label for the button copying the gateway invoke URL."
-  },
-  "apiControlPlane.pages.test.console.GatewaySection.directHint": {
-    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
-    "description": "Caption under the endpoint while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
-  },
-  "apiControlPlane.pages.test.console.GatewaySection.directMode": {
-    "defaultMessage": "Direct",
-    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
   },
   "apiControlPlane.pages.test.console.GatewaySection.endpoint": {
     "defaultMessage": "Endpoint",
@@ -3024,14 +3032,6 @@
   "apiControlPlane.pages.test.console.GatewaySection.noGateways": {
     "defaultMessage": "No deployed gateway.",
     "description": "Shown in place of the picker when the API is not deployed anywhere. States the fact only — the page-level banner carries the call to action, so this must not repeat it."
-  },
-  "apiControlPlane.pages.test.console.GatewaySection.proxyHint": {
-    "defaultMessage": "Requests go through a proxy, so the gateway does not need a CORS policy.",
-    "description": "Caption under the endpoint while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
-  },
-  "apiControlPlane.pages.test.console.GatewaySection.proxyMode": {
-    "defaultMessage": "Through proxy",
-    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
   },
   "apiControlPlane.pages.test.console.GatewaySection.title": {
     "defaultMessage": "Gateway",

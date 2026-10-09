@@ -34,7 +34,6 @@ import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDes
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
-import { segmentedSwitchSx } from '@/theme/receipes';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -405,9 +404,9 @@ function TestConsole() {
             aria-label={intl.formatMessage(messages.viewLabel)}
             exclusive
             onChange={(_event, next) => next && setView(next as ConsoleView)}
-            size="small"
-            sx={segmentedSwitchSx}
+            size="medium"
             value={view}
+            color="primary"
           >
             <ToggleButton value="console">
               <Stack alignItems="center" direction="row" spacing={1}>
@@ -432,12 +431,8 @@ function TestConsole() {
       <Stack spacing={2}>
         <Card variant="outlined">
           <GatewaySection
-            // Offered in the Console view only: a copied cURL command leaves
-            // from the user's terminal, so there is no transport to choose.
-            callMode={view === 'console' ? callMode : undefined}
             endpoint={baseUrl}
             gateways={gateways}
-            onCallModeChange={view === 'console' ? setCallMode : undefined}
             onSelect={setSelectedGatewayId}
             optionLabel={gatewayOptionLabel}
             selectedGatewayId={selectedGateway?.id ?? ''}
@@ -468,6 +463,7 @@ function TestConsole() {
               // The BFF resolves the target from these three values; see
               // console/utils/proxyTransport.
               gatewayId={selectedGateway?.id ?? ''}
+              onCallModeChange={setCallMode}
               onRequestChange={handleConsoleRequestChange}
               orgHandle={params.orgHandle ?? ''}
               restApiId={restApiId ?? ''}
