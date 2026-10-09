@@ -17,41 +17,78 @@
  */
 
 import { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
-import { Alert, Snackbar } from '@wso2/oxygen-ui';
+import { Alert, Button, Snackbar } from '@wso2/oxygen-ui';
 
 type NotificationSeverity = 'success' | 'info' | 'warning' | 'error';
 
+/**
+ * One follow-up a notification can offer, such as "Deploy it" after an API is
+ * created. A callback rather than a route: the provider sits above the router,
+ * so the caller, which has `navigate`, decides what the action does.
+ */
+export type NotificationAction = {
+  label: string;
+  onClick: () => void;
+};
+
 type Notification = {
+  action?: NotificationAction;
   message: string;
   severity: NotificationSeverity;
 };
 
 type NotificationContextValue = {
-  notify: (message: string, severity?: NotificationSeverity) => void;
+  notify: (message: string, severity?: NotificationSeverity, action?: NotificationAction) => void;
 };
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
+/** How long a notification stays up; one with a next step gets longer to act on. */
+const AUTO_HIDE_MS = 5000;
+const AUTO_HIDE_WITH_ACTION_MS = 10000;
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notification, setNotification] = useState<Notification | null>(null);
 
-  const notify = useCallback((message: string, severity: NotificationSeverity = 'info') => {
-    setNotification({ message, severity });
-  }, []);
+  const notify = useCallback(
+    (message: string, severity: NotificationSeverity = 'info', action?: NotificationAction) => {
+      setNotification({ action, message, severity });
+    },
+    [],
+  );
 
   const value = useMemo(() => ({ notify }), [notify]);
+  const action = notification?.action;
 
   return (
     <NotificationContext.Provider value={value}>
       {children}
       <Snackbar
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        autoHideDuration={5000}
+        autoHideDuration={action ? AUTO_HIDE_WITH_ACTION_MS : AUTO_HIDE_MS}
         open={!!notification}
         onClose={() => setNotification(null)}
       >
         {notification ? (
-          <Alert severity={notification.severity}>{notification.message}</Alert>
+          <Alert
+            action={
+              action ? (
+                <Button
+                  color="inherit"
+                  onClick={() => {
+                    setNotification(null);
+                    action.onClick();
+                  }}
+                  size="small"
+                >
+                  {action.label}
+                </Button>
+              ) : undefined
+            }
+            severity={notification.severity}
+          >
+            {notification.message}
+          </Alert>
         ) : undefined}
       </Snackbar>
     </NotificationContext.Provider>

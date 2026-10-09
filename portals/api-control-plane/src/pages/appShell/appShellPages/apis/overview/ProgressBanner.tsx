@@ -31,6 +31,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { REST_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
+import { wasApiTested } from '../utils/testedMarker';
 
 // Same cap `ApiPortalPublicationsList` uses to read every portal in one page.
 const LIST_LIMIT = 100;
@@ -83,7 +84,11 @@ type ProgressStep = {
  * and tested — so earlier steps stay green once a later one is reached:
  *   Create   → always done (the API record exists)
  *   Deploy   → live on a gateway, or STAGED/PUBLISHED
- *   Test     → STAGED or PUBLISHED
+ *   Test     → STAGED or PUBLISHED, or, while the API is deployed, its test
+ *              command copied from the Test page (a stand-in for a first
+ *              successful request; see `testedMarker.ts`). Nothing in the
+ *              console moves an API to STAGED, so without the stand-in this
+ *              step never completes.
  *   Publish  → PUBLISHED on at least one API Portal (`/api-publications`,
  *              not the API's own `lifeCycleStatus` — publishing is per-portal,
  *              so a single global field on the API can't represent it)
@@ -102,7 +107,8 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   const staged = api.lifeCycleStatus === 'STAGED';
   const lifecyclePublished = api.lifeCycleStatus === 'PUBLISHED';
   const deployComplete = deployed || staged || lifecyclePublished;
-  const testComplete = staged || lifecyclePublished;
+  const testComplete =
+    staged || lifecyclePublished || (deployed && wasApiTested(api.id ?? apiHandler));
 
   // Formatted here rather than held as descriptors: `label` is both the pill's
   // text and its `aria-label`, and the latter is a string-only prop.

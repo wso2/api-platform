@@ -27,6 +27,7 @@ import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } fro
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
 import { AppPage } from '@/components/AppPage';
+import { useNotifications } from '@/components/Notifications';
 import { useImportOpenApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
@@ -37,6 +38,7 @@ import {
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
 import { ApiDesignerBanner } from './components/ApiDesignerBanner';
+import { skeletonFor } from './utils/apiSkeleton';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -58,6 +60,15 @@ const messages = defineMessages({
     id: 'api.create.ApiCreationWizard.apiType.title',
     defaultMessage: 'What kind of API are you exposing?',
   },
+  createdNextStep: {
+    id: 'api.create.ApiCreationWizard.created.nextStep',
+    defaultMessage: 'API created. Deploy it to a gateway to start serving traffic.',
+  },
+  createdNextStepAction: {
+    id: 'api.create.ApiCreationWizard.created.nextStepAction',
+    defaultMessage: 'Deploy',
+    description: 'Button in the "API created" notification that opens the Deploy page.',
+  },
   configureSubtitle: {
     id: 'api.create.ApiCreationWizard.configure.subtitle',
     defaultMessage: 'Review the API details, configure its backend endpoint, and create it.',
@@ -74,8 +85,7 @@ const messages = defineMessages({
   },
   sourceSubtitle: {
     id: 'api.create.ApiCreationWizard.source.subtitle',
-    defaultMessage:
-      'Bring an existing contract, or start from a blank slate and fill in the details yourself.',
+    defaultMessage: 'Point us at a running service, or bring an OpenAPI spec that describes it.',
   },
   sourceTitle: {
     id: 'api.create.ApiCreationWizard.source.title',
@@ -83,13 +93,18 @@ const messages = defineMessages({
     description:
       '{apiType} is the type picked in the first step, e.g. "REST API". Reads as one sentence.',
   },
+  cancel: {
+    id: 'api.create.ApiCreationWizard.action.cancel',
+    defaultMessage: 'Cancel',
+    description: 'Leaves the wizard without creating anything, back to the project’s APIs.',
+  },
   stepCount: {
     id: 'api.create.ApiCreationWizard.stepCount',
     defaultMessage: 'Step {current} of 3',
   },
   specTooLarge: {
     id: 'api.create.ApiCreationWizard.error.specTooLarge',
-    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
+    defaultMessage: 'This OpenAPI spec is larger than the maximum allowed size.',
   },
 });
 
@@ -173,6 +188,7 @@ const ApiCreationWizardContent = () => {
   };
 
   const navigate = useNavigate();
+  const { notify } = useNotifications();
   // `handlesErrors`: a rejection this screen puts back on the form must not
   // also arrive as a snackbar that has faded by the time the user looks up.
   const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });
@@ -208,7 +224,26 @@ const ApiCreationWizardContent = () => {
     // File by DefineApiPanel), scratch passes the skeleton. Both submit via
     // import-openapi. The backend still accepts `url` for direct REST callers.
     const formData = new FormData();
-    formData.append('file', values.contractImport.specFile, values.contractImport.specFile.name);
+    const mainUrl = values.upstream?.main?.url?.trim();
+    const specFile = values.contractImport.fromSkeleton
+      ? new File(
+          [
+            JSON.stringify(
+              skeletonFor({
+                description: values.description?.trim() || undefined,
+                displayName: values.displayName.trim(),
+                upstreamUrl: mainUrl,
+                version: values.version.trim(),
+              }),
+              null,
+              2,
+            ),
+          ],
+          values.contractImport.specFile.name,
+          { type: 'application/json' },
+        )
+      : values.contractImport.specFile;
+    formData.append('file', specFile, specFile.name);
     formData.append('id', values.id.trim());
     formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());
@@ -219,7 +254,6 @@ const ApiCreationWizardContent = () => {
     if (values.description?.trim()) {
       formData.append('description', values.description.trim());
     }
-    const mainUrl = values.upstream?.main?.url?.trim();
     if (mainUrl) {
       formData.append('upstream', JSON.stringify({ main: { url: mainUrl } }));
     }
@@ -273,7 +307,15 @@ const ApiCreationWizardContent = () => {
           routes.apis(orgHandle, projectHandler),
       { replace: true },
     );
-  }, [activeMutation.data?.id, navigate, params]);
+    if (createdId) {
+      // Hand off to the next activation step rather than leaving the user to
+      // find Deploy on their own.
+      notify(intl.formatMessage(messages.createdNextStep), 'success', {
+        label: intl.formatMessage(messages.createdNextStepAction),
+        onClick: () => navigate(routes.apiDeploy(orgHandle, projectHandler, createdId)),
+      });
+    }
+  }, [activeMutation.data?.id, intl, navigate, notify, params]);
 
   const creationStatus: ApiCreationProgressStatus = activeMutation.isError
     ? 'failed'
@@ -398,9 +440,24 @@ const ApiCreationWizardContent = () => {
               px: 3,
             }}
           >
-            <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
-              {intl.formatMessage(messages.stepCount, { current: stepNumber })}
-            </Typography>
+            <Stack alignItems="center" direction="row" spacing={2}>
+              <Typography color="text.secondary" sx={{ fontWeight: 600 }} variant="caption">
+                {intl.formatMessage(messages.stepCount, { current: stepNumber })}
+              </Typography>
+              {/* The wizard hides breadcrumbs and has no other exit, so
+                  leaving used to mean the browser's Back or the sidebar. */}
+              {params.orgHandle && params.projectHandler && (
+                <Button
+                  color="inherit"
+                  onClick={() => navigate(routes.apis(params.orgHandle!, params.projectHandler!))}
+                  size="small"
+                  type="button"
+                  variant="text"
+                >
+                  {intl.formatMessage(messages.cancel)}
+                </Button>
+              )}
+            </Stack>
             <Stack direction="row" spacing={1}>
               <Button
                 disabled={step === 'apiType'}

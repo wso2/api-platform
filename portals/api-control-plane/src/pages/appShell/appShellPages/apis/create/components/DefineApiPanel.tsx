@@ -21,6 +21,7 @@ import {
   Button,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   InputAdornment,
   OutlinedInput,
@@ -31,7 +32,9 @@ import { FileCode2, Link as LinkIcon, Pencil, Zap } from '@wso2/oxygen-ui-icons-
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import { isHttpUrl } from '../../utils/basicInfoRules';
+import { DEFAULT_API_SKELETON, skeletonFor } from '../utils/apiSkeleton';
+import { nameFromEndpoint, versionFromEndpoint } from '../utils/nameFromEndpoint';
 import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
@@ -43,20 +46,30 @@ type ApproachKey = 'contract' | 'scratch';
 const messages = defineMessages({
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import an API contract from a URL or a file.',
+    defaultMessage: 'Import an OpenAPI spec from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
-    defaultMessage: 'Start with a contract',
+    defaultMessage: 'From an OpenAPI spec',
   },
   endpointDescription: {
     id: 'api.create.defineApi.scratch.endpoint.description',
     defaultMessage:
-      'Route every resource to a running service. Calls are proxied through as soon as you publish.',
+      'Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway.',
+  },
+  endpointHint: {
+    id: 'api.create.defineApi.scratch.endpoint.hint',
+    defaultMessage: 'Your API’s base URL. We forward traffic to it; we don’t call it now.',
+    description: 'Always-visible line under the backend URL field.',
+  },
+  endpointInvalid: {
+    id: 'api.create.defineApi.scratch.endpoint.invalid',
+    defaultMessage:
+      'That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start.',
   },
   endpointLabel: {
     id: 'api.create.defineApi.scratch.endpoint.label',
-    defaultMessage: 'Endpoint URL',
+    defaultMessage: 'Backend URL',
   },
   endpointHeading: {
     id: 'api.create.defineApi.scratch.endpoint.heading',
@@ -66,21 +79,31 @@ const messages = defineMessages({
     id: 'api.create.defineApi.scratch.endpoint.preview.description',
     defaultMessage: 'Every API resource will route to the backend endpoint you provide.',
   },
+  endpointPreviewForwardsTo: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.forwardsTo',
+    defaultMessage: 'FORWARDS TO',
+    description: 'Small caps label above the backend URL in the routes preview.',
+  },
+  endpointPreviewNote: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.note',
+    defaultMessage:
+      'One catch-all route per method. Requests to any path are forwarded unchanged; without a spec we can’t list your API’s paths individually. Add a spec later whenever you want that.',
+  },
   endpointPreviewTitle: {
     id: 'api.create.defineApi.scratch.endpoint.preview.title',
     defaultMessage: 'Ready to connect',
   },
   sampleUrl: {
     id: 'api.create.defineApi.scratch.endpoint.sampleUrl',
-    defaultMessage: 'Try with Sample URL',
+    defaultMessage: 'Try a sample',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Begin with a blank API and fill in the details.',
+    defaultMessage: 'Proxy a running service. Every path is forwarded as-is.',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Start from scratch',
+    defaultMessage: 'From an endpoint',
   },
 });
 
@@ -100,6 +123,9 @@ type ApproachTabProps = {
 };
 
 const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
+
+/** A bare example, not instructions: placeholders vanish on focus. */
+const ENDPOINT_PLACEHOLDER = 'https://api.example.com/v1';
 
 const SampleLink = ({ onClick }: { onClick: () => void }) => (
   <Button
@@ -171,6 +197,12 @@ export const DefineApiPanel = ({
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('scratch');
   const [endpointUrl, setEndpointUrl] = useState('');
+  // The endpoint is checked for shape only; the console never calls it. The
+  // error waits until the user leaves the field, so a half-typed URL never
+  // flashes red, and clears the moment the value parses.
+  const [endpointTouched, setEndpointTouched] = useState(false);
+  const endpointValid = isHttpUrl(endpointUrl.trim());
+  const endpointError = endpointTouched && endpointUrl.trim() !== '' && !endpointValid;
   const [contract, setContract] = useState<FetchedContract | null>(null);
 
   const selectApproach = (next: ApproachKey) => {
@@ -180,24 +212,45 @@ export const DefineApiPanel = ({
 
   const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
     const upstreamUrl = endpointUrl.trim();
-    if (!upstreamUrl) return null;
+    if (!isHttpUrl(upstreamUrl)) return null;
 
     const details = extractApiDetails(DEFAULT_API_SKELETON);
     const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
+    // Name and version come from the URL where it says them, so an API made
+    // from `…/orders/v2` starts as "Orders" 2.0.0 rather than "Untitled API".
+    const guessedName = nameFromEndpoint(upstreamUrl);
+    const guessedVersion = versionFromEndpoint(upstreamUrl);
     return {
       ...details,
+      ...(guessedName ? { displayName: guessedName } : {}),
+      ...(guessedVersion ? { version: guessedVersion } : {}),
       upstream: {
         main: { url: upstreamUrl },
       },
       contractImport: {
         specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
+        // Rebuilt at submit from the details step's values (`skeletonFor`).
+        fromSkeleton: true,
       },
     };
   }, [endpointUrl]);
 
+  // The definition an endpoint API would be created with, for the preview.
+  // Built only once the URL parses: before that the pane explains itself.
+  const endpointPreview = useMemo(() => {
+    if (scratchDraft === null) return null;
+    const spec = skeletonFor({
+      displayName: scratchDraft.displayName ?? 'Untitled API',
+      upstreamUrl: endpointUrl.trim(),
+      version: scratchDraft.version ?? '1.0.0',
+    });
+    return { rawText: JSON.stringify(spec, null, 2), spec };
+  }, [endpointUrl, scratchDraft]);
+
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
     if (contract?.spec === undefined) return null;
-    const base = extractApiDetails(contract.spec);
+    // A URL-sourced spec resolves a relative server against its own address.
+    const base = extractApiDetails(contract.spec, contract.values.url);
     const rawText = contract.rawText;
     if (rawText === undefined) return null;
     const isJson = rawText.trimStart().startsWith('{');
@@ -286,14 +339,16 @@ export const DefineApiPanel = ({
                     <FormattedMessage {...messages.endpointDescription} />
                   </Typography>
                 </Box>
-                <FormControl fullWidth>
+                <FormControl error={endpointError} fullWidth required>
                   <FormLabel htmlFor="backend-endpoint">
                     <FormattedMessage {...messages.endpointLabel} />
                   </FormLabel>
                   <OutlinedInput
+                    aria-describedby="backend-endpoint-hint"
                     id="backend-endpoint"
+                    onBlur={() => setEndpointTouched(true)}
                     onChange={(event) => setEndpointUrl(event.target.value)}
-                    placeholder={PLACEHOLDER_UPSTREAM_URL}
+                    placeholder={ENDPOINT_PLACEHOLDER}
                     startAdornment={
                       <InputAdornment position="start">
                         <LinkIcon size={18} />
@@ -302,6 +357,11 @@ export const DefineApiPanel = ({
                     sx={{ mt: 0.75 }}
                     value={endpointUrl}
                   />
+                  <FormHelperText id="backend-endpoint-hint">
+                    <FormattedMessage
+                      {...(endpointError ? messages.endpointInvalid : messages.endpointHint)}
+                    />
+                  </FormHelperText>
                   <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
                 </FormControl>
               </Stack>
@@ -315,28 +375,61 @@ export const DefineApiPanel = ({
               }}
             />
             <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-              <Stack
-                sx={{
-                  alignItems: 'center',
-                  // bgcolor: 'action.hover',
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  height: '100%',
-                  justifyContent: 'center',
-                  minHeight: 420,
-                  p: 3,
-                  textAlign: 'center',
-                }}
-              >
-                <GatewayIllustration />
-                <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
-                  {intl.formatMessage(messages.endpointPreviewTitle)}
-                </Typography>
-                <Typography color="text.secondary" sx={{ maxWidth: 360, mt: 0.5 }} variant="body2">
-                  {intl.formatMessage(messages.endpointPreviewDescription)}
-                </Typography>
-              </Stack>
+              {endpointPreview ? (
+                // What will be created, drawn by the same preview a spec
+                // uses: the forwarding target once, then the catch-all routes.
+                <Stack spacing={1.5}>
+                  <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 2, py: 1.5 }}>
+                    <Typography
+                      color="text.secondary"
+                      sx={{ fontWeight: 600, letterSpacing: 0.4 }}
+                      variant="caption"
+                    >
+                      <FormattedMessage {...messages.endpointPreviewForwardsTo} />
+                    </Typography>
+                    <Typography
+                      sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
+                      variant="body2"
+                    >
+                      {endpointUrl.trim()}
+                    </Typography>
+                  </Box>
+                  <ApiResourcesPreview
+                    height={360}
+                    rawText={endpointPreview.rawText}
+                    spec={endpointPreview.spec}
+                  />
+                  <Typography color="text.secondary" variant="body2">
+                    <FormattedMessage {...messages.endpointPreviewNote} />
+                  </Typography>
+                </Stack>
+              ) : (
+                <Stack
+                  sx={{
+                    alignItems: 'center',
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    height: '100%',
+                    justifyContent: 'center',
+                    minHeight: 420,
+                    p: 3,
+                    textAlign: 'center',
+                  }}
+                >
+                  <GatewayIllustration />
+                  <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
+                    {intl.formatMessage(messages.endpointPreviewTitle)}
+                  </Typography>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ maxWidth: 360, mt: 0.5 }}
+                    variant="body2"
+                  >
+                    {intl.formatMessage(messages.endpointPreviewDescription)}
+                  </Typography>
+                </Stack>
+              )}
             </Box>
           </>
         )}

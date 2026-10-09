@@ -102,6 +102,8 @@ type BuilderTab = 'query' | 'headers' | 'body';
 
 type CurlBuilderProps = {
   onChange: (request: ConsoleRequest) => void;
+  /** Called when the generated command has been copied. */
+  onCommandCopied?: () => void;
   onRegenerateSecret?: () => void;
   regenerating?: boolean;
   request: ConsoleRequest;
@@ -120,6 +122,7 @@ type CurlBuilderProps = {
  */
 export function CurlBuilder({
   onChange,
+  onCommandCopied,
   onRegenerateSecret,
   regenerating,
   request,
@@ -269,7 +272,7 @@ export function CurlBuilder({
           />
         )}
 
-        <CurlCommandPanel request={request} />
+        <CurlCommandPanel onCommandCopied={onCommandCopied} request={request} />
       </CardContent>
     </Card>
   );

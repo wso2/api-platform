@@ -94,7 +94,9 @@ import {
   type OpenAPIValidationError,
 } from '@/api/resources/restApis';
 import { isApiError } from '@/api/core/errors';
+import { useNotifications } from '@/components/Notifications';
 import { isValidUrl } from '../../utils/developEdit';
+import { rawSpecUrl } from '../utils/rawSpecUrl';
 import {
   collectSpecWarnings,
   readDialectFromSpec,
@@ -210,7 +212,7 @@ const messages = defineMessages({
   },
   fetching: {
     id: 'api.create.fromContract.status.fetching',
-    defaultMessage: 'Reading the contract…',
+    defaultMessage: 'Reading the spec…',
     description:
       'Shown while the chosen contract is being read and checked, which starts on its own.',
   },
@@ -243,7 +245,7 @@ const messages = defineMessages({
   },
   gitHubNoContract: {
     id: 'api.create.fromContract.gitHub.noContract',
-    defaultMessage: 'No YAML or JSON contract in this directory. Choose another one.',
+    defaultMessage: 'No YAML or JSON spec in this directory. Choose another one.',
   },
   gitHubRateLimited: {
     id: 'api.create.fromContract.gitHub.rateLimited',
@@ -283,7 +285,7 @@ const messages = defineMessages({
   },
   sampleUrl: {
     id: 'api.create.fromContract.action.sampleUrl',
-    defaultMessage: 'Try with Sample URL',
+    defaultMessage: 'Try a sample',
     description: 'Fills the field with a ready-made example to try the import with.',
   },
   sourceFile: {
@@ -300,7 +302,7 @@ const messages = defineMessages({
   },
   sourceLabel: {
     id: 'api.create.fromContract.source.label',
-    defaultMessage: 'Import the contract from',
+    defaultMessage: 'Import the spec from',
     description: 'Label over the picker that chooses where the API contract is read from.',
   },
   sourceUrl: {
@@ -313,11 +315,12 @@ const messages = defineMessages({
   },
   specTooLarge: {
     id: 'api.create.fromContract.spec.tooLarge',
-    defaultMessage: 'The OpenAPI specification exceeds the maximum allowed size.',
+    defaultMessage: 'This OpenAPI spec is larger than the maximum allowed size.',
   },
   specValidationFailed: {
     id: 'api.create.fromContract.spec.validationFailed',
-    defaultMessage: 'Failed to validate the OpenAPI specification. Please try again.',
+    defaultMessage:
+      'We couldn’t read an OpenAPI spec at that address. Check that the link opens the raw file in a browser, or upload the file instead.',
   },
   swaggerHubApiLabel: {
     id: 'api.create.fromContract.swaggerHub.apiLabel',
@@ -415,11 +418,11 @@ const messages = defineMessages({
   },
   uploadRequired: {
     id: 'api.create.fromContract.upload.required',
-    defaultMessage: 'Select an API contract file to continue',
+    defaultMessage: 'Choose an OpenAPI spec file to continue.',
   },
   uploadTitle: {
     id: 'api.create.fromContract.upload.title',
-    defaultMessage: 'Upload API Contract',
+    defaultMessage: 'Upload an OpenAPI spec',
   },
   uploadUnsupported: {
     id: 'api.create.fromContract.upload.unsupported',
@@ -429,17 +432,23 @@ const messages = defineMessages({
     id: 'api.create.fromContract.url.invalid',
     defaultMessage: 'Enter a valid HTTP or HTTPS URL.',
   },
+  urlRepaired: {
+    id: 'api.create.fromContract.url.repaired',
+    defaultMessage:
+      'Link updated: that was a {host} page rather than the file itself, so we switched to the raw file URL.',
+    description: '{host} is GitHub, GitLab or Bitbucket; do not translate it.',
+  },
   urlLabel: {
     id: 'api.create.fromContract.url.label',
-    defaultMessage: 'URL for API Contract',
+    defaultMessage: 'Spec URL',
   },
   urlPlaceholder: {
     id: 'api.create.fromContract.url.placeholder',
-    defaultMessage: 'Enter URL for API Contract here',
+    defaultMessage: 'https://api.example.com/openapi.json',
   },
   urlRequired: {
     id: 'api.create.fromContract.url.required',
-    defaultMessage: 'The URL for the API contract cannot be empty',
+    defaultMessage: 'Enter the spec’s URL.',
   },
   specInvalidByBackend: {
     id: 'api.create.fromContract.spec.invalidByBackend',
@@ -1081,7 +1090,22 @@ export const ContractSourceForm = ({
   onRefreshSwaggerHubOrganizations,
 }: ContractSourceFormProps) => {
   const intl = useIntl();
+  const { notify } = useNotifications();
   const validateSpec = useValidateOpenApiSpec();
+
+  /**
+   * The spec URL to read: the field's value, or, for a repository page link,
+   * the raw file it shows. The repair is written back into the field and
+   * announced, never applied silently, so the user can see what was read.
+   */
+  const committedSpecUrl = (): string => {
+    const typed = contractUrl.value.trim();
+    const repair = rawSpecUrl(typed);
+    if (repair === undefined) return typed;
+    contractUrl.setValue(repair.url);
+    notify(intl.formatMessage(messages.urlRepaired, { host: repair.host }), 'info');
+    return repair.url;
+  };
 
   const [apiTypeKey] = useState(() => initialApiTypeKey ?? apiTypes[0]?.key ?? '');
   const [sourceKey, setSourceKey] = useState<ContractSourceKey>(
@@ -1394,9 +1418,7 @@ export const ContractSourceForm = ({
   const collectValues = (): ContractValues | null => {
     switch (sourceKey) {
       case 'url': {
-        return contractUrl.commit()
-          ? { apiTypeKey, sourceKey, url: contractUrl.value.trim() }
-          : null;
+        return contractUrl.commit() ? { apiTypeKey, sourceKey, url: committedSpecUrl() } : null;
       }
       case 'file': {
         if (file === null) {
@@ -1748,7 +1770,7 @@ export const ContractSourceForm = ({
                   requestFetch({
                     apiTypeKey,
                     sourceKey: 'url',
-                    url: contractUrl.value.trim(),
+                    url: committedSpecUrl(),
                   });
                 }
               }}

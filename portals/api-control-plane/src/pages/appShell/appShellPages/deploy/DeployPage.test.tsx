@@ -34,6 +34,7 @@ import {
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
+import type { RestApi } from '@/api/resources/restApis';
 import { DeployPage } from './DeployPage';
 
 const ORG = 'api-platform-demo';
@@ -146,5 +147,37 @@ describe('DeployPage', () => {
     renderPage();
 
     expect(await screen.findByText('No gateway added yet')).toBeInTheDocument();
+  });
+
+  it('warns that an API with no authentication policy will be public', async () => {
+    serveDeployState();
+
+    renderPage();
+
+    expect(
+      await screen.findByText(/Anyone with this API’s URL will be able to call it/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add a policy' })).toBeInTheDocument();
+  });
+
+  it('says nothing about access once the API authenticates callers', async () => {
+    server.use(
+      resource(
+        '/rest-apis/:restApiId',
+        aRestApi({
+          displayName: 'Orders',
+          id: API,
+          policies: [{ name: 'api-key-auth', version: 'v1' }] as RestApi['policies'],
+          projectId: PROJECT,
+        }),
+      ),
+      collection('/gateways', [gateway]),
+      collection('/rest-apis/:restApiId/deployments', [deployment]),
+    );
+
+    renderPage();
+
+    expect((await screen.findAllByText(/Orders/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Anyone with this API’s URL/)).not.toBeInTheDocument();
   });
 });

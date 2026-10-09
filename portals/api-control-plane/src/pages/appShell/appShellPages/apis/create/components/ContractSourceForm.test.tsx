@@ -128,10 +128,7 @@ describe('ContractSourceForm — automatic fetch', () => {
       <ContractSourceForm onContractChange={onContractChange} />,
     );
 
-    await user.type(
-      screen.getByLabelText(/URL for API Contract/),
-      'https://example.com/openapi.yaml',
-    );
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://example.com/openapi.yaml');
     // A URL passes through many invalid prefixes on the way in; none of them
     // is worth a request.
     expect(validateRequests.count()).toBe(0);
@@ -152,7 +149,7 @@ describe('ContractSourceForm — automatic fetch', () => {
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
     );
-    const field = screen.getByLabelText(/URL for API Contract/);
+    const field = screen.getByLabelText(/Spec URL/);
 
     await user.type(field, 'https://example.com/openapi.yaml');
     await user.tab();
@@ -183,7 +180,7 @@ describe('ContractSourceForm — automatic fetch', () => {
       <ContractSourceForm onContractChange={onContractChange} />,
     );
 
-    const field = screen.getByLabelText(/URL for API Contract/);
+    const field = screen.getByLabelText(/Spec URL/);
     await user.type(field, 'https://example.com/openapi.yaml');
     await user.tab();
     await waitFor(() =>

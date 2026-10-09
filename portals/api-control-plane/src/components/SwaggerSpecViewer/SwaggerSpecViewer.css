@@ -585,3 +585,29 @@
   a {
   color: #51a8ff;
 }
+
+/*
+ * Method badges dark enough for their white text. Swagger UI's defaults put
+ * 12px bold white text on #61affe, #49cc90, #fca130, #50e3c2 and #f93e3e,
+ * between 1.6:1 and 3.6:1, all short of the 4.5:1 WCAG asks for. Same hues,
+ * darker, so GET still reads blue and DELETE red. The greyed-out state for
+ * operations the user can't call (above) keeps winning: it is !important.
+ */
+.swagger-spec-viewer .swagger-ui .opblock .opblock-summary-method {
+  text-shadow: none;
+}
+.swagger-spec-viewer .swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: #1b6fc4;
+}
+.swagger-spec-viewer .swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: #1f7a4d;
+}
+.swagger-spec-viewer .swagger-ui .opblock.opblock-put .opblock-summary-method {
+  background: #95591a;
+}
+.swagger-spec-viewer .swagger-ui .opblock.opblock-patch .opblock-summary-method {
+  background: #1f7267;
+}
+.swagger-spec-viewer .swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: #c2261a;
+}
