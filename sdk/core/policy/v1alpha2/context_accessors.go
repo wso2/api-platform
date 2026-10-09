@@ -86,6 +86,17 @@ func (c *RequestHeaderContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
+// PeerCertificate returns the connection's TLS facts, or nil; it is nil-safe.
+// Unlike the other accessors it never falls back to request headers, which a
+// caller could forge. A nil return must be treated as an authentication
+// failure, never as "no certificate required".
+func (c *RequestHeaderContext) PeerCertificate() *DownstreamTLS {
+	if c == nil || c.Downstream == nil {
+		return nil
+	}
+	return c.Downstream.TLS
+}
+
 // DownstreamRequest returns the client request snapshot, or the live request
 // values when the gateway does not provide a snapshot.
 func (c *RequestContext) DownstreamRequest() *DownstreamRequest {

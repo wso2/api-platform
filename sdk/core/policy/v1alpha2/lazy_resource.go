@@ -63,6 +63,10 @@ type LazyResourceStore struct {
 	resources map[string]*LazyResource
 	// Resources by type: Key: Resource Type → Value: map of resources by ID
 	resourcesByType map[string]map[string]*LazyResource
+	// version increases on every change to the stored set, so a reader that
+	// derives state from the resources can tell whether it is still current.
+	// Written only while mu is held for writing.
+	version uint64
 }
 
 // NewLazyResourceStore creates a new in-memory lazy resource store
@@ -79,6 +83,16 @@ func GetLazyResourceStoreInstance() *LazyResourceStore {
 		lazyResourceInstance = NewLazyResourceStore()
 	})
 	return lazyResourceInstance
+}
+
+// Version returns a number that increases every time the stored set changes
+// (ReplaceAll, StoreResource, and every removal). Readers that cache state
+// derived from the store compare it with the version they built from to know
+// when to rebuild.
+func (lrs *LazyResourceStore) Version() uint64 {
+	lrs.mu.RLock()
+	defer lrs.mu.RUnlock()
+	return lrs.version
 }
 
 // StoreResource stores a lazy resource in the in-memory cache
@@ -110,6 +124,7 @@ func (lrs *LazyResourceStore) StoreResource(resource *LazyResource) error {
 
 	// Store in type-specific map
 	lrs.addToTypeMapping(resource)
+	lrs.version++
 
 	return nil
 }
@@ -186,6 +201,7 @@ func (lrs *LazyResourceStore) RemoveResource(id string) error {
 
 	// Remove from type-specific map
 	lrs.removeFromTypeMapping(resourceToDelete)
+	lrs.version++
 
 	return nil
 }
@@ -206,6 +222,7 @@ func (lrs *LazyResourceStore) RemoveResourceByIDAndType(id, resourceType string)
 
 	// Remove from type-specific map
 	lrs.removeFromTypeMapping(resource)
+	lrs.version++
 
 	return nil
 }
@@ -228,6 +245,7 @@ func (lrs *LazyResourceStore) RemoveResourcesByType(resourceType string) error {
 
 	// Remove from type-specific map
 	delete(lrs.resourcesByType, resourceType)
+	lrs.version++
 
 	return nil
 }
@@ -242,6 +260,7 @@ func (lrs *LazyResourceStore) ClearAll() error {
 
 	// Clear the type-specific maps
 	lrs.resourcesByType = make(map[string]map[string]*LazyResource)
+	lrs.version++
 
 	return nil
 }
@@ -266,6 +285,7 @@ func (lrs *LazyResourceStore) ReplaceAll(resources []*LazyResource) error {
 
 		lrs.addToTypeMapping(resource)
 	}
+	lrs.version++
 
 	return nil
 }
