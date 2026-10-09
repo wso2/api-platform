@@ -209,6 +209,17 @@ describe('ContractSourceForm — automatic fetch', () => {
     expect(field).toHaveValue('https://example.com/openapi.yaml');
   });
 
+  it('reads a sample once, not again when the typing pause comes round', async () => {
+    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+
+    await user.click(screen.getByRole('button', { name: 'Try a sample' }));
+    await waitFor(() => expect(validateRequests.count()).toBe(1));
+    // Past the 700 ms typing pause, which used to ask again.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    expect(validateRequests.count()).toBe(1);
+  });
+
   it('reads a pasted URL straight away', async () => {
     const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
 

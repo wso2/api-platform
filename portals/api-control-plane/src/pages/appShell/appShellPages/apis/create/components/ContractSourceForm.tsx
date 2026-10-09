@@ -1467,17 +1467,28 @@ export const ContractSourceForm = ({
    * re-reading the document; and from discarding an edit made in the preview
    * since it was read.
    */
+  /**
+   * The read's current state, for asks that land after the render that
+   * scheduled them: the typing-pause timer would otherwise judge by state from
+   * before the read it duplicates had even started.
+   */
+  const readState = useRef({ backendValidationErrors, fetchError, fetched, fetching, request });
+  useEffect(() => {
+    readState.current = { backendValidationErrors, fetchError, fetched, fetching, request };
+  });
+
   const requestFetch = (values: ContractValues) => {
-    if (isSameContractSource(fetched?.values, values)) {
+    const current = readState.current;
+    if (isSameContractSource(current.fetched?.values, values)) {
       return;
     }
     // These exact values are already being read, or their verdict is still on
-    // screen: a second ask (the typing pause landing after Enter, or the blur
-    // after either) would only restart it. Editing a field clears the verdict,
-    // so a value typed away and back is checked again.
+    // screen: a second ask (the typing pause landing after Enter or a sample,
+    // or the blur after either) would only restart it. Editing a field clears
+    // the verdict, so a value typed away and back is checked again.
     if (
-      isSameContractSource(request ?? undefined, values) &&
-      (fetching || fetchError !== null || backendValidationErrors !== null)
+      isSameContractSource(current.request ?? undefined, values) &&
+      (current.fetching || current.fetchError !== null || current.backendValidationErrors !== null)
     ) {
       return;
     }
@@ -1702,8 +1713,8 @@ export const ContractSourceForm = ({
     }
     const timer = setTimeout(check, TYPING_PAUSE_MS);
     return () => clearTimeout(timer);
-    // Keyed on the value alone: requestFetch and committedSpecUrl read the
-    // state of the render that scheduled them, which is the one wanted here.
+    // Keyed on the value alone: requestFetch reads the read's latest state
+    // through a ref, so a stale closure can't duplicate a read in flight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractUrl.value, sourceKey]);
 
