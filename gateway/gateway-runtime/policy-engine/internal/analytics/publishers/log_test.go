@@ -652,12 +652,6 @@ func TestBuildGlobalDirective_DisabledReturnsNil(t *testing.T) {
 	assert.Nil(t, dir)
 }
 
-func TestBuildGlobalDirective_NoFieldsSelectionLeavesFieldsNil(t *testing.T) {
-	dir := buildGlobalDirective(config.TrafficLoggingConfig{Enabled: true})
-	require.NotNil(t, dir)
-	assert.Nil(t, dir.Fields)
-}
-
 // End-to-end: traffic_logging.properties resolves "$ctx:" expressions against
 // the event and emits them under the top-level "properties" object.
 func TestLog_Publish_GlobalFallback_PropertiesResolveCtx(t *testing.T) {

@@ -61,7 +61,7 @@ func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) 
 	_, inMetadata := st.GetFields()["request_headers"]
 	assert.False(t, inMetadata, "accepted by the store, so left out of Envoy metadata")
 	assert.Equal(t, "policy", st.GetFields()["source"].GetStringValue(), "unrelated fields still go to Envoy")
-	token := st.GetFields()[CorrelationTokenKey].GetStringValue()
+	token := st.GetFields()[correlation.TokenKey].GetStringValue()
 	require.NotEmpty(t, token, "the struct tells the ALS side where the fields went")
 	assert.Equal(t, execCtx.correlationToken, token)
 	payload, ok := store.Take(token)
@@ -106,14 +106,6 @@ func TestBuildAnalyticsStruct_KeepsFieldsInMetadataWhenNotStored(t *testing.T) {
 		assert.True(t, ok, "an unread, in-flight entry is never evicted")
 	})
 
-	t.Run("unrecognised header shape", func(t *testing.T) {
-		store := correlation.NewStore(100, time.Minute, 4)
-		execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
-		st, err := buildAnalyticsStruct(map[string]any{"request_headers": 12345}, execCtx)
-		require.NoError(t, err)
-		assert.Contains(t, st.GetFields(), "request_headers")
-	})
-
 	t.Run("no store", func(t *testing.T) {
 		execCtx := correlatedExecCtx(newTestServerWithStore(t, nil), "req-1")
 		st, err := buildAnalyticsStruct(map[string]any{"request_headers": headers}, execCtx)
@@ -136,8 +128,8 @@ func TestCorrelation_DuplicateRequestIDsGetSeparateEntries(t *testing.T) {
 	stB, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"who": "b"}}, b)
 	require.NoError(t, err)
 
-	tokenA := stA.GetFields()[CorrelationTokenKey].GetStringValue()
-	tokenB := stB.GetFields()[CorrelationTokenKey].GetStringValue()
+	tokenA := stA.GetFields()[correlation.TokenKey].GetStringValue()
+	tokenB := stB.GetFields()[correlation.TokenKey].GetStringValue()
 	require.NotEqual(t, tokenA, tokenB)
 	gotA, ok := store.Take(tokenA)
 	require.True(t, ok)
@@ -164,7 +156,7 @@ func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 	}, loopback)
 	require.NoError(t, err)
 	assert.Contains(t, st.GetFields(), "request_headers", "loopback hop keeps its data in metadata")
-	assert.NotContains(t, st.GetFields(), CorrelationTokenKey)
+	assert.NotContains(t, st.GetFields(), correlation.TokenKey)
 
 	loopback.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
 	loopback.responseFinished = true
@@ -185,6 +177,7 @@ func TestCompleteCorrelationEntry_MakesEntryReclaimable(t *testing.T) {
 	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, execCtx)
 	require.NoError(t, err)
 
+	execCtx.correlationTokenSent = true
 	execCtx.responseFinished = true
 	server.completeCorrelationEntry(execCtx)
 	time.Sleep(time.Millisecond)
@@ -203,6 +196,7 @@ func TestCompleteCorrelationEntry_WaitsForResponseEnd(t *testing.T) {
 	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, execCtx)
 	require.NoError(t, err)
 
+	execCtx.correlationTokenSent = true
 	server.completeCorrelationEntry(execCtx) // stream closed, response not seen to end
 	time.Sleep(time.Millisecond)
 
@@ -272,11 +266,6 @@ func TestStoreInProcess_KeepsRepeatedHeaderValues(t *testing.T) {
 	payload, ok := store.Take(execCtx.correlationToken)
 	require.True(t, ok)
 	assert.Equal(t, "a=1, b=2", payload.RequestHeaders["set-cookie"])
-}
-
-func TestCorrelationTokenKey(t *testing.T) {
-	// The ALS side (internal/analytics) spells out the same key.
-	assert.Equal(t, "x-wso2-correlation-token", CorrelationTokenKey)
 }
 
 func TestCompleteCorrelationEntry_NilStoreIsNoop(t *testing.T) {

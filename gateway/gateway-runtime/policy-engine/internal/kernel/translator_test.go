@@ -733,7 +733,7 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	_, sentToEnvoy := analyticsData.GetFields()["request_headers"]
 	assert.False(t, sentToEnvoy, "request_headers must not be sent to Envoy")
 	// ...because the store already holds it for the ALS handler.
-	stored, ok := store.Take(analyticsData.GetFields()[CorrelationTokenKey].GetStringValue())
+	stored, ok := store.Take(analyticsData.GetFields()[correlation.TokenKey].GetStringValue())
 	require.True(t, ok)
 	assert.Equal(t, "req-1", stored.RequestHeaders["x-request-id"])
 	// The immediate response's own (non-header) analytics metadata survives the

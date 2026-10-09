@@ -252,13 +252,18 @@ func main() {
 	}
 
 	// The ext_proc↔ALS correlation store (see internal/analytics/correlation) is
-	// only ever consulted while the collector is active -- when it's disabled,
-	// analytics.NewAnalytics never gets a store to read from either (see below),
-	// so building one here would just be a store nothing writes to and nothing
-	// reads from.
+	// only used while the collector is active, and only when the ext_proc and ALS
+	// streams of a request are guaranteed to reach this process (see
+	// config.CorrelationStoreConfig.Mode). Without a store, every captured field
+	// travels through Envoy metadata.
 	var corrStore *correlation.Store
-	if cfg.IsCollectorEnabled() {
+	if cfg.CorrelationStoreEnabled() {
 		corrStore = correlation.NewStoreFromConfig(cfg.Collector)
+	} else if cfg.IsCollectorEnabled() {
+		slog.InfoContext(ctx, "Correlation store disabled; captured headers and bodies travel through Envoy metadata",
+			"mode", cfg.Collector.CorrelationStore.Mode,
+			"policy_engine_server_mode", cfg.PolicyEngine.Server.Mode,
+			"collector_server_mode", cfg.Collector.Server.Mode)
 	}
 
 	// Create and start ext_proc gRPC server

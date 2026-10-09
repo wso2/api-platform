@@ -309,7 +309,7 @@ func (c *Analytics) GetFaultType() FaultCategory {
 
 // lookupCorrelationPayload takes this access-log entry's captured headers and
 // bodies from the ext_proc↔ALS correlation store. The key is the stream's
-// correlation token (CorrelationTokenKey), which the ext_proc handler puts in
+// correlation token (correlation.TokenKey), which the ext_proc handler puts in
 // analytics_data whenever it stored anything -- not Envoy's request id, which a
 // client can supply and repeat across concurrent requests.
 //
@@ -323,7 +323,7 @@ func (c *Analytics) lookupCorrelationPayload(metadata map[string]string) (correl
 	if c.correlationStore == nil {
 		return correlation.Payload{}, false
 	}
-	token := metadata[CorrelationTokenKey]
+	token := metadata[correlation.TokenKey]
 	if token == "" {
 		return correlation.Payload{}, false
 	}
@@ -334,26 +334,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	keyValuePairsFromMetadata := make(map[string]string)
 	typedValuePairsFromMetadata := make(map[string]interface{})
 
-	// Hoisted once per call so every debug log below that pre-formats its arguments
-	// (fmt.Sprintf) is guarded, instead of paying the formatting cost on every request
-	// regardless of whether debug logging is enabled. sv below is a *structpb.Struct;
-	// formatting it with "%+v" invokes its String() method, which runs a full prototext
-	// marshal of every metadata field -- alone this was 7.65% of profiled CPU with debug
-	// logging OFF. slog itself already defers formatting for calls that pass raw args
-	// (e.g. slog.Debug("msg", "key", val)), so only the fmt.Sprintf(...) call sites
-	// below strictly need this guard, but it's applied to the plain one too for
-	// consistency.
-	debugEnabled := slog.Default().Enabled(context.Background(), slog.LevelDebug)
-	if debugEnabled {
-		slog.Debug("Log entry: ", "logEntry", logEntry)
-	}
+	// Structured arguments only: slog formats them (including the prototext of the
+	// metadata struct below) only when debug logging is enabled.
+	slog.Debug("Log entry", "logEntry", logEntry)
 	if logEntry.CommonProperties != nil && logEntry.CommonProperties.Metadata != nil && logEntry.CommonProperties.Metadata.FilterMetadata != nil {
 		slog.Debug("Proceeding to filtering metadata")
 		if sv, exists := logEntry.CommonProperties.Metadata.FilterMetadata[constants.ExtProcFilterName]; exists {
 			if sv.Fields != nil {
-				if debugEnabled {
-					slog.Debug(fmt.Sprintf("Filter metadata: %+v", sv))
-				}
+				slog.Debug("Filter metadata", "metadata", sv)
 				for key, value := range sv.Fields {
 					if value != nil {
 						if key == "analytics_data" {
@@ -393,11 +381,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	storedPayload, storeHit := c.lookupCorrelationPayload(keyValuePairsFromMetadata)
 
 	event := &dto.Event{}
-	if debugEnabled {
-		for key, value := range keyValuePairsFromMetadata {
-			slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
-		}
-	}
+	slog.Debug("Analytics metadata", "values", keyValuePairsFromMetadata)
 
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
@@ -717,13 +701,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// no ext_proc stream at all -- or a genuine store miss), which is always a
 	// JSON string; downstream consumers (log.go, global_properties.go, moesif.go)
 	// accept both shapes.
-	if storeHit && len(storedPayload.RequestHeaders) > 0 {
-		event.Properties[dto.PropKeyRequestHeaders] = storedPayload.RequestHeaders
+	// A stored empty map is a deliberate "no headers" (filtered out in a later phase)
+	// and must not fall back to metadata.
+	if storeHit && storedPayload.RequestHeaders != nil {
+		if len(storedPayload.RequestHeaders) > 0 {
+			event.Properties[dto.PropKeyRequestHeaders] = storedPayload.RequestHeaders
+		}
 	} else if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
 		event.Properties[dto.PropKeyRequestHeaders] = requestHeaders
 	}
-	if storeHit && len(storedPayload.ResponseHeaders) > 0 {
-		event.Properties[dto.PropKeyResponseHeaders] = storedPayload.ResponseHeaders
+	if storeHit && storedPayload.ResponseHeaders != nil {
+		if len(storedPayload.ResponseHeaders) > 0 {
+			event.Properties[dto.PropKeyResponseHeaders] = storedPayload.ResponseHeaders
+		}
 	} else if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
 		event.Properties[dto.PropKeyResponseHeaders] = responseHeaders
 	}

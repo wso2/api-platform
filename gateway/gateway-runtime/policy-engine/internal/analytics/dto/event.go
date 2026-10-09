@@ -123,9 +123,8 @@ type Event struct {
 // publisher, built from [traffic_logging] config (see
 // publishers.buildGlobalDirective). A nil flow means that flow was not configured.
 type TrafficLogDirective struct {
-	Request  *TrafficLogFlow   `json:"request,omitempty"`
-	Response *TrafficLogFlow   `json:"response,omitempty"`
-	Fields   *TrafficLogFields `json:"fields,omitempty"`
+	Request  *TrafficLogFlow `json:"request,omitempty"`
+	Response *TrafficLogFlow `json:"response,omitempty"`
 	// Properties holds the resolved global properties (context references already
 	// expanded at request time). The Log publisher emits them as a top-level
 	// "properties" object on the log line.

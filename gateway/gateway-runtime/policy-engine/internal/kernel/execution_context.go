@@ -116,10 +116,35 @@ type PolicyExecutionContext struct {
 	// client -- and that must not start the entry's TTL.
 	responseFinished bool
 
+	// correlationEntryCreated is set once the store accepted a field for this
+	// stream, which creates its entry. Later fields only update that entry (see
+	// correlation.Store.Update), so a phase that runs after the ALS handler already
+	// took it cannot leave an orphan behind.
+	correlationEntryCreated bool
+
+	// correlationTokenSent is set once a response carrying the correlation token
+	// reached Envoy. A stream that ends with a token Envoy never received has an
+	// entry no access-log entry can point to, so its entry is discarded.
+	correlationTokenSent bool
+
+	// storedFields records the value of each field the store accepted, so a phase
+	// that re-sends an unchanged value (response phases re-send the request-phase
+	// analytics) does not merge it again.
+	storedFields map[string]any
+
 	// clientPath is the request's :path as the client sent it, before any policy
-	// rewrites it; matched against collector.ignore_path_prefixes the same way the
-	// controller's access-log filter matches the client-facing path.
+	// rewrites it; routedPath is the :path after the latest policy rewrite (empty
+	// when none). Envoy's access-log filter matches collector.ignore_path_prefixes
+	// against x-envoy-original-path, which the router sets from the path after
+	// ext_proc, so either can make Envoy skip the access-log entry.
 	clientPath string
+	routedPath string
+
+	// pathIgnored caches whether clientPath or routedPath is under
+	// collector.ignore_path_prefixes; pathIgnoredKnown is false until it is computed
+	// and again whenever routedPath changes.
+	pathIgnored      bool
+	pathIgnoredKnown bool
 
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without

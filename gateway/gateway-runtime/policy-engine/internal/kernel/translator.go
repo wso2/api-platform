@@ -688,6 +688,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -739,6 +740,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(merged.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -783,6 +785,7 @@ func TranslateRequestBodyActionsWithHeaderMerge(
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(merged.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -1284,6 +1287,7 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	}
 
 	// Add analytics metadata
+	execCtx.noteRoutedPath(rsl.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(rsl.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -1319,6 +1323,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	}
 
 	// Add analytics metadata
+	execCtx.noteRoutedPath(rsl.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(rsl.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)

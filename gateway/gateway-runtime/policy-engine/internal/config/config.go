@@ -78,6 +78,11 @@ const (
 	// protecting anything. Raise it if a single runtime instance legitimately carries
 	// more concurrency than this.
 	DefaultMaxConcurrentStreams uint32 = 10000
+
+	// CorrelationStoreMode* are the values of collector.correlation_store.mode.
+	CorrelationStoreModeAuto = "auto"
+	CorrelationStoreModeOn   = "on"
+	CorrelationStoreModeOff  = "off"
 )
 
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
@@ -158,6 +163,17 @@ type AnalyticsConfig struct {
 // limits trades memory against how often fields fall back to metadata -- not
 // against losing them.
 type CorrelationStoreConfig struct {
+	// Mode controls whether the store is used. The store only works when the
+	// ext_proc stream and the ALS stream of a request reach the same policy-engine
+	// process, which is guaranteed only when both run over UDS (policy_engine.server
+	// and collector.server in "uds" mode):
+	//   - "auto" (default, also when empty): used only when both are in "uds" mode. With "tcp", the
+	//     host may resolve to several policy-engine processes, so every field stays
+	//     in Envoy metadata.
+	//   - "on": always used. Only safe when router.policy_engine.host resolves to
+	//     exactly one policy-engine process.
+	//   - "off": never used; every field travels through Envoy metadata.
+	Mode string `koanf:"mode"`
 	// Capacity bounds the number of entries held across all shards combined: one
 	// per request from its first captured field until the ALS handler reads it.
 	// When a shard has no free slot, new requests keep their captured fields in
@@ -165,12 +181,15 @@ type CorrelationStoreConfig struct {
 	Capacity int `koanf:"capacity"`
 	// TTL is how long an entry whose response the ext_proc side saw finish waits
 	// for its access-log entry before its slot may be reclaimed for a new request.
-	// It only matters for entries that are never read, since the ALS handler
-	// normally reads an entry about a second after the request ends (Envoy's
-	// 1s/16KiB access-log buffer). An entry whose response was not seen to finish
-	// (for example a long streamed response after the ext_proc stream closed) is
-	// not affected by the TTL; it may only be reclaimed after a one-hour hard cap.
-	// Paths in collector.ignore_path_prefixes are not stored at all.
+	// The ALS handler normally reads an entry about a second after the request ends
+	// (Envoy's 1s/16KiB access-log buffer). An entry reclaimed before it is read
+	// loses its fields, so the TTL must exceed collector.server.buffer_flush_interval
+	// (validated) plus any backlog of the access-log consumers. An entry whose
+	// response was not seen to finish (for example a long streamed response after
+	// the ext_proc stream closed) is not affected by the TTL; it may only be
+	// reclaimed after a one-hour hard cap. Reclaiming happens only when the slot or
+	// body bytes are needed, and is counted by the evictions metric. Paths in
+	// collector.ignore_path_prefixes are not stored at all.
 	TTL time.Duration `koanf:"ttl"`
 	// Shards is the number of independently-locked partitions the store is split
 	// into, selected by hashing the per-stream correlation token. A single mutex
@@ -1036,6 +1055,10 @@ type AccessLogsServiceConfig struct {
 	ALSPlainText          bool          `koanf:"als_plain_text"`
 	ExtProcMaxMessageSize int           `koanf:"max_message_size"`
 	ExtProcMaxHeaderLimit int           `koanf:"max_header_limit"`
+	// BufferFlushInterval is Envoy's access-log flush interval in nanoseconds. The
+	// gateway-controller configures Envoy with it; the policy engine reads it only to
+	// check that collector.correlation_store.ttl is longer.
+	BufferFlushInterval int64 `koanf:"buffer_flush_interval"`
 }
 
 // Load loads configuration from one or more files layered over built-in defaults.
@@ -1220,6 +1243,7 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 		ALSPlainText:          true,
 		ExtProcMaxMessageSize: 1000000000,
 		ExtProcMaxHeaderLimit: 8192,
+		BufferFlushInterval:   int64(time.Second),
 	}
 }
 
@@ -1227,6 +1251,7 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 // tuning. See CorrelationStoreConfig for the reasoning behind each default.
 func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 	return CorrelationStoreConfig{
+		Mode:            CorrelationStoreModeAuto,
 		Capacity:        20000,
 		TTL:             30 * time.Second,
 		Shards:          32,
@@ -1917,6 +1942,12 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 // tuning. Only called while the collector is active (see call site in Validate).
 func (c *Config) validateCorrelationStoreConfig() error {
 	corr := c.Collector.CorrelationStore
+	switch corr.Mode {
+	case "", CorrelationStoreModeAuto, CorrelationStoreModeOn, CorrelationStoreModeOff:
+	default:
+		return fmt.Errorf("collector.correlation_store.mode must be %q, %q or %q, got %q",
+			CorrelationStoreModeAuto, CorrelationStoreModeOn, CorrelationStoreModeOff, corr.Mode)
+	}
 	if corr.Capacity <= 0 {
 		return fmt.Errorf("collector.correlation_store.capacity must be positive, got %d", corr.Capacity)
 	}
@@ -1941,7 +1972,30 @@ func (c *Config) validateCorrelationStoreConfig() error {
 	if corr.MaxBodyBytes < 0 {
 		return fmt.Errorf("collector.correlation_store.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
 	}
+	// An entry is reclaimable once its response finished more than the TTL ago, so a
+	// TTL at or below Envoy's access-log flush interval could reclaim entries before
+	// their access-log entry is even sent.
+	if flush := time.Duration(c.Collector.Server.BufferFlushInterval); flush > 0 && corr.TTL <= flush {
+		return fmt.Errorf("collector.correlation_store.ttl (%s) must be longer than collector.server.buffer_flush_interval (%s)", corr.TTL, flush)
+	}
 	return nil
+}
+
+// CorrelationStoreEnabled reports whether the ext_proc->ALS correlation store is
+// used (see CorrelationStoreConfig.Mode). It is never used while the collector is
+// disabled.
+func (c *Config) CorrelationStoreEnabled() bool {
+	if !c.IsCollectorEnabled() {
+		return false
+	}
+	switch c.Collector.CorrelationStore.Mode {
+	case CorrelationStoreModeOn:
+		return true
+	case CorrelationStoreModeOff:
+		return false
+	default:
+		return c.PolicyEngine.Server.Mode != "tcp" && c.Collector.Server.Mode != "tcp"
+	}
 }
 
 // validateAnalyticsConfig validates the analytics consumer configuration (publishers).

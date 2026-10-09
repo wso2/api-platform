@@ -803,13 +803,25 @@ max_header_limit = 8192
 # full, fields simply stay in metadata. These limits trade memory for speed, never
 # for lost data. Requests on collector.ignore_path_prefixes are not stored.
 [collector.correlation_store]
+# Whether captured headers and bodies are handed to the access-log side in-process
+# instead of through Envoy metadata. This needs the ext_proc and access-log streams
+# of a request to reach the same policy-engine process.
+#   "auto" (default): on only when policy_engine.server and collector.server both
+#          use "uds" mode; in "tcp" mode the host may resolve to several processes.
+#   "on":  always on. Only safe when router.policy_engine.host resolves to exactly
+#          one policy-engine process.
+#   "off": always use Envoy metadata.
+mode = "auto"
 # Total entries held across all shards combined: one per request, from its first
 # captured field until its access-log entry is processed.
 capacity = 20000
 # How long an entry whose response has finished waits for its access-log entry
-# before its slot may be reused. Only entries that are never read are affected;
-# the read normally follows about a second after the request ends. An entry whose
-# response is still streaming is not affected (one-hour hard cap instead).
+# before its slot may be reused for another request. The read normally follows
+# about a second after the request ends. An entry reused before it is read loses
+# its captured headers and bodies (counted by the evictions metric), so keep this
+# well above collector.server.buffer_flush_interval (validated) and any backlog of
+# the access-log consumers. An entry whose response is still streaming is not
+# affected (one-hour hard cap instead).
 ttl = "30s"
 # Independently-locked partitions, selected by hashing the per-stream correlation
 # token. Rounded up to the next power of two if not one already; at most 1024 and

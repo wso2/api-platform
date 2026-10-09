@@ -31,22 +31,33 @@
 // handler stash the already-typed values directly, and the ALS handler fetch them
 // back by that token instead of decoding Envoy's echo.
 //
-// Delivery is preserved, not best effort: a field is left out of Envoy metadata
-// only after Merge has accepted it, and Merge runs before the ext_proc response
-// that would otherwise have carried the field is sent. Envoy cannot log the request
-// before it has that response, so the access-log entry can never arrive ahead of
-// the data. When the store cannot accept a field (no free slot, or a body over the
-// size or byte budget), Merge refuses it and the caller keeps it in metadata, the
-// pre-store path. Entries the ALS handler has not read yet are not evicted while
-// their request can still be logged. An entry becomes reclaimable, when its slot
-// is needed, only once (a) the ext_proc side saw the response finish (Complete)
-// more than the TTL ago, or (b) it has existed for longer than the hard cap (an
-// hour, or the TTL if longer) -- in practice a request whose access-log entry is
-// never sent. The ext_proc stream can end before the response does (when body
-// processing is skipped, Envoy closes it after the response headers while the
-// body is still streaming), so stream end alone never starts the TTL. Paths in
-// collector.ignore_path_prefixes, whose access-log entry Envoy never sends, are
-// not stored at all (see IgnoresPath).
+// Ordering: a field is left out of Envoy metadata only after Merge has accepted
+// it, and Merge runs before the ext_proc response that would otherwise have
+// carried the field is sent. Envoy cannot log the request before it has that
+// response, so the access-log entry can never arrive ahead of the data. When the
+// store cannot accept a field (no free slot, or a body over the size or byte
+// budget), Merge refuses it and the caller keeps it in metadata, the pre-store
+// path.
+//
+// Retention: an unread entry is never dropped while it is fresh. It becomes
+// reclaimable, and only when its slot or body bytes are needed for another
+// request, once (a) the ext_proc side saw the response finish (Complete) more
+// than the TTL ago, or (b) it has existed for longer than the hard cap (an hour,
+// or the TTL if longer). The ext_proc stream can end before the response does
+// (when body processing is skipped, Envoy closes it after the response headers
+// while the body is still streaming), so stream end alone never starts the TTL.
+// Fields of a reclaimed entry are gone: they were already left out of metadata.
+// That happens only under store pressure combined with an access-log entry that
+// is late by more than the TTL (a stalled ALS consumer, or an Envoy access-log
+// flush interval above the TTL, which config validation rejects) or with a
+// response that streams for longer than the hard cap. Each case is counted by
+// the evictions metric.
+//
+// Scope: the store only works when the ext_proc stream and the ALS stream for a
+// request reach the same policy-engine process. The policy engine enables it only
+// when that is guaranteed (see config.CorrelationStoreConfig.Mode). Paths in
+// collector.ignore_path_prefixes, whose access-log entry Envoy never sends, are not
+// stored at all (see IgnoresPath).
 //
 // A lookup miss is an expected, non-error outcome: an HTTPAccessLogEntry is also
 // produced for requests that never had an ext_proc stream (no-route 404s,
@@ -65,6 +76,13 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
+// TokenKey is the analytics_data key that carries a stream's correlation token
+// from the ext_proc handler to the ALS handler. Both sides use this one constant.
+// It is reserved: the ext_proc side drops it from policy-supplied analytics
+// metadata, so a policy cannot point a request's access-log entry at another
+// request's stored fields.
+const TokenKey = "x-wso2-correlation-token"
+
 // Payload is the in-process analytics data captured by the ext_proc handler for
 // one request and looked up by the ALS handler when that request's access-log
 // entry arrives. Only the fields that used to make the Envoy round trip described
@@ -77,6 +95,9 @@ import (
 // defensive copy, to avoid an allocation on every access-log entry); callers must
 // likewise only read them, never mutate in place.
 type Payload struct {
+	// RequestHeaders/ResponseHeaders are nil when not captured. A non-nil empty map
+	// is a deliberate "no headers" (for example, every header filtered out by an
+	// analytics header filter in a later phase) and replaces any earlier value.
 	RequestHeaders  map[string]string
 	ResponseHeaders map[string]string
 	// RequestBody/ResponseBody are captured payloads (collector.request_body /
@@ -88,9 +109,9 @@ type Payload struct {
 	ResponseBody string
 }
 
-// IsEmpty reports whether payload carries nothing worth storing.
+// IsEmpty reports whether payload carries nothing to record.
 func (p Payload) IsEmpty() bool {
-	return len(p.RequestHeaders) == 0 && len(p.ResponseHeaders) == 0 &&
+	return p.RequestHeaders == nil && p.ResponseHeaders == nil &&
 		p.RequestBody == "" && p.ResponseBody == ""
 }
 
@@ -100,13 +121,15 @@ func (p Payload) bodyBytes() int64 {
 	return int64(len(p.RequestBody) + len(p.ResponseBody))
 }
 
-// mergeInto overlays p's non-empty fields onto dst, field by field, so the
-// request and response phases of one request can each contribute their own.
+// mergeInto overlays p's set fields onto dst, field by field, so the request and
+// response phases of one request can each contribute their own. A set header map
+// replaces the earlier one even when empty, so a later phase can narrow or clear
+// headers an earlier phase captured.
 func (p Payload) mergeInto(dst *Payload) {
-	if len(p.RequestHeaders) > 0 {
+	if p.RequestHeaders != nil {
 		dst.RequestHeaders = p.RequestHeaders
 	}
-	if len(p.ResponseHeaders) > 0 {
+	if p.ResponseHeaders != nil {
 		dst.ResponseHeaders = p.ResponseHeaders
 	}
 	if p.RequestBody != "" {
@@ -318,12 +341,32 @@ func (s *Store) shardFor(key string) *shard {
 // Merge never evicts an entry the ALS handler has not read, other than a
 // reclaimable one (see the package doc).
 func (s *Store) Merge(key string, p Payload) bool {
+	return s.merge(key, p, true)
+}
+
+// Update is Merge for a key whose entry must already exist: it never creates one.
+// The ext_proc side uses it once a stream's entry has been created, so a phase that
+// runs after the ALS handler already took the entry (for example after an Envoy
+// message timeout) cannot leave behind an entry nobody will read. On false the
+// caller keeps the fields in Envoy metadata.
+func (s *Store) Update(key string, p Payload) bool {
+	return s.merge(key, p, false)
+}
+
+func (s *Store) merge(key string, p Payload, create bool) bool {
 	if key == "" || p.IsEmpty() {
 		return false
 	}
-	if len(p.RequestBody) > s.maxPayloadBytes || len(p.ResponseBody) > s.maxPayloadBytes {
-		s.rejectedBudgetTotal.Inc()
-		return false
+	if p.RequestBody != "" || p.ResponseBody != "" {
+		if s.maxPayloadBytes == 0 {
+			// Body storage is disabled (max_payload_bytes or max_body_bytes is 0):
+			// bodies stay in metadata by configuration, which is not a rejection.
+			return false
+		}
+		if len(p.RequestBody) > s.maxPayloadBytes || len(p.ResponseBody) > s.maxPayloadBytes {
+			s.rejectedBudgetTotal.Inc()
+			return false
+		}
 	}
 
 	sh := s.shardFor(key)
@@ -333,6 +376,9 @@ func (s *Store) Merge(key string, p Payload) bool {
 	defer sh.mu.Unlock()
 
 	e := sh.entries[key]
+	if e == nil && !create {
+		return false
+	}
 	var delta int64
 	if e != nil {
 		updated := e.payload
@@ -490,6 +536,20 @@ func (s *Store) Take(key string) (Payload, bool) {
 	}
 	s.hitTotal.Inc()
 	return payload, true
+}
+
+// Discard removes key's entry, if any, without reading it and without touching the
+// read metrics. For an entry the ALS handler can never read.
+func (s *Store) Discard(key string) {
+	if key == "" {
+		return
+	}
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	if e, ok := sh.entries[key]; ok {
+		sh.remove(e)
+	}
+	sh.mu.Unlock()
 }
 
 // Has reports whether key currently has an entry, without reading or removing its

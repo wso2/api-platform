@@ -111,9 +111,7 @@ func NewMoesif(moesifCfg *config.MoesifPublisherConfig) *Moesif {
 			case <-ticker.C:
 				moesif.mu.Lock()
 				if len(moesif.events) > 0 {
-					if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-						slog.Debug(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
-					}
+					slog.Debug("Publishing events to Moesif", "count", len(moesif.events))
 					err := moesif.api.QueueEvents(moesif.events)
 					if err != nil {
 						slog.Error("Error publishing events to Moesif", "error", err)
@@ -454,11 +452,6 @@ func (m *Moesif) Publish(event *dto.Event) {
 		A2a:      a2aBlock,
 	}
 	m.events = append(m.events, eventModel)
-	// Guarded: this runs once per request when the Moesif publisher is configured, and
-	// fmt.Sprintf would otherwise format unconditionally even with debug logging off (see
-	// the identical fix in internal/analytics/analytics.go's prepareAnalyticEvent).
-	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		slog.Debug(fmt.Sprintf("Event added to the queue. Queue size: %d", len(m.events)))
-	}
+	slog.Debug("Event added to the queue", "queueSize", len(m.events))
 	slog.Debug("Events", "events", m.events)
 }

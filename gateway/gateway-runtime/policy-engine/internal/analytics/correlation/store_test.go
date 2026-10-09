@@ -355,3 +355,70 @@ func TestStore_IgnoresPath(t *testing.T) {
 	var nilStore *Store
 	assert.False(t, nilStore.IgnoresPath("/health"))
 }
+
+// A set but empty header map replaces the stored one: a later phase filtered every
+// header out, and the earlier, unfiltered set must not be logged.
+func TestStore_EmptyHeaderMapReplacesStoredHeaders(t *testing.T) {
+	s := NewStore(100, time.Minute, 4)
+	require.True(t, s.Merge("req-1", Payload{RequestHeaders: map[string]string{"authorization": "secret"}}))
+	require.True(t, s.Merge("req-1", Payload{RequestHeaders: map[string]string{}}))
+
+	got, ok := s.Take("req-1")
+	require.True(t, ok)
+	require.NotNil(t, got.RequestHeaders)
+	assert.Empty(t, got.RequestHeaders)
+}
+
+// A nil header map is "not captured" and leaves the stored value alone.
+func TestStore_NilHeaderMapKeepsStoredHeaders(t *testing.T) {
+	s := NewStore(100, time.Minute, 4)
+	require.True(t, s.Merge("req-1", Payload{RequestHeaders: map[string]string{"a": "b"}}))
+	require.False(t, s.Merge("req-1", Payload{ResponseBody: ""}), "an empty payload is not recorded")
+	require.True(t, s.Merge("req-1", Payload{ResponseHeaders: map[string]string{"c": "d"}}))
+
+	got, ok := s.Take("req-1")
+	require.True(t, ok)
+	assert.Equal(t, "b", got.RequestHeaders["a"])
+	assert.Equal(t, "d", got.ResponseHeaders["c"])
+}
+
+func TestStore_UpdateNeverCreatesAnEntry(t *testing.T) {
+	s := NewStore(100, time.Minute, 4)
+	assert.False(t, s.Update("req-1", Payload{RequestHeaders: map[string]string{"a": "b"}}))
+	assert.False(t, s.Has("req-1"))
+
+	require.True(t, s.Merge("req-1", Payload{RequestHeaders: map[string]string{"a": "b"}}))
+	assert.True(t, s.Update("req-1", Payload{ResponseHeaders: map[string]string{"c": "d"}}))
+	got, ok := s.Take("req-1")
+	require.True(t, ok)
+	assert.Equal(t, "d", got.ResponseHeaders["c"])
+}
+
+func TestStore_DiscardRemovesEntryAndBodyBytes(t *testing.T) {
+	s := NewStoreWithBodyLimits(100, time.Minute, 1, 1024, 1024)
+	require.True(t, s.Merge("req-1", Payload{RequestBody: "body"}))
+	s.Discard("req-1")
+	assert.False(t, s.Has("req-1"))
+	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
+}
+
+type countingCounter struct{ n float64 }
+
+func (c *countingCounter) Inc()          { c.n++ }
+func (c *countingCounter) Add(v float64) { c.n += v }
+
+// With body storage disabled, bodies stay in metadata by configuration; that is
+// not a budget rejection and must not be counted as one.
+func TestStore_DisabledBodiesAreNotCountedAsRejected(t *testing.T) {
+	s := NewStoreWithBodyLimits(100, time.Minute, 4, 0, 0)
+	budget := &countingCounter{}
+	s.rejectedBudgetTotal = budget
+
+	assert.False(t, s.Merge("req-1", Payload{RequestBody: "body"}))
+	assert.Equal(t, float64(0), budget.n)
+
+	limited := NewStoreWithBodyLimits(100, time.Minute, 4, 2, 1024)
+	limited.rejectedBudgetTotal = budget
+	assert.False(t, limited.Merge("req-1", Payload{RequestBody: "too long"}))
+	assert.Equal(t, float64(1), budget.n, "a body over the per-body limit is still counted")
+}
