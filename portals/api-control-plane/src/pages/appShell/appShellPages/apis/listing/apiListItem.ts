@@ -17,7 +17,7 @@
  */
 
 import type { GraphQLApiListItem } from '@/api/resources/graphqlApis';
-import { REST_API_TYPE } from '@/api/resources/apiPublications';
+import { GRAPHQL_API_TYPE, REST_API_TYPE } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 
 /**
@@ -46,4 +46,4 @@ export const toGraphQLListableApi = (api: GraphQLApiListItem): ListableApi => ({
 
 /** The `{apiType}` path segment for type-keyed endpoints such as `/apis/{apiType}/{apiId}/thumbnail`. */
 export const thumbnailApiType = (api: ListableApi): string =>
-  api.apiType === 'graphql' ? 'graphql-api' : REST_API_TYPE;
+  api.apiType === 'graphql' ? GRAPHQL_API_TYPE : REST_API_TYPE;

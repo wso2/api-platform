@@ -16,12 +16,13 @@
  * under the License.
  */
 
+import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aGraphQLApiDetail, resource } from '@/test/msw';
+import { aGraphQLApiDetail, apiUrl, listEnvelope, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -31,7 +32,11 @@ const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
 const API = 'countries-graphql-api';
 
-const api = aGraphQLApiDetail({ displayName: 'Countries GraphQL API', id: API, projectId: PROJECT });
+const api = aGraphQLApiDetail({
+  displayName: 'Countries GraphQL API',
+  id: API,
+  projectId: PROJECT,
+});
 
 function renderPage() {
   return renderWithProviders(
@@ -55,14 +60,20 @@ beforeEach(() => {
 });
 
 describe('GraphqlDevelopDocumentsPage', () => {
-  it('shows the coming-soon placeholder', async () => {
-    server.use(resource('/graphql-apis/:graphqlApiId', api));
+  it("lists this GraphQL API's documents under the graphql-api type", async () => {
+    let requestedPath: string | undefined;
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      http.get(apiUrl('/apis/:apiType/:apiId/docs'), ({ request }) => {
+        requestedPath = new URL(request.url).pathname;
+        return HttpResponse.json(listEnvelope([], { limit: 10, offset: 0, total: 0 }));
+      }),
+    );
 
     renderPage();
 
-    expect(
-      await screen.findByText('Documents for this API will be available soon.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('No Documents available for this API')).toBeInTheDocument();
+    expect(requestedPath).toMatch(new RegExp(`/apis/graphql-api/${API}/docs$`));
   });
 
   it('shows an error state when the API cannot be found', async () => {

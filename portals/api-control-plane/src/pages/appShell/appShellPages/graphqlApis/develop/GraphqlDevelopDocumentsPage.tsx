@@ -20,6 +20,7 @@ import { defineMessages, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
+import { GRAPHQL_API_TYPE } from '@/api/resources/apiPublications';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { DocumentsPanel } from '../../develop/documents/DocumentsPanel';
@@ -37,13 +38,11 @@ const messages = defineMessages({
 });
 
 /**
- * Fork of `develop/documents/DocumentsPage.tsx` for a GraphQL API. `Documents`
- * has no backend concept for either API kind today, so this renders the same
- * `DocumentsPanel` REST's own page does — it takes no props and has no
- * REST-specific logic, so it is reused directly rather than duplicated. No
- * `ScopeGate`: this route lives outside `ConsoleScopeProvider`'s REST-only
- * api-scope matching (see `graphqlApiPath`), so it guards on its own route
- * param instead.
+ * Develop › Documents for a GraphQL API. Reuses REST's `DocumentsPanel`, which
+ * is keyed by `{apiType}`, passing `graphql-api` and this route's own handle —
+ * this route sits outside `ConsoleScopeProvider`'s REST-only api-scope
+ * matching (see `graphqlApiPath`), so there is no API in scope to fall back
+ * on. No `ScopeGate` for the same reason: it guards on its own route param.
  */
 export function GraphqlDevelopDocumentsPage() {
   return (
@@ -64,5 +63,5 @@ function GraphqlDevelopDocumentsPageContent() {
   if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
   if (!apiQuery.data) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
 
-  return <DocumentsPanel />;
+  return <DocumentsPanel apiHandle={graphqlApiHandler} apiType={GRAPHQL_API_TYPE} />;
 }
