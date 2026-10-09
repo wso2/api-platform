@@ -18,7 +18,7 @@
 
 import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { DefineApiPanel } from './components/DefineApiPanel';
@@ -121,6 +121,18 @@ const ApiCreationWizardContent = () => {
     () => API_TYPES.find((candidate) => candidate.enabled) ?? null,
   );
   const [sourceDraft, setSourceDraft] = useState<ApiCreationWizardDraftState | null>(null);
+  /**
+   * Steps stay mounted once visited and are only hidden, so Back and Next keep
+   * what was entered on them rather than rebuilding each screen.
+   */
+  const [visited, setVisited] = useState<{ configure: boolean; source: boolean }>({
+    configure: false,
+    source: false,
+  });
+  /** The source draft the details step was last filled from. */
+  const configuredFromRef = useRef<ApiCreationWizardDraftState | null>(null);
+  /** Bumped when the details step must start over from a new source. */
+  const [configureKey, setConfigureKey] = useState(0);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
   /**
@@ -178,12 +190,20 @@ const ApiCreationWizardContent = () => {
    */
   const continueFromSource = () => {
     if (sourceDraft === null) return;
-    setPrefilledData(sourceDraft);
-    setSubmittedValues(null);
-    setServerErrors(null);
-    setIdentifierEdited(false);
-    setBasePathEdited(false);
-    setUpstreamEdited(false);
+    // The same source as last time: the details step keeps the user's edits.
+    // A different one changes what those edits were made against, so
+    // everything after the source starts over.
+    if (sourceDraft !== configuredFromRef.current) {
+      configuredFromRef.current = sourceDraft;
+      setPrefilledData(sourceDraft);
+      setSubmittedValues(null);
+      setServerErrors(null);
+      setIdentifierEdited(false);
+      setBasePathEdited(false);
+      setUpstreamEdited(false);
+      setConfigureKey((key) => key + 1);
+    }
+    setVisited((previous) => ({ ...previous, configure: true }));
     setStep('configure');
   };
 
@@ -205,6 +225,17 @@ const ApiCreationWizardContent = () => {
   const [submittedValues, setSubmittedValues] = useState<GeneralApiCreationFormState | null>(null);
   /** Whether the progress screen stands in for the form. */
   const [creationStarted, setCreationStarted] = useState(false);
+
+  /**
+   * Leaves the progress screen for the details form. The form is remounted
+   * from `submittedValues`, so it starts from exactly what was sent: that is
+   * how it tells a server complaint that still stands from one the user has
+   * since edited away. The steps before it are left as they were.
+   */
+  const returnToForm = () => {
+    setConfigureKey((key) => key + 1);
+    setCreationStarted(false);
+  };
 
   const createApi = (values: GeneralApiCreationFormState) => {
     // A fresh attempt supersedes the previous rejection, so nothing stale is
@@ -261,7 +292,7 @@ const ApiCreationWizardContent = () => {
       onError: (error) => {
         const apiError = error as ApiError;
         if (apiError.status === 413 || apiError.code === 'PAYLOAD_TOO_LARGE') {
-          setCreationStarted(false);
+          returnToForm();
           setServerErrors({
             fields: {},
             message: intl.formatMessage(messages.specTooLarge),
@@ -271,7 +302,7 @@ const ApiCreationWizardContent = () => {
         }
         const formErrors = toCreateApiFormErrors(apiError);
         if (formErrors) {
-          setCreationStarted(false);
+          returnToForm();
           setServerErrors(formErrors);
         }
       },
@@ -323,33 +354,35 @@ const ApiCreationWizardContent = () => {
       ? 'created'
       : 'creating';
 
-  if (creationStarted && submittedValues) {
-    return (
-      <ApiCreationProgress
-        displayName={submittedValues.displayName}
-        onBack={() => {
-          importOpenApiMutation.reset();
-          // Only the screen goes back; `submittedValues` stays so the form
-          // returns to what was typed rather than to the imported draft.
-          setCreationStarted(false);
-        }}
-        onComplete={goToCreatedApi}
-        onRetry={() => createApi(submittedValues)}
-        status={creationStatus}
-      />
-    );
-  }
+  // The progress screen stands in front of the wizard rather than replacing
+  // it, so coming back from a failed create finds every step as it was left.
+  const showProgress = creationStarted && submittedValues !== null;
+  const progress = showProgress ? (
+    <ApiCreationProgress
+      displayName={submittedValues.displayName}
+      onBack={() => {
+        importOpenApiMutation.reset();
+        // Only the screen goes back; `submittedValues` stays so the form
+        // returns to what was typed rather than to the imported draft.
+        returnToForm();
+      }}
+      onComplete={goToCreatedApi}
+      onRetry={() => createApi(submittedValues)}
+      status={creationStatus}
+    />
+  ) : null;
 
   const stepNumber = step === 'apiType' ? 1 : step === 'source' ? 2 : 3;
 
   return (
     <Stack spacing={2} sx={{ width: '100%' }}>
+      {progress}
       <Box
         sx={{
           border: 1,
           borderColor: 'divider',
           borderRadius: 1,
-          display: 'flex',
+          display: showProgress ? 'none' : 'flex',
           flexDirection: 'column',
           minHeight: 620,
           overflow: 'hidden',
@@ -392,16 +425,28 @@ const ApiCreationWizardContent = () => {
                 />
               )}
 
-              {step !== 'apiType' && (
+              {visited.source && (
                 <Box sx={{ display: step === 'source' ? 'block' : 'none' }}>
-                  {/* Kept mounted during configuration so Back preserves the selected source and edits. */}
-                  <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+                  {/* Kept mounted once visited, so Back preserves the selected
+                    source and its edits. A different API type is a different
+                    source, so it starts the panel over. */}
+                  <DefineApiPanel
+                    initialApiTypeKey={apiType?.key}
+                    key={apiType?.key ?? 'none'}
+                    onDraftChange={setSourceDraft}
+                  />
                 </Box>
               )}
 
-              {step === 'configure' && (
-                <Box sx={{ maxWidth: '80%' }}>
+              {visited.configure && (
+                <Box
+                  sx={{
+                    display: step === 'configure' ? 'block' : 'none',
+                    maxWidth: { md: '80%', xs: '100%' },
+                  }}
+                >
                   <GeneralCreateApiForm
+                    key={configureKey}
                     formId={CONFIGURE_FORM_ID}
                     hideActions
                     // What the user actually submitted, when there is such an
@@ -445,7 +490,7 @@ const ApiCreationWizardContent = () => {
                 {intl.formatMessage(messages.stepCount, { current: stepNumber })}
               </Typography>
               {/* The wizard hides breadcrumbs and has no other exit, so
-                  leaving used to mean the browser's Back or the sidebar. */}
+                leaving used to mean the browser's Back or the sidebar. */}
               {params.orgHandle && params.projectHandler && (
                 <Button
                   color="inherit"
@@ -468,12 +513,7 @@ const ApiCreationWizardContent = () => {
                 {intl.formatMessage(messages.back)}
               </Button>
               {step === 'configure' ? (
-                <Button
-                  form={CONFIGURE_FORM_ID}
-                  key="create-api"
-                  type="submit"
-                  variant="contained"
-                >
+                <Button form={CONFIGURE_FORM_ID} key="create-api" type="submit" variant="contained">
                   {intl.formatMessage({
                     id: 'api.create.generalForm.action.create',
                     defaultMessage: 'Create',
@@ -485,8 +525,10 @@ const ApiCreationWizardContent = () => {
                   endIcon={<ArrowRight size={16} />}
                   key="continue-wizard"
                   onClick={() => {
-                    if (step === 'apiType') setStep('source');
-                    else continueFromSource();
+                    if (step === 'apiType') {
+                      setVisited((previous) => ({ ...previous, source: true }));
+                      setStep('source');
+                    } else continueFromSource();
                   }}
                   type="button"
                   variant="contained"
@@ -498,7 +540,7 @@ const ApiCreationWizardContent = () => {
           </Stack>
         </Stack>
       </Box>
-      {step === 'apiType' && <ApiDesignerBanner />}
+      {step === 'apiType' && !showProgress && <ApiDesignerBanner />}
     </Stack>
   );
 };

@@ -90,6 +90,11 @@ export type ApiResourcesPreviewProps = {
    */
   onSpecChange?: (spec: SpecDocument, rawText: string) => void;
   /**
+   * Said in place of the empty state while a spec is on its way, e.g.
+   * "Fetching your spec…", so the pane doesn't read as idle.
+   */
+  pending?: { description: string; title: string };
+  /**
    * The original uploaded or downloaded spec text. When present the Source
    * view shows exactly what the user gave us — preserving YAML format,
    * comments, and anchors — rather than a re-serialized copy.
@@ -122,6 +127,7 @@ export const ApiResourcesPreview = ({
   onBeforeSave,
   onEditingChange,
   onSpecChange,
+  pending,
   rawText,
   spec,
   warnings,
@@ -296,7 +302,9 @@ export const ApiResourcesPreview = ({
           </Box>
         ) : null}
 
-        {hasContract ? null : <ResourcePreviewPlaceholder />}
+        {hasContract ? null : (
+          <ResourcePreviewPlaceholder description={pending?.description} title={pending?.title} />
+        )}
       </Box>
     </Box>
   );

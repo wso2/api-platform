@@ -18,7 +18,10 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { renderWithProviders, screen } from '@/test/utils';
+import { resetHttpClient } from '@/api/core/http';
+import { accepts } from '@/test/msw';
+import { server } from '@/test/server';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { DefineApiPanel } from './DefineApiPanel';
 
 vi.mock('swagger-ui-react', () => ({ default: () => null }));
@@ -86,6 +89,60 @@ describe('DefineApiPanel — start from scratch', () => {
     expect(screen.queryByText(/doesn’t look like a URL yet/)).not.toBeInTheDocument();
     expect(onDraftChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ displayName: 'Orders', version: '2.0.0' }),
+    );
+  });
+});
+
+describe('DefineApiPanel — the two tabs', () => {
+  const SPEC = 'openapi: 3.0.0\ninfo:\n  title: Orders\n  version: "1.0"\npaths: {}\n';
+
+  it('offers a spec link to the spec tab, and carries it across', async () => {
+    resetHttpClient();
+    server.use(
+      accepts('post', '/rest-apis/validate-openapi', { content: SPEC, errors: [], isValid: true }),
+    );
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
+
+    await user.type(screen.getByLabelText(/Backend URL/), 'https://example.com/openapi.yaml');
+    await user.click(screen.getByRole('button', { name: 'Import it as a spec instead' }));
+
+    expect(screen.getByLabelText(/Spec URL/)).toHaveValue('https://example.com/openapi.yaml');
+  });
+
+  it('makes no such offer for a running API’s address', async () => {
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={vi.fn()} />);
+
+    await user.type(screen.getByLabelText(/Backend URL/), 'https://api.example.com/v1');
+
+    expect(
+      screen.queryByRole('button', { name: 'Import it as a spec instead' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps what each tab holds when switching between them', async () => {
+    resetHttpClient();
+    server.use(
+      accepts('post', '/rest-apis/validate-openapi', { content: SPEC, errors: [], isValid: true }),
+    );
+    const onDraftChange = vi.fn();
+    const { user } = renderWithProviders(<DefineApiPanel onDraftChange={onDraftChange} />);
+
+    await user.type(screen.getByLabelText(/Backend URL/), 'https://api.example.com/v1');
+    await user.click(screen.getByRole('button', { name: /From an OpenAPI spec/ }));
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://example.com/specs/orders.yaml');
+    await user.tab();
+    await waitFor(() =>
+      expect(onDraftChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ displayName: 'Orders' }),
+      ),
+    );
+
+    await user.click(screen.getByRole('button', { name: /From an endpoint/ }));
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('https://api.example.com/v1');
+    await user.click(screen.getByRole('button', { name: /From an OpenAPI spec/ }));
+    expect(screen.getByLabelText(/Spec URL/)).toHaveValue('https://example.com/specs/orders.yaml');
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ displayName: 'Orders' }),
     );
   });
 });

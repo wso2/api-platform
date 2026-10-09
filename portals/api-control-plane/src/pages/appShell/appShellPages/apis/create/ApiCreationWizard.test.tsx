@@ -133,7 +133,14 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
-    server.use(accepts('post', '/rest-apis/import-openapi', { id: 'orders-api' }, { record: createRequests }));
+    server.use(
+      accepts(
+        'post',
+        '/rest-apis/import-openapi',
+        { id: 'orders-api' },
+        { record: createRequests },
+      ),
+    );
     const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
 
     await user.click(screen.getByRole('button', { name: 'Choose REST' }));
@@ -225,6 +232,44 @@ describe('ApiCreationWizard — a rejected create', () => {
     await submitCreate();
 
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Backend URL/)).not.toBeInTheDocument();
+    // The steps wait, hidden, behind the progress screen so Back finds them
+    // as they were left; none of their fields is on screen.
+    for (const field of screen.queryAllByLabelText(/Backend URL/)) {
+      expect(field).not.toBeVisible();
+    }
+  });
+});
+
+describe('ApiCreationWizard — Back', () => {
+  const toDetails = async () => {
+    const rendered = renderWithProviders(<ApiCreationWizard />, { route, scope });
+    await rendered.user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Continue' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Use this contract' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Continue' }));
+    return rendered;
+  };
+
+  it('keeps edits on the details step when the source is unchanged', async () => {
+    const { user } = await toDetails();
+    const name = screen.getByLabelText(/^Name/);
+    await user.clear(name);
+    await user.type(name, 'Orders, renamed');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Orders, renamed');
+  });
+
+  it('starts the details over when a different source is chosen', async () => {
+    const { user } = await toDetails();
+    await user.type(screen.getByLabelText(/^Name/), ' edited');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Start from scratch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Untitled API');
   });
 });

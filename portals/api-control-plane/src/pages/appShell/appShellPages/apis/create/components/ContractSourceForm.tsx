@@ -44,13 +44,13 @@ import {
   type Theme,
 } from '@wso2/oxygen-ui';
 import {
-  Eraser as Broom,
   FileText,
   GitHub,
   Pencil,
   RefreshCw,
   Trash2,
   Upload,
+  X,
   Zap,
 } from '@wso2/oxygen-ui-icons-react';
 import yaml from 'js-yaml';
@@ -104,6 +104,8 @@ import {
   type SpecIssue,
 } from '../utils/specValidation';
 import { SpecIssueList } from './SpecIssueList';
+import { looksLikeSpecUrl } from '../utils/looksLikeSpecUrl';
+import { summarizeSpec } from '../utils/specSummary';
 import { type ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
 
@@ -149,6 +151,11 @@ export type ContractSourceFormProps = {
   /** Type selected on first render. Defaults to the first entry in `apiTypes`. */
   initialApiTypeKey?: string;
   /**
+   * Starts the URL field with this address and checks it straight away, as if
+   * it had been pasted. Read on mount only.
+   */
+  initialUrl?: string;
+  /**
    * Starts the GitHub OAuth flow. Unused while the GitHub source is withheld
    * from `CONTRACT_SOURCES_BY_API_TYPE`; kept for when it is offered again.
    */
@@ -160,6 +167,18 @@ export type ContractSourceFormProps = {
    * proceed with.
    */
   onContractChange?: (contract: FetchedContract | null) => void;
+  /**
+   * What is being checked right now, so the preview can say so in place of
+   * its empty state: `fetch` for an address, `read` for a chosen file, `null`
+   * while nothing is running.
+   */
+  onCheckingChange?: (checking: 'fetch' | 'read' | null) => void;
+  /**
+   * The spec URL answered with something that isn't a spec, and the address
+   * doesn't look like one either: it is probably the running API. Given, the
+   * notice offers to carry the URL to the endpoint tab; absent, no offer.
+   */
+  onUseAsEndpoint?: (url: string) => void;
   /**
    * Re-fetches the SwaggerHub organizations. Unused while the SwaggerHub
    * source is withheld, on the same terms as `onAuthorizeGitHub`.
@@ -209,6 +228,29 @@ const messages = defineMessages({
     id: 'api.create.fromContract.action.clearUrl',
     defaultMessage: 'Clear URL',
     description: 'Clears the API contract URL field and its loaded preview.',
+  },
+  checked: {
+    id: 'api.create.fromContract.status.checked',
+    defaultMessage: '{dialect} {version} · {routes, plural, one {# route} other {# routes}} found',
+    description:
+      'Quiet line under the source once a spec is accepted, e.g. "OpenAPI 3.0.2 · 6 routes found". {dialect} is a product name (OpenAPI, Swagger) and is not translated.',
+  },
+  liveApi: {
+    id: 'api.create.fromContract.url.liveApi',
+    defaultMessage:
+      'That address answered, but not with an OpenAPI spec. It looks like the API itself rather than a description of it.',
+  },
+  maybeLiveApi: {
+    id: 'api.create.fromContract.url.maybeLiveApi',
+    defaultMessage:
+      'If this is the API itself rather than its spec, create it from its endpoint instead.',
+    description:
+      'Follows the "couldn’t read a spec" error for an address that doesn’t look like a spec.',
+  },
+  useAsEndpoint: {
+    id: 'api.create.fromContract.url.useAsEndpoint',
+    defaultMessage: 'Use it as an endpoint instead',
+    description: 'Moves the URL to the "From an endpoint" tab and creates the API from it there.',
   },
   fetching: {
     id: 'api.create.fromContract.status.fetching',
@@ -479,12 +521,15 @@ type ContractTextField = ReturnType<typeof useContractTextField>;
  * change would mark the field wrong before the user has finished writing it.
  */
 const useContractTextField = ({
+  initial = '',
   isValid,
 }: {
+  /** Value on first render. */
+  initial?: string;
   /** Extra check applied to a non-empty value; absent means "anything goes". */
   isValid?: (value: string) => boolean;
 } = {}) => {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initial);
   const [error, setError] = useState<TextFieldError>(null);
 
   /** Replaces the value and drops the verdict the old one earned. */
@@ -831,6 +876,15 @@ type SpecDocument = Record<string, unknown>;
 /** How long the SwaggerHub organization field settles before it is looked up. */
 const LOOKUP_DEBOUNCE_MS = 450;
 
+/**
+ * A pause in typing this long counts as a finished URL, and it is checked.
+ * Paste and Enter don't wait; leaving the field is only the safety net.
+ */
+const TYPING_PAUSE_MS = 700;
+
+/** The notice slot under the source; fields point at it while it shows. */
+const NOTICE_ID = 'contract-notice';
+
 /** How long a contract download may take before it is abandoned. */
 const CONTRACT_FETCH_TIMEOUT_MS = 20_000;
 
@@ -1085,9 +1139,12 @@ export const ContractSourceForm = ({
   apiTypes = CONTRACT_API_TYPES,
   definitionEdited = false,
   initialApiTypeKey = CONTRACT_API_TYPES[0]?.key,
+  initialUrl,
   onAuthorizeGitHub,
+  onCheckingChange,
   onContractChange,
   onRefreshSwaggerHubOrganizations,
+  onUseAsEndpoint,
 }: ContractSourceFormProps) => {
   const intl = useIntl();
   const { notify } = useNotifications();
@@ -1112,7 +1169,9 @@ export const ContractSourceForm = ({
     () => sourcesFor(initialApiTypeKey ?? apiTypes[0]?.key ?? '')[0],
   );
 
-  const contractUrl = useContractTextField({ isValid: isValidUrl });
+  const contractUrl = useContractTextField({ initial: initialUrl, isValid: isValidUrl });
+  /** Set by a paste, so the change it causes is checked without the typing pause. */
+  const pastedRef = useRef(Boolean(initialUrl));
   const repositoryUrl = useContractTextField({ isValid: isGitHubRepositoryUrl });
   const swaggerHubOrganization = useContractTextField();
 
@@ -1407,6 +1466,16 @@ export const ContractSourceForm = ({
     if (isSameContractSource(fetched?.values, values)) {
       return;
     }
+    // These exact values are already being read, or their verdict is still on
+    // screen: a second ask (the typing pause landing after Enter, or the blur
+    // after either) would only restart it. Editing a field clears the verdict,
+    // so a value typed away and back is checked again.
+    if (
+      isSameContractSource(request ?? undefined, values) &&
+      (fetching || fetchError !== null || backendValidationErrors !== null)
+    ) {
+      return;
+    }
     setRequest(values);
   };
 
@@ -1609,6 +1678,36 @@ export const ContractSourceForm = ({
   };
 
   /**
+   * Checks a spec URL without waiting for the user to leave the field: at once
+   * after a paste, otherwise once typing pauses. Nothing is said about a value
+   * that doesn't parse yet; that verdict stays with blur and Enter, so a
+   * half-typed address never turns red. A reply to an older value can't land
+   * over a newer one: the read effect drops anything it has moved past.
+   */
+  useEffect(() => {
+    const pasted = pastedRef.current;
+    pastedRef.current = false;
+    if (sourceKey !== 'url') return;
+    const typed = contractUrl.value.trim();
+    if (typed === '' || !isValidUrl(typed)) return;
+    const check = () => requestFetch({ apiTypeKey, sourceKey: 'url', url: committedSpecUrl() });
+    if (pasted) {
+      check();
+      return;
+    }
+    const timer = setTimeout(check, TYPING_PAUSE_MS);
+    return () => clearTimeout(timer);
+    // Keyed on the value alone: requestFetch and committedSpecUrl read the
+    // state of the render that scheduled them, which is the one wanted here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractUrl.value, sourceKey]);
+
+  // The preview pane says what is running instead of showing its empty state.
+  useEffect(() => {
+    onCheckingChange?.(fetching ? (request?.sourceKey === 'file' ? 'read' : 'fetch') : null);
+  }, [fetching, onCheckingChange, request?.sourceKey]);
+
+  /**
    * Authorizing is only worth offering while there is no usable repository:
    * once one resolves, the branch and directory pickers are the work, and a
    * second way in beside them is just noise.
@@ -1680,6 +1779,130 @@ export const ContractSourceForm = ({
     onContractChange?.(fetchedIsCurrent ? fetched : null);
   }, [fetched, fetchedIsCurrent, onContractChange]);
 
+  /**
+   * The address a spec URL failed at, when it is probably the API itself: it
+   * doesn't look like a spec, and either answered with something that isn't
+   * one, or couldn't be read at all (an API's root often answers 401 or 404).
+   */
+  const endpointCandidate =
+    sourceKey === 'url' &&
+    onUseAsEndpoint !== undefined &&
+    request?.url !== undefined &&
+    !looksLikeSpecUrl(request.url)
+      ? request.url
+      : undefined;
+  const liveApiUrl = (backendValidationErrors?.length ?? 0) > 0 ? endpointCandidate : undefined;
+  const unreadableUrl = fetchError?.status === 'validationFailed' ? endpointCandidate : undefined;
+
+  const endpointOfferButton = (url: string) => (
+    <Button
+      color="inherit"
+      onClick={() => onUseAsEndpoint?.(url)}
+      size="small"
+      type="button"
+      variant="outlined"
+    >
+      <FormattedMessage {...messages.useAsEndpoint} />
+    </Button>
+  );
+
+  const summary = fetchedIsCurrent && fetched !== null ? summarizeSpec(fetched.spec) : null;
+
+  /**
+   * The one notice under the source: what is running, else the most severe
+   * verdict, else a quiet line saying what was found. Stacked, they left the
+   * reader to work out which one was current.
+   */
+  const notice: ReactNode = (() => {
+    if (fetching) {
+      return (
+        <Stack
+          direction="row"
+          id={NOTICE_ID}
+          role="status"
+          spacing={1}
+          sx={{ alignItems: 'center' }}
+        >
+          <CircularProgress aria-hidden size={16} />
+          <Typography color="text.secondary" variant="body2">
+            <FormattedMessage {...messages.fetching} />
+          </Typography>
+        </Stack>
+      );
+    }
+    if (fetchErrorText !== null) {
+      return (
+        <Alert id={NOTICE_ID} severity="error">
+          {unreadableUrl === undefined ? (
+            fetchErrorText
+          ) : (
+            <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+              <span>{fetchErrorText}</span>
+              <span>
+                <FormattedMessage {...messages.maybeLiveApi} />
+              </span>
+              {endpointOfferButton(unreadableUrl)}
+            </Stack>
+          )}
+        </Alert>
+      );
+    }
+    if (liveApiUrl !== undefined) {
+      return (
+        <Alert id={NOTICE_ID} severity="warning">
+          <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+            <span>
+              <FormattedMessage {...messages.liveApi} />
+            </span>
+            {endpointOfferButton(liveApiUrl)}
+          </Stack>
+        </Alert>
+      );
+    }
+    if (backendValidationErrors !== null && backendValidationErrors.length > 0) {
+      // Backend validation errors: kin-openapi rejected the spec.
+      return (
+        <Alert
+          id={NOTICE_ID}
+          severity="error"
+          sx={{ borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 } }}
+        >
+          <FormattedMessage {...messages.specInvalidByBackend} />
+          <Box component="ul" sx={{ m: 0, pl: 2.5, maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
+            {backendValidationErrors.map((e, i) => (
+              <Typography component="li" key={i} variant="body2">
+                {formatValidationError(e)}
+              </Typography>
+            ))}
+          </Box>
+        </Alert>
+      );
+    }
+    // Definition warnings; withdrawn once the definition has been edited past
+    // the one they were raised on.
+    if (fetchedIsCurrent && !definitionEdited && (fetched?.warnings.length ?? 0) > 0) {
+      return (
+        <Alert id={NOTICE_ID} severity="warning">
+          <SpecIssueList issues={fetched?.warnings ?? []} />
+        </Alert>
+      );
+    }
+    if (summary !== null) {
+      return (
+        <Typography color="text.secondary" id={NOTICE_ID} role="status" variant="body2">
+          <FormattedMessage {...messages.checked} values={{ ...summary }} />
+        </Typography>
+      );
+    }
+    return null;
+  })();
+
+  /** Only what is on screen: a description pointing at nothing is noise. */
+  const urlDescribedBy =
+    [contractUrl.error === null ? null : 'contractUrl-helper', notice === null ? null : NOTICE_ID]
+      .filter((id) => id !== null)
+      .join(' ') || undefined;
+
   return (
     // Still a form, with no button to submit it: Enter in a text field reads
     // the contract without having to leave the field first. Back and Next
@@ -1737,29 +1960,39 @@ export const ContractSourceForm = ({
           <FormControl error={contractUrl.error !== null} fullWidth required>
             <FormLabel htmlFor="contractUrl">{intl.formatMessage(messages.urlLabel)}</FormLabel>
             <OutlinedInput
-              aria-describedby="contractUrl-helper"
+              aria-describedby={urlDescribedBy}
               endAdornment={
-                contractUrl.value === '' ? undefined : (
-                  <InputAdornment position="end">
+                // A fixed slot, so the text never shifts: a spinner while the
+                // address is checked, × once there is something to clear.
+                <InputAdornment
+                  position="end"
+                  sx={{ justifyContent: 'center', minWidth: 32, width: 32 }}
+                >
+                  {fetching ? (
+                    <CircularProgress aria-hidden size={16} />
+                  ) : contractUrl.value === '' ? null : (
                     <Tooltip title={intl.formatMessage(messages.clearUrl)}>
                       <IconButton
                         aria-label={intl.formatMessage(messages.clearUrl)}
                         onClick={() => {
+                          // Resets the field and everything it earned: the
+                          // verdict, the preview and the read in flight.
                           contractUrl.setValue('');
                           setFetched(null);
                           setRequest(null);
                           setFetching(false);
                           setFetchError(null);
+                          setBackendValidationErrors(null);
                         }}
                         onMouseDown={(event) => event.preventDefault()}
                         size="small"
                         type="button"
                       >
-                        <Broom size={18} />
+                        <X size={16} />
                       </IconButton>
                     </Tooltip>
-                  </InputAdornment>
-                )
+                  )}
+                </InputAdornment>
               }
               id="contractUrl"
               name="contractUrl"
@@ -1775,6 +2008,9 @@ export const ContractSourceForm = ({
                 }
               }}
               onChange={(event) => contractUrl.handleChange(event.target.value)}
+              onPaste={() => {
+                pastedRef.current = true;
+              }}
               placeholder={intl.formatMessage(messages.urlPlaceholder)}
               sx={{ mt: 0.75 }}
               value={contractUrl.value}
@@ -2101,41 +2337,7 @@ export const ContractSourceForm = ({
         </Stack>
       ) : null}
 
-      {/* The read starts on its own; on leaving a finished URL, or on
-          choosing a file; so this line is the only sign that it is running. */}
-      {fetching ? (
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-          <CircularProgress size={16} />
-          <Typography color="text.secondary" variant="body2">
-            <FormattedMessage {...messages.fetching} />
-          </Typography>
-        </Stack>
-      ) : null}
-
-      {/* Fetch errors appear under the active source panel. */}
-      {fetchErrorText === null ? null : <Alert severity="error">{fetchErrorText}</Alert>}
-
-      {/* Backend validation errors — shown when kin-openapi rejects the spec. */}
-      {backendValidationErrors !== null && backendValidationErrors.length > 0 ? (
-        <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
-          <FormattedMessage {...messages.specInvalidByBackend} />
-          <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
-            {backendValidationErrors.map((e, i) => (
-              <Typography component="li" key={i} variant="body2">
-                {formatValidationError(e)}
-              </Typography>
-            ))}
-          </Box>
-        </Alert>
-      ) : null}
-
-      {/* Definition warnings; cleared with the contract, and withdrawn once
-          the definition has been edited past the one they were raised on. */}
-      {fetchedIsCurrent && !definitionEdited && (fetched?.warnings.length ?? 0) > 0 ? (
-        <Alert severity="warning">
-          <SpecIssueList issues={fetched?.warnings ?? []} />
-        </Alert>
-      ) : null}
+      {notice}
     </Stack>
   );
 };

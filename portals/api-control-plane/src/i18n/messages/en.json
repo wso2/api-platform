@@ -180,6 +180,17 @@
   "api.create.defineApi.contract.description": {
     "defaultMessage": "Import an OpenAPI spec from a URL or a file."
   },
+  "api.create.defineApi.contract.preview.fetching": {
+    "defaultMessage": "Fetching your spec…",
+    "description": "Preview pane title while a spec URL is being read."
+  },
+  "api.create.defineApi.contract.preview.pendingDescription": {
+    "defaultMessage": "Its resources will show here."
+  },
+  "api.create.defineApi.contract.preview.reading": {
+    "defaultMessage": "Reading your file…",
+    "description": "Preview pane title while an uploaded spec file is being read."
+  },
   "api.create.defineApi.contract.title": {
     "defaultMessage": "From an OpenAPI spec"
   },
@@ -195,6 +206,10 @@
   "api.create.defineApi.scratch.endpoint.hint": {
     "defaultMessage": "Your API’s base URL. We forward traffic to it; we don’t call it now.",
     "description": "Always-visible line under the backend URL field."
+  },
+  "api.create.defineApi.scratch.endpoint.importAsSpec": {
+    "defaultMessage": "Import it as a spec instead",
+    "description": "Moves the URL to the \"From an OpenAPI spec\" tab and reads it there."
   },
   "api.create.defineApi.scratch.endpoint.invalid": {
     "defaultMessage": "That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start."
@@ -217,6 +232,9 @@
   },
   "api.create.defineApi.scratch.endpoint.sampleUrl": {
     "defaultMessage": "Try a sample"
+  },
+  "api.create.defineApi.scratch.endpoint.specLink": {
+    "defaultMessage": "This looks like an OpenAPI spec rather than the API itself. Importing it lists your API’s paths."
   },
   "api.create.defineApi.scratch.title": {
     "defaultMessage": "From an endpoint"
@@ -308,6 +326,10 @@
   "api.create.fromContract.spec.validationFailed": {
     "defaultMessage": "We couldn’t read an OpenAPI spec at that address. Check that the link opens the raw file in a browser, or upload the file instead."
   },
+  "api.create.fromContract.status.checked": {
+    "defaultMessage": "{dialect} {version} · {routes, plural, one {# route} other {# routes}} found",
+    "description": "Quiet line under the source once a spec is accepted, e.g. \"OpenAPI 3.0.2 · 6 routes found\". {dialect} is a product name (OpenAPI, Swagger) and is not translated."
+  },
   "api.create.fromContract.status.fetching": {
     "defaultMessage": "Reading the spec…",
     "description": "Shown while the chosen contract is being read and checked, which starts on its own."
@@ -398,6 +420,13 @@
   "api.create.fromContract.url.label": {
     "defaultMessage": "Spec URL"
   },
+  "api.create.fromContract.url.liveApi": {
+    "defaultMessage": "That address answered, but not with an OpenAPI spec. It looks like the API itself rather than a description of it."
+  },
+  "api.create.fromContract.url.maybeLiveApi": {
+    "defaultMessage": "If this is the API itself rather than its spec, create it from its endpoint instead.",
+    "description": "Follows the \"couldn’t read a spec\" error for an address that doesn’t look like a spec."
+  },
   "api.create.fromContract.url.placeholder": {
     "defaultMessage": "https://api.example.com/openapi.json"
   },
@@ -407,6 +436,10 @@
   },
   "api.create.fromContract.url.required": {
     "defaultMessage": "Enter the spec’s URL."
+  },
+  "api.create.fromContract.url.useAsEndpoint": {
+    "defaultMessage": "Use it as an endpoint instead",
+    "description": "Moves the URL to the \"From an endpoint\" tab and creates the API from it there."
   },
   "api.create.generalForm.action.back": {
     "defaultMessage": "Back"

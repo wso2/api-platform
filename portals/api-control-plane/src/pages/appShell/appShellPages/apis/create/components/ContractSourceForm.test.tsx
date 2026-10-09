@@ -19,7 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
-import { accepts, recorder, type Recorder } from '@/test/msw';
+import { accepts, failure, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ContractSourceForm, fetchContractForPreview } from './ContractSourceForm';
@@ -122,7 +122,7 @@ describe('ContractSourceForm — automatic fetch', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reads the URL when the field is left, not while it is being typed', async () => {
+  it('waits for typing to pause; leaving the field reads it at once', async () => {
     const onContractChange = vi.fn();
     const { user } = renderWithProviders(
       <ContractSourceForm onContractChange={onContractChange} />,
@@ -195,6 +195,109 @@ describe('ContractSourceForm — automatic fetch', () => {
     await user.tab();
 
     expect(validateRequests.count()).toBe(1);
+  });
+
+  it('reads a URL once typing pauses, without the field having to be left', async () => {
+    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+    const field = screen.getByLabelText(/Spec URL/);
+
+    await user.type(field, 'https://example.com/openapi.yaml');
+    expect(validateRequests.count()).toBe(0);
+
+    await waitFor(() => expect(validateRequests.count()).toBe(1), { timeout: 2000 });
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue('https://example.com/openapi.yaml');
+  });
+
+  it('reads a pasted URL straight away', async () => {
+    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+
+    await user.click(screen.getByLabelText(/Spec URL/));
+    await user.paste('https://example.com/openapi.yaml');
+
+    // Well inside the typing pause: a paste is a finished value.
+    await waitFor(() => expect(validateRequests.count()).toBe(1), { timeout: 400 });
+  });
+
+  it('says what it found in one quiet line once the spec is accepted', async () => {
+    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://example.com/openapi.yaml');
+    await user.tab();
+
+    expect(await screen.findByText('OpenAPI 3.0.0 · 1 route found')).toHaveAttribute(
+      'role',
+      'status',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('offers a live API to the endpoint tab, instead of the parser’s complaints', async () => {
+    server.use(
+      accepts('post', '/rest-apis/validate-openapi', {
+        errors: [{ message: 'unsupported openapi version' }],
+        isValid: false,
+      }),
+    );
+    const onUseAsEndpoint = vi.fn();
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={() => {}} onUseAsEndpoint={onUseAsEndpoint} />,
+    );
+
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://api.example.com/orders');
+    await user.tab();
+    await user.click(await screen.findByRole('button', { name: 'Use it as an endpoint instead' }));
+
+    expect(onUseAsEndpoint).toHaveBeenCalledWith('https://api.example.com/orders');
+    expect(screen.queryByText('Validation failed:')).not.toBeInTheDocument();
+  });
+
+  it('offers the endpoint tab when an address that isn’t a spec can’t be read at all', async () => {
+    server.use(failure('post', '/rest-apis/validate-openapi', 400, 'VALIDATION_FAILED'));
+    const onUseAsEndpoint = vi.fn();
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={() => {}} onUseAsEndpoint={onUseAsEndpoint} />,
+    );
+
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://api.example.com/orders');
+    await user.tab();
+    await user.click(await screen.findByRole('button', { name: 'Use it as an endpoint instead' }));
+
+    expect(onUseAsEndpoint).toHaveBeenCalledWith('https://api.example.com/orders');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('keeps the parser’s reasons for an address that is a spec, and shows one notice', async () => {
+    server.use(
+      accepts('post', '/rest-apis/validate-openapi', {
+        errors: [{ message: 'paths must be an object' }],
+        isValid: false,
+      }),
+    );
+    const { user } = renderWithProviders(
+      <ContractSourceForm onContractChange={() => {}} onUseAsEndpoint={vi.fn()} />,
+    );
+
+    await user.type(screen.getByLabelText(/Spec URL/), 'https://example.com/openapi.yaml');
+    await user.tab();
+
+    expect(await screen.findByText('Validation failed:')).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(
+      screen.queryByRole('button', { name: 'Use it as an endpoint instead' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('starts from a handed-over URL and reads it straight away', async () => {
+    renderWithProviders(
+      <ContractSourceForm
+        initialUrl="https://example.com/openapi.yaml"
+        onContractChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Spec URL/)).toHaveValue('https://example.com/openapi.yaml');
+    await waitFor(() => expect(validateRequests.count()).toBe(1), { timeout: 400 });
   });
 
   it('reads an uploaded file as soon as it is chosen', async () => {
