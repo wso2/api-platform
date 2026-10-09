@@ -261,6 +261,8 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:application:manage|Full access to applications|
 |ap:application:read|Read applications|
 |ap:application:update|Update an application|
+|ap:docs:manage|Full access to API documents|
+|ap:docs:read|Read API documents|
 |ap:gateway:create|Create a gateway|
 |ap:gateway:delete|Delete a gateway|
 |ap:gateway:manage|Full access to gateways|
@@ -365,3 +367,5 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:subscription_plan:manage|Full access to subscription plans|
 |ap:subscription_plan:read|Read subscription plans|
 |ap:subscription_plan:update|Update a subscription plan|
+|ap:thumbnail:manage|Full access to API thumbnails|
+|ap:thumbnail:read|Read API thumbnails|

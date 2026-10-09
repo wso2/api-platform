@@ -292,3 +292,9 @@ var (
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
 )
+
+// API document entries.
+var (
+	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
+		"A document with this name already exists for this API.")
+)

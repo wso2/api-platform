@@ -17,7 +17,10 @@
 
 package constants
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // SecretPlaceholderRe matches {{ secret "handle" }} (and the escaped-quote variant
 // {{ secret \"handle\" }}) in artifact config blobs.  A single definition here ensures
@@ -183,6 +186,17 @@ const (
 // keep it out of self-service/developer roles.
 const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
 
+// ScopeDocsRead and ScopeDocsManage govern the /apis/{apiType}/{apiId}/docs endpoints.
+const (
+	ScopeDocsRead   = "ap:docs:read"
+	ScopeDocsManage = "ap:docs:manage"
+)
+
+const (
+	ScopeThumbnailRead   = "ap:thumbnail:read"
+	ScopeThumbnailManage = "ap:thumbnail:manage"
+)
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"
@@ -299,6 +313,9 @@ var ValidThrottleLimitUnits = map[string]bool{
 // upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
 
+// DefaultThumbnailMaxBytes bounds a single thumbnail upload.
+const DefaultThumbnailMaxBytes int64 = 1 << 20 // 1 MiB
+
 // DefaultOpenAPISpecFileName is the filename persisted for a spec that was
 // fetched by URL but whose URL has no usable last path segment to name the
 // file after.
@@ -312,6 +329,57 @@ const (
 	DocumentHandleDefinition      = "api-definition"
 	DocumentDisplayNameDefinition = "OpenAPI Definition"
 )
+
+const (
+	DocumentTypeThumbnail        = "THUMBNAIL"
+	DocumentHandleThumbnail      = "api-thumbnail"
+	DocumentDisplayNameThumbnail = "API Thumbnail"
+)
+
+const (
+	DocumentTypeHowTo        = "HowTo"
+	DocumentTypeSamples      = "Samples"
+	DocumentTypeSupportForum = "SupportForum"
+	DocumentTypePublicForum  = "PublicForum"
+	DocumentTypeOther        = "Other"
+	DocumentTypePrefix     = "DOC_"
+)
+
+var ValidAPIDocumentUserTypes = map[string]bool{
+	DocumentTypeHowTo:        true,
+	DocumentTypeSamples:      true,
+	DocumentTypeSupportForum: true,
+	DocumentTypePublicForum:  true,
+	DocumentTypeOther:        true,
+}
+
+// Fixed types (HowTo, Samples, …) are stored with the DOC_ prefix to be compatible with the api-portal.
+var FixedAPIDocumentStoredTypes = []string{
+	DocumentTypePrefix + DocumentTypeHowTo,
+	DocumentTypePrefix + DocumentTypeSamples,
+	DocumentTypePrefix + DocumentTypeSupportForum,
+	DocumentTypePrefix + DocumentTypePublicForum,
+}
+
+var ReservedAPIDocumentTypes = []string{
+	DocumentTypeDefinition,
+	DocumentTypeThumbnail,
+}
+
+var ReservedAPIDocumentHandles = map[string]bool{
+	DocumentHandleDefinition: true,
+	DocumentHandleThumbnail:  true,
+}
+
+var ForbiddenOtherTypeNames = map[string]bool{
+	strings.ToLower(DocumentTypeDefinition):   true,
+	strings.ToLower(DocumentTypeThumbnail):    true,
+	strings.ToLower(DocumentTypeHowTo):        true,
+	strings.ToLower(DocumentTypeSamples):      true,
+	strings.ToLower(DocumentTypeSupportForum): true,
+	strings.ToLower(DocumentTypePublicForum):  true,
+	strings.ToLower(DocumentTypeOther):        true,
+}
 
 // Metadata key constants for deployment metadata
 const (

@@ -193,6 +193,11 @@ const (
 	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
 )
 
+// API document domain codes.
+const (
+	CodeAPIDocumentNameExists = "API_DOCUMENT_NAME_EXISTS"
+)
+
 // Custom policy domain codes.
 const (
 	CodeCustomPolicyNotFound        = "CUSTOM_POLICY_NOT_FOUND"

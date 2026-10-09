@@ -85,6 +85,10 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+
+  server.use(
+    http.get(apiUrl('/apis/:apiType/:apiId/thumbnail'), () => new HttpResponse(null, { status: 204 }))
+  );
 });
 
 describe('ApiListPage', () => {

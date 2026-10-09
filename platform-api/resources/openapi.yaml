@@ -1926,6 +1926,303 @@ paths:
         '503':
           $ref: '#/components/responses/PortalUnavailable'
 
+  /apis/{apiType}/{apiId}/docs:
+    parameters:
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: List API documents
+      description: Returns metadata-only entries for every user-authored document attached to the API, paginated and optionally filtered by `type`.
+      operationId: ListAPIDocuments
+      security:
+        - OAuth2Security:
+            - ap:docs:read
+            - ap:docs:manage
+      tags:
+        - API Documents
+      parameters:
+        - $ref: '#/components/parameters/docType-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: Documents listed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIDocumentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create an API document
+      description: Creates a user-authored document on the API from a `file` upload or `inlineContent`.
+      operationId: CreateAPIDocument
+      security:
+        - OAuth2Security:
+            - ap:docs:manage
+      tags:
+        - API Documents
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/APIDocumentRequest'
+      responses:
+        '201':
+          description: Document created successfully
+          headers:
+            Location:
+              description: URL of the newly created document.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIDocumentMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiType}/{apiId}/docs/{docId}:
+    parameters:
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+      - $ref: '#/components/parameters/docId'
+    get:
+      summary: Get API document metadata
+      description: |
+        Returns document metadata only. Use `GET …/{docId}/content` to retrieve
+        the raw document bytes.
+      operationId: GetAPIDocument
+      security:
+        - OAuth2Security:
+            - ap:docs:read
+            - ap:docs:manage
+      tags:
+        - API Documents
+      responses:
+        '200':
+          description: Document metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIDocumentMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an API document
+      description: Updates metadata and/or content on an existing API document.
+      operationId: UpdateAPIDocument
+      security:
+        - OAuth2Security:
+            - ap:docs:manage
+      tags:
+        - API Documents
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/APIDocumentRequest'
+      responses:
+        '200':
+          description: Document updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIDocumentMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an API document
+      description: Deletes a user-authored document from the API.
+      operationId: DeleteAPIDocument
+      security:
+        - OAuth2Security:
+            - ap:docs:manage
+      tags:
+        - API Documents
+      responses:
+        '204':
+          description: Document deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiType}/{apiId}/docs/{docId}/content:
+    parameters:
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+      - $ref: '#/components/parameters/docId'
+    get:
+      summary: Get API document content
+      description: |
+        Returns the raw document bytes with the stored `Content-Type` header
+        (e.g. `text/markdown; charset=utf-8` for markdown documents).
+        Extensible to any future content format without schema changes — the
+        stored content-type drives how the client interprets the response body.
+        A `Content-Disposition: inline; filename="…"` header is included when
+        a filename is stored.
+      operationId: GetAPIDocumentContent
+      security:
+        - OAuth2Security:
+            - ap:docs:read
+            - ap:docs:manage
+      tags:
+        - API Documents
+      responses:
+        '200':
+          description: Document content retrieved successfully
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: Document exists but has no content stored.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiType}/{apiId}/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/apiType'
+      - $ref: '#/components/parameters/apiHandle'
+    get:
+      summary: Get API thumbnail
+      description: |
+        Streams the stored thumbnail bytes with the sniffed `Content-Type`
+        header (`image/jpeg` or `image/png`).
+      operationId: GetAPIThumbnail
+      security:
+        - OAuth2Security:
+            - ap:thumbnail:read
+            - ap:thumbnail:manage
+      tags:
+        - API Thumbnail
+      responses:
+        '200':
+          description: Thumbnail bytes
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: No thumbnail is set for this API
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Set or replace the API thumbnail
+      description: |
+        Creates or replaces the API's singleton thumbnail.
+      operationId: UpsertAPIThumbnail
+      security:
+        - OAuth2Security:
+            - ap:thumbnail:manage
+      tags:
+        - API Thumbnail
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/APIThumbnailRequest'
+      responses:
+        '204':
+          description: Thumbnail stored successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete the API thumbnail
+      description: |
+        Removes the stored thumbnail. Subsequent `GET` returns `204` (no
+        thumbnail set) and the client falls back to rendering the API's name initials.
+      operationId: DeleteAPIThumbnail
+      security:
+        - OAuth2Security:
+            - ap:thumbnail:manage
+      tags:
+        - API Thumbnail
+      responses:
+        '204':
+          description: Thumbnail deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template family
@@ -7367,6 +7664,8 @@ components:
             ap:agent_proxy:update: Update an Agent proxy
             ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
+            ap:docs:manage: Create, update, and delete user-authored API documents
+            ap:docs:read: Read user-authored API documents
             ap:api_portal:create: Create an API Portal
             ap:api_portal:delete: Delete an API Portal
             ap:api_portal:draft:manage: Read and write an API's draft for one portal
@@ -7512,6 +7811,8 @@ components:
             ap:subscription_plan:manage: Full access to subscription plans
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
+            ap:thumbnail:manage: Create, update, and delete an API's thumbnail
+            ap:thumbnail:read: Read an API's thumbnail
   schemas:
     APIKeyItem:
       type: object
@@ -8980,6 +9281,129 @@ components:
         content:
           type: string
           description: Raw spec content
+
+    APIDocumentMetadata:
+      type: object
+      description: Metadata-only view of a document attached to an artifact.
+      required:
+        - id
+        - type
+        - displayName
+      properties:
+        id:
+          type: string
+          description: URL-safe handle used in the `{docId}` path segment.
+          minLength: 3
+          maxLength: 40
+          example: "payment-webhook-howto"
+        type:
+          type: string
+          description: Document type as stored. Fixed types (HowTo, Samples, SupportForum, PublicForum, Other) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+          example: HOW_TO
+        displayName:
+          type: string
+          example: Payment Webhook How-To
+        fileName:
+          type: string
+          description: Original file name supplied when a `file` was uploaded.
+          example: payment-webhook.md
+        contentType:
+          type: string
+          description: Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
+          example: text/markdown; charset=utf-8
+        createdBy:
+          type: string
+          description: User who created the document.
+        updatedBy:
+          type: string
+          description: User who updated the document.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    APIDocumentListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in the current page.
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIDocumentMetadata'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    APIDocumentRequest:
+      type: object
+      description: |
+        Multipart form for document create (`POST`) and update (`PUT`).
+
+        On **create**: `type` and `displayName` are required; `inlineContent`
+        must carry the body. `id` is optional — the server generates one from
+        `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
+
+        On **update**: every field is optional; omitted fields leave the stored
+        value unchanged. Omitting `inlineContent` means a metadata-only update
+        — the stored bytes are not touched. If `id` is supplied it must match
+        the `{docId}` path parameter, otherwise the request is rejected with 400.
+      required:
+        - type
+        - displayName
+      properties:
+        id:
+          type: string
+          description: |
+            URL-safe document handle. On create: optional, server-generated from
+            `displayName` when omitted; must be unique per artifact (409 on
+            conflict). On update: if provided, must match the `{docId}` path parameter.
+          example: payment-webhook-howto
+        type:
+          type: string
+          description: |
+            Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+            `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+          example: HowTo
+        otherTypeName:
+          type: string
+          description: |
+            Free-form qualifier used when `type` is `Other`. Stored and returned
+            exactly as typed (no case conversion). Ignored for all other types.
+          example: FAQ
+        displayName:
+          type: string
+          example: Payment Webhook How-To
+        inlineContent:
+          type: string
+          description: Inline UTF-8 Markdown content.
+        fileName:
+          type: string
+          description: |
+            File name to associate with the content. Defaults to `{handle}.md`.
+          example: payment-webhook.md
+
+    APIThumbnailRequest:
+      type: object
+      description: |
+        Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+        sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+        — the declared `Content-Type` and filename extension are ignored for
+        the type decision.
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          description: JPEG or PNG image bytes. Max size is deployment-configured.
 
     TimeUnit:
       type: string
@@ -13162,6 +13586,27 @@ components:
         type: string
         example: my-api-handle
 
+    docId:
+      name: docId
+      in: path
+      required: true
+      description: Document handle (api_documents.handle), unique per API artifact.
+      schema:
+        type: string
+        example: payment-webhook-howto
+
+    docType-Q:
+      name: type
+      in: query
+      required: false
+      description: |
+        Optional filter restricting the list to documents of a single type.
+        An unrecognised value yields an empty page rather than an error, and
+        the reserved `DEFINITION` type is never returned via this endpoint.
+      schema:
+        type: string
+        example: HowTo
+
     apiType-Q:
       name: apiType
       in: query
@@ -13290,6 +13735,8 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
+  - name: API Documents
+    description: User-authored documents (how-to, support/public forum, other) attached to any API artifact
   - name: API Publications
     description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
   - name: API Portals

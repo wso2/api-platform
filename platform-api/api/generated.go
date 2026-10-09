@@ -2013,6 +2013,71 @@ type A2ATransport struct {
 // A2ATransportProtocolBinding A2A protocol binding served on this transport.
 type A2ATransportProtocolBinding string
 
+// APIDocumentListResponse defines model for APIDocumentListResponse.
+type APIDocumentListResponse struct {
+	// Count Number of items in the current page.
+	Count      int                   `json:"count" yaml:"count"`
+	List       []APIDocumentMetadata `json:"list" yaml:"list"`
+	Pagination Pagination            `json:"pagination" yaml:"pagination"`
+}
+
+// APIDocumentMetadata Metadata-only view of a document attached to an artifact.
+type APIDocumentMetadata struct {
+	// ContentType Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
+	ContentType *string    `json:"contentType,omitempty" yaml:"contentType,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User who created the document.
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	DisplayName string  `json:"displayName" yaml:"displayName"`
+
+	// FileName Original file name supplied when a `file` was uploaded.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe handle used in the `{docId}` path segment.
+	Id string `json:"id" yaml:"id"`
+
+	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+	Type      string     `json:"type" yaml:"type"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User who updated the document.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+}
+
+// APIDocumentRequest Multipart form for document create (`POST`) and update (`PUT`).
+//
+// On **create**: `type` and `displayName` are required; `inlineContent`
+// must carry the body. `id` is optional — the server generates one from
+// `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
+//
+// On **update**: every field is optional; omitted fields leave the stored
+// value unchanged. Omitting `inlineContent` means a metadata-only update
+// — the stored bytes are not touched. If `id` is supplied it must match
+// the `{docId}` path parameter, otherwise the request is rejected with 400.
+type APIDocumentRequest struct {
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe document handle. On create: optional, server-generated from
+	// `displayName` when omitted; must be unique per artifact (409 on
+	// conflict). On update: if provided, must match the `{docId}` path parameter.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// InlineContent Inline UTF-8 Markdown content.
+	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
+	// exactly as typed (no case conversion). Ignored for all other types.
+	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
+
+	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+	// `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+	Type string `json:"type" yaml:"type"`
+}
+
 // APIKeyItem defines model for APIKeyItem.
 type APIKeyItem struct {
 	// AllowedTargets Comma-separated list of allowed gateways; 'ALL' means unrestricted
@@ -2080,6 +2145,15 @@ type APIKeySecurity struct {
 
 // APIKeySecurityIn Location of the API key (header or query)
 type APIKeySecurityIn string
+
+// APIThumbnailRequest Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+// sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+// — the declared `Content-Type` and filename extension are ignored for
+// the type decision.
+type APIThumbnailRequest struct {
+	// File JPEG or PNG image bytes. Max size is deployment-configured.
+	File openapi_types.File `json:"file" yaml:"file"`
+}
 
 // AddApplicationAPIKeysRequest defines model for AddApplicationAPIKeysRequest.
 type AddApplicationAPIKeysRequest struct {
@@ -4984,6 +5058,12 @@ type DeploymentId = openapi_types.UUID
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
 
+// DocId defines model for docId.
+type DocId = string
+
+// DocTypeQ defines model for docType-Q.
+type DocTypeQ = string
+
 // EntityIDQ defines model for entityID-Q.
 type EntityIDQ = string
 
@@ -5230,6 +5310,20 @@ type ListApiPublicationsParamsSortBy string
 
 // ListApiPublicationsParamsSortOrder defines parameters for ListApiPublications.
 type ListApiPublicationsParamsSortOrder string
+
+// ListAPIDocumentsParams defines parameters for ListAPIDocuments.
+type ListAPIDocumentsParams struct {
+	// Type Optional filter restricting the list to documents of a single type.
+	// An unrecognised value yields an empty page rather than an error, and
+	// the reserved `DEFINITION` type is never returned via this endpoint.
+	Type *DocTypeQ `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -5767,6 +5861,15 @@ type SaveApiPublicationDraftDefinitionJSONRequestBody = SaveApiPublicationDraftD
 
 // SaveApiPublicationDraftThumbnailMultipartRequestBody defines body for SaveApiPublicationDraftThumbnail for multipart/form-data ContentType.
 type SaveApiPublicationDraftThumbnailMultipartRequestBody SaveApiPublicationDraftThumbnailMultipartBody
+
+// CreateAPIDocumentMultipartRequestBody defines body for CreateAPIDocument for multipart/form-data ContentType.
+type CreateAPIDocumentMultipartRequestBody = APIDocumentRequest
+
+// UpdateAPIDocumentMultipartRequestBody defines body for UpdateAPIDocument for multipart/form-data ContentType.
+type UpdateAPIDocumentMultipartRequestBody = APIDocumentRequest
+
+// UpsertAPIThumbnailMultipartRequestBody defines body for UpsertAPIThumbnail for multipart/form-data ContentType.
+type UpsertAPIThumbnailMultipartRequestBody = APIThumbnailRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
