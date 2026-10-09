@@ -976,6 +976,59 @@ blocks:
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
 
+  # Policy error compatibility: every migrated policy's main rejection, held to the error
+  # response the policy returned before the change. The policies come from the adjacent
+  # gateway-controllers checkout — in that repository's CI, the pull request under test — and
+  # the expected responses live in resources/expected-error-responses/, one file per scenario
+  # for every Gateway version.
+  # Runners are tagged by the first Gateway release that ships their policies; select a release
+  # with -gateway-version, or omit it for the current source build. On a release, only the
+  # policies it ships are built (releasedPoliciesOnly). See the "Policy error compatibility"
+  # section of tests/framework/README.md.
+  - name: policy-compat
+    parallel: 3
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/policy-compat.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        addPoliciesFrom: ../gateway-controllers/policies
+        releasedPoliciesOnly: true
+      - name: testbench
+    runners:
+      - name: policy-errors-from-1-1-0
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_from_1_1_0.feature
+      - name: policy-errors-from-1-2-0
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_from_1_2_0.feature
+      - name: policy-errors-latest
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_latest.feature
+
+  # semantic-cache needs the semantic-ai overlay and Redis, which the block above does not
+  # carry. Same policy source, same expected responses.
+  - name: policy-compat-semantic-ai
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        dependsOn: [redis]
+        addPoliciesFrom: ../gateway-controllers/policies
+        releasedPoliciesOnly: true
+      - name: testbench
+      - name: redis
+    runners:
+      - name: policy-errors-semantic-cache
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/policy-errors/policy_errors_semantic_cache.feature
+
   # This block is intended for gateway-controllers pull requests. Its policy source is
   # an adjacent checkout, so callers must check out gateway-controllers next to this
   # repository and select this block explicitly.

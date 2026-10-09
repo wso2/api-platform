@@ -1,0 +1,9 @@
+{
+  "body": {
+    "error": "'model' is required in the request body (or as a policy parameter) to derive the Azure deployment id."
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

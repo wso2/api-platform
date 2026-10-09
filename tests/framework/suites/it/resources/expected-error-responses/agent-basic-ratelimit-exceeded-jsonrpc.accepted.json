@@ -1,0 +1,25 @@
+{
+  "body": {
+    "error": {
+      "code": -32600,
+      "data": {
+        "code": "900800",
+        "type": "throttling"
+      },
+      "message": "Message throttled out"
+    },
+    "id": null,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json",
+    "ratelimit": "\"default\";r=0;t=\u003cseconds\u003e",
+    "ratelimit-policy": "\"default\";q=1;w=3600",
+    "retry-after": "\u003cpresent\u003e",
+    "x-ratelimit-limit": "1",
+    "x-ratelimit-quota": "default",
+    "x-ratelimit-remaining": "0",
+    "x-ratelimit-reset": "\u003cpresent\u003e"
+  },
+  "status": 429
+}

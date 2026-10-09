@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of applied semantic prompt guard constraints detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "SemanticPromptGuard"
+    },
+    "type": "SEMANTIC_PROMPT_GUARD"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

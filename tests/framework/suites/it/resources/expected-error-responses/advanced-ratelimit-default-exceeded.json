@@ -1,0 +1,17 @@
+{
+  "body": {
+    "error": "Too Many Requests",
+    "message": "Rate limit exceeded. Please try again later."
+  },
+  "headers": {
+    "content-type": "application/json",
+    "ratelimit": "\"request-limit\";r=0;t=\u003cseconds\u003e",
+    "ratelimit-policy": "\"request-limit\";q=2;w=3600",
+    "retry-after": "\u003cpresent\u003e",
+    "x-ratelimit-limit": "2",
+    "x-ratelimit-quota": "request-limit",
+    "x-ratelimit-remaining": "0",
+    "x-ratelimit-reset": "\u003cpresent\u003e"
+  },
+  "status": 429
+}

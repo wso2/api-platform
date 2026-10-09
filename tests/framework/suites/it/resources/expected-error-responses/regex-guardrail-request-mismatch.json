@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of regular expression detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "regex-guardrail"
+    },
+    "type": "REGEX_GUARDRAIL"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

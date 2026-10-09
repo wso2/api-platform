@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Prompt injection or jailbreak attempt detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "Granite Guardian Prompt Injection"
+    },
+    "type": "GRANITE_GUARDIAN_PROMPT_INJECTION"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

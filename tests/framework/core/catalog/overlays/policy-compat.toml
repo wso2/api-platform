@@ -1,0 +1,70 @@
+# Configuration for the policy-compat blocks: the union of what the compat features need,
+# because a component takes a single overlay. Top-level keys first (guardrail and AI
+# services), then the jwt-auth, mcp-auth and opaque-token-auth tables.
+#
+# Deliberately absent: any [policy_configurations.backendjwt_v1] section. The backend-jwt
+# scenario relies on the gateway having no signing key.
+
+# semantic-prompt-guard: embedding keys only (no vector-db keys, so no redis component).
+embedding_provider = "OPENAI"
+embedding_provider_endpoint = "http://testbench:3004/v1/embeddings"
+embedding_provider_model = "text-embedding-ada-002"
+embedding_provider_dimension = 1536
+embedding_provider_api_key = "test-api-key"
+
+# azure-content-safety-content-moderation.
+azurecontentsafety_endpoint = "http://testbench:3005"
+azurecontentsafety_key = "test-subscription-key"
+
+# aws-bedrock-guardrail system parameters the v1.0.x line (Gateway 1.2.0) requires.
+awsbedrock_guardrail_region = "us-east-1"
+awsbedrock_guardrail_id = "test-guardrail-id"
+awsbedrock_guardrail_version = "DRAFT"
+awsbedrock_access_key_id = "test-access-key"
+awsbedrock_secret_access_key = "test-secret-key"
+awsbedrock_session_token = ""
+awsbedrock_role_arn = ""
+awsbedrock_role_region = ""
+awsbedrock_role_external_id = ""
+
+# Python guardrails: the testbench guardian service returns a verdict chosen by keywords in
+# the text (UNSAFE_USER, UNSAFE_RESPONSE, UNSAFE), or fails on GUARDIAN_DOWN.
+granite_guardian_endpoint = "http://testbench:3016"
+granite_guardian_api_key = ""
+granite_guardian_model = "ibm-granite/granite-guardian-3.3-8b"
+granite_guardian_timeout = 5
+nemoguard_endpoint = "http://testbench:3016"
+nemoguard_api_key = ""
+nemoguard_model = "nemoguard"
+nemoguard_timeout = 5
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "wrong-issuer-km"
+issuer = "http://expected-issuer.com"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[policy_configurations.mcpauth_v1]
+gatewayhost = "mcp-e2e-gatewayhost.example.com:9443"
+gatewayurl = "https://mcp-e2e-gatewayurl.example.com:7777"
+
+# No retries, so a failing introspection endpoint answers within the request timeout.
+[policy_configurations.opaquetokenauth_v1]
+introspectionretrycount = 0
+introspectiontimeout = "3s"
+
+# The testbench echo service answers POST /introspect with its request reflection, which has no
+# "active" member, so every token it is asked about is inactive.
+[[policy_configurations.opaquetokenauth_v1.introspectionproviders]]
+name = "compat-inactive"
+
+[policy_configurations.opaquetokenauth_v1.introspectionproviders.introspection]
+uri = "http://testbench:3002/introspect"
