@@ -16,9 +16,8 @@
  * under the License.
  */
 
-import { lazy, Suspense, useState } from 'react';
-import { Alert, Box, Button, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
-import { Pencil } from '@wso2/oxygen-ui-icons-react';
+import { lazy, Suspense } from 'react';
+import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
@@ -55,10 +54,6 @@ const messages = defineMessages({
     defaultMessage: 'Source format',
     description: 'Accessible name for the YAML / JSON toggle buttons.',
   },
-  edit: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit',
-    defaultMessage: 'Edit',
-  },
 });
 
 /** Format names are the same in every language. */
@@ -76,7 +71,7 @@ export type SpecificationTabProps = {
   onFormatChange: (format: SpecFormat) => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
-  /** Shows the definition without an Edit button, for a version that can't be changed. */
+  /** Shows the definition without letting it be edited, for a version that can't be changed. */
   readOnly?: boolean;
   /** The definition's raw text, in `format`. */
   text: string;
@@ -85,10 +80,10 @@ export type SpecificationTabProps = {
 /**
  * "Specification" — the draft's OpenAPI definition (`.../draft/definition`).
  * The source panel of the API Definition page, reduced to what publishing needs:
- * a JSON/YAML switch, an Edit button and the editor. Opens read-only once there
- * is a definition to protect; import, download and the resources view stay with
- * the API Definition page, and the definition is saved with the rest of the
- * draft, so there is no Save here.
+ * a JSON/YAML switch and the editor. It is editable unless `readOnly`, since
+ * opening the draft is already the choice to edit; import, download and the
+ * resources view stay with the API Definition page, and the definition is saved
+ * with the rest of the draft, so there is no Save here.
  */
 export function SpecificationTab({
   disabled,
@@ -100,12 +95,6 @@ export function SpecificationTab({
   text,
 }: SpecificationTabProps) {
   const intl = useIntl();
-  const [isEditing, setIsEditing] = useState(false);
-
-  const hasText = text.trim() !== '';
-  // A definition that failed to parse sends the user back here to fix it, so
-  // it stays editable without another click.
-  const editable = !readOnly && (isEditing || !hasText || Boolean(parseError));
 
   const switchFormat = (next: SpecFormat) => {
     if (next === format || disabled) return;
@@ -114,12 +103,6 @@ export function SpecificationTab({
     // switches, and the error is reported when it is saved.
     if (parsed.status === 'parsed' && !readOnly) onChange?.(serializeSpec(parsed.spec, next));
     onFormatChange(next);
-  };
-
-  // Pins `editable` open past the error clearing on this same keystroke.
-  const editText = (next: string) => {
-    setIsEditing(true);
-    onChange?.(next);
   };
 
   return (
@@ -151,17 +134,6 @@ export function SpecificationTab({
           <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
           <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
         </ToggleButtonGroup>
-        {!readOnly && !editable && (
-          <Button
-            disabled={disabled}
-            onClick={() => setIsEditing(true)}
-            size="small"
-            startIcon={<Pencil size={16} />}
-            variant="outlined"
-          >
-            <FormattedMessage {...messages.edit} />
-          </Button>
-        )}
       </Stack>
       {parseError && (
         <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
@@ -176,8 +148,8 @@ export function SpecificationTab({
           <CodeEditor
             ariaLabel={intl.formatMessage(messages.editorLabel, { format: FORMAT_LABELS[format] })}
             language={format}
-            onChange={editText}
-            readOnly={disabled || !editable}
+            onChange={onChange}
+            readOnly={disabled || readOnly}
             value={text}
           />
         </Suspense>

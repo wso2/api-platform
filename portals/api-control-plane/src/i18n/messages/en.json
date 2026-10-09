@@ -2359,17 +2359,17 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
     "defaultMessage": "Deprecated on {portalName}."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerTitle": {
-    "defaultMessage": "Deprecated version",
-    "description": "Banner over the read-only fields when the live listing is flagged as deprecated."
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta": {
+    "defaultMessage": "Deprecated {time}",
+    "description": "Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as \"2 days ago\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
-    "defaultMessage": "v{version} · edited {time}",
-    "description": "Banner byline. {version} is user-supplied; {time} is a relative time such as \"5 minutes ago\"."
+    "defaultMessage": "Edited {time}",
+    "description": "Banner byline. {time} is a relative time such as \"5 minutes ago\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerTitle": {
-    "defaultMessage": "Draft version",
-    "description": "Banner over the fields being edited: this is the working copy, not what is live."
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMetaUnsaved": {
+    "defaultMessage": "Edited {time} · <unsaved>Unsaved changes</unsaved>",
+    "description": "Banner byline when the fields on screen differ from the saved draft. {time} is a relative time such as \"5 minutes ago\". <unsaved> sets the warning in colour."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing": {
     "defaultMessage": "Unable to save the draft. Your changes are still on this page. Try again."
@@ -2390,16 +2390,12 @@
     "defaultMessage": "Published to {portalName}."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta": {
-    "defaultMessage": "v{version} · updated {time}",
-    "description": "Banner byline. {version} is user-supplied; {time} is a relative time such as \"2 days ago\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerTitle": {
-    "defaultMessage": "Published version",
-    "description": "Banner over the read-only fields showing what is live on the portal."
+    "defaultMessage": "Updated {time}",
+    "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
-    "defaultMessage": "{apiName} · v{version}",
-    "description": "Byline under the heading. Both values are user-supplied; do not translate them."
+    "defaultMessage": "To <name>{portalName}</name>",
+    "description": "Byline under the heading, naming the portal being published to. {portalName} is the API Portal display name, user-supplied; do not translate it. <name> sets it in bold."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails": {
     "defaultMessage": "API Details"
@@ -2417,8 +2413,8 @@
     "defaultMessage": "Subscription Plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title": {
-    "defaultMessage": "Publish to {portalName}",
-    "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
+    "defaultMessage": "Publish <name>{apiName}</name>",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it. <name> sets it in bold."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
     "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
@@ -2429,11 +2425,30 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
     "defaultMessage": "Unpublished from {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unsavedBannerMeta": {
+    "defaultMessage": "<unsaved>Unsaved changes</unsaved>",
+    "description": "Banner byline when the fields on screen have been edited but no draft has been saved yet. <unsaved> sets the warning in colour."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription": {
+    "defaultMessage": "Let agents in the API Portal discover and invoke this API on behalf of users."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle": {
+    "defaultMessage": "Make this API discoverable by AI agents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.chooseGatewayUrl": {
+    "defaultMessage": "Choose from gateway URLs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.clearUrl": {
+    "defaultMessage": "Clear"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
     "defaultMessage": "Description"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
     "defaultMessage": "What this API does, in one or two sentences."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.enterCustomUrl": {
+    "defaultMessage": "Enter a custom URL"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
     "defaultMessage": "Name"
@@ -2443,6 +2458,9 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
     "defaultMessage": "Sandbox URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.showGatewayUrls": {
+    "defaultMessage": "Show gateway URLs"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
@@ -2500,9 +2518,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
     "defaultMessage": "Loading the published specification"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
-    "defaultMessage": "Edit"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",

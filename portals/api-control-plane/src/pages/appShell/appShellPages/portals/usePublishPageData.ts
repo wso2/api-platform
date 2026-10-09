@@ -55,7 +55,7 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  * passing `undefined` for the API handle keeps a tier's query disabled.
  *
  * The published definition is also fetched, on demand, when `wantPublishedDefinition`
- * is set — the same query as the fallback tier, so a definition already read
+ * is set and the API is live — the same query as the fallback tier, so a definition already read
  * for the pre-fill is reused, and one read for the viewer is not read again
  * (a write invalidates all of them).
  *
@@ -70,10 +70,15 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
   const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
   const draftDefinitionAbsent = isNotFound(draftDefinitionQuery.error);
 
+  // A refetch that 404s (after an unpublish) keeps the previous `data` beside
+  // the error, so the 404 itself marks the listing as gone. Any other failure
+  // says nothing about the listing, so the last known state is kept.
+  const publication = liveData(publicationQuery);
+
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
     REST_API_TYPE,
-    draftDefinitionAbsent || wantPublishedDefinition ? apiHandler : undefined,
+    draftDefinitionAbsent || (wantPublishedDefinition && publication) ? apiHandler : undefined,
   );
   const publicationDefinitionAbsent = draftDefinitionAbsent && isNotFound(publicationDefinitionQuery.error);
 
@@ -118,10 +123,6 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
       apiOpenApiQuery,
     ].find((query) => isApiError(query.error) && !query.error.isNotFound)?.error;
 
-  // A refetch that 404s (after an unpublish) keeps the previous `data` beside
-  // the error, so the 404 itself marks the listing as gone. Any other failure
-  // says nothing about the listing, so the last known state is kept.
-  const publication = liveData(publicationQuery);
   const draft = liveData(draftQuery);
 
   const draftDefinitionData = liveData(draftDefinitionQuery);
