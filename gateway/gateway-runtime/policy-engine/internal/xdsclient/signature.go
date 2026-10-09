@@ -52,10 +52,14 @@ type routeSignatureView struct {
 	// fields (Name, Version, Enabled, ExecutionCondition, Parameters), so it is
 	// marshaled wholesale — new behavioral fields are covered automatically.
 	// Order is significant (execution order) and preserved by JSON arrays.
-	Policies   []policyenginev1.PolicyInstance `json:"policies"`
-	APIId      string                          `json:"api_id"`
-	APIName    string                          `json:"api_name"`
-	APIVersion string                          `json:"api_version"`
+	Policies []policyenginev1.PolicyInstance `json:"policies"`
+	// Fault policies, same reasoning as Policies. PROJECTED, so it must be listed
+	// here: without it, changing only an API's fault policies would leave the
+	// signature unchanged and reconciliation would reuse the stale chain.
+	FaultPolicies []policyenginev1.PolicyInstance `json:"fault_policies"`
+	APIId         string                          `json:"api_id"`
+	APIName       string                          `json:"api_name"`
+	APIVersion    string                          `json:"api_version"`
 }
 
 // routeSignature returns a stable content hash of the behavioral configuration
@@ -71,11 +75,12 @@ type routeSignatureView struct {
 // chain from scratch anyway.
 func routeSignature(config *policyenginev1.PolicyChain, md policyenginev1.Metadata) (string, error) {
 	return signatureOf(routeSignatureView{
-		RouteKey:   config.RouteKey,
-		Policies:   config.Policies,
-		APIId:      md.APIId,
-		APIName:    md.APIName,
-		APIVersion: md.Version,
+		RouteKey:      config.RouteKey,
+		Policies:      config.Policies,
+		FaultPolicies: config.FaultPolicies,
+		APIId:         md.APIId,
+		APIName:       md.APIName,
+		APIVersion:    md.Version,
 	})
 }
 

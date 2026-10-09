@@ -72,6 +72,22 @@ const (
 	// NhttpConnectTimeout indicates a timeout occurred while attempting to connect via NHTTP.
 	NhttpConnectTimeout = 101508
 
+	// The remaining data-plane codes and the classification ranges are NOT mirrored
+	// here. They live in the SDK — sdk/core/policy/v1alpha2/fault_codes.go — as
+	// policy.FaultCode*, policy.GuardrailCode* and the policy.*Range* bounds, and this
+	// package reads them from there (see fault_classification.go).
+	//
+	// They were briefly duplicated into this file, which was a mistake worth naming: the
+	// SDK is what a policy author writes against, so a second copy here could only ever
+	// agree by being tested into agreement — and the two copies had already diverged in
+	// naming, with UserDefinedRangeStart meaning 960000 here and 965000 in the SDK after
+	// the policy space was split into WSO2 and customer halves. A constant that means one
+	// thing in one package and another thing in the next is worse than no constant.
+	//
+	// The codes above this comment stay, because nothing in the SDK owns them: the NHTTP
+	// numbers are Synapse transport codes no policy emits, and the throttling codes predate
+	// the SDK's fault vocabulary.
+
 	// WebsocketHandshakeResourcePrefix is the prefix used for WebSocket handshake resources.
 	WebsocketHandshakeResourcePrefix = "init-request:"
 	// GatewayURL represents the original Gateway URL header key.

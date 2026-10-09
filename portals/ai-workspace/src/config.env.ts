@@ -132,6 +132,22 @@ export const API_PORTAL_ENABLED = getEnvOrDefault(
   false
 );
 
+// Mirrors [ai_workspace.feature_flags]. A feature is hidden completely until its
+// flag is set: no navigation entry, no route, no overview entry. One entry per
+// feature, kept only while that feature is rolling out.
+const FEATURE_FLAGS = {
+  'agent-proxy': getEnvOrDefault(
+    'APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED',
+    false
+  ),
+};
+
+export type FeatureId = keyof typeof FEATURE_FLAGS;
+
+export function isFeatureEnabled(feature: FeatureId): boolean {
+  return FEATURE_FLAGS[feature];
+}
+
 // The single API Portal MCP proxies publish to. Hardcoded stand-in until
 // proper Dev Portal selection support is added — not yet operator-configurable.
 export const DEFAULT_API_PORTAL_ID = 'default';

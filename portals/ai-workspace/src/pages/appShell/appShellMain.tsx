@@ -314,8 +314,15 @@ export default function AppLayout(): JSX.Element {
         shellActions.setActiveMenuItem('provider-template');
         return;
       }
-      if (tertiarySegment === 'external-servers') {
+      if (
+        tertiarySegment === 'external-servers' ||
+        tertiarySegment === 'mcp-proxy'
+      ) {
         shellActions.setActiveMenuItem('external-servers');
+        return;
+      }
+      if (tertiarySegment === 'agent-proxy') {
+        shellActions.setActiveMenuItem('agent-proxies');
         return;
       }
       if (tertiarySegment === 'registries') {
@@ -355,8 +362,15 @@ export default function AppLayout(): JSX.Element {
       shellActions.setActiveMenuItem('provider-template');
       return;
     }
-    if (primarySegment === 'external-servers') {
+    if (
+      primarySegment === 'external-servers' ||
+      primarySegment === 'mcp-proxy'
+    ) {
       shellActions.setActiveMenuItem('external-servers');
+      return;
+    }
+    if (primarySegment === 'agent-proxy') {
+      shellActions.setActiveMenuItem('agent-proxies');
       return;
     }
     if (primarySegment === 'registries') {

@@ -841,6 +841,180 @@ type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 
 export type UpdateMCPServerRequest = Partial<Omit<MCPServer, MCPServerReadOnlyFields>>;
 
 // ============================================================================
+// Agent Proxy Types
+// ============================================================================
+
+/**
+ * A2A transport exposed by the proxy
+ */
+export interface A2ATransport {
+  protocolBinding: 'JSONRPC' | 'HTTP+JSON';
+  pathPrefix?: string;
+}
+
+/**
+ * Agent Proxy timeout overrides
+ */
+export interface A2AResilience {
+  timeout?: string;
+  idleTimeout?: string;
+}
+
+/**
+ * Per-operation A2A configuration
+ */
+export interface A2AOperationConfig {
+  name: string;
+  policies?: GlobalPolicy[];
+  resilience?: A2AResilience;
+}
+
+/**
+ * Transport exposure plus agent-wide and per-operation A2A configuration
+ */
+export interface A2AOperationConfigs {
+  transports: A2ATransport[];
+  policies?: GlobalPolicy[];
+  operations?: A2AOperationConfig[];
+}
+
+/**
+ * How an Agent Card is served
+ */
+export type AgentCardMode = 'passthrough' | 'managed';
+
+/** Served verbatim — never re-serialized, so a signature stays valid */
+export type AgentCardDocument = Record<string, unknown>;
+
+/**
+ * Public Agent Card, served unauthenticated at a discovery path
+ */
+export interface A2APublicAgentCard {
+  mode?: AgentCardMode;
+  path?: string;
+  /** Passthrough only */
+  rewriteUrls?: boolean;
+  policies?: GlobalPolicy[];
+  /** Required in managed mode, forbidden in passthrough */
+  content?: AgentCardDocument;
+}
+
+/**
+ * Protected Agent Card, returned by the GetExtendedAgentCard operation
+ */
+export interface A2AProtectedAgentCard {
+  mode: AgentCardMode;
+  rewriteUrls?: boolean;
+  content?: AgentCardDocument;
+}
+
+/**
+ * Agent Card configuration
+ */
+export interface A2AAgentCardConfig {
+  public?: A2APublicAgentCard;
+  protected?: A2AProtectedAgentCard;
+}
+
+/**
+ * A2A protocol configuration. Omitting agentCard serves the public card passthrough.
+ */
+export interface A2AProtocolConfig {
+  protocolVersion: '1.0';
+  operationConfigs: A2AOperationConfigs;
+  agentCard?: A2AAgentCardConfig;
+}
+
+/** An omitted array empties the association set on update */
+export interface AgentProxyGatewayAssociation {
+  id: string;
+}
+
+/**
+ * Agent Proxy
+ */
+export interface AgentProxy {
+  id?: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  projectId: string;
+  context?: string;
+  vhost?: string;
+  upstream: Upstream;
+  kind?: 'AgentProxy';
+  /** Immutable after creation */
+  protocol: 'a2a';
+  a2a: A2AProtocolConfig;
+  resilience?: A2AResilience;
+  associatedGateways?: AgentProxyGatewayAssociation[];
+  readOnly?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Agent Proxy list projection - protocol config and card content omitted
+ */
+export interface AgentProxyListItem {
+  id: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  projectId: string;
+  protocol: 'a2a';
+  context?: string;
+  vhost?: string;
+  readOnly?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Agent Proxies list API response
+ */
+export type AgentProxyListResponse = ApiListResponse<AgentProxyListItem>;
+
+/**
+ * Create Agent Proxy request - id is derived from displayName when omitted
+ */
+export type CreateAgentProxyRequest = AgentProxy;
+
+/** Read-only fields from API (excluded from update requests) */
+type AgentProxyReadOnlyFields =
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'updatedBy'
+  | 'readOnly';
+
+/**
+ * Update Agent Proxy request - full replace, read-only excluded
+ */
+export type UpdateAgentProxyRequest = Omit<AgentProxy, AgentProxyReadOnlyFields>;
+
+/**
+ * Create Agent Proxy API key request - the shared platform CreateAPIKeyRequest
+ */
+export type CreateAgentProxyAPIKeyRequest = CreateLLMProxyAPIKeyRequest;
+
+/**
+ * Create Agent Proxy API key response - secret material is returned only here
+ */
+export type CreateAgentProxyAPIKeyResponse = CreateLLMProxyAPIKeyResponse;
+
+/**
+ * Fetch Agent Card request - a direct url, or a stored agentProxyId, never both
+ */
+export type FetchAgentCardRequest =
+  | { url: string; auth?: UpstreamAuth; agentProxyId?: never }
+  | { agentProxyId: string; url?: never; auth?: never };
+
+// ============================================================================
 // API Portal publication
 // ----------------------------------------------------------------------------
 // Mirrors the Platform-API contract in platform-api/resources/openapi.yaml

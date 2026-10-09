@@ -46,7 +46,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { Edit, Plus, Search, Settings, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
-import { gatewayTypeLabel } from './utils/gateway';
+import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './utils/gateway';
 import NoGatewaysImage from './assets/images/NoGW.svg';
 import type { AIWorkspaceHostPort } from './hostPort';
 import type { Environment, Gateway } from './types';
@@ -233,14 +233,16 @@ const GatewaysList: FC<GatewaysListProps> = ({
                               <Chip label={gatewayTypeLabel(gateway.type)} size="small" variant="outlined" />
                             </TableCell>
                             <TableCell>
-                              {/* Inactive is a warning, not an error: a gateway
-                                  reads inactive while it is still being
-                                  provisioned, before its controller connects. */}
+                              {/* A failed gateway says why, on the chip itself:
+                                  it is the only status nothing will resolve on
+                                  its own, so the reason has to be where the
+                                  status is. */}
                               <Chip
                                 size="small"
                                 variant="outlined"
-                                label={gateway.status === 'active' ? 'Active' : 'Inactive'}
-                                color={gateway.status === 'active' ? 'success' : 'warning'}
+                                label={gatewayStatusLabel(gateway.status)}
+                                color={gatewayStatusColor(gateway.status)}
+                                title={gateway.status === 'failed' ? gateway.statusReason : undefined}
                               />
                             </TableCell>
                             <TableCell>

@@ -53,6 +53,14 @@ import {
   undeployMCPServerDeployment,
   deleteMCPServerDeployment,
 } from '../apis/MCP/mcpServerDeployApis';
+import {
+  getAgentProxyDeployments,
+  getAgentProxyDeployment,
+  deployAgentProxy,
+  restoreAgentProxyDeployment,
+  undeployAgentProxyDeployment,
+  deleteAgentProxyDeployment,
+} from '../apis/agent/agentProxyDeployApis';
 import { PLATFORM_API_BASE_URL } from '../paths';
 import type { HybridGateway, GatewayDeployment } from '../apis/gatewayTypes';
 import type {
@@ -279,6 +287,8 @@ export function GatewayDeployProvider({
         return getLLMProxyDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
       } else if (resourceType === 'mcp-server') {
         return getMCPServerDeployment(apiId, deploymentId, PLATFORM_API_BASE_URL);
+      } else if (resourceType === 'agent-proxy') {
+        return getAgentProxyDeployment(apiId, deploymentId, PLATFORM_API_BASE_URL);
       }
       return getLLMProviderDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
     },
@@ -393,8 +403,13 @@ export function GatewayDeployProvider({
     setIsLoadingDeployments(true);
     setDeploymentsError(null);
     try {
-      if (resourceType === 'proxy' || resourceType === 'mcp-server') {
-        // For proxies and MCP servers, fetch deployments per gateway (gatewayId scoped API)
+      if (
+        resourceType === 'proxy' ||
+        resourceType === 'mcp-server' ||
+        resourceType === 'agent-proxy'
+      ) {
+        // For proxies, MCP servers and Agent proxies, fetch deployments per
+        // gateway (gatewayId scoped API)
         const deploymentPromises = gateways.map((gateway) =>
           (resourceType === 'proxy'
             ? getLLMProxyDeployments(
@@ -403,11 +418,17 @@ export function GatewayDeployProvider({
                 PLATFORM_API_BASE_URL,
                 gateway.id
               )
-            : getMCPServerDeployments(
-                apiId,
-                PLATFORM_API_BASE_URL,
-                gateway.id
-              )
+            : resourceType === 'mcp-server'
+              ? getMCPServerDeployments(
+                  apiId,
+                  PLATFORM_API_BASE_URL,
+                  gateway.id
+                )
+              : getAgentProxyDeployments(
+                  apiId,
+                  PLATFORM_API_BASE_URL,
+                  gateway.id
+                )
           ).catch((error) => {
             logger.error(
               `Failed to fetch deployments for gateway ${gateway.id}:`,
@@ -614,6 +635,19 @@ export function GatewayDeployProvider({
                   },
                   PLATFORM_API_BASE_URL
                 )
+              : resourceType === 'agent-proxy'
+              ? await deployAgentProxy(
+                  apiId,
+                  {
+                    name: deploymentName,
+                    base: 'current',
+                    gatewayId,
+                    metadata: {
+                      host,
+                    },
+                  },
+                  PLATFORM_API_BASE_URL
+                )
               : await deployLLMProvider(
                   apiId,
                   organizationId,
@@ -694,6 +728,13 @@ export function GatewayDeployProvider({
             PLATFORM_API_BASE_URL,
             gatewayId
           );
+        } else if (resourceType === 'agent-proxy') {
+          await undeployAgentProxyDeployment(
+            apiId,
+            deploymentId,
+            PLATFORM_API_BASE_URL,
+            gatewayId
+          );
         } else {
           await undeployLLMProviderDeployment(
             apiId,
@@ -764,6 +805,13 @@ export function GatewayDeployProvider({
               )
             : resourceType === 'mcp-server'
               ? await restoreMCPServerDeployment(
+                  apiId,
+                  deploymentId,
+                  PLATFORM_API_BASE_URL,
+                  gatewayId
+                )
+              : resourceType === 'agent-proxy'
+              ? await restoreAgentProxyDeployment(
                   apiId,
                   deploymentId,
                   PLATFORM_API_BASE_URL,
@@ -842,6 +890,12 @@ export function GatewayDeployProvider({
           );
         } else if (resourceType === 'mcp-server') {
           await deleteMCPServerDeployment(
+            apiId,
+            deploymentId,
+            PLATFORM_API_BASE_URL
+          );
+        } else if (resourceType === 'agent-proxy') {
+          await deleteAgentProxyDeployment(
             apiId,
             deploymentId,
             PLATFORM_API_BASE_URL

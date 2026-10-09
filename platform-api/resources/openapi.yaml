@@ -4721,8 +4721,8 @@ paths:
         Lists the Agent proxies in the caller's organization. Items are the lightweight
         `AgentProxyListItem` projection; read an individual Agent proxy for the full resource,
         including its protocol configuration and any managed Agent Card content. The `protocol`
-        filter, when supplied, is applied to both the returned page and `pagination.total`.
-        Filtering by A2A protocol version is not supported.
+        and `projectId` filters, when supplied, are applied to both the returned page and
+        `pagination.total`. Filtering by A2A protocol version is not supported.
       operationId: listAgentProxies
       security:
         - OAuth2Security:
@@ -4732,6 +4732,7 @@ paths:
         - Agent Proxies
       parameters:
         - $ref: '#/components/parameters/agentProxyProtocol-Q'
+        - $ref: '#/components/parameters/agentProxyProjectId-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
         - $ref: '#/components/parameters/sortBy-Q'
@@ -4748,6 +4749,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -13216,6 +13219,20 @@ components:
         type: string
         minLength: 1
         example: "my-api-key"
+
+    agentProxyProjectId-Q:
+      name: projectId
+      in: query
+      required: false
+      description: |
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+        Agent proxies should be returned. Omit to list Agent proxies across every project in the
+        organization. An empty value is rejected with 400, and a handle that does not resolve to a
+        project in the authenticated organization is rejected with 404. The filter applies to the
+        returned page and to `pagination.total` alike.
+      schema:
+        type: string
+        example: "default-project"
 
     agentProxyProtocol-Q:
       name: protocol
