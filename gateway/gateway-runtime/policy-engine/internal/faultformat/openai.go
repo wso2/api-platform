@@ -177,9 +177,11 @@ func openAITypeFor(faultType string, status int) string {
 // error is to be readable by those SDKs, and the policy catalogue has not all moved its
 // messages into FaultDetails yet — so the caller describes the failure with the body's own
 // message and the formatter renders that. A body already in the OpenAI envelope is kept:
-// reshaping it could only lose what its author put in `param` or `code`.
+// reshaping it could only lose what its author put in `param` or `code`. So is an explicitly
+// empty body: that is the policy's decision that the client gets nothing, the same as a
+// provider's bodyless error.
 func OpenAIPolicyBodyMessage(body []byte) (string, bool) {
-	if isOpenAIBody(body) {
+	if len(body) == 0 || isOpenAIBody(body) {
 		return "", false
 	}
 	return legacyMessage(body), true

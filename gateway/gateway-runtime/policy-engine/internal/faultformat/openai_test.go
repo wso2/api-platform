@@ -206,6 +206,11 @@ func TestOpenAIPolicyBodyMessage_BodyWithoutAMessageIsStillReshaped(t *testing.T
 	assert.Empty(t, msg)
 }
 
+func TestOpenAIPolicyBodyMessage_KeepsAnExplicitlyEmptyBody(t *testing.T) {
+	_, ok := OpenAIPolicyBodyMessage([]byte{})
+	assert.False(t, ok)
+}
+
 // A body that is already the OpenAI envelope — an LLM-only policy that writes it natively —
 // is kept byte-for-byte, so a richer `code`/`param` it set is not flattened.
 func TestOpenAIPolicyBodyMessage_KeepsAnAlreadyOpenAIBody(t *testing.T) {

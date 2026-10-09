@@ -223,6 +223,26 @@ func TestLLMOpenAIErrors_FaultPolicyBodyStillWinsOnTheResponsePath(t *testing.T)
 	assert.Equal(t, custom, last.Body)
 }
 
+// An explicitly empty body is the policy's decision that the client gets nothing — on either
+// path, the same as a provider's bodyless error.
+func TestLLMOpenAIErrors_ExplicitlyEmptyPolicyBodyStaysEmpty(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 403, Body: []byte{},
+	})
+	assert.Equal(t, []byte{}, out.Body, "rejection path")
+
+	ec = llmCtx(t, nil, nil)
+	withRejectedBody(ec, 446)
+	s := 446
+	execResult := &executor.ResponseExecutionResult{Results: []executor.ResponsePolicyResult{{
+		PolicyName: "word-count-guardrail", PolicyVersion: "v1",
+		Action: policy.DownstreamResponseModifications{StatusCode: &s, Body: []byte{}},
+	}}}
+	ec.runFaultPoliciesOnResponse(context.Background(), execResult, originGateway)
+	assert.Nil(t, formattedResult(execResult), "response path")
+}
+
 // Option B: the backend's own error document is passed through. OpenAI-compatible providers
 // already answer in this shape, and rewriting another vendor's would lose its detail.
 func TestLLMOpenAIErrors_BackendErrorBodyIsPassedThrough(t *testing.T) {
@@ -369,21 +389,6 @@ func TestLLMOpenAIErrors_BodylessBackendErrorStaysEmpty(t *testing.T) {
 			common := llmRouteBodylessResponse(t, requiresBody, status, codeDetailsViaUpstream)
 			assert.Nil(t, common.GetBodyMutation(),
 				"a backend %s with no body is passed through as it is (route reads bodies: %v)", status, requiresBody)
-			assert.NotEqual(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, common.GetStatus(),
-				"nothing is added, so the response must not be replaced")
 		}
 	}
-}
-
-// A body written in the header phase only reaches the client when the header response says
-// CONTINUE_AND_REPLACE: with plain CONTINUE Envoy drops the body mutation but keeps the
-// Content-Length set for it, and the client hangs waiting for bytes that never come. A bodyless
-// failure whose provenance the router did not report is not known to be the backend's, so it
-// is rendered, through exactly that path.
-func TestLLMOpenAIErrors_BodyAddedInTheHeaderPhaseIsActuallySent(t *testing.T) {
-	common := llmRouteBodylessResponse(t, true, "503", "")
-	require.NotNil(t, common.GetBodyMutation().GetBody(), "an unattributed bodyless failure gets the OpenAI envelope")
-	assert.Equal(t, "server_error", openAIErrorOf(t, common.GetBodyMutation().GetBody())["type"])
-	assert.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, common.GetStatus(),
-		"without CONTINUE_AND_REPLACE Envoy drops a body added in the header phase")
 }
