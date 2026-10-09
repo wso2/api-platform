@@ -180,6 +180,37 @@ spec:
                           pattern: ^\d+(\.\d+)?(ms|s|m|h)$
                           type: string
                       type: object
+                    upstream:
+                      description: |-
+                        Upstream Per-operation upstream override. When set, this operation routes through the
+                        referenced upstreamDefinitions entry instead of the API-level upstream.
+                      properties:
+                        main:
+                          description: Main Per-operation production upstream (references
+                            an upstreamDefinitions entry).
+                          properties:
+                            ref:
+                              description: Ref Name of an upstreamDefinitions entry
+                                to route this operation through.
+                              type: string
+                          required:
+                          - ref
+                          type: object
+                        sandbox:
+                          description: Sandbox Per-operation sandbox upstream (references
+                            an upstreamDefinitions entry).
+                          properties:
+                            ref:
+                              description: Ref Name of an upstreamDefinitions entry
+                                to route this operation through.
+                              type: string
+                          required:
+                          - ref
+                          type: object
+                      type: object
+                      x-kubernetes-validations:
+                      - message: at least one of main or sandbox must be set
+                        rule: has(self.main) || has(self.sandbox)
                   type: object
                   x-kubernetes-validations:
                   - message: operation must set both method and path, or set match
@@ -615,6 +646,37 @@ spec:
                           pattern: ^\d+(\.\d+)?(ms|s|m|h)$
                           type: string
                       type: object
+                    upstream:
+                      description: |-
+                        Upstream Per-operation upstream override. When set, this operation routes through the
+                        referenced upstreamDefinitions entry instead of the API-level upstream.
+                      properties:
+                        main:
+                          description: Main Per-operation production upstream (references
+                            an upstreamDefinitions entry).
+                          properties:
+                            ref:
+                              description: Ref Name of an upstreamDefinitions entry
+                                to route this operation through.
+                              type: string
+                          required:
+                          - ref
+                          type: object
+                        sandbox:
+                          description: Sandbox Per-operation sandbox upstream (references
+                            an upstreamDefinitions entry).
+                          properties:
+                            ref:
+                              description: Ref Name of an upstreamDefinitions entry
+                                to route this operation through.
+                              type: string
+                          required:
+                          - ref
+                          type: object
+                      type: object
+                      x-kubernetes-validations:
+                      - message: at least one of main or sandbox must be set
+                        rule: has(self.main) || has(self.sandbox)
                   type: object
                   x-kubernetes-validations:
                   - message: operation must set both method and path, or set match
