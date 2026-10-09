@@ -57,8 +57,12 @@ parameters:
         Injected by the gateway controller (not set by users): the kind of API
         this policy chain belongs to (RestApi, Mcp, LlmProvider, LlmProxy, ...).
         Used to decide whether request/response bodies must be processed even
-        when body capture is off -- MCP and LLM analytics are derived from the
-        body. Missing or unknown values fall back to processing the body.
+        when body capture is off -- MCP, LLM and Agent analytics are derived
+        from the body, so those kinds always process it. A missing or empty
+        value also falls back to processing the body. Any other kind (RestApi,
+        WebSubApi, or an unrecognized value) processes the request and
+        response body only when request_body / response_body is true, and
+        skips it otherwise.
     allow_payloads:
       type: boolean
       default: false

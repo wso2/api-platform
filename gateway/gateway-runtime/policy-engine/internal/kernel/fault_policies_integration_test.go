@@ -97,7 +97,7 @@ func faultIntegrationCtx(
 	// These fixtures exist to drive an UPSTREAM response through the engine, which the
 	// fault flow only handles when the deployment opts in — so they opt in. The disabled
 	// default is covered separately, by TestHandleUpstreamFaults_DisabledKeepsLegacyBehaviour.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	chain := &registry.PolicyChain{
@@ -284,7 +284,7 @@ func faultIntegrationCtxNoBodyPolicy(
 	// These fixtures exist to drive an UPSTREAM response through the engine, which the
 	// fault flow only handles when the deployment opts in — so they opt in. The disabled
 	// default is covered separately, by TestHandleUpstreamFaults_DisabledKeepsLegacyBehaviour.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	chain := &registry.PolicyChain{
@@ -456,7 +456,7 @@ func upstreamErrorThroughPhases(t *testing.T, handle bool, contentType string) (
 
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(handle))
 
 	faultPolicies := []policy.Policy{&faultRecorderPolicy{name: "notifier", order: faultOrder}}
