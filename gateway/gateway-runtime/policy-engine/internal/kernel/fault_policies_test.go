@@ -102,7 +102,7 @@ func faultExecCtx(t *testing.T, faultPolicies []policy.Policy, specs []policy.Po
 	// the deployment flag gating upstream/router failures is not what any test using it is
 	// about — leaving it off would make every passthrough test in this file silently assert
 	// nothing. The flag's own behaviour, both ways, lives in handle_upstream_faults_config_test.go.
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20,
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", 1<<20, 1<<20, nil,
 		WithHandleUpstreamFaults(true))
 
 	hasConditions := false
