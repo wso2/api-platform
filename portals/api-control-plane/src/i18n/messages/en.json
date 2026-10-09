@@ -540,15 +540,6 @@
   "api.create.graphql.definePanel.scratch.title": {
     "defaultMessage": "Start from scratch"
   },
-  "api.create.graphql.definePanel.source.fromFile": {
-    "defaultMessage": "Imported from {fileName}"
-  },
-  "api.create.graphql.definePanel.source.fromIntrospection": {
-    "defaultMessage": "Fetched by introspection from {url}"
-  },
-  "api.create.graphql.definePanel.source.fromUrl": {
-    "defaultMessage": "Imported from {url}"
-  },
   "api.create.graphql.introspection.checking": {
     "defaultMessage": "Checking the endpoint for a schema…",
     "description": "Status line while the endpoint is being introspected in the background."

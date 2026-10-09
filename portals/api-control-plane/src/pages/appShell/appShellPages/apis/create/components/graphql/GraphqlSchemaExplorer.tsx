@@ -457,8 +457,6 @@ const SchemaGroup = ({
 export type GraphqlSchemaExplorerProps = {
   /** Resolved SDL text; `undefined` before anything has loaded. */
   sdl?: string;
-  /** e.g. "Imported from https://…" / "Fetched by introspection from https://…". */
-  sourceDescription?: string;
   /**
    * The source step's last validation failure, if any. Its SDL errors (with
    * line/column) are shown here instead of the "Schema will show here" empty
@@ -487,7 +485,6 @@ export type GraphqlSchemaExplorerProps = {
 export const GraphqlSchemaExplorer = ({
   error,
   sdl,
-  sourceDescription,
   variant = 'pane',
 }: GraphqlSchemaExplorerProps) => {
   const intl = useIntl();
@@ -625,18 +622,6 @@ export const GraphqlSchemaExplorer = ({
         </Stack>
       ) : null}
       {isCard ? <Divider /> : null}
-
-      {sourceDescription ? (
-        <Typography
-          color="text.secondary"
-          noWrap
-          sx={{ flexShrink: 0, mt: 0.25 }}
-          title={sourceDescription}
-          variant="caption"
-        >
-          {sourceDescription}
-        </Typography>
-      ) : null}
 
       <Box
         sx={

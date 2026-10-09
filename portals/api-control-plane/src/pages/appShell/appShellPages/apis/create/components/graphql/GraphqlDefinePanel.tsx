@@ -39,18 +39,6 @@ import type { GraphqlResolutionFailure, GraphqlResolvedSchema } from './graphqlS
 type ApproachKey = 'schema' | 'scratch';
 
 const messages = defineMessages({
-  fetchedFromUrl: {
-    id: 'api.create.graphql.definePanel.source.fromUrl',
-    defaultMessage: 'Imported from {url}',
-  },
-  fetchedFromFile: {
-    id: 'api.create.graphql.definePanel.source.fromFile',
-    defaultMessage: 'Imported from {fileName}',
-  },
-  fetchedFromIntrospection: {
-    id: 'api.create.graphql.definePanel.source.fromIntrospection',
-    defaultMessage: 'Fetched by introspection from {url}',
-  },
   schemaLabel: {
     id: 'api.create.graphql.definePanel.approach.label',
     defaultMessage: 'How do you want to define this GraphQL API?',
@@ -150,24 +138,6 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
     setResolved(null);
     setFailure(null);
   };
-
-  const sourceDescription = (() => {
-    if (!resolved) return undefined;
-    if (
-      resolved.schemaSource === 'introspection' &&
-      resolved.endpointUrl &&
-      resolved.sdl !== undefined
-    ) {
-      return intl.formatMessage(messages.fetchedFromIntrospection, { url: resolved.endpointUrl });
-    }
-    if (resolved.schemaSource === 'url' && resolved.sdlUrl) {
-      return intl.formatMessage(messages.fetchedFromUrl, { url: resolved.sdlUrl });
-    }
-    if (resolved.schemaSource === 'file' && resolved.sdlFile) {
-      return intl.formatMessage(messages.fetchedFromFile, { fileName: resolved.sdlFile.name });
-    }
-    return undefined;
-  })();
 
   useEffect(() => {
     // Fields absent from `resolved` (e.g. `endpointUrl` for a URL/file source)
@@ -306,7 +276,6 @@ export const GraphqlDefinePanel = ({ onDraftChange }: GraphqlDefinePanelProps) =
             <GraphqlSchemaExplorer
               error={failure}
               sdl={resolved?.sdl}
-              sourceDescription={sourceDescription}
             />
           </Box>
         </Stack>
