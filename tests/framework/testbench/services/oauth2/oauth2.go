@@ -44,15 +44,48 @@ const (
 	defaultTTL   = 300
 	maxBodyBytes = 1 << 20
 	maxHistory   = 1024
+
+	// grantTypeTokenExchange and grantTypeJWTBearer are the RFC 8693 / RFC
+	// 7523 grant-type URNs this service accepts in addition to the two plain
+	// RFC 6749 grant names (client_credentials, password).
+	grantTypeTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	grantTypeJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+	// invalidSubjectToken and invalidAssertion are sentinel subject_token/
+	// assertion values that deliberately fail the exchange with
+	// invalid_grant - this service never validates these values
+	// cryptographically, so a test that wants to exercise an
+	// exchange-failure path needs some other way to signal "this one should
+	// fail" than a real signature check.
+	invalidSubjectToken = "invalid-subject-token"
+	invalidAssertion    = "invalid-assertion"
 )
 
+// validTokenTypeURNs are the RFC 8693 token-type identifiers this service
+// accepts for subject_token_type/requested_token_type.
+var validTokenTypeURNs = map[string]bool{
+	"urn:ietf:params:oauth:token-type:access_token": true,
+	"urn:ietf:params:oauth:token-type:jwt":          true,
+	"urn:ietf:params:oauth:token-type:id_token":     true,
+}
+
 type tokenRequest struct {
-	ClientID  string            `json:"clientId"`
-	AuthStyle string            `json:"authStyle"`
-	Scope     string            `json:"scope,omitempty"`
-	Outcome   string            `json:"outcome"`
-	Token     string            `json:"token,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
+	ClientID  string `json:"clientId"`
+	AuthStyle string `json:"authStyle"`
+	// GrantType is the raw grant_type form value - the RFC 6749 names
+	// ("client_credentials", "password") or one of the RFC 8693/7523 URNs.
+	GrantType string `json:"grantType,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	Outcome   string `json:"outcome"`
+	Token     string `json:"token,omitempty"`
+	// SubjectTokenPreview is a masked (never raw) preview of the
+	// token-exchange subject_token / jwt-bearer assertion.
+	SubjectTokenPreview string            `json:"subjectTokenPreview,omitempty"`
+	SubjectTokenType    string            `json:"subjectTokenType,omitempty"`
+	RequestedTokenType  string            `json:"requestedTokenType,omitempty"`
+	Audiences           []string          `json:"audiences,omitempty"`
+	Resources           []string          `json:"resources,omitempty"`
+	Headers             map[string]string `json:"headers,omitempty"`
 }
 
 type partition struct {
@@ -139,32 +172,102 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	}
 	id, secret, style, err := credentials(r)
 	scope := r.PostForm.Get("scope")
+	grant := r.PostForm.Get("grant_type")
+	rec := tokenRequest{ClientID: id, AuthStyle: style, GrantType: grant, Scope: scope, Headers: customHeaders(r)}
 	if err != nil {
-		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "invalid_client", Headers: customHeaders(r)})
+		rec.Outcome = "invalid_client"
+		s.record(p, rec)
 		writeUnauthorized(w)
 		return
 	}
-	grant := r.PostForm.Get("grant_type")
-	if grant != "client_credentials" && grant != "password" {
+
+	switch grant {
+	case "client_credentials", "password", grantTypeTokenExchange, grantTypeJWTBearer:
+		// supported - validated further below.
+	default:
 		writeError(w, http.StatusBadRequest, "unsupported_grant_type", "unsupported grant type")
 		return
 	}
 	if grant == "password" && (r.PostForm.Get("username") != resourceUser || r.PostForm.Get("password") != resourcePass) {
+		rec.Outcome = "invalid_client"
+		s.record(p, rec)
 		writeUnauthorized(w)
 		return
 	}
+
+	// For token-exchange (RFC 8693), subject_token/subject_token_type are
+	// required and must be well-formed; audience/resource/requested_token_type
+	// are optional. For jwt-bearer (RFC 7523), assertion is required. Neither
+	// credential is cryptographically verified - the sentinel values above
+	// exist purely so a test can force the exchange to fail.
+	if grant == grantTypeTokenExchange {
+		subjectToken := r.PostForm.Get("subject_token")
+		subjectTokenType := r.PostForm.Get("subject_token_type")
+		requestedTokenType := r.PostForm.Get("requested_token_type")
+		rec.SubjectTokenPreview = maskSecret(subjectToken)
+		rec.SubjectTokenType = subjectTokenType
+		rec.RequestedTokenType = requestedTokenType
+		rec.Audiences = r.PostForm["audience"]
+		rec.Resources = r.PostForm["resource"]
+
+		if subjectToken == "" {
+			rec.Outcome = "invalid_request"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_request", "subject_token is required for the token-exchange grant")
+			return
+		}
+		if !validTokenTypeURNs[subjectTokenType] {
+			rec.Outcome = "invalid_request"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_request", "subject_token_type must be a supported urn:ietf:params:oauth:token-type:* value")
+			return
+		}
+		if requestedTokenType != "" && !validTokenTypeURNs[requestedTokenType] {
+			rec.Outcome = "invalid_request"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_request", "requested_token_type must be a supported urn:ietf:params:oauth:token-type:* value")
+			return
+		}
+		if subjectToken == invalidSubjectToken {
+			rec.Outcome = "invalid_grant"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_grant", "subject_token could not be validated")
+			return
+		}
+	}
+	if grant == grantTypeJWTBearer {
+		assertion := r.PostForm.Get("assertion")
+		rec.SubjectTokenPreview = maskSecret(assertion)
+
+		if assertion == "" {
+			rec.Outcome = "invalid_request"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_request", "assertion is required for the jwt-bearer grant")
+			return
+		}
+		if assertion == invalidAssertion {
+			rec.Outcome = "invalid_grant"
+			s.record(p, rec)
+			writeError(w, http.StatusBadRequest, "invalid_grant", "assertion could not be validated")
+			return
+		}
+	}
+
 	if id == "broken-client" {
-		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "server_error", Headers: customHeaders(r)})
+		rec.Outcome = "server_error"
+		s.record(p, rec)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if id == "malformed-client" {
-		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "malformed", Headers: customHeaders(r)})
+		rec.Outcome = "malformed"
+		s.record(p, rec)
 		writeJSON(w, map[string]any{"token_type": "Bearer", "expires_in": defaultTTL})
 		return
 	}
 	if id != clientID || secret != clientSecret {
-		s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "invalid_client", Headers: customHeaders(r)})
+		rec.Outcome = "invalid_client"
+		s.record(p, rec)
 		writeUnauthorized(w)
 		return
 	}
@@ -176,7 +279,8 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 		}
 		p.mu.Unlock()
 		if fail {
-			s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "forced_failure", Headers: customHeaders(r)})
+			rec.Outcome = "forced_failure"
+			s.record(p, rec)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -186,7 +290,9 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	seq := p.sequence
 	p.mu.Unlock()
 	token := fmt.Sprintf("mock-token-%d-issued-%d", seq, time.Now().UnixNano())
-	s.record(p, tokenRequest{ClientID: id, AuthStyle: style, Scope: scope, Outcome: "issued", Token: token, Headers: customHeaders(r)})
+	rec.Outcome = "issued"
+	rec.Token = token
+	s.record(p, rec)
 	ttl := defaultTTL
 	if raw := r.FormValue("ttl"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -200,7 +306,27 @@ func (s *Service) token(w http.ResponseWriter, r *http.Request) {
 	if scope != "" {
 		resp["scope"] = scope
 	}
+	// RFC 8693 §2.2.1 requires issued_token_type on a token-exchange response.
+	if grant == grantTypeTokenExchange {
+		if rec.RequestedTokenType != "" {
+			resp["issued_token_type"] = rec.RequestedTokenType
+		} else {
+			resp["issued_token_type"] = "urn:ietf:params:oauth:token-type:access_token"
+		}
+	}
 	writeJSON(w, resp)
+}
+
+// maskSecret keeps only enough of a credential to correlate debug output
+// without leaking the value itself (see GO-AUTH-003).
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 8 {
+		return "[MASKED]"
+	}
+	return s[:4] + "..." + s[len(s)-4:]
 }
 
 func credentials(r *http.Request) (string, string, string, error) {

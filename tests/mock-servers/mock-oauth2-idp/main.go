@@ -1,10 +1,11 @@
 // Command mock-oauth2-idp is a minimal, in-memory OAuth2 identity provider
 // used to manually test the oauth2 gateway policy end to end. It is
 // intentionally NOT a spec-complete OAuth2 server — it implements exactly
-// the surface the policy needs for both grants it supports (RFC 6749
-// Section 4.4 client_credentials and Section 4.3 password), plus a small
-// debug API so test flows can assert on gateway behavior (caching,
-// refresh, failure handling) from the outside.
+// the surface the supported policies need across four grants (RFC 6749
+// Section 4.4 client_credentials, Section 4.3 password, RFC 8693 Token
+// Exchange, and RFC 7523 JWT Bearer), plus a small debug API so test flows
+// can assert on gateway behavior (caching, refresh, failure handling) from
+// the outside.
 //
 // Configured clients:
 //   - valid client:      id=<CLIENT_ID>      secret=<CLIENT_SECRET>      -> 200 OK, fresh/cached token
@@ -16,20 +17,42 @@
 // additionally checked against RESOURCE_OWNER_USERNAME/RESOURCE_OWNER_PASSWORD
 // (default "resource-owner"/"hunter2") - a mismatch returns 400 invalid_grant.
 //
+// For grant_type=urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693),
+// `subject_token` and `subject_token_type` are required form fields;
+// `subject_token_type`/`requested_token_type` (if present) must each be one
+// of the three urn:ietf:params:oauth:token-type:* values this mock knows
+// about (access_token, jwt, id_token). `audience`/`resource` may be repeated
+// form fields and `scope` is space-delimited, same as the other grants. The
+// sentinel subject_token value "invalid-subject-token" returns 400
+// invalid_grant, for exercising the exchange-failure path without needing a
+// real, independently-forgeable credential.
+//
+// For grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer (RFC 7523), the
+// `assertion` form field is required and is not cryptographically verified —
+// this mock trusts whatever is handed to it. The sentinel assertion value
+// "invalid-assertion" returns 400 invalid_grant, for the same reason as
+// token-exchange's sentinel above.
+//
 // CLIENT_ID / CLIENT_SECRET default to "test-client" / "test-secret" and can
 // be overridden via environment variables of the same name.
 //
 // Endpoints:
 //
-//	POST /oauth2/token   grant_type=client_credentials or password, client_secret_basic
-//	                     OR client_secret_post, optional `ttl` (seconds, default 300),
-//	                     `scope`, `delayMs` (artificially delay the response - test
+//	POST /oauth2/token   grant_type=client_credentials, password,
+//	                     urn:ietf:params:oauth:grant-type:token-exchange, or
+//	                     urn:ietf:params:oauth:grant-type:jwt-bearer, with
+//	                     client_secret_basic OR client_secret_post, optional
+//	                     `ttl` (seconds, default 300), `scope`, `delayMs`
+//	                     (artificially delay the response - test
 //	                     tokenRequestTimeout), `omitExpiresIn` (drop expires_in
 //	                     from the response entirely - test defaultTokenTTL), and
 //	                     `failFirstN` (fail this many requests with a transient
 //	                     500 before succeeding - test tokenRequestMaxRetries) params.
 //	                     password grant additionally requires `username`/`password`
-//	                     form fields. Every non-standard request header (anything
+//	                     form fields; token-exchange requires `subject_token` and
+//	                     `subject_token_type` (plus optional `requested_token_type`,
+//	                     `audience`, `resource`); jwt-bearer requires `assertion`.
+//	                     Every non-standard request header (anything
 //	                     other than Authorization/Content-Type/Content-Length) is
 //	                     captured and echoed back via GET /debug/stats - test
 //	                     tokenRequestHeaders.
@@ -66,6 +89,34 @@ const defaultTTLSeconds = 300
 // oversized request must not be able to tie up this mock's single process.
 const maxTokenRequestBytes = 1 << 20 // 1 MiB
 
+// grantTypeTokenExchange and grantTypeJWTBearer are the RFC 8693 / RFC 7523
+// grant-type URNs this mock accepts in addition to the two plain RFC 6749
+// grant names (client_credentials, password).
+const (
+	grantTypeTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	grantTypeJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+)
+
+// invalidSubjectToken and invalidAssertion are sentinel subject_token/
+// assertion values that deliberately fail the exchange with invalid_grant -
+// this mock never validates these values cryptographically, so a test that
+// wants to exercise an exchange-failure path needs some other way to signal
+// "this one should fail" than a real signature check.
+const (
+	invalidSubjectToken = "invalid-subject-token"
+	invalidAssertion    = "invalid-assertion"
+)
+
+// validTokenTypeURNs are the RFC 8693 token-type identifiers this mock
+// accepts for subject_token_type/requested_token_type. It does not attempt
+// to interpret the referenced token differently per type - the value only
+// has to be one of these three for the request to be well-formed.
+var validTokenTypeURNs = map[string]bool{
+	"urn:ietf:params:oauth:token-type:access_token": true,
+	"urn:ietf:params:oauth:token-type:jwt":          true,
+	"urn:ietf:params:oauth:token-type:id_token":     true,
+}
+
 var (
 	validClientID     = envOr("CLIENT_ID", "test-client")
 	validClientSecret = envOr("CLIENT_SECRET", "test-secret")
@@ -85,13 +136,29 @@ var (
 // GET /debug/stats — this is what lets a curl-driven test prove caching or
 // refresh behavior without reading gateway logs.
 type tokenRequestRecord struct {
-	Time      time.Time         `json:"time"`
-	ClientID  string            `json:"clientId"`
-	AuthStyle string            `json:"authStyle"` // "basic" or "post"
-	Scope     string            `json:"scope,omitempty"`
-	Outcome   string            `json:"outcome"` // "issued", "invalid_client", "malformed", "server_error", "forced_failure"
-	Token     string            `json:"token,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"` // non-standard request headers - see extractCustomHeaders
+	Time     time.Time `json:"time"`
+	ClientID string    `json:"clientId"`
+	// AuthStyle is "basic" or "post".
+	AuthStyle string `json:"authStyle"`
+	// GrantType is the raw grant_type form value - the RFC 6749 names
+	// ("client_credentials", "password") or one of the RFC 8693/7523 URNs.
+	GrantType string `json:"grantType,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	// Outcome is one of "issued", "invalid_client", "invalid_request",
+	// "invalid_grant", "malformed", "server_error", "forced_failure".
+	Outcome string `json:"outcome"`
+	Token   string `json:"token,omitempty"`
+	// SubjectTokenPreview is a masked (never raw) preview of the
+	// token-exchange subject_token / jwt-bearer assertion, present only so a
+	// test can confirm the expected credential reached this mock without the
+	// full value ever appearing in debug output - see maskSecret.
+	SubjectTokenPreview string   `json:"subjectTokenPreview,omitempty"`
+	SubjectTokenType    string   `json:"subjectTokenType,omitempty"`
+	RequestedTokenType  string   `json:"requestedTokenType,omitempty"`
+	Audiences           []string `json:"audiences,omitempty"`
+	Resources           []string `json:"resources,omitempty"`
+	// Headers holds non-standard request headers - see extractCustomHeaders.
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // standardTokenRequestHeaders are excluded from the captured Headers map -
@@ -235,14 +302,21 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 	clientID, clientSecret, authStyle, err := extractClientCredentials(r)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_client", err.Error())
-		recordRequest(r, clientID, authStyle, r.PostForm.Get("scope"), "invalid_client", "")
+		recordRequest(r, tokenRequestRecord{ClientID: clientID, AuthStyle: authStyle, GrantType: r.PostForm.Get("grant_type"), Scope: r.PostForm.Get("scope"), Outcome: "invalid_client"})
 		return
 	}
 
 	grantType := r.PostForm.Get("grant_type")
-	if grantType != "client_credentials" && grantType != "password" {
-		writeJSONError(w, http.StatusBadRequest, "unsupported_grant_type", "only client_credentials and password are supported by this mock")
-		recordRequest(r, clientID, authStyle, r.PostForm.Get("scope"), "invalid_client", "")
+	scope := r.PostForm.Get("scope")
+	rec := tokenRequestRecord{ClientID: clientID, AuthStyle: authStyle, GrantType: grantType, Scope: scope}
+
+	switch grantType {
+	case "client_credentials", "password", grantTypeTokenExchange, grantTypeJWTBearer:
+		// supported - validated further below.
+	default:
+		writeJSONError(w, http.StatusBadRequest, "unsupported_grant_type", "only client_credentials, password, token-exchange, and jwt-bearer are supported by this mock")
+		rec.Outcome = "invalid_client"
+		recordRequest(r, rec)
 		return
 	}
 
@@ -256,23 +330,83 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 		password := r.PostForm.Get("password")
 		if username != validUsername || password != validPassword {
 			writeJSONError(w, http.StatusBadRequest, "invalid_grant", "resource owner credentials are invalid")
-			recordRequest(r, clientID, authStyle, r.PostForm.Get("scope"), "invalid_client", "")
+			rec.Outcome = "invalid_client"
+			recordRequest(r, rec)
 			return
 		}
 	}
 
-	scope := r.PostForm.Get("scope")
+	// For token-exchange (RFC 8693), subject_token/subject_token_type are
+	// required and must be well-formed; audience/resource/requested_token_type
+	// are optional. For jwt-bearer (RFC 7523), assertion is required. Neither
+	// credential is cryptographically verified by this mock - the sentinel
+	// values below exist purely so a test can force the exchange to fail.
+	if grantType == grantTypeTokenExchange {
+		subjectToken := r.PostForm.Get("subject_token")
+		subjectTokenType := r.PostForm.Get("subject_token_type")
+		requestedTokenType := r.PostForm.Get("requested_token_type")
+		rec.SubjectTokenPreview = maskSecret(subjectToken)
+		rec.SubjectTokenType = subjectTokenType
+		rec.RequestedTokenType = requestedTokenType
+		rec.Audiences = r.PostForm["audience"]
+		rec.Resources = r.PostForm["resource"]
+
+		if subjectToken == "" {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", "subject_token is required for the token-exchange grant")
+			rec.Outcome = "invalid_request"
+			recordRequest(r, rec)
+			return
+		}
+		if !validTokenTypeURNs[subjectTokenType] {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", "subject_token_type must be a supported urn:ietf:params:oauth:token-type:* value")
+			rec.Outcome = "invalid_request"
+			recordRequest(r, rec)
+			return
+		}
+		if requestedTokenType != "" && !validTokenTypeURNs[requestedTokenType] {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", "requested_token_type must be a supported urn:ietf:params:oauth:token-type:* value")
+			rec.Outcome = "invalid_request"
+			recordRequest(r, rec)
+			return
+		}
+		if subjectToken == invalidSubjectToken {
+			writeJSONError(w, http.StatusBadRequest, "invalid_grant", "subject_token could not be validated")
+			rec.Outcome = "invalid_grant"
+			recordRequest(r, rec)
+			return
+		}
+	}
+
+	if grantType == grantTypeJWTBearer {
+		assertion := r.PostForm.Get("assertion")
+		rec.SubjectTokenPreview = maskSecret(assertion)
+
+		if assertion == "" {
+			writeJSONError(w, http.StatusBadRequest, "invalid_request", "assertion is required for the jwt-bearer grant")
+			rec.Outcome = "invalid_request"
+			recordRequest(r, rec)
+			return
+		}
+		if assertion == invalidAssertion {
+			writeJSONError(w, http.StatusBadRequest, "invalid_grant", "assertion could not be validated")
+			rec.Outcome = "invalid_grant"
+			recordRequest(r, rec)
+			return
+		}
+	}
 
 	switch clientID {
 	case "broken-client":
-		recordRequest(r, clientID, authStyle, scope, "server_error", "")
+		rec.Outcome = "server_error"
+		recordRequest(r, rec)
 		http.Error(w, "internal server error (simulated IdP outage)", http.StatusInternalServerError)
 		return
 
 	case "malformed-client":
 		// 200 OK but the body is missing access_token — exercises the
 		// policy's "successful fetch, malformed response" failure path.
-		recordRequest(r, clientID, authStyle, scope, "malformed", "")
+		rec.Outcome = "malformed"
+		recordRequest(r, rec)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"token_type":"Bearer","expires_in":300}`))
@@ -281,14 +415,16 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 	case validClientID:
 		if clientSecret != validClientSecret {
 			writeJSONError(w, http.StatusBadRequest, "invalid_client", "client secret does not match")
-			recordRequest(r, clientID, authStyle, scope, "invalid_client", "")
+			rec.Outcome = "invalid_client"
+			recordRequest(r, rec)
 			return
 		}
 		// fall through to issue a token
 
 	default:
 		writeJSONError(w, http.StatusBadRequest, "invalid_client", "unknown client_id")
-		recordRequest(r, clientID, authStyle, scope, "invalid_client", "")
+		rec.Outcome = "invalid_client"
+		recordRequest(r, rec)
 		return
 	}
 
@@ -306,7 +442,8 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 			}
 			mu.Unlock()
 			if shouldFail {
-				recordRequest(r, clientID, authStyle, scope, "forced_failure", "")
+				rec.Outcome = "forced_failure"
+				recordRequest(r, rec)
 				http.Error(w, "internal server error (simulated transient failure)", http.StatusInternalServerError)
 				return
 			}
@@ -335,7 +472,9 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 	// tell, just by comparing the string returned to the gateway's upstream
 	// call, whether a cached token was reused or a fresh one was minted.
 	token := fmt.Sprintf("mock-token-%d-issued-%d", seq, time.Now().UnixNano())
-	recordRequest(r, clientID, authStyle, scope, "issued", token)
+	rec.Outcome = "issued"
+	rec.Token = token
+	recordRequest(r, rec)
 
 	resp := map[string]interface{}{
 		"access_token": token,
@@ -349,6 +488,16 @@ func handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if scope != "" {
 		resp["scope"] = scope
+	}
+	// RFC 8693 §2.2.1 requires issued_token_type on a token-exchange response;
+	// it echoes the requested type when the caller asked for one, otherwise
+	// this mock's default of a plain access token.
+	if grantType == grantTypeTokenExchange {
+		if rec.RequestedTokenType != "" {
+			resp["issued_token_type"] = rec.RequestedTokenType
+		} else {
+			resp["issued_token_type"] = "urn:ietf:params:oauth:token-type:access_token"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -383,19 +532,16 @@ func extractClientCredentials(r *http.Request) (clientID, clientSecret, authStyl
 	return clientID, clientSecret, "post", nil
 }
 
-func recordRequest(r *http.Request, clientID, authStyle, scope, outcome, token string) {
-	headers := extractCustomHeaders(r)
+// recordRequest finalizes and appends rec to history. Callers fill in every
+// field they know about (ClientID, AuthStyle, GrantType, Scope, Outcome,
+// Token, and any grant-specific fields); this only adds the two fields that
+// are always derived the same way, Time and Headers.
+func recordRequest(r *http.Request, rec tokenRequestRecord) {
+	rec.Time = time.Now().UTC()
+	rec.Headers = extractCustomHeaders(r)
 	mu.Lock()
 	defer mu.Unlock()
-	history = append(history, tokenRequestRecord{
-		Time:      time.Now().UTC(),
-		ClientID:  clientID,
-		AuthStyle: authStyle,
-		Scope:     scope,
-		Outcome:   outcome,
-		Token:     token,
-		Headers:   headers,
-	})
+	history = append(history, rec)
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {

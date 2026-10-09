@@ -1,0 +1,6 @@
+# oauth-token-exchange's tokenEndpoint must be https:// unless this system
+# parameter opts in to plain http - required here because the testbench's
+# "oauth2" service (the mock backend authorization server used by these
+# scenarios) is plain HTTP, like every other testbench service.
+[policy_configurations.oauthtokenexchange_v1]
+allowinsecuretokenendpoint = true
