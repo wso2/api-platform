@@ -65,8 +65,12 @@ func (s *Steps) findDefaultProject(ctx context.Context) error {
 	return fmt.Errorf("APIP project list does not contain the default project")
 }
 
+// findActiveGateway reads through the managed-gateway endpoint rather than the
+// generic gateway one. A cloud scenario should exercise the same route a console
+// user drives, so the managed-gateway view is part of what is under test here;
+// reading the generic endpoint would skip it.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/gateways", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways", nil)
 	if err != nil {
 		return err
 	}
@@ -582,7 +586,7 @@ func (s *Steps) getManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/gateways/"+url.PathEscape(id), nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
 	if err != nil {
 		return err
 	}
@@ -622,7 +626,7 @@ func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.awaitNotFound(ctx, "/gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
+	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
 		return err
 	}
 	deregister(ctx, cleanup.KindGateway, id)
