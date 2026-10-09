@@ -2230,6 +2230,7 @@ func (b *Base) startBackgroundTraffic(ctx context.Context, method, path, header,
 	}
 
 	method = strings.ToUpper(method)
+	host := b.requestHost(ctx)
 	probeCtx, cancel := context.WithCancel(context.Background())
 	probe := &backgroundTrafficProbe{cancel: cancel, done: make(chan struct{})}
 	client := b.funnel.Client()
@@ -2246,7 +2247,7 @@ func (b *Base) startBackgroundTraffic(ctx context.Context, method, path, header,
 				status := 0
 				if url, urlErr := b.gatewayURL(resolvedPath); urlErr == nil {
 					resp, doErr := client.Do(probeCtx, httpx.Request{
-						Method: method, URL: url, Headers: map[string]string{header: resolvedValue},
+						Method: method, URL: url, Headers: map[string]string{header: resolvedValue}, Host: host,
 					}, 0, 0)
 					if doErr == nil && resp != nil {
 						status = resp.StatusCode
