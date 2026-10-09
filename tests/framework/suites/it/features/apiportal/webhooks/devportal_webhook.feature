@@ -96,6 +96,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     # isolates the subscription. ---
     When the subscription "${CTX:subscriptionId}" is switched to plan "${CTX:plan2Handle}" in the API Portal
     Then platform-api reports the subscription for API "${CTX:apiHandle}" using plan "${CTX:plan2Handle}"
+    And I send a "GET" request to "${CTX:apiContext}/" until status 200
 
     When the subscription "${CTX:subscriptionId}" token is regenerated in the API Portal, the previous token is stored as "prevSubscriptionToken" and the new token is stored as "subscriptionToken"
     And I set header "Subscription-Key" to "${CTX:subscriptionToken}"
