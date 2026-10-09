@@ -17,7 +17,6 @@
  */
 
 import Editor, { loader } from '@monaco-editor/react';
-import { useTheme } from '@wso2/oxygen-ui';
 // The package root, i.e. the whole editor. A hand-picked subset was measured
 // and rejected: excluding the 81 language grammars and the CSS/HTML/TypeScript
 // services saves 2.5% (4,019kB -> 3,919kB), because Rollup already code-splits
@@ -32,7 +31,8 @@ import { useTheme } from '@wso2/oxygen-ui';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 import jsonWorker from 'monaco-editor/languages/features/json/json.worker.js?worker';
-import { useEffect, useState } from 'react';
+
+import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 
 /**
  * Monaco, wired to this app rather than to its own defaults.
@@ -91,36 +91,6 @@ window.MonacoEnvironment = {
  * has to validate the text itself.
  */
 export type CodeEditorLanguage = 'json' | 'plaintext' | 'xml' | 'yaml';
-
-/**
- * Which of Monaco's built-in themes matches the app's.
- *
- * Read the same way `CodeBlock` reads it — the `data-color-scheme` attribute
- * Oxygen stamps on the document element, falling back to the palette — so a
- * highlighted block and the editor below it are never in opposite schemes.
- */
-const useIsDarkScheme = (): boolean => {
-  const theme = useTheme();
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    const read = () => {
-      const scheme = document.documentElement.getAttribute('data-color-scheme');
-      setIsDark(scheme === 'dark' || theme.palette.mode === 'dark');
-    };
-    read();
-
-    // The attribute is set outside React, so an observer is what notices it.
-    const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, {
-      attributeFilter: ['data-color-scheme'],
-      attributes: true,
-    });
-    return () => observer.disconnect();
-  }, [theme.palette.mode]);
-
-  return isDark;
-};
 
 export type CodeEditorProps = {
   /**

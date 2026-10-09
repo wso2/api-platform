@@ -19,7 +19,6 @@
 import {
   Alert,
   Box,
-  Chip,
   FormControl,
   IconButton,
   InputAdornment,
@@ -43,12 +42,13 @@ import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
+import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
-import { versionLabel } from '@/utils/versionLabel';
 import { buildInvokeUrl } from '../../apis/overview/InvokeUrlPanel';
 import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { parseGraphQLSdl } from '../../apis/create/utils/graphqlSchema';
+import { GraphiqlThemeStyles } from './GraphiqlThemeStyles';
 import { withValidOperationName } from './withValidOperationName';
 
 const messages = defineMessages({
@@ -164,6 +164,7 @@ function GraphqlTestConsolePageContent() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const { graphqlApiHandler } = useParams();
+  const isDark = useIsDarkScheme();
 
   const apiQuery = useGraphQLApi(graphqlApiHandler);
   const sdlQuery = useGraphQLApiSdl(graphqlApiHandler);
@@ -289,7 +290,6 @@ function GraphqlTestConsolePageContent() {
       ) : (
         <>
           <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mb: 2 }}>
-            <Chip label={versionLabel(api.version)} size="small" variant="outlined" />
             <FormControl size="small" sx={{ minWidth: 220 }}>
               <Select
                 inputProps={{ 'aria-label': intl.formatMessage(messages.gatewayLabel) }}
@@ -304,7 +304,6 @@ function GraphqlTestConsolePageContent() {
               </Select>
             </FormControl>
             <TextField
-              fullWidth
               size="small"
               slotProps={{
                 htmlInput: {
@@ -331,7 +330,9 @@ function GraphqlTestConsolePageContent() {
                   ),
                 },
               }}
-              sx={{ flex: 1 }}
+              // Sized for an invoke URL rather than stretched across the row;
+              // shrinks with the row on a narrow screen.
+              sx={{ maxWidth: '100%', minWidth: 0, width: 600 }}
               value={endpointUrl}
             />
           </Stack>
@@ -354,9 +355,13 @@ function GraphqlTestConsolePageContent() {
               cleartext. Do not re-add this prop; the query/variables tabs are
               still persisted either way, only headers are excluded.
             */}
+            {/* GraphiQL in the console's own colours and font, following its
+                light/dark scheme rather than the operating system's. */}
+            <GraphiqlThemeStyles />
             <GraphiQL
               defaultQuery={DEFAULT_QUERY}
               fetcher={fetcher}
+              forcedTheme={isDark ? 'dark' : 'light'}
               schema={schema}
               storage={storage}
             />

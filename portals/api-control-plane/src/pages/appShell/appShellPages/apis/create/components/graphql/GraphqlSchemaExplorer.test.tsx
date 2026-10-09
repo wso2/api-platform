@@ -114,10 +114,11 @@ describe('GraphqlSchemaExplorer — a failed validation attempt', () => {
 
 describe('GraphqlSchemaExplorer — a resolved schema', () => {
   it('renders the Query/Mutation entry points and the other named types', () => {
-    renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} sourceDescription="Fetched from example.com" />);
+    renderWithProviders(<GraphqlSchemaExplorer sdl={SDL} />);
 
     expect(screen.getByText('Schema')).toBeInTheDocument();
-    expect(screen.getByText('Fetched from example.com')).toBeInTheDocument();
+    // No "Imported from …"/"Fetched by introspection from …" caption under the heading.
+    expect(screen.queryByText(/Imported from|Fetched by introspection/)).not.toBeInTheDocument();
     expect(screen.getByText('country')).toBeInTheDocument();
     expect(screen.getByText('addReview')).toBeInTheDocument();
     // Each type is its own expandable row (an Accordion), so `Country`'s
