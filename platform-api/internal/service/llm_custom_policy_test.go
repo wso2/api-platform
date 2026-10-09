@@ -30,8 +30,9 @@ import (
 
 type llmCustomPolicyRepo struct {
 	repository.CustomPolicyRepository
-	policies  map[string][]*model.CustomPolicy
-	lookupErr error
+	policies   map[string][]*model.CustomPolicy
+	policyByID map[string]*model.CustomPolicy
+	lookupErr  error
 }
 
 func (r *llmCustomPolicyRepo) GetCustomPoliciesByName(_ string, name string) ([]*model.CustomPolicy, error) {
@@ -39,6 +40,13 @@ func (r *llmCustomPolicyRepo) GetCustomPoliciesByName(_ string, name string) ([]
 		return nil, r.lookupErr
 	}
 	return r.policies[name], nil
+}
+
+func (r *llmCustomPolicyRepo) GetCustomPolicyByUUID(_ string, policyUUID string) (*model.CustomPolicy, error) {
+	if r.lookupErr != nil {
+		return nil, r.lookupErr
+	}
+	return r.policyByID[policyUUID], nil
 }
 
 func TestLLMProviderResolveCustomPolicyUUIDs(t *testing.T) {

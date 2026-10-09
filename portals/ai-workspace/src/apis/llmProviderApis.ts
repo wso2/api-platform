@@ -187,25 +187,28 @@ export async function createLLMProvider(
 }
 
 /**
- * Get all LLM Providers
+ * Get all LLM Providers, optionally filtered to those referencing a custom policy
  *
  * @param organizationId - The organization ID
+ * @param baseUrl - The platform API base URL
+ * @param customPolicyUuid - When provided, only providers using this custom policy are returned
  * @returns Promise with the list of LLM providers
  *
  * @example
  * ```ts
- * const response = await getLLMProviders('org-uuid');
+ * const response = await getLLMProviders('org-uuid', baseUrl);
  * console.log(response); // { count: 1, list: [...], pagination: {...} }
  * ```
  */
 export async function getLLMProviders(
   organizationId: string,
-  baseUrl: string
+  baseUrl: string,
+  customPolicyUuid?: string
 ): Promise<LLMProvidersResponse> {
   try {
     const response = await get<LLMProvidersResponse>(
       `/llm-providers`,
-      undefined,
+      customPolicyUuid ? { customPolicyUuid } : undefined,
       baseUrl
     );
     return response;
