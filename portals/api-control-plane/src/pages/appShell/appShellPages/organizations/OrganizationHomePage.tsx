@@ -678,7 +678,9 @@ function OrganizationHomePageContent() {
             )}
           </Stack>
         </DialogContent>
-        <DialogActions>
+        {/* Inset to line up with the title and text above, rather than the
+            theme's tighter default. */}
+        <DialogActions sx={{ pb: 2.5, px: 3 }}>
           <Button color="inherit" onClick={() => setProjectSelectorOpen(false)} variant="outlined">
             <FormattedMessage {...messages.projectSelectorCancel} />
           </Button>
