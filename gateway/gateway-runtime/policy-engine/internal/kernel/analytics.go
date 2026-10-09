@@ -29,6 +29,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 )
@@ -291,7 +292,7 @@ func convertToStructValue(value any) (*structpb.Value, error) {
 // correlation token) and left
 // out of the struct sent to Envoy, but only when the store accepts them (see
 // storeInProcess); the struct then carries the stream's correlation token
-// (correlation.TokenKey) instead. They used to make a full round trip -- encoded here, forwarded
+// (analytics.CorrelationTokenKey) instead. They used to make a full round trip -- encoded here, forwarded
 // back on every later ext_proc message, echoed in the access-log entry's
 // filter_metadata, and decoded again on the ALS side -- purely to correlate them
 // back to their request, although the ext_proc and ALS handlers run in the same
@@ -309,7 +310,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		// The token key is reserved for the stream's own token (added below). A
 		// policy-supplied value could point this request's access-log entry at
 		// another request's stored fields.
-		if key == correlation.TokenKey {
+		if key == analytics.CorrelationTokenKey {
 			continue
 		}
 		if inProcess && !ignored && isCorrelatedField(key) && storeInProcess(execCtx, key, value) {
@@ -328,7 +329,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	// analytics_data Envoy ends up with tells the ALS handler where this request's
 	// stored fields are.
 	if execCtx != nil && execCtx.correlationToken != "" {
-		fields[correlation.TokenKey] = structpb.NewStringValue(execCtx.correlationToken)
+		fields[analytics.CorrelationTokenKey] = structpb.NewStringValue(execCtx.correlationToken)
 	}
 
 	// Add system-level metadata if context is provided

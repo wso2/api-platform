@@ -214,7 +214,7 @@ func withAnalyticsData(t *testing.T, entry *v3.HTTPAccessLogEntry, data map[stri
 // ext_proc stream stored fields under token.
 func createLogEntryWithToken(t *testing.T, requestID, token string) *v3.HTTPAccessLogEntry {
 	t.Helper()
-	return withAnalyticsData(t, createLogEntryWithRequestID(requestID), map[string]any{correlation.TokenKey: token})
+	return withAnalyticsData(t, createLogEntryWithRequestID(requestID), map[string]any{CorrelationTokenKey: token})
 }
 
 // A stored body is preferred over metadata, and the hit consumes the entry so its

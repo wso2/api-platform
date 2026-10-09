@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
@@ -60,23 +61,23 @@ func TestBuildAnalyticsStruct_DropsPolicySuppliedToken(t *testing.T) {
 	victim := correlatedExecCtx(server, "victim")
 	stVictim, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, victim)
 	require.NoError(t, err)
-	victimToken := stVictim.GetFields()[correlation.TokenKey].GetStringValue()
+	victimToken := stVictim.GetFields()[analytics.CorrelationTokenKey].GetStringValue()
 	require.NotEmpty(t, victimToken)
 
 	// A stream with nothing to store has no token of its own.
 	attacker := correlatedExecCtx(server, "attacker")
-	st, err := buildAnalyticsStruct(map[string]any{correlation.TokenKey: victimToken, "source": "policy"}, attacker)
+	st, err := buildAnalyticsStruct(map[string]any{analytics.CorrelationTokenKey: victimToken, "source": "policy"}, attacker)
 	require.NoError(t, err)
-	assert.NotContains(t, st.GetFields(), correlation.TokenKey)
+	assert.NotContains(t, st.GetFields(), analytics.CorrelationTokenKey)
 
 	// A stream with its own token keeps its own.
 	owner := correlatedExecCtx(server, "owner")
 	st, err = buildAnalyticsStruct(map[string]any{
-		correlation.TokenKey: victimToken,
-		"request_headers":    map[string]string{"c": "d"},
+		analytics.CorrelationTokenKey: victimToken,
+		"request_headers":             map[string]string{"c": "d"},
 	}, owner)
 	require.NoError(t, err)
-	assert.Equal(t, owner.correlationToken, st.GetFields()[correlation.TokenKey].GetStringValue())
+	assert.Equal(t, owner.correlationToken, st.GetFields()[analytics.CorrelationTokenKey].GetStringValue())
 	assert.True(t, store.Has(victimToken), "the victim's entry is untouched")
 }
 
@@ -174,7 +175,7 @@ func TestBuildAnalyticsStruct_LateRewriteIntoIgnoredPathReleasesEntry(t *testing
 	require.NoError(t, err)
 
 	assert.False(t, store.Has(token), "the entry was released")
-	assert.NotContains(t, st.GetFields(), correlation.TokenKey)
+	assert.NotContains(t, st.GetFields(), analytics.CorrelationTokenKey)
 	require.Contains(t, st.GetFields(), "request_headers")
 	// Header maps travel through metadata as a JSON string, as on the pre-store path.
 	assert.JSONEq(t, `{"a":"b"}`, st.GetFields()["request_headers"].GetStringValue())

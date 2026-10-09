@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -61,7 +62,7 @@ func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) 
 	_, inMetadata := st.GetFields()["request_headers"]
 	assert.False(t, inMetadata, "accepted by the store, so left out of Envoy metadata")
 	assert.Equal(t, "policy", st.GetFields()["source"].GetStringValue(), "unrelated fields still go to Envoy")
-	token := st.GetFields()[correlation.TokenKey].GetStringValue()
+	token := st.GetFields()[analytics.CorrelationTokenKey].GetStringValue()
 	require.NotEmpty(t, token, "the struct tells the ALS side where the fields went")
 	assert.Equal(t, execCtx.correlationToken, token)
 	payload, ok := store.Take(token)
@@ -128,8 +129,8 @@ func TestCorrelation_DuplicateRequestIDsGetSeparateEntries(t *testing.T) {
 	stB, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"who": "b"}}, b)
 	require.NoError(t, err)
 
-	tokenA := stA.GetFields()[correlation.TokenKey].GetStringValue()
-	tokenB := stB.GetFields()[correlation.TokenKey].GetStringValue()
+	tokenA := stA.GetFields()[analytics.CorrelationTokenKey].GetStringValue()
+	tokenB := stB.GetFields()[analytics.CorrelationTokenKey].GetStringValue()
 	require.NotEqual(t, tokenA, tokenB)
 	gotA, ok := store.Take(tokenA)
 	require.True(t, ok)
@@ -156,7 +157,7 @@ func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 	}, loopback)
 	require.NoError(t, err)
 	assert.Contains(t, st.GetFields(), "request_headers", "loopback hop keeps its data in metadata")
-	assert.NotContains(t, st.GetFields(), correlation.TokenKey)
+	assert.NotContains(t, st.GetFields(), analytics.CorrelationTokenKey)
 
 	loopback.analyticsMetadata[analyticsInternalLoopbackKey] = "true"
 	loopback.responseFinished = true

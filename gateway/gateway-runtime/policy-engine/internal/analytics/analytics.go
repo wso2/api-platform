@@ -309,7 +309,7 @@ func (c *Analytics) GetFaultType() FaultCategory {
 
 // lookupCorrelationPayload takes this access-log entry's captured headers and
 // bodies from the ext_proc↔ALS correlation store. The key is the stream's
-// correlation token (correlation.TokenKey), which the ext_proc handler puts in
+// correlation token (CorrelationTokenKey), which the ext_proc handler puts in
 // analytics_data whenever it stored anything -- not Envoy's request id, which a
 // client can supply and repeat across concurrent requests.
 //
@@ -323,7 +323,7 @@ func (c *Analytics) lookupCorrelationPayload(metadata map[string]string) (correl
 	if c.correlationStore == nil {
 		return correlation.Payload{}, false
 	}
-	token := metadata[correlation.TokenKey]
+	token := metadata[CorrelationTokenKey]
 	if token == "" {
 		return correlation.Payload{}, false
 	}

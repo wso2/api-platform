@@ -76,13 +76,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
-// TokenKey is the analytics_data key that carries a stream's correlation token
-// from the ext_proc handler to the ALS handler. Both sides use this one constant.
-// It is reserved: the ext_proc side drops it from policy-supplied analytics
-// metadata, so a policy cannot point a request's access-log entry at another
-// request's stored fields.
-const TokenKey = "x-wso2-correlation-token"
-
 // Payload is the in-process analytics data captured by the ext_proc handler for
 // one request and looked up by the ALS handler when that request's access-log
 // entry arrives. Only the fields that used to make the Envoy round trip described
