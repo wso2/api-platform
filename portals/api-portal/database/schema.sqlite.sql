@@ -284,6 +284,18 @@ CREATE TABLE IF NOT EXISTS key_managers (
     display_name VARCHAR(255) NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     token_endpoint VARCHAR(255) NOT NULL,
+    -- PRODUCTION | SANDBOX. Which environment the keys this key manager issues
+    -- belong to. A deployment runs one key manager per environment, so this is a
+    -- property of the key manager rather than a per-key choice; every key it
+    -- creates inherits it (oauth2_consumer_keys.key_type).
+    --
+    -- Fixed at creation and refused on update, for the same reason the driver type
+    -- is: keys already issued were created as one kind, and relabelling the key
+    -- manager cannot change what they are.
+    --
+    -- Not a CHECK constraint (R4-NO-ENUM-CHECK) — validated in the service layer
+    -- against constants.KEY_TYPE.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
@@ -409,6 +421,207 @@ CREATE TABLE IF NOT EXISTS api_key_app_mappings (
 CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON api_key_app_mappings(app_uuid);
 
 -- API Workflows table (portal-scoped agent/automation workflows published under a view)
+-- ---------------------------------------------------------------------------
+-- OAuth2 consumer keys — one row per OAuth application this portal registered
+-- on a key manager via Dynamic Client Registration (RFC 7591).
+--
+-- Only the identity of the registered client, plus whatever RFC 7592 gave the
+-- portal to manage it with. Deliberately absent:
+--   * the client secret — the key manager returns it once and never again;
+--   * the client metadata (redirect_uris, grant_types, …) — it lives at the
+--     key manager and is re-read from there, so there is one copy.
+--
+-- The RFC 7592 registration access token and client configuration URI ARE kept,
+-- in registration_access_token_enc (encrypted at rest) and
+-- registration_client_uri — see the notes on those columns. Both are NULL for a
+-- key manager that issues no such token, and a key in that state is managed with
+-- the portal's provisioning credential against a constructed
+-- <registration_endpoint>/<consumer_key>, which is what every key did before
+-- these columns existed.
+--
+-- key_manager_id is deliberately NOT a foreign key: key managers are declared
+-- in configuration ([[api_portal.key_manager]]), not rows in key_managers, so
+-- there is nothing to reference.
+--
+-- The key↔application association lives in oauth2_consumer_key_app_mappings, not
+-- as a column here.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS oauth2_consumer_keys (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    -- The `id` of an [[api_portal.key_manager]] config entry. Not an FK; see above.
+    key_manager_id VARCHAR(255) NOT NULL,
+    -- The OAuth2 client_id the key manager issued.
+    consumer_key VARCHAR(255) NOT NULL,
+    -- What the developer called this when they created it. The consumer key
+    -- alone is not something a person can recognise in a list. Nullable: a
+    -- driver need not collect a name, and a key imported by an older client
+    -- may not carry one -- the UI falls back to the consumer key.
+    name VARCHAR(255),
+    -- RFC 7592 client-configuration credentials, when the key manager issued them.
+    --
+    -- A conforming server returns a registration access token alongside the new
+    -- client, and read/update/delete of THAT client authenticate with it rather
+    -- than the portal's own provisioning credential. It may also rotate: Keycloak
+    -- returns a new token from every update and kills the old one immediately, so
+    -- these columns are rewritten from each response, not just at creation.
+    --
+    -- registration_client_uri is stored rather than rebuilt because RFC 7592 S3
+    -- makes it REQUIRED in the response precisely so the configuration endpoint
+    -- can sit on a different host or path than the registration endpoint --
+    -- Keycloak's does. NULL in both means this key is managed with the
+    -- provisioning credential against a constructed URL, which is how every key
+    -- on a key manager that issues no token behaves.
+    -- PRODUCTION | SANDBOX, copied from the key manager when the key was created.
+    --
+    -- Stored rather than derived from the key manager for two reasons: a
+    -- config-declared key manager has no row to join to, so a query for sandbox
+    -- keys would have nowhere to look; and it is a historical fact about what this
+    -- credential was issued as, which should not change if the key manager's own
+    -- flag ever did.
+    --
+    -- Resolved from the key manager in exactly one place today. When a per-key
+    -- choice is added later, that one line becomes `body.keyType ?? km.keyType`
+    -- and this column needs no change.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
+    registration_access_token_enc BLOB,
+    registration_client_uri VARCHAR(1023),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- (portal_id, uuid) matches every sibling table, and is required for the
+    -- composite FK below: organizations' own key is (portal_id, uuid), so a
+    -- single-column reference to organizations(uuid) cannot be created.
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- The list query filters org_uuid + created_by, so that compound leads; it is
+-- also a covering prefix for org-only lookups, hence no separate org index.
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_org_created_by ON oauth2_consumer_keys(org_uuid, created_by, portal_id);
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_km_id ON oauth2_consumer_keys(key_manager_id, portal_id);
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_status ON oauth2_consumer_keys(status);
+
+-- Which application an OAuth2 key belongs to.
+--
+-- Its own table rather than a column on oauth2_consumer_keys: the association is
+-- optional, is set and cleared independently of the key, and is written by a
+-- different operation. A nullable column would also have made "no application"
+-- and "application deleted" indistinguishable.
+--
+-- Shaped to match api_key_app_mappings, which solves the identical problem for
+-- API keys. key_uuid is the whole key: a key belongs to at most one application,
+-- so re-associating upserts this row rather than inserting a second one, and
+-- created_by records who last did it. An application holds any number of keys,
+-- which is why app_uuid is not part of the key and carries its own index.
+--
+-- Both foreign keys are composite. oauth2_consumer_keys and applications are each
+-- keyed on (portal_id, uuid), so a single-column reference to either `uuid` has no
+-- unique index to point at and cannot be created.
+--
+-- CASCADE on both sides: this row is meaningless without either end. Deleting the
+-- key at the key manager already deletes its row here; deleting the application
+-- drops the association without touching the key, which stays usable and simply
+-- becomes unassociated.
+CREATE TABLE IF NOT EXISTS oauth2_consumer_key_app_mappings (
+    key_uuid VARCHAR(40) NOT NULL,
+    app_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, key_uuid),
+    FOREIGN KEY (portal_id, key_uuid) REFERENCES oauth2_consumer_keys(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, app_uuid) REFERENCES applications(portal_id, uuid) ON DELETE CASCADE
+);
+
+-- app_uuid is not the leading column of the primary key, so the per-application
+-- listing (GET /applications/{id}/oauth2-keys) needs its own index.
+CREATE INDEX IF NOT EXISTS idx_oauth2_key_app_mapping_app ON oauth2_consumer_key_app_mappings(app_uuid);
+
+
+-- The driver configuration that makes a `key_managers` row usable for Dynamic
+-- Client Registration. Separate from `key_managers` because that table has
+-- shipped: it holds a handle, a display name and a token endpoint, and adding
+-- half a dozen columns to it — one of them a credential — is not an additive
+-- change anyone wants to make to a table already in customer databases.
+--
+-- A config-declared key manager ([[api_portal.key_manager]]) has no row here at
+-- all; its equivalent lives in the deployed TOML. A row exists only for a key
+-- manager created through the REST API, and only once someone supplies enough
+-- detail for it to register clients. A `key_managers` row with no row here is
+-- still valid — it just cannot generate keys.
+--
+-- Deliberately absent: the TLS and address-range escapes
+-- (insecure_skip_verify, allow_private_endpoints, allow_http_endpoints). Those
+-- relax the SSRF guard, and an endpoint set through an authenticated API is
+-- exactly the case that guard exists for. They stay operator-only, settable in
+-- configuration and nowhere else, so an API-created key manager always gets the
+-- safe defaults.
+CREATE TABLE IF NOT EXISTS key_manager_configurations (
+    -- The key manager this configures. The FK pair IS the identity, so it is the
+    -- primary key: no surrogate uuid, and the 1:0..1 invariant is enforced by the
+    -- key itself rather than a separate UNIQUE constraint.
+    key_manager_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    org_uuid VARCHAR(40) NOT NULL,
+    -- Which built-in driver handles it: thunderid | wso2is | asgardeo | keycloak | custom | provision. Resolved
+    -- against the driver registry at use time. Not a CHECK constraint
+    -- (R4-NO-ENUM-CHECK): the valid set is the registered drivers, which ship in
+    -- the image and change with it.
+    driver_type VARCHAR(40) NOT NULL,
+    registration_endpoint VARCHAR(255) NOT NULL,
+    -- Nullable: a key manager issuing only client_credentials tokens has no
+    -- interactive authorization endpoint.
+    authorize_endpoint VARCHAR(255),
+    description VARCHAR(1023),
+    -- How the portal authenticates ITSELF to this key manager to register
+    -- clients: client_credentials | basic | mtls.
+    auth_method VARCHAR(20) NOT NULL,
+    -- The method-specific remainder — client_id, scopes, resource,
+    -- send_credentials_in_body, username, cert paths. JSON precisely so that a
+    -- new credential field is a code change rather than three dialect ALTERs
+    -- plus a migration this component cannot express. NEVER the secret.
+    auth_config TEXT,
+    -- Operator-chosen options for this key manager, as a JSON object. A bag rather
+    -- than a column each, because these accumulate: a new option is then a code
+    -- change in the DAO instead of three dialect ALTERs on a shipped table.
+    --
+    -- It is NOT an open bag. The DAO parses a closed set of known keys and drops
+    -- anything else, so this is a typed structure that happens to be stored as
+    -- JSON — the same treatment the (since reverted) connection_policy column had.
+    -- Unparseable JSON falls back to "no options set", never to a partial read.
+    --
+    -- Known keys:
+    --   supportedGrantTypes — string[]. The subset of the driver's declared grant
+    --     types a portal user may pick. Absent/empty means "whatever the driver
+    --     offers", which is the backwards-compatible default. An admin restriction,
+    --     not a capability statement: the key manager may well support more.
+    --
+    -- VARCHAR(1023), not TEXT (R3-NO-TEXT) and not JSONB (R3-JSONB) — no repository
+    -- query reads inside it; it is fetched whole with the row and parsed in JS.
+    settings VARCHAR(1023),
+    -- The client secret / basic password, encrypted with security.encryption_key
+    -- (AES-256-GCM), never plaintext, and decrypted only when a driver is built.
+    -- Same treatment as webhook_subscribers.secret_enc.
+    auth_secret_enc BLOB,
+    created_by VARCHAR(255) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, key_manager_uuid),
+    -- Owned by the parent: deleting a key manager deletes its configuration.
+    FOREIGN KEY (portal_id, key_manager_uuid) REFERENCES key_managers(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- One configuration per key manager, and the lookup every read uses.
+CREATE INDEX IF NOT EXISTS idx_key_manager_config_org ON key_manager_configurations(org_uuid, portal_id);
+
+
+
 CREATE TABLE IF NOT EXISTS api_workflows (
     uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,

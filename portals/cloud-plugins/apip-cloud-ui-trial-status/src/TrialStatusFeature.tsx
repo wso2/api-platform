@@ -20,20 +20,24 @@
 import { Box, Stack, Typography } from '@wso2/oxygen-ui';
 import { useEffect, useState } from 'react';
 
-import { getBillingOrganization } from './trialApi';
+import type { TrialStatusHostPort } from './hostPort';
 import type { TrialDetails } from './types';
 
 const TOTAL_TRIAL_DAYS = 14;
 
-export default function TrialStatusFeature() {
+export default function TrialStatusFeature({ port }: { port: TrialStatusHostPort }) {
   const [trial, setTrial] = useState<TrialDetails | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
 
-    void getBillingOrganization(controller.signal)
+    // The host owns this read and memoises it, so asking here costs no extra
+    // request even though the host's own activation hook asks for it too.
+    void port.billing
+      .organization()
       .then((organization) => {
-        const subscription = organization.subscription;
+        if (cancelled) return;
+        const subscription = organization?.subscription;
         if (subscription?.status === 'trial' && subscription.trial) {
           setTrial(subscription.trial);
         } else {
@@ -44,8 +48,10 @@ export default function TrialStatusFeature() {
         // Billing status must never prevent the rest of the header from loading.
       });
 
-    return () => controller.abort();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [port]);
 
   if (!trial) return null;
 

@@ -1279,10 +1279,13 @@ func validateCardInterfaceURL(field, expectedPath string, pathKnown bool, iface 
 	}
 
 	var errors []ValidationError
-	if parsed.Scheme != "https" {
+	// Both schemes are accepted: the gateway serves plain HTTP as an ordinary
+	// listener, and passthrough cards already advertise http:// URLs to HTTP
+	// clients, so a managed card on the same gateway must be able to as well.
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		errors = append(errors, ValidationError{
 			Field:   urlField,
-			Message: fmt.Sprintf("Agent Card interface url must use https, got '%s'", parsed.Scheme),
+			Message: fmt.Sprintf("Agent Card interface url must use http or https, got '%s'", parsed.Scheme),
 		})
 	}
 	if parsed.User != nil {

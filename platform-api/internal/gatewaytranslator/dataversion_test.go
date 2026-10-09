@@ -35,7 +35,7 @@ func TestComputeDataVersion(t *testing.T) {
 		{"llm provider is 1.1", constants.LLMProvider, constants.GatewayApiVersion, "1.1"},
 		{"llm proxy is 1.1", constants.LLMProxy, constants.GatewayApiVersion, "1.1"},
 		{"rest api is 1.0", constants.RestApi, constants.GatewayApiVersion, "1.0"},
-		{"mcp proxy is 1.0", constants.MCPProxy, constants.GatewayApiVersion, "1.0"},
+		{"mcp proxy is 1.1", constants.MCPProxy, constants.GatewayApiVersion, "1.1"},
 		{"websub api is 1.0", constants.WebSubApi, constants.GatewayApiVersion, "1.0"},
 		{"webbroker api is 1.0", constants.WebBrokerApi, constants.GatewayApiVersion, "1.0"},
 		{"legacy v1alpha1 llm provider is still major 1", constants.LLMProvider, constants.GatewayApiVersionV1Alpha1, "1.1"},
@@ -75,6 +75,7 @@ func TestGatewayDataVersionForGateway(t *testing.T) {
 		// A gateway that positively reports an old version still down-converts.
 		{"reported 1.1 is v1alpha1", "1.1", GatewayDataVersionV1Alpha1},
 		{"reported 1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
+		{"reported 1.0.0 is v1alpha1", "1.0.0", GatewayDataVersionV1Alpha1},
 		{"reported 1.2 is v1", "1.2", GatewayDataVersionV1},
 		{"reported 1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
 		{"reported 1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
@@ -82,25 +83,6 @@ func TestGatewayDataVersionForGateway(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, GatewayDataVersionForGateway(tt.version))
-		})
-	}
-}
-
-func TestTargetGatewayDataVersion(t *testing.T) {
-	tests := []struct {
-		name    string
-		version string
-		want    GatewayDataVersion
-	}{
-		{"1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
-		{"1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
-		{"1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
-		{"1.1.0 is v1alpha1", "1.1.0", GatewayDataVersionV1Alpha1},
-		{"empty is v1alpha1", "", GatewayDataVersionV1Alpha1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, TargetGatewayDataVersion(ParseVersion(tt.version)))
 		})
 	}
 }

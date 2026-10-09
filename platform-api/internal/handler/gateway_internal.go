@@ -54,6 +54,7 @@ type GatewayInternalAPIHandler struct {
 	artifactImportService  *service.ArtifactImportService
 	hmacSecretService      hmacSecretDecrypter // nil in OSS builds
 	secretService          *service.SecretService
+	readOnly               readOnlyMode // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
 	slogger                *slog.Logger
 }
 
@@ -199,6 +200,9 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
 	if !ok {
+		return
+	}
+	if h.rejectIfReadOnly(w, r, orgID, gatewayID) { // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
 		return
 	}
 
@@ -577,6 +581,65 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(w http.ResponseWriter, r *http.R
 	_, _ = w.Write(zipData)
 }
 
+// GetAgent handles GET /api/internal/v1/agents/:agentId
+//
+// agentId is the Agent proxy's internal artifact UUID, as carried in gateway
+// events — not its public handle. The response is the immutable snapshot of the
+// current deployment on the calling gateway, packaged as a ZIP whose single
+// entry is agent-{agentId}.yaml.
+func (h *GatewayInternalAPIHandler) GetAgent(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+
+	agentID := r.PathValue("agentId")
+	if agentID == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, dto.NewInternalErrorResponse(400, "Bad Request",
+			"Agent ID is required"))
+		return
+	}
+
+	agent, err := h.gatewayInternalService.GetActiveAgentDeploymentByGateway(agentID, orgID, gatewayID)
+	if err != nil {
+		clientIP := r.RemoteAddr
+		if i := strings.LastIndex(clientIP, ":"); i != -1 {
+			clientIP = clientIP[:i]
+		}
+		if apperror.DeploymentNotActive.Is(err) {
+			h.slogger.Warn("No active deployment found for Agent proxy", "clientIP", clientIP, "agentID", agentID, "orgID", orgID, "gatewayID", gatewayID)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"No active deployment found for this Agent on this gateway"))
+			return
+		}
+		if apperror.AgentProxyNotFound.Is(err) {
+			h.slogger.Warn("Agent proxy not found", "clientIP", clientIP, "agentID", agentID, "orgID", orgID, "gatewayID", gatewayID)
+			httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found",
+				"Agent not found"))
+			return
+		}
+		h.slogger.Error("Failed to get Agent proxy", "clientIP", clientIP, "agentID", agentID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to get Agent"))
+		return
+	}
+
+	zipData, err := utils.CreateAgentYamlZip(agent)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "agentID", agentID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error",
+			"Failed to create Agent package"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"agent-%s.zip\"", agentID))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(zipData)
+}
+
 // GetWebSubAPI handles GET /api/internal/v1/websub-apis/:apiId
 func (h *GatewayInternalAPIHandler) GetWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
@@ -698,6 +761,9 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter
 	if !ok {
 		return
 	}
+	if h.rejectIfReadOnly(w, r, orgID, gatewayID) { // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
+		return
+	}
 
 	var body struct {
 		Version           string                       `json:"version"`
@@ -803,6 +869,22 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPIAPIKeys(w http.ResponseWriter
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.WebBrokerApi, issuer)
 	if err != nil {
 		h.slogger.Error("Failed to get API keys for WebBroker APIs", "gatewayID", gatewayID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, keys)
+}
+
+// GetAgentAPIKeys handles GET /api/internal/v1/agents/api-keys
+func (h *GatewayInternalAPIHandler) GetAgentAPIKeys(w http.ResponseWriter, r *http.Request) {
+	orgID, gatewayID, ok := h.authenticateRequest(w, r)
+	if !ok {
+		return
+	}
+	issuer := r.URL.Query().Get("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.AgentProxy, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for Agent proxies", "gatewayID", gatewayID, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, dto.NewInternalErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
 		return
 	}
@@ -1018,6 +1100,8 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/deployments", h.GetGatewayDeployments)
 	mux.HandleFunc("POST /api/internal/v1/deployments/fetch-batch", h.BatchFetchDeployments)
 	mux.HandleFunc("GET /api/internal/v1/mcp-proxies/{proxyId}", h.GetMCPProxy)
+	mux.HandleFunc("GET /api/internal/v1/agents/api-keys", h.GetAgentAPIKeys)
+	mux.HandleFunc("GET /api/internal/v1/agents/{agentId}", h.GetAgent)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/api-keys", h.GetWebSubAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}", h.GetWebSubAPI)
 	mux.HandleFunc("GET /api/internal/v1/websub-apis/{apiId}/secrets", h.GetWebSubAPIHmacSecrets)

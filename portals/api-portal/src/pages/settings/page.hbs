@@ -21,6 +21,9 @@
 {{#pageScripts}}
 <script src='{{basePath}}/technical-scripts/manage-api-workflows.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-nav.js' defer></script>
+{{!-- Before settings-apis.js and settings-keymanagers.js: both build their chip
+      inputs from window.cfgChipInput at load. --}}
+<script src='{{basePath}}/technical-scripts/cfg-chip-input.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-apis.js' defer></script>
 <script src='{{basePath}}/technical-scripts/paginate.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-labels.js' defer></script>

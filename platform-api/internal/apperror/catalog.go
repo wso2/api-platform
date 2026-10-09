@@ -62,6 +62,12 @@ var (
 	ServiceUnavailable  = def(CodeCommonServiceUnavailable, http.StatusServiceUnavailable, "The service is temporarily unavailable.")
 	TooManyRequests     = def(CodeCommonTooManyRequests, http.StatusTooManyRequests, "%s")
 	PayloadTooLarge     = def(CodeCommonPayloadTooLarge, http.StatusRequestEntityTooLarge, "%s")
+	// UnsupportedMediaType is the 415 a body-bearing operation returns when the
+	// request declares a media type it does not accept. It is distinct from
+	// NotAcceptable (406), which is about the media type the client asked to
+	// *receive*.
+	UnsupportedMediaType = def(CodeCommonUnsupportedMediaType, http.StatusUnsupportedMediaType,
+		"This operation accepts application/json only.")
 )
 
 // REST API entries.
@@ -132,6 +138,9 @@ var (
 	DeploymentGatewayMismatch = def(CodeDeploymentGatewayMismatch, http.StatusBadRequest, "Deployment is bound to a different gateway.")
 	DeploymentActive          = def(CodeDeploymentActive, http.StatusConflict, "Cannot delete an active deployment - undeploy it first.")
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
+	// Args: the control-plane kind name, what the gateway would need (gwversion.Requirement).
+	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
+		"This gateway does not support %s artifacts; %s.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
@@ -145,6 +154,29 @@ var (
 	MCPProxyDeploymentValidationFailed = def(CodeMCPProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	MCPProxyUpstreamUnauthorized       = def(CodeMCPProxyUpstreamUnauthorized, http.StatusBadRequest,
 		"The MCP server rejected the supplied credentials.")
+)
+
+// Agent proxy entries.
+var (
+	AgentProxyNotFound = def(CodeAgentProxyNotFound, http.StatusNotFound, "The specified Agent proxy could not be found.")
+	AgentProxyExists   = def(CodeAgentProxyExists, http.StatusConflict, "An Agent proxy with this ID already exists.")
+	// AgentProxyUpstreamUnreachable is deliberately a 503 rather than a 500 or a
+	// 404: the Agent proxy exists and the control plane is healthy — it simply
+	// could not reach the upstream to read its Agent Card. Collapsing it into
+	// 500 would leave a client unable to tell a down agent from a broken control
+	// plane, which is exactly the distinction the card-unavailable display state
+	// is built on. The call site supplies a sterile reason sentence; the upstream
+	// URL, its credentials and its raw body never appear in it.
+	AgentProxyUpstreamUnreachable = def(CodeAgentProxyUpstreamUnreachable, http.StatusServiceUnavailable, "%s")
+	// AgentProxyDeploymentValidationFailed is a malformed deployment request
+	// (base, buildId, gatewayId). The call site supplies the sentence.
+	AgentProxyDeploymentValidationFailed = def(CodeAgentProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	// AgentProxyDeploymentNotUndeployed refuses to delete a deployment record
+	// that is not UNDEPLOYED. An active one gets DeploymentActive instead, whose
+	// "undeploy it first" is the actionable answer; this entry covers the states
+	// where undeploying is not the fix (in progress, failed, superseded).
+	AgentProxyDeploymentNotUndeployed = def(CodeAgentProxyDeploymentNotUndeployed, http.StatusConflict,
+		"Only an undeployed deployment can be deleted.")
 )
 
 // Organization / project / application entries.
@@ -259,4 +291,10 @@ var (
 	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
+)
+
+// API document entries.
+var (
+	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
+		"A document with this name already exists for this API.")
 )

@@ -750,3 +750,107 @@ func TestLog_Publish_CarriesComponentField(t *testing.T) {
 	decoded := decodeLine(t, out)
 	assert.Equal(t, "pol", decoded["component"])
 }
+
+// The traffic log must actually EMIT the failure classification. This is the test whose
+// absence let the gap ship: prepareAnalyticEvent built Event.Error, and the publisher —
+// which projects Event into its own struct rather than serialising it — silently dropped it,
+// so a fault line said only "status 401" while the code, class and failing policy were sat
+// on an event field nothing read.
+func TestLog_Publish_CarriesTheFailureClassification(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{Enabled: true})
+	event := createBaseEvent()
+	event.ErrorType = "AUTH"
+	event.Error = &dto.Error{
+		ErrorCode:    900902,
+		ErrorMessage: dto.AuthenticationFailure,
+		Type:         "authentication",
+		Direction:    "request",
+		Summary:      "Valid credentials required",
+		Policy:       "jwt-auth",
+		PolicyPhase:  "request_headers",
+		Source:       "gateway",
+	}
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	assert.Equal(t, "AUTH", decoded["errorType"])
+	errObj, ok := decoded["error"].(map[string]interface{})
+	require.True(t, ok, "expected an error object, got %T", decoded["error"])
+	assert.Equal(t, float64(900902), errObj["errorCode"])
+	assert.Equal(t, "AUTHENTICATION_FAILURE", errObj["errorMessage"])
+	assert.Equal(t, "jwt-auth", errObj["policy"], "which policy failed is the point of this")
+	assert.Equal(t, "gateway", errObj["source"], "a status alone cannot say this")
+	assert.Equal(t, "request_headers", errObj["policyPhase"])
+}
+
+// A successful request must not acquire an error object. Both fields are omitempty, so a
+// success line has to be byte-identical to what it was before the fault flow existed.
+func TestLog_Publish_SuccessLineHasNoErrorObject(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{Enabled: true})
+
+	l.Publish(createBaseEvent())
+	decoded := decodeLine(t, read())
+
+	assert.NotContains(t, decoded, "error")
+	assert.NotContains(t, decoded, "errorType")
+}
+
+// The error object is a structural field — always on, like api/operation/target — so the
+// off-switch has to be fields.exclude rather than a new config flag. This pins that it
+// works, including on a nested path, since that is the whole reason no new flag was added.
+func TestLog_Publish_FieldsExcludeDropsTheError(t *testing.T) {
+	t.Run("whole object", func(t *testing.T) {
+		l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+			Enabled:       true,
+			ExcludeFields: []string{"error"},
+		})
+		event := createBaseEvent()
+		event.ErrorType = "AUTH"
+		event.Error = &dto.Error{ErrorCode: 900902, Policy: "jwt-auth"}
+
+		l.Publish(event)
+		decoded := decodeLine(t, read())
+
+		assert.NotContains(t, decoded, "error", "excluded wholesale")
+		assert.Equal(t, "AUTH", decoded["errorType"], "the sibling category is a separate key")
+	})
+
+	t.Run("one nested field", func(t *testing.T) {
+		l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+			Enabled:       true,
+			ExcludeFields: []string{"error.summary"},
+		})
+		event := createBaseEvent()
+		event.Error = &dto.Error{
+			ErrorCode: 900902,
+			Summary:   "Valid credentials required",
+			Policy:    "jwt-auth",
+		}
+
+		l.Publish(event)
+		decoded := decodeLine(t, read())
+
+		errObj, ok := decoded["error"].(map[string]interface{})
+		require.True(t, ok)
+		assert.NotContains(t, errObj, "summary", "the client-facing text can be dropped alone")
+		assert.Equal(t, "jwt-auth", errObj["policy"], "without losing the attribution")
+	})
+}
+
+// The publisher shares dto.Error by pointer rather than copying it, so this pins that
+// publishing does not mutate the event other publishers also receive.
+func TestLog_Publish_DoesNotMutateSharedError(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"error.summary"},
+	})
+	event := createBaseEvent()
+	event.Error = &dto.Error{ErrorCode: 900902, Summary: "Valid credentials required"}
+
+	l.Publish(event)
+	_ = read()
+
+	assert.Equal(t, "Valid credentials required", event.Error.Summary,
+		"exclusion is a projection of the emitted JSON, never an edit to the shared event")
+}

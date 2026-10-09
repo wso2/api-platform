@@ -17,28 +17,22 @@
 
 package dto
 
-// CreateAPIDocumentRequest carries the raw spec and metadata when persisting a new spec
-// document for an API. The service fills in document type, handle, display name, and content type.
+// CreateAPIDocumentRequest carries the raw spec and metadata when creating or upserting a
+// document for an API. The service fills in the content type.
 type CreateAPIDocumentRequest struct {
-	Type             string
-	Handle           string
-	DisplayName      string
-	FileName         string
-	Content 		[]byte
+	Type          string
+	Handle        string
+	DisplayName   string
+	FileName      string
+	Content       []byte
+	OtherTypeName string // only meaningful when Type == "Other"; stored as-is in the type column
 }
 
-// PutAPIDocumentRequest carries the raw spec and metadata when replacing an existing
-// spec document for an API. The service fills in document type, handle, display name, and content type.
-type PutAPIDocumentRequest struct {
-	Type             string
-	Handle           string
-	DisplayName      string
-	FileName         string
-	Content 		[]byte
-}
-
-// APIDocumentContent is returned by GetDocument — the raw spec bytes ready to serve.
-type APIDocumentContent struct {
-	Content     []byte
-	ContentType string
+type UpdateAPIDocumentRequest struct {
+	Type          *string // nil = leave unchanged; pointer to "" is rejected
+	OtherTypeName string  // only meaningful when Type == "Other"
+	DisplayName   *string
+	FileName      *string
+	Content       []byte
+	ContentType   *string
 }

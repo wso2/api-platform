@@ -2,15 +2,21 @@ import unittest
 
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
+from google.protobuf.struct_pb2 import Value
+from google.protobuf.wrappers_pb2 import Int32Value
 from apip_sdk_core import (
     BodyProcessingMode,
     DownstreamResponseModifications,
     DropHeaderAction,
+    FaultDetails,
     ForwardResponseChunk,
     HeaderProcessingMode,
     ImmediateResponse,
+    GuardrailDetails,
+    JSONRPCError,
     ProcessingMode,
     TerminateResponseChunk,
+    SharedContext,
     UpstreamRequestModifications,
 )
 
@@ -102,6 +108,203 @@ class TranslatorTest(unittest.TestCase):
         self.assertIsNotNone(response_ctx.upstream)
         self.assertIsNotNone(response_ctx.upstream.response)
         self.assertEqual(503, response_ctx.upstream.response.status_code)
+
+    def test_fault_declaration_survives_serialisation(self):
+        """A policy's account of its rejection must reach the gateway.
+
+        The buffered actions no longer DECLARE faultness — the gateway reads the status — so
+        what has to survive here is the description, and the distinction between "described
+        nothing" and "described an empty error". The streaming action still declares, having
+        no status to read, and is checked at the end.
+        """
+        declared = self.translator.to_proto_request_header_action(
+            ImmediateResponse(
+                status_code=401,
+                fault=FaultDetails(
+                    code="900902",
+                    type="authentication",
+                    direction="Request",
+                    message="Valid credentials required",
+                    description="detail a renderer may withhold",
+                ),
+            )
+        ).immediate_response
+        self.assertEqual("900902", declared.fault.code)
+        self.assertEqual("authentication", declared.fault.type)
+        self.assertEqual("Request", declared.fault.direction)
+        # description crosses the bridge even though no renderer emits it — a fault handler
+        # reporting to an audit sink is exactly who needs it.
+        self.assertEqual("detail a renderer may withhold", declared.fault.description)
+
+        # A description on a sub-400 response still has to arrive. It no longer routes the
+        # response into the fault flow — 404 would, 302 would not — but it is how a
+        # deliberate non-failure gets an error-shaped body for a client that expects one.
+        described = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=302, fault=FaultDetails(code="961000"))
+        ).immediate_response
+        self.assertTrue(described.HasField("fault"))
+        self.assertEqual("961000", described.fault.code)
+
+        # Nothing described: absent must stay distinguishable from an empty description, since
+        # the gateway reads a present error as something to render.
+        silent = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=404)
+        ).immediate_response
+        self.assertFalse(silent.HasField("fault"))
+
+        # A response modification carrying no description still crosses cleanly. Whether it
+        # is a fault is the gateway's read of the status, not anything on the wire here.
+        relabelled = self.translator.to_proto_response_action(
+            DownstreamResponseModifications(status_code=503)
+        ).downstream_response_modifications
+        self.assertFalse(relabelled.HasField("fault"))
+        self.assertEqual(503, relabelled.status_code.value)
+
+        # The streaming action is the one that still declares, because the status went out
+        # with the headers and a mid-stream intervention has none of its own.
+        terminated = self.translator.to_proto_streaming_response_action(
+            TerminateResponseChunk(
+                body=b'data: {"error":"blocked"}\n\n',
+                is_fault=True,
+                fault=FaultDetails(code="906000", type="guardrail"),
+            )
+        ).terminate_response_chunk
+        self.assertTrue(terminated.is_fault)
+        self.assertEqual("906000", terminated.fault.code)
+
+    def test_jsonrpc_block_survives_serialisation(self):
+        """The JSON-RPC block is how an MCP policy states what the engine cannot derive.
+
+        The engine maps a status onto -32600/-32603 and has no request id at all. A policy that
+        parsed the body knows both, so both have to cross the bridge intact — a flattened code
+        turns "invalid params" into the generic "invalid request", and a lost id leaves a client
+        with several calls in flight unable to tell which one failed.
+        """
+        declared = self.translator.to_proto_request_header_action(
+            ImmediateResponse(
+                status_code=400,
+                fault=FaultDetails(
+                    message="Invalid MCP request params",
+                    jsonrpc=JSONRPCError(code=-32602, id="call-7"),
+                ),
+            )
+        ).immediate_response
+        self.assertTrue(declared.fault.HasField("jsonrpc"))
+        self.assertEqual(-32602, declared.fault.jsonrpc.code.value)
+        self.assertEqual("call-7", declared.fault.jsonrpc.id.string_value)
+
+        # A numeric id must stay a number: JSON-RPC lets the client pick, and one matching on
+        # the value it sent would not recognise "7".
+        numeric = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=400, fault=FaultDetails(jsonrpc=JSONRPCError(id=7)))
+        ).immediate_response
+        self.assertEqual(7, numeric.fault.jsonrpc.id.number_value)
+
+        # An id with no code leaves the code unset, so the engine still derives it from the
+        # status rather than being handed an invalid 0.
+        id_only = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=429, fault=FaultDetails(jsonrpc=JSONRPCError(id="x")))
+        ).immediate_response
+        self.assertTrue(id_only.fault.HasField("jsonrpc"))
+        self.assertFalse(id_only.fault.jsonrpc.HasField("code"))
+
+        # A code with no id still marks the block present — otherwise the code would vanish.
+        code_only = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=400, fault=FaultDetails(jsonrpc=JSONRPCError(code=-32700)))
+        ).immediate_response
+        self.assertTrue(code_only.fault.HasField("jsonrpc"))
+        self.assertEqual(-32700, code_only.fault.jsonrpc.code.value)
+
+        # No block stays absent: a non-MCP policy must not acquire an empty one just by
+        # describing an error.
+        plain = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=500, fault=FaultDetails(message="boom"))
+        ).immediate_response
+        self.assertFalse(plain.fault.HasField("jsonrpc"))
+
+        # Inbound: a fault handler sees what the failing policy supplied.
+        received = Translator._to_python_error_response(
+            proto.FaultDetails(
+                message="Parse error",
+                jsonrpc=proto.JSONRPCError(code=Int32Value(value=-32700), id=Value(string_value="abc")),
+            )
+        )
+        self.assertIsNotNone(received.jsonrpc)
+        self.assertEqual(-32700, received.jsonrpc.code)
+        self.assertEqual("abc", received.jsonrpc.id)
+
+    def test_guardrail_block_survives_serialisation(self):
+        """A Python guardrail must be able to return an assessment.
+
+        Before this the proto FaultDetails had no guardrail field at all, so a Python guardrail
+        could describe a rejection but never say which guardrail acted or what it found.
+
+        The distinction under test is absent-vs-present-but-empty. Absent means no guardrail was
+        involved; present with no assessments means a guardrail acted and the operator did not
+        opt into showing the evidence (showAssessment: false). Collapsing them would either hide
+        every intervention or disclose every assessment.
+        """
+        full = self.translator.to_proto_request_header_action(
+            ImmediateResponse(
+                status_code=422,
+                fault=FaultDetails(
+                    code="906000",
+                    type="guardrail",
+                    message="Violation of applied word count constraints detected",
+                    guardrail=GuardrailDetails(
+                        intervening_guardrail="word-count-guardrail-py",
+                        action_reason="too many words",
+                        assessments={"assessments": "Expected 10 to 500 words."},
+                    ),
+                ),
+            )
+        ).immediate_response
+        self.assertTrue(full.fault.HasField("guardrail"))
+        self.assertEqual("word-count-guardrail-py", full.fault.guardrail.intervening_guardrail)
+        # The default the dataclass supplies, so a guardrail need not restate it.
+        self.assertEqual("GUARDRAIL_INTERVENED", full.fault.guardrail.action)
+        self.assertEqual("too many words", full.fault.guardrail.action_reason)
+        self.assertEqual(
+            "Expected 10 to 500 words.",
+            full.fault.guardrail.assessments["assessments"],
+        )
+
+        # showAssessment: false — block present, evidence withheld.
+        gated = self.translator.to_proto_request_header_action(
+            ImmediateResponse(
+                status_code=422,
+                fault=FaultDetails(
+                    guardrail=GuardrailDetails(intervening_guardrail="regex-guardrail-py")
+                ),
+            )
+        ).immediate_response
+        self.assertTrue(gated.fault.HasField("guardrail"))
+        self.assertFalse(gated.fault.guardrail.HasField("assessments"))
+
+        # A non-guardrail policy must not acquire an empty block by describing an error.
+        plain = self.translator.to_proto_request_header_action(
+            ImmediateResponse(status_code=401, fault=FaultDetails(code="900902"))
+        ).immediate_response
+        self.assertFalse(plain.fault.HasField("guardrail"))
+
+        # Inbound: a fault handler sees which guardrail acted and why.
+        received = Translator._to_python_error_response(
+            proto.FaultDetails(
+                message="Blocked",
+                guardrail=proto.GuardrailDetails(
+                    intervening_guardrail="url-guardrail",
+                    action="GUARDRAIL_INTERVENED",
+                    action_reason="disallowed host",
+                ),
+            )
+        )
+        self.assertIsNotNone(received.guardrail)
+        self.assertEqual("url-guardrail", received.guardrail.intervening_guardrail)
+        self.assertEqual("disallowed host", received.guardrail.action_reason)
+        self.assertIsNone(
+            received.guardrail.assessments,
+            "an unset Struct must stay None, not become an empty dict",
+        )
 
     def test_action_translation_preserves_current_fields(self):
         request_action = UpstreamRequestModifications(
@@ -260,3 +463,65 @@ class TranslatorTest(unittest.TestCase):
 
         self.assertEqual("", shared.resolved_operation)
         self.assertEqual({}, shared.resolution_attributes)
+    def test_error_context_carries_the_policy_phase(self):
+        """policy_phase completes the attribution policy/policy_version starts.
+
+        Asserted on the way IN, because that is the direction a fault handler depends on:
+        the gateway names the failing policy and the phase it was in, and a handler reading
+        one without the other cannot say what failed.
+        """
+        ctx = Translator.to_python_error_context(
+            proto.FaultContext(
+                policy="word-count-guardrail",
+                policy_version="v1",
+                policy_phase="response_body",
+                response_status=446,
+            ),
+            SharedContext(request_id="r1"),
+        )
+        self.assertEqual("word-count-guardrail", ctx.policy)
+        self.assertEqual("v1", ctx.policy_version)
+        self.assertEqual("response_body", ctx.policy_phase)
+
+    def test_error_context_carries_the_source(self):
+        """source is what tells a handler whose failure it is looking at.
+
+        Every source is checked rather than one, because the values are configuration surface
+        — an execution condition tests them by string — so a spelling that does not survive
+        the wire silently stops a deployment's condition from ever matching.
+        """
+        for source in ("gateway", "backend", "router", "noRoute", "unknown"):
+            with self.subTest(source=source):
+                ctx = Translator.to_python_error_context(
+                    proto.FaultContext(source=source, response_status=503),
+                    SharedContext(request_id="r1"),
+                )
+                self.assertEqual(source, ctx.source)
+
+    def test_error_context_for_a_backend_failure_has_a_source_but_no_description(self):
+        """The case source exists for.
+
+        The gateway describes nothing for a backend error — another service's 500 is not the
+        gateway's to classify — so source carries the entire signal. A handler seeing neither
+        would have a bare 502 it could not tell from an engine failure.
+        """
+        ctx = Translator.to_python_error_context(
+            proto.FaultContext(source="backend", response_status=502),
+            SharedContext(request_id="r1"),
+        )
+        self.assertEqual("backend", ctx.source)
+        self.assertIsNone(ctx.fault)
+
+    def test_error_context_without_a_policy_has_no_phase(self):
+        """A router failure names no policy, so it must name no phase.
+
+        The gateway enforces this when it records the attribution; this is the wire half of
+        the same invariant — an empty field must arrive empty rather than defaulting to some
+        phase a handler would then report as fact.
+        """
+        ctx = Translator.to_python_error_context(
+            proto.FaultContext(response_status=503),
+            SharedContext(request_id="r2"),
+        )
+        self.assertEqual("", ctx.policy)
+        self.assertEqual("", ctx.policy_phase)

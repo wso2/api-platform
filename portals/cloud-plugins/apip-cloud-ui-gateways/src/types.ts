@@ -26,11 +26,16 @@
 export type GatewayType = 'regular' | 'ai' | 'event';
 
 /**
- * Whether the gateway's controller is currently connected to the control plane.
- * A newly created gateway is `inactive` until its data-plane gateway finishes
- * provisioning and dials in.
+ * Where the gateway is between being asked for and serving traffic.
+ *
+ * `provisioning` and `failed` are about building it; `active` and `inactive` are
+ * about its controller being connected to the control plane right now. They are
+ * separate questions, and a gateway still being built has nothing to connect yet
+ * — which is why `provisioning` is its own status rather than another way of
+ * reading `inactive`. `inactive` is routine (a restart, a brief drop); `failed`
+ * is not, and comes with a reason.
  */
-export type GatewayStatus = 'active' | 'inactive';
+export type GatewayStatus = 'provisioning' | 'failed' | 'active' | 'inactive';
 
 export type Environment = {
   id: string;
@@ -46,6 +51,8 @@ export type Gateway = {
   /** The external host the gateway is exposed on — server-assigned, not a create input. */
   url: string;
   status: GatewayStatus;
+  /** Why provisioning failed, in plain words. Present only when `status` is `failed`. */
+  statusReason?: string;
   isCritical: boolean;
   /**
    * Whether this gateway is the one its environment resolves to for its type.

@@ -19,6 +19,7 @@
 import { PageTitle } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
+import { AppPage } from '@/components/AppPage';
 import { ComingSoon } from '@/components/ComingSoon';
 import { ExternalToolPanel } from '@/components/common/ExternalToolPanel';
 import { runtimeConfig } from '@/config/runtime';
@@ -58,16 +59,20 @@ const messages = defineMessages({
 });
 
 export function InsightsPage() {
+  return (
+    <AppPage>
+      <InsightsPageContent />
+    </AppPage>
+  );
+}
+
+function InsightsPageContent() {
   // Cloud ships org/project Moesif embeds via the insights plugin; API-scoped
   // analytics is not ready yet, so show Coming Soon when the cloud proxy is on
   // (same signal that gates those sidebar extensions).
   if (runtimeConfig.cloudProxyEnabled) {
     return (
-      <ScopeGate
-        prompt="Insights are reported per API."
-        requires="api"
-        to={routes.apiInsightsApi}
-      >
+      <ScopeGate prompt="Insights are reported per API." requires="api" to={routes.apiInsightsApi}>
         <ComingSoon feature={<FormattedMessage {...messages.cloudFeature} />} />
       </ScopeGate>
     );

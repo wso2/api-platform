@@ -24,15 +24,18 @@ import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
 import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { TrialStatusFeature } from '@wso2-enterprise/apip-cloud-ui-trial-status';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import {
+  HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
+  type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
@@ -119,7 +122,19 @@ const observabilityLogsPath = (orgHandle: string) =>
  * (Metrics, Alerts) in place and replaces only its Logs page, through
  * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
-export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] = [
+export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
+  defineCloudPlugin({
+    id: 'trial-status',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'trial-status',
+        slot: HEADER_ACTIONS_SLOT,
+        order: 10,
+        render: (port) => <TrialStatusFeature port={port} />,
+      },
+    ],
+  }),
   defineCloudPlugin({
     id: 'environments',
     version: '0.1.0',
@@ -407,4 +422,4 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
 export const cloudExtensions = filterExtensionsForRuntime(
   getCloudExtensions(cloudPluginFeatures)
 );
-export type { ApiControlPlaneExtension };
+export type { ApiControlPlaneCloudEntry, ApiControlPlaneExtension };

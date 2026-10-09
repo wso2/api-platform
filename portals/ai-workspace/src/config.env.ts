@@ -100,6 +100,9 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore' +
   ' ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage' +
   ' ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore' +
+  ' ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage' +
+  ' ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage' +
+  ' ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore' +
   ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 
@@ -128,6 +131,22 @@ export const API_PORTAL_ENABLED = getEnvOrDefault(
   'APIP_AIW_API_PORTAL_ENABLED',
   false
 );
+
+// Mirrors [ai_workspace.feature_flags]. A feature is hidden completely until its
+// flag is set: no navigation entry, no route, no overview entry. One entry per
+// feature, kept only while that feature is rolling out.
+const FEATURE_FLAGS = {
+  'agent-proxy': getEnvOrDefault(
+    'APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED',
+    false
+  ),
+};
+
+export type FeatureId = keyof typeof FEATURE_FLAGS;
+
+export function isFeatureEnabled(feature: FeatureId): boolean {
+  return FEATURE_FLAGS[feature];
+}
 
 // The single API Portal MCP proxies publish to. Hardcoded stand-in until
 // proper Dev Portal selection support is added — not yet operator-configurable.

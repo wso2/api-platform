@@ -189,7 +189,7 @@ export const trackHybridGatewayDeploymentCreate = (params: {
   base?: string;
   hasBuildId?: boolean;
   hasEndpointOverride?: boolean;
-  resourceType?: 'provider' | 'proxy' | 'mcp-server';
+  resourceType?: 'provider' | 'proxy' | 'mcp-server' | 'agent-proxy';
 }) => {
   const {
     orgUuid,
@@ -223,7 +223,7 @@ export const trackHybridGatewayDeploymentRedeploy = (params: {
   apiId?: string;
   deploymentId?: string;
   hasBuildId?: boolean;
-  resourceType?: 'provider' | 'proxy' | 'mcp-server';
+  resourceType?: 'provider' | 'proxy' | 'mcp-server' | 'agent-proxy';
 }) => {
   const {
     orgUuid,
@@ -252,7 +252,7 @@ export const trackHybridGatewayDeploymentUndeploy = (params: {
   gatewayName?: string;
   apiId?: string;
   deploymentId?: string;
-  resourceType?: 'provider' | 'proxy' | 'mcp-server';
+  resourceType?: 'provider' | 'proxy' | 'mcp-server' | 'agent-proxy';
 }) => {
   const { orgUuid, gatewayId, gatewayName, apiId, deploymentId, resourceType } =
     params;
@@ -273,7 +273,7 @@ export const trackHybridGatewayDeploymentDelete = (params: {
   gatewayName?: string;
   apiId?: string;
   deploymentId?: string;
-  resourceType?: 'provider' | 'proxy' | 'mcp-server';
+  resourceType?: 'provider' | 'proxy' | 'mcp-server' | 'agent-proxy';
 }) => {
   const { orgUuid, gatewayId, gatewayName, apiId, deploymentId, resourceType } =
     params;

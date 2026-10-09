@@ -28,27 +28,70 @@ import (
 
 func cookieTestServer() *Server {
 	return &Server{cfg: &config.Config{
-		Cookie: config.CookieConfig{Name: "_ai_workspace_session", Secure: true, SameSite: "lax"},
+		Cookie: config.CookieConfig{
+			Name1:       "_ai_workspace_session_1",
+			Name2:       "_ai_workspace_session_2",
+			StatePrefix: "_ai_workspace_state_",
+			Secure:      true,
+			SameSite:    "lax",
+		},
 	}}
 }
 
-// The session cookie is scoped to the app's base path, so a host serving several
-// portals under different prefixes never forwards this session to the others.
+// The session is split across two cookies, both scoped to the app's base path, so a
+// host serving several portals under different prefixes never forwards this session to
+// the others.
 func TestSetSessionCookieScopedToBasePath(t *testing.T) {
 	s := cookieTestServer()
 	rec := httptest.NewRecorder()
 	s.setSessionCookie(rec, "jwt-value", time.Now().Add(time.Hour))
 
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 {
-		t.Fatalf("got %d cookies, want 1", len(cookies))
+	if len(cookies) != 2 {
+		t.Fatalf("got %d cookies, want 2", len(cookies))
 	}
-	if cookies[0].Path != "/ai-workspace/" {
-		t.Errorf("Path = %q, want %q", cookies[0].Path, "/ai-workspace/")
+	names := map[string]bool{}
+	for _, c := range cookies {
+		names[c.Name] = true
+		if c.Path != "/ai-workspace/" {
+			t.Errorf("cookie %q Path = %q, want %q", c.Name, c.Path, "/ai-workspace/")
+		}
+		if !c.HttpOnly || !c.Secure {
+			t.Errorf("cookie %q must stay HttpOnly and Secure, got HttpOnly=%v Secure=%v",
+				c.Name, c.HttpOnly, c.Secure)
+		}
 	}
-	if !cookies[0].HttpOnly || !cookies[0].Secure {
-		t.Errorf("cookie must stay HttpOnly and Secure, got HttpOnly=%v Secure=%v",
-			cookies[0].HttpOnly, cookies[0].Secure)
+	if !names[s.cfg.Cookie.Name1] || !names[s.cfg.Cookie.Name2] {
+		t.Fatalf("got cookies %v, want both %q and %q", names, s.cfg.Cookie.Name1, s.cfg.Cookie.Name2)
+	}
+}
+
+// The JWT reassembled from the two cookie parts must equal the original value.
+func TestSetSessionCookieRoundTrips(t *testing.T) {
+	s := cookieTestServer()
+	rec := httptest.NewRecorder()
+	want := "header.payload-with-a-lot-of-scopes.signature"
+	s.setSessionCookie(rec, want, time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	for _, c := range rec.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	got, ok := s.tokenFromCookie(req)
+	if !ok || got != want {
+		t.Fatalf("tokenFromCookie() = %q, %v, want %q, true", got, ok, want)
+	}
+}
+
+// A missing second cookie must fail closed rather than silently returning a truncated
+// JWT — see GO-AUTH-001.
+func TestTokenFromCookieFailsClosedOnMissingPart(t *testing.T) {
+	s := cookieTestServer()
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: s.cfg.Cookie.Name1, Value: "only-part-one"})
+
+	if _, ok := s.tokenFromCookie(req); ok {
+		t.Fatal("tokenFromCookie() = ok, want false when the second cookie is missing")
 	}
 }
 
@@ -62,20 +105,39 @@ func TestClearSessionCookieAlsoClearsLegacyRootPath(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.clearSessionCookie(rec)
 
-	byPath := map[string]int{}
+	wantNames := map[string]bool{
+		s.cfg.Cookie.Name1:      true,
+		s.cfg.Cookie.Name2:      true,
+		config.LegacyCookieName: true,
+	}
+	byPath := map[string]map[string]bool{"/ai-workspace/": {}, "/": {}}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name != s.cfg.Cookie.Name {
+		// This server has no state codec, so clearSessionCookie also sweeps any
+		// sealed state cookies orphaned by a switch to store = "memory". They are
+		// not part of what this test is about — see TestDeleteClearsTheStateCookies.
+		if strings.HasPrefix(c.Name, s.cfg.Cookie.StatePrefix) {
+			if c.MaxAge >= 0 {
+				t.Errorf("orphan state cookie %q not expired: MaxAge=%d", c.Name, c.MaxAge)
+			}
+			continue
+		}
+		if !wantNames[c.Name] {
 			t.Fatalf("unexpected cookie %q", c.Name)
 		}
 		if c.MaxAge >= 0 || c.Value != "" {
-			t.Errorf("cookie at Path %q not expired: MaxAge=%d Value=%q", c.Path, c.MaxAge, c.Value)
+			t.Errorf("cookie %q at Path %q not expired: MaxAge=%d Value=%q", c.Name, c.Path, c.MaxAge, c.Value)
 		}
-		byPath[c.Path]++
+		if _, ok := byPath[c.Path]; !ok {
+			t.Fatalf("unexpected Path %q", c.Path)
+		}
+		byPath[c.Path][c.Name] = true
 	}
-	for _, want := range []string{"/ai-workspace/", "/"} {
-		if byPath[want] != 1 {
-			t.Errorf("got %d expiries for Path %q, want exactly 1 (all Set-Cookie: %v)",
-				byPath[want], want, rec.Result().Header["Set-Cookie"])
+	for _, path := range []string{"/ai-workspace/", "/"} {
+		for name := range wantNames {
+			if !byPath[path][name] {
+				t.Errorf("missing expiry for cookie %q at Path %q (all Set-Cookie: %v)",
+					name, path, rec.Result().Header["Set-Cookie"])
+			}
 		}
 	}
 }

@@ -30,6 +30,10 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
+# The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
+make ap-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+
 # Gateway-controller policy smoke (requires ../gateway-controllers/policies)
 go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
@@ -52,7 +56,10 @@ go test ./suites/cloud -count=1 -timeout=15m \
   -args -blocks=apip-cloud -cloud-env=development
 ```
 
-Prerequisite images: `make testbench` here. Coverage runs build source images through the
+Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
+`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
+missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
 product coverage-image target. See
 [`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
@@ -137,7 +144,15 @@ go test -blocks gateway-restart                         # one block
 go test -feature-tags "@request-rewrite"                # one feature, any block
 go test -blocks gateway-core -feature-tags "@metrics,@cors"          # ',' is OR
 go test -gateway-version 1.2.0 -blocks gateway-core/sqlite # one Gateway release
+go test -gateway-version 1.1.0 -host registry.example/test-gateway -blocks gateway-core/sqlite # released images from another repository
 ```
+
+`-host` overrides the `ghcr.io/wso2/api-platform` image repository prefix for the
+Platform Gateway controller and runtime only. It must be used together with
+`-gateway-version`; the version remains the Gateway release used for configuration,
+management paths, and compatibility selection. For example, the command above pulls
+`registry.example/test-gateway/gateway-controller:1.1.0` and
+`registry.example/test-gateway/gateway-runtime:1.1.0`.
 
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:

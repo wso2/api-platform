@@ -845,8 +845,18 @@ func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
 	if !ok || serialized == "" {
 		return
 	}
-	var headers map[string]string
-	if err := json.Unmarshal([]byte(serialized), &headers); err != nil {
+	// Single-value format first, then fall back to the multi-value format
+	// ({"name":["v1","v2"]}) the policy engine produces (e.g. when
+	// analytics-header-filter is applied). Every value is kept, since the
+	// attribute is already a string array.
+	var headers map[string][]string
+	var single map[string]string
+	if err := json.Unmarshal([]byte(serialized), &single); err == nil {
+		headers = make(map[string][]string, len(single))
+		for name, value := range single {
+			headers[name] = []string{value}
+		}
+	} else if err := json.Unmarshal([]byte(serialized), &headers); err != nil {
 		slog.Debug("OTel publisher could not parse analytics headers", "error", err, "prefix", prefix)
 		return
 	}
@@ -877,9 +887,15 @@ func appendHeaderAttributes(attrs *otelAttrs, prefix string, raw interface{}) {
 		}
 		// The analytics policy joins a repeated header into one comma-separated
 		// string before it reaches the event, so the array carries that single
-		// value verbatim.
-		if value := headers[name]; value != "" {
-			attrs.strs(prefix+strings.ToLower(name), []string{value})
+		// value verbatim. The multi-value format carries one item per value.
+		values := make([]string, 0, len(headers[name]))
+		for _, value := range headers[name] {
+			if value != "" {
+				values = append(values, value)
+			}
+		}
+		if len(values) > 0 {
+			attrs.strs(prefix+strings.ToLower(name), values)
 			emitted++
 		}
 	}

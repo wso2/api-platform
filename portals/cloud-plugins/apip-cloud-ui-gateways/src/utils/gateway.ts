@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { GatewayType } from '../types';
+import type { GatewayStatus, GatewayType } from '../types';
 
 /**
  * The gateway type as it is named on screen. Matches the built-in console's own
@@ -27,4 +27,37 @@ export function gatewayTypeLabel(type: GatewayType): string {
   if (type === 'ai') return 'AI Gateway';
   if (type === 'event') return 'Event Gateway';
   return 'API Gateway';
+}
+
+/**
+ * How a gateway's status reads on screen, and the severity it reads at.
+ *
+ * `inactive` is a warning rather than an error: a gateway is briefly
+ * disconnected across a restart, and that is not something to alarm anyone
+ * about. `failed` is the one real error — it will not resolve on its own.
+ */
+export function gatewayStatusLabel(status: GatewayStatus): string {
+  switch (status) {
+    case 'provisioning':
+      return 'Provisioning';
+    case 'failed':
+      return 'Failed';
+    case 'active':
+      return 'Active';
+    default:
+      return 'Inactive';
+  }
+}
+
+export function gatewayStatusColor(status: GatewayStatus): 'success' | 'error' | 'info' | 'warning' {
+  switch (status) {
+    case 'provisioning':
+      return 'info';
+    case 'failed':
+      return 'error';
+    case 'active':
+      return 'success';
+    default:
+      return 'warning';
+  }
 }

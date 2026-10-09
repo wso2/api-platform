@@ -32,6 +32,19 @@ const EnvImageAPIPortal = "AP_IMAGE"
 const svcAPIPortal = "api-portal"
 const svcAPIPortalOtherOrg = "api-portal-other-org"
 
+const svcAPIPortalMultiOrganization = "api-portal-multi-organization"
+
+// MultiOrganizationPortalID is the portal_id the multi-organization portal serves.
+const MultiOrganizationPortalID = "portal_id"
+
+// multiOrganizationOverlay configures IDP sign-in through the testbench identity
+// provider and multi-organization mode.
+const multiOrganizationOverlay = "tests/framework/core/catalog/overlays/api-portal-multi-organization.toml"
+
+// portalRoleMapping is the API Portal's own role-to-scope mapping, which also grants the
+// platform-api-system role that shared-key publishing calls are authorized as.
+const portalRoleMapping = "portals/api-portal/resources/role-to-scope-mapping.yaml"
+
 // APIPortal returns the API Portal component definition.
 func APIPortal() *components.Definition {
 	return apiPortalDefinition(svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "default", "Default", "portal_id", svcAPIPortal)
@@ -40,6 +53,43 @@ func APIPortal() *components.Definition {
 // APIPortalOtherOrg returns an API Portal instance pinned to another organization.
 func APIPortalOtherOrg() *components.Definition {
 	return apiPortalDefinition(svcAPIPortalOtherOrg, "tests/framework/core/catalog/apiportal/docker-compose.yaml", "other-org", "Other Org", "other_portal_id", svcAPIPortal, "tests/framework/core/catalog/apiportal/docker-compose.other-org.yaml")
+}
+
+// APIPortalMultiOrganization returns an API Portal in multi-organization mode that
+// signs users in through the testbench identity provider.
+func APIPortalMultiOrganization() *components.Definition {
+	d := apiPortalDefinition(svcAPIPortalMultiOrganization, "tests/framework/core/catalog/apiportal/docker-compose.yaml",
+		"default", "Default", MultiOrganizationPortalID, svcAPIPortal)
+	d.SourceProduct = svcAPIPortal
+	d.Compose.Env["APIP_AP_AUTH_IDP_CALLBACK_URL"] = "http://" + svcAPIPortalMultiOrganization + ":9543/api-portal/default/callback"
+	d.Compose.StagedFiles = map[string]string{"role-to-scope-mapping.yaml": portalRoleMapping}
+	d.Compose.GeneratedFiles["certs/cert.pem"] = multiOrganizationTrustBundle()
+	d.Config.ExtraOverlays = []string{multiOrganizationOverlay}
+	d.DependsOn = []string{"testbench"}
+	// The portal root redirects an anonymous visitor into silent sign-in at the identity
+	// provider in IDP mode, so readiness is the portal's own health endpoint instead.
+	health := *d.Health
+	health.Path = "/health"
+	d.Health = &health
+	return d
+}
+
+// PortalID returns the portal_id a multi-organization API Portal component serves.
+func PortalID(component string) (string, bool) {
+	if component == svcAPIPortalMultiOrganization {
+		return MultiOrganizationPortalID, true
+	}
+	return "", false
+}
+
+// multiOrganizationTrustBundle is the certificate bundle a multi-organization portal
+// trusts: the control plane's and the testbench identity provider's.
+func multiOrganizationTrustBundle() []byte {
+	bundle := append([]byte(nil), shared.ControlPlaneCrypto()["certs/cert.pem"]...)
+	if len(bundle) > 0 && bundle[len(bundle)-1] != '\n' {
+		bundle = append(bundle, '\n')
+	}
+	return append(bundle, shared.IdentityProviderTLS().CertPEM...)
 }
 
 func apiPortalDefinition(name, composeFile, organization, displayName, portalID, serviceName string, overrides ...string) *components.Definition {
@@ -91,9 +141,10 @@ func apiPortalDefinition(name, composeFile, organization, displayName, portalID,
 		},
 
 		DB: &components.DBContract{
-			Supported: []components.DBType{components.Postgres},
+			Supported: []components.DBType{components.Postgres, components.SQLServer},
 			Schema: map[components.DBType][]string{
-				components.Postgres: {"portals/api-portal/database/schema.postgres.sql"},
+				components.Postgres:  {"portals/api-portal/database/schema.postgres.sql"},
+				components.SQLServer: {"portals/api-portal/database/schema.sqlserver.sql"},
 			},
 			Env: apiPortalDBEnv,
 		},
@@ -146,8 +197,12 @@ func portalCryptoFiles() map[string][]byte {
 
 // apiPortalDBEnv converts a database DSN to the portal's environment variables.
 func apiPortalDBEnv(d components.DSN) map[string]string {
+	driver := "postgres"
+	if d.Type == components.SQLServer {
+		driver = "mssql"
+	}
 	return map[string]string{
-		"APIP_AP_DATABASE_DRIVER":   "postgres",
+		"APIP_AP_DATABASE_DRIVER":   driver,
 		"APIP_AP_DATABASE_HOST":     d.Host,
 		"APIP_AP_DATABASE_PORT":     strconv.Itoa(d.Port),
 		"APIP_AP_DATABASE_NAME":     d.Database,

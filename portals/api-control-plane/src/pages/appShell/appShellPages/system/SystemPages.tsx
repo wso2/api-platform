@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
+import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useAuth } from '@/contexts/auth/AuthProvider';
@@ -137,6 +138,14 @@ const PROVISIONING_ATTEMPTS = 20;
 const PROVISIONING_INTERVAL_MS = 3000;
 
 export function OrganizationRedirectPage() {
+  return (
+    <AppPage>
+      <OrganizationRedirect />
+    </AppPage>
+  );
+}
+
+function OrganizationRedirect() {
   const intl = useIntl();
   const organizationsQuery = useOrganizations();
   const organization = organizationsQuery.data?.list?.[0];
@@ -270,7 +279,7 @@ export function NotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <PageContent>
+    <AppPage>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...notFoundMessages.title} />
@@ -285,6 +294,6 @@ export function NotFoundPage() {
       <Button sx={{ mt: 3 }} variant="contained" onClick={() => navigate('/')}>
         <FormattedMessage {...notFoundMessages.goHome} />
       </Button>
-    </PageContent>
+    </AppPage>
   );
 }

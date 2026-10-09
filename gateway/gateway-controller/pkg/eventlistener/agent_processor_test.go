@@ -201,9 +201,10 @@ func testAgentStoredConfig(
 // agentReplica is the second replica under test: its own in-memory stores and
 // snapshot managers, fed only by events.
 type agentReplica struct {
-	listener     *EventListener
-	store        *storage.ConfigStore
-	runtimeStore *storage.RuntimeConfigStore
+	listener        *EventListener
+	store           *storage.ConfigStore
+	runtimeStore    *storage.RuntimeConfigStore
+	snapshotManager *xds.SnapshotManager
 }
 
 // newAgentReplica wires a listener the way cmd/controller does for the Agent
@@ -249,8 +250,9 @@ func newAgentReplica(t *testing.T, db storage.Storage) *agentReplica {
 			secretResolver:    stubSecretResolver{value: "42"},
 			logger:            logger,
 		},
-		store:        store,
-		runtimeStore: runtimeStore,
+		store:           store,
+		runtimeStore:    runtimeStore,
+		snapshotManager: snapshotManager,
 	}
 }
 
@@ -394,16 +396,21 @@ func protectedCardBlockOf(t *testing.T, chain *models.PolicyChain) map[string]in
 }
 
 // An update is read back from the database rather than taken from the event, so
-// a replica holding a stale copy converges on the stored one.
+// a replica holding a stale copy converges on the stored one — and when the
+// stored one is undeployed, the chains the stale copy converged go with it.
 func TestHandleEvent_AgentUpdate_RefreshesStaleConfigFromDB(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
 
-	latest := testAgentStoredConfig("agent-update-id", "weather-agent", "Weather Agent", "v1.0", models.StateUndeployed)
-	require.NoError(t, db.SaveConfig(latest))
+	deployed := testAgentStoredConfig("agent-update-id", "weather-agent", "Weather Agent", "v1.0", models.StateDeployed)
+	require.NoError(t, db.SaveConfig(deployed))
 
 	replica := newAgentReplica(t, db)
-	stale := testAgentStoredConfig("agent-update-id", "weather-agent", "Weather Agent", "v1.0", models.StateDeployed)
-	require.NoError(t, replica.store.Add(stale))
+	replica.listener.handleEvent(agentEvent("CREATE", deployed.UUID, "corr-agent-create"))
+	_, exists := replica.runtimeStore.Get(storage.Key(models.KindAgent, deployed.Handle))
+	require.True(t, exists, "precondition: the deployed Agent converged")
+
+	latest := testAgentStoredConfig("agent-update-id", "weather-agent", "Weather Agent", "v1.0", models.StateUndeployed)
+	require.NoError(t, db.UpdateConfig(latest))
 
 	replica.listener.handleEvent(agentEvent("UPDATE", latest.UUID, "corr-agent-update"))
 
@@ -411,8 +418,110 @@ func TestHandleEvent_AgentUpdate_RefreshesStaleConfigFromDB(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
 
-	_, exists := replica.runtimeStore.Get(storage.Key(models.KindAgent, latest.Handle))
-	assert.True(t, exists, "an undeployed Agent still holds its chains for redeployment")
+	_, exists = replica.runtimeStore.Get(storage.Key(models.KindAgent, latest.Handle))
+	assert.False(t, exists, "an undeployed Agent's chains leave the policy snapshot")
+}
+
+// Undeploying tears down both xDS lanes on the replica while keeping the
+// configuration for a later redeploy: the Agent's routes leave the Envoy
+// snapshot, its runtime deploy config leaves the policy snapshot, and the
+// artifact stays in the store.
+func TestHandleEvent_AgentUndeploy_RemovesRoutesAndPolicyChains(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testAgentStoredConfig("agent-undeploy-id", "weather-agent", "Weather Agent", "v1.0", models.StateDeployed)
+	require.NoError(t, db.SaveConfig(cfg))
+
+	replica := newAgentReplica(t, db)
+	replica.listener.handleEvent(agentEvent("CREATE", cfg.UUID, "corr-agent-create"))
+
+	runtimeKey := storage.Key(models.KindAgent, cfg.Handle)
+	_, exists := replica.runtimeStore.Get(runtimeKey)
+	require.True(t, exists, "precondition: the Agent's chains converged")
+	require.NotZero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle),
+		"precondition: the Agent's routes reached the Envoy snapshot")
+
+	undeployed := testAgentStoredConfig(cfg.UUID, cfg.Handle, cfg.DisplayName, cfg.Version, models.StateUndeployed)
+	require.NoError(t, db.UpdateConfig(undeployed))
+	snapshotVersionBefore := replica.store.GetSnapshotVersion()
+	policyVersionBefore := replica.runtimeStore.GetResourceVersion()
+
+	replica.listener.handleEvent(agentEvent("UPDATE", cfg.UUID, "corr-agent-undeploy"))
+
+	stored, err := replica.store.Get(cfg.UUID)
+	require.NoError(t, err, "an undeployed Agent stays in the store for redeploy")
+	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
+
+	_, exists = replica.runtimeStore.Get(runtimeKey)
+	assert.False(t, exists, "the Agent's runtime deploy config should be gone")
+	assert.Zero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle),
+		"the Agent's routes should leave the Envoy snapshot")
+
+	assert.Greater(t, replica.store.GetSnapshotVersion(), snapshotVersionBefore,
+		"the Envoy snapshot version should increment on undeployment")
+	assert.Greater(t, replica.runtimeStore.GetResourceVersion(), policyVersionBefore,
+		"the policy xDS resource version should increment on undeployment")
+}
+
+// A redeploy after an undeploy restores both lanes: nothing about the teardown
+// is sticky.
+func TestHandleEvent_AgentRedeployAfterUndeploy_RestoresRoutesAndPolicyChains(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testAgentStoredConfig("agent-redeploy-id", "weather-agent", "Weather Agent", "v1.0", models.StateUndeployed)
+	require.NoError(t, db.SaveConfig(cfg))
+
+	replica := newAgentReplica(t, db)
+	replica.listener.handleEvent(agentEvent("CREATE", cfg.UUID, "corr-agent-create-undeployed"))
+
+	runtimeKey := storage.Key(models.KindAgent, cfg.Handle)
+	_, exists := replica.runtimeStore.Get(runtimeKey)
+	require.False(t, exists, "precondition: an Agent created undeployed converges no chains")
+
+	redeployed := testAgentStoredConfig(cfg.UUID, cfg.Handle, cfg.DisplayName, cfg.Version, models.StateDeployed)
+	require.NoError(t, db.UpdateConfig(redeployed))
+
+	replica.listener.handleEvent(agentEvent("UPDATE", cfg.UUID, "corr-agent-redeploy"))
+
+	rdc, exists := replica.runtimeStore.Get(runtimeKey)
+	require.True(t, exists, "the redeployed Agent's chains should be back")
+	assert.Equal(t, 11, operationChainCount(rdc))
+	assert.NotZero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle))
+}
+
+// Taking an Agent out of service does not depend on its templates still
+// resolving. A secret deleted since the deploy fails every render, and an
+// undeploy that rendered first would leave the Agent serving traffic.
+func TestHandleEvent_AgentUndeploy_DoesNotRequireTemplatesToResolve(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	withSecret := withAgentOperationPolicy(api.Policy{
+		Name:    "rate-limit",
+		Version: "v1",
+		Params:  &map[string]any{"limit": `{{ secret "agent-limit" }}`},
+	})
+	cfg := testAgentStoredConfig("agent-undeploy-secret-id", "weather-agent", "Weather Agent", "v1.0",
+		models.StateDeployed, withSecret)
+	require.NoError(t, db.SaveConfig(cfg))
+
+	replica := newAgentReplica(t, db)
+	replica.listener.handleEvent(agentEvent("CREATE", cfg.UUID, "corr-agent-create"))
+	runtimeKey := storage.Key(models.KindAgent, cfg.Handle)
+	_, exists := replica.runtimeStore.Get(runtimeKey)
+	require.True(t, exists, "precondition: the Agent converged while its secret resolved")
+
+	// The secret is gone from here on.
+	replica.listener.secretResolver = failingSecretResolver{}
+
+	undeployed := testAgentStoredConfig(cfg.UUID, cfg.Handle, cfg.DisplayName, cfg.Version,
+		models.StateUndeployed, withSecret)
+	require.NoError(t, db.UpdateConfig(undeployed))
+
+	replica.listener.handleEvent(agentEvent("UPDATE", cfg.UUID, "corr-agent-undeploy"))
+
+	stored, err := replica.store.Get(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
+	_, exists = replica.runtimeStore.Get(runtimeKey)
+	assert.False(t, exists, "the undeploy should take effect despite the unresolvable secret")
+	assert.Zero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle))
 }
 
 // Delete removes both halves of the Agent's local state. Leaving the chains

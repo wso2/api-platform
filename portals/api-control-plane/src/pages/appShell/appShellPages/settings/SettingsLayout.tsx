@@ -24,27 +24,21 @@ import {
   ListItemIcon,
   ListItemText,
   PageTitle,
-  Stack,
 } from '@wso2/oxygen-ui';
 import { defineMessages, useIntl } from 'react-intl';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { routes } from '../../../../routes/paths';
-import { useSettingsTabs } from '../../../../navigation/useSettingsTabs';
-import type { NavigationLevel } from '../../../../navigation/navigationTypes';
+import { AppPage } from '@/components/AppPage';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { routes } from '@/routes/paths';
+import { useSettingsTabs } from '@/navigation/useSettingsTabs';
+import type { NavigationLevel } from '@/navigation/navigationTypes';
 
 const messages = defineMessages({
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title',
     defaultMessage: 'Settings',
     description: 'Heading of the Settings page.',
-  },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.subtitle',
-    defaultMessage: 'Minimal settings overview for {subject}.',
-    description:
-      'Sub-heading of the Settings page. {subject} is the display name of the organization or project being configured — never translated.',
   },
 });
 
@@ -63,60 +57,44 @@ export type SettingsLayoutProps = {
  * the project's once one is selected, and a project card's gear deep-links the
  * same page — so it renders at whatever scope it is reached in.
  */
-export function SettingsLayout({ level }: SettingsLayoutProps) {
+export function SettingsLayout(props: SettingsLayoutProps) {
+  return (
+    <AppPage>
+      <SettingsLayoutContent {...props} />
+    </AppPage>
+  );
+}
+
+function SettingsLayoutContent({ level }: SettingsLayoutProps) {
   const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { organization, params, project } = useConsoleScope();
+  const { params } = useConsoleScope();
   const tabs = useSettingsTabs(level);
-
-  // Whichever scope the page was reached in, named rather than handled: the
-  // heading reads "…for Retail APIs", not "…for retail-apis". Falls back to the
-  // handle, which the route always carries, so the heading still says what it is
-  // about while the display name is still loading.
-  const subject =
-    project?.displayName ??
-    organization?.displayName ??
-    params.projectHandler ??
-    params.orgHandle;
 
   // The index route carries no tab segment, and renders the first tab's
   // content — so it highlights the first tab rather than nothing at all.
   const selectedId =
-    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ??
-    tabs[0]?.id;
+    tabs.find((tab) => location.pathname.endsWith(`/settings/${tab.path}`))?.id ?? tabs[0]?.id;
 
   const goToTab = (path: string) => {
     if (!params.orgHandle) return;
     if (level === 'project') {
       if (!params.projectHandler) return;
-      navigate(
-        routes.projectSettingsTab(path, params.orgHandle, params.projectHandler)
-      );
+      navigate(routes.projectSettingsTab(path, params.orgHandle, params.projectHandler));
       return;
     }
     navigate(routes.settingsTab(path, params.orgHandle));
   };
 
   return (
-    <Box
-      sx={{
-        alignItems: 'stretch',
-        display: 'flex',
-        minHeight: '100%',
-        width: '100%',
-      }}
-    >
-      <Box sx={{ flexShrink: 0, pr: 3, width: { md: 280, xs: 200 } }}>
-        <Stack spacing={2}>
-          <PageTitle>
-            <PageTitle.Header>
-              {intl.formatMessage(messages.title)}
-            </PageTitle.Header>
-            <PageTitle.SubHeader>
-              {intl.formatMessage(messages.subtitle, { subject })}
-            </PageTitle.SubHeader>
-          </PageTitle>
+    <>
+      <PageTitle>
+        <PageTitle.Header>{intl.formatMessage(messages.title)}</PageTitle.Header>
+      </PageTitle>
+
+      <Box sx={{ alignItems: 'stretch', display: 'flex', minHeight: '100%', width: '100%' }}>
+        <Box sx={{ flexShrink: 0, pr: 3, width: { md: 280, xs: 200 } }}>
           <List dense disablePadding>
             {tabs.map((tab) => (
               <ListItemButton
@@ -124,28 +102,31 @@ export function SettingsLayout({ level }: SettingsLayoutProps) {
                 onClick={() => goToTab(tab.path)}
                 selected={tab.id === selectedId}
                 sx={{
+                  border: 1,
                   borderColor: 'divider',
                   borderRadius: 1,
-                  border: 1,
                   mb: 0.5,
+                  '&.Mui-selected, &.Mui-selected:hover': {
+                    bgcolor: 'action.selected',
+                    borderColor: 'primary.main',
+                    '& .MuiListItemIcon-root': { color: 'primary.main' },
+                    '& .MuiListItemText-primary': { color: 'primary.main', fontWeight: 500 },
+                  },
                 }}
               >
                 <ListItemIcon sx={{ minWidth: 32 }}>{tab.icon}</ListItemIcon>
-                <ListItemText
-                  primary={tab.label}
-                  slotProps={{ primary: { noWrap: true } }}
-                />
+                <ListItemText primary={tab.label} slotProps={{ primary: { noWrap: true } }} />
               </ListItemButton>
             ))}
           </List>
-        </Stack>
-      </Box>
+        </Box>
 
-      <Divider orientation="vertical" flexItem />
+        <Divider orientation="vertical" flexItem />
 
-      <Box sx={{ flex: 1, minWidth: 0, pl: 3 }}>
-        <Outlet />
+        <Box sx={{ flex: 1, minWidth: 0, pl: 3 }}>
+          <Outlet />
+        </Box>
       </Box>
-    </Box>
+    </>
   );
 }

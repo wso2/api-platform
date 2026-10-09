@@ -1188,18 +1188,21 @@ func TestSelectionParallelValidation(t *testing.T) {
 	require.ErrorContains(t, err, "runner parallelism cannot be negative")
 }
 
-func TestGatewayVersionSelectionOverride(t *testing.T) {
+func TestGatewayVersionAndHostSelectionOverride(t *testing.T) {
 	var flags Selection
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	flags.Flags(fs)
-	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0"}))
+	require.NoError(t, fs.Parse([]string{"-gateway-version=1.1.0", "-host=registry.example/test-gateway"}))
 	require.Equal(t, "1.1.0", flags.GatewayVersion)
+	require.Equal(t, "registry.example/test-gateway", flags.GatewayHost)
 
 	original := &components.Definition{
-		Name: "platform-gateway",
+		Name:  "platform-gateway",
+		Image: components.ImageRef{Ref: "ghcr.io/wso2/api-platform/gateway-controller:current"},
 		Compose: &components.ComposeSpec{Env: map[string]string{
-			"PG_CONTROLLER_IMAGE": "gateway-controller:current",
-			"PG_RUNTIME_IMAGE":    "gateway-runtime:current",
+			"PG_CONTROLLER_IMAGE": "ghcr.io/wso2/api-platform/gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    "ghcr.io/wso2/api-platform/gateway-runtime:current",
+			"OTHER_IMAGE":         "docker.io/library/postgres:current",
 		}},
 	}
 	suite := &Resolved{Blocks: []ResolvedBlock{{
@@ -1212,9 +1215,11 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	component := got.Blocks[0].Components[0]
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource)
-	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
-	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
-	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Image.Ref)
+	require.Equal(t, "registry.example/test-gateway/gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "registry.example/test-gateway/gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, "docker.io/library/postgres:1.1.0", component.Def.Compose.Env["OTHER_IMAGE"])
+	require.Equal(t, "ghcr.io/wso2/api-platform/gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
 
 	sourceSuite := &Resolved{Blocks: []ResolvedBlock{{
 		Name: "gateway-controller-policies",
@@ -1230,6 +1235,37 @@ func TestGatewayVersionSelectionOverride(t *testing.T) {
 	require.Equal(t, "1.1.0", component.Version)
 	require.False(t, component.BuildFromSource,
 		"gateway-version must switch a source-build gateway to versioned mode")
+}
+
+func TestGatewayVersionSelectionWithoutHostPreservesExistingBehavior(t *testing.T) {
+	original := &components.Definition{
+		Name: "platform-gateway",
+		Compose: &components.ComposeSpec{Env: map[string]string{
+			"PG_CONTROLLER_IMAGE": "gateway-controller:current",
+			"PG_RUNTIME_IMAGE":    "gateway-runtime:current",
+		}},
+	}
+	suite := &Resolved{Blocks: []ResolvedBlock{{
+		Name:       "gateway-core",
+		Components: []ResolvedComponent{{Def: original}},
+	}}}
+
+	got, err := (Selection{GatewayVersion: "1.1.0"}).Apply(suite)
+	require.NoError(t, err)
+	component := got.Blocks[0].Components[0]
+	require.Equal(t, "gateway-controller:1.1.0", component.Def.Compose.Env["PG_CONTROLLER_IMAGE"])
+	require.Equal(t, "gateway-runtime:1.1.0", component.Def.Compose.Env["PG_RUNTIME_IMAGE"])
+	require.Equal(t, "gateway-controller:current", original.Compose.Env["PG_CONTROLLER_IMAGE"])
+}
+
+func TestGatewayHostRequiresVersion(t *testing.T) {
+	_, err := (Selection{GatewayHost: "registry.example/test-gateway"}).Apply(&Resolved{})
+	require.ErrorContains(t, err, "-host requires -gateway-version")
+}
+
+func TestGatewayHostRejectsURLs(t *testing.T) {
+	_, err := (Selection{GatewayVersion: "1.1.0", GatewayHost: "https://registry.example/test-gateway"}).Apply(&Resolved{})
+	require.ErrorContains(t, err, "-host must be an image repository prefix")
 }
 
 func TestGatewayVersionSelectionUsesMatchingConfigProfile(t *testing.T) {
@@ -1538,6 +1574,241 @@ blocks:
 	require.ErrorContains(t, err, `feature "features/shared.feature" is bound to 2 runners`)
 }
 
+func TestPolicySourcesPermitRepeatedFeatureBindings(t *testing.T) {
+	registry := gatewayVersionRegistry(t)
+	require.NoError(t, registry.Register(&components.Definition{
+		Name: "platform-api", Image: components.ImageRef{Ref: "pa:test"}, Alias: "platform-api",
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9243, Scheme: "https"}},
+		DB: &components.DBContract{
+			Supported: []components.DBType{components.SQLite, components.Postgres, components.SQLServer},
+			Schema: map[components.DBType][]string{
+				components.Postgres:  {"pa.postgres.sql"},
+				components.SQLServer: {"pa.sqlserver.sql"},
+			},
+			SelfMigrates: []components.DBType{components.SQLite},
+			Env:          func(components.DSN) map[string]string { return nil },
+		},
+	}))
+	require.NoError(t, registry.Validate())
+
+	t.Run("bundled and source-built policies", func(t *testing.T) {
+		resolved, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-gateway}]
+    runners:
+      - {name: modern, tags: gateway-version>1.2.0, features: [features/shared.feature]}
+      - {name: legacy, tags: gateway-version<=1.2.0, features: [features/shared.feature]}
+  - name: latest-policies
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners:
+      - {name: modern, tags: gateway-version>1.2.0, features: [features/shared.feature]}
+      - {name: legacy, tags: gateway-version<=1.2.0, features: [features/shared.feature]}
+`), registry)
+		require.NoError(t, err)
+		require.Len(t, resolved.Blocks, 2)
+	})
+
+	t.Run("an unconstrained runner per policy source", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-gateway}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: latest-policies
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("bundled policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("source-built policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: latest-policies
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("bundled and source-built policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: latest-policies
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("database variants alongside a source-built policy block", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: platform-api-sqlite
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: platform-api-postgres
+    components: [{name: platform-api, db: postgres}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: platform-api-sqlserver
+    components: [{name: platform-api, db: sqlserver}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: latest-policies
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("database variants alongside another bundled block", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: platform-api-sqlite
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: platform-api-postgres
+    components: [{name: platform-api, db: postgres}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: platform-api-sqlserver
+    components: [{name: platform-api, db: sqlserver}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+  - name: another-bundled
+    components: [{name: platform-gateway}]
+    runners: [{name: dp-to-cp, tags: gateway-version>=1.2.0, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err, `feature "features/shared.feature" is bound to 4 runners`)
+	})
+
+	t.Run("distinct policy sources", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-source
+    components: [{name: platform-gateway, addPoliciesFrom: policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: second-source
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+`), registry)
+		require.NoError(t, err)
+	})
+
+	t.Run("duplicate within one policy source spelled differently", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-latest
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: second-latest
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies/}]
+    runners: [{name: r, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-latest/r, second-latest/r)`)
+	})
+
+	t.Run("duplicate within the bundled policies", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-bundled
+    components: [{name: platform-gateway}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: second-bundled
+    components: [{name: platform-gateway}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: latest-policies
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-bundled/r, second-bundled/r)`)
+	})
+
+	t.Run("duplicate within the bundled policies on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: second-bundled
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api]}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-bundled/dp-to-cp, second-bundled/dp-to-cp)`)
+	})
+
+	t.Run("duplicate within one policy source", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: bundled
+    components: [{name: platform-gateway}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: first-latest
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+  - name: second-latest
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: r, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-latest/r, second-latest/r)`)
+	})
+
+	t.Run("duplicate within one policy source on SQLite", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: first-latest
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+  - name: second-latest
+    components: [{name: platform-api, db: sqlite}, {name: platform-gateway, dependsOn: [platform-api], addPoliciesFrom: ../gateway-controllers/policies}]
+    runners: [{name: dp-to-cp, features: [features/shared.feature]}]
+`), registry)
+		require.ErrorContains(t, err,
+			`feature "features/shared.feature" is bound to 2 runners (first-latest/dp-to-cp, second-latest/dp-to-cp)`)
+	})
+
+	t.Run("overlapping version ranges within one policy source", func(t *testing.T) {
+		_, err := Load([]byte(`
+suite: policy-sources
+blocks:
+  - name: latest-policies
+    components: [{name: platform-gateway, addPoliciesFrom: ../gateway-controllers/policies}]
+    runners:
+      - {name: first, tags: gateway-version>=1.2.0, features: [features/shared.feature]}
+      - {name: second, tags: gateway-version<=1.2.0, features: [features/shared.feature]}
+`), registry)
+		require.ErrorContains(t, err, `feature "features/shared.feature" is bound to 2 runners`)
+	})
+}
+
 func TestGatewayVersionSelectorRequiresPlatformGateway(t *testing.T) {
 	_, err := load(t, `
 suite: gateway-compatibility
@@ -1828,6 +2099,122 @@ func TestAllowDatabaseVariantFeatureOwners(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, allowDatabaseVariantFeatureOwners(tc.owners))
+		})
+	}
+}
+
+func TestPlatformGatewayPolicySource(t *testing.T) {
+	gateway := &components.Definition{Name: "platform-gateway"}
+	other := &components.Definition{Name: "testbench"}
+	block := func(components ...ResolvedComponent) *ResolvedBlock {
+		return &ResolvedBlock{Components: components}
+	}
+	latest := filepath.FromSlash("../gateway-controllers/policies")
+
+	cases := []struct {
+		name  string
+		block *ResolvedBlock
+		want  string
+	}{
+		{name: "no block", block: nil, want: ""},
+		{name: "no components", block: block(), want: ""},
+		{name: "a component without a definition", block: block(ResolvedComponent{}), want: ""},
+		{
+			name:  "a policy source on another component",
+			block: block(ResolvedComponent{Def: other, AddPoliciesFrom: "policies"}),
+			want:  "",
+		},
+		{name: "bundled policies", block: block(ResolvedComponent{Def: gateway}), want: ""},
+		{
+			name: "a policy source",
+			block: block(ResolvedComponent{Def: other},
+				ResolvedComponent{Def: gateway, AddPoliciesFrom: "../gateway-controllers/policies"}),
+			want: latest,
+		},
+		{
+			name:  "a trailing separator",
+			block: block(ResolvedComponent{Def: gateway, AddPoliciesFrom: "../gateway-controllers/policies/"}),
+			want:  latest,
+		},
+		{
+			name:  "a current-directory segment",
+			block: block(ResolvedComponent{Def: gateway, AddPoliciesFrom: "../gateway-controllers/./policies"}),
+			want:  latest,
+		},
+		{
+			name:  "a doubled separator",
+			block: block(ResolvedComponent{Def: gateway, AddPoliciesFrom: "../gateway-controllers//policies"}),
+			want:  latest,
+		},
+		{
+			name:  "a parent-directory segment",
+			block: block(ResolvedComponent{Def: gateway, AddPoliciesFrom: "../gateway-controllers/policies/extra/.."}),
+			want:  latest,
+		},
+		{
+			name:  "a leading current-directory segment",
+			block: block(ResolvedComponent{Def: gateway, AddPoliciesFrom: "./policies"}),
+			want:  "policies",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, platformGatewayPolicySource(tc.block))
+		})
+	}
+}
+
+func TestFeatureOwnersByPolicySource(t *testing.T) {
+	owner := func(source string) featureOwner {
+		return featureOwner{runner: "r", policySource: source}
+	}
+
+	cases := []struct {
+		name   string
+		owners map[string]featureOwner
+		want   map[string][]string
+	}{
+		{name: "no owners", owners: nil, want: map[string][]string{}},
+		{name: "an empty owner set", owners: map[string]featureOwner{}, want: map[string][]string{}},
+		{
+			name:   "bundled policies only",
+			owners: map[string]featureOwner{"a/r": owner(""), "b/r": owner("")},
+			want:   map[string][]string{"": {"a/r", "b/r"}},
+		},
+		{
+			name: "bundled policies and a policy source",
+			owners: map[string]featureOwner{
+				"a/r": owner(""),
+				"b/r": owner(""),
+				"c/r": owner("../gateway-controllers/policies"),
+			},
+			want: map[string][]string{"": {"a/r", "b/r"}, "../gateway-controllers/policies": {"c/r"}},
+		},
+		{
+			name: "distinct policy sources",
+			owners: map[string]featureOwner{
+				"a/r": owner("policies"),
+				"b/r": owner("../gateway-controllers/policies"),
+			},
+			want: map[string][]string{"policies": {"a/r"}, "../gateway-controllers/policies": {"b/r"}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := featureOwnersByPolicySource(tc.owners)
+			require.Len(t, got, len(tc.want))
+			for source, want := range tc.want {
+				group, ok := got[source]
+				require.True(t, ok, "no group for policy source %q", source)
+				names := make([]string, 0, len(group))
+				for name, owner := range group {
+					require.Equal(t, source, owner.policySource, "owner %q grouped under the wrong source", name)
+					names = append(names, name)
+				}
+				require.ElementsMatch(t, want, names)
+			}
 		})
 	}
 }

@@ -181,6 +181,11 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.WebBrokerApi, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	webbrokerAPI, err := s.webbrokerAPIRepo.GetByUUID(apiUUID, orgID)
 	if err != nil {
@@ -202,10 +207,11 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 	if req.Base == "current" {
 		d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(webbrokerAPI.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, targetDataVersion, d); err != nil {
+		translation, err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, gateway.Version, d)
+		if err != nil {
 			return nil, fmt.Errorf("failed to transform WebBroker API deployment for gateway %s: %w", gateway.Version, err)
 		}
+		coreservice.LogTranslationWarnings(s.slogger, translation, constants.WebBrokerApi, deploymentID, gatewayID, gateway.Version)
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal WebBroker API deployment YAML: %w", err)
@@ -426,6 +432,10 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.WebBrokerApi, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.

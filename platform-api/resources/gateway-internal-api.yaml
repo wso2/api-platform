@@ -586,6 +586,196 @@ paths:
                     description: "Failed to create MCP Proxy package"
 
   # ==========================================
+  # Agent Endpoints
+  # ==========================================
+
+  /agents/{agentId}:
+    get:
+      summary: Get the deployed Agent artifact by ID
+      description: |
+        Retrieves the Agent artifact currently deployed on the authenticated gateway.
+
+        `agentId` is the Agent proxy's **internal artifact UUID** — the identifier carried in
+        `agent.deployed` / `agent.undeployed` / `agent.deleted` gateway events. It is **not**
+        the public handle used by the publisher API (`/agent-proxies/{agentProxyId}`); a handle
+        does not resolve here.
+
+        The response is the immutable snapshot stored when the deployment was created, packaged
+        as a ZIP whose single entry is `agent-{agentId}.yaml` (a gateway `kind: Agent` artifact
+        carrying `spec.a2a`). The artifact is never re-rendered at fetch time: an update to the
+        Agent proxy reaches the gateway only through a new deployment. The Agent must belong to
+        the gateway's organization and have a deployment on the calling gateway whose desired
+        state is DEPLOYED; otherwise 404 is returned.
+      operationId: getGatewayAgentArtifact
+      tags:
+        - Gateway Internal APIs
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          description: |
+            Internal artifact UUID of the Agent proxy (from the gateway event), not its public handle.
+          schema:
+            type: string
+            format: uuid
+            example: "0198f3a2-6c1e-7b4d-9a2f-3e5c8d7b1a40"
+      responses:
+        '200':
+          description: |
+            Binary ZIP archive containing a single `agent-{agentId}.yaml` entry — the deployed
+            gateway Agent artifact.
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="agent-0198f3a2-6c1e-7b4d-9a2f-3e5c8d7b1a40.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+          content:
+            application/zip:
+              schema:
+                type: string
+                contentMediaType: application/zip
+        '400':
+          description: Bad request - Agent ID missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Agent ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: |
+            The Agent does not exist in the gateway's organization, or has no active deployment
+            on the calling gateway.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                agent_not_found:
+                  summary: Agent not found
+                  value:
+                    code: 404
+                    message: "Not Found"
+                    description: "Agent not found"
+                not_deployed:
+                  summary: No active deployment on this gateway
+                  value:
+                    code: 404
+                    message: "Not Found"
+                    description: "No active deployment found for this Agent on this gateway"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_agent_failed:
+                  summary: Failed to retrieve Agent
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get Agent"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create Agent package"
+
+  /agents/api-keys:
+    get:
+      summary: Get all API keys for Agent artifacts deployed on the gateway
+      description: |
+        Retrieves all API keys for every Agent proxy associated with the authenticated gateway
+        (deployment desired state DEPLOYED or UNDEPLOYED). Used by the gateway to backfill Agent
+        API keys on (re)connect. When the optional `issuer` query parameter is provided only keys
+        whose issuer field matches are returned.
+
+        The response carries key hashes and is served only on this gateway-authenticated internal
+        channel; it is distinct from the publisher API's `/agent-proxies/{agentProxyId}/api-keys`.
+      operationId: listGatewayAgentAPIKeys
+      tags:
+        - Gateway Internal APIs
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
+          schema:
+            type: string
+            example: "api-platform-devportal"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
+  # ==========================================
   # WebSub API Endpoints
   # ==========================================
 
@@ -1255,19 +1445,30 @@ paths:
       description: |
         Generic bulk DP->CP push endpoint. A gateway pushes a list of artifacts it
         created/updated (REST API, LLM Provider, LLM Provider Template, LLM Proxy, MCP Proxy,
-        ...). The control plane creates or updates each and marks it read-only with origin
+        Agent, ...). The control plane creates or updates each and marks it read-only with origin
         "gateway_api". Each artifact's kind is identified by configuration.kind and routed to
         the matching importer. Project is required for project-scoped kinds (RestApi, LlmProxy,
-        Mcp) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata annotation —
-        and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate). The
-        project is never defaulted.
+        Mcp, Agent) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata
+        annotation — and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate).
+        The project is never defaulted.
+        A gateway `Agent` is stored as the control-plane kind `AgentProxy` with `protocol: a2a`;
+        `spec.a2a` maps onto the Agent proxy's `a2a` block with the same layout, so
+        `spec.a2a.operationConfigs.transports` becomes `a2a.operationConfigs.transports`. As
+        for every kind, the import stores what maps onto the control-plane model and drops the
+        rest: `upstreamDefinitions`, a `manual` hostRewrite, the upstream auth
+        `policyName`/`policyParams`/`policyVersion` and enabled card signing are not kept in the
+        read-only working copy, and unrecognised fields are ignored. The deployment record keeps
+        the pushed configuration verbatim. An Agent is refused only when nothing can be stored:
+        no `spec.a2a` block, an unregistered A2A protocol version, a handle longer than 40
+        characters, or the handle `fetch-agent-card`, which the control plane reserves for its
+        `/agent-proxies/fetch-agent-card` route and refuses for authored Agent proxies too.
         Processing is continue-on-error: each artifact's outcome is recorded against its dpid
         and a failure on one artifact does not abort the rest. Artifact-level failures — an
         unsupported kind, a project-scoped push with no project, a project that does not exist
-        in the organization, or a handle already used by a different kind — are reported per
-        dpid (with an `error` message) inside a 200 response, not as a non-2xx status. Only a
-        malformed request (invalid multipart form or zip, empty or oversized upload) or an
-        unauthenticated caller returns a non-2xx status.
+        in the organization, a handle already used by a different kind, or an Agent refused as
+        above — are reported per dpid (with an `error` message) inside
+        a 200 response, not as a non-2xx status. Only a malformed request (invalid multipart form
+        or zip, empty or oversized upload) or an unauthenticated caller returns a non-2xx status.
       operationId: importGatewayArtifacts
       tags:
         - Gateway Internal APIs
@@ -1287,8 +1488,8 @@ paths:
                   description: >-
                     A zip archive containing a single `artifacts.json` file: a JSON array of
                     ImportGatewayArtifactRequest objects. The gateway orders the artifacts by
-                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi, ...)
-                    before zipping.
+                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi,
+                    WebSubApi, WebBrokerApi, Agent) before zipping.
                 total:
                   type: integer
                   description: Total number of artifacts in the zip (advisory; used for a sanity check).
@@ -1382,12 +1583,15 @@ components:
           example: "dep-789"
         kind:
           type: string
-          description: Artifact type
+          description: |
+            Artifact type, in the gateway's vocabulary. An Agent proxy (control-plane kind
+            `AgentProxy`) is reported as `Agent`.
           enum:
             - RestApi
             - LlmProvider
             - LlmProxy
             - Mcp
+            - Agent
           example: "RestApi"
         state:
           type: string
@@ -1614,6 +1818,7 @@ components:
           - LlmProviderTemplate  -> LLMProviderTemplate.spec (LLMProviderTemplateData)
           - LlmProxy             -> LLMProxyConfiguration.spec (LLMProxyConfigData)
           - Mcp                  -> MCPProxyConfiguration.spec (MCPProxyConfigData)
+          - Agent                -> AgentConfiguration.spec (AgentConfigData; stored in the control plane as kind AgentProxy)
         The set of kinds is extensible: new artifact kinds register a handler in the
         control plane without changing this contract.
       required:
@@ -1635,6 +1840,7 @@ components:
             - LlmProviderTemplate
             - LlmProxy
             - Mcp
+            - Agent
           example: RestApi
         metadata:
           $ref: '#/components/schemas/ArtifactImportMetadata'
@@ -1741,7 +1947,7 @@ components:
 
     InternalAPIKeyItem:
       type: object
-      description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/api-keys, /llm-proxies/api-keys, and /apis/api-keys)
+      description: API key associated with a gateway-deployed artifact (used by /apis/api-keys, /llm-providers/api-keys, /llm-proxies/api-keys and /agents/api-keys)
       required:
         - etag
         - uuid
@@ -1785,7 +1991,7 @@ components:
             sha256: "abc123..."
         artifactUuid:
           type: string
-          description: UUID of the artifact (LLM Provider or LLM Proxy) this key belongs to
+          description: UUID of the artifact this key belongs to
           example: "550e8400-e29b-41d4-a716-446655440000"
         status:
           type: string
@@ -1806,9 +2012,8 @@ components:
           description: Timestamp when the API key was last updated
           example: "2026-01-02T10:00:00Z"
         expiresAt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Expiry timestamp of the API key, or null if it does not expire
           example: "2027-01-01T00:00:00Z"
         source:
@@ -1816,13 +2021,11 @@ components:
           description: Source of the API key (always "external")
           example: "external"
         externalRefId:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: External reference ID (always null)
           example: null
         issuer:
-          type: string
-          nullable: true
+          type: [string, "null"]
           description: Issuer of the API key, if applicable
           example: "api-platform-devportal"
 
