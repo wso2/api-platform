@@ -28,11 +28,14 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Gateway } from '@/api/resources/gateways';
 import { useDeployApi, type Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
+import { routes } from '@/routes/paths';
 import { GatewayDeployEnvCard } from './GatewayDeployEnvCard';
 import { GatewayDeploymentHistory } from '../GatewayDeploymentHistory';
 import {
@@ -67,6 +70,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying',
     defaultMessage: 'Deploying...',
     description: 'Label on the Deploy button while the request is in flight.',
+  },
+  deployedNextStep: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStep',
+    defaultMessage: 'Deployed to {gatewayName}. Send it a test request.',
+    description:
+      'Toast once a deployment is live. {gatewayName} is the gateway’s display name; do not translate it.',
+  },
+  deployedNextStepAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStepAction',
+    defaultMessage: 'Test it',
+    description: 'Button in the "Deployed" notification that opens the Test page.',
   },
   deployStarted: {
     id: 'apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted',
@@ -104,6 +118,8 @@ export function GatewayDeployCard({
   refreshing,
 }: GatewayDeployCardProps) {
   const intl = useIntl();
+  const navigate = useNavigate();
+  const { orgHandle, projectHandler } = useParams();
   const { notify } = useNotifications();
   const deployMutation = useDeployApi();
   const isActive = gateway.isActive === true;
@@ -115,19 +131,56 @@ export function GatewayDeployCard({
   const currentDeployment = currentDeploymentFor(deployments, gatewayId);
   const hasDeployments = gatewayDeployments.length > 0;
 
+  // The deployment this card started and is waiting to see go live. The deploy
+  // request returns while the gateway is still applying it, so the hand-off to
+  // testing waits for the polled list to report DEPLOYED.
+  const [awaitingLive, setAwaitingLive] = useState<string>();
+  const awaitedStatus = awaitingLive
+    ? gatewayDeployments.find((deployment) => deployment.deploymentId === awaitingLive)?.status
+    : undefined;
+
+  useEffect(() => {
+    if (!awaitingLive || !awaitedStatus || awaitedStatus === 'DEPLOYING') return;
+    setAwaitingLive(undefined);
+    if (awaitedStatus !== 'DEPLOYED' || !orgHandle || !projectHandler) return;
+    notify(
+      intl.formatMessage(messages.deployedNextStep, {
+        gatewayName: gateway.displayName ?? gatewayId,
+      }),
+      'success',
+      {
+        label: intl.formatMessage(messages.deployedNextStepAction),
+        onClick: () => navigate(routes.apiTest(orgHandle, projectHandler, restApiId)),
+      },
+    );
+  }, [
+    awaitedStatus,
+    awaitingLive,
+    gateway.displayName,
+    gatewayId,
+    intl,
+    navigate,
+    notify,
+    orgHandle,
+    projectHandler,
+    restApiId,
+  ]);
+
   const handleDeploy = () => {
     const name = nextDeploymentName(gateway, deployments);
     deployMutation.mutate(
       { restApiId, body: { name, gatewayId, base: 'current' } },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
-        onSuccess: (deployment) =>
+        onSuccess: (deployment) => {
           notify(
             intl.formatMessage(messages.deployStarted, {
               deploymentName: deployment.name,
             }),
             'success',
-          ),
+          );
+          setAwaitingLive(deployment.deploymentId);
+        },
       },
     );
   };

@@ -16,13 +16,14 @@
  * under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useGateway } from '@/api/resources/gateways';
+import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
 import { routes } from '@/routes/paths';
@@ -31,12 +32,28 @@ import { GatewayGetStartedPanel } from './components/GatewayGetStartedPanel';
 import { GatewayPoliciesPanel } from './components/GatewayPoliciesPanel';
 import { GatewaySetupBanner } from './components/GatewaySetupBanner';
 import { isSetupBannerDismissed, dismissSetupBanner } from './gatewaySetupBannerStorage';
+import { readReturnTo } from './utils/returnTo';
 
 const messages = defineMessages({
   back: {
     id: 'gateways.detail.action.back',
     defaultMessage: 'Back to list',
     description: 'Returns to the gateway listing from a gateway’s own page.',
+  },
+  backToDeploy: {
+    id: 'gateways.detail.action.backToDeploy',
+    defaultMessage: 'Back to Deploy',
+    description: 'Returns to the API Deploy page the user came from to add this gateway.',
+  },
+  connectedNextStep: {
+    id: 'gateways.detail.connected.nextStep',
+    defaultMessage: '{name} is connected. You can deploy your API to it now.',
+    description: '{name} is the gateway’s display name; do not translate it.',
+  },
+  connectedNextStepAction: {
+    id: 'gateways.detail.connected.nextStepAction',
+    defaultMessage: 'Back to Deploy',
+    description: 'Button in the "gateway connected" notification.',
   },
   errorMessage: {
     id: 'gateways.detail.error.message',
@@ -85,7 +102,27 @@ export function GatewayDetailPage() {
 function GatewayDetailPageContent() {
   const { orgHandle = '', gatewayId = '' } = useParams();
   const intl = useIntl();
+  const navigate = useNavigate();
+  const { notify } = useNotifications();
   const gatewayQuery = useGateway(gatewayId, { poll: true });
+  // Set when the user detoured here from an API's Deploy page.
+  const returnTo = readReturnTo(useLocation().search);
+
+  // When the gateway connects while the user is watching, and they came from
+  // a Deploy page, hand them straight back to it. Only the transition counts:
+  // a gateway that was already connected on arrival doesn't re-announce.
+  const isActive = gatewayQuery.data?.isActive;
+  const wasActive = useRef(isActive);
+  const displayName = gatewayQuery.data?.displayName || gatewayId;
+  useEffect(() => {
+    const justConnected = wasActive.current === false && isActive === true;
+    wasActive.current = isActive;
+    if (!justConnected || !returnTo) return;
+    notify(intl.formatMessage(messages.connectedNextStep, { name: displayName }), 'success', {
+      label: intl.formatMessage(messages.connectedNextStepAction),
+      onClick: () => navigate(returnTo),
+    });
+  }, [displayName, intl, isActive, navigate, notify, returnTo]);
 
   // Seeded from storage so a banner closed on a previous visit does not
   // reappear, then held in state so closing it this time takes effect at once.
@@ -115,9 +152,9 @@ function GatewayDetailPageContent() {
   return (
     <>
       <PageTitle>
-        <Link to={routes.gateways(orgHandle)}>
+        <Link to={returnTo ?? routes.gateways(orgHandle)}>
           <PageTitle.BackButton>
-            <FormattedMessage {...messages.back} />
+            <FormattedMessage {...(returnTo ? messages.backToDeploy : messages.back)} />
           </PageTitle.BackButton>
         </Link>
       </PageTitle>

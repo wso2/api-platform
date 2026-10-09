@@ -17,7 +17,7 @@
  */
 
 import { alpha, Box, Button, CircularProgress, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { ErrorState } from '@/components/StateViews';
@@ -34,7 +34,7 @@ const messages = defineMessages({
   },
   failedTitle: {
     id: 'api.create.ApiCreationProgress.failed.title',
-    defaultMessage: 'We could not create this API proxy',
+    defaultMessage: 'We couldn’t create this API',
   },
   percent: {
     id: 'api.create.ApiCreationProgress.progress.value',
@@ -43,7 +43,7 @@ const messages = defineMessages({
   },
   progressLabel: {
     id: 'api.create.ApiCreationProgress.progress.label',
-    defaultMessage: 'API proxy creation progress',
+    defaultMessage: 'API creation progress',
     description: 'Accessible name for the circular progress indicator.',
   },
   retry: {
@@ -52,12 +52,12 @@ const messages = defineMessages({
   },
   stageCreating: {
     id: 'api.create.ApiCreationProgress.stage.creating',
-    defaultMessage: 'Creating API Proxy',
+    defaultMessage: 'Creating the API',
     description: 'Status shown while the platform is creating the API proxy.',
   },
   stageDone: {
     id: 'api.create.ApiCreationProgress.stage.done',
-    defaultMessage: 'API Proxy created. Taking you there…',
+    defaultMessage: 'API created. Taking you there…',
   },
   stageFinalizing: {
     id: 'api.create.ApiCreationProgress.stage.finalizing',
@@ -69,11 +69,11 @@ const messages = defineMessages({
   },
   title: {
     id: 'api.create.ApiCreationProgress.title',
-    defaultMessage: 'We are in the process of creating your API Proxy',
+    defaultMessage: 'Creating your API',
   },
   titleWithName: {
     id: 'api.create.ApiCreationProgress.titleWithName',
-    defaultMessage: 'We are in the process of creating your {name} API Proxy',
+    defaultMessage: 'Creating {name}',
     description: '{name} is the display name the user gave the API. Never translated.',
   },
 });
@@ -356,10 +356,22 @@ export const ApiCreationProgress = ({
 
   const rounded = Math.round(percent);
 
+  // Create replaces the form with this screen; without this, focus falls back
+  // to the page body and a screen reader hears nothing about the change.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <Stack spacing={3} sx={{ alignItems: 'center', py: 6, textAlign: 'center', width: '100%' }}>
       <Stack sx={{ alignItems: 'center', maxWidth: 'md' }}>
-        <Typography sx={{ fontWeight: 700 }} variant="h2">
+        <Typography
+          ref={headingRef}
+          sx={{ fontWeight: 700, outline: 'none' }}
+          tabIndex={-1}
+          variant="h2"
+        >
           <FormattedMessage
             {...(displayName ? messages.titleWithName : messages.title)}
             values={displayName ? { name: displayName } : undefined}

@@ -51,6 +51,8 @@ type CopyButtonProps = {
   getValue: () => string;
   /** Accessible label. Defaults to a generic "Copy". */
   label?: string;
+  /** Called once the value has actually reached the clipboard. */
+  onCopied?: () => void;
   /** Renders as a labelled button rather than an icon-only one. */
   variant?: 'icon' | 'button';
 };
@@ -61,7 +63,7 @@ type CopyButtonProps = {
  * Success clears itself; failure remains visible, which is important when the
  * displayed value is masked and cannot be selected as a fallback.
  */
-export function CopyButton({ getValue, label, variant = 'icon' }: CopyButtonProps) {
+export function CopyButton({ getValue, label, onCopied, variant = 'icon' }: CopyButtonProps) {
   const intl = useIntl();
   const [status, setStatus] = useState<CopyStatus>('idle');
 
@@ -93,6 +95,7 @@ export function CopyButton({ getValue, label, variant = 'icon' }: CopyButtonProp
     try {
       await navigator.clipboard.writeText(getValue());
       setStatus('copied');
+      onCopied?.();
       resetTimer.current = window.setTimeout(() => setStatus('idle'), COPIED_FEEDBACK_MS);
     } catch {
       setStatus('failed');

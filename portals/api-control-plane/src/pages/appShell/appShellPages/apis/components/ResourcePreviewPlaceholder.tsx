@@ -26,7 +26,7 @@ import { hairline } from '@/theme/receipes';
 const messages = defineMessages({
   description: {
     id: 'api.create.apiResourcesPreview.empty.body',
-    defaultMessage: 'Import a contract to explore its endpoints',
+    defaultMessage: 'Import an OpenAPI spec to see its resources',
   },
   title: {
     id: 'api.create.apiResourcesPreview.empty.title',

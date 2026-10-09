@@ -54,13 +54,32 @@ const asText = (value: unknown): string | undefined => {
  * A URL still carrying `{variables}` is dropped: substituting them is the
  * user's call, and a templated string is no use as an upstream.
  */
-const readServerUrl = (spec: Record<string, unknown>): string | undefined => {
+/**
+ * A server URL as an absolute one. OpenAPI allows a relative server, meaning
+ * relative to where the document itself lives (the Petstore 3 sample declares
+ * `/api/v3`). Taken as-is it became a backend URL the details step rejects, so
+ * it is resolved against the document's URL when that is known, and left
+ * alone when it isn't (an uploaded file has no location to resolve against).
+ */
+const resolveServerUrl = (url: string, documentUrl: string | undefined): string => {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url) || documentUrl === undefined) return url;
+  try {
+    return new URL(url, documentUrl).toString().replace(/\/$/, '');
+  } catch {
+    return url;
+  }
+};
+
+const readServerUrl = (
+  spec: Record<string, unknown>,
+  documentUrl?: string,
+): string | undefined => {
   const servers = spec.servers;
   if (Array.isArray(servers)) {
     for (const entry of servers) {
       const url = asText(asRecord(entry)?.url);
       if (url !== undefined && !url.includes('{')) {
-        return url;
+        return resolveServerUrl(url, documentUrl);
       }
     }
     return undefined;
@@ -138,6 +157,8 @@ export const extractOperations = (spec: Record<string, unknown> | undefined): Ap
  */
 export const extractApiDetails = (
   spec: Record<string, unknown> | undefined,
+  /** Where the document was fetched from, for resolving a relative server. */
+  documentUrl?: string,
 ): ApiCreationWizardDraftState => {
   if (spec === undefined) {
     return {};
@@ -147,7 +168,7 @@ export const extractApiDetails = (
   const displayName = asText(info.title);
   const version = asText(info.version);
   const description = asText(info.description);
-  const serverUrl = readServerUrl(spec);
+  const serverUrl = readServerUrl(spec, documentUrl);
   const transports = readTransports(serverUrl);
   const operations = extractOperations(spec);
 

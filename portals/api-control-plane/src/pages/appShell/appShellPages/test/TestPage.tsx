@@ -38,6 +38,7 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
 import { buildInvokeUrl } from '../apis/overview/InvokeUrlPanel';
+import { markApiTested } from '../apis/utils/testedMarker';
 import { gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from '../gateways/utils/gatewayEnvironments';
 import { CurlBuilder } from './curl/CurlBuilder';
@@ -408,6 +409,9 @@ function TestConsole() {
         ) : (
           <CurlBuilder
             onChange={handleBuilderChange}
+            // Stand-in for a first successful request (see testedMarker.ts):
+            // marks the overview's Test step done.
+            onCommandCopied={restApiId ? () => markApiTested(restApiId) : undefined}
             onRegenerateSecret={testApiKey.regenerate}
             regenerating={testApiKey.isRegenerating}
             request={effectiveRequest}

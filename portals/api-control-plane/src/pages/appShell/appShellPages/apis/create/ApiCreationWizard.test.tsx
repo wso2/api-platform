@@ -112,7 +112,7 @@ const submitCreate = async () => {
   await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.click(screen.getByRole('button', { name: 'Use this contract' }));
   await user.click(screen.getByRole('button', { name: 'Continue' }));
-  await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
+  await user.type(screen.getByLabelText(/Backend URL/), 'https://orders.example.com');
   await user.click(screen.getByRole('button', { name: 'Create' }));
 
   return rendered;
@@ -133,7 +133,14 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
-    server.use(accepts('post', '/rest-apis/import-openapi', { id: 'orders-api' }, { record: createRequests }));
+    server.use(
+      accepts(
+        'post',
+        '/rest-apis/import-openapi',
+        { id: 'orders-api' },
+        { record: createRequests },
+      ),
+    );
     const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
 
     await user.click(screen.getByRole('button', { name: 'Choose REST' }));
@@ -142,10 +149,10 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByText('Step 3 of 3')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Backend URL/)).toBeInTheDocument();
     expect(createRequests.count()).toBe(0);
 
-    await user.type(screen.getByLabelText(/Target URL/), 'https://orders.example.com');
+    await user.type(screen.getByLabelText(/Backend URL/), 'https://orders.example.com');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createRequests.count()).toBe(1);
@@ -181,7 +188,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     await submitCreate();
 
     expect(await screen.findByText('Must be reachable over https.')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://orders.example.com');
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('https://orders.example.com');
   });
 
   it('does not call the backend a placeholder again once the user has chosen it', async () => {
@@ -205,7 +212,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     expect(screen.getByText(placeholderNotice)).toBeInTheDocument();
 
     // Deliberately settling on the same URL retires the notice.
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Backend URL/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://example.com');
     expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
@@ -213,7 +220,7 @@ describe('ApiCreationWizard — a rejected create', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByText('Context is already in use.')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Target URL/)).toHaveValue('https://example.com');
+    expect(screen.getByLabelText(/Backend URL/)).toHaveValue('https://example.com');
     expect(screen.queryByText(placeholderNotice)).not.toBeInTheDocument();
   });
 
@@ -225,6 +232,55 @@ describe('ApiCreationWizard — a rejected create', () => {
     await submitCreate();
 
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Target URL/)).not.toBeInTheDocument();
+    // The steps wait, hidden, behind the progress screen so Back finds them
+    // as they were left; none of their fields is on screen.
+    for (const field of screen.queryAllByLabelText(/Backend URL/)) {
+      expect(field).not.toBeVisible();
+    }
+  });
+});
+
+describe('ApiCreationWizard — Back', () => {
+  const toDetails = async () => {
+    const rendered = renderWithProviders(<ApiCreationWizard />, { route, scope });
+    await rendered.user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Continue' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Use this contract' }));
+    await rendered.user.click(screen.getByRole('button', { name: 'Continue' }));
+    return rendered;
+  };
+
+  it('keeps edits on the details step when the source is unchanged', async () => {
+    const { user } = await toDetails();
+    const name = screen.getByLabelText(/^Name/);
+    await user.clear(name);
+    await user.type(name, 'Orders, renamed');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Orders, renamed');
+  });
+
+  it('starts the details over when a different source is chosen', async () => {
+    const { user } = await toDetails();
+    await user.type(screen.getByLabelText(/^Name/), ' edited');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Start from scratch' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Untitled API');
+  });
+});
+
+describe('ApiCreationWizard — focus', () => {
+  it('moves focus to the new step’s heading', async () => {
+    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
   });
 });

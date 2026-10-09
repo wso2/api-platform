@@ -211,6 +211,24 @@ export const useGatewayManifest = (
 };
 
 /**
+ * A gateway's active registration tokens (metadata only, never the token
+ * value). The setup panel reads it to tell a first-time token from a
+ * replacement, which changes both the button label and whether a warning is
+ * owed.
+ */
+export const useGatewayTokens = (
+  gatewayId: string | undefined,
+  overrides: { orgId?: string } = {}
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...gatewayQueries.tokens(org!, gatewayId!),
+    enabled: Boolean(org && gatewayId),
+  });
+};
+
+/**
  * Issues a fresh registration token for a gateway.
  *
  * The plaintext token comes back in this response and nowhere else — it is
@@ -218,9 +236,10 @@ export const useGatewayManifest = (
  * relying on a refetch. Nothing is written into the query cache for that
  * reason: the token belongs to the moment, not to the cache.
  *
- * Rotating revokes the gateway's previous token, which disconnects an agent
- * still using it. Both the token list and the gateway itself are invalidated,
- * since `isActive` follows that disconnection.
+ * Rotating does not revoke the previous token: platform-api keeps it active
+ * until it is revoked, and allows at most two active tokens per gateway. The
+ * token list and the gateway itself are invalidated so the panel reflects the
+ * new count.
  */
 export const useRotateGatewayToken = (
   gatewayId: string,

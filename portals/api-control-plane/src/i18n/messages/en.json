@@ -10,10 +10,10 @@
     "defaultMessage": "Nothing was created. Check the details you entered and try again."
   },
   "api.create.ApiCreationProgress.failed.title": {
-    "defaultMessage": "We could not create this API proxy"
+    "defaultMessage": "We couldn’t create this API"
   },
   "api.create.ApiCreationProgress.progress.label": {
-    "defaultMessage": "API proxy creation progress",
+    "defaultMessage": "API creation progress",
     "description": "Accessible name for the circular progress indicator."
   },
   "api.create.ApiCreationProgress.progress.value": {
@@ -21,11 +21,11 @@
     "description": "Share of the creation flow completed so far."
   },
   "api.create.ApiCreationProgress.stage.creating": {
-    "defaultMessage": "Creating API Proxy",
+    "defaultMessage": "Creating the API",
     "description": "Status shown while the platform is creating the API proxy."
   },
   "api.create.ApiCreationProgress.stage.done": {
-    "defaultMessage": "API Proxy created. Taking you there…"
+    "defaultMessage": "API created. Taking you there…"
   },
   "api.create.ApiCreationProgress.stage.finalizing": {
     "defaultMessage": "Finalizing setup"
@@ -34,10 +34,10 @@
     "defaultMessage": "Validating configuration"
   },
   "api.create.ApiCreationProgress.title": {
-    "defaultMessage": "We are in the process of creating your API Proxy"
+    "defaultMessage": "Creating your API"
   },
   "api.create.ApiCreationProgress.titleWithName": {
-    "defaultMessage": "We are in the process of creating your {name} API Proxy",
+    "defaultMessage": "Creating {name}",
     "description": "{name} is the display name the user gave the API. Never translated."
   },
   "api.create.ApiCreationSteps.step.apiType": {
@@ -54,6 +54,10 @@
   },
   "api.create.ApiCreationWizard.action.back": {
     "defaultMessage": "Back"
+  },
+  "api.create.ApiCreationWizard.action.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Leaves the wizard without creating anything, back to the project’s APIs."
   },
   "api.create.ApiCreationWizard.action.continue": {
     "defaultMessage": "Continue"
@@ -74,11 +78,18 @@
   "api.create.ApiCreationWizard.configure.title": {
     "defaultMessage": "Configure and create"
   },
+  "api.create.ApiCreationWizard.created.nextStep": {
+    "defaultMessage": "API created. Deploy it to a gateway to start serving traffic."
+  },
+  "api.create.ApiCreationWizard.created.nextStepAction": {
+    "defaultMessage": "Deploy",
+    "description": "Button in the \"API created\" notification that opens the Deploy page."
+  },
   "api.create.ApiCreationWizard.error.specTooLarge": {
-    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+    "defaultMessage": "This OpenAPI spec is larger than the maximum allowed size."
   },
   "api.create.ApiCreationWizard.source.subtitle": {
-    "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
+    "defaultMessage": "Point us at a running service, or bring an OpenAPI spec that describes it."
   },
   "api.create.ApiCreationWizard.source.title": {
     "defaultMessage": "How do you want to define your {apiType}?",
@@ -120,7 +131,7 @@
     "description": "Placeholder shown while Monaco editor initialises."
   },
   "api.create.apiResourcesPreview.empty.body": {
-    "defaultMessage": "Import a contract to explore its endpoints"
+    "defaultMessage": "Import an OpenAPI spec to see its resources"
   },
   "api.create.apiResourcesPreview.empty.title": {
     "defaultMessage": "Resources will show here"
@@ -167,41 +178,73 @@
     "defaultMessage": "WebSub API"
   },
   "api.create.defineApi.contract.description": {
-    "defaultMessage": "Import an API contract from a URL or a file."
+    "defaultMessage": "Import an OpenAPI spec from a URL or a file."
+  },
+  "api.create.defineApi.contract.preview.fetching": {
+    "defaultMessage": "Fetching your spec…",
+    "description": "Preview pane title while a spec URL is being read."
+  },
+  "api.create.defineApi.contract.preview.pendingDescription": {
+    "defaultMessage": "Its resources will show here."
+  },
+  "api.create.defineApi.contract.preview.reading": {
+    "defaultMessage": "Reading your file…",
+    "description": "Preview pane title while an uploaded spec file is being read."
   },
   "api.create.defineApi.contract.title": {
-    "defaultMessage": "Start with a contract"
+    "defaultMessage": "From an OpenAPI spec"
   },
   "api.create.defineApi.scratch.description": {
-    "defaultMessage": "Begin with a blank API and fill in the details."
+    "defaultMessage": "Proxy a running service. Every path is forwarded as-is."
   },
   "api.create.defineApi.scratch.endpoint.description": {
-    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you publish."
+    "defaultMessage": "Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway."
   },
   "api.create.defineApi.scratch.endpoint.heading": {
     "defaultMessage": "Backend endpoint"
   },
+  "api.create.defineApi.scratch.endpoint.hint": {
+    "defaultMessage": "Your API’s base URL. We forward traffic to it; we don’t call it now.",
+    "description": "Always-visible line under the backend URL field."
+  },
+  "api.create.defineApi.scratch.endpoint.importAsSpec": {
+    "defaultMessage": "Import it as a spec instead",
+    "description": "Moves the URL to the \"From an OpenAPI spec\" tab and reads it there."
+  },
+  "api.create.defineApi.scratch.endpoint.invalid": {
+    "defaultMessage": "That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start."
+  },
   "api.create.defineApi.scratch.endpoint.label": {
-    "defaultMessage": "Endpoint URL"
+    "defaultMessage": "Backend URL"
   },
   "api.create.defineApi.scratch.endpoint.preview.description": {
     "defaultMessage": "Every API resource will route to the backend endpoint you provide."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.forwardsTo": {
+    "defaultMessage": "FORWARDS TO",
+    "description": "Small caps label above the backend URL in the routes preview."
+  },
+  "api.create.defineApi.scratch.endpoint.preview.note": {
+    "defaultMessage": "One catch-all route per method. Requests to any path are forwarded unchanged; without a spec we can’t list your API’s paths individually. Add a spec later whenever you want that."
   },
   "api.create.defineApi.scratch.endpoint.preview.title": {
     "defaultMessage": "Ready to connect"
   },
   "api.create.defineApi.scratch.endpoint.sampleUrl": {
-    "defaultMessage": "Try with Sample URL"
+    "defaultMessage": "Try a sample"
+  },
+  "api.create.defineApi.scratch.endpoint.specLink": {
+    "defaultMessage": "This looks like an OpenAPI spec rather than the API itself. Importing it lists your API’s paths."
   },
   "api.create.defineApi.scratch.title": {
-    "defaultMessage": "Start from scratch"
+    "defaultMessage": "From an endpoint"
   },
   "api.create.fromContract.action.clearUrl": {
     "defaultMessage": "Clear URL",
     "description": "Clears the API contract URL field and its loaded preview."
   },
   "api.create.fromContract.action.sampleUrl": {
-    "defaultMessage": "Try with Sample URL",
+    "defaultMessage": "Try a sample",
     "description": "Fills the field with a ready-made example to try the import with."
   },
   "api.create.fromContract.gitHub.authorize": {
@@ -227,7 +270,7 @@
     "defaultMessage": "Public Repository URL"
   },
   "api.create.fromContract.gitHub.noContract": {
-    "defaultMessage": "No YAML or JSON contract in this directory. Choose another one."
+    "defaultMessage": "No YAML or JSON spec in this directory. Choose another one."
   },
   "api.create.fromContract.gitHub.or": {
     "defaultMessage": "OR",
@@ -261,7 +304,7 @@
     "defaultMessage": "GitHub"
   },
   "api.create.fromContract.source.label": {
-    "defaultMessage": "Import the contract from",
+    "defaultMessage": "Import the spec from",
     "description": "Label over the picker that chooses where the API contract is read from."
   },
   "api.create.fromContract.source.swaggerHub": {
@@ -275,16 +318,24 @@
     "description": "Heading above the list rendered below the URL/upload panel when validate-openapi claims the spec in invalid"
   },
   "api.create.fromContract.spec.tooLarge": {
-    "defaultMessage": "The OpenAPI specification exceeds the maximum allowed size."
+    "defaultMessage": "This OpenAPI spec is larger than the maximum allowed size."
   },
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
   },
   "api.create.fromContract.spec.validationFailed": {
-    "defaultMessage": "Failed to validate the OpenAPI specification. Please try again."
+    "defaultMessage": "We couldn’t read an OpenAPI spec at that address. Check that the link opens the raw file in a browser, or upload the file instead."
+  },
+  "api.create.fromContract.spec.validationProblems": {
+    "defaultMessage": "Problems found in the spec",
+    "description": "Accessible name for the scrolling list of validation problems."
+  },
+  "api.create.fromContract.status.checked": {
+    "defaultMessage": "{dialect} {version} · {routes, plural, one {# route} other {# routes}} found",
+    "description": "Quiet line under the source once a spec is accepted, e.g. \"OpenAPI 3.0.2 · 6 routes found\". {dialect} is a product name (OpenAPI, Swagger) and is not translated."
   },
   "api.create.fromContract.status.fetching": {
-    "defaultMessage": "Reading the contract…",
+    "defaultMessage": "Reading the spec…",
     "description": "Shown while the chosen contract is being read and checked, which starts on its own."
   },
   "api.create.fromContract.swaggerHub.apiLabel": {
@@ -355,10 +406,10 @@
     "description": "Accessible name for the button that discards the chosen file."
   },
   "api.create.fromContract.upload.required": {
-    "defaultMessage": "Select an API contract file to continue"
+    "defaultMessage": "Choose an OpenAPI spec file to continue."
   },
   "api.create.fromContract.upload.title": {
-    "defaultMessage": "Upload API Contract"
+    "defaultMessage": "Upload an OpenAPI spec"
   },
   "api.create.fromContract.upload.unsupported": {
     "defaultMessage": "That file type is not supported. Accepted types: {extensions}"
@@ -371,13 +422,28 @@
     "defaultMessage": "Enter a valid HTTP or HTTPS URL."
   },
   "api.create.fromContract.url.label": {
-    "defaultMessage": "URL for API Contract"
+    "defaultMessage": "Spec URL"
+  },
+  "api.create.fromContract.url.liveApi": {
+    "defaultMessage": "That address answered, but not with an OpenAPI spec. It looks like the API itself rather than a description of it."
+  },
+  "api.create.fromContract.url.maybeLiveApi": {
+    "defaultMessage": "If this is the API itself rather than its spec, create it from its endpoint instead.",
+    "description": "Follows the \"couldn’t read a spec\" error for an address that doesn’t look like a spec."
   },
   "api.create.fromContract.url.placeholder": {
-    "defaultMessage": "Enter URL for API Contract here"
+    "defaultMessage": "https://api.example.com/openapi.json"
+  },
+  "api.create.fromContract.url.repaired": {
+    "defaultMessage": "Link updated: that was a {host} page rather than the file itself, so we switched to the raw file URL.",
+    "description": "{host} is GitHub, GitLab or Bitbucket; do not translate it."
   },
   "api.create.fromContract.url.required": {
-    "defaultMessage": "The URL for the API contract cannot be empty"
+    "defaultMessage": "Enter the spec’s URL."
+  },
+  "api.create.fromContract.url.useAsEndpoint": {
+    "defaultMessage": "Use it as an endpoint instead",
+    "description": "Moves the URL to the \"From an endpoint\" tab and creates the API from it there."
   },
   "api.create.generalForm.action.back": {
     "defaultMessage": "Back"
@@ -435,7 +501,7 @@
     "defaultMessage": "Name"
   },
   "api.create.generalForm.rejected.title": {
-    "defaultMessage": "We could not create this API proxy",
+    "defaultMessage": "We couldn’t create this API",
     "description": "Heading of the summary shown when the server rejected the submitted form."
   },
   "api.create.generalForm.section.backendEndpoint": {
@@ -448,13 +514,13 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter a backend URL."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
   "api.create.generalForm.targetUrl.label": {
-    "defaultMessage": "Target URL"
+    "defaultMessage": "Backend URL"
   },
   "api.create.generalForm.targetUrl.placeholder.notice": {
     "defaultMessage": "This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying."
@@ -489,10 +555,10 @@
     "description": "Accessible name for the chevron that opens a directory."
   },
   "api.create.gitHubDirectory.files.heading": {
-    "defaultMessage": "API contract in this directory"
+    "defaultMessage": "OpenAPI spec in this directory"
   },
   "api.create.gitHubDirectory.files.none": {
-    "defaultMessage": "No YAML or JSON file here. Pick a directory that holds the API contract."
+    "defaultMessage": "No YAML or JSON file here. Pick a directory that holds the OpenAPI spec."
   },
   "api.create.gitHubDirectory.loading": {
     "defaultMessage": "Reading the repository…"
@@ -663,6 +729,10 @@
     "defaultMessage": "All methods",
     "description": "Option that leaves the resource list unfiltered by HTTP method."
   },
+  "apiControlPlane.components.SwaggerSpecViewer.methodFilterLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible name for the HTTP method filter beside the resource search."
+  },
   "apiControlPlane.components.SwaggerSpecViewer.noResources": {
     "defaultMessage": "No resources match your search."
   },
@@ -673,6 +743,10 @@
   "apiControlPlane.components.SwaggerSpecViewer.requestUrl": {
     "defaultMessage": "Request URL",
     "description": "Heading above the URL a generated request would be sent to."
+  },
+  "apiControlPlane.components.SwaggerSpecViewer.searchLabel": {
+    "defaultMessage": "Search resources",
+    "description": "Accessible name for the resource search box; its placeholder vanishes on input."
   },
   "apiControlPlane.components.SwaggerSpecViewer.searchPlaceholder": {
     "defaultMessage": "Search resources by path or description"
@@ -780,6 +854,14 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
     "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
     "description": "Tooltip explaining the gateway-managed chip."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.redeploy": {
+    "defaultMessage": "Re-deploy",
+    "description": "Secondary button on the API overview once the API is live; opens the deployment page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.testApi": {
+    "defaultMessage": "Test it",
+    "description": "Primary button on the API overview once the API is deployed; opens the Test page."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
@@ -1223,6 +1305,14 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.noGatewaysMatchSearch": {
     "defaultMessage": "No gateways match your search"
   },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarning": {
+    "defaultMessage": "Anyone with this API’s URL will be able to call it. To restrict access, add an authentication policy such as API Key Auth, then deploy.",
+    "description": "Warning on the Deploy page when the API has no caller-authentication policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.publicWarningAction": {
+    "defaultMessage": "Add a policy",
+    "description": "Link in the public-API warning that opens the API’s policies."
+  },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.searchPlaceholder": {
     "defaultMessage": "Search gateways"
   },
@@ -1264,6 +1354,14 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployStarted": {
     "defaultMessage": "Deployment \"{deploymentName}\" started.",
     "description": "Toast confirming a deploy was requested. {deploymentName} is server-generated; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStep": {
+    "defaultMessage": "Deployed to {gatewayName}. Send it a test request.",
+    "description": "Toast once a deployment is live. {gatewayName} is the gateway’s display name; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deployedNextStepAction": {
+    "defaultMessage": "Test it",
+    "description": "Button in the \"Deployed\" notification that opens the Test page."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.components.GatewayDeployCard.deploying": {
     "defaultMessage": "Deploying...",
@@ -3539,6 +3637,10 @@
   "gateways.create.action.back": {
     "defaultMessage": "Back to gateways"
   },
+  "gateways.create.action.backToDeploy": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Returns to the API Deploy page the user came from to add a gateway."
+  },
   "gateways.create.action.cancel": {
     "defaultMessage": "Cancel"
   },
@@ -3556,6 +3658,10 @@
   },
   "gateways.create.endpoint.error.required": {
     "defaultMessage": "Enter a URL."
+  },
+  "gateways.create.endpoint.helper": {
+    "defaultMessage": "Where this gateway will serve API traffic. For a gateway on your own machine, use https://localhost:8443.",
+    "description": "Helper text under the gateway URL field."
   },
   "gateways.create.endpoint.label": {
     "defaultMessage": "URL"
@@ -3624,10 +3730,14 @@
     "description": "One entry in the gateway version list; {version} is a number such as 1.0."
   },
   "gateways.detail.GetStarted.download.intro": {
-    "defaultMessage": "Run this command in your terminal to download the gateway:"
+    "defaultMessage": "Run this in your terminal. It downloads the gateway into its own folder, {folder}, and is safe to run again:"
   },
   "gateways.detail.GetStarted.environment.label": {
     "defaultMessage": "Associated Environment"
+  },
+  "gateways.detail.GetStarted.generateToken": {
+    "defaultMessage": "Generate token",
+    "description": "Generates this gateway’s first registration token."
   },
   "gateways.detail.GetStarted.k8s.chartHeading": {
     "defaultMessage": "Installing the Chart",
@@ -3635,6 +3745,12 @@
   },
   "gateways.detail.GetStarted.k8s.chartIntro": {
     "defaultMessage": "Run this command to install the gateway chart with control plane configurations:"
+  },
+  "gateways.detail.GetStarted.prepare.intro": {
+    "defaultMessage": "Then go into the gateway folder and run its one-time setup, which creates the gateway’s certificates and settings file:"
+  },
+  "gateways.detail.GetStarted.prepare.introNoSetup": {
+    "defaultMessage": "Then go into the gateway folder:"
   },
   "gateways.detail.GetStarted.prerequisite.curl": {
     "defaultMessage": "cURL installed"
@@ -3655,11 +3771,11 @@
     "defaultMessage": "Prerequisites"
   },
   "gateways.detail.GetStarted.reconfigure": {
-    "defaultMessage": "Reconfigure",
-    "description": "Generates a fresh registration token, revoking the gateway’s previous one."
+    "defaultMessage": "Generate another token",
+    "description": "Generates an additional registration token. The previous one stays active until revoked."
   },
   "gateways.detail.GetStarted.reconfigure.confirm.body": {
-    "defaultMessage": "This revokes the current registration token and disconnects any gateway still using it. You will need to apply the new token to bring it back online."
+    "defaultMessage": "The current token keeps working until you revoke it. A gateway can have at most two active tokens, so if it already has two, revoke one first."
   },
   "gateways.detail.GetStarted.reconfigure.confirm.button": {
     "defaultMessage": "Generate new token"
@@ -3673,12 +3789,32 @@
   "gateways.detail.GetStarted.reconfiguring": {
     "defaultMessage": "Generating…"
   },
-  "gateways.detail.GetStarted.start.enter": {
-    "defaultMessage": "1. Navigate to the gateway folder."
-  },
   "gateways.detail.GetStarted.start.run": {
-    "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
-    "description": "configs/keys.env is a file path — keep it exactly as written."
+    "defaultMessage": "Run this command in the gateway folder to start the gateway:"
+  },
+  "gateways.detail.GetStarted.status.connected": {
+    "defaultMessage": "Connected. This gateway is ready for deployments."
+  },
+  "gateways.detail.GetStarted.status.slow.host": {
+    "defaultMessage": "the control plane address in the settings is reachable from the gateway’s machine"
+  },
+  "gateways.detail.GetStarted.status.slow.logs": {
+    "defaultMessage": "the controller logs show no connection errors: docker compose logs gateway-controller",
+    "description": "The command after the colon must be kept exactly as written."
+  },
+  "gateways.detail.GetStarted.status.slow.running": {
+    "defaultMessage": "the containers are running: docker compose ps",
+    "description": "\"docker compose ps\" is a command; keep it exactly as written."
+  },
+  "gateways.detail.GetStarted.status.slow.title": {
+    "defaultMessage": "Still not connected? Check that:"
+  },
+  "gateways.detail.GetStarted.status.slow.token": {
+    "defaultMessage": "the token in the settings is the one generated above, copied in full"
+  },
+  "gateways.detail.GetStarted.status.waiting": {
+    "defaultMessage": "Waiting for your gateway to connect…",
+    "description": "Shown under the start command while the console polls for the gateway."
   },
   "gateways.detail.GetStarted.step.configure": {
     "defaultMessage": "Step 2: Configure the Gateway"
@@ -3707,10 +3843,10 @@
     "defaultMessage": "Get Started"
   },
   "gateways.detail.GetStarted.token.notice.compose": {
-    "defaultMessage": "The registration token is single-use. If you need to reconfigure the gateway, generate a new token — this will revoke the old token and disconnect the gateway from the control plane."
+    "defaultMessage": "Generate a registration token, then run the command that appears to add it, with this control plane’s address, to the gateway’s settings. The token is shown only once."
   },
   "gateways.detail.GetStarted.token.notice.helm": {
-    "defaultMessage": "The registration token is a one-time generated token for this gateway. If you need to install or update the gateway chart again, first reconfigure this gateway to generate a new registration token. Reconfiguring will revoke the previous token."
+    "defaultMessage": "Generate a registration token. It is added to the install command below, and shown only once."
   },
   "gateways.detail.GetStarted.token.once": {
     "defaultMessage": "Copy this now. The token is shown only once and cannot be retrieved again."
@@ -3853,6 +3989,18 @@
   "gateways.detail.action.back": {
     "defaultMessage": "Back to list",
     "description": "Returns to the gateway listing from a gateway’s own page."
+  },
+  "gateways.detail.action.backToDeploy": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Returns to the API Deploy page the user came from to add this gateway."
+  },
+  "gateways.detail.connected.nextStep": {
+    "defaultMessage": "{name} is connected. You can deploy your API to it now.",
+    "description": "{name} is the gateway’s display name; do not translate it."
+  },
+  "gateways.detail.connected.nextStepAction": {
+    "defaultMessage": "Back to Deploy",
+    "description": "Button in the \"gateway connected\" notification."
   },
   "gateways.detail.error.message": {
     "defaultMessage": "Unable to load this gateway."

@@ -90,6 +90,11 @@ export type ApiResourcesPreviewProps = {
    */
   onSpecChange?: (spec: SpecDocument, rawText: string) => void;
   /**
+   * Said in place of the empty state while a spec is on its way, e.g.
+   * "Fetching your spec…", so the pane doesn't read as idle.
+   */
+  pending?: { description: string; title: string };
+  /**
    * The original uploaded or downloaded spec text. When present the Source
    * view shows exactly what the user gave us — preserving YAML format,
    * comments, and anchors — rather than a re-serialized copy.
@@ -122,6 +127,7 @@ export const ApiResourcesPreview = ({
   onBeforeSave,
   onEditingChange,
   onSpecChange,
+  pending,
   rawText,
   spec,
   warnings,
@@ -171,27 +177,11 @@ export const ApiResourcesPreview = ({
             justifyContent: 'space-between',
           }}
         >
-          {/* Left: title + YAML/JSON toggle (only visible in read-only source mode) */}
-          <Stack alignItems="center" direction="row" spacing={1}>
-            <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
-              <FormattedMessage {...messages.title} />
-            </Typography>
-            {showSource && !editable && (
-              <ToggleButtonGroup
-                aria-label={intl.formatMessage(messages.formatLabel)}
-                color="primary"
-                exclusive
-                onChange={(_event, next: SpecFormat | null) => {
-                  if (next !== null) setFormat(next);
-                }}
-                size="small"
-                value={format}
-              >
-                <ToggleButton value="yaml">YAML</ToggleButton>
-                <ToggleButton value="json">JSON</ToggleButton>
-              </ToggleButtonGroup>
-            )}
-          </Stack>
+          {/* The header reads the same in both views; the YAML/JSON choice
+              belongs to the source view and sits inside it. */}
+          <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+            <FormattedMessage {...messages.title} />
+          </Typography>
 
           {/* Right: Source switch */}
           <FormControlLabel
@@ -224,6 +214,15 @@ export const ApiResourcesPreview = ({
       ) : null}
 
       <Box
+        // The resource list scrolls inside the pane, so the pane itself has to
+        // take keyboard focus for arrow keys to reach what is below the fold.
+        {...(hasContract && !showSource
+          ? {
+              'aria-label': intl.formatMessage(messages.title),
+              role: 'region',
+              tabIndex: 0,
+            }
+          : {})}
         sx={{
           flex: 1,
           minHeight: 0,
@@ -244,30 +243,51 @@ export const ApiResourcesPreview = ({
           />
         ) : null}
 
-        {/* Read-only source view: Monaco editor, format toggled in the header above. */}
+        {/* Read-only source view: the format toggle above the Monaco editor. */}
         {hasContract && showSource && !editable ? (
-          <Editor
-            height="100%"
-            language={format}
-            loading={
-              <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2 }}>
-                <Typography color="text.disabled" variant="body2">
-                  {intl.formatMessage(messages.editorLoading)}
-                </Typography>
-              </Box>
-            }
-            options={{
-              automaticLayout: true,
-              fontSize: 12,
-              lineHeight: 20,
-              minimap: { enabled: false },
-              readOnly: true,
-              scrollBeyondLastLine: false,
-              wordWrap: 'on',
-            }}
-            theme="vs-dark"
-            value={displayText}
-          />
+          <Stack sx={{ height: '100%' }}>
+            <Stack direction="row" sx={{ flexShrink: 0, justifyContent: 'flex-end', mb: 1 }}>
+              <ToggleButtonGroup
+                aria-label={intl.formatMessage(messages.formatLabel)}
+                color="primary"
+                exclusive
+                onChange={(_event, next: SpecFormat | null) => {
+                  if (next !== null) setFormat(next);
+                }}
+                size="small"
+                value={format}
+              >
+                <ToggleButton value="yaml">YAML</ToggleButton>
+                <ToggleButton value="json">JSON</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <Editor
+                height="100%"
+                language={format}
+                loading={
+                  // Monaco centres its placeholder in a flex box; without a width
+                  // it shrinks to a narrow strip that reads as broken.
+                  <Box sx={{ bgcolor: '#1e1e1e', height: '100%', p: 2, width: '100%' }}>
+                    <Typography color="text.disabled" variant="body2">
+                      {intl.formatMessage(messages.editorLoading)}
+                    </Typography>
+                  </Box>
+                }
+                options={{
+                  automaticLayout: true,
+                  fontSize: 12,
+                  lineHeight: 20,
+                  minimap: { enabled: false },
+                  readOnly: true,
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                }}
+                theme="vs-dark"
+                value={displayText}
+              />
+            </Box>
+          </Stack>
         ) : null}
 
         {hasContract && !showSource ? (
@@ -291,12 +311,17 @@ export const ApiResourcesPreview = ({
               hideAuthorizeButton
               hideInfoSection
               hideServers
+              // The tag row (name, description, an external "Find out more"
+              // link) read as a stray hyperlink in a pane this narrow.
+              hideTagHeaders
               spec={spec}
             />
           </Box>
         ) : null}
 
-        {hasContract ? null : <ResourcePreviewPlaceholder />}
+        {hasContract ? null : (
+          <ResourcePreviewPlaceholder description={pending?.description} title={pending?.title} />
+        )}
       </Box>
     </Box>
   );

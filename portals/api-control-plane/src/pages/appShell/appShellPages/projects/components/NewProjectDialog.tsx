@@ -101,13 +101,19 @@ export type NewProjectDialogProps = {
   open: boolean;
   orgHandle: string;
   onClose: () => void;
+  /**
+   * Where to go once the project exists. Defaults to the project's home; a
+   * caller that opened the dialog on the way to something else (creating an
+   * API) sends the user on to that instead.
+   */
+  destination?: (projectId: string) => string;
 };
 
 /**
  * Create a project (platform-api `POST /api/v1/projects`). On success it navigates to the new
- * project's home.
+ * project's home, or to `destination` when the caller gave one.
  */
-export function NewProjectDialog({ open, orgHandle, onClose }: NewProjectDialogProps) {
+export function NewProjectDialog({ destination, open, orgHandle, onClose }: NewProjectDialogProps) {
   const intl = useIntl();
   const navigate = useNavigate();
   const { notify } = useNotifications();
@@ -140,7 +146,7 @@ export function NewProjectDialog({ open, orgHandle, onClose }: NewProjectDialogP
       });
       notify(intl.formatMessage(messages.created), 'success');
       onClose();
-      navigate(routes.projectHome(orgHandle, project.id));
+      navigate(destination ? destination(project.id) : routes.projectHome(orgHandle, project.id));
     } catch (error) {
       notify(
         error instanceof Error ? error.message : intl.formatMessage(messages.createFailed),

@@ -17,10 +17,12 @@
  */
 
 import {
+  Alert,
   Box,
   Button,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   InputAdornment,
   OutlinedInput,
@@ -31,7 +33,10 @@ import { FileCode2, Link as LinkIcon, Pencil, Zap } from '@wso2/oxygen-ui-icons-
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { DEFAULT_API_SKELETON, PLACEHOLDER_UPSTREAM_URL } from '../utils/apiSkeleton';
+import { isHttpUrl } from '../../utils/basicInfoRules';
+import { DEFAULT_API_SKELETON, skeletonFor } from '../utils/apiSkeleton';
+import { looksLikeSpecUrl } from '../utils/looksLikeSpecUrl';
+import { nameFromEndpoint, versionFromEndpoint } from '../utils/nameFromEndpoint';
 import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
@@ -43,20 +48,30 @@ type ApproachKey = 'contract' | 'scratch';
 const messages = defineMessages({
   contractDescription: {
     id: 'api.create.defineApi.contract.description',
-    defaultMessage: 'Import an API contract from a URL or a file.',
+    defaultMessage: 'Import an OpenAPI spec from a URL or a file.',
   },
   contractTitle: {
     id: 'api.create.defineApi.contract.title',
-    defaultMessage: 'Start with a contract',
+    defaultMessage: 'From an OpenAPI spec',
   },
   endpointDescription: {
     id: 'api.create.defineApi.scratch.endpoint.description',
     defaultMessage:
-      'Route every resource to a running service. Calls are proxied through as soon as you publish.',
+      'Route every resource to a running service. Calls are proxied through as soon as you deploy it to a gateway.',
+  },
+  endpointHint: {
+    id: 'api.create.defineApi.scratch.endpoint.hint',
+    defaultMessage: 'Your API’s base URL. We forward traffic to it; we don’t call it now.',
+    description: 'Always-visible line under the backend URL field.',
+  },
+  endpointInvalid: {
+    id: 'api.create.defineApi.scratch.endpoint.invalid',
+    defaultMessage:
+      'That doesn’t look like a URL yet. Check for a typo, or a missing https:// at the start.',
   },
   endpointLabel: {
     id: 'api.create.defineApi.scratch.endpoint.label',
-    defaultMessage: 'Endpoint URL',
+    defaultMessage: 'Backend URL',
   },
   endpointHeading: {
     id: 'api.create.defineApi.scratch.endpoint.heading',
@@ -66,21 +81,55 @@ const messages = defineMessages({
     id: 'api.create.defineApi.scratch.endpoint.preview.description',
     defaultMessage: 'Every API resource will route to the backend endpoint you provide.',
   },
+  endpointPreviewForwardsTo: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.forwardsTo',
+    defaultMessage: 'FORWARDS TO',
+    description: 'Small caps label above the backend URL in the routes preview.',
+  },
+  endpointPreviewNote: {
+    id: 'api.create.defineApi.scratch.endpoint.preview.note',
+    defaultMessage:
+      'One catch-all route per method. Requests to any path are forwarded unchanged; without a spec we can’t list your API’s paths individually. Add a spec later whenever you want that.',
+  },
   endpointPreviewTitle: {
     id: 'api.create.defineApi.scratch.endpoint.preview.title',
     defaultMessage: 'Ready to connect',
   },
+  previewFetching: {
+    id: 'api.create.defineApi.contract.preview.fetching',
+    defaultMessage: 'Fetching your spec…',
+    description: 'Preview pane title while a spec URL is being read.',
+  },
+  previewPendingDescription: {
+    id: 'api.create.defineApi.contract.preview.pendingDescription',
+    defaultMessage: 'Its resources will show here.',
+  },
+  previewReading: {
+    id: 'api.create.defineApi.contract.preview.reading',
+    defaultMessage: 'Reading your file…',
+    description: 'Preview pane title while an uploaded spec file is being read.',
+  },
+  specLink: {
+    id: 'api.create.defineApi.scratch.endpoint.specLink',
+    defaultMessage:
+      'This looks like an OpenAPI spec rather than the API itself. Importing it lists your API’s paths.',
+  },
+  importAsSpec: {
+    id: 'api.create.defineApi.scratch.endpoint.importAsSpec',
+    defaultMessage: 'Import it as a spec instead',
+    description: 'Moves the URL to the "From an OpenAPI spec" tab and reads it there.',
+  },
   sampleUrl: {
     id: 'api.create.defineApi.scratch.endpoint.sampleUrl',
-    defaultMessage: 'Try with Sample URL',
+    defaultMessage: 'Try a sample',
   },
   scratchDescription: {
     id: 'api.create.defineApi.scratch.description',
-    defaultMessage: 'Begin with a blank API and fill in the details.',
+    defaultMessage: 'Proxy a running service. Every path is forwarded as-is.',
   },
   scratchTitle: {
     id: 'api.create.defineApi.scratch.title',
-    defaultMessage: 'Start from scratch',
+    defaultMessage: 'From an endpoint',
   },
 });
 
@@ -100,6 +149,16 @@ type ApproachTabProps = {
 };
 
 const SAMPLE_BACKEND_URL = 'https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books';
+
+/**
+ * How long the endpoint must stop changing before the routes preview redraws.
+ * Every redraw re-renders Swagger UI, and nothing it shows depends on the URL
+ * mid-word, so redrawing per keystroke only made the pane flicker.
+ */
+const PREVIEW_SETTLE_MS = 300;
+
+/** A bare example, not instructions: placeholders vanish on focus. */
+const ENDPOINT_PLACEHOLDER = 'https://api.example.com/v1';
 
 const SampleLink = ({ onClick }: { onClick: () => void }) => (
   <Button
@@ -171,33 +230,90 @@ export const DefineApiPanel = ({
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('scratch');
   const [endpointUrl, setEndpointUrl] = useState('');
+  // The endpoint is checked for shape only; the console never calls it. The
+  // error waits until the user leaves the field, so a half-typed URL never
+  // flashes red, and clears the moment the value parses.
+  const [endpointTouched, setEndpointTouched] = useState(false);
+  const endpointValid = isHttpUrl(endpointUrl.trim());
+  const endpointError = endpointTouched && endpointUrl.trim() !== '' && !endpointValid;
   const [contract, setContract] = useState<FetchedContract | null>(null);
+  const [checking, setChecking] = useState<'fetch' | 'read' | null>(null);
+  /**
+   * A URL carried over from the endpoint tab. The spec form reads its starting
+   * value on mount, so a hand-off remounts it (`handoff.key`) with the URL.
+   */
+  const [handoff, setHandoff] = useState<{ key: number; url?: string }>({ key: 0 });
 
   const selectApproach = (next: ApproachKey) => {
     setApproach(next);
     onApproachChange?.(next);
   };
 
+  // The two offers below share one test (`looksLikeSpecUrl`): the spec tab
+  // offers the endpoint tab only when it says no, this tab offers the spec tab
+  // only when it says yes, so a URL can never be bounced back and forth.
+  const useAsEndpoint = (url: string) => {
+    setEndpointUrl(url);
+    setEndpointTouched(true);
+    selectApproach('scratch');
+  };
+
+  const importAsSpec = (url: string) => {
+    setHandoff((previous) => ({ key: previous.key + 1, url }));
+    selectApproach('contract');
+  };
+
+  const endpointIsSpecLink = endpointValid && looksLikeSpecUrl(endpointUrl);
+
   const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
     const upstreamUrl = endpointUrl.trim();
-    if (!upstreamUrl) return null;
+    if (!isHttpUrl(upstreamUrl)) return null;
 
     const details = extractApiDetails(DEFAULT_API_SKELETON);
     const scratchRawText = JSON.stringify(DEFAULT_API_SKELETON, null, 2);
+    // Name and version come from the URL where it says them, so an API made
+    // from `…/orders/v2` starts as "Orders" 2.0.0 rather than "Untitled API".
+    const guessedName = nameFromEndpoint(upstreamUrl);
+    const guessedVersion = versionFromEndpoint(upstreamUrl);
     return {
       ...details,
+      ...(guessedName ? { displayName: guessedName } : {}),
+      ...(guessedVersion ? { version: guessedVersion } : {}),
       upstream: {
         main: { url: upstreamUrl },
       },
       contractImport: {
         specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
+        // Rebuilt at submit from the details step's values (`skeletonFor`).
+        fromSkeleton: true,
       },
     };
   }, [endpointUrl]);
 
+  const [settledEndpoint, setSettledEndpoint] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledEndpoint(endpointUrl.trim()), PREVIEW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [endpointUrl]);
+
+  // The definition an endpoint API would be created with, for the preview.
+  // Built only once the URL parses: before that the pane explains itself.
+  // Drawn from the settled URL; the draft behind Continue never waits.
+  const endpointPreview = useMemo(() => {
+    if (!isHttpUrl(settledEndpoint)) return null;
+    const defaults = extractApiDetails(DEFAULT_API_SKELETON);
+    const spec = skeletonFor({
+      displayName: nameFromEndpoint(settledEndpoint) ?? defaults.displayName ?? 'Untitled API',
+      upstreamUrl: settledEndpoint,
+      version: versionFromEndpoint(settledEndpoint) ?? defaults.version ?? '1.0.0',
+    });
+    return { forwardsTo: settledEndpoint, rawText: JSON.stringify(spec, null, 2), spec };
+  }, [settledEndpoint]);
+
   const contractDraft = useMemo((): ApiCreationWizardDraftState | null => {
     if (contract?.spec === undefined) return null;
-    const base = extractApiDetails(contract.spec);
+    // A URL-sourced spec resolves a relative server against its own address.
+    const base = extractApiDetails(contract.spec, contract.values.url);
     const rawText = contract.rawText;
     if (rawText === undefined) return null;
     const isJson = rawText.trimStart().startsWith('{');
@@ -254,71 +370,156 @@ export const DefineApiPanel = ({
           overflow: 'hidden',
         }}
       >
-        {approach === 'contract' ? (
-          <>
-            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-              <ContractSourceForm
-                initialApiTypeKey={initialApiTypeKey}
-                onContractChange={setContract}
-              />
-            </Box>
-            <Divider
-              flexItem
-              orientation="vertical"
-              sx={{
-                borderBottomWidth: { lg: 0, xs: 'thin' },
-                borderRightWidth: { lg: 'thin', xs: 0 },
-              }}
+        {/* Both panes stay mounted and only the active one shows, so switching
+            tabs (or going Back past this step) keeps what was entered. */}
+        <Box
+          sx={{
+            display: approach === 'contract' ? 'flex' : 'none',
+            flex: 1,
+            flexDirection: { lg: 'row', xs: 'column' },
+            minWidth: 0,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            <ContractSourceForm
+              initialApiTypeKey={initialApiTypeKey}
+              initialUrl={handoff.url}
+              key={handoff.key}
+              onCheckingChange={setChecking}
+              onContractChange={setContract}
+              onUseAsEndpoint={useAsEndpoint}
             />
-            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-              <ApiResourcesPreview height={472} rawText={contract?.rawText} spec={contract?.spec} />
-            </Box>
-          </>
-        ) : (
-          <>
-            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
-              <Stack spacing={2.5}>
-                <Box>
-                  <Typography sx={{ fontWeight: 700 }} variant="h3">
-                    <FormattedMessage {...messages.endpointHeading} />
+          </Box>
+          <Divider
+            flexItem
+            orientation="vertical"
+            sx={{
+              borderBottomWidth: { lg: 0, xs: 'thin' },
+              borderRightWidth: { lg: 'thin', xs: 0 },
+            }}
+          />
+          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            <ApiResourcesPreview
+              height={472}
+              pending={
+                checking === null
+                  ? undefined
+                  : {
+                      description: intl.formatMessage(messages.previewPendingDescription),
+                      title: intl.formatMessage(
+                        checking === 'read' ? messages.previewReading : messages.previewFetching,
+                      ),
+                    }
+              }
+              rawText={contract?.rawText}
+              spec={contract?.spec}
+            />
+          </Box>
+        </Box>
+        <Box
+          sx={{
+            display: approach === 'scratch' ? 'flex' : 'none',
+            flex: 1,
+            flexDirection: { lg: 'row', xs: 'column' },
+            minWidth: 0,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            <Stack spacing={2.5}>
+              <Box>
+                <Typography sx={{ fontWeight: 700 }} variant="h3">
+                  <FormattedMessage {...messages.endpointHeading} />
+                </Typography>
+                <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
+                  <FormattedMessage {...messages.endpointDescription} />
+                </Typography>
+              </Box>
+              <FormControl error={endpointError} fullWidth required>
+                <FormLabel htmlFor="backend-endpoint">
+                  <FormattedMessage {...messages.endpointLabel} />
+                </FormLabel>
+                <OutlinedInput
+                  aria-describedby="backend-endpoint-hint"
+                  id="backend-endpoint"
+                  onBlur={() => setEndpointTouched(true)}
+                  onChange={(event) => setEndpointUrl(event.target.value)}
+                  placeholder={ENDPOINT_PLACEHOLDER}
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <LinkIcon size={18} />
+                    </InputAdornment>
+                  }
+                  sx={{ mt: 0.75 }}
+                  value={endpointUrl}
+                />
+                <FormHelperText id="backend-endpoint-hint">
+                  <FormattedMessage
+                    {...(endpointError ? messages.endpointInvalid : messages.endpointHint)}
+                  />
+                </FormHelperText>
+                <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
+              </FormControl>
+              {endpointIsSpecLink ? (
+                <Alert severity="info">
+                  <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+                    <span>
+                      <FormattedMessage {...messages.specLink} />
+                    </span>
+                    <Button
+                      color="inherit"
+                      onClick={() => importAsSpec(endpointUrl.trim())}
+                      size="small"
+                      type="button"
+                      variant="outlined"
+                    >
+                      <FormattedMessage {...messages.importAsSpec} />
+                    </Button>
+                  </Stack>
+                </Alert>
+              ) : null}
+            </Stack>
+          </Box>
+          <Divider
+            flexItem
+            orientation="vertical"
+            sx={{
+              borderBottomWidth: { lg: 0, xs: 'thin' },
+              borderRightWidth: { lg: 'thin', xs: 0 },
+            }}
+          />
+          <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            {endpointPreview ? (
+              // What will be created, drawn by the same preview a spec
+              // uses: the forwarding target once, then the catch-all routes.
+              <Stack spacing={1.5}>
+                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, px: 2, py: 1.5 }}>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ fontWeight: 600, letterSpacing: 0.4 }}
+                    variant="caption"
+                  >
+                    <FormattedMessage {...messages.endpointPreviewForwardsTo} />
                   </Typography>
-                  <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-                    <FormattedMessage {...messages.endpointDescription} />
+                  <Typography
+                    sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
+                    variant="body2"
+                  >
+                    {endpointPreview.forwardsTo}
                   </Typography>
                 </Box>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="backend-endpoint">
-                    <FormattedMessage {...messages.endpointLabel} />
-                  </FormLabel>
-                  <OutlinedInput
-                    id="backend-endpoint"
-                    onChange={(event) => setEndpointUrl(event.target.value)}
-                    placeholder={PLACEHOLDER_UPSTREAM_URL}
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <LinkIcon size={18} />
-                      </InputAdornment>
-                    }
-                    sx={{ mt: 0.75 }}
-                    value={endpointUrl}
-                  />
-                  <SampleLink onClick={() => setEndpointUrl(SAMPLE_BACKEND_URL)} />
-                </FormControl>
+                <ApiResourcesPreview
+                  height={360}
+                  rawText={endpointPreview.rawText}
+                  spec={endpointPreview.spec}
+                />
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage {...messages.endpointPreviewNote} />
+                </Typography>
               </Stack>
-            </Box>
-            <Divider
-              flexItem
-              orientation="vertical"
-              sx={{
-                borderBottomWidth: { lg: 0, xs: 'thin' },
-                borderRightWidth: { lg: 'thin', xs: 0 },
-              }}
-            />
-            <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+            ) : (
               <Stack
                 sx={{
                   alignItems: 'center',
-                  // bgcolor: 'action.hover',
                   border: 1,
                   borderColor: 'divider',
                   borderRadius: 2,
@@ -337,9 +538,9 @@ export const DefineApiPanel = ({
                   {intl.formatMessage(messages.endpointPreviewDescription)}
                 </Typography>
               </Stack>
-            </Box>
-          </>
-        )}
+            )}
+          </Box>
+        </Box>
       </Stack>
     </Box>
   );

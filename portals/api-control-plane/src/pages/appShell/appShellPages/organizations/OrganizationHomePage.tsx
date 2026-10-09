@@ -292,6 +292,10 @@ function OrganizationHomePageContent() {
   const { isLoading, organization, organizations, params, projects } = useConsoleScope();
   const orgHandle = params.orgHandle || '';
   const [createOpen, setCreateOpen] = useState(false);
+  // True when the project dialog was opened to unblock "Create an API", so
+  // the new project leads straight into the API wizard rather than stopping
+  // at the project's home.
+  const [creatingForApi, setCreatingForApi] = useState(false);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState('');
   const [search, setSearch] = useState('');
@@ -624,7 +628,13 @@ function OrganizationHomePageContent() {
       </Stack>
 
       <NewProjectDialog
-        onClose={() => setCreateOpen(false)}
+        destination={
+          creatingForApi ? (projectId) => routes.newApi(orgHandle, projectId) : undefined
+        }
+        onClose={() => {
+          setCreateOpen(false);
+          setCreatingForApi(false);
+        }}
         open={createOpen}
         orgHandle={orgHandle}
       />
@@ -668,7 +678,9 @@ function OrganizationHomePageContent() {
             )}
           </Stack>
         </DialogContent>
-        <DialogActions>
+        {/* Inset to line up with the title and text above, rather than the
+            theme's tighter default. */}
+        <DialogActions sx={{ pb: 2.5, px: 3 }}>
           <Button color="inherit" onClick={() => setProjectSelectorOpen(false)} variant="outlined">
             <FormattedMessage {...messages.projectSelectorCancel} />
           </Button>
@@ -680,6 +692,7 @@ function OrganizationHomePageContent() {
             <Button
               onClick={() => {
                 setProjectSelectorOpen(false);
+                setCreatingForApi(true);
                 setCreateOpen(true);
               }}
               variant="contained"

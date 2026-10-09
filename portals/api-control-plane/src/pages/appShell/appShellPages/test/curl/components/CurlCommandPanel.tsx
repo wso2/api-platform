@@ -74,6 +74,8 @@ const ICU_BODY_KIND: Record<string, string> = {
 const CODE_MAX_HEIGHT = 260;
 
 type CurlCommandPanelProps = {
+  /** Called when the full command has been copied. */
+  onCommandCopied?: () => void;
   request: ConsoleRequest;
 };
 
@@ -86,7 +88,7 @@ type CurlCommandPanelProps = {
  * that looks like a gateway problem. The notice under the block says so
  * outright rather than leaving the user to discover it.
  */
-export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
+export function CurlCommandPanel({ onCommandCopied, request }: CurlCommandPanelProps) {
   const intl = useIntl();
   const [revealed, setRevealed] = useState(false);
 
@@ -158,6 +160,7 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
           <CopyButton
             getValue={() => toCurl(request, { revealSecrets: true })}
             label={intl.formatMessage(messages.copyCommand)}
+            onCopied={onCommandCopied}
           />
         </Box>
       </Box>

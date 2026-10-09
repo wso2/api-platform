@@ -74,7 +74,7 @@ const messages = defineMessages({
   },
   filesHeading: {
     id: 'api.create.gitHubDirectory.files.heading',
-    defaultMessage: 'API contract in this directory',
+    defaultMessage: 'OpenAPI spec in this directory',
   },
   loading: {
     id: 'api.create.gitHubDirectory.loading',
@@ -86,7 +86,7 @@ const messages = defineMessages({
   },
   noFiles: {
     id: 'api.create.gitHubDirectory.files.none',
-    defaultMessage: 'No YAML or JSON file here. Pick a directory that holds the API contract.',
+    defaultMessage: 'No YAML or JSON file here. Pick a directory that holds the OpenAPI spec.',
   },
   searchPlaceholder: {
     id: 'api.create.gitHubDirectory.search.placeholder',
