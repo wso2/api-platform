@@ -176,7 +176,7 @@ export default function ExternalServersNew(): JSX.Element {
 
     if (authHeaderName.trim() && authHeaderValue.trim()) {
       request.auth = {
-        type: 'header',
+        type: 'api-key',
         header: authHeaderName.trim(),
         value: authHeaderValue.trim(),
       };
@@ -285,7 +285,7 @@ export default function ExternalServersNew(): JSX.Element {
           ...(authHeaderName.trim() && resolvedAuthValue
             ? {
                 auth: {
-                  type: 'header',
+                  type: 'api-key',
                   header: authHeaderName.trim(),
                   value: resolvedAuthValue,
                 },
