@@ -192,7 +192,7 @@ func platformGatewayBaseImages(resolved *topology.Resolved, product policyProduc
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			if component.Def.Compose == nil {
@@ -215,7 +215,7 @@ func setPlatformGatewayImages(resolved *topology.Resolved, product policyProduct
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			def := *component.Def

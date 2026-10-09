@@ -20,10 +20,12 @@ package guardian
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +33,7 @@ import (
 func ask(t *testing.T, body string) (int, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	New().Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, ChatPath, strings.NewReader(body)))
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, ChatPath, strings.NewReader(body)))
 	if rec.Code != http.StatusOK {
 		return rec.Code, rec.Body.String()
 	}
@@ -90,6 +92,14 @@ func TestMalformedRequestsAreRejected(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, code)
 
 	rec := httptest.NewRecorder()
-	New().Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, ChatPath, nil))
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, ChatPath, nil))
 	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+
+	code, _ = ask(t, strings.Repeat("x", maxRequestBodySize+1))
+	require.Equal(t, http.StatusRequestEntityTooLarge, code, "an oversized body is too large")
+
+	rec = httptest.NewRecorder()
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, ChatPath,
+		iotest.ErrReader(errors.New("connection reset"))))
+	require.Equal(t, http.StatusBadRequest, rec.Code, "any other read failure is a bad request")
 }

@@ -34,6 +34,7 @@ package guardian
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -96,7 +97,12 @@ func (s *Service) Handler() http.Handler {
 func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodySize))
 	if err != nil {
-		http.Error(w, "could not read request body", http.StatusRequestEntityTooLarge)
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "could not read request body", http.StatusBadRequest)
 		return
 	}
 	var req chatRequest
