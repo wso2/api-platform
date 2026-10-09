@@ -107,4 +107,29 @@ describe('ApiCreationProgress', () => {
     });
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  // The screen is shared by every API type; it names what is being created
+  // rather than calling everything an "API Proxy".
+  it('names a GraphQL API as such, not as an API proxy', () => {
+    const { unmount } = renderWithProviders(
+      <ApiCreationProgress
+        apiKind="graphql"
+        displayName="Countries"
+        onBack={noop}
+        onComplete={noop}
+        onRetry={noop}
+        status="creating"
+      />,
+    );
+
+    expect(screen.getByText('We are in the process of creating your Countries GraphQL API')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'GraphQL API creation progress' })).toBeInTheDocument();
+    expect(screen.queryByText(/API Proxy/i)).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(
+      <ApiCreationProgress apiKind="graphql" onBack={noop} onComplete={noop} onRetry={noop} status="failed" />,
+    );
+    expect(screen.getByText('We could not create this GraphQL API')).toBeInTheDocument();
+  });
 });

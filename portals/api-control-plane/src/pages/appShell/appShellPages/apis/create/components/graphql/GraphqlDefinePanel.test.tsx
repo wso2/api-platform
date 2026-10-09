@@ -56,6 +56,21 @@ const renderPanel = (onDraftChange = vi.fn()) => {
  * explicit `undefined` value.
  */
 describe('GraphqlDefinePanel — draft field presence', () => {
+  // Built on REST's own DefineApproachLayout: the same tabs, in the same
+  // order (Start from scratch first), as pressed-state buttons.
+  it('lays out its approaches as REST does, with the schema import selected', () => {
+    renderPanel();
+
+    const tabs = screen
+      .getAllByRole('button')
+      .filter((button) => button.hasAttribute('aria-pressed') && /^Start /.test(button.textContent ?? ''));
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      expect.stringContaining('Start from scratch'),
+      expect.stringContaining('Start with a schema'),
+    ]);
+    expect(screen.getByRole('button', { name: /Start with a schema/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('omits `endpointUrl` from the draft when the schema came from a URL', async () => {
     server.use(
       accepts('post', '/graphql-apis/validate-schema', { resolved: true, sdl: SAMPLE_SDL }, {

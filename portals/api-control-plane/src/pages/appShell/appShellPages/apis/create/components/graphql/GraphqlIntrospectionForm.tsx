@@ -16,17 +16,8 @@
  * under the License.
  */
 
-import {
-  Box,
-  Button,
-  FormControl,
-  FormHelperText,
-  FormLabel,
-  OutlinedInput,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
-import { Info, Zap } from '@wso2/oxygen-ui-icons-react';
+import { Box, Stack, Typography } from '@wso2/oxygen-ui';
+import { Info } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
@@ -34,6 +25,7 @@ import { useValidateGraphQLSchema } from '@/api/resources/graphqlApis';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { isValidUrl } from '../../../utils/developEdit';
 import { countNamedTypes, parseGraphQLSdl } from '../../utils/graphqlSchema';
+import { BackendEndpointField } from '../BackendEndpointField';
 import type { GraphqlResolvedSchema } from './graphqlSourceTypes';
 
 const messages = defineMessages({
@@ -195,45 +187,23 @@ export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFor
   };
 
   return (
-    <Stack spacing={2}>
-      <Box>
-        <Typography sx={{ fontWeight: 700 }} variant="h3">
-          <FormattedMessage {...messages.endpointHeading} />
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-          <FormattedMessage {...messages.endpointDescription} />
-        </Typography>
-      </Box>
-      <FormControl error={invalid} fullWidth required>
-        <FormLabel htmlFor="graphqlIntrospectionEndpoint">
-          <FormattedMessage {...messages.endpointLabel} />
-        </FormLabel>
-        <OutlinedInput
-          id="graphqlIntrospectionEndpoint"
-          onBlur={() => setTouched(true)}
-          onChange={(event) => setEndpoint(event.target.value)}
-          sx={{ mt: 0.75 }}
-          value={endpoint}
-        />
-        {invalid ? (
-          <FormHelperText>
-            <FormattedMessage
-              {...(trimmed === '' ? messages.endpointRequired : messages.endpointInvalid)}
-            />
-          </FormHelperText>
-        ) : null}
-      </FormControl>
-      <Button
-        onClick={handleSample}
-        size="small"
-        startIcon={<Zap size={16} />}
-        sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
-        type="button"
-        variant="text"
-      >
-        <FormattedMessage {...messages.sampleUrl} />
-      </Button>
-
+    <BackendEndpointField
+      description={<FormattedMessage {...messages.endpointDescription} />}
+      error={
+        invalid ? (
+          <FormattedMessage {...(trimmed === '' ? messages.endpointRequired : messages.endpointInvalid)} />
+        ) : undefined
+      }
+      heading={<FormattedMessage {...messages.endpointHeading} />}
+      inputId="graphqlIntrospectionEndpoint"
+      label={<FormattedMessage {...messages.endpointLabel} />}
+      onBlur={() => setTouched(true)}
+      onChange={setEndpoint}
+      onSample={handleSample}
+      required
+      sampleLabel={<FormattedMessage {...messages.sampleUrl} />}
+      value={endpoint}
+    >
       {current?.status === 'checking' ? (
         <Typography color="text.secondary" variant="body2">
           <FormattedMessage {...messages.checking} />
@@ -256,7 +226,7 @@ export const GraphqlIntrospectionForm = ({ onResolved }: GraphqlIntrospectionFor
           <FormattedMessage {...messages.disabledHint} />
         </Typography>
       </Stack>
-    </Stack>
+    </BackendEndpointField>
   );
 };
 

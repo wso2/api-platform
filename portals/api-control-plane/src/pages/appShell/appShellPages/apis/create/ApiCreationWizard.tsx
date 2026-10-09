@@ -386,6 +386,7 @@ const ApiCreationWizardContent = () => {
   if (graphqlCreationStarted && graphqlSubmittedValues) {
     return (
       <ApiCreationProgress
+        apiKind="graphql"
         displayName={graphqlSubmittedValues.displayName}
         onBack={() => {
           createGraphQLApiMutation.reset();

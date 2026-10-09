@@ -93,6 +93,45 @@ describe('GraphqlConfigureForm — initial values', () => {
 });
 
 describe('GraphqlConfigureForm — client-side validation', () => {
+  // GraphQL's context only *defaults* to /{api}/v{version}/graphql: the version
+  // segment is a suggestion, not a rule. Pinned here because the form is now
+  // REST's shared one, where the context is required — GraphQL's profile must
+  // keep both a version-less and an empty context submittable.
+  it('submits a context without a version segment as typed', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <GraphqlConfigureForm initialValues={{ schemaSource: 'introspection' }} onBack={() => {}} onSubmit={onSubmit} />,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    expect(screen.getByLabelText(/^Context/)).toHaveValue('/countries-api/v1.0/graphql');
+    await user.clear(screen.getByLabelText(/^Context/));
+    await user.type(screen.getByLabelText(/^Context/), '/countries/graphql');
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ context: '/countries/graphql', version: '1.0' }),
+    );
+  });
+
+  it('submits an empty context, leaving the server to assign one', async () => {
+    const onSubmit = vi.fn();
+    const { user } = renderWithProviders(
+      <GraphqlConfigureForm initialValues={{ schemaSource: 'introspection' }} onBack={() => {}} onSubmit={onSubmit} />,
+      { route, scope },
+    );
+
+    await user.type(screen.getByLabelText(/^Name/), 'Countries API');
+    await user.clear(screen.getByLabelText(/^Context/));
+    await user.type(screen.getByLabelText(/Query and Mutation URL/), 'https://backend.example.com/graphql');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(screen.queryByText('Enter a context.')).not.toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ context: '' }));
+  });
+
   it('requires the endpoint URL to be a full http(s) address', async () => {
     const onSubmit = vi.fn();
     const { user } = renderWithProviders(
