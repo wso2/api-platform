@@ -236,6 +236,8 @@ data:
     minimum_protocol_version = {{ $router.downstream_tls.minimum_protocol_version | quote }}
     maximum_protocol_version = {{ $router.downstream_tls.maximum_protocol_version | quote }}
     ciphers = {{ $router.downstream_tls.ciphers | quote }}
+    mtls_requires_dedicated_hostname = {{ $router.downstream_tls.mtls_requires_dedicated_hostname | default false }}
+    client_certificate_request = {{ $router.downstream_tls.client_certificate_request | default "mtls_hostnames" | quote }}
 
     [router.upstream.tls]
     minimum_protocol_version = {{ $router.upstream.tls.minimum_protocol_version | quote }}
@@ -245,6 +247,7 @@ data:
     custom_certs_path = {{ $router.upstream.tls.custom_certs_path | quote }}
     verify_host_name = {{ $router.upstream.tls.verify_host_name }}
     disable_ssl_verification = {{ $router.upstream.tls.disable_ssl_verification }}
+    present_default_identity = {{ if hasKey $router.upstream.tls "present_default_identity" }}{{ $router.upstream.tls.present_default_identity }}{{ else }}true{{ end }}
 
     [router.upstream.timeouts]
     route_timeout_ms = {{ $router.upstream.timeouts.route_timeout_ms }}
