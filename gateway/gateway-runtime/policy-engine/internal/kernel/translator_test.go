@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
@@ -733,7 +734,7 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	_, sentToEnvoy := analyticsData.GetFields()["request_headers"]
 	assert.False(t, sentToEnvoy, "request_headers must not be sent to Envoy")
 	// ...because the store already holds it for the ALS handler.
-	stored, ok := store.Take(analyticsData.GetFields()[correlation.TokenKey].GetStringValue())
+	stored, ok := store.Take(analyticsData.GetFields()[analytics.CorrelationTokenKey].GetStringValue())
 	require.True(t, ok)
 	assert.Equal(t, "req-1", stored.RequestHeaders["x-request-id"])
 	// The immediate response's own (non-header) analytics metadata survives the
