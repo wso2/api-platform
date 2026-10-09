@@ -40,7 +40,7 @@ export type {
 
 export type { ApiPublicationListFilters } from './apiPublications.hooks';
 
-export { REST_API_TYPE } from './apiPublications.endpoints';
+export { GRAPHQL_API_TYPE, REST_API_TYPE } from './apiPublications.endpoints';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
