@@ -19,16 +19,23 @@
 package topology
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
+
+// ErrNothingToRun reports that a policy selection left no runner to execute, for example
+// because every selected policy is gated to a newer Gateway release. Callers treat it as a
+// skip, not a failure.
+var ErrNothingToRun = errors.New("topology: the policy selection has nothing to run")
 
 // Selection narrows the blocks, runners, and coverage mode used for a run.
 type Selection struct {
@@ -64,6 +71,14 @@ type Selection struct {
 
 	// CloudEnvironment selects the external cloud environment used by cloud-console.
 	CloudEnvironment string
+
+	// Policies names the policies whose integration runners are taken from the policy tree
+	// by blocks declaring runnersFrom. Empty means every policy that declares runners.
+	Policies []string
+
+	// RepoRoot is the repository root that relative policy trees resolve against. Empty
+	// means the nearest ancestor of the working directory that holds go.work.
+	RepoRoot string
 }
 
 // Flags registers selection flags on fs.
@@ -80,6 +95,11 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 		"godog tag filter applied to every runner: ',' is OR, '&&' is AND, '~' is NOT "+
 			"(e.g. \"@metrics,@certificates\"). NOT cucumber's and/or/not words — those parse "+
 			"as one literal tag name and silently match nothing")
+	fs.Func("policies", "comma-separated policies whose integration runners to run "+
+		"(default: every policy that declares runners)", func(v string) error {
+		s.Policies = append(s.Policies, splitList(v)...)
+		return nil
+	})
 	fs.IntVar(&s.Parallel, "block-parallel", 0, "override how many blocks run concurrently")
 	fs.IntVar(&s.RunnerParallel, "runner-parallel", 0,
 		"override how many runners run concurrently within each block")
@@ -197,6 +217,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 
 	matchedInclude := map[string]bool{}
 	matchedExclude := map[string]bool{}
+	policyRunnersUsed := false
 
 	for i := range resolved.Blocks {
 		block := cloneBlock(resolved.Blocks[i])
@@ -257,6 +278,26 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			out.SkippedBlocks = append(out.SkippedBlocks, *skipped)
 			continue
+		}
+
+		if block.RunnersFrom != "" {
+			repoRoot, err := s.repoRoot()
+			if err != nil {
+				return nil, err
+			}
+			policyRunners, skipped, err := expandPolicyRunners(&block, repoRoot, s.Policies)
+			if err != nil {
+				return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+			}
+			policyRunnersUsed = true
+			out.SkippedRunners = append(out.SkippedRunners, skipped...)
+			if len(policyRunners) == 0 {
+				continue
+			}
+			block.Runners = policyRunners
+			if err := validateExpandedRunners(&block); err != nil {
+				return nil, err
+			}
 		}
 
 		runners, skippedRunners, err := selectGatewayVersionRunners(&block)
@@ -345,7 +386,14 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			strings.Join(unmatched, ", "), strings.Join(available, ", "))
 	}
 
+	if len(s.Policies) > 0 && !policyRunnersUsed {
+		return nil, fmt.Errorf("topology: -policies selects policies, but no selected block takes its runners from a policy tree")
+	}
+
 	if len(out.Blocks) == 0 {
+		if len(s.Policies) > 0 {
+			return nil, nothingToRun(out)
+		}
 		if len(out.SkippedBlocks) > 0 {
 			reasons := make([]string, 0, len(out.SkippedBlocks))
 			for _, skipped := range out.SkippedBlocks {
@@ -366,6 +414,48 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	return out, nil
+}
+
+// repoRoot returns the repository root used to resolve policy trees.
+func (s Selection) repoRoot() (string, error) {
+	if s.RepoRoot != "" {
+		return s.RepoRoot, nil
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("topology: locating the working directory: %w", err)
+	}
+	for range 8 {
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+			return dir, nil
+		}
+		dir = filepath.Dir(dir)
+	}
+	return "", fmt.Errorf("topology: could not locate the repository root (no go.work found)")
+}
+
+// validateExpandedRunners applies the runner checks of a static block to runners resolved at
+// selection time.
+func validateExpandedRunners(block *ResolvedBlock) error {
+	static := *block
+	static.RunnersFrom = ""
+	return validateBlockRunners(&static, map[string]map[string]featureOwner{})
+}
+
+// nothingToRun describes a policy selection that left no block to run.
+func nothingToRun(out *Resolved) error {
+	reasons := make([]string, 0, len(out.SkippedBlocks)+len(out.SkippedRunners))
+	for _, skipped := range out.SkippedBlocks {
+		reasons = append(reasons, fmt.Sprintf("%s: %s", skipped.Block, skipped.Reason))
+	}
+	for _, skipped := range out.SkippedRunners {
+		reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
+	}
+	sort.Strings(reasons)
+	if len(reasons) == 0 {
+		return ErrNothingToRun
+	}
+	return fmt.Errorf("%w (%s)", ErrNothingToRun, strings.Join(reasons, "; "))
 }
 
 // combineTags combines runner and selection tag expressions.

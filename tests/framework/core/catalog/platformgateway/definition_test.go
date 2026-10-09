@@ -383,3 +383,37 @@ func TestVersionedPolicyBuildDoesNotReturnImagesAfterCommandFailure(t *testing.T
 	require.Empty(t, images.Controller)
 	require.Empty(t, images.Runtime)
 }
+
+func TestStagePolicyWorkspaceExcludesIntegrationTests(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-source-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	dir := filepath.Join(source, "a-policy")
+	features := filepath.Join(dir, "it", "features")
+	require.NoError(t, os.MkdirAll(features, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte("name: a-policy\nversion: v1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(features, "a.feature"), []byte("Feature: a\n"), 0o644))
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+
+	stage := func() policyWorkspace {
+		workspace, err := stagePolicyWorkspace(root, relative)
+		require.NoError(t, err)
+		t.Cleanup(workspace.close)
+		return workspace
+	}
+
+	first := stage()
+	staged := filepath.Join(first.Policies, "a-policy")
+	require.FileExists(t, filepath.Join(staged, "policy.go"))
+	require.FileExists(t, filepath.Join(staged, "policy-definition.yaml"))
+	require.NoDirExists(t, filepath.Join(staged, "it"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(features, "a.feature"), []byte("Feature: a, edited\n"), 0o644))
+	require.Equal(t, first.Digest, stage().Digest, "editing a feature must not change the image digest")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.go"), []byte("package policy // edited\n"), 0o644))
+	require.NotEqual(t, first.Digest, stage().Digest, "editing policy code must change the image digest")
+}

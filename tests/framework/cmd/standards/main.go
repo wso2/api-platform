@@ -59,7 +59,7 @@ var cleanupCreationMethods = map[string]struct{}{
 
 func main() {
 	steps := flag.String("steps", "suites/it/steps", "step-definition directory")
-	features := flag.String("features", "", "optional feature directory")
+	features := flag.String("features", "", "optional comma-separated feature directories")
 	scripts := flag.String("scripts", "tools", "optional shell-script directory")
 	root := flag.String("root", ".", "framework root for architecture checks")
 	unitRoot := flag.String("unit-root", ".", "framework root for unit-test layout checks")
@@ -67,7 +67,10 @@ func main() {
 	docs := flag.String("docs", "core", "framework source directory for documentation checks")
 	flag.Parse()
 
-	issues := append(checkSteps(*steps), checkFeatures(*features)...)
+	issues := checkSteps(*steps)
+	for _, featureRoot := range splitRoots(*features) {
+		issues = append(issues, checkFeatures(featureRoot)...)
+	}
 	issues = append(issues, checkScripts(*scripts)...)
 	issues = append(issues, checkArchitecture(*root)...)
 	issues = append(issues, checkUnitTestLayout(*unitRoot)...)
@@ -82,6 +85,17 @@ func main() {
 	if len(issues) > 0 {
 		os.Exit(1)
 	}
+}
+
+// splitRoots splits a comma-separated directory list, dropping blank entries.
+func splitRoots(list string) []string {
+	var roots []string
+	for _, root := range strings.Split(list, ",") {
+		if trimmed := strings.TrimSpace(root); trimmed != "" {
+			roots = append(roots, trimmed)
+		}
+	}
+	return roots
 }
 
 func checkSteps(root string) []string {

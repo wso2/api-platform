@@ -85,6 +85,10 @@ type ResolvedBlock struct {
 	Parallel   int
 	Components []ResolvedComponent
 	Runners    []Runner
+
+	// RunnersFrom is the source that supplies Runners at selection time, or empty when the
+	// block declares them itself.
+	RunnersFrom string
 }
 
 // ResolvedComponent is one component with its engine and wiring resolved.
@@ -496,6 +500,8 @@ func resolveBlock(
 		DB:       v.db,
 		Parallel: block.EffectiveParallel(),
 		Runners:  block.Runners,
+
+		RunnersFrom: block.RunnersFrom,
 	}
 
 	var errs errorList

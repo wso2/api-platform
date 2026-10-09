@@ -34,8 +34,10 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 make ap-cli
 go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
 
-# Gateway-controller policy smoke (requires ../gateway-controllers/policies)
-go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
+# Gateway-controller policy integration tests (requires ../gateway-controllers/policies).
+# Each policy declares its runners in policies/<name>/it/it.yaml; -policies narrows the run
+# to the policies a pull request changed, and omitting it runs every policy that has tests.
+go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies -policies=time-based-model-routing
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
 

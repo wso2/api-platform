@@ -2218,3 +2218,248 @@ func TestFeatureOwnersByPolicySource(t *testing.T) {
 		})
 	}
 }
+
+func writePolicyTree(t *testing.T, root, policy, descriptor string, features ...string) {
+	t.Helper()
+	integration := filepath.Join(root, "policies", policy, policyIntegrationDir)
+	require.NoError(t, os.MkdirAll(integration, 0o755))
+	if descriptor != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(integration, policyDescriptorFile), []byte(descriptor), 0o600))
+	}
+	for _, feature := range features {
+		path := filepath.Join(integration, filepath.FromSlash(feature))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("Feature: f\n"), 0o600))
+	}
+}
+
+func policyRunnersSuite(version string) *Resolved {
+	platformGateway := &components.Definition{Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}}
+	return &Resolved{Blocks: []ResolvedBlock{{
+		Name: "policies", Source: "policies", RunnersFrom: RunnersFromPolicies,
+		Components: []ResolvedComponent{{
+			Def: platformGateway, Version: version, BuildFromSource: version == "",
+			AddPoliciesFrom: "policies",
+		}},
+	}}}
+}
+
+func selectedRunnerNames(block ResolvedBlock) []string {
+	names := make([]string, 0, len(block.Runners))
+	for _, runner := range block.Runners {
+		names = append(names, runner.Name)
+	}
+	return names
+}
+
+func TestRunnersFromLoadsAndRejectsInvalidDeclarations(t *testing.T) {
+	registry := gatewayVersionRegistry(t)
+	resolved, err := Load([]byte(`
+suite: s
+blocks:
+  - name: policies
+    runnersFrom: policies
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: ../gateway-controllers/policies
+`), registry)
+	require.NoError(t, err)
+	require.Equal(t, RunnersFromPolicies, resolved.Blocks[0].RunnersFrom)
+	require.Empty(t, resolved.Blocks[0].Runners)
+
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "unsupported source",
+			body: "    runnersFrom: elsewhere\n    components: [{name: platform-gateway, addPoliciesFrom: p}]\n",
+			want: `unsupported runnersFrom "elsewhere"`,
+		},
+		{
+			name: "static runners",
+			body: "    runnersFrom: policies\n    components: [{name: platform-gateway, addPoliciesFrom: p}]\n" +
+				"    runners: [{name: r, features: [f.feature]}]\n",
+			want: "runnersFrom cannot be combined with runners",
+		},
+		{
+			name: "no policy tree",
+			body: "    runnersFrom: policies\n    components: [{name: platform-gateway}]\n",
+			want: "requires a platform-gateway component with addPoliciesFrom",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load([]byte("suite: s\nblocks:\n  - name: policies\n"+tc.body), registry)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+
+	_, err = Load([]byte(`
+suite: s
+blocks:
+  - name: first
+    runnersFrom: policies
+    components: [{name: platform-gateway, addPoliciesFrom: p}]
+  - name: second
+    runnersFrom: policies
+    components: [{name: platform-gateway, addPoliciesFrom: p/}]
+`), registry)
+	require.ErrorContains(t, err, `both take runners from policy tree "p"`)
+}
+
+func TestPolicySelectionExpandsDescriptors(t *testing.T) {
+	root := t.TempDir()
+	writePolicyTree(t, root, "alpha", `
+policy: alpha
+runners:
+  - name: main
+    features: [features/alpha.feature]
+  - name: modern
+    tags: "gateway-version>=1.2.0"
+    features: [features/modern.feature]
+`, "features/alpha.feature", "features/modern.feature")
+	writePolicyTree(t, root, "beta", `
+policy: beta
+runners:
+  - name: main
+    tags: "@smoke"
+    features: [features/beta.feature]
+`, "features/beta.feature")
+	writePolicyTree(t, root, "gamma", "")
+
+	t.Run("every policy with a descriptor by default", func(t *testing.T) {
+		got, err := Selection{RepoRoot: root}.Apply(policyRunnersSuite(""))
+		require.NoError(t, err)
+		require.Equal(t, []string{"alpha/main", "alpha/modern", "beta/main"}, selectedRunnerNames(got.Blocks[0]))
+		require.Empty(t, got.SkippedRunners)
+		runner := got.Blocks[0].Runners[0]
+		require.Equal(t, filepath.Join(root, "policies", "alpha", "it", "features", "alpha.feature"), runner.Features[0])
+		require.Equal(t, "@smoke", got.Blocks[0].Runners[2].Tags)
+		require.NoError(t, ValidateFeatureFiles(got, ""))
+	})
+
+	t.Run("only the requested policies", func(t *testing.T) {
+		got, err := Selection{RepoRoot: root, Policies: []string{"beta", "beta"}}.Apply(policyRunnersSuite(""))
+		require.NoError(t, err)
+		require.Equal(t, []string{"beta/main"}, selectedRunnerNames(got.Blocks[0]))
+	})
+
+	t.Run("a policy without a descriptor is reported, not run", func(t *testing.T) {
+		got, err := Selection{RepoRoot: root, Policies: []string{"beta", "gamma"}}.Apply(policyRunnersSuite(""))
+		require.NoError(t, err)
+		require.Equal(t, []string{"beta/main"}, selectedRunnerNames(got.Blocks[0]))
+		require.Len(t, got.SkippedRunners, 1)
+		require.Equal(t, "gamma", got.SkippedRunners[0].Runner)
+		require.Contains(t, got.SkippedRunners[0].Reason, "no integration descriptor")
+	})
+
+	t.Run("version gating applies to descriptor runners", func(t *testing.T) {
+		got, err := Selection{RepoRoot: root, Policies: []string{"alpha"}}.Apply(policyRunnersSuite("1.1.0"))
+		require.NoError(t, err)
+		require.Equal(t, []string{"alpha/main"}, selectedRunnerNames(got.Blocks[0]))
+		require.Len(t, got.SkippedRunners, 1)
+		require.Equal(t, "alpha/modern", got.SkippedRunners[0].Runner)
+	})
+
+	t.Run("nothing to run when every policy lacks a descriptor", func(t *testing.T) {
+		_, err := Selection{RepoRoot: root, Policies: []string{"gamma"}}.Apply(policyRunnersSuite(""))
+		require.ErrorIs(t, err, ErrNothingToRun)
+		require.ErrorContains(t, err, "gamma")
+	})
+
+	t.Run("nothing to run when every runner is version gated", func(t *testing.T) {
+		writePolicyTree(t, root, "delta", `
+policy: delta
+runners:
+  - name: modern
+    tags: "gateway-version>=1.2.0"
+    features: [features/delta.feature]
+`, "features/delta.feature")
+		_, err := Selection{RepoRoot: root, Policies: []string{"delta"}}.Apply(policyRunnersSuite("1.1.0"))
+		require.ErrorIs(t, err, ErrNothingToRun)
+		require.ErrorContains(t, err, "delta/modern")
+	})
+
+	t.Run("unknown and malformed policy names are errors", func(t *testing.T) {
+		_, err := Selection{RepoRoot: root, Policies: []string{"missing"}}.Apply(policyRunnersSuite(""))
+		require.ErrorContains(t, err, `policy "missing" is not in policies`)
+		_, err = Selection{RepoRoot: root, Policies: []string{"../alpha"}}.Apply(policyRunnersSuite(""))
+		require.ErrorContains(t, err, `invalid policy name "../alpha"`)
+	})
+
+	t.Run("policies without a policy-driven block are an error", func(t *testing.T) {
+		static := &Resolved{Blocks: []ResolvedBlock{{
+			Name: "gateway", Source: "gateway", Components: []ResolvedComponent{{Def: &components.Definition{Name: "x"}}},
+			Runners: []Runner{{Name: "r", Features: []string{"f.feature"}}},
+		}}}
+		_, err := Selection{Policies: []string{"alpha"}}.Apply(static)
+		require.ErrorContains(t, err, "no selected block takes its runners from a policy tree")
+	})
+
+	t.Run("a missing policy tree is an error", func(t *testing.T) {
+		_, err := Selection{RepoRoot: t.TempDir()}.Apply(policyRunnersSuite(""))
+		require.ErrorContains(t, err, "reading policy tree")
+	})
+
+	t.Run("a skipped block never reads the policy tree", func(t *testing.T) {
+		suite := policyRunnersSuite("")
+		other := ResolvedBlock{
+			Name: "other", Source: "other", Components: []ResolvedComponent{{Def: &components.Definition{Name: "x"}}},
+			Runners: []Runner{{Name: "r", Features: []string{"f.feature"}}},
+		}
+		suite.Blocks = append(suite.Blocks, other)
+		got, err := Selection{RepoRoot: t.TempDir(), SkipBlocks: []string{"policies"}}.Apply(suite)
+		require.NoError(t, err)
+		require.Len(t, got.Blocks, 1)
+		require.Equal(t, "other", got.Blocks[0].Name)
+	})
+}
+
+func TestPolicyDescriptorRejectsInvalidDeclarations(t *testing.T) {
+	cases := []struct {
+		name       string
+		descriptor string
+		features   []string
+		want       string
+	}{
+		{name: "wrong policy", descriptor: "policy: other\nrunners: [{name: r, features: [a.feature]}]", features: []string{"a.feature"}, want: `descriptor names policy "other"`},
+		{name: "no runners", descriptor: "policy: p\nrunners: []", want: "declares no runners"},
+		{name: "unnamed runner", descriptor: "policy: p\nrunners: [{features: [a.feature]}]", features: []string{"a.feature"}, want: "a runner has no name"},
+		{name: "duplicate runner", descriptor: "policy: p\nrunners: [{name: r, features: [a.feature]}, {name: r, features: [a.feature]}]", features: []string{"a.feature"}, want: `duplicate runner name "r"`},
+		{name: "no features", descriptor: "policy: p\nrunners: [{name: r}]", want: "declares no features"},
+		{name: "escaping feature", descriptor: "policy: p\nrunners: [{name: r, features: [../../x.feature]}]", want: "must be a path inside the it directory"},
+		{name: "absolute feature", descriptor: "policy: p\nrunners: [{name: r, features: [/etc/x.feature]}]", want: "must be a path inside the it directory"},
+		{name: "not a feature", descriptor: "policy: p\nrunners: [{name: r, features: [a.txt]}]", features: []string{"a.txt"}, want: "is not a .feature file"},
+		{name: "missing feature", descriptor: "policy: p\nrunners: [{name: r, features: [a.feature]}]", want: `feature "a.feature" does not exist`},
+		{name: "unknown field", descriptor: "policy: p\nprofile: x\nrunners: [{name: r, features: [a.feature]}]", features: []string{"a.feature"}, want: "field profile not found"},
+		{name: "two documents", descriptor: "policy: p\nrunners: [{name: r, features: [a.feature]}]\n---\npolicy: p", features: []string{"a.feature"}, want: "single YAML document"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writePolicyTree(t, root, "p", tc.descriptor, tc.features...)
+			_, err := Selection{RepoRoot: root, Policies: []string{"p"}}.Apply(policyRunnersSuite(""))
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+
+	t.Run("symlinked feature", func(t *testing.T) {
+		root := t.TempDir()
+		writePolicyTree(t, root, "p", "policy: p\nrunners: [{name: r, features: [a.feature]}]")
+		outside := filepath.Join(root, "outside.feature")
+		require.NoError(t, os.WriteFile(outside, []byte("Feature: f\n"), 0o600))
+		require.NoError(t, os.Symlink(outside, filepath.Join(root, "policies", "p", policyIntegrationDir, "a.feature")))
+		_, err := Selection{RepoRoot: root, Policies: []string{"p"}}.Apply(policyRunnersSuite(""))
+		require.ErrorContains(t, err, "must be a regular file")
+	})
+}
+
+func TestPoliciesFlagAccumulates(t *testing.T) {
+	var flags Selection
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.Flags(fs)
+	require.NoError(t, fs.Parse([]string{"-policies=a, b", "-policies=c"}))
+	require.Equal(t, []string{"a", "b", "c"}, flags.Policies)
+}

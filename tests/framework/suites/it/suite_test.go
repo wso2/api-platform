@@ -20,6 +20,7 @@ package it_test
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -162,8 +163,16 @@ func TestIntegrationSuite(t *testing.T) {
 	}
 
 	narrowed, err := selection.Apply(resolved)
+	if errors.Is(err, topology.ErrNothingToRun) {
+		t.Skipf("nothing to run: %v", err)
+	}
 	if err != nil {
 		t.Fatalf("applying the selection: %v", err)
+	}
+	// Runners resolved from a policy tree only exist after selection, so their features are
+	// checked here too.
+	if err := topology.ValidateFeatureFiles(narrowed, dir); err != nil {
+		t.Fatalf("validating selected feature files: %v", err)
 	}
 	for _, skipped := range narrowed.SkippedRunners {
 		t.Logf("skipped runner %s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason)

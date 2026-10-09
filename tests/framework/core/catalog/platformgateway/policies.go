@@ -299,7 +299,7 @@ func stagePolicyWorkspace(repoRoot, source string) (policyWorkspace, error) {
 		seen[definition.Name] = entry.Name()
 
 		dst := filepath.Join(workspace.Policies, entry.Name())
-		if err := copyTree(src, dst); err != nil {
+		if err := copyPolicyTree(src, dst); err != nil {
 			return policyWorkspace{}, fmt.Errorf("platform-gateway: staging policy %q: %w", entry.Name(), err)
 		}
 		manifest.Policies = append(manifest.Policies, policyBuildEntry{
@@ -559,6 +559,40 @@ func directoryDigest(root string) (string, error) {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// policyIntegrationDir holds a policy's integration tests. It is left out of the staged
+// policy so editing a feature does not change the workspace digest or rebuild the gateway.
+const policyIntegrationDir = "it"
+
+// copyPolicyTree copies one policy directory without its integration tests.
+func copyPolicyTree(source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		src := filepath.Join(source, entry.Name())
+		dst := filepath.Join(destination, entry.Name())
+		switch {
+		case entry.Type()&os.ModeSymlink != 0:
+			return fmt.Errorf("symlink %q is not allowed", src)
+		case entry.IsDir() && entry.Name() == policyIntegrationDir:
+			continue
+		case entry.IsDir():
+			if err := copyTree(src, dst); err != nil {
+				return err
+			}
+		default:
+			if err := copyFile(src, dst); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func copyTree(source, destination string) error {

@@ -68,6 +68,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	seenBlock := map[string]bool{}
 	partitionOwner := map[string]string{}
 	featureOwners := map[string]map[string]featureOwner{}
+	policyRunnerBlocks := map[string]string{}
 
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
@@ -94,6 +95,14 @@ func Validate(r *Resolved, registry *components.Registry) error {
 
 		errs.add(validateBlockComponents(b))
 		errs.add(validateBlockRunners(b, featureOwners))
+		if b.RunnersFrom != "" {
+			source := platformGatewayPolicySource(b)
+			if owner, taken := policyRunnerBlocks[source]; taken && owner != b.Source {
+				errs.addf("topology: blocks %q and %q both take runners from policy tree %q; each policy "+
+					"would run in both", owner, b.Source, source)
+			}
+			policyRunnerBlocks[source] = b.Source
+		}
 	}
 
 	for feature, owners := range featureOwners {
@@ -284,6 +293,9 @@ func validateBlockComponents(b *ResolvedBlock) error {
 func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]featureOwner) error {
 	var errs errorList
 
+	if b.RunnersFrom != "" {
+		return validateRunnersFrom(b)
+	}
 	if len(b.Runners) == 0 {
 		errs.addf("block %q: declares no runners, so its topology would boot and do nothing", b.Name)
 	}
@@ -347,6 +359,23 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 		}
 	}
 
+	return errs.err()
+}
+
+// validateRunnersFrom checks a block whose runners come from a policy tree. Its runners are
+// resolved at selection time, so only the declaration is checked here.
+func validateRunnersFrom(b *ResolvedBlock) error {
+	var errs errorList
+	if b.RunnersFrom != RunnersFromPolicies {
+		errs.addf("block %q: unsupported runnersFrom %q (supported: %s)", b.Name, b.RunnersFrom, RunnersFromPolicies)
+	}
+	if len(b.Runners) > 0 {
+		errs.addf("block %q: runnersFrom cannot be combined with runners", b.Name)
+	}
+	if platformGatewayPolicySource(b) == "" {
+		errs.addf("block %q: runnersFrom %s requires a platform-gateway component with addPoliciesFrom",
+			b.Name, b.RunnersFrom)
+	}
 	return errs.err()
 }
 

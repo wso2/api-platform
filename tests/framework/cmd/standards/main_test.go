@@ -84,6 +84,11 @@ func bind(sc interface{}) { sc.Step("^same$", nil); sc.Step(` + "`^same$`" + `, 
 	require.Contains(t, checkSteps(root)[0], "duplicate step pattern")
 }
 
+func TestSplitRootsDropsBlankEntries(t *testing.T) {
+	require.Empty(t, splitRoots(""))
+	require.Equal(t, []string{"a", "b"}, splitRoots(" a, ,b,"))
+}
+
 func TestCheckFeaturesFindsLiteralNames(t *testing.T) {
 	root := t.TempDir()
 	feature := `Feature: names
