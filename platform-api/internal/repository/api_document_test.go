@@ -60,6 +60,30 @@ func seedTestArtifact(t *testing.T, db *database.DB, orgUUID, artifactUUID strin
 	}
 }
 
+// seedExtraArtifact adds a project + artifact row under an organization that
+// was already seeded by a prior seedTestArtifact call. Use when a test needs
+// a second artifact in the SAME org — a second seedTestArtifact call would
+// try to re-insert the org row and fail the handle unique index.
+func seedExtraArtifact(t *testing.T, db *database.DB, orgUUID, artifactUUID string) {
+	t.Helper()
+
+	if _, err := db.Exec(
+		`INSERT INTO projects (uuid, handle, display_name, organization_uuid, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		"project-"+artifactUUID, "test-project-"+artifactUUID, "Test Project", orgUUID,
+	); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+
+	if _, err := db.Exec(
+		`INSERT INTO artifacts (uuid, type, organization_uuid)
+		 VALUES (?, ?, ?)`,
+		artifactUUID, constants.RestApi, orgUUID,
+	); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+}
+
 // insertDocumentRow writes a document row directly without going through the
 // repo — lets a test seed a THUMBNAIL/DEFINITION row to assert the repo's
 // reserved-type guards without first testing the write path those guards cover.
@@ -622,5 +646,362 @@ func TestDocumentRepo_UpdateApiDocument_UpdatesUserRowRefusesReserved(t *testing
 	}
 	if thumbName != constants.DocumentDisplayNameThumbnail {
 		t.Errorf("thumbnail display_name = %q, want unchanged %q", thumbName, constants.DocumentDisplayNameThumbnail)
+	}
+}
+
+// A user doc that shares its display name with a THUMBNAIL/DEFINITION row
+// must NOT register as a duplicate — the reserved rows live under their own
+// endpoints and share the artifact's handle space.
+func TestDocumentRepo_DocumentDisplayNameExistsForArtifact_ExcludesReservedRows(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-dn-reserved"
+	const artifactUUID = "artifact-dn-reserved"
+	seedTestArtifact(t, db, orgUUID, artifactUUID)
+
+	// Thumbnail and definition rows both carry display names that could
+	// collide with a user doc. The reserved-type filter must hide them.
+	insertDocumentRow(t, db, &model.Document{
+		ID: "thumb", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypeThumbnail, Handle: constants.DocumentHandleThumbnail,
+		DisplayName: "Guide", Content: []byte{0x89},
+	})
+	insertDocumentRow(t, db, &model.Document{
+		ID: "def", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypeDefinition, Handle: constants.DocumentHandleDefinition,
+		DisplayName: "Guide", Content: []byte("{}"),
+	})
+
+	repo := NewDocumentRepo(db)
+	exists, err := repo.DocumentDisplayNameExistsForArtifact(artifactUUID, "Guide", "")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if exists {
+		t.Error("display name must not conflict with reserved-type rows")
+	}
+}
+
+func TestDocumentRepo_DocumentDisplayNameExistsForArtifact_UserRowConflicts(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-dn-user"
+	const artifactUUID = "artifact-dn-user"
+	seedTestArtifact(t, db, orgUUID, artifactUUID)
+
+	insertDocumentRow(t, db, &model.Document{
+		ID: "existing", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "existing",
+		DisplayName: "Guide", Content: []byte("# existing"),
+	})
+
+	repo := NewDocumentRepo(db)
+	exists, err := repo.DocumentDisplayNameExistsForArtifact(artifactUUID, "Guide", "")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !exists {
+		t.Error("display name 'Guide' is in use by the user doc 'existing' — must register as a duplicate")
+	}
+}
+
+// excludeHandle is how a rename / in-place update excludes its OWN row from the
+// uniqueness check: a doc keeping its display name on an update must not read
+// as a self-conflict.
+func TestDocumentRepo_DocumentDisplayNameExistsForArtifact_ExcludeHandleSkipsSelf(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-dn-exclude"
+	const artifactUUID = "artifact-dn-exclude"
+	seedTestArtifact(t, db, orgUUID, artifactUUID)
+
+	insertDocumentRow(t, db, &model.Document{
+		ID: "self", ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "self",
+		DisplayName: "Guide", Content: []byte("# self"),
+	})
+
+	repo := NewDocumentRepo(db)
+	// Without exclude: the row DOES register as a duplicate.
+	exists, err := repo.DocumentDisplayNameExistsForArtifact(artifactUUID, "Guide", "")
+	if err != nil {
+		t.Fatalf("err (no exclude) = %v", err)
+	}
+	if !exists {
+		t.Error("without exclude, the own row must still appear as a conflict")
+	}
+	// With exclude: the row is skipped — no false self-conflict on update.
+	exists, err = repo.DocumentDisplayNameExistsForArtifact(artifactUUID, "Guide", "self")
+	if err != nil {
+		t.Fatalf("err (with exclude) = %v", err)
+	}
+	if exists {
+		t.Error("the own row must be skipped when excludeHandle is set")
+	}
+}
+
+func TestDocumentRepo_DocumentDisplayNameExistsForArtifact_UnknownNameIsFalse(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-dn-missing"
+	const artifactUUID = "artifact-dn-missing"
+	seedTestArtifact(t, db, orgUUID, artifactUUID)
+
+	repo := NewDocumentRepo(db)
+	exists, err := repo.DocumentDisplayNameExistsForArtifact(artifactUUID, "Nothing", "")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if exists {
+		t.Error("no row carries 'Nothing' — must return false, not forward the ErrNoRows")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetDocumentUUIDsByHandles — handle → uuid, scoped to artifact
+// ---------------------------------------------------------------------------
+
+func TestDocumentRepo_GetDocumentUUIDsByHandles_ResolvesHandlesWithinArtifact(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-u2h"
+	const artifactA = "artifact-u2h-A"
+	const artifactB = "artifact-u2h-B"
+	// First call seeds org + project + artifact; second artifact under the
+	// same org only needs its own project + artifact row (seedTestArtifact
+	// would re-insert the org and trip the organizations.handle unique index).
+	seedTestArtifact(t, db, orgUUID, artifactA)
+	seedExtraArtifact(t, db, orgUUID, artifactB)
+
+	// Both artifacts have a doc under handle "overview": the mapping must be
+	// scoped per artifact (artifact_uuid, handle is the real unique index),
+	// so a lookup against A must not return B's uuid.
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-A", ArtifactUUID: artifactA, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview",
+		DisplayName: "Overview", Content: []byte("# A"),
+	})
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-B", ArtifactUUID: artifactB, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview",
+		DisplayName: "Overview", Content: []byte("# B"),
+	})
+	// And a second handle under A, so the function has more than one row to
+	// return and the test actually covers the loop.
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-A-faq", ArtifactUUID: artifactA, OrganizationUUID: orgUUID,
+		Type: constants.DocumentTypePrefix + "FAQ", Handle: "faq",
+		DisplayName: "FAQ", Content: []byte("# faq"),
+	})
+
+	repo := NewDocumentRepo(db)
+	m, err := repo.GetDocumentUUIDsByHandles(artifactA, []string{"overview", "faq", "missing"}, orgUUID)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if m["overview"] != "doc-A" {
+		t.Errorf("overview = %q, want doc-A (artifact B's uuid must NOT leak)", m["overview"])
+	}
+	if m["faq"] != "doc-A-faq" {
+		t.Errorf("faq = %q, want doc-A-faq", m["faq"])
+	}
+	if _, ok := m["missing"]; ok {
+		t.Errorf("missing handle must not appear in result; got %v", m)
+	}
+}
+
+func TestDocumentRepo_GetDocumentUUIDsByHandles_EmptyInputReturnsEmptyMap(t *testing.T) {
+	// Guard against the SQL `IN ()` degenerate case: callers batch up handles
+	// and may legitimately pass an empty slice. The function must short-circuit
+	// before running a query against zero placeholders.
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewDocumentRepo(db)
+
+	m, err := repo.GetDocumentUUIDsByHandles("any", nil, "any-org")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if m == nil || len(m) != 0 {
+		t.Errorf("result = %+v, want an empty (non-nil) map", m)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetDocumentHandlesByUUIDs — the inverse direction
+// ---------------------------------------------------------------------------
+
+func TestDocumentRepo_GetDocumentHandlesByUUIDs_ScopedByOrganization(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	// Two orgs, each with a doc; the function must only resolve uuids that
+	// belong to the requested organization, not every row that happens to
+	// carry the uuid.
+	const orgA = "org-h2u-A"
+	const orgB = "org-h2u-B"
+	seedTestArtifact(t, db, orgA, "artifact-h2u-A")
+	seedTestArtifact(t, db, orgB, "artifact-h2u-B")
+
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-A", ArtifactUUID: "artifact-h2u-A", OrganizationUUID: orgA,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-a",
+		DisplayName: "Overview A", Content: []byte("# a"),
+	})
+	insertDocumentRow(t, db, &model.Document{
+		ID: "doc-B", ArtifactUUID: "artifact-h2u-B", OrganizationUUID: orgB,
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-b",
+		DisplayName: "Overview B", Content: []byte("# b"),
+	})
+
+	repo := NewDocumentRepo(db)
+	m, err := repo.GetDocumentHandlesByUUIDs([]string{"doc-A", "doc-B", "missing"}, orgA)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if m["doc-A"] != "overview-a" {
+		t.Errorf("doc-A = %q, want overview-a", m["doc-A"])
+	}
+	if _, ok := m["doc-B"]; ok {
+		t.Errorf("doc-B must not leak into another org's lookup; got %v", m)
+	}
+	if _, ok := m["missing"]; ok {
+		t.Errorf("missing uuid must not appear in result; got %v", m)
+	}
+}
+
+func TestDocumentRepo_GetDocumentHandlesByUUIDs_EmptyInputReturnsEmptyMap(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewDocumentRepo(db)
+
+	m, err := repo.GetDocumentHandlesByUUIDs(nil, "any-org")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if m == nil || len(m) != 0 {
+		t.Errorf("result = %+v, want an empty (non-nil) map", m)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpsertDocument — the UPDATE branch
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// sortedMapKeys — pure helper
+// ---------------------------------------------------------------------------
+
+// sortedMapKeys returns the keys of a set-shaped `map[string]bool` in sorted
+// order. Direct test — same package, no DB needed.
+func TestSortedMapKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		in   map[string]bool
+		want []string
+	}{
+		{"empty map", map[string]bool{}, []string{}},
+		{"single key", map[string]bool{"a": true}, []string{"a"}},
+		{"keys returned in sorted order regardless of insertion", map[string]bool{"c": true, "a": true, "b": true}, []string{"a", "b", "c"}},
+		{"false-valued keys still appear (set membership is key presence, not value)", map[string]bool{"x": false, "a": true}, []string{"a", "x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sortedMapKeys(tc.in)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len(result) = %d, want %d; got %v", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("result[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// Existing tests cover the INSERT branch of UpsertDocument via
+// UpsertDocument_InsertsThenUpdatesReservedType. This one targets a
+// user-type row to pin the generic UPDATE branch and its deliberate narrow
+// mutation set.
+//
+// UpsertDocument's UPDATE path only writes file_name, content_type, content,
+// updated_by and updated_at — NOT display_name and NOT created_by. That is
+// the right contract for a thumbnail-style upsert (display name is a fixed
+// label; the author of record stays whoever uploaded it first). The test
+// pins all four halves so a future "convenience" edit of the SET clause can't
+// silently start overwriting display_name on upsert.
+func TestDocumentRepo_UpsertDocument_UpdateNarrowMutation(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	const orgUUID = "org-upsert-update"
+	const artifactUUID = "artifact-upsert-update"
+	seedTestArtifact(t, db, orgUUID, artifactUUID)
+
+	repo := NewDocumentRepo(db)
+
+	// First upsert → INSERT branch (no existing row).
+	first := &model.Document{
+		ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		Handle:      "guide",
+		DisplayName: "Original Display Name",
+		FileName:    "first.md",
+		ContentType: "text/markdown; charset=utf-8",
+		Content:     []byte("# first"),
+		CreatedBy:   "alice",
+		UpdatedBy:   "alice",
+	}
+	if err := repo.UpsertDocument(first); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+
+	// Second upsert on the same (artifact_uuid, handle, type) → UPDATE branch.
+	// Every field the function MIGHT touch is given a new value so the
+	// assertions below can tell exactly what the SQL writes and what it leaves.
+	second := &model.Document{
+		ArtifactUUID: artifactUUID, OrganizationUUID: orgUUID,
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		Handle:      "guide",
+		DisplayName: "Changed Display Name", // Expected IGNORED on UPDATE.
+		FileName:    "second.md",
+		ContentType: "text/plain",
+		Content:     []byte("# second"),
+		CreatedBy:   "bob", // Expected IGNORED on UPDATE: created_by is immutable.
+		UpdatedBy:   "bob",
+	}
+	if err := repo.UpsertDocument(second); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+
+	got, err := repo.GetDocument(artifactUUID, "guide", orgUUID, "")
+	if err != nil || got == nil {
+		t.Fatalf("GetDocument after update: %v %+v", err, got)
+	}
+	// Fields that UpsertDocument's UPDATE clause writes:
+	if string(got.Content) != "# second" {
+		t.Errorf("content = %q, want '# second' — UPDATE must replace the body", got.Content)
+	}
+	if got.FileName != "second.md" {
+		t.Errorf("file_name = %q, want second.md", got.FileName)
+	}
+	if got.ContentType != "text/plain" {
+		t.Errorf("content_type = %q, want text/plain", got.ContentType)
+	}
+	if got.UpdatedBy != "bob" {
+		t.Errorf("updated_by = %q, want bob", got.UpdatedBy)
+	}
+	// Fields the UPDATE clause deliberately omits:
+	if got.DisplayName != "Original Display Name" {
+		t.Errorf("display_name = %q, want unchanged — UPSERT UPDATE must not overwrite display_name", got.DisplayName)
+	}
+	if got.CreatedBy != "alice" {
+		t.Errorf("created_by = %q, want unchanged alice — UPSERT UPDATE must not overwrite created_by", got.CreatedBy)
 	}
 }

@@ -158,24 +158,43 @@ export function DocumentsPanel() {
             <Box component="li" key={document.id}>
               <ListItemButton
                 component={RouterLink}
-                sx={{ alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: 'auto minmax(0, 1fr) 8rem',
+                    sm: 'auto minmax(10rem, 24rem) 8rem minmax(0, 1fr)',
+                  },
+                  alignItems: 'center',
+                  columnGap: 1.5,
+                  px: 2,
+                  py: 1.25,
+                }}
                 to={`${documentsPath ?? ''}${documentsSearch({ docId: document.id, mode: 'browse' })}`}
               >
                 <FileText color="currentColor" size={16} />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography noWrap variant="body2">
-                    {document.displayName}
-                  </Typography>
-                </Box>
+                {/*
+                 * `noWrap` + the bounded `minmax(10rem, 24rem)` grid column
+                 * truncates long titles with an ellipsis; `minWidth: 0` lets the
+                 * cell shrink below its content width. The full name is kept
+                 * in `title` so it's still readable on hover.
+                 */}
+                <Typography
+                  noWrap
+                  sx={{ minWidth: 0, overflow: 'hidden' }}
+                  title={document.displayName}
+                  variant="body2"
+                >
+                  {document.displayName}
+                </Typography>
                 <Chip
                   label={documentTypeName(intl, document.type)}
                   size="small"
-                  sx={{ flexShrink: 0, typography: 'caption' }}
+                  sx={{ justifySelf: 'start', maxWidth: '100%', typography: 'caption' }}
                 />
                 <Typography
                   color="text.secondary"
                   noWrap
-                  sx={{ display: { sm: 'block', xs: 'none' }, flexShrink: 0 }}
+                  sx={{ display: { sm: 'block', xs: 'none' }, minWidth: 0 }}
                   variant="caption"
                 >
                   <FormattedMessage

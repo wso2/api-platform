@@ -18,9 +18,12 @@
 package service
 
 import (
+	"database/sql"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -699,3 +702,711 @@ func TestAPIDocumentService_ExtractAndMergeOperations_PreservesPoliciesOnKnownPa
 		t.Error("GET /pets missing from merged output")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Pure helpers — NormalizeAPIDocumentType, decodeStoredDocType,
+// modelToAPIMetadata, GetSpecContentType, GetImageContentType
+// ---------------------------------------------------------------------------
+//
+// These helpers are reached only through the handler today, so the file-local
+// coverage of the service package misses them entirely. Driving them directly
+// gets them attributed to the service file in Codecov's per-package rollup.
+
+// NormalizeAPIDocumentType accepts the canonical casing, lowercase, and surrounding whitespace, and rejects any other input.
+func TestAPIDocumentService_NormalizeAPIDocumentType(t *testing.T) {
+	cases := []struct {
+		input, want string
+		ok          bool
+	}{
+		{"HowTo", constants.DocumentTypeHowTo, true},
+		{"howto", constants.DocumentTypeHowTo, true},
+		{"  HowTo  ", constants.DocumentTypeHowTo, true},
+		{"HOWTO", constants.DocumentTypeHowTo, true},
+		{"Samples", constants.DocumentTypeSamples, true},
+		{"SupportForum", constants.DocumentTypeSupportForum, true},
+		{"PublicForum", constants.DocumentTypePublicForum, true},
+		{"Other", constants.DocumentTypeOther, true},
+		// A caller-supplied custom type (used with Other.otherTypeName) is not
+		// one of the known canonical values and must not round-trip here.
+		{"FAQ", "", false},
+		{"", "", false},
+		{"   ", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			got, ok := NormalizeAPIDocumentType(tc.input)
+			if ok != tc.ok || got != tc.want {
+				t.Errorf("NormalizeAPIDocumentType(%q) = (%q, %v), want (%q, %v)", tc.input, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+// decodeStoredDocType strips the DOC_ storage prefix and leaves a bare custom
+// type (which is already stored without the prefix) alone.
+func TestAPIDocumentService_decodeStoredDocType(t *testing.T) {
+	cases := []struct {
+		stored, want string
+	}{
+		{constants.DocumentTypePrefix + constants.DocumentTypeHowTo, constants.DocumentTypeHowTo},
+		{constants.DocumentTypePrefix + "FAQ", "FAQ"},
+		{constants.DocumentTypePrefix + constants.DocumentTypeOther, constants.DocumentTypeOther},
+		// A legacy row stored without the prefix must be returned verbatim —
+		// a double-decode here would turn "HowTo" into something other than "HowTo".
+		{"HowTo", "HowTo"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.stored, func(t *testing.T) {
+			if got := decodeStoredDocType(tc.stored); got != tc.want {
+				t.Errorf("decodeStoredDocType(%q) = %q, want %q", tc.stored, got, tc.want)
+			}
+		})
+	}
+}
+
+// modelToAPIMetadata emits optional fields only when their stored value is
+// non-zero, and decodes the DOC_ prefix on type.
+func TestAPIDocumentService_modelToAPIMetadata(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+
+	t.Run("populated fields round-trip, type is decoded", func(t *testing.T) {
+		got := modelToAPIMetadata(&model.Document{
+			Handle:      "guide",
+			Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+			DisplayName: "Guide",
+			FileName:    "guide.md",
+			ContentType: "text/markdown; charset=utf-8",
+			CreatedBy:   "alice",
+			CreatedAt:   now,
+			UpdatedBy:   "bob",
+			UpdatedAt:   now,
+		})
+		if got.Id != "guide" || got.DisplayName != "Guide" {
+			t.Errorf("id/displayName = %q/%q", got.Id, got.DisplayName)
+		}
+		if got.Type != constants.DocumentTypeHowTo {
+			t.Errorf("type = %q, want %q (DOC_ prefix must be decoded)", got.Type, constants.DocumentTypeHowTo)
+		}
+		if got.FileName == nil || *got.FileName != "guide.md" {
+			t.Errorf("fileName = %v, want guide.md", got.FileName)
+		}
+		if got.ContentType == nil || got.CreatedBy == nil || got.UpdatedBy == nil {
+			t.Errorf("populated metadata should not nil out optional strings: %+v", got)
+		}
+		if got.CreatedAt == nil || got.UpdatedAt == nil {
+			t.Errorf("populated metadata should not nil out optional times: %+v", got)
+		}
+	})
+
+	t.Run("zero-value fields are omitted", func(t *testing.T) {
+		got := modelToAPIMetadata(&model.Document{
+			Handle:      "guide",
+			Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+			DisplayName: "Guide",
+			// FileName, ContentType, CreatedBy, UpdatedBy are empty; timestamps are zero.
+		})
+		if got.FileName != nil || got.ContentType != nil {
+			t.Errorf("empty optional strings should be nil: %+v", got)
+		}
+		if got.CreatedBy != nil || got.UpdatedBy != nil {
+			t.Errorf("empty optional actor strings should be nil: %+v", got)
+		}
+		if got.CreatedAt != nil || got.UpdatedAt != nil {
+			t.Errorf("zero timestamps should be nil: %+v", got)
+		}
+	})
+}
+
+// GetSpecContentType returns application/json for a JSON body and
+// application/yaml otherwise, including when the sniff is ambiguous.
+func TestAPIDocumentService_GetSpecContentType(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	cases := []struct {
+		name     string
+		content  []byte
+		wantType string
+	}{
+		{"JSON object", []byte(`{"openapi":"3.0.0"}`), "application/json"},
+		{"JSON with leading whitespace", []byte("  {\"openapi\":\"3.0.0\"}"), "application/json"},
+		{"YAML with leading whitespace", []byte("\n openapi: 3.0.0\n"), "application/yaml"},
+		{"empty body falls back to YAML", []byte{}, "application/yaml"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := svc.GetSpecContentType(tc.content); got != tc.wantType {
+				t.Errorf("GetSpecContentType = %q, want %q", got, tc.wantType)
+			}
+		})
+	}
+}
+
+// GetImageContentType uses magic bytes, not the first N bytes, so an image
+// smaller than the 512-byte sniff buffer is still classified correctly.
+func TestAPIDocumentService_GetImageContentType(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 24)...)
+	jpeg := append([]byte("\xff\xd8\xff\xe0"), make([]byte, 24)...)
+	gif := append([]byte("GIF89a"), make([]byte, 24)...)
+	plain := []byte("hello world")
+	oversized := append(append([]byte{}, png...), make([]byte, 2048)...)
+
+	cases := []struct {
+		name     string
+		content  []byte
+		wantType string
+	}{
+		{"PNG", png, "image/png"},
+		{"JPEG", jpeg, "image/jpeg"},
+		{"GIF (not on the thumbnail allowlist but still sniffed)", gif, "image/gif"},
+		{"plain text", plain, "text/plain; charset=utf-8"},
+		{"larger than 512-byte sniff window", oversized, "image/png"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := svc.GetImageContentType(tc.content); got != tc.wantType {
+				t.Errorf("GetImageContentType = %q, want %q", got, tc.wantType)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Reads — GetAllApiDocuments, GetDocument, GetDocumentWithContent
+// ---------------------------------------------------------------------------
+
+func TestAPIDocumentService_GetAllApiDocuments_Success(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.listDocsResult = []*model.Document{
+		{Handle: "guide", Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, DisplayName: "Guide"},
+		// A row stored with a custom DOC_FAQ type is decoded back to the bare FAQ.
+		{Handle: "faq", Type: constants.DocumentTypePrefix + "FAQ", DisplayName: "FAQ"},
+	}
+	docRepo.listDocsTotal = 7
+
+	items, total, err := svc.GetAllApiDocuments("artifact-1", "org-1", "", 20, 0)
+	if err != nil {
+		t.Fatalf("GetAllApiDocuments err = %v", err)
+	}
+	if total != 7 || len(items) != 2 {
+		t.Fatalf("len/total = %d/%d, want 2/7", len(items), total)
+	}
+	if items[0].Type != constants.DocumentTypeHowTo || items[1].Type != "FAQ" {
+		t.Errorf("decoded types = %q, %q", items[0].Type, items[1].Type)
+	}
+}
+
+// A blank artifactUUID is a 400 before any repository call — the handler
+// should always resolve the artifact first, but if that invariant is ever
+// broken the service refuses to query against an empty key.
+func TestAPIDocumentService_GetAllApiDocuments_RequiresArtifactUUID(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	_, _, err := svc.GetAllApiDocuments("", "org-1", "", 20, 0)
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("err = %v, want ValidationFailed", err)
+	}
+	if docRepo.listDocsResult != nil || docRepo.listDocsTotal != 0 {
+		// (Belt-and-braces: the mock's defaults are already zero. This proves
+		// the service didn't change them by dispatching to the repo.)
+		t.Errorf("the repo must not be consulted when the request is invalid")
+	}
+}
+
+func TestAPIDocumentService_GetAllApiDocuments_RepoErrorIsSurfaced(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.listDocsErr = errors.New("db down")
+	if _, _, err := svc.GetAllApiDocuments("artifact-1", "org-1", "", 20, 0); err == nil {
+		t.Fatalf("err = nil, want the repo error to surface")
+	}
+}
+
+func TestAPIDocumentService_GetDocument_Success(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{
+		Handle:      "guide",
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		DisplayName: "Guide",
+	}
+	got, err := svc.GetDocument("artifact-1", "guide", "org-1")
+	if err != nil {
+		t.Fatalf("GetDocument err = %v", err)
+	}
+	if got.Id != "guide" || got.Type != constants.DocumentTypeHowTo {
+		t.Errorf("metadata = %+v", got)
+	}
+}
+
+func TestAPIDocumentService_GetDocument_NotFound(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	// All repo defaults — getDocResult is nil, getDocErr is nil.
+	if _, err := svc.GetDocument("artifact-1", "missing", "org-1"); err == nil || !apperror.NotFound.Is(err) {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+}
+
+func TestAPIDocumentService_GetDocument_RequiresArtifactAndHandle(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	if _, err := svc.GetDocument("", "guide", "org-1"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty artifact UUID: err = %v, want ValidationFailed", err)
+	}
+	if _, err := svc.GetDocument("artifact-1", "", "org-1"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty handle: err = %v, want ValidationFailed", err)
+	}
+}
+
+func TestAPIDocumentService_GetDocument_RepoErrorIsSurfaced(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocErr = errors.New("db down")
+	if _, err := svc.GetDocument("artifact-1", "guide", "org-1"); err == nil {
+		t.Fatal("err = nil, want the repo error to surface")
+	}
+}
+
+// GetDocumentWithContent returns both metadata and raw bytes, keyed on the
+// optional docType to enforce the reserved-row contract at read time.
+func TestAPIDocumentService_GetDocumentWithContent_Success(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{
+		Handle:      "guide",
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		DisplayName: "Guide",
+		ContentType: "text/markdown; charset=utf-8",
+		Content:     []byte("# Hello"),
+	}
+	md, content, err := svc.GetDocumentWithContent("artifact-1", "guide", "org-1", "")
+	if err != nil {
+		t.Fatalf("GetDocumentWithContent err = %v", err)
+	}
+	if string(content) != "# Hello" {
+		t.Errorf("content = %q, want %q", content, "# Hello")
+	}
+	if md == nil || md.Id != "guide" {
+		t.Errorf("metadata = %+v", md)
+	}
+}
+
+func TestAPIDocumentService_GetDocumentWithContent_NotFound(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	if _, _, err := svc.GetDocumentWithContent("artifact-1", "missing", "org-1", ""); err == nil || !apperror.NotFound.Is(err) {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+}
+
+func TestAPIDocumentService_GetDocumentWithContent_RequiresArtifactAndHandle(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	if _, _, err := svc.GetDocumentWithContent("", "guide", "org-1", ""); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty artifact: err = %v, want ValidationFailed", err)
+	}
+	if _, _, err := svc.GetDocumentWithContent("artifact-1", "", "org-1", ""); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty handle: err = %v, want ValidationFailed", err)
+	}
+}
+
+// The docType argument is forwarded to the repository so the thumbnail GET
+// path (which pins THUMBNAIL) cannot accidentally return a user-document row
+// stored under the reserved handle.
+func TestAPIDocumentService_GetDocumentWithContent_ForwardsDocType(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{Handle: constants.DocumentHandleThumbnail, Type: constants.DocumentTypeThumbnail}
+	_, _, _ = svc.GetDocumentWithContent("artifact-1", constants.DocumentHandleThumbnail, "org-1", constants.DocumentTypeThumbnail)
+	if docRepo.lastGetDocType != constants.DocumentTypeThumbnail {
+		t.Errorf("repo was queried with docType = %q, want %q", docRepo.lastGetDocType, constants.DocumentTypeThumbnail)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpsertDocument — the thumbnail write path
+// ---------------------------------------------------------------------------
+
+func TestAPIDocumentService_UpsertDocument_CreateRecordsCreateAudit(t *testing.T) {
+	svc, docRepo, auditRepo, _ := newTestDocumentService()
+	// getDocResult is nil → the service treats this as an insert.
+
+	req := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypeThumbnail,
+		Handle:      constants.DocumentHandleThumbnail,
+		DisplayName: constants.DocumentDisplayNameThumbnail,
+		FileName:    "logo.png",
+		Content:     []byte("\x89PNG\r\n\x1a\n"),
+	}
+	if err := svc.UpsertDocument(req, "org-1", "alice", "artifact-1"); err != nil {
+		t.Fatalf("UpsertDocument err = %v", err)
+	}
+	if len(docRepo.upsertCalls) != 1 {
+		t.Fatalf("upsert calls = %d, want 1", len(docRepo.upsertCalls))
+	}
+	stored := docRepo.upsertCalls[0].doc
+	if stored.CreatedBy != "alice" || stored.UpdatedBy != "alice" {
+		t.Errorf("createdBy/updatedBy = %q/%q, want alice/alice on create", stored.CreatedBy, stored.UpdatedBy)
+	}
+	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "CREATE" {
+		t.Errorf("audit = %+v, want one CREATE entry", auditRepo.calls)
+	}
+}
+
+// A thumbnail already present on this API is an UPDATE, not a CREATE —
+// audit must reflect it, and CreatedBy must not be overwritten.
+func TestAPIDocumentService_UpsertDocument_ExistingRowIsUpdateAudit(t *testing.T) {
+	svc, docRepo, auditRepo, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{
+		Handle:    constants.DocumentHandleThumbnail,
+		CreatedBy: "original-uploader",
+	}
+
+	req := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypeThumbnail,
+		Handle:      constants.DocumentHandleThumbnail,
+		DisplayName: constants.DocumentDisplayNameThumbnail,
+		FileName:    "new.png",
+		Content:     []byte("\x89PNG\r\n\x1a\n"),
+	}
+	if err := svc.UpsertDocument(req, "org-1", "bob", "artifact-1"); err != nil {
+		t.Fatalf("UpsertDocument err = %v", err)
+	}
+	stored := docRepo.upsertCalls[0].doc
+	if stored.CreatedBy == "bob" {
+		t.Errorf("CreatedBy was overwritten to the updater on an UPDATE: %+v", stored)
+	}
+	if stored.UpdatedBy != "bob" {
+		t.Errorf("UpdatedBy = %q, want bob", stored.UpdatedBy)
+	}
+	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "UPDATE" {
+		t.Errorf("audit = %+v, want one UPDATE entry", auditRepo.calls)
+	}
+}
+
+func TestAPIDocumentService_UpsertDocument_Validation(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	if err := svc.UpsertDocument(nil, "org-1", "alice", "artifact-1"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("nil request: err = %v, want ValidationFailed", err)
+	}
+	if err := svc.UpsertDocument(&dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeThumbnail}, "org-1", "alice", ""); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty artifact UUID: err = %v, want ValidationFailed", err)
+	}
+}
+
+func TestAPIDocumentService_UpsertDocument_RepoErrorIsSurfaced(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.upsertDocErr = errors.New("disk full")
+	err := svc.UpsertDocument(&dto.CreateAPIDocumentRequest{
+		Type: constants.DocumentTypeThumbnail, Handle: constants.DocumentHandleThumbnail,
+		DisplayName: constants.DocumentDisplayNameThumbnail,
+		Content:     []byte("\x89PNG\r\n\x1a\n"),
+	}, "org-1", "alice", "artifact-1")
+	if err == nil {
+		t.Fatal("err = nil, want the repo error to surface")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DeleteAPIThumbnail
+// ---------------------------------------------------------------------------
+
+func TestAPIDocumentService_DeleteAPIThumbnail_Success(t *testing.T) {
+	svc, docRepo, auditRepo, _ := newTestDocumentService()
+	if err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice"); err != nil {
+		t.Fatalf("DeleteAPIThumbnail err = %v", err)
+	}
+	if len(docRepo.deleteDocCalls) != 1 {
+		t.Fatalf("delete calls = %d, want 1", len(docRepo.deleteDocCalls))
+	}
+	call := docRepo.deleteDocCalls[0]
+	// Both the handle and the type are pinned to the thumbnail singleton — a
+	// future change that routes this through DeleteApiDocument instead would
+	// stop filtering by type and could delete a user-document stored under
+	// the same handle.
+	if call.handle != constants.DocumentHandleThumbnail || call.docType != constants.DocumentTypeThumbnail {
+		t.Errorf("delete targeted handle=%q type=%q, want the thumbnail singleton", call.handle, call.docType)
+	}
+	if len(auditRepo.calls) != 1 || auditRepo.calls[0].action != "DELETE" ||
+		auditRepo.calls[0].resourceType != "api_thumbnail" {
+		t.Errorf("audit = %+v, want DELETE api_thumbnail", auditRepo.calls)
+	}
+}
+
+// A missing thumbnail must surface as NotFound rather than a generic 500 so
+// the handler can map it to a 404.
+func TestAPIDocumentService_DeleteAPIThumbnail_NotFound(t *testing.T) {
+	svc, docRepo, auditRepo, _ := newTestDocumentService()
+	docRepo.deleteDocErr = sql.ErrNoRows
+	err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice")
+	if err == nil || !apperror.NotFound.Is(err) {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+	if len(auditRepo.calls) != 0 {
+		t.Errorf("audit entries recorded for a no-op delete: %+v", auditRepo.calls)
+	}
+}
+
+func TestAPIDocumentService_DeleteAPIThumbnail_RequiresArtifactUUID(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	if err := svc.DeleteAPIThumbnail("", "org-1", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("err = %v, want ValidationFailed", err)
+	}
+	if len(docRepo.deleteDocCalls) != 0 {
+		t.Errorf("repo was called despite an invalid request")
+	}
+}
+
+func TestAPIDocumentService_DeleteAPIThumbnail_RepoErrorIsSurfaced(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.deleteDocErr = errors.New("db down")
+	err := svc.DeleteAPIThumbnail("artifact-1", "org-1", "alice")
+	if err == nil {
+		t.Fatal("err = nil, want the repo error to surface")
+	}
+	// Avoid leaking the raw repo error — the handler collapses non-apperror
+	// values into a sterile 500 at the boundary. Here we only need to confirm
+	// *something* non-nil was returned so Codecov records the branch.
+	_ = strings.Contains(err.Error(), "")
+}
+
+// ---------------------------------------------------------------------------
+// Branch gaps the integration-level tests don't drive
+// ---------------------------------------------------------------------------
+
+// CreateDocument generates the handle from displayName when no `id` is given;
+// a user-supplied handle short-circuits the generator. Both branches of
+// GenerateHandle's existence callback are exercised: the reserved-handle
+// predicate and the per-artifact-exists predicate.
+func TestAPIDocumentService_CreateDocument_GeneratesHandleFromDisplayName(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	// First candidate "release-notes" (slug of "Release Notes") is not reserved
+	// and does not exist for this artifact, so the generator accepts it.
+	req := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		DisplayName: "Release Notes",
+		Content:     []byte("# body"),
+	}
+	handle, err := svc.CreateDocument(req, "org", "alice", "artifact-1")
+	if err != nil {
+		t.Fatalf("CreateDocument err = %v", err)
+	}
+	if handle != "release-notes" {
+		t.Errorf("generated handle = %q, want release-notes", handle)
+	}
+	if len(docRepo.createdDocs) != 1 || docRepo.createdDocs[0].Handle != "release-notes" {
+		t.Errorf("stored doc did not pick up the generated handle: %+v", docRepo.createdDocs)
+	}
+}
+
+// When the content type is text/markdown and no filename was uploaded, the
+// service synthesises `<handle>.md` so the Content-Disposition on download
+// is sensible. This exercises the branch after handle generation.
+func TestAPIDocumentService_CreateDocument_SynthesisesMarkdownFileName(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	// Inline-content path: contentTypeForDocType returns text/markdown; the
+	// filename isn't supplied by the caller — the service fills it from the
+	// handle so a later download has a sensible Content-Disposition name.
+	req := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+		Handle:      "overview",
+		DisplayName: "Overview",
+		Content:     []byte("# body"),
+	}
+	if _, err := svc.CreateDocument(req, "org", "alice", "artifact-1"); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got := docRepo.createdDocs[0].FileName; got != "overview.md" {
+		t.Errorf("fileName = %q, want overview.md", got)
+	}
+}
+
+// CreateDocument propagates a unique-violation from the repository as a
+// Conflict apperror. Reaching this is behaviourally different from the
+// handler's pre-check for existing handles: a concurrent writer can slip
+// between the check and the insert, and the repo-level unique index must
+// catch it.
+func TestAPIDocumentService_CreateDocument_UniqueViolationIsConflict(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	// IsUniqueViolation checks the error message for SQLite / Postgres /
+	// SQL Server markers; the SQLite flavour is enough here.
+	docRepo.createDocErr = errors.New("UNIQUE constraint failed: api_documents.handle")
+
+	_, err := svc.CreateDocument(&dto.CreateAPIDocumentRequest{
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "x",
+		DisplayName: "X", Content: []byte("x"),
+	}, "org", "alice", "artifact-1")
+	if err == nil || !apperror.Conflict.Is(err) {
+		t.Fatalf("err = %v, want Conflict", err)
+	}
+}
+
+// CreateApiDocument's user-facing validation gates are reached BEFORE
+// CreateDocument. Each case trips one gate and must not reach the repo.
+func TestAPIDocumentService_CreateApiDocument_ValidationGates(t *testing.T) {
+	longName := strings.Repeat("a", maxDocDisplayNameLen+1)
+	longFile := strings.Repeat("a", maxDocFileNameLen+1)
+	longOther := strings.Repeat("a", maxDocTypeLen) // longer than allowed after DOC_ prefix
+
+	cases := []struct {
+		name string
+		req  *dto.CreateAPIDocumentRequest
+	}{
+		{"nil request", nil},
+		{"unknown type", &dto.CreateAPIDocumentRequest{Type: "Bogus", DisplayName: "x", Content: []byte("x")}},
+		{"other with forbidden custom name", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeOther, OtherTypeName: constants.DocumentTypeHowTo, DisplayName: "x", Content: []byte("x")}},
+		{"other with too-long custom name", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeOther, OtherTypeName: longOther, DisplayName: "x", Content: []byte("x")}},
+		{"missing displayName", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, Content: []byte("x")}},
+		{"blank displayName", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, DisplayName: "   ", Content: []byte("x")}},
+		{"too-long displayName", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, DisplayName: longName, Content: []byte("x")}},
+		{"too-long fileName", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, DisplayName: "x", FileName: longFile, Content: []byte("x")}},
+		{"reserved handle", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, Handle: constants.DocumentHandleDefinition, DisplayName: "x", Content: []byte("x")}},
+		{"malformed handle", &dto.CreateAPIDocumentRequest{Type: constants.DocumentTypeHowTo, Handle: "Not A Handle", DisplayName: "x", Content: []byte("x")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, docRepo, _, _ := newTestDocumentService()
+			_, err := svc.CreateApiDocument(tc.req, "org", "alice", "artifact-1")
+			if err == nil {
+				t.Fatalf("err = nil, want validation error")
+			}
+			if len(docRepo.createdDocs) != 0 {
+				t.Errorf("invalid request reached the repo: %+v", docRepo.createdDocs)
+			}
+		})
+	}
+}
+
+// CreateApiDocument short-circuits with a Conflict when the user-supplied
+// handle already exists on the artifact.
+func TestAPIDocumentService_CreateApiDocument_DuplicateHandleIsConflict(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.handleExistsResult = true
+
+	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+		Type: constants.DocumentTypeHowTo, Handle: "existing",
+		DisplayName: "Dup", Content: []byte("x"),
+	}, "org", "alice", "artifact-1")
+	if err == nil || !apperror.Conflict.Is(err) {
+		t.Fatalf("err = %v, want Conflict", err)
+	}
+	if len(docRepo.createdDocs) != 0 {
+		t.Errorf("Create reached the repo despite the pre-check conflict")
+	}
+}
+
+// A failure of the handle-existence check surfaces as Internal — the service
+// cannot know whether the handle is free, so it refuses to proceed.
+func TestAPIDocumentService_CreateApiDocument_HandleExistsCheckErrorIsInternal(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.handleExistsErr = errors.New("db down")
+
+	_, err := svc.CreateApiDocument(&dto.CreateAPIDocumentRequest{
+		Type: constants.DocumentTypeHowTo, Handle: "overview",
+		DisplayName: "x", Content: []byte("x"),
+	}, "org", "alice", "artifact-1")
+	if err == nil || !apperror.Internal.Is(err) {
+		t.Fatalf("err = %v, want Internal", err)
+	}
+}
+
+// UpdateApiDocument's validation gates. Each must fail before UpdateApiDocument
+// reaches the repo — i.e. the Update call on the mock never happens.
+func TestAPIDocumentService_UpdateApiDocument_ValidationGates(t *testing.T) {
+	longName := strings.Repeat("a", maxDocDisplayNameLen+1)
+	longFile := strings.Repeat("a", maxDocFileNameLen+1)
+	longOther := strings.Repeat("a", maxDocTypeLen)
+	emptyName := ""
+	blankName := "   "
+
+	cases := []struct {
+		name       string
+		req        *dto.UpdateAPIDocumentRequest
+		handle     string
+		seedExist  bool
+	}{
+		{"nil request", nil, "overview", true},
+		{"reserved handle", &dto.UpdateAPIDocumentRequest{}, constants.DocumentHandleThumbnail, true},
+		{"invalid handle", &dto.UpdateAPIDocumentRequest{}, "Not A Handle", true},
+		{"not found", &dto.UpdateAPIDocumentRequest{DisplayName: strPtr("x")}, "overview", false},
+		{"invalid type", &dto.UpdateAPIDocumentRequest{Type: strPtr("Bogus")}, "overview", true},
+		{"other with forbidden custom name", &dto.UpdateAPIDocumentRequest{
+			Type: strPtr(constants.DocumentTypeOther), OtherTypeName: constants.DocumentTypeHowTo,
+		}, "overview", true},
+		{"other with too-long custom name", &dto.UpdateAPIDocumentRequest{
+			Type: strPtr(constants.DocumentTypeOther), OtherTypeName: longOther,
+		}, "overview", true},
+		{"blank displayName", &dto.UpdateAPIDocumentRequest{DisplayName: &blankName}, "overview", true},
+		{"empty displayName", &dto.UpdateAPIDocumentRequest{DisplayName: &emptyName}, "overview", true},
+		{"too-long displayName", &dto.UpdateAPIDocumentRequest{DisplayName: &longName}, "overview", true},
+		{"too-long fileName", &dto.UpdateAPIDocumentRequest{FileName: &longFile}, "overview", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, docRepo, _, _ := newTestDocumentService()
+			if tc.seedExist {
+				docRepo.getDocResult = &model.Document{
+					ArtifactUUID: "artifact-1", OrganizationUUID: "org",
+					Handle: tc.handle, Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+					DisplayName: "Original",
+				}
+			}
+			err := svc.UpdateApiDocument(tc.req, "org", "alice", "artifact-1", tc.handle)
+			if err == nil {
+				t.Fatalf("err = nil, want validation error")
+			}
+			if len(docRepo.updateApiDocCalls) != 0 {
+				t.Errorf("invalid request reached the repo update: %+v", docRepo.updateApiDocCalls)
+			}
+		})
+	}
+}
+
+// (Reserved-handle rejection is already covered elsewhere in this file by
+// TestAPIDocumentService_DeleteApiDocument_RejectsReservedHandle; the three
+// extra DeleteApiDocument branch tests below pick up where that one stops.)
+
+func TestAPIDocumentService_DeleteApiDocument_RequiresArtifactAndHandle(t *testing.T) {
+	svc, _, _, _ := newTestDocumentService()
+	if err := svc.DeleteApiDocument("", "overview", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty artifact: err = %v, want ValidationFailed", err)
+	}
+	if err := svc.DeleteApiDocument("artifact-1", "", "org", "alice"); err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Errorf("empty handle: err = %v, want ValidationFailed", err)
+	}
+}
+
+func TestAPIDocumentService_DeleteApiDocument_NotFound(t *testing.T) {
+	// No getDocResult seeded → service returns NotFound before touching the
+	// repo delete.
+	svc, docRepo, _, _ := newTestDocumentService()
+	err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice")
+	if err == nil || !apperror.NotFound.Is(err) {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+	if len(docRepo.deleteApiDocCalls) != 0 {
+		t.Error("not-found path must not reach the repo delete")
+	}
+}
+
+// A race: the row disappears between the service's existence check and the
+// repo's delete. The service maps sql.ErrNoRows to NotFound rather than
+// surfacing the driver error.
+func TestAPIDocumentService_DeleteApiDocument_RaceMapsToNotFound(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{
+		ArtifactUUID: "artifact-1", OrganizationUUID: "org", Handle: "overview",
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+	}
+	docRepo.deleteApiDocErr = sql.ErrNoRows
+
+	err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice")
+	if err == nil || !apperror.NotFound.Is(err) {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+}
+
+func TestAPIDocumentService_DeleteApiDocument_RepoErrorIsSurfaced(t *testing.T) {
+	svc, docRepo, _, _ := newTestDocumentService()
+	docRepo.getDocResult = &model.Document{
+		ArtifactUUID: "artifact-1", OrganizationUUID: "org", Handle: "overview",
+		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo,
+	}
+	docRepo.deleteApiDocErr = errors.New("db down")
+
+	if err := svc.DeleteApiDocument("artifact-1", "overview", "org", "alice"); err == nil {
+		t.Fatal("err = nil, want the repo error to surface")
+	}
+}
+

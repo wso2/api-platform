@@ -9298,7 +9298,7 @@ components:
           example: "payment-webhook-howto"
         type:
           type: string
-          description: Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+          description: Document type as stored. Fixed types (HowTo, Samples, SupportForum, PublicForum, Other) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
           example: HOW_TO
         displayName:
           type: string
