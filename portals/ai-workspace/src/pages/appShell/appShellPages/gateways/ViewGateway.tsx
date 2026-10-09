@@ -62,7 +62,7 @@ import HelmIcon from "../../../../assets/icons/helm.svg";
 import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
-import { PLATFORM_GATEWAY_VERSIONS, CONTROLPLANE_HOST } from "../../../../config.env";
+import { PLATFORM_GATEWAY_VERSIONS, CONTROLPLANE_HOST, CLOUD_PROXY_ENABLED } from "../../../../config.env";
 import { PLATFORM_API_BASE_URL } from "../../../../paths";
 import {
   getGateways,
@@ -73,6 +73,10 @@ import {
   rotateGatewayToken,
 } from "../../../../apis/gateway/gatewayApi";
 import type { GatewayConfigs } from "../../../../apis/gateway/gatewayApi";
+import {
+  fetchCollectorKey,
+  isShellSafeCollectorKey,
+} from "../../../../apis/cloud/analyticsApi";
 import {
   getRegistrationToken,
   clearRegistrationToken,
@@ -274,6 +278,9 @@ export default function ViewGateway() {
   const [registrationToken, setRegistrationTokenState] = useState<
     string | null
   >(() => getRegistrationToken());
+  const [moesifKey, setMoesifKey] = useState<string | null>(null);
+  const [moesifKeyLoading, setMoesifKeyLoading] = useState(false);
+  const [moesifUnavailable, setMoesifUnavailable] = useState(false);
 
   // Version vars derived from the gateway's stored version
   const gatewayVersion = resolveGatewayVersion(gateway?.version);
@@ -294,8 +301,11 @@ export default function ViewGateway() {
     ? GatewaySetupStepsV1_2Plus
     : GatewaySetupStepsPreV1_2;
   const gatewayEnvFileName = getGatewayEnvFileName(gatewayIsV12OrAbove);
+  const includeMoesifAnalytics = CLOUD_PROXY_ENABLED;
+  const helmMoesifKey =
+    includeMoesifAnalytics && moesifKey ? moesifKey : null;
 
-  const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
+  const getK8sCustomHelmDisplayCommand = (moesifKeyValue: string | null) => {
     const controlPlaneHost = CONTROLPLANE_HOST;
     const lines = [
       `helm install gateway oci://ghcr.io/wso2/api-platform/helm-charts/gateway --version ${gatewayVersionHelm} \\`,
@@ -303,22 +313,19 @@ export default function ViewGateway() {
       "  --set gateway.controller.controlPlane.port=443 \\",
       '  --set gateway.controller.controlPlane.token.value="your-gateway-token"',
     ];
-    if (moesifKey) {
+    if (moesifKeyValue) {
       lines[lines.length - 1] += " \\";
       lines.push(
-        "  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key>",
+        "  --set gateway.config.analytics.publishers.moesif.application_id=<your-moesif-key> \\",
       );
-      lines[lines.length - 1] += " \\";
-    } else {
-      lines[lines.length - 1] += " \\";
+      lines.push("  --set gateway.config.analytics.enabled=true");
     }
-    lines.push("  --set gateway.config.analytics.enabled=true");
     return lines.join("\n");
   };
 
   const getK8sCustomHelmCopyCommand = (
     token: string | null,
-    moesifKey: string | null,
+    moesifKeyValue: string | null,
   ) => {
     const tokenValue = token || "your-gateway-token";
     const controlPlaneHost = CONTROLPLANE_HOST;
@@ -328,16 +335,16 @@ export default function ViewGateway() {
       "  --set gateway.controller.controlPlane.port=443 \\",
       `  --set gateway.controller.controlPlane.token.value="${tokenValue}"`,
     ];
-    if (moesifKey) {
+    if (moesifKeyValue) {
+      if (!isShellSafeCollectorKey(moesifKeyValue)) {
+        return lines.join("\n");
+      }
       lines[lines.length - 1] += " \\";
       lines.push(
-        `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKey}"`,
+        `  --set gateway.config.analytics.publishers.moesif.application_id="${moesifKeyValue}" \\`,
       );
-      lines[lines.length - 1] += " \\";
-    } else {
-      lines[lines.length - 1] += " \\";
+      lines.push("  --set gateway.config.analytics.enabled=true");
     }
-    lines.push("  --set gateway.config.analytics.enabled=true");
     return lines.join("\n");
   };
 
@@ -347,6 +354,38 @@ export default function ViewGateway() {
       clearRegistrationToken();
     };
   }, []);
+
+  useEffect(() => {
+    if (!includeMoesifAnalytics) {
+      setMoesifKey(null);
+      setMoesifUnavailable(false);
+      setMoesifKeyLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setMoesifKeyLoading(true);
+    (async () => {
+      try {
+        const key = await fetchCollectorKey();
+        if (cancelled) return;
+        setMoesifKey(key);
+        setMoesifUnavailable(false);
+      } catch (error) {
+        if (cancelled) return;
+        setMoesifKey(null);
+        // Any failure: show the existing warning so K8s/setup does not silently
+        // omit analytics with no user-visible hint.
+        setMoesifUnavailable(true);
+      } finally {
+        if (!cancelled) setMoesifKeyLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [includeMoesifAnalytics]);
 
   useEffect(() => {
     const unsubscribe = subscribeToColorSchemeChanges((nextScheme) => {
@@ -461,6 +500,7 @@ export default function ViewGateway() {
       gatewayIsV12OrAbove,
       CONTROLPLANE_HOST,
       registrationToken || "",
+      helmMoesifKey,
     );
     const blob = new Blob([`${envContent}\n`], {
       type: "text/plain;charset=utf-8",
@@ -933,6 +973,10 @@ export default function ViewGateway() {
                 onCopy={handleCopy}
                 colorScheme={activeColorScheme}
                 renderConnectionStatus={renderGatewayConnectionStatus}
+                includeMoesifAnalytics={includeMoesifAnalytics}
+                moesifKey={helmMoesifKey}
+                moesifKeyLoading={moesifKeyLoading}
+                moesifUnavailable={moesifUnavailable}
               />
             </Stack>
           </TabPanel>
@@ -1043,6 +1087,10 @@ export default function ViewGateway() {
                 onCopy={handleCopy}
                 colorScheme={activeColorScheme}
                 renderConnectionStatus={renderGatewayConnectionStatus}
+                includeMoesifAnalytics={includeMoesifAnalytics}
+                moesifKey={helmMoesifKey}
+                moesifKeyLoading={moesifKeyLoading}
+                moesifUnavailable={moesifUnavailable}
               />
             </Stack>
           </TabPanel>
@@ -1084,6 +1132,10 @@ export default function ViewGateway() {
                 onCopy={handleCopy}
                 colorScheme={activeColorScheme}
                 renderConnectionStatus={renderGatewayConnectionStatus}
+                includeMoesifAnalytics={includeMoesifAnalytics}
+                moesifKey={helmMoesifKey}
+                moesifKeyLoading={moesifKeyLoading}
+                moesifUnavailable={moesifUnavailable}
               />
             </Stack>
           </TabPanel>
@@ -1180,12 +1232,31 @@ export default function ViewGateway() {
                   Run this command to install the gateway chart with control
                   plane configurations:
                 </Typography>
-                <TextField
+                {includeMoesifAnalytics && moesifKeyLoading ? (
+                  <Alert severity="info" sx={{ mt: 0, mb: 2 }}>
+                    Loading Moesif analytics configuration…
+                  </Alert>
+                ) : (
+                  <TextField
                   fullWidth
                   sx={getCommandTextFieldSx(activeColorScheme)}
                   multiline
                   minRows={4}
-                  value={getK8sCustomHelmDisplayCommand(null)}
+                  value={getK8sCustomHelmDisplayCommand(helmMoesifKey)}
+                  onCopy={
+                    helmMoesifKey
+                      ? (e) => {
+                          e.preventDefault();
+                          e.clipboardData.setData(
+                            "text/plain",
+                            getK8sCustomHelmCopyCommand(
+                              registrationToken,
+                              helmMoesifKey,
+                            ),
+                          );
+                        }
+                      : undefined
+                  }
                   slotProps={{
                     input: {
                       readOnly: true,
@@ -1196,7 +1267,7 @@ export default function ViewGateway() {
                             handleCopy(
                               getK8sCustomHelmCopyCommand(
                                 registrationToken,
-                                null,
+                                helmMoesifKey,
                               ),
                               "Helm install command",
                             )
@@ -1208,6 +1279,19 @@ export default function ViewGateway() {
                     },
                   }}
                 />
+                )}
+                {includeMoesifAnalytics &&
+                  !moesifKeyLoading &&
+                  moesifUnavailable && (
+                    <Alert severity="warning" sx={{ mt: 2 }}>
+                      To configure analytics, add your existing Moesif key via{" "}
+                      <code>
+                        --set
+                        gateway.config.analytics.publishers.moesif.application_id=&lt;your-moesif-key&gt;
+                      </code>
+                      .
+                    </Alert>
+                  )}
                 {renderGatewayConnectionStatus()}
               </Box>
             </Stack>

@@ -20,10 +20,12 @@
  * Client for WSO2 Cloud Moesif viewer-token endpoint (platform-api-service).
  * See wso2cloud/backend/core/internal/moesifmapping/handler/handler.go.
  *
- * Viewer tokens go through the portal BFF same-origin `/proxy/cloud/...` path so
- * session cookies stay server-side. Project lookup goes through the host Port's
- * `apiFetch` (platform-api via BFF) — org comes from the session token, never
- * from an `X-Org-Id` header.
+ * Viewer tokens go through the portal BFF same-origin proxy so session cookies
+ * stay server-side. API Control Plane mounts that hop at `/proxy/cloud`
+ * (named upstream "cloud"). AI Workspace mounts it at `/proxy/moesif`
+ * (`moesif_url`, whose value still ends in `/cloud`). Project lookup goes through
+ * the host Port's `apiFetch` (platform-api via BFF) — org comes from the session
+ * token, never from an `X-Org-Id` header.
  */
 
 import { insightsRuntimeConfig } from '../config/runtimeConfig';
@@ -36,6 +38,16 @@ type ViewerTokenResponse = {
 /** Same-origin BFF proxy prefix used by cloud analytics routes. */
 const cloudApiBase = () =>
   insightsRuntimeConfig.platformApiBaseUrl.replace(/\/$/, '');
+
+/**
+ * Hop segment under the BFF proxy prefix. AI Workspace's base includes
+ * `/ai-workspace` and its BFF registers `/proxy/moesif`. API Control Plane
+ * registers the named upstream at `/proxy/cloud`.
+ */
+const analyticsHop = (): string =>
+  insightsRuntimeConfig.platformApiBaseUrl.includes('/ai-workspace')
+    ? 'moesif'
+    : 'cloud';
 
 /** User-facing copy only. */
 const userFacingRequestError = (status: number): string => {
@@ -54,12 +66,15 @@ const userFacingRequestError = (status: number): string => {
   return 'Unable to load Insights right now. Please try again.';
 };
 
-/** GET /cloud/analytics/id-token — Moesif dashboard-viewer token for the caller org. */
+/** GET /{hop}/analytics/id-token — Moesif dashboard-viewer token for the caller org. */
 export async function fetchViewerToken(): Promise<string> {
-  const response = await fetch(`${cloudApiBase()}/cloud/analytics/id-token`, {
-    credentials: 'include',
-    headers: { accept: 'application/json' },
-  });
+  const response = await fetch(
+    `${cloudApiBase()}/${analyticsHop()}/analytics/id-token`,
+    {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    }
+  );
   if (!response.ok) {
     throw new Error(userFacingRequestError(response.status));
   }
