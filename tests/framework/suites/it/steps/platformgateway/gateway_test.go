@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -810,6 +811,107 @@ func TestServiceUnhealthy(t *testing.T) {
 
 	local.Set(healthResultsKey, map[string]bool{"policy-engine": false})
 	require.ErrorContains(t, steps.serviceUnhealthy(ctx, "policy-engine"), "stored as map[string]bool")
+}
+
+func TestRememberAndForgetStoppedProcess(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("signal-runner"))
+	steps := &Steps{}
+
+	require.NoError(t, steps.rememberStoppedProcess(ctx, "gateway-runtime", "policy-engine"))
+	list, err := steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []stoppedProcess{{service: "gateway-runtime", process: "policy-engine"}}, list)
+
+	require.NoError(t, steps.rememberStoppedProcess(ctx, "gateway-runtime", "envoy"))
+	list, err = steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	require.NoError(t, steps.forgetStoppedProcess(ctx, "gateway-runtime", "policy-engine"))
+	list, err = steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []stoppedProcess{{service: "gateway-runtime", process: "envoy"}}, list)
+
+	require.NoError(t, steps.forgetStoppedProcess(ctx, "gateway-runtime", "never-stopped"))
+	list, err = steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+}
+
+func TestProcessSignalScriptTargetsArgv0SuffixWithoutPkill(t *testing.T) {
+	script := processSignalScript("STOP", "policy-engine")
+	require.Contains(t, script, `grep -q '/policy-engine$'`)
+	require.Contains(t, script, "kill -STOP")
+	require.NotContains(t, script, "pkill")
+	require.NotContains(t, script, "pgrep")
+}
+
+func TestResumeStoppedProcessesClearsTheList(t *testing.T) {
+	// tcontext.Local persists across a runner's scenarios, so this must clear the list too.
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("signal-runner"))
+	steps := &Steps{}
+
+	require.NoError(t, steps.rememberStoppedProcess(ctx, "gateway-runtime", "policy-engine"))
+	list, err := steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+
+	steps.resumeStoppedProcesses(ctx)
+
+	list, err = steps.stoppedProcessList(ctx)
+	require.NoError(t, err)
+	require.Empty(t, list)
+}
+
+func TestCheckAllHealthUntilUnhealthyConvergesOnFailure(t *testing.T) {
+	var routerUnhealthy atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ready") {
+			if routerUnhealthy.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"healthy"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	addr := srv.Listener.Addr().(*net.TCPAddr)
+	definition := &components.Definition{
+		Name: "platform-gateway", Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{
+			{Name: "admin", Port: addr.Port, Scheme: "http"},
+			{Name: "envoy-admin", Port: addr.Port, Scheme: "http"},
+			{Name: "policy-admin", Port: addr.Port, Scheme: "http"},
+		},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "localhost", map[int]int{addr.Port: addr.Port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	steps := &Steps{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+	}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("health-until-runner"))
+
+	// Flips partway through the wait, so a step that only checked once would miss it.
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		routerUnhealthy.Store(true)
+	}()
+
+	require.NoError(t, steps.checkAllHealthUntilUnhealthy(ctx, "router"))
+
+	v, ok := tcontext.Get(ctx, healthResultsKey)
+	require.True(t, ok)
+	results, ok := v.(map[string]healthResult)
+	require.True(t, ok)
+	require.False(t, results["router"].healthy)
 }
 
 // Every controller collection a step can create into has a cleanup kind, so a created resource

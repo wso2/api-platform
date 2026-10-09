@@ -118,6 +118,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createSubscription)
 	sc.Step(`^I issue an API key "([^"]*)" for REST API "([^"]*)" via the control plane$`,
 		s.issueAPIKey)
+	sc.Step(`^I revoke the API key for REST API "([^"]*)" via the control plane$`,
+		s.revokeAPIKey)
 }
 
 func (s *Steps) registerPlatformResource(ctx context.Context, kind cleanup.Kind, id, path string) error {
@@ -1046,4 +1048,29 @@ func (s *Steps) issueAPIKey(ctx context.Context, keyValue, apiHandle string) err
 		"displayName": "key-" + resolvedAPI,
 		"apiKey":      resolvedKey,
 	}, nil)
+}
+
+// revokeAPIKey deletes the single key issueAPIKey created for a REST API, addressed by the
+// same deterministic "key-<apiHandle>" name issueAPIKey assigns it.
+func (s *Steps) revokeAPIKey(ctx context.Context, apiHandle string) error {
+	resolvedAPI, err := stepscommon.Expand(ctx, apiHandle)
+	if err != nil {
+		return err
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(ctx, httpx.Request{
+		Method:  http.MethodDelete,
+		URL:     base + apiBase + "/rest-apis/" + resolvedAPI + "/api-keys/key-" + resolvedAPI,
+		Headers: map[string]string{"Authorization": "Bearer " + bearer},
+	}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("revoking the API key for REST API %q: %w", resolvedAPI, err)
+	}
+	if !resp.Succeeded() {
+		return fmt.Errorf("revoking the API key for REST API %q: %s", resolvedAPI, resp.Describe())
+	}
+	return nil
 }

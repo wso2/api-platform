@@ -20,14 +20,26 @@ package steps
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/cucumber/godog"
+	"github.com/cucumber/messages/go/v34"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"gopkg.in/yaml.v3"
@@ -397,4 +409,208 @@ func TestResponseHeaderNotEquals(t *testing.T) {
 	require.ErrorContains(t, base.responseHeaderNotEquals(ctx, "etag", "${CTX:same}"), "not to be")
 	require.NoError(t, base.responseHeaderNotEquals(ctx, "X-Absent", "anything"), "an absent header is not the value")
 	require.Error(t, base.responseHeaderNotEquals(ctx, "ETag", "${CTX:unknown}"))
+}
+
+func TestGenerateSizedValueExactLength(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	b := &Base{}
+
+	require.NoError(t, b.generateSizedValue(ctx, 10, "ab", "divides"))
+	divides, ok := tcontext.Get(ctx, "divides")
+	require.True(t, ok)
+	require.Equal(t, "ababababab", divides)
+
+	require.NoError(t, b.generateSizedValue(ctx, 7, "abc", "notDivides"))
+	notDivides, ok := tcontext.Get(ctx, "notDivides")
+	require.True(t, ok)
+	require.Equal(t, "abcabca", notDivides)
+	require.Len(t, notDivides.(string), 7)
+
+	require.NoError(t, b.generateSizedValue(ctx, 1, "x", "single"))
+	single, _ := tcontext.Get(ctx, "single")
+	require.Equal(t, "x", single)
+}
+
+func TestConcurrentCyclingRowsParsesValuesAndAbsentMarker(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	require.NoError(t, tcontext.Set(ctx, "k1", "secret-value"))
+	table := &godog.Table{Rows: []*messages.PickleTableRow{
+		{Cells: []*messages.PickleTableCell{{Value: "${CTX:k1}"}, {Value: "200"}}},
+		{Cells: []*messages.PickleTableCell{{Value: "bad"}, {Value: "401"}}},
+		{Cells: []*messages.PickleTableCell{{Value: absentHeaderMarker}, {Value: "401"}}},
+	}}
+
+	rows, err := concurrentCyclingRows(ctx, table)
+	require.NoError(t, err)
+	require.Equal(t, []concurrentCyclingRow{
+		{value: "secret-value", status: 200},
+		{value: "bad", status: 401},
+		{absent: true, status: 401},
+	}, rows)
+}
+
+func TestEveryConcurrentResponseMatchesExpectedStatus(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	b := &Base{}
+
+	// No requests sent yet.
+	require.Error(t, b.everyConcurrentResponseMatchesExpectedStatus(ctx))
+
+	require.NoError(t, tcontext.Set(ctx, keyConcurrentOutcomes, []concurrentCyclingOutcome{
+		{row: concurrentCyclingRow{value: "k1", status: 200}, gotStatus: 200},
+		{row: concurrentCyclingRow{absent: true, status: 401}, gotStatus: 401},
+	}))
+	require.NoError(t, b.everyConcurrentResponseMatchesExpectedStatus(ctx))
+
+	require.NoError(t, tcontext.Set(ctx, keyConcurrentOutcomes, []concurrentCyclingOutcome{
+		{row: concurrentCyclingRow{value: "k1", status: 200}, gotStatus: 401},
+	}))
+	err := b.everyConcurrentResponseMatchesExpectedStatus(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "want 200, got 401")
+}
+
+// newTestBaseWithServer builds a Base whose "platform-gateway" http endpoint resolves to a
+// local test server, so data-plane steps can be exercised without a running gateway.
+func newTestBaseWithServer(t *testing.T, handler http.HandlerFunc) *Base {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	addr := srv.Listener.Addr().(*net.TCPAddr)
+	definition := &components.Definition{
+		Name: "platform-gateway", Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: addr.Port, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "localhost", map[int]int{addr.Port: addr.Port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	return &Base{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, 0),
+	}
+}
+
+func TestBackgroundTrafficRecordsAndStops(t *testing.T) {
+	var hits int32
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&hits, 1)
+		if r.Header.Get("API-Key") == "good" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_ = n
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+
+	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "API-Key", "bad", "probe"))
+	require.Error(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "API-Key", "bad", "probe"))
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&hits) >= 3
+	}, 2*time.Second, 20*time.Millisecond)
+
+	require.NoError(t, b.stopBackgroundTraffic(ctx, "probe"))
+	require.NoError(t, b.backgroundTrafficAtLeastAttempts(ctx, "probe", 1))
+	require.NoError(t, b.backgroundTrafficNeverReceivedStatus(ctx, "probe", http.StatusOK))
+	require.Error(t, b.backgroundTrafficNeverReceivedStatus(ctx, "probe", http.StatusUnauthorized))
+	require.Error(t, b.backgroundTrafficAtLeastAttempts(ctx, "probe", 1000))
+}
+
+func TestStopAllBackgroundTrafficStopsEveryProbe(t *testing.T) {
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+
+	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "a"))
+	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "b"))
+
+	probesBefore, err := b.backgroundProbes(ctx)
+	require.NoError(t, err)
+	snapshot := make(map[string]*backgroundTrafficProbe, len(probesBefore))
+	for name, probe := range probesBefore {
+		snapshot[name] = probe
+	}
+	require.Len(t, snapshot, 2)
+
+	b.stopAllBackgroundTraffic(ctx)
+
+	for name, probe := range snapshot {
+		select {
+		case <-probe.done:
+		default:
+			t.Fatalf("probe %q did not stop", name)
+		}
+	}
+
+	// tcontext.Local persists across a runner's scenarios, so the map must end up empty, not
+	// merely drained, or a later scenario reusing a probe name would fail as already running.
+	probesAfter, err := b.backgroundProbes(ctx)
+	require.NoError(t, err)
+	require.Empty(t, probesAfter)
+	require.NoError(t, b.startBackgroundTraffic(ctx, "GET", "/probe", "X", "1", "a"))
+}
+
+func TestSendRequestOverHTTP2RejectsNonHTTP2Server(t *testing.T) {
+	// httptest.NewServer speaks HTTP/1.1 only, so a caller asserting protocol parity
+	// gets a clear error instead of a silent fallback.
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	require.NoError(t, ctx.Err())
+	err := b.sendRequestOverHTTP2(ctx, "GET", "/probe")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP/2")
+}
+
+func TestIsConnectionRejection(t *testing.T) {
+	require.True(t, isConnectionRejection(io.EOF))
+	require.True(t, isConnectionRejection(io.ErrUnexpectedEOF))
+	require.True(t, isConnectionRejection(fmt.Errorf("wrapped: %w", io.EOF)))
+	require.True(t, isConnectionRejection(errors.New("read tcp 127.0.0.1:1234: connection reset by peer")))
+	require.False(t, isConnectionRejection(context.DeadlineExceeded))
+	require.False(t, isConnectionRejection(errors.New("no such host")))
+}
+
+func TestSendRequestExpectingRejectionAcceptsAnAbruptConnectionClose(t *testing.T) {
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		require.True(t, ok)
+		conn, _, err := hijacker.Hijack()
+		require.NoError(t, err)
+		_ = conn.Close() // closes before any response line is written, as an oversized-header rejection would
+	})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	require.NoError(t, b.sendRequestExpectingRejection(ctx, "GET", "/probe"))
+}
+
+func TestSendRequestExpectingRejectionFailsOnSuccess(t *testing.T) {
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	err := b.sendRequestExpectingRejection(ctx, "GET", "/probe")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected the gateway to reject the request")
+}
+
+func TestSendRequestExpectingRejectionFailsOnATimeout(t *testing.T) {
+	release := make(chan struct{})
+	// Closed by this defer, which runs before newTestBaseWithServer's t.Cleanup(srv.Close) -
+	// httptest.Server.Close blocks until every in-flight handler returns, so the server's own
+	// cleanup would deadlock against this one if release were still open when it ran.
+	defer close(release)
+	b := newTestBaseWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	})
+	b.funnel = httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 50 * time.Millisecond}), 0, 0)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("test-runner"))
+	err := b.sendRequestExpectingRejection(ctx, "GET", "/probe")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "expected the gateway to reject the request")
 }

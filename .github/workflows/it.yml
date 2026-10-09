@@ -158,12 +158,12 @@ jobs:
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
           IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
-        # The gateway-controller policy block requires a sibling gateway-controllers repo
-        # checkout and is exercised by that repository's workflow.
+        # The gateway-controller policy blocks require a sibling gateway-controllers repo
+        # checkout and are exercised by that repository's workflow.
         run: |
           go test -v ./suites/it -count=1 -timeout=60m -logs \
             ${{ matrix.suite_flags }} \
-            -skip-blocks=gateway-controller-policies
+            -skip-blocks=gateway-controller-policies,gateway-controller-policies-restart,gateway-controller-policies-multigateway
 
       # always(), and per leg: a failing run is exactly when the container logs are needed,
       # and each leg's artifact name must be unique or upload-artifact rejects the second.

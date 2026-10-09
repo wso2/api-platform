@@ -573,3 +573,45 @@ func TestFunnelStreamClearsThenPublishes(t *testing.T) {
 	_, err = Published(ctx)
 	require.Error(t, err, "a failed stream must not leave the previous response for an assertion")
 }
+
+func TestClientSendsHTTP2PriorKnowledgeRequest(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	srv.Config.Protocols = &protocols
+	srv.Start()
+	defer srv.Close()
+
+	client := NewClient(Options{})
+	resp, err := client.Do(context.Background(), Request{Method: http.MethodGet, URL: srv.URL, HTTP2: true}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "HTTP/2.0", resp.Proto)
+}
+
+func TestClientRejectsHTTP2RequestAgainstAnHTTP1OnlyServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(Options{})
+	_, err := client.Do(context.Background(), Request{Method: http.MethodGet, URL: srv.URL, HTTP2: true}, 0, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP/2")
+}
+
+func TestClientDefaultRequestIsUnaffectedByHTTP2Client(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewClient(Options{})
+	resp, err := client.Do(context.Background(), Request{Method: http.MethodGet, URL: srv.URL}, 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "HTTP/1.1", resp.Proto)
+}

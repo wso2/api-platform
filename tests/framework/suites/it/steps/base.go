@@ -24,14 +24,18 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/textproto"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -296,6 +300,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" expecting rejection$`, b.sendRequestExpectingRejection)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
@@ -318,6 +323,26 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body contains "([^"]*)" with body:$`,
 		b.sendUntilBodyContains)
+	sc.Step(`^the response should be a server error$`, b.responseServerError)
+	sc.Step(`^I generate a (\d+)-character value from "([^"]*)" and store it as "([^"]*)"$`,
+		b.generateSizedValue)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" over HTTP/2$`, b.sendRequestOverHTTP2)
+	sc.Step(`^I send (\d+) concurrent "([^"]*)" requests to "([^"]*)" cycling header "([^"]*)" through:$`,
+		b.sendConcurrentCyclingRequests)
+	sc.Step(`^every concurrent response should have its expected status$`, b.everyConcurrentResponseMatchesExpectedStatus)
+	sc.Step(`^I start background "([^"]*)" traffic to "([^"]*)" with header "([^"]*)" set to "([^"]*)" as "([^"]*)"$`,
+		b.startBackgroundTraffic)
+	sc.Step(`^I stop background traffic "([^"]*)"$`, b.stopBackgroundTraffic)
+	sc.Step(`^background traffic "([^"]*)" should never have received status (\d+)$`,
+		b.backgroundTrafficNeverReceivedStatus)
+	sc.Step(`^background traffic "([^"]*)" should have recorded at least (\d+) attempts$`,
+		b.backgroundTrafficAtLeastAttempts)
+
+	// Safety net for a scenario that fails before stopping its own background traffic.
+	sc.After(func(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
+		b.stopAllBackgroundTraffic(ctx)
+		return ctx, nil
+	})
 }
 
 func (b *Base) responseSuccessful(ctx context.Context) error {
@@ -338,6 +363,17 @@ func (b *Base) responseClientError(ctx context.Context) error {
 	}
 	if resp.StatusCode < 400 || resp.StatusCode >= 500 {
 		return fmt.Errorf("expected a client error response, got %s", resp.Describe())
+	}
+	return nil
+}
+
+func (b *Base) responseServerError(ctx context.Context) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 500 || resp.StatusCode >= 600 {
+		return fmt.Errorf("expected a server error response, got %s", resp.Describe())
 	}
 	return nil
 }
@@ -446,6 +482,45 @@ func (b *Base) sendRequestWithBody(
 	ctx context.Context, method, path string, body *godog.DocString,
 ) error {
 	return b.sendRequestWithHeaders(ctx, method, path, body, nil)
+}
+
+// sendRequestExpectingRejection accepts client errors or connection rejection;
+// unrelated transport errors still fail the step.
+func (b *Base) sendRequestExpectingRejection(ctx context.Context, method, path string) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+
+	resp, err := b.funnel.Send(ctx, httpx.Request{
+		Method:  strings.ToUpper(method),
+		URL:     url,
+		Headers: b.scenarioHeaders(ctx),
+		Host:    b.requestHost(ctx),
+	})
+	if err == nil {
+		if resp.StatusCode < 400 || resp.StatusCode >= 500 {
+			return fmt.Errorf("expected the gateway to reject the request, got %s", resp.Describe())
+		}
+		return nil
+	}
+	if isConnectionRejection(err) {
+		return nil
+	}
+	return fmt.Errorf("invoking %s %s: %w", method, url, err)
+}
+
+// isConnectionRejection reports whether err describes the connection ending before a response was
+// read, rather than a timeout or other failure that could just as easily mean the gateway hung.
+func isConnectionRejection(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	return strings.Contains(err.Error(), "connection reset")
 }
 
 // sendRequestWithHeaders invokes a data-plane path with scenario and request-specific headers.
@@ -1858,4 +1933,404 @@ func splitIndices(segment string) (string, []int) {
 		rest = rest[end+1:]
 	}
 	return name, indices
+}
+
+// generateSizedValue repeats a seed string until it reaches exactly size bytes, and stores the
+// result in runner-local context. Used to construct oversized values (an oversized header, a
+// large request body) whose exact length is the point of the scenario.
+func (b *Base) generateSizedValue(ctx context.Context, size int, seed, key string) error {
+	if size <= 0 {
+		return fmt.Errorf("sized value length must be positive, got %d", size)
+	}
+	resolvedSeed, err := stepscommon.Expand(ctx, seed)
+	if err != nil {
+		return err
+	}
+	if resolvedSeed == "" {
+		return fmt.Errorf("sized value seed must not be empty")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("cannot store a sized value with an empty key")
+	}
+	repeated := strings.Repeat(resolvedSeed, size/len(resolvedSeed)+1)[:size]
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store sized value %q without runner context", key)
+	}
+	local.Set(key, repeated)
+	return nil
+}
+
+// sendRequestOverHTTP2 invokes a data-plane path over unencrypted HTTP/2 (h2c) prior
+// knowledge, through the same funnel client every other step uses - httpx.Client rejects the
+// exchange outright if the gateway answered on anything other than HTTP/2, rather than
+// silently falling back to HTTP/1.1.
+func (b *Base) sendRequestOverHTTP2(ctx context.Context, method, path string) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	_, err = b.funnel.Send(ctx, httpx.Request{
+		Method: strings.ToUpper(method), URL: url, Headers: b.scenarioHeaders(ctx),
+		Host: b.requestHost(ctx), HTTP2: true,
+	})
+	return err
+}
+
+// concurrentCyclingRow is one row of a "cycling header through" table: the header value to send
+// (or absentValue to omit the header entirely) and the status that value is expected to produce.
+type concurrentCyclingRow struct {
+	value  string
+	absent bool
+	status int
+}
+
+// absentHeaderMarker is the table value meaning "send the request with this header omitted".
+const absentHeaderMarker = "<absent>"
+
+func concurrentCyclingRows(ctx context.Context, table *godog.Table) ([]concurrentCyclingRow, error) {
+	if table == nil || len(table.Rows) == 0 {
+		return nil, fmt.Errorf("cycling values table must not be empty")
+	}
+	rows := make([]concurrentCyclingRow, 0, len(table.Rows))
+	for i, row := range table.Rows {
+		if row == nil || len(row.Cells) != 2 {
+			return nil, fmt.Errorf("cycling values row %d must contain exactly two cells", i+1)
+		}
+		status, err := strconv.Atoi(strings.TrimSpace(row.Cells[1].Value))
+		if err != nil {
+			return nil, fmt.Errorf("cycling values row %d: invalid status %q: %w", i+1, row.Cells[1].Value, err)
+		}
+		if strings.TrimSpace(row.Cells[0].Value) == absentHeaderMarker {
+			rows = append(rows, concurrentCyclingRow{absent: true, status: status})
+			continue
+		}
+		value, err := stepscommon.Expand(ctx, row.Cells[0].Value)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, concurrentCyclingRow{value: value, status: status})
+	}
+	return rows, nil
+}
+
+// concurrentCyclingOutcome is one fired request's expected and actual result.
+type concurrentCyclingOutcome struct {
+	row        concurrentCyclingRow
+	gotStatus  int
+	requestErr error
+}
+
+const keyConcurrentOutcomes = "concurrentCyclingOutcomes"
+
+// maxConcurrentWorkers bounds how many of the N requests are in flight at once, so a large N
+// (hundreds) stresses the gateway without exhausting local file descriptors or connections.
+const maxConcurrentWorkers = 20
+
+// sendConcurrentCyclingRequests fires n requests concurrently against one data-plane path, each
+// carrying the header value from table row (i mod len(rows)), and stores every outcome for
+// everyConcurrentResponseMatchesExpectedStatus to assert on.
+func (b *Base) sendConcurrentCyclingRequests(
+	ctx context.Context, n int, method, path, header string, table *godog.Table,
+) error {
+	if n <= 0 {
+		return fmt.Errorf("concurrent request count must be positive, got %d", n)
+	}
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolvedPath)
+	if err != nil {
+		return err
+	}
+	rows, err := concurrentCyclingRows(ctx, table)
+	if err != nil {
+		return err
+	}
+	method = strings.ToUpper(method)
+	baseHeaders := b.scenarioHeaders(ctx)
+	host := b.requestHost(ctx)
+	client := b.funnel.Client()
+
+	outcomes := make([]concurrentCyclingOutcome, n)
+	workers := maxConcurrentWorkers
+	if n < workers {
+		workers = n
+	}
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		row := rows[i%len(rows)]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, row concurrentCyclingRow) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			headers := make(map[string]string, len(baseHeaders)+1)
+			for k, v := range baseHeaders {
+				headers[k] = v
+			}
+			if !row.absent {
+				headers[header] = row.value
+			}
+			resp, reqErr := client.Do(ctx, httpx.Request{
+				Method: method, URL: url, Headers: headers, Host: host,
+			}, 0, 0)
+			outcome := concurrentCyclingOutcome{row: row, requestErr: reqErr}
+			if resp != nil {
+				outcome.gotStatus = resp.StatusCode
+			}
+			outcomes[i] = outcome
+		}(i, row)
+	}
+	wg.Wait()
+
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store concurrent request outcomes without runner context")
+	}
+	local.Set(keyConcurrentOutcomes, outcomes)
+	return nil
+}
+
+// maskConcurrentValue truncates a header value for a failure message, so a real API key never
+// appears in full in test output even on failure.
+func maskConcurrentValue(row concurrentCyclingRow) string {
+	if row.absent {
+		return absentHeaderMarker
+	}
+	const shown = 6
+	if len(row.value) <= shown {
+		return row.value
+	}
+	return row.value[:shown] + "..."
+}
+
+// everyConcurrentResponseMatchesExpectedStatus asserts every outcome recorded by the most
+// recent sendConcurrentCyclingRequests matched its row's expected status, reporting mismatch
+// counts per distinct cause rather than every individual request.
+func (b *Base) everyConcurrentResponseMatchesExpectedStatus(ctx context.Context) error {
+	v, ok := tcontext.Get(ctx, keyConcurrentOutcomes)
+	if !ok {
+		return fmt.Errorf("no concurrent requests have been sent in this scenario")
+	}
+	outcomes, ok := v.([]concurrentCyclingOutcome)
+	if !ok {
+		return fmt.Errorf("concurrent request outcomes have an unexpected type %T", v)
+	}
+
+	counts := map[string]int{}
+	for _, o := range outcomes {
+		masked := maskConcurrentValue(o.row)
+		switch {
+		case o.requestErr != nil:
+			counts[fmt.Sprintf("%s: transport error (%v)", masked, o.requestErr)]++
+		case o.gotStatus != o.row.status:
+			counts[fmt.Sprintf("%s: want %d, got %d", masked, o.row.status, o.gotStatus)]++
+		}
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+
+	causes := make([]string, 0, len(counts))
+	for cause, count := range counts {
+		causes = append(causes, fmt.Sprintf("%dx %s", count, cause))
+	}
+	sort.Strings(causes)
+	return fmt.Errorf("%d of %d concurrent responses did not match their expected status: %s",
+		len(outcomes)-countMatching(outcomes), len(outcomes), strings.Join(causes, "; "))
+}
+
+func countMatching(outcomes []concurrentCyclingOutcome) int {
+	matching := 0
+	for _, o := range outcomes {
+		if o.requestErr == nil && o.gotStatus == o.row.status {
+			matching++
+		}
+	}
+	return matching
+}
+
+// backgroundTrafficProbe polls one data-plane path on a fixed interval until stopped, recording
+// every response status it observed.
+type backgroundTrafficProbe struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+
+	mu       sync.Mutex
+	statuses []int
+}
+
+func (p *backgroundTrafficProbe) record(status int) {
+	p.mu.Lock()
+	p.statuses = append(p.statuses, status)
+	p.mu.Unlock()
+}
+
+func (p *backgroundTrafficProbe) snapshot() []int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]int, len(p.statuses))
+	copy(out, p.statuses)
+	return out
+}
+
+// backgroundTrafficInterval is how often a background probe re-fires its request.
+const backgroundTrafficInterval = 200 * time.Millisecond
+
+const keyBackgroundProbes = "backgroundTrafficProbes"
+
+// backgroundProbes returns this scenario's named probes, creating the map on first use.
+func (b *Base) backgroundProbes(ctx context.Context) (map[string]*backgroundTrafficProbe, error) {
+	if v, ok := tcontext.Get(ctx, keyBackgroundProbes); ok {
+		probes, ok := v.(map[string]*backgroundTrafficProbe)
+		if !ok {
+			return nil, fmt.Errorf("background traffic probes have an unexpected type %T", v)
+		}
+		return probes, nil
+	}
+	probes := map[string]*backgroundTrafficProbe{}
+	if err := tcontext.Set(ctx, keyBackgroundProbes, probes); err != nil {
+		return nil, err
+	}
+	return probes, nil
+}
+
+// startBackgroundTraffic begins polling a data-plane path on a fixed interval in the background,
+// under a caller-chosen name a later step stops and asserts against. The URL is re-resolved on
+// every tick rather than once, so a probe started before a gateway-runtime restart keeps polling
+// the correct port once it comes back up.
+func (b *Base) startBackgroundTraffic(ctx context.Context, method, path, header, value, name string) error {
+	resolvedPath, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolvedValue, err := stepscommon.Expand(ctx, value)
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("background traffic probe name must not be empty")
+	}
+
+	probes, err := b.backgroundProbes(ctx)
+	if err != nil {
+		return err
+	}
+	if _, exists := probes[name]; exists {
+		return fmt.Errorf("background traffic probe %q is already running", name)
+	}
+
+	method = strings.ToUpper(method)
+	host := b.requestHost(ctx)
+	probeCtx, cancel := context.WithCancel(context.Background())
+	probe := &backgroundTrafficProbe{cancel: cancel, done: make(chan struct{})}
+	client := b.funnel.Client()
+
+	go func() {
+		defer close(probe.done)
+		ticker := time.NewTicker(backgroundTrafficInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-probeCtx.Done():
+				return
+			case <-ticker.C:
+				status := 0
+				if url, urlErr := b.gatewayURL(resolvedPath); urlErr == nil {
+					resp, doErr := client.Do(probeCtx, httpx.Request{
+						Method: method, URL: url, Headers: map[string]string{header: resolvedValue}, Host: host,
+					}, 0, 0)
+					if doErr == nil && resp != nil {
+						status = resp.StatusCode
+					}
+				}
+				probe.record(status)
+			}
+		}
+	}()
+
+	probes[name] = probe
+	return nil
+}
+
+func (b *Base) namedBackgroundProbe(ctx context.Context, name string) (*backgroundTrafficProbe, error) {
+	name = strings.TrimSpace(name)
+	probes, err := b.backgroundProbes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	probe, ok := probes[name]
+	if !ok {
+		return nil, fmt.Errorf("no background traffic probe named %q was started in this scenario", name)
+	}
+	return probe, nil
+}
+
+// stopBackgroundTraffic halts a named probe and waits for its goroutine to exit, so the
+// recorded statuses it leaves behind are final before any assertion reads them.
+func (b *Base) stopBackgroundTraffic(ctx context.Context, name string) error {
+	probe, err := b.namedBackgroundProbe(ctx, name)
+	if err != nil {
+		return err
+	}
+	probe.cancel()
+	<-probe.done
+	return nil
+}
+
+// stopAllBackgroundTraffic is the end-of-scenario safety net: it stops every probe the scenario
+// started, whether or not it was already stopped explicitly, so a failing scenario can never
+// leave a goroutine polling a URL a later scenario in the same runner also addresses. It also
+// deletes each probe from the map, since tcontext.Local persists across a runner's scenarios and
+// a leftover name would block the next scenario from reusing it.
+func (b *Base) stopAllBackgroundTraffic(ctx context.Context) {
+	probes, err := b.backgroundProbes(ctx)
+	if err != nil {
+		return
+	}
+	for _, probe := range probes {
+		probe.cancel()
+	}
+	for _, probe := range probes {
+		<-probe.done
+	}
+	for name := range probes {
+		delete(probes, name)
+	}
+}
+
+func (b *Base) backgroundTrafficNeverReceivedStatus(ctx context.Context, name string, want int) error {
+	probe, err := b.namedBackgroundProbe(ctx, name)
+	if err != nil {
+		return err
+	}
+	statuses := probe.snapshot()
+	for _, got := range statuses {
+		if got == want {
+			return fmt.Errorf("background traffic %q received status %d at least once; recorded statuses: %v",
+				name, want, statuses)
+		}
+	}
+	return nil
+}
+
+func (b *Base) backgroundTrafficAtLeastAttempts(ctx context.Context, name string, min int) error {
+	probe, err := b.namedBackgroundProbe(ctx, name)
+	if err != nil {
+		return err
+	}
+	got := len(probe.snapshot())
+	if got < min {
+		return fmt.Errorf("background traffic %q recorded %d attempts, want at least %d", name, got, min)
+	}
+	return nil
 }

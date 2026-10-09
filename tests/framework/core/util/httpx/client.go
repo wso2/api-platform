@@ -39,6 +39,10 @@ type Response struct {
 	Method string
 	URL    string
 
+	// Proto is the protocol actually negotiated for this exchange, e.g. "HTTP/1.1" or
+	// "HTTP/2.0" - set so a caller asserting protocol parity can tell the two apart.
+	Proto string
+
 	// Elapsed is the duration of the request and body read.
 	Elapsed time.Duration
 }
@@ -98,6 +102,7 @@ func (r *Response) RequireSuccessWithBody(what string) error {
 // Client is the shared HTTP transport layer.
 type Client struct {
 	http    *http.Client
+	http2   *http.Client
 	retryOn []TransientMatcher
 }
 
@@ -165,8 +170,20 @@ func NewClient(opts Options) *Client {
 			return http.ErrUseLastResponse
 		}
 	}
+
+	// A dedicated client for unencrypted HTTP/2 (h2c) prior knowledge: it never negotiates
+	// or falls back to HTTP/1.1, so a caller asserting protocol parity can tell the two apart.
+	var h2cProtocols http.Protocols
+	h2cProtocols.SetUnencryptedHTTP2(true)
+	http2Client := &http.Client{
+		Timeout:       opts.Timeout,
+		CheckRedirect: httpClient.CheckRedirect,
+		Transport:     &http.Transport{Protocols: &h2cProtocols},
+	}
+
 	return &Client{
 		http:    httpClient,
+		http2:   http2Client,
 		retryOn: append([]TransientMatcher(nil), opts.RetryOn...),
 	}
 }
@@ -212,6 +229,9 @@ type Request struct {
 
 	// Host overrides the HTTP Host header. Empty uses the URL host.
 	Host string
+
+	// HTTP2 uses h2c prior knowledge and requires an HTTP/2 response.
+	HTTP2 bool
 }
 
 // Do issues a request and retries only responses recognized as transient.
@@ -282,13 +302,27 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 		return nil, err
 	}
 
+	httpClient := c.http
+	if req.HTTP2 {
+		httpClient = c.http2
+	}
+
 	started := time.Now()
 
-	resp, err := c.http.Do(httpReq)
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
+		if req.HTTP2 {
+			return nil, fmt.Errorf("httpx: sending %s %s over HTTP/2: %w (the target may not support unencrypted HTTP/2 prior knowledge)",
+				req.Method, req.URL, err)
+		}
 		return nil, fmt.Errorf("httpx: %s %s: %w", req.Method, req.URL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if req.HTTP2 && resp.ProtoMajor != 2 {
+		return nil, fmt.Errorf("httpx: expected an HTTP/2 response from %s %s, got protocol %q",
+			req.Method, req.URL, resp.Proto)
+	}
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
@@ -302,6 +336,7 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	return &Response{
 		StatusCode: resp.StatusCode,
 		Body:       raw,
+		Proto:      resp.Proto,
 		Headers:    resp.Header.Clone(),
 		Method:     req.Method,
 		URL:        req.URL,

@@ -992,3 +992,47 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
+      - name: api-key-auth
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/security-policies/api_key_auth.feature
+
+  # Restart isolation, like gateway-restart above: these scenarios restart gateway-runtime or
+  # gateway-controller mid-test, so they need their own block and feature file - gateway-restart
+  # has no addPoliciesFrom, and the topology loader rejects one feature bound to two runners
+  # unless split by gateway-version or db variant (a Godog tag alone isn't enough).
+  - name: gateway-controller-policies-restart
+    parallel: 1
+    components:
+      - name: platform-gateway
+        # Lowers the ext_proc message timeout so a SIGSTOPped policy engine (S51) fails closed
+        # within the suite's 30s HTTP client timeout, not the real 60s default.
+        overlay: tests/framework/core/catalog/overlays/policy-engine-message-timeout.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: api-key-auth-restart
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/security-policies/api_key_auth_restart.feature
+
+  # Multi-gateway consistency, like multigateway above: two platform-gateway replicas behind one
+  # platform-api. Separate block and feature file for the same reasons as the restart block above.
+  - name: gateway-controller-policies-multigateway
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        replicas: 2
+        db: sqlite
+        addPoliciesFrom: ../gateway-controllers/policies
+      - name: testbench
+    runners:
+      - name: api-key-auth-multigateway
+        tags: "gateway-version>=1.1.0"
+        features:
+          - features/gateway/security-policies/api_key_auth_multigateway.feature

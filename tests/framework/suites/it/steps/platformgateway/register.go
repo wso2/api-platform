@@ -19,6 +19,8 @@
 package platformgateway
 
 import (
+	"context"
+
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
@@ -34,6 +36,8 @@ func Register(sc *godog.ScenarioContext, base Base, topo *runtime.Topology, funn
 	sc.Step(`^I send a GET request to the router ready endpoint until status (\d+)$`, s.routerReadyUntil)
 	sc.Step(`^I send a GET request to the policy engine health endpoint$`, s.policyEngineHealth)
 	sc.Step(`^I check the health of all gateway services$`, s.checkAllHealth)
+	sc.Step(`^I check the health of all gateway services until service "([^"]*)" is unhealthy$`,
+		s.checkAllHealthUntilUnhealthy)
 	sc.Step(`^I stop the gateway service "([^"]*)"$`, s.stopService)
 	sc.Step(`^I start the gateway service "([^"]*)"$`, s.startService)
 	sc.Step(`^I restart the "([^"]*)" service$`, s.restartService)
@@ -41,6 +45,13 @@ func Register(sc *godog.ScenarioContext, base Base, topo *runtime.Topology, funn
 	sc.Step(`^the response should indicate healthy status$`, s.responseIndicatesHealthy)
 	sc.Step(`^the health check should report service "([^"]*)" as unhealthy$`, s.serviceUnhealthy)
 	sc.Step(`^all services should report healthy status$`, s.allServicesHealthy)
+	sc.Step(`^I send signal "(STOP|CONT|KILL)" to the "([^"]*)" process in the "([^"]*)" service$`,
+		s.sendProcessSignal)
+	// Safety net for a scenario that fails before resuming a process it SIGSTOPped.
+	sc.After(func(ctx context.Context, _ *godog.Scenario, err error) (context.Context, error) {
+		s.resumeStoppedProcesses(ctx)
+		return ctx, nil
+	})
 	sc.Step(`^the resource creation response should indicate successful deployment$`, s.resourceCreationSucceeded)
 	sc.Step(`^the API update response should indicate successful deployment$`, s.apiUpdateSucceeded)
 	sc.Step(`^the API retrieval response should describe API "([^"]*)" at context "([^"]*)"$`,
