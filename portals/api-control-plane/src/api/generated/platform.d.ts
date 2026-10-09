@@ -2785,6 +2785,175 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List service accounts
+         * @description Returns the organization's service accounts. The client secret is never included, only its masked form. `query` also matches the owner.
+         */
+        get: operations["listServiceAccounts"];
+        put?: never;
+        /**
+         * Create a service account
+         * @description Creates a service account and returns its client ID and secret. The secret is
+         *     shown only in this response and cannot be recovered later.
+         */
+        post: operations["createServiceAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/{serviceAccountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a service account */
+        get: operations["getServiceAccount"];
+        /**
+         * Update a service account
+         * @description Updates metadata, roles or status. Setting `status` to `disabled` stops every
+         *     exchange and invalidates tokens already issued. Removing a role also
+         *     invalidates tokens already issued; adding one does not. Returns 409 if the
+         *     account was changed by another request after this one read it; retry.
+         */
+        put: operations["updateServiceAccount"];
+        post?: never;
+        /**
+         * Delete a service account
+         * @description Deletes the account and invalidates tokens already issued.
+         */
+        delete: operations["deleteServiceAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange client credentials for an access token
+         * @description OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
+         *     token yet. Every authentication failure returns the same 401.
+         *
+         *     The client authenticates either with HTTP Basic (`Authorization: Basic`, client ID
+         *     and secret form-urlencoded first) or with `client_id` and `client_secret` in the
+         *     body, not both (RFC 6749 section 2.3.1).
+         *
+         *     The token carries one authorization claim, chosen by the server's
+         *     `auth.authorization.mode`. In `scope` mode, `scope` is required and the token
+         *     carries exactly the requested scopes; a missing scope, or one the account's
+         *     roles do not grant, is a 400. In `role` mode, `scope` is ignored and the
+         *     token carries the account's roles. The response's `scope` is what the token
+         *     authorizes in either mode.
+         */
+        post: operations["issueServiceAccountToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/introspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Introspect a service-account token
+         * @description RFC 7662 token introspection. Every inactive cause returns exactly
+         *     `{"active": false}`.
+         */
+        post: operations["introspectServiceAccountToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/jwks.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service-account signing keys
+         * @description Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+         */
+        get: operations["getServiceAccountJWKS"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/{serviceAccountId}/regenerate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate a service account's secret
+         * @description Replaces the client secret. The old secret stops working at once, with no
+         *     overlap, and tokens already issued are invalidated. The new secret is shown
+         *     only in this response.
+         */
+        post: operations["regenerateServiceAccountSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-account-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the roles a service account can hold
+         * @description Every role in the role-to-scope mapping, each with the scopes it grants.
+         *     A sibling of /service-accounts, not a child, so it never shadows an account id.
+         */
+        get: operations["listServiceAccountRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5908,6 +6077,184 @@ export interface components {
             list: components["schemas"]["SecretSummary"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /** @description A service account. Never carries the plaintext secret. */
+        ServiceAccount: {
+            /**
+             * @description Service account handle, unique within the organization
+             * @example ci-deployer
+             */
+            id: string;
+            /** @example CI deployer */
+            displayName: string;
+            /**
+             * @description What the account is for; may be empty
+             * @example Deploys REST APIs from the release pipeline
+             */
+            description: string;
+            /** @example sa_acme_ci-deployer_3f9a1c */
+            readonly clientId: string;
+            /** @example ***9f2c1 */
+            readonly maskedSecret: string;
+            /**
+             * @description The account's roles, from the role-to-scope mapping file
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** Format: date-time */
+            readonly lastUsedAt?: string;
+            /** @example 203.0.113.7 */
+            readonly lastUsedIp?: string;
+            /** Format: date-time */
+            readonly secretRegeneratedAt?: string;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /** Format: date-time */
+            readonly createdAt?: string;
+            /** @example john.doe */
+            readonly updatedBy?: string;
+            /** Format: date-time */
+            readonly updatedAt?: string;
+        };
+        ServiceAccountListResponse: {
+            /**
+             * @description Number of service accounts in current response
+             * @example 1
+             */
+            count: number;
+            list: components["schemas"]["ServiceAccount"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        ServiceAccountRole: {
+            /** @example ap_service_account */
+            name: string;
+            /**
+             * @example [
+             *       "ap:rest_api:read",
+             *       "ap:gateway:read"
+             *     ]
+             */
+            scopes: string[];
+        };
+        ServiceAccountRoleListResponse: {
+            /** @example 1 */
+            count: number;
+            list: components["schemas"]["ServiceAccountRole"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        ServiceAccountCreateRequest: {
+            /**
+             * @description Service account handle. `token` is reserved.
+             * @example ci-deployer
+             */
+            id: string;
+            /** @example CI deployer */
+            displayName: string;
+            /** @example Deploys REST APIs from the release pipeline */
+            description?: string;
+            /**
+             * @description Roles from the role-to-scope mapping file. Any role is accepted.
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles: string[];
+        };
+        /** @description Every field is optional. */
+        ServiceAccountUpdateRequest: {
+            /** @example CI deployer */
+            displayName?: string;
+            /** @example Deploys REST APIs from the release pipeline */
+            description?: string;
+            /**
+             * @description Replaces the roles. Removing a role invalidates tokens
+             *     already issued; adding one does not.
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles?: string[];
+            /**
+             * @example disabled
+             * @enum {string}
+             */
+            status?: "active" | "disabled";
+        };
+        /**
+         * @description The only response that carries a plaintext secret. Returned on create and on
+         *     regenerate. The secret is shown once and cannot be recovered.
+         */
+        ServiceAccountCredentials: {
+            serviceAccount: components["schemas"]["ServiceAccount"];
+            /** @example sa_acme_ci-deployer_3f9a1c */
+            clientId: string;
+            /** @description apsa_ followed by 64 hex characters */
+            clientSecret: string;
+        };
+        /** @description Send client_id and client_secret here, or with HTTP Basic instead. */
+        ServiceAccountTokenRequest: {
+            /** @enum {string} */
+            grant_type: "client_credentials";
+            client_id?: string;
+            client_secret?: string;
+            /**
+             * @description Space-separated scopes. Required when the server's
+             *     `auth.authorization.mode` is `scope`; ignored when it is `role`.
+             * @example ap:rest_api:read ap:gateway:read
+             */
+            scope?: string;
+        };
+        ServiceAccountTokenResponse: {
+            access_token: string;
+            /** @example Bearer */
+            token_type: string;
+            /**
+             * @description Lifetime in seconds
+             * @example 900
+             */
+            expires_in: number;
+            /** @example ap:rest_api:read ap:rest_api:deployment:manage */
+            scope?: string;
+        };
+        IntrospectionRequest: {
+            token: string;
+            token_type_hint?: string;
+        };
+        IntrospectionResponse: {
+            active: boolean;
+            scope?: string;
+            client_id?: string;
+            sub?: string;
+            aud?: string;
+            iss?: string;
+            exp?: number;
+            iat?: number;
+            jti?: string;
+            token_type?: string;
+        };
+        JWKSResponse: {
+            keys: components["schemas"]["JWK"][];
+        };
+        /** @description An RSA public key (RFC 7517) */
+        JWK: {
+            /** @example RSA */
+            kty: string;
+            /** @description RFC 7638 thumbprint of the key */
+            kid: string;
+            /** @example sig */
+            use?: string;
+            /** @example RS256 */
+            alg?: string;
+            n: string;
+            /** @example AQAB */
+            e: string;
+        };
         GatewayTokenListResponse: {
             /** @description Number of tokens in current response */
             count: number;
@@ -6866,6 +7213,8 @@ export interface components {
     parameters: {
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project. */
         projectId: string;
+        /** @description **Service account ID** consisting of the **handle** of the service account. */
+        serviceAccountId: string;
         /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
         apiId: string;
         /** @description **Application ID** consisting of the **handle** of the application. */
@@ -12570,6 +12919,279 @@ export interface operations {
             };
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listServiceAccounts: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of service accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Service account created. The response carries the only copy of the secret. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountCredentials"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccount"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Service account updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccount"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service account deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    issueServiceAccountToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["ServiceAccountTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Access token issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountTokenResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    introspectServiceAccountToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["IntrospectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Introspection result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntrospectionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getServiceAccountJWKS: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON Web Key Set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JWKSResponse"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    regenerateServiceAccountSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Secret regenerated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountCredentials"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listServiceAccountRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roles a service account can hold */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountRoleListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
         };
     };
 }

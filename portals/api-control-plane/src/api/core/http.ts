@@ -105,6 +105,8 @@ const attachRequestContext = (
     // a body the server cannot split.
     if (config.data instanceof FormData) {
         config.headers.delete('Content-Type');
+    } else if (config.data instanceof URLSearchParams) {
+        config.headers.set('Content-Type', 'application/x-www-form-urlencoded');
     } else {
         config.headers.set('Content-Type', 'application/json');
     }
@@ -333,10 +335,19 @@ export type RequestOptions = {
   query?: Query;
   headers?: Record<string, string>;
   body?: unknown;
+  /**
+   * Whether a 401 means the session is gone. `false` for a request carrying its
+   * own credentials (the service-account token exchange), where a 401 means
+   * those were wrong and the session is fine.
+   */
+  authFailureIsSession?: boolean;
 };
 
 const isFormData = (value: unknown): value is FormData =>
   typeof FormData !== 'undefined' && value instanceof FormData;
+
+const isUrlEncoded = (value: unknown): value is URLSearchParams =>
+  typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 
 
 /**
@@ -407,13 +418,14 @@ async function send(
     requestId,
     operationName: options.operationName,
     ...(responseType ? { responseType } : {}),
-    // FormData is passed through untouched; anything else is serialized here
-    // so the Content-Type set above is always accurate.
+    // FormData and URLSearchParams are passed through untouched; anything else
+    // is serialized here so the Content-Type set above is always accurate.
     ...(options.body !== undefined
       ? {
-          data: isFormData(options.body)
-            ? options.body
-            : JSON.stringify(options.body),
+          data:
+            isFormData(options.body) || isUrlEncoded(options.body)
+              ? options.body
+              : JSON.stringify(options.body),
         }
       : {}),
   };
@@ -442,7 +454,7 @@ async function send(
       }
     }
 
-    if (response.status === 401) notifySessionExpired();
+    if (response.status === 401 && options.authFailureIsSession !== false) notifySessionExpired();
     // Tagged with the operation so `PermissionProvider` can tell a genuine
     // denial from the console having predicted this call would succeed.
     if (response.status === 403) notifyForbidden(options.operationName);

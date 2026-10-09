@@ -12,10 +12,13 @@
      would block a configuration the binary accepts.
 */ -}}
 {{- $skipJwtValidation := and (eq $pa.config.auth.mode "internal_token") (dig "internalToken" "skipValidation" false $pa.config.auth) -}}
-{{- $jwtKeysMounted := and (has $pa.config.auth.mode (list "internal_token" "file")) (not $skipJwtValidation) -}}
+{{- /* Service accounts without their own pair sign with auth.jwt, in every mode. */ -}}
+{{- $saSharedKey := include "apip.platformApi.saSharedKey" . -}}
+{{- $jwtKeysMounted := or (and (has $pa.config.auth.mode (list "internal_token" "file")) (not $skipJwtValidation)) $saSharedKey -}}
+{{- $jwtPrivateMounted := or (eq $pa.config.auth.mode "file") $saSharedKey -}}
 {{- $jwtKeyDir := "" -}}
 {{- if $jwtKeysMounted -}}
-{{- $jwtPublicKeyFile := required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures. In \"internal_token\" mode, set config.auth.internalToken.skipValidation=true to run without a verifying key." $jwt.publicKeyFile -}}
+{{- $jwtPublicKeyFile := required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\", or when service accounts use the shared auth.jwt pair — it is the mount path of the PEM that verifies token signatures. In \"internal_token\" mode, set config.auth.internalToken.skipValidation=true to run without a verifying key." $jwt.publicKeyFile -}}
 {{- if not (hasPrefix "/" $jwtPublicKeyFile) -}}
 {{- fail (printf "platform-api: config.auth.jwt.publicKeyFile must be an absolute path (got %q) — the chart derives the jwt-keys volume mountPath from its parent directory." $jwtPublicKeyFile) -}}
 {{- end -}}
@@ -23,13 +26,45 @@
 {{- if or (eq $jwtKeyDir "") (eq $jwtKeyDir "/") -}}
 {{- fail (printf "platform-api: config.auth.jwt.publicKeyFile must sit in a subdirectory, not directly at the filesystem root (got %q) — the chart mounts its parent directory as the jwt-keys volume and cannot mount \"/\". Use e.g. /etc/platform-api/keys/jwt_public.pem." $jwtPublicKeyFile) -}}
 {{- end -}}
-{{- if eq $pa.config.auth.mode "file" -}}
-{{- $jwtPrivateKeyFile := required "platform-api: config.auth.jwt.privateKeyFile is required when config.auth.mode is \"file\" — it is the mount path of the PEM that signs login tokens." $jwt.privateKeyFile -}}
+{{- if $jwtPrivateMounted -}}
+{{- $jwtPrivateKeyFile := required "platform-api: config.auth.jwt.privateKeyFile is required when config.auth.mode is \"file\", or when service accounts use the shared auth.jwt pair — it is the mount path of the PEM that signs tokens." $jwt.privateKeyFile -}}
 {{- if ne (regexReplaceAll "/[^/]+$" $jwtPrivateKeyFile "") $jwtKeyDir -}}
 {{- fail (printf "platform-api: config.auth.jwt.privateKeyFile must be in the same directory as publicKeyFile (public %q, private %q) — both PEMs come from one Secret mounted as a single jwt-keys volume at %q, so a private key elsewhere would be written into that directory while the config kept reading it from its own." $jwtPublicKeyFile $jwtPrivateKeyFile $jwtKeyDir) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
+{{- /*
+     A service-account key pair (and its retired public keys) rides in the same
+     jwt-keys volume, so every SA file must sit in that one directory. In idp
+     mode, or internal_token with skipValidation, the SA public key sets it.
+*/ -}}
+{{- $sa := default (dict) $pa.config.auth.serviceAccount -}}
+{{- $saOwnKey := include "apip.platformApi.saOwnKey" . -}}
+{{- $saFiles := list -}}
+{{- if $saOwnKey -}}
+{{- $saFiles = concat (list $sa.jwt.publicKeyFile $sa.jwt.privateKeyFile) (default (list) $sa.retiredPublicKeyFiles) -}}
+{{- if not $jwtKeysMounted -}}
+{{- $jwtKeyDir = regexReplaceAll "/[^/]+$" $sa.jwt.publicKeyFile "" -}}
+{{- end -}}
+{{- $taken := list -}}
+{{- if $jwtKeysMounted -}}
+{{- $taken = append $taken (base $jwt.publicKeyFile) -}}
+{{- if $jwtPrivateMounted }}{{ $taken = append $taken (base $jwt.privateKeyFile) }}{{ end -}}
+{{- end -}}
+{{- range $f := $saFiles -}}
+{{- if not (hasPrefix "/" $f) -}}
+{{- fail (printf "platform-api: service-account key paths must be absolute (got %q)." $f) -}}
+{{- end -}}
+{{- if or (eq $jwtKeyDir "") (eq $jwtKeyDir "/") (ne (regexReplaceAll "/[^/]+$" $f "") $jwtKeyDir) -}}
+{{- fail (printf "platform-api: service-account key %q must sit in %q, a subdirectory — all key PEMs are mounted from the Secret as one jwt-keys volume there." $f $jwtKeyDir) -}}
+{{- end -}}
+{{- if has (base $f) $taken -}}
+{{- fail (printf "platform-api: service-account key file name %q is used twice in the jwt-keys volume — give each PEM its own name." (base $f)) -}}
+{{- end -}}
+{{- $taken = append $taken (base $f) -}}
+{{- end -}}
+{{- end -}}
+{{- $jwtVolumeMounted := or $jwtKeysMounted $saOwnKey -}}
 {{- $tlsMounted := and $https.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
 {{- if and $deployment.enabled $https.enabled (not (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret"))) }}
 {{- fail "platform-api: config.server.https.enabled=true requires tls.certificateProvider to be \"cert-manager\" or \"secret\" — the Platform API has no self-signed fallback." }}
@@ -192,7 +227,7 @@ spec:
               mountPath: {{ $pa.config.auth.authorization.roleToScopeMapping }}
               subPath: role-to-scope-mapping.yaml
             {{- end }}
-            {{- if $jwtKeysMounted }}
+            {{- if $jwtVolumeMounted }}
             - name: jwt-keys
               mountPath: {{ $jwtKeyDir }}
               readOnly: true
@@ -223,21 +258,36 @@ spec:
               - key: role-to-scope-mapping.yaml
                 path: role-to-scope-mapping.yaml
               {{- end }}
-        {{- if $jwtKeysMounted }}
+        {{- if $jwtVolumeMounted }}
         # RS256 JWT keys mounted as PEM files from the external Secret. The
         # public key verifies tokens in internal_token and file modes; the
         # private key signs file-mode login tokens (mounted only in file mode).
         # Not mounted at all when internal_token mode skips validation — there is
-        # no key to verify with, so the Secret needn't carry the PEM.
+        # no key to verify with, so the Secret needn't carry the PEM. With service
+        # accounts on, their signing pair is mounted here in every mode: their own
+        # pair if set (each retired key read from the Secret key of its file name),
+        # else both auth.jwt PEMs.
         - name: jwt-keys
           secret:
             secretName: {{ $secretName }}
             items:
+              {{- if $jwtKeysMounted }}
               - key: {{ $secrets.keys.jwtPublicKey }}
                 path: {{ base $jwt.publicKeyFile }}
-              {{- if eq $pa.config.auth.mode "file" }}
+              {{- if $jwtPrivateMounted }}
               - key: {{ $secrets.keys.jwtPrivateKey }}
-                path: {{ base (required "platform-api: config.auth.jwt.privateKeyFile is required when config.auth.mode is \"file\" — it is the mount path of the PEM that signs login tokens." $jwt.privateKeyFile) }}
+                path: {{ base $jwt.privateKeyFile }}
+              {{- end }}
+              {{- end }}
+              {{- if $saOwnKey }}
+              - key: {{ $secrets.keys.saJwtPublicKey | default "sa_jwt_public.pem" }}
+                path: {{ base $sa.jwt.publicKeyFile }}
+              - key: {{ $secrets.keys.saJwtPrivateKey | default "sa_jwt_private.pem" }}
+                path: {{ base $sa.jwt.privateKeyFile }}
+              {{- range $sa.retiredPublicKeyFiles }}
+              - key: {{ base . }}
+                path: {{ base . }}
+              {{- end }}
               {{- end }}
         {{- end }}
         {{- if $tlsMounted }}

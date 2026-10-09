@@ -495,6 +495,46 @@ type SecretRepository interface {
 	Exists(orgID, handle string) (bool, error)
 }
 
+// ServiceAccountRepository persists service accounts. Every write that
+// revokes tokens takes the ledger row too, so both land in one transaction.
+type ServiceAccountRepository interface {
+	// Create inserts the account and its identity row (uuid = sa.UUID,
+	// idp_id = subject) together.
+	Create(sa *model.ServiceAccount, subject string) error
+	GetByHandle(orgID, handle string) (*model.ServiceAccount, error)
+	// GetByClientID is the token endpoint's lookup. Not org-scoped: the caller
+	// presents no organization and client_id is globally unique.
+	GetByClientID(clientID string) (*model.ServiceAccount, error)
+	// List and Count filter by search (name or handle) when it is non-empty.
+	List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error)
+	Count(orgID, search string) (int, error)
+	// Update writes metadata, roles, status and token version; rev is written
+	// too when non-nil. It fails with a conflict unless the row still has
+	// prevVersion and prevStatus.
+	Update(sa *model.ServiceAccount, prevVersion int64, prevStatus string, rev *model.ServiceAccountRevocation) error
+	// UpdateSecret replaces the secret hash and token version and writes rev,
+	// unless the row no longer has prevVersion.
+	UpdateSecret(sa *model.ServiceAccount, prevVersion int64, rev *model.ServiceAccountRevocation) error
+	// Delete removes the account and writes rev, which outlives it, unless the
+	// row no longer has prevVersion.
+	Delete(orgID, uuid string, prevVersion int64, rev *model.ServiceAccountRevocation) error
+	TouchLastUsed(uuid string, at time.Time, ip string) error
+	// ForeignReservedIdentities returns sa:-prefixed identities no service
+	// account minted.
+	ForeignReservedIdentities() ([]string, error)
+}
+
+// ServiceAccountRevocationRepository reads and prunes the revocation ledger.
+type ServiceAccountRevocationRepository interface {
+	// Revoke upserts one account's watermark. A higher min_token_version always
+	// wins, so the watermark never moves backwards.
+	Revoke(rev *model.ServiceAccountRevocation) error
+	// ListActive returns every unexpired watermark.
+	ListActive(now time.Time) ([]*model.ServiceAccountRevocation, error)
+	// PruneExpired deletes rows no live token could match.
+	PruneExpired(now time.Time) (int64, error)
+}
+
 // CustomPolicyRepository defines the interface for custom policy persistence
 type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error

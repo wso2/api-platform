@@ -179,6 +179,14 @@ const (
 	CodeSecretInUse    = "SECRET_IN_USE"
 )
 
+// Service account domain codes.
+const (
+	CodeServiceAccountNotFound = "SERVICE_ACCOUNT_NOT_FOUND"
+	CodeServiceAccountExists   = "SERVICE_ACCOUNT_EXISTS"
+	// CodeServiceAccountInvalidScope is RFC 6749's invalid_scope at the token endpoint.
+	CodeServiceAccountInvalidScope = "SERVICE_ACCOUNT_INVALID_SCOPE"
+)
+
 // Artifact domain codes. Used by flows that operate on a generic artifact
 // reference (REST API / LLM provider / LLM proxy / MCP proxy) — API keys,
 // subscriptions, and application associations — where the caller shouldn't

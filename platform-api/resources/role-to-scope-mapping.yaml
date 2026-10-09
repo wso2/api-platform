@@ -10,6 +10,9 @@
 #     such a user's entire grant, so this file is the only place their privileges
 #     are defined; there is no per-user scope list to keep in sync with it.
 #
+# A service account may hold any role here, one or more. ap_service_account is
+# the read-only role the UI selects for a new account.
+#
 # When a token — or a file-mode user's roles list — carries multiple roles, the
 # effective scopes are the union of all matching entries; most-permissive wins.
 #
@@ -77,6 +80,10 @@ roles:
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:secret:manage
+      # Creating a service account creates privilege, so manage is admin-only.
+      - ap:service_account:manage
+      # ap:service_account:token:introspect is deliberately in no shipped role:
+      # it is meant for a validating component, not for people.
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage
@@ -136,6 +143,7 @@ roles:
       - ap:application:association:read
       - ap:subscription:read
       - ap:secret:read
+      - ap:service_account:read
       - ap:api_key:read
       - ap:api_portal:manage
       - ap:api_portal:publication:read
@@ -302,3 +310,23 @@ roles:
       - dp:api_workflow:read
       - dp:webhook_subscriber:read
       - dp:event:read
+
+  # Service account, read-only — the Platform API read scopes of ap_viewer.
+  - name: ap_service_account
+    scopes:
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:read
+      - ap:gateway_custom_policy:read
+      - ap:rest_api:read
+      - ap:rest_api:deployment:read
+      - ap:application:read
+      - ap:subscription:read
+      - ap:subscription_plan:read
+      - ap:llm_template:read
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:read
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:read
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:read

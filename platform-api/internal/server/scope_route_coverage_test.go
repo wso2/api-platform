@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	eghandler "github.com/wso2/api-platform/platform-api/plugins/eventgateway/handler"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -62,6 +63,7 @@ func registerAllRoutes(mux *http.ServeMux) {
 	handler.NewAgentProxyDeploymentHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewAgentProxyAPIKeyHandler(nil, nil, nil, "scope", logger).RegisterRoutes(mux)
 	handler.NewSecretHandler(nil, nil, logger).RegisterRoutes(mux)
+	handler.NewServiceAccountHandler(nil, nil, nil, nil, nil, logger).RegisterRoutes(mux)
 
 	// Plugin routes are registered on the same mux and their specs merged into
 	// the same registry, so they are held to the same check.
@@ -149,6 +151,69 @@ func TestSecretsRoutesAreRegisteredOnTheBasePath(t *testing.T) {
 		if _, found := registry.Lookup(probe.method, matchedPath); !found {
 			t.Errorf("%s %s resolves to %q, which declares no scope and would be denied",
 				probe.method, probe.path, pattern)
+		}
+	}
+}
+
+// TestServiceAccountRoutesResolveToTheirScopes checks router→spec for the ten
+// service-account routes: the two public ones must match the literal route and
+// declare no scope; the rest must declare one.
+func TestServiceAccountRoutesResolveToTheirScopes(t *testing.T) {
+	registry := loadMergedRegistry(t)
+
+	raw, err := os.ReadFile(realSpecPath)
+	if err != nil {
+		t.Fatalf("read spec: %v", err)
+	}
+	var spec struct {
+		Paths map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("parse spec: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	registerAllRoutes(mux)
+
+	base := constants.APIBasePath + "/service-accounts"
+	for _, probe := range []struct {
+		method, path, wantPattern string
+		public                    bool
+	}{
+		{http.MethodGet, base, base, false},
+		{http.MethodPost, base, base, false},
+		{http.MethodGet, base + "/ci-bot", base + "/{serviceAccountId}", false},
+		{http.MethodPut, base + "/ci-bot", base + "/{serviceAccountId}", false},
+		{http.MethodDelete, base + "/ci-bot", base + "/{serviceAccountId}", false},
+		{http.MethodPost, base + "/ci-bot/regenerate-secret", base + "/{serviceAccountId}/regenerate-secret", false},
+		{http.MethodPost, base + "/introspect", base + "/introspect", false},
+		{http.MethodPost, base + "/token", base + "/token", true},
+		{http.MethodGet, base + "/jwks.json", base + "/jwks.json", true},
+		{http.MethodGet, constants.APIBasePath + "/service-account-roles", constants.APIBasePath + "/service-account-roles", false},
+	} {
+		req, err := http.NewRequest(probe.method, probe.path, nil)
+		if err != nil {
+			t.Fatalf("build probe request: %v", err)
+		}
+		_, pattern := mux.Handler(req)
+		_, matchedPath, _ := strings.Cut(pattern, " ")
+		if matchedPath != probe.wantPattern {
+			t.Errorf("%s %s matched %q, want %q", probe.method, probe.path, pattern, probe.wantPattern)
+			continue
+		}
+		scopes, found := registry.Lookup(probe.method, matchedPath)
+		if probe.public {
+			// The registry omits unscoped operations, so check the spec directly.
+			specPath := strings.TrimPrefix(probe.wantPattern, constants.APIBasePath)
+			if _, ok := spec.Paths[specPath][strings.ToLower(probe.method)]; !ok {
+				t.Errorf("%s %s is not declared in the OpenAPI spec", probe.method, specPath)
+			}
+		}
+		if probe.public && found && len(scopes) > 0 {
+			t.Errorf("%s %s is public but declares scopes %v", probe.method, probe.path, scopes)
+		}
+		if !probe.public && (!found || len(scopes) == 0) {
+			t.Errorf("%s %s declares no scope and would be denied", probe.method, probe.path)
 		}
 	}
 }
