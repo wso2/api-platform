@@ -1105,5 +1105,3 @@ failure budget:
 
 - Generated field reference: [REST API schemas](../rest-apis/gateway/schemas.md) — `faultPolicies`
   on the RestApi and Mcp specs, `globalFaultPolicies` on the LLM kinds.
-- `gateway/it/features/fault-policies.feature` — executable examples of every behaviour described
-  here.
