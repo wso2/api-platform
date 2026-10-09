@@ -358,6 +358,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			}
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
+		if execCtx != nil && execCtx.correlationToken != "" {
+			execCtx.correlationTokenSent = true
+		}
 	}
 }
 
@@ -375,11 +378,22 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 // take (or for the store's hard cap). Any stream that issued a token is
 // considered, whatever later phases carry -- a loopback hop never stores, so it
 // has no token.
+//
+// A token that never reached Envoy (the phase that issued it failed before its
+// response was sent, and no later response carried it) cannot appear in any
+// access-log entry, so its entry is discarded instead of holding a slot until the
+// hard cap.
 func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
-	if s.correlationStore == nil || execCtx.correlationToken == "" || !execCtx.responseFinished {
+	if s.correlationStore == nil || execCtx.correlationToken == "" {
 		return
 	}
-	s.correlationStore.Complete(execCtx.correlationToken)
+	if !execCtx.correlationTokenSent {
+		s.correlationStore.Discard(execCtx.correlationToken)
+		return
+	}
+	if execCtx.responseFinished {
+		s.correlationStore.Complete(execCtx.correlationToken)
+	}
 }
 
 // endsResponse reports whether this exchange ends the response as seen by

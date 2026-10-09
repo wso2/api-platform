@@ -35,6 +35,7 @@ func TestLoad_CorrelationStore_EveryKeyBindsFromTOML(t *testing.T) {
 enabled = true
 
 [collector.correlation_store]
+mode = "off"
 capacity = 50000
 ttl = "45s"
 shards = 64
@@ -45,6 +46,7 @@ max_body_bytes = 67108864
 	require.NoError(t, err)
 
 	c := cfg.Collector.CorrelationStore
+	assert.Equal(t, "off", c.Mode, "mode")
 	assert.Equal(t, 50000, c.Capacity, "capacity")
 	assert.Equal(t, 45*time.Second, c.TTL, "ttl")
 	assert.Equal(t, 64, c.Shards, "shards")
@@ -83,6 +85,8 @@ func TestValidate_CorrelationStoreBounds(t *testing.T) {
 		"too many shards":         {"shards = 2048\ncapacity = 50000", "collector.correlation_store.shards must not exceed 1024"},
 		"capacity over the limit": {"capacity = 20000000", "collector.correlation_store.capacity must not exceed 10000000"},
 		"capacity below shards":   {"capacity = 8\nshards = 64", "collector.correlation_store.capacity (8) must be at least shards (64)"},
+		"unknown mode":            {`mode = "sometimes"`, `collector.correlation_store.mode must be "auto", "on" or "off", got "sometimes"`},
+		"ttl within flush":        {`ttl = "1s"`, "collector.correlation_store.ttl (1s) must be longer than collector.server.buffer_flush_interval (1s)"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -105,4 +109,51 @@ ignore_path_prefixes = ["/_gateway-health", "/metrics"]
 	cfg, err := Load(path)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/_gateway-health", "/metrics"}, cfg.Collector.IgnorePathPrefixes)
+}
+
+// The TTL must outlast Envoy's access-log flush interval, which the gateway
+// controller reads from the same [collector.server] section.
+func TestValidate_CorrelationStoreTTLAgainstConfiguredFlushInterval(t *testing.T) {
+	path := writeOTelTOML(t, `
+[traffic_logging]
+enabled = true
+
+[collector.server]
+buffer_flush_interval = 60000000000
+
+[collector.correlation_store]
+ttl = "30s"
+`)
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be longer than collector.server.buffer_flush_interval (1m0s)")
+}
+
+// The store needs the ext_proc and ALS streams of a request to reach this process,
+// which only UDS guarantees; "auto" turns it off in TCP mode.
+func TestCorrelationStoreEnabled(t *testing.T) {
+	cases := []struct {
+		name, mode, extProcMode, alsMode string
+		collector                        bool
+		want                             bool
+	}{
+		{"auto, both uds", "auto", "uds", "uds", true, true},
+		{"auto, defaults", "", "", "", true, true},
+		{"auto, ext_proc over tcp", "auto", "tcp", "uds", true, false},
+		{"auto, ALS over tcp", "auto", "uds", "tcp", true, false},
+		{"on, tcp", "on", "tcp", "tcp", true, true},
+		{"off, uds", "off", "uds", "uds", true, false},
+		{"collector disabled", "on", "uds", "uds", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultConfig()
+			cfg.TrafficLogging.Enabled = tc.collector
+			cfg.Analytics.Enabled = false
+			cfg.Collector.CorrelationStore.Mode = tc.mode
+			cfg.PolicyEngine.Server.Mode = tc.extProcMode
+			cfg.Collector.Server.Mode = tc.alsMode
+			assert.Equal(t, tc.want, cfg.CorrelationStoreEnabled())
+		})
+	}
 }

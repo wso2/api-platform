@@ -128,10 +128,6 @@ func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirect
 		},
 	}
 
-	if len(cfg.ExcludeFields) > 0 {
-		dir.Fields = &dto.TrafficLogFields{Exclude: cfg.ExcludeFields}
-	}
-
 	return dir
 }
 
@@ -139,7 +135,7 @@ func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirect
 // (l.globalDir is guaranteed non-nil by the caller). When global properties are
 // configured, it returns a shallow copy of l.globalDir carrying this request's
 // resolved Properties, so concurrent requests never race on a shared, mutated
-// globalDir.Properties field. The Request/Response/Fields pointers are shared
+// globalDir.Properties field. The Request/Response pointers are shared
 // read-only state and safe to alias across the copy.
 func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective {
 	resolved := l.globalProperties.resolve(event)

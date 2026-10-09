@@ -214,7 +214,7 @@ func withAnalyticsData(t *testing.T, entry *v3.HTTPAccessLogEntry, data map[stri
 // ext_proc stream stored fields under token.
 func createLogEntryWithToken(t *testing.T, requestID, token string) *v3.HTTPAccessLogEntry {
 	t.Helper()
-	return withAnalyticsData(t, createLogEntryWithRequestID(requestID), map[string]any{CorrelationTokenKey: token})
+	return withAnalyticsData(t, createLogEntryWithRequestID(requestID), map[string]any{correlation.TokenKey: token})
 }
 
 // A stored body is preferred over metadata, and the hit consumes the entry so its
@@ -238,7 +238,17 @@ func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
 	assert.False(t, stillThere, "entry consumed by the ALS read")
 }
 
-func TestCorrelationTokenKey(t *testing.T) {
-	// The ext_proc side (internal/kernel) spells out the same key.
-	assert.Equal(t, "x-wso2-correlation-token", CorrelationTokenKey)
+// A stored empty header set means every header was filtered out in a later phase:
+// the event carries no headers and does not fall back to whatever metadata holds.
+func TestPrepareAnalyticEvent_StoredEmptyHeadersDoNotFallBackToMetadata(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
+	store := correlation.NewStore(100, time.Minute, 1)
+	store.Put("token-filtered", correlation.Payload{RequestHeaders: map[string]string{}})
+	a.SetCorrelationStore(store)
+
+	entry := withAnalyticsData(t, createLogEntryWithToken(t, "req-filtered", "token-filtered"),
+		map[string]any{RequestHeadersKey: `{"authorization":"Bearer secret"}`})
+	event := a.prepareAnalyticEvent(entry)
+
+	assert.NotContains(t, event.Properties, dto.PropKeyRequestHeaders)
 }

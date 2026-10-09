@@ -20,6 +20,7 @@ package publishers
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -125,3 +126,42 @@ func BenchmarkLog_Publish_CustomerExcludeFields(b *testing.B) {
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
+
+// Every top-level JSON key of TrafficLogEvent must have a clearer, so a top-level
+// exclusion is applied on the struct; and every clearer must name a real key.
+func TestTrafficLogFieldClearersMatchJSONTags(t *testing.T) {
+	typ := reflect.TypeOf(TrafficLogEvent{})
+	tags := map[string]bool{}
+	for i := 0; i < typ.NumField(); i++ {
+		name := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
+		if name == "" || name == "-" {
+			continue
+		}
+		tags[name] = true
+		assert.Contains(t, trafficLogFieldClearers, name, "TrafficLogEvent.%s has no clearer", typ.Field(i).Name)
+	}
+	for name := range trafficLogFieldClearers {
+		assert.True(t, tags[name], "clearer %q matches no JSON key of TrafficLogEvent", name)
+	}
+}
+
+// Each clearer actually empties its field in the marshalled line.
+func TestTrafficLogFieldClearersClearTheirField(t *testing.T) {
+	for name, clear := range trafficLogFieldClearers {
+		tl := &TrafficLogEvent{
+			Component: "c", Timestamp: "t", CorrelationID: "id", Status: 200,
+			API: &TrafficLogAPI{Name: "a"}, Operation: &TrafficLogOperation{Path: "/p"},
+			Target: &TrafficLogTarget{StatusCode: 200}, Application: &TrafficLogApplication{ID: "app"},
+			Client: &TrafficLogClient{IP: "1.2.3.4"}, Latencies: &dto.TrafficLogLatencies{},
+			RequestHeaders: map[string]string{"a": "b"}, ResponseHeaders: map[string]string{"c": "d"},
+			RequestBody: "rq", ResponseBody: "rs", Properties: map[string]interface{}{"k": "v"},
+			ErrorType: "upstream", Error: &dto.Error{},
+		}
+		clear(tl)
+		out, err := json.Marshal(tl)
+		require.NoError(t, err)
+		var line map[string]interface{}
+		require.NoError(t, json.Unmarshal(out, &line))
+		assert.NotContains(t, line, name)
+	}
+}

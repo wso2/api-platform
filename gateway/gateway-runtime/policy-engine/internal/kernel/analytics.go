@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"sync/atomic"
 
@@ -90,10 +91,6 @@ const (
 	// analyticsInternalLoopbackKey is the marker the analytics system policy stamps
 	// on the LLM proxy's internal loopback hop, by the same convention.
 	analyticsInternalLoopbackKey = "x-wso2-internal-loopback"
-	// CorrelationTokenKey carries a stream's correlation-store key to the ALS
-	// handler in analytics_data. It must match the ALS side's constant of the same
-	// name in internal/analytics.
-	CorrelationTokenKey = Wso2MetadataPrefix + "correlation-token"
 )
 
 // correlationTokenPrefix makes tokens unique across policy-engine restarts, and
@@ -137,33 +134,135 @@ func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) b
 	return !loopback
 }
 
+// isCorrelatedField reports whether key is one of the captured header or body
+// fields the correlation store carries.
+func isCorrelatedField(key string) bool {
+	switch key {
+	case analyticsRequestHeadersKey, analyticsResponseHeadersKey,
+		analyticsRequestPayloadKey, analyticsResponsePayloadKey:
+		return true
+	}
+	return false
+}
+
+// noteRoutedPath records the :path a phase's policies rewrote the request to, so
+// the ignore-path decision also covers the rewritten path (see routedPath).
+func (ec *PolicyExecutionContext) noteRoutedPath(path *string) {
+	if ec == nil || path == nil || *path == ec.routedPath {
+		return
+	}
+	ec.routedPath = *path
+	ec.pathIgnoredKnown = false
+}
+
+// pathIgnoredByCollector reports whether Envoy may skip this request's access-log
+// entry because its client path or rewritten path is under
+// collector.ignore_path_prefixes. Cached until the path is rewritten again.
+func (ec *PolicyExecutionContext) pathIgnoredByCollector() bool {
+	if !ec.pathIgnoredKnown {
+		store := ec.server.correlationStore
+		ec.pathIgnored = store.IgnoresPath(ec.clientPath) ||
+			(ec.routedPath != "" && store.IgnoresPath(ec.routedPath))
+		ec.pathIgnoredKnown = true
+	}
+	return ec.pathIgnored
+}
+
+// sameFieldValue reports whether a and b are the same captured value: the same
+// string, or the same map instance. Response phases re-send the request-phase
+// analytics unchanged, so this avoids merging those fields again.
+func sameFieldValue(a, b any) bool {
+	switch av := a.(type) {
+	case string:
+		bv, ok := b.(string)
+		return ok && av == bv
+	case map[string]string, map[string][]string, map[string]interface{}:
+		ra, rb := reflect.ValueOf(a), reflect.ValueOf(b)
+		return ra.Type() == rb.Type() && ra.UnsafePointer() == rb.UnsafePointer()
+	}
+	return false
+}
+
 // storeInProcess hands one captured header or body field to the correlation store
 // and reports whether the store accepted it; only then may the field be left out
 // of Envoy metadata. It runs while the ext_proc response for this phase is being
 // built, before that response is sent, so Envoy cannot emit the request's
 // access-log entry before the data is in the store. A field the store refuses (no
-// free slot, a body over the size or byte budget) or a header value of an
-// unrecognised shape stays in metadata, the pre-store path. Requests on
-// collector.ignore_path_prefixes are never stored: Envoy sends no access-log entry
-// for them, so nothing would ever take the entry.
+// free slot, a body over the size or byte budget) stays in metadata, the
+// pre-store path. The caller has already checked that key is a correlated field
+// and that the request's path is not ignored.
+//
+// A header field always replaces the stored one, even when it is empty or of a
+// shape that cannot be decoded: a later phase may have filtered the headers an
+// earlier phase captured (analytics header filter), and the stored copy must not
+// outlive that. An empty or undecodable value is logged as no headers either way.
 func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool {
-	if execCtx.server.correlationStore.IgnoresPath(execCtx.clientPath) {
-		return false
+	if prev, ok := execCtx.storedFields[key]; ok && sameFieldValue(prev, value) {
+		return true
 	}
 	var p correlation.Payload
 	switch key {
 	case analyticsRequestHeadersKey:
-		p.RequestHeaders = headers.Flatten(value)
+		p.RequestHeaders = flattenOrEmpty(value)
 	case analyticsResponseHeadersKey:
-		p.ResponseHeaders = headers.Flatten(value)
+		p.ResponseHeaders = flattenOrEmpty(value)
 	case analyticsRequestPayloadKey:
 		p.RequestBody, _ = value.(string)
 	case analyticsResponsePayloadKey:
 		p.ResponseBody, _ = value.(string)
-	default:
-		return false
 	}
-	return execCtx.server.correlationStore.Merge(execCtx.correlationKey(), p)
+	store := execCtx.server.correlationStore
+	var ok bool
+	if execCtx.correlationEntryCreated {
+		ok = store.Update(execCtx.correlationToken, p)
+	} else if ok = store.Merge(execCtx.correlationKey(), p); ok {
+		execCtx.correlationEntryCreated = true
+	}
+	if ok {
+		if execCtx.storedFields == nil {
+			execCtx.storedFields = make(map[string]any, 4)
+		}
+		execCtx.storedFields[key] = value
+	}
+	return ok
+}
+
+// flattenOrEmpty is headers.Flatten that returns an empty, non-nil map instead of
+// nil, so the store records "no headers" rather than ignoring the field.
+func flattenOrEmpty(value any) map[string]string {
+	if h := headers.Flatten(value); h != nil {
+		return h
+	}
+	return map[string]string{}
+}
+
+// releaseCorrelationEntry moves a stream's stored fields back into fields (the
+// analytics_data about to be sent to Envoy) and drops its entry and token. It runs
+// when a policy rewrote the path into collector.ignore_path_prefixes after fields
+// were stored: Envoy may then never send the access-log entry, so the entry would
+// be orphaned, while a route that does not rewrite still logs the request and
+// needs the fields back in metadata. Fields this phase sets itself are left as
+// they are.
+func releaseCorrelationEntry(execCtx *PolicyExecutionContext, analyticsData map[string]any, fields map[string]*structpb.Value) {
+	stored, ok := execCtx.server.correlationStore.Take(execCtx.correlationToken)
+	execCtx.correlationToken = ""
+	execCtx.correlationEntryCreated = false
+	execCtx.storedFields = nil
+	if !ok {
+		return
+	}
+	restore := func(key string, value any, set bool) {
+		if _, own := analyticsData[key]; own || !set {
+			return
+		}
+		if v, err := convertToStructValue(value); err == nil {
+			fields[key] = v
+		}
+	}
+	restore(analyticsRequestHeadersKey, stored.RequestHeaders, stored.RequestHeaders != nil)
+	restore(analyticsResponseHeadersKey, stored.ResponseHeaders, stored.ResponseHeaders != nil)
+	restore(analyticsRequestPayloadKey, stored.RequestBody, stored.RequestBody != "")
+	restore(analyticsResponsePayloadKey, stored.ResponseBody, stored.ResponseBody != "")
 }
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -192,7 +291,7 @@ func convertToStructValue(value any) (*structpb.Value, error) {
 // correlation token) and left
 // out of the struct sent to Envoy, but only when the store accepts them (see
 // storeInProcess); the struct then carries the stream's correlation token
-// (CorrelationTokenKey) instead. They used to make a full round trip -- encoded here, forwarded
+// (correlation.TokenKey) instead. They used to make a full round trip -- encoded here, forwarded
 // back on every later ext_proc message, echoed in the access-log entry's
 // filter_metadata, and decoded again on the ALS side -- purely to correlate them
 // back to their request, although the ext_proc and ALS handlers run in the same
@@ -205,8 +304,15 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 
 	// Add policy-provided analytics data
 	inProcess := correlatesInProcess(execCtx, analyticsData)
+	ignored := inProcess && execCtx.pathIgnoredByCollector()
 	for key, value := range analyticsData {
-		if inProcess && storeInProcess(execCtx, key, value) {
+		// The token key is reserved for the stream's own token (added below). A
+		// policy-supplied value could point this request's access-log entry at
+		// another request's stored fields.
+		if key == correlation.TokenKey {
+			continue
+		}
+		if inProcess && !ignored && isCorrelatedField(key) && storeInProcess(execCtx, key, value) {
 			continue
 		}
 		val, err := convertToStructValue(value)
@@ -215,11 +321,14 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		}
 		fields[key] = val
 	}
+	if ignored && execCtx.correlationToken != "" {
+		releaseCorrelationEntry(execCtx, analyticsData, fields)
+	}
 	// Every phase repeats the token once the stream has one, so whichever
 	// analytics_data Envoy ends up with tells the ALS handler where this request's
 	// stored fields are.
 	if execCtx != nil && execCtx.correlationToken != "" {
-		fields[CorrelationTokenKey] = structpb.NewStringValue(execCtx.correlationToken)
+		fields[correlation.TokenKey] = structpb.NewStringValue(execCtx.correlationToken)
 	}
 
 	// Add system-level metadata if context is provided

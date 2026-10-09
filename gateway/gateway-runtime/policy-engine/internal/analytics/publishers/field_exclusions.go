@@ -47,13 +47,30 @@ type fieldExclusions struct {
 	residual *dto.TrafficLogFields
 }
 
-// trafficLogTopLevelKeys lists the JSON keys of TrafficLogEvent that
-// applyToStruct knows how to clear. It must be kept in sync with the struct tags.
-var trafficLogTopLevelKeys = map[string]bool{
-	"component": true, "timestamp": true, "correlationId": true, "status": true,
-	"api": true, "operation": true, "target": true, "application": true,
-	"client": true, "latencies": true, "requestHeaders": true, "responseHeaders": true,
-	"requestBody": true, "responseBody": true, "properties": true,
+// trafficLogFieldClearers maps each top-level JSON key of TrafficLogEvent to the
+// function that clears it. It is the only list of those keys: compileFieldExclusions
+// and applyToStruct both use it, and a test checks it against the struct's JSON
+// tags, so a field added to TrafficLogEvent without an entry here fails the build's
+// tests instead of being logged despite an exclusion. A key with no entry here is
+// still excluded, through the slower JSON projection (residual).
+var trafficLogFieldClearers = map[string]func(*TrafficLogEvent){
+	"component":       func(tl *TrafficLogEvent) { tl.Component = "" },
+	"timestamp":       func(tl *TrafficLogEvent) { tl.Timestamp = "" },
+	"correlationId":   func(tl *TrafficLogEvent) { tl.CorrelationID = "" },
+	"status":          func(tl *TrafficLogEvent) { tl.Status = 0 },
+	"api":             func(tl *TrafficLogEvent) { tl.API = nil },
+	"operation":       func(tl *TrafficLogEvent) { tl.Operation = nil },
+	"target":          func(tl *TrafficLogEvent) { tl.Target = nil },
+	"application":     func(tl *TrafficLogEvent) { tl.Application = nil },
+	"client":          func(tl *TrafficLogEvent) { tl.Client = nil },
+	"latencies":       func(tl *TrafficLogEvent) { tl.Latencies = nil },
+	"requestHeaders":  func(tl *TrafficLogEvent) { tl.RequestHeaders = nil },
+	"responseHeaders": func(tl *TrafficLogEvent) { tl.ResponseHeaders = nil },
+	"requestBody":     func(tl *TrafficLogEvent) { tl.RequestBody = "" },
+	"responseBody":    func(tl *TrafficLogEvent) { tl.ResponseBody = "" },
+	"properties":      func(tl *TrafficLogEvent) { tl.Properties = nil },
+	"errorType":       func(tl *TrafficLogEvent) { tl.ErrorType = "" },
+	"error":           func(tl *TrafficLogEvent) { tl.Error = nil },
 }
 
 // compileFieldExclusions splits the configured exclude list into struct-level and
@@ -71,7 +88,7 @@ func compileFieldExclusions(exclude []string) *fieldExclusions {
 	for _, name := range exclude {
 		parts := strings.Split(name, ".")
 		switch {
-		case len(parts) == 1 && trafficLogTopLevelKeys[name]:
+		case len(parts) == 1 && trafficLogFieldClearers[name] != nil:
 			fe.topLevel[name] = true
 		case len(parts) == 2 && parts[0] == "requestHeaders":
 			fe.requestHeaders[strings.ToLower(parts[1])] = true
@@ -94,38 +111,7 @@ func (fe *fieldExclusions) applyToStruct(tl *TrafficLogEvent) {
 		return
 	}
 	for name := range fe.topLevel {
-		switch name {
-		case "component":
-			tl.Component = ""
-		case "timestamp":
-			tl.Timestamp = ""
-		case "correlationId":
-			tl.CorrelationID = ""
-		case "status":
-			tl.Status = 0
-		case "api":
-			tl.API = nil
-		case "operation":
-			tl.Operation = nil
-		case "target":
-			tl.Target = nil
-		case "application":
-			tl.Application = nil
-		case "client":
-			tl.Client = nil
-		case "latencies":
-			tl.Latencies = nil
-		case "requestHeaders":
-			tl.RequestHeaders = nil
-		case "responseHeaders":
-			tl.ResponseHeaders = nil
-		case "requestBody":
-			tl.RequestBody = ""
-		case "responseBody":
-			tl.ResponseBody = ""
-		case "properties":
-			tl.Properties = nil
-		}
+		trafficLogFieldClearers[name](tl)
 	}
 }
 
