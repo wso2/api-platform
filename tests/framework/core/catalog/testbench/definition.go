@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
@@ -101,6 +102,7 @@ func Testbench() *components.Definition {
 			// The OIDC identity provider serves HTTPS with shared.IdentityProviderTLS, the
 			// certificate components that sign in through it are given to trust.
 			{Name: "oidc", Port: oidc.Port, Scheme: "https", AwaitListening: true},
+			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),

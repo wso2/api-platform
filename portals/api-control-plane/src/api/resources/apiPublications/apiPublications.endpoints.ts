@@ -64,6 +64,9 @@ const portalApiPath = (apiPortalId: string, apiType: string, apiId: string, suff
 /** The only API type the publish, unpublish and deprecate actions support today. */
 export const REST_API_TYPE = 'rest-api';
 
+/** A GraphQL API's `{apiType}` path segment on the type-keyed `/apis/{apiType}/{apiId}/…` endpoints. */
+export const GRAPHQL_API_TYPE = 'graphql-api';
+
 const restApiPortalActionPath = (apiPortalId: string, apiId: string, action: string): string =>
   portalApiPath(apiPortalId, REST_API_TYPE, apiId, `/${action}`);
 

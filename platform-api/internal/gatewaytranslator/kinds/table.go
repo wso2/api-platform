@@ -47,6 +47,7 @@ var All = map[string]translate.Kind{
 	constants.LLMProxy:         LLMProxy,
 	constants.WebSubApi:        WebSub,
 	constants.WebBrokerApi:     WebBroker,
+	constants.GraphQLApi:       GraphQL,
 	constants.GatewayKindAgent: Agent,
 }
 

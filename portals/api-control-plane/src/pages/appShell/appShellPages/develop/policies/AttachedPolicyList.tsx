@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Policy } from '@/api/resources/restApis';
+import { versionLabel } from '@/utils/versionLabel';
 
 const messages = defineMessages({
   heading: {
@@ -65,6 +66,10 @@ const messages = defineMessages({
  * Renders a flat, ordered list of attached policies (the Hybrid-style policy
  * list) with edit / delete and drag-to-reorder, plus an Add button + empty
  * state. Reordering uses native HTML5 drag within this list only.
+ *
+ * `readOnly` lists the policies without any of that — no add, edit, remove or
+ * reorder — for an API the console must not change (one discovered from a
+ * data-plane gateway).
  */
 export function AttachedPolicyList({
   policies,
@@ -74,6 +79,7 @@ export function AttachedPolicyList({
   onRemove,
   onReorder,
   emptyText,
+  readOnly = false,
   showHeader = true,
 }: {
   policies: Policy[];
@@ -84,6 +90,8 @@ export function AttachedPolicyList({
   onReorder: (from: number, to: number) => void;
   /** Overrides the default placeholder; already-translated text. */
   emptyText?: string;
+  /** Shows the policies only, with no way to change them. */
+  readOnly?: boolean;
   showHeader?: boolean;
 }) {
   const intl = useIntl();
@@ -92,6 +100,7 @@ export function AttachedPolicyList({
   // Defaulted here rather than in the signature: a default parameter is
   // evaluated before `useIntl` exists, so the fallback could not be translated.
   const emptyLabel = emptyText ?? intl.formatMessage(messages.empty);
+  const editable = !readOnly;
 
   return (
     <Box>
@@ -107,7 +116,7 @@ export function AttachedPolicyList({
           <Typography sx={{ fontWeight: 600 }} variant="body2">
             <FormattedMessage {...messages.heading} />
           </Typography>
-          {canAdd && (
+          {canAdd && editable && (
             <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
               <FormattedMessage {...messages.addPolicy} />
             </Button>
@@ -138,7 +147,7 @@ export function AttachedPolicyList({
             const isOver = overIndex === index && dragIndex !== null && dragIndex !== index;
             return (
               <Box
-                draggable
+                draggable={editable}
                 key={`${policy.name}-${index}`}
                 onDragEnd={() => {
                   setDragIndex(null);
@@ -150,6 +159,7 @@ export function AttachedPolicyList({
                   setOverIndex(index);
                 }}
                 onDragStart={(event) => {
+                  if (!editable) return;
                   setDragIndex(index);
                   event.dataTransfer.effectAllowed = 'move';
                   // Mark as an internal reorder so external policy drops ignore it.
@@ -176,47 +186,47 @@ export function AttachedPolicyList({
                   py: 1,
                 }}
               >
-                <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
-                  <GripVertical size={16} />
-                </Box>
+                {editable && (
+                  <Box sx={{ color: 'text.disabled', cursor: 'grab', display: 'flex' }}>
+                    <GripVertical size={16} />
+                  </Box>
+                )}
                 <Shield size={16} />
                 <Typography noWrap sx={{ flex: 1, fontWeight: 500 }} variant="body2">
                   {policy.name}
                 </Typography>
-                <Chip
-                  label={policy.version.startsWith('v') ? policy.version : `v${policy.version}`}
-                  size="small"
-                  variant="outlined"
-                />
-                <Stack direction="row">
-                  <Tooltip title={intl.formatMessage(messages.edit)}>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.editLabel)}
-                      disabled={!canAdd}
-                      onClick={() => onEdit(index)}
-                      size="small"
-                    >
-                      <Pencil size={14} />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={intl.formatMessage(messages.remove)}>
-                    <IconButton
-                      aria-label={intl.formatMessage(messages.removeLabel)}
-                      color="error"
-                      onClick={() => onRemove(index)}
-                      size="small"
-                    >
-                      <Trash2 size={14} />
-                    </IconButton>
-                  </Tooltip>
-                </Stack>
+                <Chip label={versionLabel(policy.version)} size="small" variant="outlined" />
+                {editable && (
+                  <Stack direction="row">
+                    <Tooltip title={intl.formatMessage(messages.edit)}>
+                      <IconButton
+                        aria-label={intl.formatMessage(messages.editLabel)}
+                        disabled={!canAdd}
+                        onClick={() => onEdit(index)}
+                        size="small"
+                      >
+                        <Pencil size={14} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={intl.formatMessage(messages.remove)}>
+                      <IconButton
+                        aria-label={intl.formatMessage(messages.removeLabel)}
+                        color="error"
+                        onClick={() => onRemove(index)}
+                        size="small"
+                      >
+                        <Trash2 size={14} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                )}
               </Box>
             );
           })}
         </Stack>
       )}
 
-      {canAdd && policies.length > 0 && (
+      {canAdd && editable && policies.length > 0 && (
         <Box
           sx={{
             border: '1px dashed',

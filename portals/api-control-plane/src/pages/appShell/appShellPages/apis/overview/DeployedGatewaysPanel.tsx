@@ -10,9 +10,16 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 
 import type { Gateway } from '@/api/resources/gateways';
 import type { Deployment } from '@/api/resources/restApis/deployments';
-import { routes } from '@/routes/paths';
+import type { ApiPathBuilder } from '@/routes/paths';
 
-type Props = { gateways: Gateway[]; deployments: Deployment[] };
+type Props = {
+  gateways: Gateway[];
+  deployments: Deployment[];
+  /** Handle of the API these deployments belong to. */
+  apiId: string;
+  /** Route builder for the "See more" link - `routes.apiDeploy`/`routes.graphqlApiDeploy`. */
+  deployTo: ApiPathBuilder;
+};
 
 const messages = defineMessages({
   title: {
@@ -30,8 +37,8 @@ const messages = defineMessages({
   },
 });
 
-export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
-  const { orgHandle = '', projectHandler = '', apiHandler = '' } = useParams();
+export function DeployedGatewaysPanel({ gateways, deployments, apiId, deployTo }: Props) {
+  const { orgHandle = '', projectHandler = '' } = useParams();
   const intl = useIntl();
   const latestByGateway = new Map<string, Deployment>();
   [...deployments]
@@ -118,7 +125,7 @@ export function DeployedGatewaysPanel({ gateways, deployments }: Props) {
           <Button
             component={RouterLink}
             size="small"
-            to={routes.apiDeploy(orgHandle, projectHandler, apiHandler)}
+            to={deployTo(orgHandle, projectHandler, apiId)}
           >
             <FormattedMessage {...messages.seeMore} />
           </Button>

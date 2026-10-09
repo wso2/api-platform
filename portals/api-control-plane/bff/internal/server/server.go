@@ -60,7 +60,16 @@ type Server struct {
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
 	proxies   []mountedProxy
-	handler   http.Handler
+	// upstream is the primary control-plane HTTP client (same transport/TLS
+	// trust as the primary reverse proxy). Also reused by handleGraphQLInvoke
+	// for its Platform API lookups.
+	upstream *http.Client
+	// gatewayInvoke is handleGraphQLInvoke's client for the call to the
+	// gateway itself. A gateway is a different trust boundary from the control
+	// plane, so it has its own TLS settings ([gateway_invoke]) instead of
+	// inheriting [control_plane]'s, and never follows redirects.
+	gatewayInvoke *http.Client
+	handler  http.Handler
 
 	refreshMu    sync.Mutex
 	refreshLocks map[string]*refreshLock
@@ -120,11 +129,29 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		proxies = append(proxies, mountedProxy{prefix: prefix, rp: proxy.ReverseProxy(target, prefix, upstreamTransport)})
 	}
 
+	gatewayTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.GatewayInvoke.CAFile,
+		SkipVerify: cfg.GatewayInvoke.TLSSkipVerify,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build transport for gateway_invoke: %w", err)
+	}
+	gatewayInvoke := &http.Client{
+		Transport: gatewayTransport,
+		Timeout:   graphqlInvokeTimeout,
+		// The target was resolved from the caller's own Platform API records; a
+		// redirect would let the gateway (or anything answering on its address)
+		// steer this server-side request somewhere else. Relay it instead.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
 	s := &Server{
-		cfg:          cfg,
-		claims:       claims,
-		proxies:      proxies,
-		refreshLocks: make(map[string]*refreshLock),
+		cfg:           cfg,
+		claims:        claims,
+		proxies:       proxies,
+		upstream:      upstream,
+		gatewayInvoke: gatewayInvoke,
+		refreshLocks:  make(map[string]*refreshLock),
 	}
 
 	// Construct exactly the authenticator the configured mode selects — never
@@ -217,6 +244,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
 	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
 	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+
+	// GraphQL Test Console: same-origin invoke proxy to a deployed API's real
+	// gateway endpoint, resolved server-side — see graphql_invoke.go.
+	mux.HandleFunc("POST /api/graphql-console/{graphqlApiId}/gateways/{gatewayId}/invoke", withWriteDeadline(s.handleGraphQLInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the

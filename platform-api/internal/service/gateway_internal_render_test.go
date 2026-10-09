@@ -95,7 +95,7 @@ func setupRenderITEnv(t *testing.T) *renderITEnv {
 	createTestSecret(t, secretSvc, renderITOrg, renderITSecret, renderITPlaintext)
 
 	deploymentRepo := repository.NewDeploymentRepo(db, repository.NewArtifactTableRegistry())
-	svc := NewGatewayInternalAPIService(nil, nil, nil, nil, nil, nil, nil,
+	svc := NewGatewayInternalAPIService(nil, nil, nil, nil, nil, nil, nil, nil,
 		deploymentRepo, repository.NewGatewayRepo(db),
 		nil, nil, nil, nil, secretRepo, &config.Server{}, slog.Default())
 	svc.SetSecretService(secretSvc)

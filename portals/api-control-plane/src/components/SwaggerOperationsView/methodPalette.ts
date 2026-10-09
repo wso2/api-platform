@@ -26,6 +26,13 @@ import { alpha } from '@wso2/oxygen-ui';
  * colours are fixed; surrounding text, surfaces and borders use theme tokens
  * to remain legible in dark mode.
  */
+/**
+ * One shared slate for every GraphQL type-kind badge (TYPE, ENUM, INPUT, …):
+ * types sit below the entry points, so they share one calm tone rather than
+ * competing with the QUERY/MUTATION/SUBSCRIPTION colours.
+ */
+const GRAPHQL_TYPE_HEX = '#6b7d99';
+
 const METHOD_HEX: Record<string, string> = {
   DELETE: '#f93e3e',
   GET: '#61affe',
@@ -34,6 +41,19 @@ const METHOD_HEX: Record<string, string> = {
   PATCH: '#50e3c2',
   POST: '#49cc90',
   PUT: '#fca130',
+  // GraphQL root operation kinds, drawn in the same row treatment so a
+  // GraphQL schema reads like a REST resource list. QUERY is the Bijira
+  // console's own query blue; MUTATION shares POST's green (a write), and
+  // SUBSCRIPTION, with no REST equivalent, takes the remaining purple.
+  MUTATION: '#49cc90',
+  QUERY: '#4286de',
+  SUBSCRIPTION: '#9012fe',
+  ENUM: GRAPHQL_TYPE_HEX,
+  INPUT: GRAPHQL_TYPE_HEX,
+  INTERFACE: GRAPHQL_TYPE_HEX,
+  SCALAR: GRAPHQL_TYPE_HEX,
+  TYPE: GRAPHQL_TYPE_HEX,
+  UNION: GRAPHQL_TYPE_HEX,
 };
 
 /** Any verb outside the table — a custom or malformed method — reads as neutral. */
@@ -51,7 +71,7 @@ export type MethodPalette = {
   border: string;
 };
 
-/** The three shades one HTTP verb is drawn in. Case-insensitive. */
+/** The three shades one HTTP verb (or GraphQL operation kind) is drawn in. Case-insensitive. */
 export const methodPalette = (method: string): MethodPalette => {
   const hex = METHOD_HEX[method.toUpperCase()] ?? UNKNOWN_METHOD_HEX;
   return { badge: hex, bg: alpha(hex, ROW_TINT), border: hex };

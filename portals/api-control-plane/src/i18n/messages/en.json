@@ -10,10 +10,10 @@
     "defaultMessage": "Nothing was created. Check the details you entered and try again."
   },
   "api.create.ApiCreationProgress.failed.title": {
-    "defaultMessage": "We could not create this API proxy"
+    "defaultMessage": "We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}"
   },
   "api.create.ApiCreationProgress.progress.label": {
-    "defaultMessage": "API proxy creation progress",
+    "defaultMessage": "{kind, select, graphql {GraphQL API} other {API proxy}} creation progress",
     "description": "Accessible name for the circular progress indicator."
   },
   "api.create.ApiCreationProgress.progress.value": {
@@ -21,11 +21,11 @@
     "description": "Share of the creation flow completed so far."
   },
   "api.create.ApiCreationProgress.stage.creating": {
-    "defaultMessage": "Creating API Proxy",
+    "defaultMessage": "Creating {kind, select, graphql {GraphQL API} other {API Proxy}}",
     "description": "Status shown while the platform is creating the API proxy."
   },
   "api.create.ApiCreationProgress.stage.done": {
-    "defaultMessage": "API Proxy created. Taking you there…"
+    "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
   "api.create.ApiCreationProgress.stage.finalizing": {
     "defaultMessage": "Finalizing setup"
@@ -34,10 +34,10 @@
     "defaultMessage": "Validating configuration"
   },
   "api.create.ApiCreationProgress.title": {
-    "defaultMessage": "We are in the process of creating your API Proxy"
+    "defaultMessage": "We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}"
   },
   "api.create.ApiCreationProgress.titleWithName": {
-    "defaultMessage": "We are in the process of creating your {name} API Proxy",
+    "defaultMessage": "We are in the process of creating your {name} {kind, select, graphql {GraphQL API} other {API Proxy}}",
     "description": "{name} is the display name the user gave the API. Never translated."
   },
   "api.create.ApiCreationSteps.step.apiType": {
@@ -365,7 +365,7 @@
   },
   "api.create.fromContract.upload.uploadedFile": {
     "defaultMessage": "Uploaded file",
-    "description": "Heading above the selected API contract file."
+    "description": "Heading above the selected file — an API contract, or a GraphQL schema."
   },
   "api.create.fromContract.url.invalid": {
     "defaultMessage": "Enter a valid HTTP or HTTPS URL."
@@ -435,7 +435,7 @@
     "defaultMessage": "Name"
   },
   "api.create.generalForm.rejected.title": {
-    "defaultMessage": "We could not create this API proxy",
+    "defaultMessage": "We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}",
     "description": "Heading of the summary shown when the server rejected the submitted form."
   },
   "api.create.generalForm.section.backendEndpoint": {
@@ -466,7 +466,7 @@
     "defaultMessage": "Enter a version."
   },
   "api.create.generalForm.version.helper": {
-    "defaultMessage": "e.g. 1.0.0"
+    "defaultMessage": "e.g. 1.0"
   },
   "api.create.generalForm.version.label": {
     "defaultMessage": "Version"
@@ -508,6 +508,172 @@
   },
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
+  },
+  "api.create.graphql.configureForm.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
+  },
+  "api.create.graphql.configureForm.endpoint.error.required": {
+    "defaultMessage": "Enter the GraphQL endpoint URL."
+  },
+  "api.create.graphql.configureForm.endpoint.label": {
+    "defaultMessage": "Query and Mutation URL"
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailable": {
+    "defaultMessage": "This identifier is already in use."
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailableIcon": {
+    "defaultMessage": "Identifier is already in use",
+    "description": "Accessible label for the warning icon shown beside a taken identifier."
+  },
+  "api.create.graphql.definePanel.schema.description": {
+    "defaultMessage": "Import from a URL or upload a schema file."
+  },
+  "api.create.graphql.definePanel.schema.title": {
+    "defaultMessage": "Start with a schema"
+  },
+  "api.create.graphql.definePanel.scratch.description": {
+    "defaultMessage": "Start blank, or seed the schema from a backend endpoint."
+  },
+  "api.create.graphql.definePanel.scratch.title": {
+    "defaultMessage": "Start from scratch"
+  },
+  "api.create.graphql.introspection.checking": {
+    "defaultMessage": "Checking the endpoint for a schema…",
+    "description": "Status line while the endpoint is being introspected in the background."
+  },
+  "api.create.graphql.introspection.disabledHint": {
+    "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
+  },
+  "api.create.graphql.introspection.endpoint.description": {
+    "defaultMessage": "Every operation goes through this single endpoint to a running service. Calls are proxied through as soon as you deploy."
+  },
+  "api.create.graphql.introspection.endpoint.required": {
+    "defaultMessage": "Enter the GraphQL endpoint to introspect."
+  },
+  "api.create.graphql.introspection.status": {
+    "defaultMessage": "Introspection enabled · SDL fetched · {typeCount, plural, one {# type} other {# types}}"
+  },
+  "api.create.graphql.introspection.unresolved": {
+    "defaultMessage": "Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema."
+  },
+  "api.create.graphql.schemaExplorer.action.download": {
+    "defaultMessage": "Download SDL"
+  },
+  "api.create.graphql.schemaExplorer.empty.body": {
+    "defaultMessage": "Types appear once a schema is fetched or created."
+  },
+  "api.create.graphql.schemaExplorer.empty.title": {
+    "defaultMessage": "Schema will show here"
+  },
+  "api.create.graphql.schemaExplorer.field.deprecated": {
+    "defaultMessage": "deprecated"
+  },
+  "api.create.graphql.schemaExplorer.filter.allKinds": {
+    "defaultMessage": "All kinds"
+  },
+  "api.create.graphql.schemaExplorer.invalidSdl": {
+    "defaultMessage": "This schema could not be parsed: {reason}"
+  },
+  "api.create.graphql.schemaExplorer.mutations.count": {
+    "defaultMessage": "{count, plural, one {# mutation} other {# mutations}}",
+    "description": "Subtitle of the collapsible Mutations group: how many mutation fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.mutations.title": {
+    "defaultMessage": "Mutations",
+    "description": "Heading of the collapsible group listing a GraphQL schema's mutation fields."
+  },
+  "api.create.graphql.schemaExplorer.operation.arguments": {
+    "defaultMessage": "Arguments",
+    "description": "Heading over the list of arguments a GraphQL query, mutation or subscription accepts."
+  },
+  "api.create.graphql.schemaExplorer.operation.noArguments": {
+    "defaultMessage": "No arguments",
+    "description": "Shown under the Arguments heading when a GraphQL operation takes no arguments."
+  },
+  "api.create.graphql.schemaExplorer.operation.returns": {
+    "defaultMessage": "Returns",
+    "description": "Heading over the type a GraphQL query, mutation or subscription returns."
+  },
+  "api.create.graphql.schemaExplorer.queries.count": {
+    "defaultMessage": "{count, plural, one {# query} other {# queries}}",
+    "description": "Subtitle of the collapsible Queries group: how many query fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.queries.title": {
+    "defaultMessage": "Queries",
+    "description": "Heading of the collapsible group listing a GraphQL schema's query fields."
+  },
+  "api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation": {
+    "defaultMessage": "Line {line}, column {column}: {message}",
+    "description": "{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser's own error text."
+  },
+  "api.create.graphql.schemaExplorer.search.noMatches": {
+    "defaultMessage": "Nothing in this schema matches \"{query}\".",
+    "description": "Shown when the schema search box matches no operation, type, field, enum value or union member."
+  },
+  "api.create.graphql.schemaExplorer.search.placeholder": {
+    "defaultMessage": "Search types and fields"
+  },
+  "api.create.graphql.schemaExplorer.subscriptions.count": {
+    "defaultMessage": "{count, plural, one {# subscription} other {# subscriptions}}",
+    "description": "Subtitle of the collapsible Subscriptions group: how many subscription fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.subscriptions.title": {
+    "defaultMessage": "Subscriptions",
+    "description": "Heading of the collapsible group listing a GraphQL schema's subscription fields."
+  },
+  "api.create.graphql.schemaExplorer.title": {
+    "defaultMessage": "Schema"
+  },
+  "api.create.graphql.schemaExplorer.type.fieldCount": {
+    "defaultMessage": "{count, plural, one {# field} other {# fields}}"
+  },
+  "api.create.graphql.schemaExplorer.type.memberCount": {
+    "defaultMessage": "{count, plural, one {# member} other {# members}}",
+    "description": "Number of member types a UNION type declares."
+  },
+  "api.create.graphql.schemaExplorer.type.valueCount": {
+    "defaultMessage": "{count, plural, one {# value} other {# values}}",
+    "description": "Number of values an ENUM type declares."
+  },
+  "api.create.graphql.schemaExplorer.types.count": {
+    "defaultMessage": "{count, plural, one {# type} other {# types}}",
+    "description": "Subtitle of the collapsible Types group: how many named types it lists."
+  },
+  "api.create.graphql.schemaExplorer.types.title": {
+    "defaultMessage": "Types",
+    "description": "Heading of the collapsible group listing every non-root type in a GraphQL schema."
+  },
+  "api.create.graphql.schemaExplorer.view.explorer": {
+    "defaultMessage": "Explorer"
+  },
+  "api.create.graphql.schemaExplorer.view.sdl": {
+    "defaultMessage": "SDL"
+  },
+  "api.create.graphql.urlUpload.action.sampleUrl": {
+    "defaultMessage": "Try with Sample Schema"
+  },
+  "api.create.graphql.urlUpload.source.label": {
+    "defaultMessage": "Import the schema from"
+  },
+  "api.create.graphql.urlUpload.status.validating": {
+    "defaultMessage": "Validating schema…",
+    "description": "Shown while a URL/file just supplied is being checked, which starts on its own."
+  },
+  "api.create.graphql.urlUpload.unresolved": {
+    "defaultMessage": "That schema could not be resolved. Check it is valid GraphQL SDL."
+  },
+  "api.create.graphql.urlUpload.upload.title": {
+    "defaultMessage": "Upload GraphQL Schema",
+    "description": "Heading of the empty dropzone where a GraphQL schema (SDL) file is dropped or picked."
+  },
+  "api.create.graphql.urlUpload.url.label": {
+    "defaultMessage": "Schema URL"
+  },
+  "api.create.graphql.urlUpload.url.placeholder": {
+    "defaultMessage": "Enter URL for GraphQL Schema here"
+  },
+  "api.create.graphql.urlUpload.url.required": {
+    "defaultMessage": "Enter the URL of the SDL file."
   },
   "api.create.specIssue.missingTitle": {
     "defaultMessage": "No title in this definition — name the API on the next step."
@@ -1219,7 +1385,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
     "defaultMessage": "Publish",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal. A stage name, not a button command."
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
@@ -1864,6 +2030,14 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources": {
     "defaultMessage": "Search resources"
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
+    "defaultMessage": "This API was discovered from a data-plane gateway, so its policies are read-only in this console. Change them on the gateway.",
+    "description": "Explains why the policies of a gateway-managed API cannot be added, edited or removed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.title": {
+    "defaultMessage": "Policies cannot be changed here",
+    "description": "Title of the notice shown on the policies page of a gateway-managed API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
     "defaultMessage": "Add entry",
     "description": "Adds another key/value pair to a map parameter. Verb phrase."
@@ -2138,6 +2312,84 @@
   "apiControlPlane.pages.appShell.appShellPages.gateways.components.GatewayListView.column.version": {
     "defaultMessage": "Version",
     "description": "Column header over the gateway version."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.components.GraphqlApiPageGuard.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty": {
+    "defaultMessage": "Drag a policy here, or select one from Available policies.",
+    "description": "\"Available policies\" is the heading of the policy catalog panel beside this list."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.globalDescription": {
+    "defaultMessage": "These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.redeployReminder": {
+    "defaultMessage": "Redeploy this API for the change to reach its gateways.",
+    "description": "Toast shown alongside \"Policies saved.\" — saving updates the definition only."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.required": {
+    "defaultMessage": "Enter the GraphQL endpoint URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.helper": {
+    "defaultMessage": "The GraphQL backend the gateway routes requests to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.label": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.notFound": {
+    "defaultMessage": "GraphQL API not found",
+    "description": "Shown when the API to edit could not be loaded."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle": {
+    "defaultMessage": "Change the name, description, context, version and endpoint of this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.next": {
+    "defaultMessage": "Next: {step}",
+    "description": "The next incomplete lifecycle step shown beside the progress counter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.progress": {
+    "defaultMessage": "{completed} of {total} completed",
+    "description": "Counter beside the lifecycle steps, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.feature": {
+    "defaultMessage": "Publishing this API to the Developer Portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle": {
+    "defaultMessage": "List this API in the Developer Portal for consumers to discover and subscribe to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointFailed": {
+    "defaultMessage": "Failed to copy the endpoint URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded": {
+    "defaultMessage": "Endpoint URL copied to clipboard."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed": {
+    "defaultMessage": "Could not reach the test console service. Check your connection and try again.",
+    "description": "Shown when the browser fetch to this app's own backend fails below the HTTP level (network error) — a bare \"Failed to fetch\" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API's gateway, so this is not a CORS or gateway-certificate problem."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment": {
+    "defaultMessage": "Deploy this API to a gateway before testing it here."
   },
   "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action": {
     "defaultMessage": "Open Moesif Insights",

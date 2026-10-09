@@ -8,7 +8,8 @@ export type ApiTypeFilter = 'async' | 'graphql' | 'grpc' | 'rest';
 
 const API_KINDS: Record<ApiTypeFilter, string[]> = {
   async: ['async', 'asyncapi', 'event'],
-  graphql: ['graphql'],
+  // `GraphQLAPI.kind` is the literal `GraphQLApi` (see openapi.yaml) — lowercased, `graphqlapi`.
+  graphql: ['graphql', 'graphqlapi'],
   grpc: ['grpc'],
   rest: ['rest', 'restapi'],
 };

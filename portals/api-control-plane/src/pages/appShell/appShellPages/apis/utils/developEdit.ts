@@ -197,8 +197,13 @@ export const operationsValid = (ops: EditableOperation[]): boolean =>
 export const policiesValid = (policies: Policy[]): boolean =>
   policies.every((p) => p.name.trim() !== '' && p.version.trim() !== '');
 
-/** Converts Policy Hub semantic versions to the major-version format expected by the API payload. */
-const withMajorPolicyVersion = (policy: Policy): Policy => {
+/**
+ * Converts Policy Hub semantic versions to the major-version format expected by the API
+ * payload. Exported so every policy-editing panel applies it before saving — GraphQL's
+ * panel included, not just REST's — since the Policy Hub catalog always returns a full
+ * version (e.g. "1.2.1") and the backend only accepts major-only ("v1").
+ */
+export const withMajorPolicyVersion = (policy: Policy): Policy => {
   const version = policy.version.trim();
   const major = version.match(/^v?(\d+)(?:\..*)?$/)?.[1];
   return { ...policy, version: major ? `v${major}` : version };

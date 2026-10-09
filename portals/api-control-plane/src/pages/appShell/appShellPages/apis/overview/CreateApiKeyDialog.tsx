@@ -53,9 +53,11 @@ import {
 import { useEffect, useState, type FormEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useCreateApiKey, type CreateApiKeyBody } from '@/api/resources/apiKeys';
+import type { CreateApiKeyBody } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
+
+import { useCreateApiKeyForKind, type ApiKeyApiKind } from './apiKeyKinds';
 
 const messages = defineMessages({
   cancel: {
@@ -302,16 +304,24 @@ type IssuedKey = { apiKey: string; displayName: string; expiresAt: Date };
 
 export type CreateApiKeyDialogProps = {
   open: boolean;
-  restApiId: string;
+  /** The API's id (its handle), as the key endpoints address it. */
+  apiId: string;
+  /** Which kind of API `apiId` names; selects the endpoint the key is issued on. */
+  apiKind?: ApiKeyApiKind;
   onClose: () => void;
 };
 
 /** Issues an API key and displays the plaintext only in the confirmation step. */
-export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDialogProps) {
+export function CreateApiKeyDialog({
+  open,
+  apiId,
+  apiKind = 'rest',
+  onClose,
+}: CreateApiKeyDialogProps) {
   const intl = useIntl();
   const { shortDate } = useFormatters();
   const { notify } = useNotifications();
-  const createMutation = useCreateApiKey();
+  const createMutation = useCreateApiKeyForKind(apiKind);
 
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(DEFAULT_DURATION);
@@ -366,10 +376,8 @@ export function CreateApiKeyDialog({ open, restApiId, onClose }: CreateApiKeyDia
     const expiresAt = expiryDate(new Date(), parsedDuration, unit);
 
     createMutation.mutate(
-      {
-        restApiId,
-        body: { displayName: trimmedName, expiresIn: { duration: parsedDuration, unit } },
-      },
+      apiId,
+      { displayName: trimmedName, expiresIn: { duration: parsedDuration, unit } },
       {
         onSuccess: (response) => {
           if (!response.apiKey) {
