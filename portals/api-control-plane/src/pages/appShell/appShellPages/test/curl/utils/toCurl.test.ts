@@ -200,6 +200,30 @@ describe('toCurl', () => {
     expect(toCurl(request(), { revealSecrets: true })).toContain('curl -X GET');
   });
 
+  it('skips the certificate check only for a gateway on this machine', () => {
+    // A local gateway serves its setup's self-signed certificate; without -k
+    // the copied command fails before it reaches the API.
+    for (const baseUrl of [
+      'https://localhost:8443/api/v1',
+      'https://127.0.0.1:8443',
+      'https://[::1]:8443',
+    ]) {
+      expect(toCurl(request({ baseUrl }), { revealSecrets: true })).toMatch(/^curl -k -X GET/);
+    }
+
+    // Anywhere else a certificate error is real, so it must not be hidden.
+    for (const baseUrl of [
+      'https://gw.example.com',
+      'http://localhost:8080',
+      'https://localhost.example.com',
+      // Text before an @ is a username: curl contacts remote.example.
+      'https://localhost:8443@remote.example',
+      'https://127.0.0.1@remote.example/api',
+    ]) {
+      expect(toCurl(request({ baseUrl }), { revealSecrets: true })).toMatch(/^curl -X GET/);
+    }
+  });
+
   it('quotes the URL so a query string cannot be split by the shell', () => {
     const command = toCurl(request({ queryParams: [row({ name: 'a', value: '1' })] }), {
       revealSecrets: true,

@@ -83,6 +83,25 @@ export const buildRequestUrl = (
 };
 
 /**
+ * Whether the command needs `-k`. A gateway on the user's own machine serves
+ * HTTPS with the self-signed certificate its setup generated, so curl refuses
+ * it unless told to skip the check. Limited to loopback hosts: anywhere else,
+ * skipping verification would hide a real certificate problem.
+ */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+const skipsCertificateCheck = (url: string): boolean => {
+  // Parsed rather than matched as text, so the host curl will actually contact
+  // decides: "https://localhost:8443@remote.example" is remote.example.
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === 'https:' && LOOPBACK_HOSTS.has(hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
+/**
  * A one-line summary of what the command does — "POST · 2 headers · JSON body".
  *
  * Returned as parts rather than a sentence because the console renders it as
@@ -121,9 +140,10 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
  * command still says what it does after someone edits the URL.
  */
 export const toCurl = (request: ConsoleRequest, options: ToCurlOptions): string => {
+  const url = buildRequestUrl(request, options);
   const lines = [
-    `curl -X ${request.method} \\`,
-    `  ${shellQuote(buildRequestUrl(request, options))} \\`,
+    `curl${skipsCertificateCheck(url) ? ' -k' : ''} -X ${request.method} \\`,
+    `  ${shellQuote(url)} \\`,
   ];
 
   const headers = activeRows(request.headers);

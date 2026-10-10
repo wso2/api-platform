@@ -32,7 +32,7 @@ import {
 import { Server } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { useRotateGatewayToken, type Gateway } from '@/api/resources/gateways';
+import { useGatewayTokens, useRotateGatewayToken, type Gateway } from '@/api/resources/gateways';
 import dockerIconUrl from '@/assets/icons/docker.svg';
 import helmIconUrl from '@/assets/icons/helm.svg';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -42,8 +42,8 @@ import { environmentForGateway } from '../utils/gatewayEnvironments';
 import {
   configureCommand,
   downloadCommand,
-  enterDirectoryCommand,
   helmInstallCommand,
+  prepareCommand,
   runtimeCheckCommand,
   setupTarget,
   startCommand,
@@ -94,15 +94,30 @@ const messages = defineMessages({
     id: 'gateways.detail.GetStarted.prerequisite.unzip',
     defaultMessage: 'unzip installed',
   },
+  generateToken: {
+    id: 'gateways.detail.GetStarted.generateToken',
+    defaultMessage: 'Generate token',
+    description: 'Generates this gateway’s first registration token.',
+  },
+  prepareIntro: {
+    id: 'gateways.detail.GetStarted.prepare.intro',
+    defaultMessage:
+      'Then go into the gateway folder and run its one-time setup, which creates the gateway’s certificates and settings file:',
+  },
+  prepareIntroNoSetup: {
+    id: 'gateways.detail.GetStarted.prepare.introNoSetup',
+    defaultMessage: 'Then go into the gateway folder:',
+  },
   reconfigure: {
     id: 'gateways.detail.GetStarted.reconfigure',
-    defaultMessage: 'Reconfigure',
-    description: 'Generates a fresh registration token, revoking the gateway’s previous one.',
+    defaultMessage: 'Generate another token',
+    description:
+      'Generates an additional registration token. The previous one stays active until revoked.',
   },
   reconfigureConfirmBody: {
     id: 'gateways.detail.GetStarted.reconfigure.confirm.body',
     defaultMessage:
-      'This revokes the current registration token and disconnects any gateway still using it. You will need to apply the new token to bring it back online.',
+      'The current token keeps working until you revoke it. A gateway can have at most two active tokens, so if it already has two, revoke one first.',
   },
   reconfigureConfirmButton: {
     id: 'gateways.detail.GetStarted.reconfigure.confirm.button',
@@ -148,15 +163,9 @@ const messages = defineMessages({
     id: 'gateways.detail.GetStarted.vm.runtimesIntro',
     defaultMessage: 'A Docker-compatible container runtime such as:',
   },
-  startEnter: {
-    id: 'gateways.detail.GetStarted.start.enter',
-    defaultMessage: '1. Navigate to the gateway folder.',
-  },
   startRun: {
     id: 'gateways.detail.GetStarted.start.run',
-    defaultMessage:
-      '2. Run this command to start the gateway using the configs/keys.env file created in Step 2:',
-    description: 'configs/keys.env is a file path — keep it exactly as written.',
+    defaultMessage: 'Run this command in the gateway folder to start the gateway:',
   },
   stepConfigure: {
     id: 'gateways.detail.GetStarted.step.configure',
@@ -195,12 +204,12 @@ const messages = defineMessages({
   tokenNoticeCompose: {
     id: 'gateways.detail.GetStarted.token.notice.compose',
     defaultMessage:
-      'The registration token is single-use. If you need to reconfigure the gateway, generate a new token — this will revoke the old token and disconnect the gateway from the control plane.',
+      'Generate a registration token, then run the command that appears to add it, with this control plane’s address, to the gateway’s settings. The token is shown only once.',
   },
   tokenNoticeHelm: {
     id: 'gateways.detail.GetStarted.token.notice.helm',
     defaultMessage:
-      'The registration token is a one-time generated token for this gateway. If you need to install or update the gateway chart again, first reconfigure this gateway to generate a new registration token. Reconfiguring will revoke the previous token.',
+      'Generate a registration token. It is added to the install command below, and shown only once.',
   },
   tokenOnce: {
     id: 'gateways.detail.GetStarted.token.once',
@@ -345,6 +354,7 @@ export function GatewayGetStartedPanel({
   const intl = useIntl();
   const { notify } = useNotifications();
   const rotateToken = useRotateGatewayToken(gatewayId);
+  const tokensQuery = useGatewayTokens(gatewayId);
 
   const [tab, setTab] = useState<SetupTab>('quickStart');
   const [token, setToken] = useState<string>();
@@ -355,15 +365,29 @@ export function GatewayGetStartedPanel({
   const environment = environmentForGateway(gateway);
   const activeTab = TABS.find((entry) => entry.value === tab) ?? TABS[0];
 
-  const reconfigure = () => {
+  // A gateway that has never had a token gets one without a confirmation:
+  // there is nothing to replace yet, so there is nothing to warn about. If the
+  // token list couldn't be read, that isn't known, so the confirmation stays.
+  const hasActiveToken =
+    Boolean(token) || tokensQuery.isError || (tokensQuery.data?.list?.length ?? 0) > 0;
+
+  const generateToken = () => {
     setConfirmOpen(false);
     rotateToken.mutate(undefined, {
       onSuccess: (result) => {
         setToken(result.token);
-        notify(intl.formatMessage(messages.tokenOnce), 'success');
+        // A warning, not a success: the point of the message is that the
+        // token disappears if it isn't copied now.
+        notify(intl.formatMessage(messages.tokenOnce), 'warning');
       },
     });
   };
+
+  const tokenButtonLabel = rotateToken.isPending
+    ? messages.reconfiguring
+    : hasActiveToken
+      ? messages.reconfigure
+      : messages.generateToken;
 
   /**
    * Step 2 is the same on every path: the same warning, the same button, and —
@@ -377,13 +401,11 @@ export function GatewayGetStartedPanel({
       </Typography>
       <Box>
         <Button
-          disabled={rotateToken.isPending}
-          onClick={() => setConfirmOpen(true)}
-          variant="outlined"
+          disabled={rotateToken.isPending || tokensQuery.isPending}
+          onClick={hasActiveToken ? () => setConfirmOpen(true) : generateToken}
+          variant={hasActiveToken ? 'outlined' : 'contained'}
         >
-          <FormattedMessage
-            {...(rotateToken.isPending ? messages.reconfiguring : messages.reconfigure)}
-          />
+          <FormattedMessage {...tokenButtonLabel} />
         </Button>
       </Box>
       {token && (
@@ -484,19 +506,23 @@ export function GatewayGetStartedPanel({
                   <FormattedMessage {...messages.downloadIntro} />
                 </Typography>
                 <CopyableCommand code={downloadCommand(target)} />
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage
+                    {...(target.hasSetupScript
+                      ? messages.prepareIntro
+                      : messages.prepareIntroNoSetup)}
+                  />
+                </Typography>
+                <CopyableCommand code={prepareCommand(target)} />
               </SetupStep>
 
               {configureStep(messages.tokenNoticeCompose, true)}
 
               <SetupStep title={messages.stepStart}>
                 <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage {...messages.startEnter} />
-                </Typography>
-                <CopyableCommand code={enterDirectoryCommand(target)} />
-                <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.startRun} />
                 </Typography>
-                <CopyableCommand code={startCommand()} />
+                <CopyableCommand code={startCommand(target)} />
               </SetupStep>
             </>
           )}
@@ -506,11 +532,10 @@ export function GatewayGetStartedPanel({
       <ConfirmDialog
         cancelLabel={intl.formatMessage(messages.reconfigureConfirmCancel)}
         confirmLabel={intl.formatMessage(messages.reconfigureConfirmButton)}
-        destructive
         loading={rotateToken.isPending}
         message={intl.formatMessage(messages.reconfigureConfirmBody)}
         onCancel={() => setConfirmOpen(false)}
-        onConfirm={reconfigure}
+        onConfirm={generateToken}
         open={confirmOpen}
         title={intl.formatMessage(messages.reconfigureConfirmTitle)}
       />
