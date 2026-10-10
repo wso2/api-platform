@@ -348,3 +348,46 @@ func TestGatewayInternal_Delivery_GatewayMustBelongToTheOrganization(t *testing.
 	assert.Equal(t, "DEPLOYING", status, "a refused gateway lookup records nothing on the deployment")
 	assert.Empty(t, reason)
 }
+
+// A failure to look the secret up at all — the store unreachable — is not the
+// deployment's fault: the single fetch fails with a plain error and records
+// nothing, and a batch fails as a whole instead of marking its entries.
+func TestGatewayInternal_Delivery_RepositoryFailureIsNotRecorded(t *testing.T) {
+	env := setupRenderITEnv(t)
+	gatewayID := env.gateways["1.1.0"]
+	deploymentID := env.deploy(t, "art-render-8", gatewayID, renderITContent(renderITSecret))
+	_, err := env.db.Exec(`ALTER TABLE secrets RENAME TO secrets_unreachable`)
+	require.NoError(t, err)
+
+	_, err = env.svc.GetActiveDeploymentByGateway("art-render-8", renderITOrg, gatewayID)
+	require.Error(t, err)
+	assert.False(t, apperror.DeploymentSecretResolutionFailed.Is(err), "a repository error is not an unresolvable secret: %v", err)
+	status, _, reason := env.status(t, deploymentID)
+	assert.Equal(t, "DEPLOYING", status)
+	assert.Empty(t, reason)
+
+	_, err = env.svc.GetDeploymentContentBatch(renderITOrg, gatewayID, []string{deploymentID})
+	require.Error(t, err)
+	status, _, reason = env.status(t, deploymentID)
+	assert.Equal(t, "DEPLOYING", status)
+	assert.Empty(t, reason)
+}
+
+// A refusal records nothing when a newer deployment replaced the fetched one
+// on the gateway meanwhile: the status row belongs to the newer deployment.
+func TestGatewayInternal_Delivery_RefusalLeavesANewerDeploymentAlone(t *testing.T) {
+	env := setupRenderITEnv(t)
+	gatewayID := env.gateways["1.1.0"]
+	old := env.deploy(t, "art-render-9", gatewayID, renderITContent("does-not-exist"))
+	_, err := env.db.Exec(`INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_by)
+		VALUES ('dep-render-9-newer', 'dep', 'art-render-9', ?, ?, ?, '{}', 'tester')`, renderITOrg, gatewayID, renderITContent(renderITSecret))
+	require.NoError(t, err)
+	_, err = env.db.Exec(`UPDATE deployment_status SET deployment_uuid = 'dep-render-9-newer' WHERE deployment_uuid = ?`, old)
+	require.NoError(t, err)
+
+	env.svc.recordSecretResolutionFailure(renderITOrg, gatewayID, "art-render-9", old)
+
+	status, _, reason := env.status(t, "dep-render-9-newer")
+	assert.Equal(t, "DEPLOYING", status, "the newer deployment keeps its status")
+	assert.Empty(t, reason)
+}

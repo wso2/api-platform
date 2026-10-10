@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario secret-undecryptable: an LLM provider whose upstream auth references a secret that exists
 # and is ACTIVE but whose ciphertext this platform-api cannot decrypt. On a gateway that needs secrets
-# inlined (< 1.2.0) the fetch must be refused: deployment FAILED with statusReason
+# inlined (< 1.2.0; later releases are skipped) the fetch must be refused: deployment FAILED with statusReason
 # SECRET_RESOLUTION_FAILED, platform-api logs the cause, the gateway log carries the 422 body.
 # Before the fix: silent 500, statusReason GATEWAY_PROCESSING_ERROR (from the gateway's ack).
 set -uo pipefail
@@ -13,6 +13,8 @@ ensure_created llm-providers "{\"id\":\"e2e-llm-broken\",\"displayName\":\"e2e-l
 # Same length, random bytes: the row stays ACTIVE and well-formed; AES-GCM just cannot open it.
 sqlite3 "$DB" "update secrets set ciphertext = randomblob(length(ciphertext)) where handle = 'e2e-broken-key'"
 for v in "$@"; do
+  # Gateways from 1.2.0 (and STS builds) resolve secrets through their own sync, not this fetch.
+  ver_below "$v" 1.2.0 || { log "$N: gateway $v syncs secrets itself; the inline-fetch refusal does not apply — skipped"; continue; }
   out=$("$S/deploy.sh" llm-providers e2e-llm-broken "$v" 2>/dev/null); dep=${out%% *}; st=${out##* }
   check $N "$v" deploy-status FAILED "$st"
   check $N "$v" status-reason SECRET_RESOLUTION_FAILED "$(api GET "/llm-providers/e2e-llm-broken/deployments/$dep" | http_body | json_get statusReason)"

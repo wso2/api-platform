@@ -535,6 +535,9 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	for deploymentID, dc := range contentMap {
 		rendered, err := s.renderContentForGateway(orgID, gateway, dc.Content)
 		if err != nil {
+			if !apperror.DeploymentSecretResolutionFailed.Is(err) {
+				return nil, fmt.Errorf("failed to render deployment %s: %w", deploymentID, err)
+			}
 			s.slogger.Warn("Skipping deployment in batch: secret rendering failed",
 				"deploymentID", deploymentID, "artifactID", dc.ArtifactID, "gatewayID", gatewayID, "error", err)
 			s.recordSecretResolutionFailure(orgID, gatewayID, dc.ArtifactID, deploymentID)

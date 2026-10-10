@@ -500,7 +500,9 @@ Rules the translator follows:
   its status is set to `FAILED` with reason `SECRET_RESOLUTION_FAILED`, and the gateway's own
   failed ack for that deploy event is discarded so the reason is not replaced by
   `GATEWAY_PROCESSING_ERROR` (the released gateways do not retry a missing batch entry): restore
-  the secret and redeploy. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
+  the secret and redeploy. A failure to look a secret up at all (the secret store unreachable)
+  is not the deployment's fault and is not recorded: the single fetch is a plain `500` and a
+  batch fails as a whole. A rotated secret therefore reaches a `1.0.0`/`1.1.0`
   gateway only through a redeploy, and a `1.2.0` gateway only after its controller reconnects (it
   caches each secret after the first fetch).
 - A gateway with no reported version (never connected, or a non-semver dev build) is treated as a

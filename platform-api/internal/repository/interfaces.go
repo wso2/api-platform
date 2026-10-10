@@ -155,6 +155,8 @@ type DeploymentRepository interface {
 	GetStatus(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, updatedAt *time.Time, err error)
 	GetStatusFull(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, performedAt *time.Time, statusReason string, err error)
 	UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (rowsAffected int64, err error)
+	// FailCurrentDeployment marks the deployment FAILED with statusReason only while it is still the row's current deployment.
+	FailCurrentDeployment(artifactUUID, orgUUID, gatewayID, deploymentID, statusReason string) (rowsAffected int64, err error)
 	GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error)
 	DeleteStatus(artifactUUID, orgUUID, gatewayID string) error
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
