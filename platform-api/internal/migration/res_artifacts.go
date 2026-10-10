@@ -172,7 +172,7 @@ func (m *restApisMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		return insertRow(ctx, q, "rest_apis",
 			[]string{"uuid", "organization_uuid", "handle", "display_name", "version", "description", "created_by", "updated_by",
 				"project_uuid", "lifecycle_status", "configuration", "origin", "data_version", "created_at", "updated_at"},
-			[]any{r.uuid, r.orgUUID, handle, r.name, r.version, nullOrString(r.description), actor, actor,
+			[]any{r.uuid, r.orgUUID, handle, r.name, r.version, textOrEmpty(r.description), actor, actor,
 				nullOrString(r.projectUUID), nullOrString(r.lifecycleStatus), blob, constants.OriginCP, "1.0",
 				createdAt, artifactUpdatedAt(r)},
 			conflictUUIDNothing)
@@ -246,7 +246,7 @@ func (m *llmTemplatesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 		return insertRow(ctx, q, "llm_provider_templates",
 			[]string{"uuid", "organization_uuid", "handle", "group_id", "display_name", "managed_by", "description",
 				"created_by", "updated_by", "origin", "configuration", "openapi_spec", "version", "is_latest", "enabled", "created_at", "updated_at"},
-			[]any{r.uuid, r.orgUUID, handle, handle /* group_id = handle */, r.name, "organization", nullOrString(r.description),
+			[]any{r.uuid, r.orgUUID, handle, handle /* group_id = handle */, r.name, "organization", textOrEmpty(r.description),
 				actor, actor, constants.OriginCP, blob, []byte{} /* openapi_spec empty */, "v1.0", 1, 1,
 				tsToTstz(r.createdAt, rc.Kernels.appZone()), tsToTstz(r.updatedAt, rc.Kernels.appZone())},
 			conflictUUIDNothing)
@@ -316,7 +316,7 @@ func (m *llmProvidersMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 		return insertRow(ctx, q, "llm_providers",
 			[]string{"uuid", "handle", "display_name", "version", "description", "created_by", "updated_by", "template_uuid",
 				"openapi_spec", "model_list", "configuration", "origin", "data_version", "created_at", "updated_at", "organization_uuid"},
-			[]any{r.uuid, handle, r.name, r.version, nullOrString(r.description), actor, actor, nullOrString(r.templateUUID),
+			[]any{r.uuid, handle, r.name, r.version, textOrEmpty(r.description), actor, actor, nullOrString(r.templateUUID),
 				textToBytea(r.openapiSpec), textToBytea(r.modelList), blob, constants.OriginCP, "1.1",
 				createdAt, artifactUpdatedAt(r), r.orgUUID},
 			conflictUUIDNothing)
@@ -386,7 +386,7 @@ func (m *llmProxiesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Reso
 		return insertRow(ctx, q, "llm_proxies",
 			[]string{"uuid", "handle", "display_name", "version", "project_uuid", "description", "created_by", "updated_by", "provider_uuid",
 				"openapi_spec", "configuration", "origin", "data_version", "created_at", "updated_at", "organization_uuid"},
-			[]any{r.uuid, handle, r.name, r.version, nullOrString(r.projectUUID), nullOrString(r.description), actor, actor, nullOrString(r.providerUUID),
+			[]any{r.uuid, handle, r.name, r.version, nullOrString(r.projectUUID), textOrEmpty(r.description), actor, actor, nullOrString(r.providerUUID),
 				textToBytea(r.openapiSpec), blob, constants.OriginCP, "1.1", createdAt, artifactUpdatedAt(r), r.orgUUID},
 			conflictUUIDNothing)
 	})
@@ -454,7 +454,7 @@ func (m *mcpProxiesMigrator) Migrate(ctx context.Context, rc *RunContext) (*Reso
 		return insertRow(ctx, q, "mcp_proxies",
 			[]string{"uuid", "handle", "display_name", "version", "project_uuid", "description", "created_by", "updated_by",
 				"configuration", "origin", "data_version", "created_at", "updated_at", "organization_uuid"},
-			[]any{r.uuid, handle, r.name, r.version, nullOrString(r.projectUUID), nullOrString(r.description), actor, actor,
+			[]any{r.uuid, handle, r.name, r.version, nullOrString(r.projectUUID), textOrEmpty(r.description), actor, actor,
 				blob, constants.OriginCP, "1.0", createdAt, artifactUpdatedAt(r), r.orgUUID},
 			conflictUUIDNothing)
 	})
@@ -545,7 +545,7 @@ func migratePluginArtifact(ctx context.Context, rc *RunContext, rep *ResourceRep
 		return insertRow(ctx, q, table,
 			[]string{"uuid", "organization_uuid", "handle", "display_name", "version", "project_uuid", "description", "created_by", "updated_by",
 				"lifecycle_status", "configuration", "origin", "data_version", "created_at", "updated_at"},
-			[]any{r.uuid, r.orgUUID, handle, r.name, r.version, nullOrString(r.projectUUID), nullOrString(r.description), actor, actor,
+			[]any{r.uuid, r.orgUUID, handle, r.name, r.version, nullOrString(r.projectUUID), textOrEmpty(r.description), actor, actor,
 				nullOrString(r.lifecycleStatus), blob, constants.OriginCP, "1.0", createdAt, artifactUpdatedAt(r)},
 			conflictUUIDNothing)
 	})

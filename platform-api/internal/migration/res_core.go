@@ -322,7 +322,7 @@ func (m *projectsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		}
 		return insertRow(ctx, q, "projects",
 			[]string{"uuid", "handle", "display_name", "organization_uuid", "description", "created_by", "created_at", "updated_by", "updated_at"},
-			[]any{r.uuid, handle, displayName, r.orgUUID, nullOrString(r.description), actor,
+			[]any{r.uuid, handle, displayName, r.orgUUID, textOrEmpty(r.description), actor,
 				tsToTstz(r.createdAt, rc.Kernels.appZone()), actor, tsToTstz(r.updatedAt, rc.Kernels.appZone())},
 			conflictUUIDNothing)
 	})
@@ -392,7 +392,7 @@ func (m *applicationsMigrator) Migrate(ctx context.Context, rc *RunContext) (*Re
 		}
 		return insertRow(ctx, q, "applications",
 			[]string{"uuid", "handle", "project_uuid", "organization_uuid", "created_by", "updated_by", "display_name", "description", "type", "created_at", "updated_at"},
-			[]any{r.uuid, handle, nullOrString(r.projectUUID), r.orgUUID, actor, actor, r.name, nullOrString(r.description), nullOrString(r.appType),
+			[]any{r.uuid, handle, nullOrString(r.projectUUID), r.orgUUID, actor, actor, r.name, textOrEmpty(r.description), nullOrString(r.appType),
 				tsToTstz(r.createdAt, rc.Kernels.appZone()), tsToTstz(r.updatedAt, rc.Kernels.appZone())},
 			conflictUUIDNothing)
 	})
