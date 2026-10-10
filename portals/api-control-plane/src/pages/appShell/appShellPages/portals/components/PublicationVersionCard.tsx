@@ -25,10 +25,8 @@ import { hairline } from '@/theme/receipes';
 export type PublicationVersionTone = 'draft' | 'published';
 
 export type PublicationVersionBanner = {
-  /** Which version it is and when it last changed. */
+  /** When the version last changed. The switch already says which version it is. */
   meta: ReactNode;
-  /** What this version is, beside the status dot. */
-  title: ReactNode;
 };
 
 type PublicationVersionCardProps = {
@@ -41,7 +39,7 @@ type PublicationVersionCardProps = {
 
 /**
  * The frame around one version of the listing, draft or published: a banner
- * saying which one is on screen, over the tab's content. The banner and border
+ * describing the one on screen, over the tab's content. The banner and border
  * change colour with the version, so it is never unclear whether the fields are
  * the working copy or the live one.
  */
@@ -75,12 +73,9 @@ export function PublicationVersionCard({ banner, children, tone }: PublicationVe
             py: 1.5,
           })}
         >
-          <Stack alignItems="center" direction="row" spacing={1} sx={{ color: published ? 'success.main' : 'primary.main' }}>
+          <Box sx={{ color: published ? 'success.main' : 'primary.main', display: 'flex' }}>
             <Circle fill="currentColor" size={8} />
-            <Typography sx={{ fontWeight: 500 }} variant="body2">
-              {banner.title}
-            </Typography>
-          </Stack>
+          </Box>
           <Typography color="text.secondary" variant="body2">
             {banner.meta}
           </Typography>
