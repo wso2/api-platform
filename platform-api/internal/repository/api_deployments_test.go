@@ -755,3 +755,55 @@ func TestGetLatestDeploymentRevision(t *testing.T) {
 		t.Errorf("revision for other gateway = %q (err %v), want empty", rev, err)
 	}
 }
+
+// FailCurrentDeployment marks only the deployment that is still current: a
+// stale deployment ID updates nothing, status_desired is left alone, and
+// performed_at moves so an ack for the earlier event no longer matches.
+func TestFailCurrentDeployment(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	const orgUUID, gatewayUUID, apiUUID = "org-001", "gateway-001", "api-fail-current"
+	createTestAPI(t, db, apiUUID, orgUUID)
+	createTestGateway(t, db, gatewayUUID, orgUUID)
+	insertDeployment(t, db, "deploy-current", "Current", apiUUID, orgUUID, gatewayUUID, time.Now())
+	eventAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := repo.SetCurrentWithDetails(apiUUID, orgUUID, gatewayUUID, "deploy-current",
+		model.DeploymentStatusDeploying, string(model.DeploymentStatusDeployed), &eventAt, ""); err != nil {
+		t.Fatalf("SetCurrentWithDetails: %v", err)
+	}
+
+	rows, err := repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-stale", "SECRET_RESOLUTION_FAILED")
+	if err != nil || rows != 0 {
+		t.Fatalf("stale deployment: rows=%d err=%v, want 0 rows", rows, err)
+	}
+	_, status, _, reason, err := repo.GetStatusFull(apiUUID, orgUUID, gatewayUUID)
+	if err != nil || status != model.DeploymentStatusDeploying || reason != "" {
+		t.Fatalf("after stale call: status=%s reason=%q err=%v, want unchanged", status, reason, err)
+	}
+
+	rows, err = repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-current", "SECRET_RESOLUTION_FAILED")
+	if err != nil || rows != 1 {
+		t.Fatalf("current deployment: rows=%d err=%v, want 1 row", rows, err)
+	}
+	_, status, performedAt, reason, err := repo.GetStatusFull(apiUUID, orgUUID, gatewayUUID)
+	if err != nil {
+		t.Fatalf("GetStatusFull: %v", err)
+	}
+	if status != model.DeploymentStatusFailed || reason != "SECRET_RESOLUTION_FAILED" {
+		t.Errorf("status=%s reason=%q, want FAILED/SECRET_RESOLUTION_FAILED", status, reason)
+	}
+	if performedAt == nil || performedAt.Equal(eventAt) {
+		t.Errorf("performed_at = %v, want re-stamped away from the event's %v", performedAt, eventAt)
+	}
+	var desired string
+	if err := db.QueryRow(`SELECT status_desired FROM deployment_status WHERE artifact_uuid = ?`, apiUUID).Scan(&desired); err != nil || desired != "DEPLOYED" {
+		t.Errorf("status_desired = %q (err %v), want DEPLOYED", desired, err)
+	}
+
+	db.Close()
+	if _, err := repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-current", "X"); err == nil {
+		t.Error("a database error must be returned")
+	}
+}

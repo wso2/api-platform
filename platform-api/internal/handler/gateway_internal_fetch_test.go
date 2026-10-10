@@ -18,11 +18,17 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
 // The gateway in the secret test env reports version 1.0, so platform-api
@@ -94,4 +100,110 @@ func TestGatewayInternalFetch_UnresolvableSecretIsRefusedWith422(t *testing.T) {
 			t.Fatalf("status = %d, want 404; body %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+// Lookup-only fakes so every kind's handler reaches the shared delivery path.
+type stubMCPRepo struct{ repository.MCPProxyRepository }
+
+func (stubMCPRepo) GetByUUID(uuid, _ string) (*model.MCPProxy, error) {
+	return &model.MCPProxy{UUID: uuid}, nil
+}
+
+type stubAgentRepo struct {
+	repository.AgentProxyRepository
+}
+
+func (stubAgentRepo) GetByUUID(uuid, _ string) (*model.AgentProxy, error) {
+	return &model.AgentProxy{UUID: uuid}, nil
+}
+
+type stubWebSubRepo struct{ repository.WebSubAPIRepository }
+
+func (stubWebSubRepo) GetByUUID(uuid, _ string) (*model.WebSubAPI, error) {
+	return &model.WebSubAPI{UUID: uuid}, nil
+}
+
+type stubWebBrokerRepo struct {
+	repository.WebBrokerAPIRepository
+}
+
+func (stubWebBrokerRepo) GetByUUID(uuid, _ string) (*model.WebBrokerAPI, error) {
+	return &model.WebBrokerAPI{UUID: uuid}, nil
+}
+
+// allKindsRouter serves the internal API over env's database with every
+// artifact kind's lookup wired.
+func allKindsRouter(env *gatewaySecretTestEnv) http.Handler {
+	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(env.db))
+	gatewayRepo := repository.NewGatewayRepo(env.db)
+	gatewaySvc := service.NewGatewayService(gatewayRepo, nil, nil, nil, nil, slog.Default(), false, false, nil, identity)
+	svc := service.NewGatewayInternalAPIService(nil, nil, nil, nil, nil, stubMCPRepo{}, stubAgentRepo{},
+		repository.NewDeploymentRepo(env.db, repository.NewArtifactTableRegistry()), gatewayRepo,
+		nil, nil, nil, nil, repository.NewSecretRepo(env.db), &config.Server{}, slog.Default())
+	svc.SetSecretService(env.svc)
+	svc.SetEventArtifactRepos(stubWebSubRepo{}, stubWebBrokerRepo{})
+	mux := http.NewServeMux()
+	NewGatewayInternalAPIHandler(gatewaySvc, svc, nil, env.svc, slog.Default()).RegisterRoutes(mux)
+	return mux
+}
+
+var fetchRoutes = []struct{ kind, path string }{
+	{"API", "/api/internal/v1/apis/"},
+	{"LLM provider", "/api/internal/v1/llm-providers/"},
+	{"LLM proxy", "/api/internal/v1/llm-proxies/"},
+	{"MCP proxy", "/api/internal/v1/mcp-proxies/"},
+	{"Agent", "/api/internal/v1/agents/"},
+	{"WebSub API", "/api/internal/v1/websub-apis/"},
+	{"WebBroker API", "/api/internal/v1/webbroker-apis/"},
+}
+
+func doFetch(router http.Handler, path, apiKey string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil) // RemoteAddr 192.0.2.1:1234
+	req.Header.Set("api-key", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+// Every kind refuses an unresolvable secret with the same 422.
+func TestGatewayInternalFetch_EveryKindRefusesUnresolvableSecret(t *testing.T) {
+	env, cleanup := setupGatewaySecretTestEnv(t)
+	defer cleanup()
+	router := allKindsRouter(env)
+	for i, rt := range fetchRoutes {
+		t.Run(rt.kind, func(t *testing.T) {
+			id := "art-kind-" + string(rune('a'+i))
+			insertArtifact(t, env.db, env.orgID, id, id)
+			insertDeployment(t, env.db, env.orgID, id, env.gatewayID, "dep-"+id, providerContent("gone-handle"))
+			w := doFetch(router, rt.path+id, env.plainToken)
+			if w.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422; body %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+// Any other failure is a 500 that names the kind, never the cause.
+func TestGatewayInternalFetch_EveryKindAnswers500OnOtherFailures(t *testing.T) {
+	env, cleanup := setupGatewaySecretTestEnv(t)
+	defer cleanup()
+	router := allKindsRouter(env)
+	if _, err := env.db.Exec(`ALTER TABLE deployment_status RENAME TO deployment_status_gone`); err != nil {
+		t.Fatalf("break the deployment lookup: %v", err)
+	}
+	for _, rt := range fetchRoutes {
+		t.Run(rt.kind, func(t *testing.T) {
+			w := doFetch(router, rt.path+"art-any", env.plainToken)
+			if w.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500; body %s", w.Code, w.Body.String())
+			}
+			desc, _ := parseGWBody(w)["description"].(string)
+			if desc != "Failed to get "+rt.kind {
+				t.Errorf("description = %q, want %q", desc, "Failed to get "+rt.kind)
+			}
+			if strings.Contains(w.Body.String(), "deployment_status") {
+				t.Errorf("response leaks the internal error: %s", w.Body.String())
+			}
+		})
+	}
 }

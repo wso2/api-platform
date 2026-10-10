@@ -19,6 +19,7 @@ package service
 
 import (
 	"database/sql"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -390,4 +391,109 @@ func TestGatewayInternal_Delivery_RefusalLeavesANewerDeploymentAlone(t *testing.
 	status, _, reason := env.status(t, "dep-render-9-newer")
 	assert.Equal(t, "DEPLOYING", status, "the newer deployment keeps its status")
 	assert.Empty(t, reason)
+}
+
+// Lookup-only fakes: the MCP, Agent, WebSub and WebBroker fetches resolve the
+// artifact in their own repository before the shared deliverDeployment.
+type fakeMCPRepo struct{ repository.MCPProxyRepository }
+
+func (fakeMCPRepo) GetByUUID(uuid, _ string) (*model.MCPProxy, error) {
+	return &model.MCPProxy{UUID: uuid}, nil
+}
+
+type fakeAgentRepo struct {
+	repository.AgentProxyRepository
+}
+
+func (fakeAgentRepo) GetByUUID(uuid, _ string) (*model.AgentProxy, error) {
+	return &model.AgentProxy{UUID: uuid}, nil
+}
+
+type fakeWebSubRepo struct{ repository.WebSubAPIRepository }
+
+func (fakeWebSubRepo) GetByUUID(uuid, _ string) (*model.WebSubAPI, error) {
+	return &model.WebSubAPI{UUID: uuid}, nil
+}
+
+type fakeWebBrokerRepo struct {
+	repository.WebBrokerAPIRepository
+}
+
+func (fakeWebBrokerRepo) GetByUUID(uuid, _ string) (*model.WebBrokerAPI, error) {
+	return &model.WebBrokerAPI{UUID: uuid}, nil
+}
+
+// The kinds with their own artifact lookup go through the same delivery: an
+// old gateway gets the secret inlined, and an unresolvable secret is refused
+// and recorded on the deployment.
+func TestGatewayInternal_Delivery_RepositoryBackedKinds(t *testing.T) {
+	env := setupRenderITEnv(t)
+	env.svc.mcpProxyRepo = fakeMCPRepo{}
+	env.svc.agentProxyRepo = fakeAgentRepo{}
+	env.svc.SetEventArtifactRepos(fakeWebSubRepo{}, fakeWebBrokerRepo{})
+	gatewayID := env.gateways["1.1.0"]
+
+	kinds := []struct {
+		kind  string
+		fetch func(*GatewayInternalAPIService, string, string, string) (map[string]string, error)
+	}{
+		{"mcp", (*GatewayInternalAPIService).GetActiveMCPProxyDeploymentByGateway},
+		{"agent", (*GatewayInternalAPIService).GetActiveAgentDeploymentByGateway},
+		{"websub", (*GatewayInternalAPIService).GetActiveWebSubAPIDeploymentByGateway},
+		{"webbroker", (*GatewayInternalAPIService).GetActiveWebBrokerAPIDeploymentByGateway},
+	}
+	for _, k := range kinds {
+		t.Run(k.kind, func(t *testing.T) {
+			ok := "art-render-10-" + k.kind
+			env.deploy(t, ok, gatewayID, renderITContent(renderITSecret))
+			out, err := k.fetch(env.svc, ok, renderITOrg, gatewayID)
+			require.NoError(t, err)
+			assert.Equal(t, renderITPlaintext, paramValue(t, []byte(out[ok])))
+
+			bad := "art-render-11-" + k.kind
+			deploymentID := env.deploy(t, bad, gatewayID, renderITContent("does-not-exist"))
+			_, err = k.fetch(env.svc, bad, renderITOrg, gatewayID)
+			assert.True(t, apperror.DeploymentSecretResolutionFailed.Is(err), "%v", err)
+			_, _, reason := env.status(t, deploymentID)
+			assert.Equal(t, model.DeploymentErrorSecretResolutionFailed, reason)
+		})
+	}
+}
+
+// failingStatusRepo makes the conditional status write fail.
+type failingStatusRepo struct {
+	repository.DeploymentRepository
+}
+
+func (failingStatusRepo) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, assert.AnError
+}
+
+// A refusal whose status write fails is still refused: the gateway gets the
+// typed error, and the failed write is only logged.
+func TestGatewayInternal_Delivery_StatusWriteFailureStillRefuses(t *testing.T) {
+	env := setupRenderITEnv(t)
+	gatewayID := env.gateways["1.1.0"]
+	deploymentID := env.deploy(t, "art-render-12", gatewayID, renderITContent("does-not-exist"))
+	env.svc.deploymentRepo = failingStatusRepo{env.svc.deploymentRepo}
+
+	_, err := env.svc.GetActiveDeploymentByGateway("art-render-12", renderITOrg, gatewayID)
+	assert.True(t, apperror.DeploymentSecretResolutionFailed.Is(err), "%v", err)
+	status, _, reason := env.status(t, deploymentID)
+	assert.Equal(t, "DEPLOYING", status)
+	assert.Empty(t, reason)
+}
+
+// Decrypt classifies a ciphertext the vault cannot open as unresolvable.
+func TestSecretService_DecryptUndecryptableIsUnresolvable(t *testing.T) {
+	env := setupRenderITEnv(t)
+	_, err := env.db.Exec(`UPDATE secrets SET ciphertext = ? WHERE organization_uuid = ? AND handle = ?`,
+		[]byte("not-a-valid-ciphertext-for-this-key"), renderITOrg, renderITSecret)
+	require.NoError(t, err)
+
+	_, err = env.secrets.Decrypt(renderITOrg, renderITSecret)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrSecretUndecryptable), "%v", err)
+	assert.True(t, SecretUnresolvable(err))
+	assert.False(t, SecretUnresolvable(assert.AnError), "an unrelated error is not unresolvable")
 }
