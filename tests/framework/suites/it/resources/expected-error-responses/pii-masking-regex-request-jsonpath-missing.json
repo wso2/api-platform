@@ -1,0 +1,10 @@
+{
+  "body": {
+    "code": 900967,
+    "message": "Error occurred during pii-masking-regex mediation: error extracting value from JSONPath: key not found: nonexistent"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 500
+}

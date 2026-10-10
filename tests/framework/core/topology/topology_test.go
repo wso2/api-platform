@@ -328,6 +328,41 @@ blocks:
 	})
 }
 
+// releasedPoliciesOnly narrows what addPoliciesFrom builds, so on its own it means nothing and
+// is refused rather than ignored.
+func TestReleasedPoliciesOnlyNeedsAddPoliciesFrom(t *testing.T) {
+	r := testRegistry(t)
+	require.NoError(t, r.Register(&components.Definition{
+		Name: "platform-gateway", Image: components.ImageRef{Ref: "pg:test"}, Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+	}))
+	require.NoError(t, r.Validate())
+
+	resolved, err := Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: platform-gateway
+        addPoliciesFrom: ../gateway-controllers/policies
+        releasedPoliciesOnly: true
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+	require.NoError(t, err)
+	require.True(t, resolved.Blocks[0].Components[0].ReleasedPoliciesOnly)
+
+	_, err = Load([]byte(`
+suite: s
+blocks:
+  - name: b
+    components:
+      - name: platform-gateway
+        releasedPoliciesOnly: true
+    runners: [{name: r, features: [f.feature]}]
+`), r)
+	require.ErrorContains(t, err, "sets releasedPoliciesOnly without addPoliciesFrom")
+}
+
 func TestDBResolutionOrder(t *testing.T) {
 	src := `
 suite: s

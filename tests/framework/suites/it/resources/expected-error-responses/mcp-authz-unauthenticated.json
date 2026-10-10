@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Unauthorized",
+    "message": "Unauthorized: authentication required for this MCP capability"
+  },
+  "headers": {
+    "content-type": "application/json",
+    "www-authenticate": "Bearer resource_metadata=\"http://localhost:8080/compat-mcp-authz-anon\u003cunique\u003e/.well-known/oauth-protected-resource\", error=\"invalid_token\", error_description=\"Unauthorized: authentication required for this MCP capability\""
+  },
+  "status": 401
+}

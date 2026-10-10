@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": "Unauthorized",
+    "message": "Authentication failed"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 401
+}

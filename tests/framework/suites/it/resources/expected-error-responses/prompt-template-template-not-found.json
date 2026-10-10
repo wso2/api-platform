@@ -1,0 +1,10 @@
+{
+  "body": {
+    "message": "Error resolving templates: template \"nonexistent\" not found",
+    "type": "PROMPT_TEMPLATE_ERROR"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 500
+}

@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Unauthorized",
+    "message": "Authentication required"
+  },
+  "headers": {
+    "content-type": "application/json",
+    "www-authenticate": "Basic realm=\"Restricted\""
+  },
+  "status": 401
+}

@@ -131,6 +131,54 @@ func TestManagementBasePathForVersion(t *testing.T) {
 	}
 }
 
+// Releases before 1.2.0 lose a freshly created resource's route when a deletion's snapshot
+// rebuild finishes after it, so the framework waits there until the controller has applied the
+// deletion, and nowhere else.
+func TestAwaitDeletionAppliedPollsTheConfigDumpOnlyForReleasesWithTheRace(t *testing.T) {
+	const handle = "compat-api-abc123"
+	var mu sync.Mutex
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		n := requests
+		mu.Unlock()
+		require.Equal(t, "/api/admin/v0.9/config_dump", r.URL.Path)
+		require.Equal(t, "Basic token", r.Header.Get("Authorization"))
+		if n < 3 {
+			_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"`+handle+`"}}}]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"`+handle+`-other"}}}]}`)
+	}))
+	defer server.Close()
+	client := httpx.NewClient(httpx.Options{})
+
+	require.NoError(t, AwaitDeletionApplied(t.Context(), client, server.URL, "1.1.0", "Basic token", handle))
+	require.Equal(t, 3, requests, "polls until the handle is gone, ignoring a longer handle that contains it")
+
+	for _, version := range []string{"1.2.0", "2026.09.24", ""} {
+		require.NoError(t, AwaitDeletionApplied(t.Context(), client, server.URL, version, "Basic token", handle))
+	}
+	require.Equal(t, 3, requests, "releases without the race are not polled")
+
+	require.Error(t, AwaitDeletionApplied(t.Context(), nil, server.URL, "1.1.0", "", handle))
+	require.Error(t, AwaitDeletionApplied(t.Context(), client, "", "1.1.0", "", handle))
+	require.Error(t, AwaitDeletionApplied(t.Context(), client, server.URL, "1.1.0", "", " "))
+}
+
+func TestAwaitDeletionAppliedFailsWhenTheDumpKeepsTheHandle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"apis":[{"configuration":{"metadata":{"name":"stuck"}}}]}`)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+
+	err := AwaitDeletionApplied(ctx, httpx.NewClient(httpx.Options{}), server.URL, "1.1.0", "", "stuck")
+	require.Error(t, err)
+}
+
 func TestConfigDumpContainsPolicy(t *testing.T) {
 	const routePath = "/orders/v1/test"
 

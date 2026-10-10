@@ -23,6 +23,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -69,6 +70,43 @@ func ManagementBasePathForVersion(version string) string {
 		return managementBasePathV11
 	}
 	return ManagementBasePath
+}
+
+// AwaitDeletionApplied waits, on a Gateway release with the xDS snapshot race, until the
+// controller has applied the deletion of handle, so the next change reaches it in a later poll.
+//
+// Releases before 1.2.0 apply each change from an event the controller polls for every three
+// seconds, and rebuild the route snapshot on a goroutine per event, without a lock (fixed in
+// 1.2.0 by "fix(xds): add mutex to SnapshotManager.UpdateSnapshot"). A deletion and a creation
+// applied in the same poll race, and the deletion's rebuild can publish last, leaving the new
+// resource without a route. The controller's config dump drops the handle when its poll applies
+// the deletion, so once the handle is gone a later creation is applied in a later poll. A kind
+// the dump does not list never rebuilds the route snapshot, so it passes at once. Later releases
+// are not polled.
+func AwaitDeletionApplied(
+	ctx context.Context, client *httpx.Client, adminURL, version, authorization, handle string,
+) error {
+	if !usesLegacyGatewayContract(version) {
+		return nil
+	}
+	if client == nil || strings.TrimSpace(adminURL) == "" || strings.TrimSpace(handle) == "" {
+		return errors.New("awaiting a deletion: client, admin URL and handle are required")
+	}
+	url := adminURL + adminBasePathForVersion(version) + "/config_dump"
+	quoted := `"` + handle + `"`
+	accept := func(r *httpx.Response) bool {
+		return r != nil && r.Succeeded() && !strings.Contains(r.Text(), quoted)
+	}
+	last, err := retry.Until(ctx,
+		retry.Options{Interval: 100 * time.Millisecond},
+		func(ctx context.Context) (*httpx.Response, error) {
+			return client.Do(ctx, httpx.Request{
+				Method: http.MethodGet, URL: url, Headers: map[string]string{"Authorization": authorization},
+			}, 0, 0)
+		},
+		accept,
+	)
+	return awaited(last, err, accept, fmt.Sprintf("the config dump still lists the deleted %q", handle))
 }
 
 func adminBasePathForVersion(version string) string {

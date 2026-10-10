@@ -107,6 +107,7 @@ type policyProduct struct {
 	version         string
 	source          string
 	buildFromSource bool
+	releasedOnly    bool
 }
 
 func buildPolicyProducts(
@@ -134,6 +135,7 @@ func buildPolicyProducts(
 			}
 			images, buildErr := platformgateway.BuildVersionedWithPolicies(
 				ctx, root, product.version, product.source, baseController, baseRuntime, runner,
+				product.releasedOnly,
 			)
 			if buildErr != nil {
 				return fmt.Errorf("catalog: extending %s:%s with policies from %q: %w",
@@ -168,7 +170,8 @@ func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
 				}
 				component.Version = version
 			}
-			key := component.Def.Name + "\x00" + version + "\x00" + component.AddPoliciesFrom + "\x00" + fmt.Sprint(fromSource)
+			key := component.Def.Name + "\x00" + version + "\x00" + component.AddPoliciesFrom + "\x00" +
+				fmt.Sprint(fromSource) + "\x00" + fmt.Sprint(component.ReleasedPoliciesOnly)
 			if seen[key] {
 				continue
 			}
@@ -176,6 +179,7 @@ func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
 			products = append(products, policyProduct{
 				component: component.Def.Name, version: version,
 				source: component.AddPoliciesFrom, buildFromSource: fromSource,
+				releasedOnly: component.ReleasedPoliciesOnly,
 			})
 		}
 	}
@@ -188,7 +192,7 @@ func platformGatewayBaseImages(resolved *topology.Resolved, product policyProduc
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			if component.Def.Compose == nil {
@@ -211,7 +215,7 @@ func setPlatformGatewayImages(resolved *topology.Resolved, product policyProduct
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			def := *component.Def

@@ -1,0 +1,7 @@
+{
+  "bodyText": "data: {\"message\":{\"action\":\"GUARDRAIL_INTERVENED\",\"actionReason\":\"Violation of applied word count constraints detected\",\"direction\":\"RESPONSE\",\"interveningGuardrail\":\"word-count-guardrail\"},\"type\":\"WORD_COUNT_GUARDRAIL\"}\n\n",
+  "headers": {
+    "content-type": "text/event-stream"
+  },
+  "status": 200
+}

@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of applied content length constraints detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "content-length-guardrail"
+    },
+    "type": "CONTENT_LENGTH_GUARDRAIL"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

@@ -1,0 +1,9 @@
+{
+  "body": {
+    "error": "Request body is empty."
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

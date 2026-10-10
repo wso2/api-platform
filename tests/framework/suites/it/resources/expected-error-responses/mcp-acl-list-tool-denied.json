@@ -1,0 +1,14 @@
+{
+  "body": {
+    "error": {
+      "code": -32000,
+      "message": "MCP capability not allowed"
+    },
+    "id": 21,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 400
+}

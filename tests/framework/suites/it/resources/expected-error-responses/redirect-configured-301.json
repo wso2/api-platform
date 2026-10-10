@@ -1,0 +1,6 @@
+{
+  "headers": {
+    "location": "https://example.org:8443/moved"
+  },
+  "status": 301
+}

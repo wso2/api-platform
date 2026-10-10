@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": "forbidden",
+    "message": "Subscription required for this API: no subscription token or application identity provided"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 403
+}

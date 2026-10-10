@@ -1,0 +1,10 @@
+{
+  "body": {
+    "code": "cost_based_model_routing_budget_exhausted",
+    "error": "requested model has no available budget or the fallback budget is missing or exhausted"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 429
+}

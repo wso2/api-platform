@@ -76,8 +76,12 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	path := r.URL.Path
+	if streamRequested(path, body) {
+		s.writeStream(w, path, body)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
 
 	switch {
 	// OpenAI

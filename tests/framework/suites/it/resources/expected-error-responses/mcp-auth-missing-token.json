@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Unauthorized",
+    "message": "Authentication failed"
+  },
+  "headers": {
+    "content-type": "application/json",
+    "www-authenticate": "Bearer resource_metadata=\"https://mcp-e2e-gatewayurl.example.com:7777/compat-mcp-auth-none\u003cunique\u003e/.well-known/oauth-protected-resource\", error=\"invalid_token\", error_description=\"Authentication failed\""
+  },
+  "status": 401
+}
