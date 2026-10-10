@@ -218,14 +218,14 @@ type SubscriptionPlanRepository interface {
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
-	// GetUUIDsByHandles resolves each handle to its subscription_plan_uuid,
+	// GetByHandles loads each plan whose handle is in handles, keyed by handle,
 	// scoped to the organization. A handle absent from the returned map does
-	// not exist in the org's catalog. Used by API Publication draft/publish
-	// save to validate and resolve subscriptionPlanIds.
-	GetUUIDsByHandles(handles []string, orgUUID string) (map[string]string, error)
-	// GetHandlesByIDs is the inverse of GetUUIDsByHandles: subscription_plan_uuid
-	// to handle, for reconstructing a subscriptionPlanIds response from stored
-	// mapping rows.
+	// not exist in the org's catalog. Used by API Publication to validate
+	// subscriptionPlanIds (existence and status) and to create missing plans on
+	// the API Portal.
+	GetByHandles(handles []string, orgUUID string) (map[string]*model.SubscriptionPlan, error)
+	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
+	// a subscriptionPlanIds response from stored mapping rows.
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
 }
 

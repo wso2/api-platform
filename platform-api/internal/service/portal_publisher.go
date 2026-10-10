@@ -39,6 +39,11 @@ type PortalPublisher interface {
 	// Errors follow the same contract as Publish.
 	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
 
+	// CreateMissingPlans creates on portal the plans it does not already have,
+	// matched by exact handle; plans it already has are left untouched. Errors
+	// follow the same contract as Publish.
+	CreateMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error
+
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
 	Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error
