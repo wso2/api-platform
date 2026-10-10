@@ -88,7 +88,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // gateway's handle from it. It is a plain display name from then on — the
   // handle is immutable — so an edit must not be blocked by rules that no longer
   // apply to what it changes.
-  const nameError = isEdit ? undefined : validateGatewayName(name, environmentId);
+  const nameError = isEdit ? undefined : validateGatewayName(name);
 
   // The handle is what the gateway is addressed by and cannot be changed later,
   // so show what the name will become instead of leaving the user to guess.
