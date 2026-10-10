@@ -338,6 +338,9 @@ data:
     [policy_engine.fault_policies]
     handle_upstream_faults = {{ dig "fault_policies" "handle_upstream_faults" false $pe }}
 
+    [policy_engine.llm_openai_compatible_errors]
+    enabled = {{ dig "llm_openai_compatible_errors" "enabled" false $pe }}
+
     [policy_engine.request_body]
     max_decompressed_bytes = {{ $pe.request_body.max_decompressed_bytes | int64 }}
 

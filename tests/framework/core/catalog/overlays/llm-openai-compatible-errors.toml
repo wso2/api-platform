@@ -1,0 +1,4 @@
+# Return every gateway-produced error on an LlmProvider or LlmProxy route in the OpenAI error
+# envelope, for the llm-openai-compatible-errors integration block.
+[policy_engine.llm_openai_compatible_errors]
+enabled = true

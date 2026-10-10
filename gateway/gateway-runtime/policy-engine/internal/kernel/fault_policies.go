@@ -63,7 +63,13 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 	// DESCRIBED the failure, in which case the body is a fallback for a gateway that cannot
 	// render one and this gateway renders instead. See faultformat.ShouldFormat.
 	if immResp.Body != nil && immResp.Fault == nil {
-		ec.faultBodyAuthored = true
+		// On an OpenAI route the body is reshaped rather than kept: its message becomes the
+		// description, which the formatter then renders. See faultformat.OpenAIPolicyBodyMessage.
+		if msg, ok := ec.openAIPolicyBodyMessage(immResp.Body); ok {
+			immResp.Fault = &policy.FaultDetails{Message: msg}
+		} else {
+			ec.faultBodyAuthored = true
+		}
 	}
 	// A rejection is the gateway's own error by construction, so provenance is settled.
 	ec.faultSource = sourceGateway
@@ -270,10 +276,34 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 	}
 	for _, r := range results {
 		if faultformat.BodyAuthored(r.Action) && !faultformat.DescribedError(r.Action) {
-			ec.faultBodyAuthored = true
+			// As on the rejection path: an OpenAI route reshapes the body instead of keeping it.
+			// The fault entries have already run here, so a re-description of theirs is the
+			// final account of the failure: the body's message only fills a gap in it, and
+			// is never a reason to replace it.
+			if msg, ok := ec.openAIPolicyBodyMessage(actionBody(r.Action)); ok {
+				ec.faultDeclared = withFallbackMessage(ec.faultDeclared, msg)
+			} else {
+				ec.faultBodyAuthored = true
+			}
 			return
 		}
 	}
+}
+
+// withFallbackMessage returns declared with msg as its message when it has none, and a new
+// description carrying only msg when there is no description at all. Every other field of
+// declared is kept. declared itself is never modified: the same pointer is shared with the
+// FaultContext the fault entries saw.
+func withFallbackMessage(declared *policy.FaultDetails, msg string) *policy.FaultDetails {
+	if declared == nil {
+		return &policy.FaultDetails{Message: msg}
+	}
+	if declared.Message != "" || msg == "" {
+		return declared
+	}
+	out := *declared
+	out.Message = msg
+	return &out
 }
 
 // noteUpstreamAuthoredBody records that the BACKEND decided the client's body.
@@ -286,12 +316,24 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 //
 // A backend cannot mark its body as a fallback the way a policy can, so bytes from upstream
 // are a decision and no bytes are no decision. A backend 502 with an empty body is still
-// rendered on a formatted kind.
+// rendered on a formatted kind — except on an OpenAI route, where the provider owns its whole
+// error response, including the decision to send no body. An OpenAI route also treats an upstream
+// error of unreported provenance as the provider's: rewriting a provider's error document is the
+// one outcome this option must never produce, so without proof the router made it, it stands.
 func (ec *PolicyExecutionContext) noteUpstreamAuthoredBody() {
-	if ec.faultBodyAuthored || ec.faultSource != sourceBackend {
+	if ec.faultBodyAuthored {
+		return
+	}
+	if ec.faultSource == sourceUnknown && ec.llmOpenAIErrors() {
+		ec.faultBodyAuthored = true
+		return
+	}
+	if ec.faultSource != sourceBackend {
 		return
 	}
 	if body := ec.responseBodyCtx; body != nil && body.ResponseBody != nil && len(body.ResponseBody.Content) > 0 {
+		ec.faultBodyAuthored = true
+	} else if ec.llmOpenAIErrors() {
 		ec.faultBodyAuthored = true
 	}
 }

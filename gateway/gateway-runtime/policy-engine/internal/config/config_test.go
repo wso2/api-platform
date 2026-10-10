@@ -2326,3 +2326,49 @@ handle_upstream_faults = true
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
 }
+
+// OpenAI-format LLM errors change bodies LLM clients already receive, so a config that says
+// nothing must leave them alone.
+func TestLoad_LLMOpenAICompatibleErrorsDefaultsOff(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Deliberately no [policy_engine.llm_openai_compatible_errors] section at all.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.PolicyEngine.LLMOpenAICompatibleErrors.Enabled,
+		"an unconfigured deployment must keep the LLM error bodies it has always sent")
+}
+
+func TestLoad_LLMOpenAICompatibleErrorsOptIn(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.llm_openai_compatible_errors]
+enabled = true
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.PolicyEngine.LLMOpenAICompatibleErrors.Enabled,
+		"policy_engine.llm_openai_compatible_errors.enabled must reach the engine")
+}
