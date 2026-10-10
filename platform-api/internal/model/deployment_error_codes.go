@@ -27,10 +27,11 @@ const (
 	// deployment other than the one it holds.
 	DeploymentErrorIDMismatch = "DEPLOYMENT_ID_MISMATCH"
 	// DeploymentErrorSecretResolutionFailed is set by platform-api itself when
-	// a gateway that needs secrets inlined fetched this deployment in a batch
-	// and a referenced secret could not be resolved (deleted or deprecated).
-	// The deployment was left out of the batch, so the gateway does not hold
-	// it; restore the secret and redeploy.
+	// a gateway that needs secrets inlined fetched this deployment, on a deploy
+	// event or in its startup-sync batch, and a referenced secret could not be
+	// resolved (missing, deprecated or not decryptable). The fetch was refused,
+	// so the gateway does not hold the deployment; restore the secret and
+	// redeploy.
 	DeploymentErrorSecretResolutionFailed = "SECRET_RESOLUTION_FAILED"
 )
 
@@ -57,6 +58,7 @@ var DeploymentErrorMessages = map[string]string{
 	DeploymentErrorTimeout:                  "Deployment timed out waiting for gateway acknowledgement",
 	DeploymentErrorGatewayFailure:           "Gateway failed to process the deployment",
 	DeploymentErrorIDMismatch:               "Gateway holds a different deployment than the one addressed",
+	DeploymentErrorSecretResolutionFailed:   "A secret referenced by the deployment could not be resolved for the gateway",
 	DeploymentErrorAgentArtifactFetchFailed: "Gateway could not retrieve the Agent deployment artifact",
 	DeploymentErrorAgentValidationFailed:    "Gateway rejected the Agent definition as invalid",
 	DeploymentErrorAgentRenderFailed:        "Gateway could not resolve a template or secret reference in the Agent definition",

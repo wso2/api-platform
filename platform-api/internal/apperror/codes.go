@@ -99,6 +99,9 @@ const (
 	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
 	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
 	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
+	// CodeDeploymentSecretResolutionFailed: a gateway that needs secrets inlined
+	// fetched a deployment and a secret it references could not be resolved.
+	CodeDeploymentSecretResolutionFailed = "DEPLOYMENT_SECRET_RESOLUTION_FAILED"
 )
 
 // REST API domain codes.

@@ -59,9 +59,11 @@ func (s *GatewayInternalAPIService) gatewayForDelivery(orgID, gatewayID string) 
 
 // renderContentForGateway returns content as the gateway must receive it.
 // A gateway that syncs secrets gets the stored bytes unchanged. An older
-// gateway gets every placeholder replaced with the decrypted value; a
-// deprecated or missing secret, or a missing secret store, fails the render,
-// because a placeholder shipped to such a gateway can never resolve.
+// gateway gets every placeholder replaced with the decrypted value. A secret
+// that cannot be resolved (missing, deprecated or not decryptable) fails the
+// render with apperror.DeploymentSecretResolutionFailed, and a missing secret
+// store fails it too: a placeholder shipped to such a gateway can never
+// resolve.
 func (s *GatewayInternalAPIService) renderContentForGateway(orgID string, gateway *model.Gateway, content []byte) ([]byte, error) {
 	if !gatewaytranslator.RequiresInlineSecrets(gateway.Version) {
 		return content, nil
@@ -73,16 +75,44 @@ func (s *GatewayInternalAPIService) renderContentForGateway(orgID string, gatewa
 		return nil, fmt.Errorf("secret service not configured: cannot inline secrets for gateway %s (version %q)", gateway.ID, gateway.Version)
 	}
 	return secretinline.Render(content, func(handle string) (string, error) {
-		return s.secretService.Decrypt(orgID, handle)
+		value, err := s.secretService.Decrypt(orgID, handle)
+		if err != nil {
+			return "", apperror.DeploymentSecretResolutionFailed.Wrap(err)
+		}
+		return value, nil
 	})
 }
 
-// deliverContent is gatewayForDelivery followed by renderContentForGateway,
-// for the single-artifact fetch paths.
-func (s *GatewayInternalAPIService) deliverContent(orgID, gatewayID string, content []byte) ([]byte, error) {
+// deliverDeployment is gatewayForDelivery followed by renderContentForGateway,
+// for the single-artifact fetch paths. A render failure is recorded on the
+// deployment before the error is returned, so the operator sees why the
+// gateway was refused it: the gateway's own failed ack only says it could not
+// process the deployment.
+func (s *GatewayInternalAPIService) deliverDeployment(orgID, gatewayID string, deployment *model.Deployment) ([]byte, error) {
 	gateway, err := s.gatewayForDelivery(orgID, gatewayID)
 	if err != nil {
 		return nil, err
 	}
-	return s.renderContentForGateway(orgID, gateway, content)
+	content, err := s.renderContentForGateway(orgID, gateway, deployment.Content)
+	if err != nil {
+		s.recordSecretResolutionFailure(orgID, gatewayID, deployment.ArtifactID, deployment.DeploymentID)
+		return nil, err
+	}
+	return content, nil
+}
+
+// recordSecretResolutionFailure sets a deployment the gateway was refused to
+// FAILED with reason SECRET_RESOLUTION_FAILED. Its desired state stays
+// DEPLOYED so the next startup sync asks for it again. performed_at is
+// re-stamped with now on purpose: the gateway acks the deploy event it was
+// refused as failed with its generic GATEWAY_PROCESSING_ERROR, and that ack
+// is guarded by the event's performed_at, so it is discarded instead of
+// replacing the reason recorded here.
+func (s *GatewayInternalAPIService) recordSecretResolutionFailure(orgID, gatewayID, artifactID, deploymentID string) {
+	if _, err := s.deploymentRepo.SetCurrentWithDetails(artifactID, orgID, gatewayID, deploymentID,
+		model.DeploymentStatusFailed, string(model.DeploymentStatusDeployed), nil,
+		model.DeploymentErrorSecretResolutionFailed); err != nil {
+		s.slogger.Error("Failed to record secret resolution failure on deployment status",
+			"deploymentID", deploymentID, "gatewayID", gatewayID, "error", err)
+	}
 }

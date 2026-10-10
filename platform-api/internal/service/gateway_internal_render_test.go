@@ -22,13 +22,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -47,6 +50,10 @@ const (
 	renderITSecret    = "render-it-key"
 	renderITPlaintext = `sk-live "quoted" #hash: value`
 )
+
+// renderITEventAt is the deploy event's performedAt. The gateway echoes it in
+// its ack, and the ack guard compares it with deployment_status.performed_at.
+var renderITEventAt = time.Date(2026, 10, 10, 8, 59, 15, 0, time.UTC)
 
 type renderITEnv struct {
 	db       *database.DB
@@ -103,7 +110,8 @@ func setupRenderITEnv(t *testing.T) *renderITEnv {
 	return &renderITEnv{db: db, svc: svc, secrets: secretSvc, gateways: gateways}
 }
 
-// deploy stores a DEPLOYED artifact for the gateway and returns the deployment id.
+// deploy stores a DEPLOYING deployment (desired DEPLOYED) of the artifact on
+// the gateway, stamped with the deploy event's performedAt, and returns its id.
 func (e *renderITEnv) deploy(t *testing.T, artifactID, gatewayID string, content []byte) string {
 	t.Helper()
 	_, err := e.db.Exec(`INSERT OR IGNORE INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`, artifactID, constants.RestApi, renderITOrg)
@@ -112,8 +120,8 @@ func (e *renderITEnv) deploy(t *testing.T, artifactID, gatewayID string, content
 	_, err = e.db.Exec(`INSERT INTO deployments (uuid, display_name, artifact_uuid, organization_uuid, gateway_uuid, content, metadata, created_by)
 		VALUES (?, 'dep', ?, ?, ?, ?, '{}', 'tester')`, deploymentID, artifactID, renderITOrg, gatewayID, content)
 	require.NoError(t, err)
-	_, err = e.db.Exec(`INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, status_desired)
-		VALUES (?, ?, ?, ?, 'DEPLOYING', 'DEPLOYED')`, artifactID, renderITOrg, gatewayID, deploymentID)
+	_, err = e.db.Exec(`INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, status_desired, performed_at)
+		VALUES (?, ?, ?, ?, 'DEPLOYING', 'DEPLOYED', ?)`, artifactID, renderITOrg, gatewayID, deploymentID, renderITEventAt)
 	require.NoError(t, err)
 	return deploymentID
 }
@@ -186,14 +194,76 @@ func TestGatewayInternal_Delivery_CurrentGatewaysGetStoredBytesUnchanged(t *test
 	}
 }
 
-func TestGatewayInternal_Delivery_UnknownSecretFailsTheSingleFetch(t *testing.T) {
+// singleFetches are the per-kind fetches that read the deployment directly.
+// The MCP, Agent, WebSub and WebBroker fetches look the artifact up in their
+// own repository first, then go through the same deliverDeployment.
+var singleFetches = []struct {
+	kind  string
+	fetch func(*GatewayInternalAPIService, string, string, string) (map[string]string, error)
+}{
+	{"REST API", (*GatewayInternalAPIService).GetActiveDeploymentByGateway},
+	{"LLM provider", (*GatewayInternalAPIService).GetActiveLLMProviderDeploymentByGateway},
+	{"LLM proxy", (*GatewayInternalAPIService).GetActiveLLMProxyDeploymentByGateway},
+}
+
+// An old gateway asking for a deployment whose secret cannot be resolved is
+// refused with a typed error, and the refusal is recorded on the deployment
+// in a way the gateway's own failed ack for that deploy event cannot undo.
+func TestGatewayInternal_Delivery_UnresolvableSecretRefusesTheSingleFetch(t *testing.T) {
 	env := setupRenderITEnv(t)
 	gatewayID := env.gateways["1.1.0"]
-	env.deploy(t, "art-render-3", gatewayID, renderITContent("does-not-exist"))
 
-	_, err := env.svc.GetActiveDeploymentByGateway("art-render-3", renderITOrg, gatewayID)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does-not-exist")
+	// Control: on a deployment nobody refused, the gateway's failed ack for
+	// the deploy event lands, so the guard below is a real one.
+	control := env.deploy(t, "art-render-3-control", gatewayID, renderITContent(renderITSecret))
+	rows, err := env.svc.deploymentRepo.UpdateStatusWithPerformedAtGuard("art-render-3-control", renderITOrg, gatewayID,
+		model.DeploymentStatusFailed, model.DeploymentErrorGatewayFailure, renderITEventAt, nil)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, rows, "the ack guard matches the deploy event's performed_at")
+	_, _, reason := env.status(t, control)
+	require.Equal(t, model.DeploymentErrorGatewayFailure, reason)
+
+	for _, tc := range singleFetches {
+		t.Run(tc.kind, func(t *testing.T) {
+			artifactID := "art-render-3-" + strings.ReplaceAll(strings.ToLower(tc.kind), " ", "-")
+			deploymentID := env.deploy(t, artifactID, gatewayID, renderITContent("does-not-exist"))
+
+			_, err := tc.fetch(env.svc, artifactID, renderITOrg, gatewayID)
+			require.Error(t, err)
+			assert.True(t, apperror.DeploymentSecretResolutionFailed.Is(err), "typed, so the handler can tell the gateway why: %v", err)
+			assert.Contains(t, err.Error(), "does-not-exist")
+
+			status, desired, reason := env.status(t, deploymentID)
+			assert.Equal(t, string(model.DeploymentStatusFailed), status)
+			assert.Equal(t, string(model.DeploymentStatusDeployed), desired, "the next startup sync asks for it again")
+			assert.Equal(t, model.DeploymentErrorSecretResolutionFailed, reason)
+			assert.Equal(t, renderITContent("does-not-exist"), env.storedContent(t, deploymentID), "stored content is untouched")
+
+			// The gateway acks the deploy event it was refused as failed with
+			// its generic code. The refusal re-stamped performed_at, so that
+			// ack is discarded and the specific reason stays.
+			rows, err := env.svc.deploymentRepo.UpdateStatusWithPerformedAtGuard(artifactID, renderITOrg, gatewayID,
+				model.DeploymentStatusFailed, model.DeploymentErrorGatewayFailure, renderITEventAt, nil)
+			require.NoError(t, err)
+			assert.Zero(t, rows, "the gateway's failed ack for the refused deploy event is discarded")
+			_, _, reason = env.status(t, deploymentID)
+			assert.Equal(t, model.DeploymentErrorSecretResolutionFailed, reason)
+		})
+	}
+
+	t.Run("deprecated secret", func(t *testing.T) {
+		createTestSecret(t, env.secrets, renderITOrg, "render-it-retired", "old-value")
+		_, err := env.db.Exec(`UPDATE secrets SET status = ? WHERE organization_uuid = ? AND handle = ?`,
+			model.SecretStatusDeprecated, renderITOrg, "render-it-retired")
+		require.NoError(t, err)
+		deploymentID := env.deploy(t, "art-render-3-deprecated", gatewayID, renderITContent("render-it-retired"))
+
+		_, err = env.svc.GetActiveDeploymentByGateway("art-render-3-deprecated", renderITOrg, gatewayID)
+		require.Error(t, err)
+		assert.True(t, apperror.DeploymentSecretResolutionFailed.Is(err), "%v", err)
+		_, _, reason := env.status(t, deploymentID)
+		assert.Equal(t, model.DeploymentErrorSecretResolutionFailed, reason)
+	})
 }
 
 func TestGatewayInternal_Delivery_BatchSkipsOnlyTheFailingDeployment(t *testing.T) {
@@ -232,6 +302,26 @@ func TestGatewayInternal_Delivery_BatchSkipsOnlyTheFailingDeployment(t *testing.
 	})
 }
 
+// A secret row written by the v1 -> v2 migration has NULL description,
+// created_by and updated_by. It must still be readable, so an old gateway's
+// fetch of a deployment that references it is delivered with the plaintext.
+func TestGatewayInternal_Delivery_MigratedSecretWithNullColumnsIsDelivered(t *testing.T) {
+	env := setupRenderITEnv(t)
+	createTestSecret(t, env.secrets, renderITOrg, "render-it-migrated", "sk-migrated")
+	_, err := env.db.Exec(`UPDATE secrets SET description = NULL, created_by = NULL, updated_by = NULL WHERE organization_uuid = ? AND handle = ?`,
+		renderITOrg, "render-it-migrated")
+	require.NoError(t, err)
+	gatewayID := env.gateways["1.1.0"]
+	deploymentID := env.deploy(t, "art-render-7", gatewayID, renderITContent("render-it-migrated"))
+
+	out, err := env.svc.GetActiveLLMProviderDeploymentByGateway("art-render-7", renderITOrg, gatewayID)
+	require.NoError(t, err)
+	assert.Equal(t, "sk-migrated", paramValue(t, []byte(out["art-render-7"])))
+	status, _, reason := env.status(t, deploymentID)
+	assert.Equal(t, "DEPLOYING", status)
+	assert.Empty(t, reason)
+}
+
 func TestGatewayInternal_Delivery_WithoutSecretServiceFailsClosed(t *testing.T) {
 	env := setupRenderITEnv(t)
 	env.svc.SetSecretService(nil)
@@ -248,6 +338,13 @@ func TestGatewayInternal_Delivery_WithoutSecretServiceFailsClosed(t *testing.T) 
 
 func TestGatewayInternal_Delivery_GatewayMustBelongToTheOrganization(t *testing.T) {
 	env := setupRenderITEnv(t)
-	_, err := env.svc.deliverContent("another-org", env.gateways["1.1.0"], renderITContent(renderITSecret))
+	gatewayID := env.gateways["1.1.0"]
+	deploymentID := env.deploy(t, "art-render-6", gatewayID, renderITContent(renderITSecret))
+	deployment := &model.Deployment{DeploymentID: deploymentID, ArtifactID: "art-render-6", Content: renderITContent(renderITSecret)}
+
+	_, err := env.svc.deliverDeployment("another-org", gatewayID, deployment)
 	assert.Error(t, err)
+	status, _, reason := env.status(t, deploymentID)
+	assert.Equal(t, "DEPLOYING", status, "a refused gateway lookup records nothing on the deployment")
+	assert.Empty(t, reason)
 }

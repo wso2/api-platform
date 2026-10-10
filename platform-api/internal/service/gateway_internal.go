@@ -163,7 +163,7 @@ func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, g
 
 	// Deployment content is stored as YAML; it is only rewritten for a gateway
 	// that cannot resolve secret placeholders itself.
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProviderDeploymentByGateway(prov
 		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +398,7 @@ func (s *GatewayInternalAPIService) GetActiveAgentDeploymentByGateway(agentID, o
 		return nil, apperror.DeploymentNotActive.New("Agent proxy")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +429,7 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 		return nil, apperror.DeploymentNotActive.New("WebSub API")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +461,7 @@ func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(api
 		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
-	content, err := s.deliverContent(orgID, gatewayID, deployment.Content)
+	content, err := s.deliverDeployment(orgID, gatewayID, deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -537,12 +537,7 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 		if err != nil {
 			s.slogger.Warn("Skipping deployment in batch: secret rendering failed",
 				"deploymentID", deploymentID, "artifactID", dc.ArtifactID, "gatewayID", gatewayID, "error", err)
-			if _, statusErr := s.deploymentRepo.SetCurrentWithDetails(dc.ArtifactID, orgID, gatewayID, deploymentID,
-				model.DeploymentStatusFailed, string(model.DeploymentStatusDeployed), nil,
-				model.DeploymentErrorSecretResolutionFailed); statusErr != nil {
-				s.slogger.Error("Failed to record secret resolution failure on deployment status",
-					"deploymentID", deploymentID, "gatewayID", gatewayID, "error", statusErr)
-			}
+			s.recordSecretResolutionFailure(orgID, gatewayID, dc.ArtifactID, deploymentID)
 			delete(contentMap, deploymentID)
 			continue
 		}

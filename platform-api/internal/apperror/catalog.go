@@ -141,6 +141,11 @@ var (
 	// Args: the control-plane kind name, what the gateway would need (gwversion.Requirement).
 	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
 		"This gateway does not support %s artifacts; %s.")
+	// Raised by the gateway-facing fetch of a deployment whose {{ secret }}
+	// placeholder platform-api had to inline and could not (missing, deprecated
+	// or undecryptable secret). The message names no handle.
+	DeploymentSecretResolutionFailed = def(CodeDeploymentSecretResolutionFailed, http.StatusUnprocessableEntity,
+		"A secret referenced by this deployment could not be resolved for the gateway.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
