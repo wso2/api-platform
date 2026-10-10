@@ -1942,8 +1942,8 @@ export interface paths {
          * @description Lists the Agent proxies in the caller's organization. Items are the lightweight
          *     `AgentProxyListItem` projection; read an individual Agent proxy for the full resource,
          *     including its protocol configuration and any managed Agent Card content. The `protocol`
-         *     filter, when supplied, is applied to both the returned page and `pagination.total`.
-         *     Filtering by A2A protocol version is not supported.
+         *     and `projectId` filters, when supplied, are applied to both the returned page and
+         *     `pagination.total`. Filtering by A2A protocol version is not supported.
          */
         get: operations["listAgentProxies"];
         put?: never;
@@ -2076,8 +2076,10 @@ export interface paths {
          *       with the same handle, or the same name and version), `AGENT_ARTIFACT_FETCH_FAILED`
          *       (the gateway could not retrieve the deployment artifact), or
          *       `GATEWAY_PROCESSING_ERROR`.
-         *     - The control plane does not check the target gateway's version. A gateway that
-         *       predates Agent support never acknowledges the deployment, which ends `FAILED` with
+         *     - The control plane refuses a gateway that reports an LTS release without the Agent
+         *       kind with `400 DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY` before anything is stored. A
+         *       gateway that reports no version is taken to be a current build; if it still lacks
+         *       Agent support it never acknowledges the deployment, which ends `FAILED` with
          *       `DEPLOYMENT_TIMEOUT`.
          */
         post: operations["createAgentProxyDeployment"];
@@ -4043,7 +4045,7 @@ export interface components {
              */
             id: string;
             /**
-             * @description Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+             * @description Document type as stored. Fixed types (HowTo, Samples, SupportForum, PublicForum, Other) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
              * @example HOW_TO
              */
             type: string;
@@ -4652,7 +4654,7 @@ export interface components {
              * @description Timestamp when the deployment artifact was created
              */
             createdAt: string;
-            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
+            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment in its startup sync and a referenced secret could not be resolved; the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
             statusReason?: string | null;
             /**
              * Format: date-time
@@ -7149,6 +7151,14 @@ export interface components {
         agentProxyId: string;
         /** @description **API Key ID** consisting of the **name** (unique identifier) of the API key. */
         agentProxyApiKeyId: string;
+        /**
+         * @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+         *     Agent proxies should be returned. Omit to list Agent proxies across every project in the
+         *     organization. An empty value is rejected with 400, and a handle that does not resolve to a
+         *     project in the authenticated organization is rejected with 404. The filter applies to the
+         *     returned page and to `pagination.total` alike.
+         */
+        "agentProxyProjectId-Q": string;
         /**
          * @description Filter Agent proxies by communication protocol. Omit to list every protocol variant.
          *     An empty or unsupported value is rejected with 400. The filter applies to the returned
@@ -10996,6 +11006,14 @@ export interface operations {
                  *     page and to `pagination.total` alike, always within the authenticated organization.
                  */
                 protocol?: components["parameters"]["agentProxyProtocol-Q"];
+                /**
+                 * @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+                 *     Agent proxies should be returned. Omit to list Agent proxies across every project in the
+                 *     organization. An empty value is rejected with 400, and a handle that does not resolve to a
+                 *     project in the authenticated organization is rejected with 404. The filter applies to the
+                 *     returned page and to `pagination.total` alike.
+                 */
+                projectId?: components["parameters"]["agentProxyProjectId-Q"];
                 /** @description Maximum number of items to return per page. */
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
@@ -11024,6 +11042,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
     };
