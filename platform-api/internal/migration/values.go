@@ -24,12 +24,23 @@ import (
 )
 
 // nullOrString returns the string value or nil for an INSERT bind, so a v1 NULL
-// stays NULL in v2 instead of becoming an empty string.
+// stays NULL in v2 instead of becoming an empty string. Use it only for columns
+// v2 itself leaves NULL (foreign keys, pointer-typed model fields); for a
+// free-text column see textOrEmpty.
 func nullOrString(ns sql.NullString) any {
 	if ns.Valid {
 		return ns.String
 	}
 	return nil
+}
+
+// textOrEmpty returns the string value, or "" for a v1 NULL, for a free-text
+// column (description) that v2 declares nullable but never leaves NULL: the v2
+// model field is a plain string, written as "" when empty and scanned back into
+// a string, and database/sql refuses to scan NULL into a string. A NULL here
+// would make every v2 read of the row fail (§B.1).
+func textOrEmpty(ns sql.NullString) string {
+	return ns.String // "" when !ns.Valid
 }
 
 // nullOrEmpty returns nil for an empty string (so a NULL column stays NULL),

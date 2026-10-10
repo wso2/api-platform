@@ -24,6 +24,8 @@ Use stable handles prefixed `e2e-` so reruns reuse artifacts. Built-in scenarios
 | `upstream-auth-types` | MCP upstream auth `none` deploys on every LTS gateway with no auth block; `other` deploys with a platform-api warning and is applied like api-key |
 | `llm-proxy-additional-providers` | LLM proxy `additionalProviders` stripped with a warning below 1.2.0, kept on 1.2.0; the proxy routes to its primary provider (run after `llm-provider-secret`) |
 | `secret-rotation` | rotated secret reaches the backend after redeploy (1.2.0: only after a controller reconnect — known gateway cache behaviour); run after `llm-provider-secret` |
+| `secret-migrated-row` | a secret row as the v1→v2 migration writes it (NULL `description`/`created_by`/`updated_by`) behind an api-key-secured LLM provider still deploys below 1.2.0; valid key → 200 with the plaintext upstream, no key → 401 |
+| `secret-undecryptable` | a secret that exists but cannot be decrypted: deploy below 1.2.0 ends `FAILED`/`SECRET_RESOLUTION_FAILED`, platform-api logs the cause, the gateway log carries the 422 body (1.2.0+ sync secrets themselves and are skipped) |
 
 ## Writing a custom scenario
 

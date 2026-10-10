@@ -1939,3 +1939,11 @@ func TestApplyStructOverrides(t *testing.T) {
 		}
 	})
 }
+
+func (m *mockDeploymentAPIRepository) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockDeploymentRepo) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, nil
+}

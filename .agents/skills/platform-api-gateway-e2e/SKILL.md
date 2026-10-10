@@ -38,7 +38,7 @@ missing with **one** `AskUserQuestion` call:
 - **Scenarios** (multiSelect, max 4 options per question): offer "All built-in scenarios
   (Recommended)", "Gateway translation only" (`mcp-proxy-upstream-path`, `kind-gating`,
   `llm-policies-flatten`, `mcp-spec-versions-fold`, `upstream-auth-types`,
-  `llm-proxy-additional-providers`), "Secrets only" (`llm-provider-secret`, `secret-rotation`);
+  `llm-proxy-additional-providers`), "Secrets only" (`llm-provider-secret`, `secret-rotation`, `secret-migrated-row`, `secret-undecryptable`);
   "Other" = named scenarios or a custom scenario described in prose. The full list with what each
   proves is in `scenarios/README.md`.
 - **After the run**: tear down (Recommended) / keep the stack running for manual checks.
