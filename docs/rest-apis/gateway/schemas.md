@@ -310,6 +310,14 @@ and
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -333,6 +341,14 @@ and
         ]
       },
       "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "faultPolicies": [
         {
           "name": "cors",
           "version": "v1",
@@ -367,6 +383,7 @@ and
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
 |subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
@@ -539,6 +556,14 @@ xor
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -557,6 +582,7 @@ An operation is matched either by the simple top-level method+path form, or by t
 |path|string|false|none|Route path with optional {param} placeholders (simple form; ignored when 'match' is set)|
 |match|[OperationMatch](#schemaoperationmatch)|false|none|Request matching criteria for an operation. Extensible with query params, cookies, etc.|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
 ## OperationMethod
@@ -1495,6 +1521,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[Policy](#schemapolicy)]|false|none|List of MCP Proxy level policies applied|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
 |prompts|[[MCPPrompt](#schemamcpprompt)]|false|none|none|
@@ -1990,10 +2017,26 @@ and
           "params": {}
         }
       ],
+      "faultPolicies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
       "operations": [
         {
           "name": "SendMessage",
           "policies": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ],
+          "faultPolicies": [
             {
               "name": "cors",
               "version": "v1",
@@ -2120,10 +2163,26 @@ continued
         "params": {}
       }
     ],
+    "faultPolicies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
     "operations": [
       {
         "name": "SendMessage",
         "policies": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ],
+        "faultPolicies": [
           {
             "name": "cors",
             "version": "v1",
@@ -2225,10 +2284,26 @@ A2A-specific agent configuration.
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "operations": [
     {
       "name": "SendMessage",
       "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "faultPolicies": [
         {
           "name": "cors",
           "version": "v1",
@@ -2254,6 +2329,7 @@ Transport exposure and common or operation-specific configuration for A2A operat
 |---|---|---|---|---|
 |transports|[[A2ATransport](#schemaa2atransport)]|true|none|Ordered A2A protocol bindings and their gateway-facing path prefixes. This is runtime routing configuration, not Agent Card transformation or transport conversion.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied to every A2A operation, before operation-level policies. These policies do not apply to the public Agent Card discovery route.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every A2A operation, and like policies above it does not apply to the public Agent Card discovery route — that route declares its own under agentCard.public.faultPolicies.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |operations|[[A2AOperationConfig](#schemaa2aoperationconfig)]|false|none|Optional per-operation configuration keyed by canonical A2A operation name. This array is not an allowlist: unlisted standard operations still receive spec.a2a.operationConfigs.policies. Public Agent Card discovery is configured separately.|
 
 ## A2ATransport
@@ -2361,6 +2437,14 @@ Canonical A2A operation name. These names match the standard JSON-RPC and gRPC m
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -2377,6 +2461,7 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
 |---|---|---|---|---|
 |name|[A2AOperationName](#schemaa2aoperationname)|true|none|Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied after spec.a2a.operationConfigs.policies when this operation is selected.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when this operation fails, over the error response.<br><br>Both levels run and the operation-level entries run FIRST. They are additive rather than an override: a fault entry is a handler, not a setting, so an operation-specific notification and an agent-wide audit hook both fire.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
 ## A2AAgentCard
@@ -2463,6 +2548,14 @@ The whole block is optional, and so is `public`. When either is omitted the gate
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "rewriteUrls": true,
   "content": {
     "name": "Weather Agent",
@@ -2529,6 +2622,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied from the u
 |mode|string|false|none|How the public Agent Card is produced. Defaults to `passthrough`, which is also what an omitted `public` or `agentCard` block resolves to.|
 |path|[A2AAgentCardPath](#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when serving the public Agent Card fails, over the error response.<br><br>Separate from spec.a2a.operationConfigs.faultPolicies for the same reason the policies list is: discovery is reachable before any operation is invoked, and an agent that leaves its card unauthenticated while guarding its operations would otherwise have the operations' handlers fire for a discovery failure.|
 |rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
@@ -3980,6 +4074,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4021,6 +4139,8 @@ continued
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Provider (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
@@ -4122,6 +4242,7 @@ continued
 ```json
 {
   "id": "wso2-openai-provider",
+  "as": "openai-upstream",
   "auth": {
     "type": "api-key",
     "policyName": "string",
@@ -4129,6 +4250,11 @@ continued
     "policyParams": {},
     "header": "string",
     "value": "string"
+  },
+  "transformer": {
+    "type": "openai-to-anthropic",
+    "version": "v1",
+    "params": {}
   }
 }
 
@@ -4139,7 +4265,50 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
+|as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted.|
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+|transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+
+## LLMProxyProviderEntry
+
+<a id="schemallmproxyproviderentry"></a>
+<a id="schema_LLMProxyProviderEntry"></a>
+<a id="tocSllmproxyproviderentry"></a>
+<a id="tocsllmproxyproviderentry"></a>
+
+```json
+{
+  "id": "anthropic-provider",
+  "alias": "anthropic-upstream",
+  "isPrimary": true,
+  "auth": {
+    "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
+    "header": "string",
+    "value": "string"
+  },
+  "transformer": {
+    "type": "openai-to-anthropic",
+    "version": "v1",
+    "params": {}
+  }
+}
+
+```
+
+One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Unique id of a deployed llm provider|
+|alias|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.|
+|isPrimary|boolean|true|none|Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true.|
+|auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+|transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
 
 ## LLMProxyAdditionalProvider
 
@@ -4491,6 +4660,7 @@ and
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "policyName": "string",
@@ -4498,8 +4668,34 @@ and
       "policyParams": {},
       "header": "string",
       "value": "string"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "policyName": "string",
+        "policyVersion": "string",
+        "policyParams": {},
+        "header": "string",
+        "value": "string"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "globalPolicies": [
     {
       "name": "cors",
@@ -4558,6 +4754,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4575,11 +4795,15 @@ and
 |version|string|true|none|Semantic version of the LLM proxy|
 |context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
-|provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
+|provider|[LLMProxyProvider](#schemallmproxyprovider)|false|none|none|
+|providers|[[LLMProxyProviderEntry](#schemallmproxyproviderentry)]|false|none|Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`. Mutually exclusive with the legacy `provider` plus `additionalProviders` pair - supplying both is rejected. The legacy shape remains supported indefinitely.|
+|inboundTemplate|string|false|none|Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.|
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |additionalProviders|[[LLMProxyAdditionalProvider](#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Proxy (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 

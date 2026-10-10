@@ -45,6 +45,17 @@ type systemPolicyConfig struct {
 	Parameters map[string]interface{}
 	// ExecutionCondition contains the execution condition for the policy
 	ExecutionCondition *string
+	// FaultPath marks a system policy that also belongs at the END of an API's fault
+	// chain, so it observes a failure with the fault's own code, class and attribution
+	// resolved rather than only the status a response hook would see.
+	//
+	// A flag rather than "inject them all", because a system policy reaches the fault
+	// chain only if it implements the FaultPolicy contract — one that does not is
+	// dropped at chain-build time with a warning and then silently never runs, which is
+	// a worse outcome than never being listed. Opting in per policy keeps that a
+	// deliberate statement about the policy rather than an accident of being a system
+	// policy at all.
+	FaultPath bool
 }
 
 // defaultSystemPolicies lists the built-in system policies that can be injected into
@@ -94,6 +105,9 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		// from cfg.Collector (see InjectSystemPolicies below).
 		Parameters: nil,
 		ExecutionCondition: nil,
+		// The collector is the one system policy that has something to say about a
+		// failure, so it is also appended to every API's fault chain. See FaultPath.
+		FaultPath: true,
 	},
 }
 
@@ -193,33 +207,69 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
 		if sysPol.Enabled(cfg) {
-			// Build effective default parameters, allowing runtime config to control allow_payloads.
-			effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
-			for k, v := range sysPol.Parameters {
-				effectiveDefaults[k] = v
-			}
-			// For the analytics (collector) system policy, propagate the payload and
-			// header capture flags from the collector config.
-			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
-				effectiveDefaults["request_body"] = cfg.Collector.RequestBody
-				effectiveDefaults["response_body"] = cfg.Collector.ResponseBody
-				effectiveDefaults["request_headers"] = cfg.Collector.RequestHeaders
-				effectiveDefaults["response_headers"] = cfg.Collector.ResponseHeaders
-			}
-
-			// Merge parameters efficiently
-			mergedParams := mergeParameters(effectiveDefaults, additionalProps, sysPol.Name)
-
-			systemPolicies = append(systemPolicies, policyenginev1.PolicyInstance{
-				Name:               sysPol.Name,
-				Version:            sysPol.Version,
-				Enabled:            true,
-				ExecutionCondition: sysPol.ExecutionCondition,
-				Parameters:         mergedParams,
-			})
+			systemPolicies = append(systemPolicies, buildSystemPolicyInstance(sysPol, cfg, additionalProps))
 		}
 	}
 
 	// Prepend system policies to the chain (they execute first)
 	return append(systemPolicies, policies...)
+}
+
+// buildSystemPolicyInstance resolves one system policy's effective parameters into the
+// instance the engine receives.
+//
+// Shared by the normal-chain and fault-chain injection points so a policy is configured
+// identically wherever it is placed — a collector that captured payloads on the success
+// path but not on the failure path would be the kind of difference nobody discovers until
+// they need the failing request.
+func buildSystemPolicyInstance(
+	sysPol systemPolicyConfig,
+	cfg *config.Config,
+	additionalProps map[string]any,
+) policyenginev1.PolicyInstance {
+	// Build effective default parameters, allowing runtime config to control allow_payloads.
+	effectiveDefaults := make(map[string]interface{}, len(sysPol.Parameters)+1)
+	for k, v := range sysPol.Parameters {
+		effectiveDefaults[k] = v
+	}
+	// For the analytics (collector) system policy, propagate the payload and
+	// header capture flags from the collector config.
+	if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
+		effectiveDefaults["request_body"] = cfg.Collector.RequestBody
+		effectiveDefaults["response_body"] = cfg.Collector.ResponseBody
+		effectiveDefaults["request_headers"] = cfg.Collector.RequestHeaders
+		effectiveDefaults["response_headers"] = cfg.Collector.ResponseHeaders
+	}
+
+	return policyenginev1.PolicyInstance{
+		Name:               sysPol.Name,
+		Version:            sysPol.Version,
+		Enabled:            true,
+		ExecutionCondition: sysPol.ExecutionCondition,
+		Parameters:         mergeParameters(effectiveDefaults, additionalProps, sysPol.Name),
+	}
+}
+
+// FaultSystemPolicies returns the system policies that belong at the END of an API's fault
+// chain, in declaration order.
+//
+// Appended rather than prepended, which is the opposite of the normal chain and is the whole
+// point. On the success path the collector runs first so it observes the request as it
+// arrived. On the fault path it must run LAST, because what it exists to record — the
+// fault's code, class, failing policy and final status — is only settled once every operator
+// fault entry has had its turn. A collector placed first would publish the failure as it
+// looked before the operator's own handlers shaped it.
+//
+// Returns nil when nothing is enabled, so a caller can append unconditionally.
+func FaultSystemPolicies(cfg *config.Config, additionalProps map[string]any) []policyenginev1.PolicyInstance {
+	if cfg == nil {
+		return nil
+	}
+	var out []policyenginev1.PolicyInstance
+	for _, sysPol := range defaultSystemPolicies {
+		if sysPol.FaultPath && sysPol.Enabled(cfg) {
+			out = append(out, buildSystemPolicyInstance(sysPol, cfg, additionalProps))
+		}
+	}
+	return out
 }

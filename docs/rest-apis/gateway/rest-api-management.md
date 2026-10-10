@@ -391,6 +391,7 @@ Status Code **200**
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»»» timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
 |»»»»» idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
@@ -407,6 +408,7 @@ Status Code **200**
 |»»»»»»» value|string|true|none|Header value to match|
 |»»»»»»» type|string|false|none|Header match type|
 |»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|»»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |»»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
