@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { gatewayHandleFromName, gatewayNameBudget, validateGatewayName } from './name';
+import { MAX_GATEWAY_HANDLE_LENGTH, gatewayHandleFromName, validateGatewayName } from './name';
 
 describe('gatewayHandleFromName', () => {
   it('lowercases and folds spaces and underscores to hyphens', () => {
@@ -36,29 +36,34 @@ describe('gatewayHandleFromName', () => {
 
 describe('validateGatewayName', () => {
   it('leaves an empty name to the field’s own required handling', () => {
-    expect(validateGatewayName('   ', 'development')).toBeUndefined();
+    expect(validateGatewayName('   ')).toBeUndefined();
   });
 
   it('reports a name no handle can be built from', () => {
-    expect(validateGatewayName('!!!', 'development')).toMatch(/at least one letter or number/i);
+    expect(validateGatewayName('!!!')).toMatch(/at least one letter or number/i);
   });
 
-  it('accepts a name whose handle fits the environment', () => {
-    expect(validateGatewayName('Payments', 'development')).toBeUndefined();
+  it('accepts a name whose handle fits the handle column', () => {
+    expect(validateGatewayName('Payments')).toBeUndefined();
   });
 
-  it('reports a handle too long for the environment it is prefixed with', () => {
-    const budget = gatewayNameBudget('development');
-    expect(validateGatewayName('a'.repeat(budget + 1), 'development')).toMatch(/too long/i);
-    expect(validateGatewayName('a'.repeat(budget), 'development')).toBeUndefined();
+  it('reports a handle longer than the handle column', () => {
+    expect(validateGatewayName('a'.repeat(MAX_GATEWAY_HANDLE_LENGTH + 1))).toMatch(/too long/i);
+    expect(validateGatewayName('a'.repeat(MAX_GATEWAY_HANDLE_LENGTH))).toBeUndefined();
+  });
+
+  // The environment is bound through properties.environment, not the handle, so
+  // a long environment id (a 36-character UUID) must not shrink the name budget.
+  it('does not let the environment eat into the handle budget', () => {
+    expect(validateGatewayName('mygd')).toBeUndefined();
   });
 
   // The name an environment gives its own gateway is not reserved. Rejecting it
   // outright meant that once that gateway was deleted the name was unusable, so
   // the environment was left with a name nothing could take back.
   it('accepts the name an environment gives its own gateway', () => {
-    expect(validateGatewayName('default', 'development')).toBeUndefined();
-    expect(validateGatewayName('Default', 'development')).toBeUndefined();
+    expect(validateGatewayName('default')).toBeUndefined();
+    expect(validateGatewayName('Default')).toBeUndefined();
     expect(gatewayHandleFromName('Default')).toBe('default');
   });
 });

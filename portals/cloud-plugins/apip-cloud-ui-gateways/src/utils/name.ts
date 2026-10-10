@@ -18,20 +18,10 @@
 
 /**
  * The gateway handle limit enforced by platform-api's `gateways.handle` column.
- * The handle is built as `<environment>-<name>`, so the environment's own length
- * eats into what is left for the name.
+ * The handle is derived from the name alone; the environment binding travels in
+ * `properties.environment` and takes no part in it.
  */
 export const MAX_GATEWAY_HANDLE_LENGTH = 40;
-
-/** The longest name any environment can accommodate (a one-character one). */
-const MAX_GATEWAY_NAME_LENGTH = MAX_GATEWAY_HANDLE_LENGTH - 2;
-
-/** How many characters a gateway handle may use in the given environment. */
-export function gatewayNameBudget(environment: string): number {
-  return environment
-    ? MAX_GATEWAY_HANDLE_LENGTH - environment.length - 1
-    : MAX_GATEWAY_NAME_LENGTH;
-}
 
 /**
  * Derives the handle a gateway will be addressed by from its display name, the
@@ -59,14 +49,14 @@ export function gatewayHandleFromName(name: string): string {
  * The name is a display name: it may be written however the user likes, and the
  * handle is derived from it, so casing and spaces are not errors. What it cannot
  * be is a name no handle can be built from, or one whose handle does not fit the
- * handle column alongside the environment. An empty name is left to the field's
- * own `required` handling rather than reported here.
+ * handle column. An empty name is left to the field's own `required` handling
+ * rather than reported here.
  *
  * A name already in use is not rejected here. The backend settles a collision by
  * suffixing the handle, and that applies to the name an environment gives its own
  * gateway too, so it stays available once that gateway is gone.
  */
-export function validateGatewayName(name: string, environment: string): string | undefined {
+export function validateGatewayName(name: string): string | undefined {
   if (!name.trim()) return undefined;
 
   const handle = gatewayHandleFromName(name);
@@ -74,11 +64,8 @@ export function validateGatewayName(name: string, environment: string): string |
     return 'Include at least one letter or number.';
   }
 
-  const budget = gatewayNameBudget(environment);
-  if (handle.length > budget) {
-    return environment
-      ? `Too long for the "${environment}" environment: the handle "${handle}" must be at most ${budget} characters (the full handle "${environment}-<handle>" has to fit ${MAX_GATEWAY_HANDLE_LENGTH}).`
-      : `Use at most ${budget} characters.`;
+  if (handle.length > MAX_GATEWAY_HANDLE_LENGTH) {
+    return `Too long: the handle "${handle}" must be at most ${MAX_GATEWAY_HANDLE_LENGTH} characters.`;
   }
   return undefined;
 }
