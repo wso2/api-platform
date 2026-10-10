@@ -851,6 +851,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/apis/{apiType}/{apiId}/docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List API documents
+         * @description Returns metadata-only entries for every user-authored document attached to the API, paginated and optionally filtered by `type`.
+         */
+        get: operations["ListAPIDocuments"];
+        put?: never;
+        /**
+         * Create an API document
+         * @description Creates a user-authored document on the API from a `file` upload or `inlineContent`.
+         */
+        post: operations["CreateAPIDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/apis/{apiType}/{apiId}/docs/{docId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get API document metadata
+         * @description Returns document metadata only. Use `GET …/{docId}/content` to retrieve
+         *     the raw document bytes.
+         */
+        get: operations["GetAPIDocument"];
+        /**
+         * Update an API document
+         * @description Updates metadata and/or content on an existing API document.
+         */
+        put: operations["UpdateAPIDocument"];
+        post?: never;
+        /**
+         * Delete an API document
+         * @description Deletes a user-authored document from the API.
+         */
+        delete: operations["DeleteAPIDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/apis/{apiType}/{apiId}/docs/{docId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get API document content
+         * @description Returns the raw document bytes with the stored `Content-Type` header
+         *     (e.g. `text/markdown; charset=utf-8` for markdown documents).
+         *     Extensible to any future content format without schema changes — the
+         *     stored content-type drives how the client interprets the response body.
+         *     A `Content-Disposition: inline; filename="…"` header is included when
+         *     a filename is stored.
+         */
+        get: operations["GetAPIDocumentContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/apis/{apiType}/{apiId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get API thumbnail
+         * @description Streams the stored thumbnail bytes with the sniffed `Content-Type`
+         *     header (`image/jpeg` or `image/png`).
+         */
+        get: operations["GetAPIThumbnail"];
+        /**
+         * Set or replace the API thumbnail
+         * @description Creates or replaces the API's singleton thumbnail.
+         */
+        put: operations["UpsertAPIThumbnail"];
+        post?: never;
+        /**
+         * Delete the API thumbnail
+         * @description Removes the stored thumbnail. Subsequent `GET` returns `204` (no
+         *     thumbnail set) and the client falls back to rendering the API's name initials.
+         */
+        delete: operations["DeleteAPIThumbnail"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm-provider-templates": {
         parameters: {
             query?: never;
@@ -3903,6 +4035,103 @@ export interface components {
             /** @description Raw spec content */
             content?: string;
         };
+        /** @description Metadata-only view of a document attached to an artifact. */
+        APIDocumentMetadata: {
+            /**
+             * @description URL-safe handle used in the `{docId}` path segment.
+             * @example payment-webhook-howto
+             */
+            id: string;
+            /**
+             * @description Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+             * @example HOW_TO
+             */
+            type: string;
+            /** @example Payment Webhook How-To */
+            displayName: string;
+            /**
+             * @description Original file name supplied when a `file` was uploaded.
+             * @example payment-webhook.md
+             */
+            fileName?: string;
+            /**
+             * @description Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
+             * @example text/markdown; charset=utf-8
+             */
+            contentType?: string;
+            /** @description User who created the document. */
+            createdBy?: string;
+            /** @description User who updated the document. */
+            updatedBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        APIDocumentListResponse: {
+            /**
+             * @description Number of items in the current page.
+             * @example 2
+             */
+            count: number;
+            list: components["schemas"]["APIDocumentMetadata"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /**
+         * @description Multipart form for document create (`POST`) and update (`PUT`).
+         *
+         *     On **create**: `type` and `displayName` are required; `inlineContent`
+         *     must carry the body. `id` is optional — the server generates one from
+         *     `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
+         *
+         *     On **update**: every field is optional; omitted fields leave the stored
+         *     value unchanged. Omitting `inlineContent` means a metadata-only update
+         *     — the stored bytes are not touched. If `id` is supplied it must match
+         *     the `{docId}` path parameter, otherwise the request is rejected with 400.
+         */
+        APIDocumentRequest: {
+            /**
+             * @description URL-safe document handle. On create: optional, server-generated from
+             *     `displayName` when omitted; must be unique per artifact (409 on
+             *     conflict). On update: if provided, must match the `{docId}` path parameter.
+             * @example payment-webhook-howto
+             */
+            id?: string;
+            /**
+             * @description Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+             *     `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+             * @example HowTo
+             */
+            type: string;
+            /**
+             * @description Free-form qualifier used when `type` is `Other`. Stored and returned
+             *     exactly as typed (no case conversion). Ignored for all other types.
+             * @example FAQ
+             */
+            otherTypeName?: string;
+            /** @example Payment Webhook How-To */
+            displayName: string;
+            /** @description Inline UTF-8 Markdown content. */
+            inlineContent?: string;
+            /**
+             * @description File name to associate with the content. Defaults to `{handle}.md`.
+             * @example payment-webhook.md
+             */
+            fileName?: string;
+        };
+        /**
+         * @description Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+         *     sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+         *     — the declared `Content-Type` and filename extension are ignored for
+         *     the type decision.
+         */
+        APIThumbnailRequest: {
+            /**
+             * Format: binary
+             * @description JPEG or PNG image bytes. Max size is deployment-configured.
+             */
+            file: string;
+        };
         /**
          * @description Time unit for API key expiration duration
          * @example days
@@ -4094,8 +4323,11 @@ export interface components {
             displayName: string;
             /** @description Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple. */
             limits?: components["schemas"]["SubscriptionPlanLimit"][];
-            /** Format: date-time */
-            expiryTime?: string;
+            /**
+             * Format: date-time
+             * @description Optional plan expiry time. On update, omit the field to keep the current value or send null to clear it.
+             */
+            expiryTime?: string | null;
             /**
              * @description Handle (URL-friendly slug) of the organization this plan belongs to
              * @example acme
@@ -6899,6 +7131,14 @@ export interface components {
         apiType: string;
         /** @description The API's handle, unique per organization within its own type. */
         apiHandle: string;
+        /** @description Document handle (api_documents.handle), unique per API artifact. */
+        docId: string;
+        /**
+         * @description Optional filter restricting the list to documents of a single type.
+         *     An unrecognised value yields an empty page rather than an error, and
+         *     the reserved `DEFINITION` type is never returned via this endpoint.
+         */
+        "docType-Q": string;
         /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         "apiType-Q": string;
         /** @description The API's handle, unique per organization within its own type. */
@@ -8466,6 +8706,316 @@ export interface operations {
             409: components["responses"]["PublicationConflict"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    ListAPIDocuments: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Optional filter restricting the list to documents of a single type.
+                 *     An unrecognised value yields an empty page rather than an error, and
+                 *     the reserved `DEFINITION` type is never returned via this endpoint.
+                 */
+                type?: components["parameters"]["docType-Q"];
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Documents listed successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIDocumentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    CreateAPIDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["APIDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Document created successfully */
+            201: {
+                headers: {
+                    /** @description URL of the newly created document. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIDocumentMetadata"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetAPIDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document metadata retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIDocumentMetadata"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpdateAPIDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["APIDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Document updated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIDocumentMetadata"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteAPIDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetAPIDocumentContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+                /** @description Document handle (api_documents.handle), unique per API artifact. */
+                docId: components["parameters"]["docId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document content retrieved successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Document exists but has no content stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    GetAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thumbnail bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description No thumbnail is set for this API */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    UpsertAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["APIThumbnailRequest"];
+            };
+        };
+        responses: {
+            /** @description Thumbnail stored successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    DeleteAPIThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                apiType: components["parameters"]["apiType"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thumbnail deleted successfully */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     listLLMProviderTemplates: {
@@ -11904,6 +12454,8 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;

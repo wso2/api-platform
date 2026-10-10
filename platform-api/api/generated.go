@@ -2013,6 +2013,71 @@ type A2ATransport struct {
 // A2ATransportProtocolBinding A2A protocol binding served on this transport.
 type A2ATransportProtocolBinding string
 
+// APIDocumentListResponse defines model for APIDocumentListResponse.
+type APIDocumentListResponse struct {
+	// Count Number of items in the current page.
+	Count      int                   `json:"count" yaml:"count"`
+	List       []APIDocumentMetadata `json:"list" yaml:"list"`
+	Pagination Pagination            `json:"pagination" yaml:"pagination"`
+}
+
+// APIDocumentMetadata Metadata-only view of a document attached to an artifact.
+type APIDocumentMetadata struct {
+	// ContentType Stored MIME type, sniffed from the uploaded bytes rather than trusted from the uploader.
+	ContentType *string    `json:"contentType,omitempty" yaml:"contentType,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy User who created the document.
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	DisplayName string  `json:"displayName" yaml:"displayName"`
+
+	// FileName Original file name supplied when a `file` was uploaded.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe handle used in the `{docId}` path segment.
+	Id string `json:"id" yaml:"id"`
+
+	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+	Type      string     `json:"type" yaml:"type"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy User who updated the document.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+}
+
+// APIDocumentRequest Multipart form for document create (`POST`) and update (`PUT`).
+//
+// On **create**: `type` and `displayName` are required; `inlineContent`
+// must carry the body. `id` is optional — the server generates one from
+// `displayName` when omitted, and `fileName` defaults to `{handle}.md`.
+//
+// On **update**: every field is optional; omitted fields leave the stored
+// value unchanged. Omitting `inlineContent` means a metadata-only update
+// — the stored bytes are not touched. If `id` is supplied it must match
+// the `{docId}` path parameter, otherwise the request is rejected with 400.
+type APIDocumentRequest struct {
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
+
+	// Id URL-safe document handle. On create: optional, server-generated from
+	// `displayName` when omitted; must be unique per artifact (409 on
+	// conflict). On update: if provided, must match the `{docId}` path parameter.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// InlineContent Inline UTF-8 Markdown content.
+	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
+
+	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
+	// exactly as typed (no case conversion). Ignored for all other types.
+	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
+
+	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
+	// `PublicForum`, `Other`. Custom types are accepted and stored as-is.
+	Type string `json:"type" yaml:"type"`
+}
+
 // APIKeyItem defines model for APIKeyItem.
 type APIKeyItem struct {
 	// AllowedTargets Comma-separated list of allowed gateways; 'ALL' means unrestricted
@@ -2080,6 +2145,15 @@ type APIKeySecurity struct {
 
 // APIKeySecurityIn Location of the API key (header or query)
 type APIKeySecurityIn string
+
+// APIThumbnailRequest Multipart form for `PUT /apis/{apiType}/{apiId}/thumbnail`. The server
+// sniffs the uploaded bytes and accepts only `image/jpeg` or `image/png`
+// — the declared `Content-Type` and filename extension are ignored for
+// the type decision.
+type APIThumbnailRequest struct {
+	// File JPEG or PNG image bytes. Max size is deployment-configured.
+	File openapi_types.File `json:"file" yaml:"file"`
+}
 
 // AddApplicationAPIKeysRequest defines model for AddApplicationAPIKeysRequest.
 type AddApplicationAPIKeysRequest struct {
@@ -2862,7 +2936,7 @@ type DeploymentResponse struct {
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `json:"status" yaml:"status"`
 
-	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
+	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment in its startup sync and a referenced secret could not be resolved; the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
 	StatusReason *string `json:"statusReason,omitempty" yaml:"statusReason,omitempty"`
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
@@ -4660,8 +4734,10 @@ type SubscriptionPlan struct {
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
-	DisplayName string     `json:"displayName" yaml:"displayName"`
-	ExpiryTime  *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// ExpiryTime Optional plan expiry time. On update, omit the field to keep the current value or send null to clear it.
+	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
 	// Id Handle (slug) for the subscription plan
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
@@ -4940,6 +5016,9 @@ type AgentProxyApiKeyId = string
 // AgentProxyId defines model for agentProxyId.
 type AgentProxyId = string
 
+// AgentProxyProjectIdQ defines model for agentProxyProjectId-Q.
+type AgentProxyProjectIdQ = string
+
 // AgentProxyProtocolQ defines model for agentProxyProtocol-Q.
 type AgentProxyProtocolQ string
 
@@ -4978,6 +5057,12 @@ type DeploymentId = openapi_types.UUID
 
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
+
+// DocId defines model for docId.
+type DocId = string
+
+// DocTypeQ defines model for docType-Q.
+type DocTypeQ = string
 
 // EntityIDQ defines model for entityID-Q.
 type EntityIDQ = string
@@ -5072,6 +5157,13 @@ type ListAgentProxiesParams struct {
 	// An empty or unsupported value is rejected with 400. The filter applies to the returned
 	// page and to `pagination.total` alike, always within the authenticated organization.
 	Protocol *ListAgentProxiesParamsProtocol `form:"protocol,omitempty" json:"protocol,omitempty" yaml:"protocol,omitempty"`
+
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose
+	// Agent proxies should be returned. Omit to list Agent proxies across every project in the
+	// organization. An empty value is rejected with 400, and a handle that does not resolve to a
+	// project in the authenticated organization is rejected with 404. The filter applies to the
+	// returned page and to `pagination.total` alike.
+	ProjectId *AgentProxyProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Limit Maximum number of items to return per page.
 	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
@@ -5218,6 +5310,20 @@ type ListApiPublicationsParamsSortBy string
 
 // ListApiPublicationsParamsSortOrder defines parameters for ListApiPublications.
 type ListApiPublicationsParamsSortOrder string
+
+// ListAPIDocumentsParams defines parameters for ListAPIDocuments.
+type ListAPIDocumentsParams struct {
+	// Type Optional filter restricting the list to documents of a single type.
+	// An unrecognised value yields an empty page rather than an error, and
+	// the reserved `DEFINITION` type is never returned via this endpoint.
+	Type *DocTypeQ `form:"type,omitempty" json:"type,omitempty" yaml:"type,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -5679,6 +5785,9 @@ type ListSubscriptionPlansParams struct {
 
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 }
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
@@ -5752,6 +5861,15 @@ type SaveApiPublicationDraftDefinitionJSONRequestBody = SaveApiPublicationDraftD
 
 // SaveApiPublicationDraftThumbnailMultipartRequestBody defines body for SaveApiPublicationDraftThumbnail for multipart/form-data ContentType.
 type SaveApiPublicationDraftThumbnailMultipartRequestBody SaveApiPublicationDraftThumbnailMultipartBody
+
+// CreateAPIDocumentMultipartRequestBody defines body for CreateAPIDocument for multipart/form-data ContentType.
+type CreateAPIDocumentMultipartRequestBody = APIDocumentRequest
+
+// UpdateAPIDocumentMultipartRequestBody defines body for UpdateAPIDocument for multipart/form-data ContentType.
+type UpdateAPIDocumentMultipartRequestBody = APIDocumentRequest
+
+// UpsertAPIThumbnailMultipartRequestBody defines body for UpsertAPIThumbnail for multipart/form-data ContentType.
+type UpsertAPIThumbnailMultipartRequestBody = APIThumbnailRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

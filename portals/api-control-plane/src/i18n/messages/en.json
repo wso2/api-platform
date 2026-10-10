@@ -788,6 +788,33 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
+    "defaultMessage": "Change thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteButton": {
+    "defaultMessage": "Remove"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage": {
+    "defaultMessage": "Are you sure you want to delete the thumbnail of this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteTitle": {
+    "defaultMessage": "Remove API thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.deleteSuccess": {
+    "defaultMessage": "Thumbnail removed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorSize": {
+    "defaultMessage": "The image must be 1 MB or smaller."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorType": {
+    "defaultMessage": "Only JPEG and PNG images are supported."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.removeThumbnail": {
+    "defaultMessage": "Remove thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.uploadSuccess": {
+    "defaultMessage": "Thumbnail updated."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
     "defaultMessage": "Open API Designer",
     "description": "Button opening the API Designer VS Code extension listing in a new tab. \"API Designer\" is a product name — leave it untranslated."
@@ -1097,15 +1124,29 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title": {
     "defaultMessage": "Deployed gateways"
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.description": {
-    "defaultMessage": "Guides, references, and specifications published with this API."
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.create": {
+    "defaultMessage": "Create Document",
+    "description": "Opens the form for a new API document. Shown when the API has none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.empty": {
+    "defaultMessage": "No Documents available for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loadError": {
+    "defaultMessage": "Unable to load documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loading": {
+    "defaultMessage": "Loading documents…"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.title": {
     "defaultMessage": "Documents"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.updated": {
-    "defaultMessage": "2 days ago",
-    "description": "Temporary relative update time for demo document data."
+    "defaultMessage": "Updated {when}",
+    "description": "{when} is a relative time, e.g. \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.viewMore": {
+    "defaultMessage": "View More",
+    "description": "Opens the API’s Documents page to see every document."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
     "defaultMessage": "Cancel"
@@ -1423,12 +1464,6 @@
     "defaultMessage": "Select Deployment to Restore",
     "description": "Heading of the drawer for picking an earlier deployment to put back in service."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail": {
-    "defaultMessage": "You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature": {
-    "defaultMessage": "Documents for this API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.cancel": {
     "defaultMessage": "Cancel"
   },
@@ -1443,6 +1478,221 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsaved": {
     "defaultMessage": "You have unsaved changes",
     "description": "Shown on the save bar while the panel has edits that have not been saved yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.back": {
+    "defaultMessage": "Back to documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentHint": {
+    "defaultMessage": "Markdown supported: headings, lists, links, code blocks and quotes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentLabel": {
+    "defaultMessage": "Content"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentPlaceholder": {
+    "defaultMessage": "# Write your document in Markdown…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.create": {
+    "defaultMessage": "Create",
+    "description": "Submits the new document. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.createSubtitle": {
+    "defaultMessage": "Choose a type, name it and write the content in Markdown."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.createTitle": {
+    "defaultMessage": "Create Document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.created": {
+    "defaultMessage": "Created \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeInvalid": {
+    "defaultMessage": "Use only letters, numbers, spaces, hyphens and underscores."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeLabel": {
+    "defaultMessage": "Custom type",
+    "description": "Label for the free-text type name shown when the document type is \"Other\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypePlaceholder": {
+    "defaultMessage": "e.g. Changelog"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeReserved": {
+    "defaultMessage": "This is a reserved document type."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeTooLong": {
+    "defaultMessage": "Keep under {max} bytes (non-Latin letters count as more than one)."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editSubtitle": {
+    "defaultMessage": "Update the type, name or Markdown content of this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editTitle": {
+    "defaultMessage": "Edit Document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.layout": {
+    "defaultMessage": "Editor layout",
+    "description": "Accessible name of the Source / Split / Preview switch."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveMessage": {
+    "defaultMessage": "You have unsaved changes. Are you sure you want to leave?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveNo": {
+    "defaultMessage": "No",
+    "description": "Answers \"Are you sure you want to leave?\": stays on the form with the changes kept."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveTitle": {
+    "defaultMessage": "Unsaved changes",
+    "description": "Title of the dialog asking whether to leave the document form without saving."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveYes": {
+    "defaultMessage": "Yes",
+    "description": "Answers \"Are you sure you want to leave?\": leaves the form and discards unsaved changes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.loadError": {
+    "defaultMessage": "Unable to load this document for editing."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.loading": {
+    "defaultMessage": "Loading document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.markdownPane": {
+    "defaultMessage": "Markdown"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameExists": {
+    "defaultMessage": "A document with this name already exists for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameLabel": {
+    "defaultMessage": "Name",
+    "description": "Label for the document name field. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.namePlaceholder": {
+    "defaultMessage": "e.g. Getting started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.notEditable": {
+    "defaultMessage": "This document’s format can’t be edited here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.preview": {
+    "defaultMessage": "Preview"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.previewEmpty": {
+    "defaultMessage": "Nothing to preview yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.save": {
+    "defaultMessage": "Save",
+    "description": "Saves changes to the document. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.saved": {
+    "defaultMessage": "Saved \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.saving": {
+    "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.source": {
+    "defaultMessage": "Source"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.split": {
+    "defaultMessage": "Split",
+    "description": "Editor layout showing the Markdown source and its preview side by side."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.tooLarge": {
+    "defaultMessage": "The document is too large to save."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.typeLabel": {
+    "defaultMessage": "Document type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.heading": {
+    "defaultMessage": "All documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.loadingMore": {
+    "defaultMessage": "Loading documents…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.toggleGroup": {
+    "defaultMessage": "{type} ({count})",
+    "description": "Accessible name of a document-type group header that expands or collapses the group."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.total": {
+    "defaultMessage": "{count, plural, one {# document} other {# documents}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.updated": {
+    "defaultMessage": "Updated {when}",
+    "description": "Secondary line of a document in the list. {when} is a relative time, e.g. \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.howTo": {
+    "defaultMessage": "How To",
+    "description": "Document type: a step-by-step guide."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.other": {
+    "defaultMessage": "Other",
+    "description": "Document type: anything that fits no other type."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.publicForum": {
+    "defaultMessage": "Public Forum",
+    "description": "Document type: a link to or notes about a public community forum."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.sampleSdk": {
+    "defaultMessage": "Samples & SDK",
+    "description": "Document type: code samples and client SDKs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.supportForum": {
+    "defaultMessage": "Support Forum",
+    "description": "Document type: a link to or notes about a support channel."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.contentError": {
+    "defaultMessage": "Unable to load the content of this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.contentLoading": {
+    "defaultMessage": "Loading content"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.delete": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleteMessage": {
+    "defaultMessage": "\"{name}\" will be permanently removed from this API. This can’t be undone."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleteTitle": {
+    "defaultMessage": "Delete document?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleted": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.empty": {
+    "defaultMessage": "This document has no content."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.loadError": {
+    "defaultMessage": "Unable to load this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.loading": {
+    "defaultMessage": "Loading document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.notFound": {
+    "defaultMessage": "This document no longer exists. It may have been deleted."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.unsupported": {
+    "defaultMessage": "This document’s format can’t be previewed here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.create": {
+    "defaultMessage": "Create Document",
+    "description": "Button that opens the form for a new API document. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.empty": {
+    "defaultMessage": "No Documents available for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.loadError": {
+    "defaultMessage": "Unable to load the documents for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.loading": {
+    "defaultMessage": "Loading documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.subtitle": {
+    "defaultMessage": "Guides, samples and support resources that describe this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.title": {
+    "defaultMessage": "Documents"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.addPolicy": {
     "defaultMessage": "Add Policy",
@@ -2290,14 +2540,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
-    "defaultMessage": "Grid view",
-    "description": "Accessible label for the button switching to the card grid."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.listView": {
-    "defaultMessage": "List view",
-    "description": "Accessible label for the button switching to the table rows."
-  },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
     "description": "Accessible label for the delete button on a project row."
@@ -2461,6 +2703,19 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.deactivated": {
     "defaultMessage": "Deactivated plan \"{name}\"."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.next": {
+    "defaultMessage": "Next page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.previous": {
+    "defaultMessage": "Previous page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.range": {
+    "defaultMessage": "{from}–{to} of {count, number}",
+    "description": "Pager summary: the plan rows shown on this page out of the total."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.rowsPerPage": {
+    "defaultMessage": "Plans per page"
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.searchPlaceholder": {
     "defaultMessage": "Search plans"
   },
@@ -2514,6 +2769,9 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.title": {
     "defaultMessage": "Plan not created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.error.invalid": {
+    "defaultMessage": "Enter a valid date"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.helper": {
     "defaultMessage": "The plan stops accepting subscriptions after this date."
@@ -3918,10 +4176,6 @@
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
   },
-  "project.card.actionsLabel": {
-    "defaultMessage": "Project actions",
-    "description": "Accessible label for the button opening the card overflow menu."
-  },
   "project.card.apiCount": {
     "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
@@ -3932,9 +4186,6 @@
   "project.card.defaultBadge": {
     "defaultMessage": "DEFAULT",
     "description": "Badge marking the organization’s default project."
-  },
-  "project.card.delete": {
-    "defaultMessage": "Delete"
   },
   "project.card.deleteNamed": {
     "defaultMessage": "Delete {name}"
@@ -3956,9 +4207,6 @@
   "project.card.updatedAt": {
     "defaultMessage": "Updated {relative}",
     "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
-  },
-  "project.list.count": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
   },
   "project.list.createProjectButton": {
     "defaultMessage": "Create Project"
@@ -4009,26 +4257,6 @@
   },
   "project.list.searchPlaceholder": {
     "defaultMessage": "Search projects"
-  },
-  "project.list.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by project name, ascending."
-  },
-  "project.list.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by project name, descending."
-  },
-  "project.list.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent project first."
-  },
-  "project.list.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest project first."
-  },
-  "project.list.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the project list order."
   },
   "project.list.subHeader.default": {
     "defaultMessage": "Select a project to manage APIs."

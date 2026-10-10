@@ -380,6 +380,14 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 		ec.syncRequestPseudoHeaders()
 	}
 
+	// A rejection here is a fault like any other. This path is the one place a chain runs
+	// without going through processRequestHeaders/processRequestBody, so it has to raise the
+	// fault itself — a multiplexed MCP or A2A route binds its chain here, and without this
+	// every rejection on one of them would skip the fault policies entirely.
+	if f, isFault := faultFromRequestHeaders(headerResult); isFault {
+		ec.handleFault(ctx, f)
+	}
+
 	// An empty body result is still a valid merge input: a chain with no body policy
 	// contributes no body mutation, and the header-phase mutations it did produce
 	// still have to be emitted on this response.
@@ -399,6 +407,10 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 		}
 	}
 
+	if f, isFault := faultFromRequestBody(bodyResult); isFault {
+		ec.handleFault(ctx, f)
+	}
+
 	return TranslateRequestBodyActionsWithHeaderMerge(headerResult, bodyResult, ec)
 }
 
@@ -414,7 +426,8 @@ func (ec *PolicyExecutionContext) denyResolution(
 	ctx context.Context,
 	failure *resolver.ResolutionError,
 ) *extprocv3.ProcessingResponse {
-	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID, failure,
+	resp, outcome := ec.server.renderResolutionFailure(ctx, ec.resolverName, ec.routeKey,
+		ec.requestID, ec.shapeSignals(), failure,
 		resolutionFailureAnalytics(nil, ec, failure))
 
 	// The chain is never bound for this request. Later phases check this so a
@@ -434,11 +447,12 @@ func (ec *PolicyExecutionContext) denyResolution(
 // FailureKind, a fixed reason phrase and a correlation id that also appears in the
 // warning log. The kind survives in the log and the metric, never in the body, and the
 // failure's Cause is logged and never returned (error-handling.md directive 1).
-func renderResolutionFailure(
+func (s *ExternalProcessorServer) renderResolutionFailure(
 	ctx context.Context,
 	resolverName string,
 	routeKey string,
 	requestID string,
+	sig requestShapeSignals,
 	failure *resolver.ResolutionError,
 	analytics *structpb.Struct,
 ) (*extprocv3.ProcessingResponse, tracing.HTTPOutcome) {
@@ -456,10 +470,18 @@ func renderResolutionFailure(
 
 	rendered := genericResolutionFailure(failure.Kind, errorID)
 
+	// Shape the sterile body for the caller's protocol, where the operator enabled this API
+	// kind. The account is the same one genericResolutionFailure built its body from, so an
+	// enabled kind and a disabled one report the same failure — only the envelope differs.
+	_, account := resolutionFailureAccount(failure.Kind)
+	body, contentType := s.formatSterileError(ctx, sig, account, rendered.StatusCode, errorID,
+		rendered.Body, rendered.Headers["content-type"])
+	rendered.Headers["content-type"] = contentType
+
 	imm := &extprocv3.ImmediateResponse{
 		Status:  &typev3.HttpStatus{Code: typev3.StatusCode(rendered.StatusCode)},
 		Headers: buildHeaderValueOptions(rendered.Headers),
-		Body:    rendered.Body,
+		Body:    body,
 	}
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{ImmediateResponse: imm},
@@ -534,12 +556,21 @@ type sterileFailure struct {
 	Body       []byte
 }
 
-// genericResolutionFailure is the sterile response for a resolution failure: an
-// HTTP status, a fixed reason phrase, and a correlation id that also appears in the
-// warning log. It never names the resolver, the operation, or the underlying cause.
-func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterileFailure {
-	status := http.StatusInternalServerError
-	message := "Internal Server Error"
+// resolutionFailureAccount is the client-facing account of a resolution failure: the HTTP
+// status, and the description a renderer builds a protocol-correct body from.
+//
+// Grouped by STATUS, deliberately never one code per FailureKind. The status already tells a
+// caller which class of thing went wrong, so a code that tracks the status discloses nothing
+// further — whereas a code per kind would let a caller tell FailureParse from
+// FailureInvalidRequest, which is resolver internals and precisely what the sterile-response
+// rule withholds (error-handling.md directive 1). The kind still reaches the log, the metric
+// and the span, where it belongs.
+//
+// The messages are the same fixed reason phrases the unformatted body has always carried, so
+// a caller reading `message` after this change reads what it read in `error` before.
+func resolutionFailureAccount(kind resolver.FailureKind) (int, policy.FaultDetails) {
+	status, message := http.StatusInternalServerError, "Internal Server Error"
+	code, errType := codeEngineInternal, policy.FaultTypeInternal
 
 	switch kind {
 	case resolver.FailureParse, resolver.FailureInvalidRequest, resolver.FailureMultiOperation,
@@ -551,15 +582,38 @@ func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterile
 		resolver.FailureInvalidParameter, resolver.FailureConflictingParameter,
 		resolver.FailureVersionNotSupported:
 		status, message = http.StatusBadRequest, "Bad Request"
+		code, errType = codeResolutionBadRequest, policy.FaultTypeValidation
 	case resolver.FailureUnknownOperation:
 		status, message = http.StatusNotFound, "Not Found"
+		// Reuses the resource-not-found code: from the caller's side this is the same
+		// event as a request that matched no API.
+		code, errType = codeNoRoute, policy.FaultTypeRouting
 	case resolver.FailurePayloadTooLarge:
 		status, message = http.StatusRequestEntityTooLarge, "Payload Too Large"
+		// Same condition as the body-decompression ceiling, so the same code.
+		code, errType = codePayloadTooLarge, policy.FaultTypeRequestSize
 	case resolver.FailureUnsupportedEncoding:
 		// The client named a coding this gateway cannot decode; 415 says exactly that,
 		// where a 400 or 500 would send them looking at their payload or at us.
 		status, message = http.StatusUnsupportedMediaType, "Unsupported Media Type"
+		code, errType = codeResolutionUnsupportedEncoding, policy.FaultTypeValidation
 	}
+
+	return status, policy.FaultDetails{
+		Code:      code,
+		Type:      errType,
+		Direction: policy.DirectionRequest,
+		Message:   message,
+		// Policy stays empty: no policy caused this. Resolution runs before any chain is
+		// bound, and empty means "not caused by a policy" rather than "unknown".
+	}
+}
+
+// genericResolutionFailure is the sterile response for a resolution failure: an
+// HTTP status, a fixed reason phrase, and a correlation id that also appears in the
+// warning log. It never names the resolver, the operation, or the underlying cause.
+func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterileFailure {
+	status, account := resolutionFailureAccount(kind)
 
 	return sterileFailure{
 		StatusCode: status,
@@ -567,7 +621,7 @@ func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterile
 			"content-type": "application/json",
 			"x-error-id":   errorID,
 		},
-		Body: []byte(fmt.Sprintf(`{"error":%q,"error_id":%q}`, message, errorID)),
+		Body: []byte(fmt.Sprintf(`{"error":%q,"error_id":%q}`, account.Message, errorID)),
 	}
 }
 

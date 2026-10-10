@@ -52,6 +52,7 @@ tmp/
 *.test
 *.out
 **/unit-test-coverage.txt
+**/unit-test-coverage.info
 **/integration-test-coverage.txt
 **/integration-test-coverage.html
 
@@ -174,3 +175,9 @@ gateway/target/
 
 # Devportal
 portals/api-portal/target/
+
+# Third-party agent skills, installed via `make install-skills` from skills-lock.json
+.agents/skills/okf-open-knowledge-format/
+# Spec Kit scaffolding, installed via `make install-spec-kit`
+.specify/
+.agents/skills/speckit-*/

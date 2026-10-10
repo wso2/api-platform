@@ -30,6 +30,10 @@ go test ./suites/it -count=1 -timeout=30m -blocks=gateway-core/sqlite
 # The full matrix (all database engines), bounded concurrency:
 go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
+# The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
+make ap-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+
 # Gateway-controller policy smoke (requires ../gateway-controllers/policies)
 go test ./suites/it -count=1 -timeout=25m -args -blocks=gateway-controller-policies
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
@@ -53,7 +57,9 @@ go test ./suites/cloud -count=1 -timeout=15m \
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. Coverage runs build source images through the
+`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
+missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
 product coverage-image target. See
 [`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects

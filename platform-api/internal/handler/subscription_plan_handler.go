@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -36,6 +37,9 @@ import (
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
+
+// maxPlanUpdateBodyBytes caps the PUT body; a plan is a few hundred bytes.
+const maxPlanUpdateBodyBytes = 64 << 10
 
 // SubscriptionPlanHandler handles subscription plan CRUD
 type SubscriptionPlanHandler struct {
@@ -233,15 +237,15 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	total, err := h.planService.CountPlans(orgId)
+	total, err := h.planService.CountPlans(orgId, opts.Search)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to count subscription plans for org %s", orgId))
 	}
 
-	list, err := h.planService.ListPlans(orgId, limit, offset)
+	list, err := h.planService.ListPlans(orgId, opts)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list subscription plans for org %s", orgId))
@@ -260,8 +264,8 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 		"count": len(items),
 		"pagination": api.Pagination{
 			Total:  total,
-			Offset: offset,
-			Limit:  limit,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	})
 	return nil
@@ -311,11 +315,23 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.ValidationFailed.New("Plan ID is required")
 	}
 
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxPlanUpdateBodyBytes))
+	if err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
+			WithLogMessage(fmt.Sprintf("failed to read update subscription plan request body for plan %s in org %s", planId, orgId))
+	}
 	var req api.SubscriptionPlan
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("invalid update subscription plan request body for plan %s in org %s", planId, orgId))
 	}
+	// *time.Time cannot tell an omitted expiryTime from an explicit null, so probe
+	// the raw body: null clears the expiry, omission leaves it unchanged. The body
+	// already parsed above, so this cannot fail.
+	var presence struct {
+		ExpiryTime json.RawMessage `json:"expiryTime"`
+	}
+	_ = json.Unmarshal(body, &presence)
 
 	if err := utils.ValidateHandleImmutable(planId, req.Id); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "The plan id is immutable and cannot be changed")
@@ -326,8 +342,9 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.ValidationFailed.New("displayName is required")
 	}
 	update := &model.SubscriptionPlanUpdate{
-		Name:       &displayName,
-		ExpiryTime: req.ExpiryTime,
+		Name:            &displayName,
+		ExpiryTime:      req.ExpiryTime,
+		ClearExpiryTime: req.ExpiryTime == nil && string(presence.ExpiryTime) == "null",
 	}
 	if req.Limits != nil {
 		if limit := firstLimit(apiLimitsToRequests(*req.Limits)); limit != nil {

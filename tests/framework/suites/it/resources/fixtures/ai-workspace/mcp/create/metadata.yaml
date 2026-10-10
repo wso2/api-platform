@@ -1,0 +1,7 @@
+apiVersion: ai-workspace.api-platform.wso2.com/v1alpha
+kind: McpMetadata
+metadata:
+  name: ${CTX:artifactId}
+spec:
+  displayName: mcp-proxy
+  version: v1.0

@@ -55,6 +55,7 @@ import {
   type AIWorkspaceExtension,
 } from '../../extensions';
 import { useSlot } from '../../slots';
+import { getBillingOrganization } from '../../billing/organization';
 import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
@@ -115,10 +116,37 @@ export default function AppLayout(): JSX.Element {
   // Read rather than owned here: ResourceLimitsProvider sits above this component
   // (App.tsx) so the value can ride the Port. A cloud plugin mounted on app.gate
   // supplies the numbers through `resourceLimits.set`; this portal only carries them.
-  const { canCreate, limitMessage, setResourceLimits } = useResourceLimits();
+  const {
+    canCreate,
+    limitMessage,
+    setResourceLimits,
+    refresh,
+    refreshSignal,
+    readOnly,
+    readOnlyMessage,
+    setReadOnly,
+  } = useResourceLimits();
   const resourceLimits = useMemo(
-    () => ({ canCreate, limitMessage, set: setResourceLimits }),
-    [canCreate, limitMessage, setResourceLimits]
+    () => ({
+      canCreate,
+      limitMessage,
+      set: setResourceLimits,
+      refresh,
+      refreshSignal,
+      readOnly,
+      readOnlyMessage,
+      setReadOnly,
+    }),
+    [
+      canCreate,
+      limitMessage,
+      readOnly,
+      readOnlyMessage,
+      refresh,
+      refreshSignal,
+      setReadOnly,
+      setResourceLimits,
+    ]
   );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
@@ -129,6 +157,7 @@ export default function AppLayout(): JSX.Element {
       notify,
       apiFetch: extensionApiFetch,
       resourceLimits,
+      billing: { organization: getBillingOrganization },
     }),
     [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
@@ -285,8 +314,15 @@ export default function AppLayout(): JSX.Element {
         shellActions.setActiveMenuItem('provider-template');
         return;
       }
-      if (tertiarySegment === 'external-servers') {
+      if (
+        tertiarySegment === 'external-servers' ||
+        tertiarySegment === 'mcp-proxy'
+      ) {
         shellActions.setActiveMenuItem('external-servers');
+        return;
+      }
+      if (tertiarySegment === 'agent-proxy') {
+        shellActions.setActiveMenuItem('agent-proxies');
         return;
       }
       if (tertiarySegment === 'registries') {
@@ -326,8 +362,15 @@ export default function AppLayout(): JSX.Element {
       shellActions.setActiveMenuItem('provider-template');
       return;
     }
-    if (primarySegment === 'external-servers') {
+    if (
+      primarySegment === 'external-servers' ||
+      primarySegment === 'mcp-proxy'
+    ) {
       shellActions.setActiveMenuItem('external-servers');
+      return;
+    }
+    if (primarySegment === 'agent-proxy') {
+      shellActions.setActiveMenuItem('agent-proxies');
       return;
     }
     if (primarySegment === 'registries') {

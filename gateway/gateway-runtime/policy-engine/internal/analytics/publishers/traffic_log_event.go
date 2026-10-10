@@ -36,21 +36,36 @@ const trafficLogComponent = "pol"
 type TrafficLogEvent struct {
 	// Component names the emitting process, not the record type: the policy
 	// engine's application logs carry the same value.
-	Component       string                   `json:"component,omitempty"`
-	Timestamp       string                   `json:"timestamp,omitempty"`
-	CorrelationID   string                   `json:"correlationId,omitempty"`
-	Status          int                      `json:"status,omitempty"`
-	API             *TrafficLogAPI           `json:"api,omitempty"`
-	Operation       *TrafficLogOperation     `json:"operation,omitempty"`
-	Target          *TrafficLogTarget        `json:"target,omitempty"`
-	Application     *TrafficLogApplication   `json:"application,omitempty"`
-	Client          *TrafficLogClient        `json:"client,omitempty"`
-	Latencies       *dto.TrafficLogLatencies `json:"latencies,omitempty"`
-	RequestHeaders  map[string]string        `json:"requestHeaders,omitempty"`
-	ResponseHeaders map[string]string        `json:"responseHeaders,omitempty"`
-	RequestBody     string                   `json:"requestBody,omitempty"`
-	ResponseBody    string                   `json:"responseBody,omitempty"`
-	Properties      map[string]interface{}   `json:"properties,omitempty"`
+	Component     string                   `json:"component,omitempty"`
+	Timestamp     string                   `json:"timestamp,omitempty"`
+	CorrelationID string                   `json:"correlationId,omitempty"`
+	Status        int                      `json:"status,omitempty"`
+	API           *TrafficLogAPI           `json:"api,omitempty"`
+	Operation     *TrafficLogOperation     `json:"operation,omitempty"`
+	Target        *TrafficLogTarget        `json:"target,omitempty"`
+	Application   *TrafficLogApplication   `json:"application,omitempty"`
+	Client        *TrafficLogClient        `json:"client,omitempty"`
+	Latencies     *dto.TrafficLogLatencies `json:"latencies,omitempty"`
+	// ErrorType and Error describe the failure, and are absent on a successful request.
+	//
+	// Structural fields like these are always on, guarded only by presence — the per-flow
+	// Headers/Payload booleans gate the two things that carry caller content, and the
+	// failure classification is not one of them: the collector deliberately never stamps
+	// the fault's Description or a guardrail's Assessments, which are the only parts of a
+	// failure that could hold blocked content. An operator who still does not want them
+	// has fields.exclude, which takes "error" or a dotted path like "error.summary".
+	//
+	// Shaped as a sibling pair rather than one nested object because that is what
+	// dto.Event carries: errorType is the flat category field. Mirroring the
+	// canonical event keeps the two outputs comparable and avoids a third error struct to
+	// keep in step.
+	ErrorType       string                 `json:"errorType,omitempty"`
+	Error           *dto.Error             `json:"error,omitempty"`
+	RequestHeaders  map[string]string      `json:"requestHeaders,omitempty"`
+	ResponseHeaders map[string]string      `json:"responseHeaders,omitempty"`
+	RequestBody     string                 `json:"requestBody,omitempty"`
+	ResponseBody    string                 `json:"responseBody,omitempty"`
+	Properties      map[string]interface{} `json:"properties,omitempty"`
 }
 
 // TrafficLogAPI identifies the API that processed the request.
@@ -157,6 +172,13 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 			UserAgent: event.UserAgentHeader,
 		}
 	}
+
+	// Shared, not copied: dto.Error is treated as immutable once prepareAnalyticEvent has
+	// built it, and every publisher gets the same pointer. Nothing downstream mutates it,
+	// and the alternative — a per-publisher copy — would silently diverge the moment a
+	// field is added to dto.Error.
+	tl.ErrorType = event.ErrorType
+	tl.Error = event.Error
 
 	// fields.exclude only trims fields/sub-keys that the per-flow Headers/Payload
 	// booleans below already turned on — it is a subtractive projection over the

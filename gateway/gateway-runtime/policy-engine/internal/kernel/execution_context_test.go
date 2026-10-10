@@ -119,7 +119,10 @@ func TestHandlePolicyError(t *testing.T) {
 	assert.NotNil(t, immResp.Headers)
 	assert.NotNil(t, immResp.Body)
 
-	// Body should contain error ID
+	// This server enabled no API kind, so nothing is synthesized and the engine's own literal
+	// body is what reaches the client. It must still carry the correlation id — that is the
+	// only handle an operator has on a 500. (The rendered envelope is covered by
+	// fault_engine_error_test.go, which enables a kind.)
 	bodyStr := string(immResp.Body)
 	assert.Contains(t, bodyStr, "Internal Server Error")
 	assert.Contains(t, bodyStr, "error_id")

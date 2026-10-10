@@ -43,7 +43,7 @@ func setupAgentBuildEnv(t *testing.T) *agentDeployEnv {
 		agentProxyTestEnv: env,
 		proxy:             "weather-agent",
 		gateway:           "ai-gw",
-		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", "1.2.0"),
+		gatewayUUID:       seedAgentGateway(t, env.db, agentProxyOrg, "ai-gw", agentGatewayVersion),
 	}
 }
 

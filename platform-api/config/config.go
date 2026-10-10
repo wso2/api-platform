@@ -111,6 +111,8 @@ type Server struct {
 	// upload. Kept separate from PublicationContentMaxBytes — a thumbnail is a small
 	// icon, not a spec document, so it gets its own, tighter default (2 MiB) when <= 0.
 	PublicationThumbnailMaxBytes int64 `koanf:"publication_thumbnail_max_bytes"`
+	// ThumbnailMaxFetchBytes bounds a single-artifact thumbnail upload.
+	ThumbnailMaxFetchBytes int64 `koanf:"thumbnail_max_fetch_bytes"`
 	// AgentCardMaxFetchBytes bounds the body read from an upstream agent's Agent Card
 	// endpoint (internal/utils/agent_card.go). <= 0 falls back to the fetcher's built-in
 	// 1 MiB default, which is the contract's per-card ceiling — mirroring
@@ -127,6 +129,7 @@ type Server struct {
 	Webhook        Webhook          `koanf:"webhook"`
 	HTTPClient     HTTPClientConfig `koanf:"http_client"`
 	AgentCardCache AgentCardCache   `koanf:"agent_card_cache"`
+	ReadOnly       ReadOnly         `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 }
 
 // AgentCardCache configures the in-process cache sitting in front of the
@@ -818,6 +821,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
+		return nil, err
+	}
+	if err := validateReadOnlyConfig(&cfg.ReadOnly); err != nil { // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 		return nil, err
 	}
 	if err := validateEventHubConfig(&cfg.EventHub); err != nil {

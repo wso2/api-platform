@@ -115,7 +115,7 @@ func TestLifecycle_SubscriptionPlanExistsAndList(t *testing.T) {
 			t.Fatalf("[%s] create plan failed: %v", it.driver, err)
 		}
 	}
-	plans, err := planRepo.ListByOrganization(org.ID, 2, 0)
+	plans, err := planRepo.ListByOrganization(org.ID, repository.ListOptions{Limit: 2})
 	if err != nil {
 		t.Fatalf("[%s] ListByOrganization failed: %v", it.driver, err)
 	}

@@ -54,6 +54,7 @@ type GatewayInternalAPIHandler struct {
 	artifactImportService  *service.ArtifactImportService
 	hmacSecretService      hmacSecretDecrypter // nil in OSS builds
 	secretService          *service.SecretService
+	readOnly               readOnlyMode // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
 	slogger                *slog.Logger
 }
 
@@ -199,6 +200,9 @@ func (h *GatewayInternalAPIHandler) GetAPI(w http.ResponseWriter, r *http.Reques
 func (h *GatewayInternalAPIHandler) ImportGatewayArtifacts(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
 	if !ok {
+		return
+	}
+	if h.rejectIfReadOnly(w, r, orgID, gatewayID) { // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
 		return
 	}
 
@@ -755,6 +759,9 @@ func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *ht
 func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(w http.ResponseWriter, r *http.Request) {
 	orgID, gatewayID, ok := h.authenticateRequest(w, r)
 	if !ok {
+		return
+	}
+	if h.rejectIfReadOnly(w, r, orgID, gatewayID) { // TEMP-READ-ONLY-MODE: remove with gateway_internal_readonly.go
 		return
 	}
 

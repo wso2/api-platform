@@ -31,8 +31,8 @@ import (
 // code. When that claim is absent the display name falls back to email, then
 // the subject id.
 type ClaimMapping struct {
-	Username string
-	Email    string
+	Username      string
+	Email         string
 	Picture       string
 	Roles         string
 	Scope         string

@@ -19,49 +19,80 @@ package auth
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"ai-workspace-bff/internal/secure"
 	"ai-workspace-bff/internal/session"
 	"net/url"
 )
 
 // TestCallbackReasonsAreDistinct pins that the four ways a callback fails to match a
-// login are reported separately. They have different causes — a restarted process, a
-// cookie the browser never sent, a user who waited too long, and a genuinely wrong
-// state — and collapsing them into one string sends an operator looking for an attack
-// when the usual answer is a restart.
+// login are reported separately. They have different causes — a cookie the browser
+// never sent, a cookie this deployment's key cannot open, a user who waited too long,
+// and a genuinely wrong state — and collapsing them into one string sends an operator
+// looking for an attack when the usual answer is a misconfigured key or a slow login.
 func TestCallbackReasonsAreDistinct(t *testing.T) {
-	newOIDC := func() *OIDC {
-		return &OIDC{txs: make(map[string]*txn), done: make(chan struct{})}
-	}
-
 	t.Run("no tx cookie", func(t *testing.T) {
-		_, _, err := newOIDC().Callback(context.Background(), "", "some-state", "code")
+		_, _, err := testOIDC(t).Callback(context.Background(), "", "some-state", "code")
 		assertReason(t, err, ReasonNoTxCookie)
 	})
 
-	t.Run("no transaction (server restarted)", func(t *testing.T) {
-		_, _, err := newOIDC().Callback(context.Background(), "tx-gone", "some-state", "code")
+	t.Run("cookie will not open", func(t *testing.T) {
+		_, _, err := testOIDC(t).Callback(context.Background(), "not-a-sealed-record", "some-state", "code")
+		assertReason(t, err, ReasonNoTransaction)
+	})
+
+	t.Run("sealed under another deployment's key", func(t *testing.T) {
+		other := testOIDC(t)
+		mine, err := secure.NewSealer(secure.DeriveKey("different-material", "test/tx"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := &OIDC{sealer: mine}
+		tx := sealedTx(t, other, &txn{State: "s", Expiry: time.Now().Add(time.Minute)})
+		_, _, err = o.Callback(context.Background(), tx, "s", "code")
 		assertReason(t, err, ReasonNoTransaction)
 	})
 
 	t.Run("expired transaction", func(t *testing.T) {
-		o := newOIDC()
-		o.txs["tx-1"] = &txn{State: "s", Expiry: time.Now().Add(-time.Minute)}
-		_, _, err := o.Callback(context.Background(), "tx-1", "s", "code")
+		o := testOIDC(t)
+		tx := sealedTx(t, o, &txn{State: "s", Expiry: time.Now().Add(-time.Minute)})
+		_, _, err := o.Callback(context.Background(), tx, "s", "code")
 		assertReason(t, err, ReasonExpired)
 	})
 
 	t.Run("state differs", func(t *testing.T) {
-		o := newOIDC()
-		o.txs["tx-1"] = &txn{State: "expected", Expiry: time.Now().Add(time.Minute)}
-		_, _, err := o.Callback(context.Background(), "tx-1", "attacker-supplied", "code")
+		o := testOIDC(t)
+		tx := sealedTx(t, o, &txn{State: "expected", Expiry: time.Now().Add(time.Minute)})
+		_, _, err := o.Callback(context.Background(), tx, "attacker-supplied", "code")
 		assertReason(t, err, ReasonStateDiffers)
 	})
+}
+
+// testOIDC builds an authenticator with a real transaction sealer, which is now the
+// only way a login transaction exists.
+func testOIDC(t *testing.T) *OIDC {
+	t.Helper()
+	sealer, err := secure.NewSealer(secure.DeriveKey("test-material", "test/tx"))
+	if err != nil {
+		t.Fatalf("NewSealer: %v", err)
+	}
+	return &OIDC{sealer: sealer}
+}
+
+// sealedTx is the tx cookie value for a transaction, as AuthCodeURL would have written it.
+func sealedTx(t *testing.T, o *OIDC, tx *txn) string {
+	t.Helper()
+	v, err := o.sealTxn(tx)
+	if err != nil {
+		t.Fatalf("sealTxn: %v", err)
+	}
+	return v
 }
 
 func assertReason(t *testing.T, err error, want string) {
@@ -143,17 +174,14 @@ func TestRefreshKeepsIDTokenOnlyProfileClaims(t *testing.T) {
 	})
 }
 
-// A login that takes longer than the transaction lives must say so. Swept on
-// expiry, it would report "no such transaction" instead — indistinguishable from a
-// restart or a replay, which is the difference between a one-line diagnosis and an
-// afternoon of guessing.
+// A login that takes longer than the transaction lives must say so. Reported as
+// "cannot open" instead, it would be indistinguishable from a key mismatch — the
+// difference between a one-line diagnosis and an afternoon of guessing.
 func TestCallbackReportsExpiredRatherThanMissing(t *testing.T) {
-	o := &OIDC{txs: map[string]*txn{}, done: make(chan struct{})}
-	defer o.Close()
+	o := testOIDC(t)
+	tx := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(-time.Minute)})
 
-	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(-time.Minute)}
-
-	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
+	_, _, err := o.Callback(context.Background(), tx, "st", "code")
 	var mismatch ErrStateMismatch
 	if !errors.As(err, &mismatch) {
 		t.Fatalf("err = %v, want ErrStateMismatch", err)
@@ -173,40 +201,50 @@ func TestTxTTLIsGenerousEnoughForAnInteractiveLogin(t *testing.T) {
 		t.Errorf("TxTTL = %s, too short for an interactive IDP login", TxTTL)
 	}
 	if expiredRetention <= TxTTL {
-		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or expired transactions "+
-			"are swept before they can be reported as expired", expiredRetention, TxTTL)
+		t.Errorf("expiredRetention (%s) must outlast TxTTL (%s), or the tx cookie dies "+
+			"before an expired login can be reported as expired", expiredRetention, TxTTL)
 	}
 }
 
-// A consumed transaction is gone: replaying the callback URL must not log anyone in
-// a second time.
-func TestCallbackConsumesTheTransaction(t *testing.T) {
-	// The code exchange is expected to fail — this is about the transaction, not the
-	// IDP — but it must reach a real endpoint rather than a nil client.
+// What still guards a replayed callback, now that a transaction lives in the client's
+// cookie and so cannot be consumed on first use.
+//
+// This is a deliberate trade and it is named here so nobody has to infer it: a sealed
+// transaction can be presented twice. What stops a replay mattering is that a
+// transaction is worthless without the authorization `code` the IDP hands back, that
+// code is single-use at the IDP and a second presentation is refused there, and the tx
+// cookie is cleared on every callback. The checks below — expiry, state, and (in
+// Callback) the id_token's nonce — all still apply on every presentation. Restoring
+// one-shot semantics would require shared server state, which is the thing the cookie
+// store exists to avoid.
+func TestReplayedCallbackStillFailsEveryOtherCheck(t *testing.T) {
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer idp.Close()
 
-	o := &OIDC{
-		client: idp.Client(),
-		disco:  discoveryDoc{TokenEndpoint: idp.URL},
-		txs:    map[string]*txn{},
-		done:   make(chan struct{}),
-	}
-	defer o.Close()
-	o.txs["tx-1"] = &txn{State: "st", Expiry: time.Now().Add(time.Hour)}
+	o := testOIDC(t)
+	o.client = idp.Client()
+	o.disco = discoveryDoc{TokenEndpoint: idp.URL}
 
-	// First use fails at the code exchange, but must still consume the transaction.
-	_, _, _ = o.Callback(context.Background(), "tx-1", "st", "code")
-	if n := o.PendingTransactions(); n != 0 {
-		t.Fatalf("pending transactions = %d after use, want 0", n)
+	// Expiry is re-checked on every presentation, not recorded as "already used".
+	expired := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(-time.Minute)})
+	for i := 0; i < 2; i++ {
+		_, _, err := o.Callback(context.Background(), expired, "st", "code")
+		var mismatch ErrStateMismatch
+		if !errors.As(err, &mismatch) || mismatch.Reason != ReasonExpired {
+			t.Fatalf("presentation %d: err = %v, want %s", i+1, err, ReasonExpired)
+		}
 	}
 
-	_, _, err := o.Callback(context.Background(), "tx-1", "st", "code")
-	var mismatch ErrStateMismatch
-	if !errors.As(err, &mismatch) || mismatch.Reason != ReasonNoTransaction {
-		t.Errorf("replay err = %v, want %s", err, ReasonNoTransaction)
+	// A live transaction replayed with the wrong state is refused on state, every time.
+	live := sealedTx(t, o, &txn{State: "st", Expiry: time.Now().Add(time.Hour)})
+	for i := 0; i < 2; i++ {
+		_, _, err := o.Callback(context.Background(), live, "not-st", "code")
+		var mismatch ErrStateMismatch
+		if !errors.As(err, &mismatch) || mismatch.Reason != ReasonStateDiffers {
+			t.Fatalf("presentation %d: err = %v, want %s", i+1, err, ReasonStateDiffers)
+		}
 	}
 }
 
@@ -218,8 +256,7 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 		clientID:    "ai-workspace",
 		redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
 		scopes:      "openid profile email",
-		txs:         make(map[string]*txn),
-		done:        make(chan struct{}),
+		sealer:      testOIDC(t).sealer,
 		disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
 	}
 
@@ -251,5 +288,94 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 		if got := q.Get(name); got != want {
 			t.Errorf("%s = %q, want %q — an extra parameter overrode a protocol one", name, got, want)
 		}
+	}
+}
+
+// A 307/308 from the IDP re-sends the POST body to the redirect target, and that body
+// carries the client secret and — on revocation — the refresh token. Verified by
+// observing what an attacker-controlled redirect target actually receives.
+func TestBackChannelPostsAreNotFollowedAcrossRedirects(t *testing.T) {
+	var attackerGot string
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		attackerGot = string(b)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer attacker.Close()
+
+	for _, code := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			attackerGot = ""
+			idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, attacker.URL, code)
+			}))
+			defer idp.Close()
+
+			o := testOIDC(t)
+			o.client = noRedirectClient(idp.Client())
+			o.clientID, o.clientSecret = "client-id", "the-client-secret"
+			o.disco = discoveryDoc{TokenEndpoint: idp.URL, RevocationEndpoint: idp.URL}
+
+			_ = o.RevokeRefreshToken(context.Background(), "the-refresh-token")
+			if attackerGot != "" {
+				t.Fatalf("the redirect target received the request body: %q", attackerGot)
+			}
+
+			_, _ = o.Refresh(context.Background(), "the-refresh-token")
+			if attackerGot != "" {
+				t.Fatalf("the redirect target received the refresh body: %q", attackerGot)
+			}
+		})
+	}
+}
+
+// Discovery must refuse to post the client secret to a plaintext endpoint. Loopback is
+// exempt — the request never reaches a network there, which is what keeps httptest and
+// local IDP setups working.
+func TestDiscoveryRejectsPlaintextCredentialEndpoints(t *testing.T) {
+	for name, tc := range map[string]struct {
+		endpoint string
+		wantErr  bool
+	}{
+		"https":               {"https://idp.example.com/token", false},
+		"loopback http":       {"http://127.0.0.1:9443/token", false},
+		"localhost http":      {"http://localhost:9443/token", false},
+		"remote http":         {"http://idp.example.com/token", true},
+		"userinfo in the URL": {"https://user:pw@idp.example.com/token", true},
+		"not a URL":           {"://nonsense", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := requireSecureEndpoint("token_endpoint", tc.endpoint)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("requireSecureEndpoint(%q) = %v, wantErr %v", tc.endpoint, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// A plaintext revocation_endpoint is optional, so it is dropped rather than failing
+// startup — logout still works, and SupportsRevocation reports the loss so the existing
+// startup warning tells the operator.
+func TestDiscoveryDropsAPlaintextRevocationEndpoint(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issuer":"` + srv.URL + `","authorization_endpoint":"` + srv.URL +
+			`/authorize","token_endpoint":"` + srv.URL +
+			`/token","revocation_endpoint":"http://idp.example.com/revoke"}`))
+	}))
+	defer srv.Close()
+
+	o, err := NewOIDC(context.Background(), srv.Client(), srv.URL, "c", "s",
+		"https://portal.example.com/cb", "", "openid",
+		session.DefaultClaimMapping(), time.Hour, testOIDC(t).sealer)
+	if err != nil {
+		t.Fatalf("NewOIDC: %v", err)
+	}
+	if o.SupportsRevocation() {
+		t.Fatal("a plaintext revocation_endpoint was kept — the refresh token would be sent in cleartext")
+	}
+	if err := o.RevokeRefreshToken(context.Background(), "rt"); err != nil {
+		t.Errorf("revocation should no-op, not error: %v", err)
 	}
 }

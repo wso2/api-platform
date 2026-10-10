@@ -96,6 +96,9 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
+	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
+	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
 )
 
 // REST API domain codes.
@@ -188,6 +191,11 @@ const (
 	CodeArtifactReadOnly         = "ARTIFACT_READ_ONLY"
 	CodeArtifactRuntimeImmutable = "ARTIFACT_RUNTIME_IMMUTABLE"
 	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
+)
+
+// API document domain codes.
+const (
+	CodeAPIDocumentNameExists = "API_DOCUMENT_NAME_EXISTS"
 )
 
 // Custom policy domain codes.
