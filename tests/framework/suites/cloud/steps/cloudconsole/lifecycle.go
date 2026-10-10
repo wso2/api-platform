@@ -81,21 +81,29 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
+	// Record why each candidate was rejected. Skipping silently and reporting
+	// only "none found" hides the difference between an organization with no
+	// gateways and one whose gateways were all filtered out here.
+	skipped := make([]string, 0, len(items))
 	for _, item := range items {
-		active, ok := item["isActive"].(bool)
-		if !ok || !active {
+		id, _ := item["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
+			skipped = append(skipped, "<no id>")
 			continue
 		}
-		id, ok := item["id"].(string)
-		if !ok || strings.TrimSpace(id) == "" {
+		if active, ok := item["isActive"].(bool); !ok || !active {
+			skipped = append(skipped, id+": not active")
 			continue
 		}
 		endpoints, ok := item["endpoints"].([]any)
 		if !ok || len(endpoints) == 0 {
+			skipped = append(skipped, id+": no endpoints")
 			continue
 		}
 		endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
 		if !ok {
+			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
 		}
 		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
@@ -103,7 +111,10 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 		}
 		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
 	}
-	return fmt.Errorf("APIP gateway list does not contain an active gateway with an endpoint")
+	if len(items) == 0 {
+		return fmt.Errorf("the organization has no APIP gateways")
+	}
+	return fmt.Errorf("no usable APIP gateway among %d listed: %s", len(items), strings.Join(skipped, "; "))
 }
 
 func (s *Steps) createAPI(ctx context.Context) error {
@@ -260,7 +271,7 @@ func (s *Steps) assertAPIResponse(ctx context.Context) error {
 }
 
 var approvedCloudDataPlaneHost = regexp.MustCompile(
-	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?-wso2cloud\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
+	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
