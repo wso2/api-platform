@@ -259,7 +259,8 @@ func TestOnFault_DelegationLosesNothing(t *testing.T) {
 	}
 
 	for key, want := range mods.AnalyticsMetadata {
-		if got.AnalyticsMetadata[key] != want {
+		// Captured headers are maps, so compare by value rather than with !=.
+		if !reflect.DeepEqual(got.AnalyticsMetadata[key], want) {
 			t.Errorf("key %q: OnFault has %v, OnResponseHeaders had %v — the fault path "+
 				"must not lose response-side metadata", key, got.AnalyticsMetadata[key], want)
 		}

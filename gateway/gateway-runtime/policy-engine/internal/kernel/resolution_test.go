@@ -206,7 +206,7 @@ func newResolutionFixture(t *testing.T, resolvers ...resolver.Resolver) *resolut
 	k := NewKernel()
 	return &resolutionFixture{
 		server: NewExternalProcessorServer(k, newTestExecutor(), config.TracingConfig{}, "",
-			testMaxDecompressedBytes, testMaxDecompressedBytes),
+			testMaxDecompressedBytes, testMaxDecompressedBytes, nil),
 		kernel:    k,
 		resolvers: reg,
 		t:         t,
@@ -1004,7 +1004,7 @@ func TestDeferredBinding_DecodedLimitAppliesToUncompressedBody(t *testing.T) {
 	k := NewKernel()
 	// A decoded ceiling well below the wire ceiling, so only the decoded check fires.
 	server := NewExternalProcessorServer(k, newTestExecutor(), config.TracingConfig{}, "", 8,
-		testMaxDecompressedBytes)
+		testMaxDecompressedBytes, nil)
 	f := &resolutionFixture{server: server, kernel: k, resolvers: reg, t: t}
 	rc := f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1600,7 +1600,7 @@ func TestDeferredBinding_SpanCarriesResolvedChainKeyEndToEnd(t *testing.T) {
 
 	k := NewKernel()
 	server := NewExternalProcessorServer(k, executor.NewChainExecutor(nil, nil, tp.Tracer("test")),
-		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	server.tracer = tp.Tracer("test")
 
 	f := &resolutionFixture{server: server, kernel: k, resolvers: reg, t: t}

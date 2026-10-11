@@ -95,7 +95,7 @@ func createTestConfig() *config.Config {
 func TestNewAccessLogServiceServer(t *testing.T) {
 	cfg := createTestConfig()
 
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	require.NotNil(t, server)
 	assert.NotNil(t, server.cfg)
@@ -108,7 +108,7 @@ func TestNewAccessLogServiceServer(t *testing.T) {
 
 func TestStreamAccessLogs_EmptyStream(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{},
@@ -122,7 +122,7 @@ func TestStreamAccessLogs_EmptyStream(t *testing.T) {
 
 func TestStreamAccessLogs_RecvError(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	expectedErr := io.ErrUnexpectedEOF
 	stream := &mockAccessLogStream{
@@ -139,7 +139,7 @@ func TestStreamAccessLogs_RecvError(t *testing.T) {
 
 func TestStreamAccessLogs_WithNilHttpLogs(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -155,7 +155,7 @@ func TestStreamAccessLogs_WithNilHttpLogs(t *testing.T) {
 
 func TestStreamAccessLogs_WithHttpLogs(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -179,7 +179,7 @@ func TestStreamAccessLogs_WithHttpLogs(t *testing.T) {
 
 func TestStreamAccessLogs_MultipleMessages(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg)
+	server := newAccessLogServiceServer(cfg, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -222,7 +222,7 @@ func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 	}
 
 	// Start the server
-	grpcServer, _ := StartAccessLogServiceServer(cfg)
+	grpcServer, _ := StartAccessLogServiceServer(cfg, nil)
 
 	require.NotNil(t, grpcServer)
 

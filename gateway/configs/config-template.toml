@@ -793,6 +793,55 @@ als_plain_text = true              # plaintext gRPC (skip TLS)
 max_message_size = 1000000000
 max_header_limit = 8192
 
+# In-process store (advanced; defaults are sensible) that carries captured
+# request/response headers and bodies directly from the ext_proc handler to the ALS
+# handler, keyed by a per-stream token, instead of round-tripping them through
+# Envoy dynamic metadata. Shared by every collector consumer and only consulted
+# while the collector is active ([analytics] or [traffic_logging] enabled). A
+# field is left out of metadata only once the store has accepted it, and an unread
+# entry is not evicted while its request can still be logged; when the store is
+# full, fields simply stay in metadata. These limits trade memory for speed, never
+# for lost data. Requests on collector.ignore_path_prefixes are not stored.
+[collector.correlation_store]
+# Whether captured headers and bodies are handed to the access-log side in-process
+# instead of through Envoy metadata. This needs the ext_proc and access-log streams
+# of a request to reach the same policy-engine process.
+#   "auto" (default): on only when policy_engine.server and collector.server both
+#          use "uds" mode; in "tcp" mode the host may resolve to several processes.
+#   "on":  always on. Only safe when router.policy_engine.host resolves to exactly
+#          one policy-engine process.
+#   "off": always use Envoy metadata.
+mode = "auto"
+# Total entries held across all shards combined: one per request, from its first
+# captured field until its access-log entry is processed.
+capacity = 20000
+# How long an entry whose response has finished waits for its access-log entry
+# before its slot may be reused for another request. The read normally follows
+# about a second after the request ends. An entry reused before it is read loses
+# its captured headers and bodies (counted by the evictions metric), so keep this
+# well above collector.server.buffer_flush_interval and any backlog of the
+# access-log consumers. A ttl not longer than the flush interval is raised to twice
+# the flush interval at startup, with a warning. An entry whose response is still
+# streaming is not affected (max_entry_age instead).
+ttl = "30s"
+# How long an entry whose response was never seen to finish may hold its slot
+# before it can be reused. Such entries are mostly requests whose access-log entry
+# Envoy dropped, but a response that keeps streaming longer than this can lose its
+# captured fields if the store needs the slot. Raised to ttl if lower.
+max_entry_age = "5m"
+# Independently-locked partitions, selected by hashing the per-stream correlation
+# token. Rounded up to the next power of two if not one already; at most 1024 and
+# at most capacity (capacity must be >= shards; capacity at most 10,000,000).
+shards = 32
+# Largest captured request/response body (collector.request_body/response_body)
+# carried in-process instead of through Envoy dynamic metadata. Larger bodies use
+# the metadata path. 0 keeps every body in metadata.
+max_payload_bytes = 262144
+# Total bytes of captured headers and bodies the store may hold. They are released
+# as soon as their access-log entry is processed; a field that does not fit stays
+# in metadata. 0 keeps every body in metadata (headers then share a 16 MiB budget).
+max_body_bytes = 16777216
+
 # =============================================================================
 # ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
@@ -908,7 +957,6 @@ key_file = ""
 # startup logs a warning naming the endpoint, because analytics records carry
 # request metadata and, with collector body capture enabled, payloads.
 insecure_skip_verify = false
-
 
 # =============================================================================
 # TRAFFIC LOGGING (consumer — enabling it activates the collector)

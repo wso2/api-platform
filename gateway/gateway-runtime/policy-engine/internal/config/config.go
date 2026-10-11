@@ -46,6 +46,12 @@ const (
 	// streaming. Applied when max_decompressed_bytes is unset for a direction.
 	DefaultMaxDecompressedBytes int64 = 10 * 1024 * 1024 // 10 MiB
 
+	// MaxCorrelationStoreShards and MaxCorrelationStoreCapacity bound
+	// [collector.correlation_store]: the store allocates its shards and slots up
+	// front, so an unbounded value would exhaust memory at startup.
+	MaxCorrelationStoreShards   = 1024
+	MaxCorrelationStoreCapacity = 10_000_000
+
 	// ExtProcMessageOverheadBytes is the headroom an ext_proc message needs above the
 	// body it carries: request/response headers, Envoy attributes, dynamic metadata and
 	// protobuf framing all travel in the same message. The gRPC message limits are
@@ -72,6 +78,15 @@ const (
 	// protecting anything. Raise it if a single runtime instance legitimately carries
 	// more concurrency than this.
 	DefaultMaxConcurrentStreams uint32 = 10000
+
+	// DefaultCorrelationStoreHeaderBytes is the captured-header budget used when
+	// collector.correlation_store.max_body_bytes is 0 (body storage disabled).
+	DefaultCorrelationStoreHeaderBytes int64 = 16 << 20
+
+	// CorrelationStoreMode* are the values of collector.correlation_store.mode.
+	CorrelationStoreModeAuto = "auto"
+	CorrelationStoreModeOn   = "on"
+	CorrelationStoreModeOff  = "off"
 )
 
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
@@ -110,6 +125,19 @@ type CollectorConfig struct {
 	// configured under the shared [collector.server] section (the controller
 	// reads the same section to configure Envoy's sender side).
 	Server AccessLogsServiceConfig `koanf:"server"`
+	// IgnorePathPrefixes is collector.ignore_path_prefixes, shared with the
+	// controller, which configures Envoy to send no access-log entry for these
+	// client paths. The policy engine reads it only so the correlation store does
+	// not hold fields for requests whose access-log entry will never arrive.
+	IgnorePathPrefixes []string `koanf:"ignore_path_prefixes"`
+	// CorrelationStore tunes the in-process ext_proc→ALS correlation store (see
+	// internal/analytics/correlation) that carries captured request/response headers
+	// and bodies directly from the ext_proc handler to the ALS handler, keyed by a
+	// per-stream token, instead of round-tripping them through Envoy dynamic
+	// metadata and the ALS filter_metadata echo. It serves every collector consumer
+	// (analytics and traffic logging) and is only consulted while the collector is
+	// active (Config.IsCollectorEnabled); see CorrelationStoreConfig for field docs.
+	CorrelationStore CorrelationStoreConfig `koanf:"correlation_store"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -129,6 +157,71 @@ type AnalyticsConfig struct {
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+}
+
+// CorrelationStoreConfig tunes the in-process, sharded store the ext_proc handler
+// writes captured headers and bodies into as each phase's response is built, and
+// the ALS handler reads at access-log-entry time, replacing their round trip
+// through Envoy dynamic metadata. A field is left out of metadata only once the
+// store has accepted it, and unread entries are never evicted, so sizing these
+// limits trades memory against how often fields fall back to metadata -- not
+// against losing them.
+type CorrelationStoreConfig struct {
+	// Mode controls whether the store is used. The store only works when the
+	// ext_proc stream and the ALS stream of a request reach the same policy-engine
+	// process, which is guaranteed only when both run over UDS (policy_engine.server
+	// and collector.server in "uds" mode):
+	//   - "auto" (default, also when empty): used only when both are in "uds" mode. With "tcp", the
+	//     host may resolve to several policy-engine processes, so every field stays
+	//     in Envoy metadata.
+	//   - "on": always used. Only safe when router.policy_engine.host resolves to
+	//     exactly one policy-engine process.
+	//   - "off": never used; every field travels through Envoy metadata.
+	Mode string `koanf:"mode"`
+	// Capacity bounds the number of entries held across all shards combined: one
+	// per request from its first captured field until the ALS handler reads it.
+	// When a shard has no free slot, new requests keep their captured fields in
+	// Envoy metadata instead.
+	Capacity int `koanf:"capacity"`
+	// TTL is how long an entry whose response the ext_proc side saw finish waits
+	// for its access-log entry before its slot may be reclaimed for a new request.
+	// The ALS handler normally reads an entry about a second after the request ends
+	// (Envoy's 1s/16KiB access-log buffer). An entry reclaimed before it is read
+	// loses its fields, so the TTL should comfortably exceed the access-log flush
+	// interval plus any backlog of the access-log consumers; a TTL not longer than
+	// the flush interval is raised to twice it at startup, with a warning. An entry
+	// whose response was not seen to finish (for example a long streamed response
+	// after the ext_proc stream closed) is not affected by the TTL; it may only be
+	// reclaimed after MaxEntryAge. Reclaiming happens only when the slot or bytes are
+	// needed, and is counted by the evictions metric. Paths in
+	// collector.ignore_path_prefixes are not stored at all.
+	TTL time.Duration `koanf:"ttl"`
+	// Shards is the number of independently-locked partitions the store is split
+	// into, selected by hashing the per-stream correlation token. A single mutex
+	// would itself become a bottleneck at the request rates this store targets
+	// (several thousand req/s); splitting the lock lets concurrent writers/readers on different
+	// shards proceed without contending on each other. Rounded up to the next
+	// power of two if it is not one already; at most MaxCorrelationStoreShards, and
+	// at most Capacity.
+	Shards int `koanf:"shards"`
+	// MaxPayloadBytes is the largest captured request/response body carried
+	// in-process through the store; a larger body stays in Envoy dynamic metadata
+	// (the old path), so it is never lost. Bodies in metadata are re-serialized on
+	// every later ext_proc message and again in the access-log entry, so keeping
+	// them in-process matters most for exactly the large bodies body logging is
+	// configured for. 0 disables body storage.
+	MaxPayloadBytes int `koanf:"max_payload_bytes"`
+	// MaxBodyBytes bounds the captured bytes -- headers and bodies -- held across
+	// all shards combined. Entries are removed as soon as their access-log entry is
+	// processed; a field that does not fit stays in Envoy metadata. 0 disables body
+	// storage; headers then share DefaultCorrelationStoreHeaderBytes instead.
+	MaxBodyBytes int64 `koanf:"max_body_bytes"`
+	// MaxEntryAge is how long an entry whose response was never seen to finish may
+	// hold its slot before it can be reclaimed for another request. Such entries
+	// are mostly requests whose access-log entry Envoy dropped, but a response that
+	// keeps streaming longer than this can also lose its captured fields if the
+	// store needs the slot. Raised to the TTL if lower; 0 means the default (5m).
+	MaxEntryAge time.Duration `koanf:"max_entry_age"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -974,6 +1067,10 @@ type AccessLogsServiceConfig struct {
 	ALSPlainText          bool          `koanf:"als_plain_text"`
 	ExtProcMaxMessageSize int           `koanf:"max_message_size"`
 	ExtProcMaxHeaderLimit int           `koanf:"max_header_limit"`
+	// BufferFlushInterval is Envoy's access-log flush interval in nanoseconds. The
+	// gateway-controller configures Envoy with it; the policy engine reads it only to
+	// check that collector.correlation_store.ttl is longer.
+	BufferFlushInterval int64 `koanf:"buffer_flush_interval"`
 }
 
 // Load loads configuration from one or more files layered over built-in defaults.
@@ -1158,6 +1255,21 @@ func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
 		ALSPlainText:          true,
 		ExtProcMaxMessageSize: 1000000000,
 		ExtProcMaxHeaderLimit: 8192,
+		BufferFlushInterval:   int64(time.Second),
+	}
+}
+
+// defaultCorrelationStoreConfig returns the default ext_proc→ALS correlation-store
+// tuning. See CorrelationStoreConfig for the reasoning behind each default.
+func defaultCorrelationStoreConfig() CorrelationStoreConfig {
+	return CorrelationStoreConfig{
+		Mode:            CorrelationStoreModeAuto,
+		Capacity:        20000,
+		TTL:             30 * time.Second,
+		Shards:          32,
+		MaxPayloadBytes: 256 << 10,
+		MaxBodyBytes:    16 << 20,
+		MaxEntryAge:     5 * time.Minute,
 	}
 }
 
@@ -1265,9 +1377,10 @@ func defaultConfig() *Config {
 			},
 		},
 		Collector: CollectorConfig{
-			RequestBody:  false,
-			ResponseBody: false,
-			Server:       defaultAccessLogsServiceConfig(),
+			RequestBody:      false,
+			ResponseBody:     false,
+			Server:           defaultAccessLogsServiceConfig(),
+			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
 		TrafficLogging: TrafficLoggingConfig{
 			Enabled: false,
@@ -1534,6 +1647,15 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateTrafficLoggingConfig(); err != nil {
 		return err
+	}
+	// The correlation store is only ever consulted while the collector is active
+	// (see CorrelationStoreConfig doc comment) -- validating it unconditionally
+	// would force every deployment to size a knob that does nothing for them.
+	if c.IsCollectorEnabled() {
+		if err := c.validateCorrelationStoreConfig(); err != nil {
+			return err
+		}
+		c.adjustCorrelationStoreTTL()
 	}
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
@@ -1828,6 +1950,110 @@ func (c *Config) migrateDeprecatedAnalyticsCapture() {
 		&c.Collector.RequestBody,
 		&c.Collector.ResponseBody,
 	)
+}
+
+// validateCorrelationStoreConfig validates the ext_proc→ALS correlation-store
+// tuning. Only called while the collector is active (see call site in Validate).
+func (c *Config) validateCorrelationStoreConfig() error {
+	corr := c.Collector.CorrelationStore
+	switch corr.Mode {
+	case "", CorrelationStoreModeAuto, CorrelationStoreModeOn, CorrelationStoreModeOff:
+	default:
+		return fmt.Errorf("collector.correlation_store.mode must be %q, %q or %q, got %q",
+			CorrelationStoreModeAuto, CorrelationStoreModeOn, CorrelationStoreModeOff, corr.Mode)
+	}
+	if corr.Capacity <= 0 {
+		return fmt.Errorf("collector.correlation_store.capacity must be positive, got %d", corr.Capacity)
+	}
+	if corr.TTL <= 0 {
+		return fmt.Errorf("collector.correlation_store.ttl must be positive, got %s", corr.TTL)
+	}
+	if corr.Shards <= 0 {
+		return fmt.Errorf("collector.correlation_store.shards must be positive, got %d", corr.Shards)
+	}
+	if corr.Shards > MaxCorrelationStoreShards {
+		return fmt.Errorf("collector.correlation_store.shards must not exceed %d, got %d", MaxCorrelationStoreShards, corr.Shards)
+	}
+	if corr.Capacity > MaxCorrelationStoreCapacity {
+		return fmt.Errorf("collector.correlation_store.capacity must not exceed %d, got %d", MaxCorrelationStoreCapacity, corr.Capacity)
+	}
+	if corr.Capacity < corr.Shards {
+		return fmt.Errorf("collector.correlation_store.capacity (%d) must be at least shards (%d): every shard holds at least one entry", corr.Capacity, corr.Shards)
+	}
+	if corr.MaxPayloadBytes < 0 {
+		return fmt.Errorf("collector.correlation_store.max_payload_bytes must not be negative, got %d", corr.MaxPayloadBytes)
+	}
+	if corr.MaxBodyBytes < 0 {
+		return fmt.Errorf("collector.correlation_store.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
+	}
+	if corr.MaxEntryAge < 0 {
+		return fmt.Errorf("collector.correlation_store.max_entry_age must not be negative, got %s", corr.MaxEntryAge)
+	}
+	return nil
+}
+
+// alsFlushInterval is the access-log flush interval Envoy is configured with:
+// collector.server.buffer_flush_interval, or the deprecated
+// [analytics.grpc_event_server] value, which the gateway-controller still honors
+// while analytics is enabled (see collector.MigrateDeprecatedTransport). The larger
+// of the two is used, so the TTL adjustment below can only err on the long side.
+func (c *Config) alsFlushInterval() time.Duration {
+	flush := time.Duration(c.Collector.Server.BufferFlushInterval)
+	if c.Analytics.Enabled {
+		if v, ok := durationNanos(c.Analytics.GRPCEventServerCfg["buffer_flush_interval"]); ok && v > flush {
+			flush = v
+		}
+	}
+	return flush
+}
+
+// durationNanos reads a nanosecond count that koanf may have decoded as any
+// numeric type.
+func durationNanos(v interface{}) (time.Duration, bool) {
+	switch n := v.(type) {
+	case int:
+		return time.Duration(n), true
+	case int64:
+		return time.Duration(n), true
+	case float64:
+		return time.Duration(n), true
+	}
+	return 0, false
+}
+
+// adjustCorrelationStoreTTL makes sure an entry's TTL outlasts Envoy's access-log
+// flush interval, or completed entries could be reclaimed before their access-log
+// entry is even sent. It never fails startup: an existing configuration with a long
+// flush interval keeps working, with the TTL raised to twice the flush interval and
+// a warning. Only applies while the store is in use.
+func (c *Config) adjustCorrelationStoreTTL() {
+	if !c.CorrelationStoreEnabled() {
+		return
+	}
+	corr := &c.Collector.CorrelationStore
+	if flush := c.alsFlushInterval(); flush > 0 && corr.TTL <= flush {
+		raised := 2 * flush
+		slog.Warn("collector.correlation_store.ttl is not longer than the access-log flush interval; raising it",
+			"ttl", corr.TTL, "buffer_flush_interval", flush, "effective_ttl", raised)
+		corr.TTL = raised
+	}
+}
+
+// CorrelationStoreEnabled reports whether the ext_proc->ALS correlation store is
+// used (see CorrelationStoreConfig.Mode). It is never used while the collector is
+// disabled.
+func (c *Config) CorrelationStoreEnabled() bool {
+	if !c.IsCollectorEnabled() {
+		return false
+	}
+	switch c.Collector.CorrelationStore.Mode {
+	case CorrelationStoreModeOn:
+		return true
+	case CorrelationStoreModeOff:
+		return false
+	default:
+		return c.PolicyEngine.Server.Mode != "tcp" && c.Collector.Server.Mode != "tcp"
+	}
 }
 
 // validateAnalyticsConfig validates the analytics consumer configuration (publishers).

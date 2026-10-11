@@ -80,7 +80,8 @@ func validConfig() *Config {
 		// receiver defaults mirror production so transport validation passes and the
 		// deprecated alias stays neutral (no spurious migration).
 		Collector: CollectorConfig{
-			Server: defaultAccessLogsServiceConfig(),
+			Server:           defaultAccessLogsServiceConfig(),
+			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:              false,
@@ -1777,6 +1778,48 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 	err := cfg.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "traffic_logging.max_payload_size")
+}
+
+func TestValidate_CorrelationStoreConfig(t *testing.T) {
+	t.Run("not validated when collector disabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.CorrelationStore.Capacity = 0
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("capacity must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.Capacity = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.capacity")
+	})
+
+	t.Run("ttl must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.TTL = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.ttl")
+	})
+
+	t.Run("shards must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.Shards = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.shards")
+	})
+
+	t.Run("valid correlation config with collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.EnabledPublishers = []string{}
+		require.NoError(t, cfg.Validate())
+	})
 }
 
 func TestValidate_TrafficLogging(t *testing.T) {

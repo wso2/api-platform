@@ -101,6 +101,52 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
+	// correlationToken keys this stream's correlation-store entry. It is unique
+	// per ext_proc stream (see newCorrelationToken) rather than the request id,
+	// which a client can supply and repeat. Empty until the store accepts the
+	// stream's first captured field; once set, later fields only update that entry
+	// (correlation.Store.Update), so a phase that runs after the ALS handler took
+	// the entry cannot leave an orphan behind.
+	correlationToken string
+
+	// responseFinished is set once this stream has seen the end of the response:
+	// the gateway answered with an immediate response, or Envoy sent the last
+	// response headers/body message (end_of_stream) or the response trailers. Only
+	// then is the correlation entry completed (see completeCorrelationEntry). The
+	// stream can close earlier -- when response body processing is skipped, Envoy
+	// ends it after the response headers while the body is still streaming to the
+	// client -- and that must not start the entry's TTL.
+	responseFinished bool
+
+	// correlationTokenSent is set once a response carrying the correlation token
+	// reached Envoy. A stream that ends with a token Envoy never received has an
+	// entry no access-log entry can point to, so its entry is discarded.
+	correlationTokenSent bool
+
+	// encodedFields caches the analytics_data encoding of captured fields that stay
+	// in metadata, so an unchanged value re-sent by a later phase is not encoded
+	// again (see encodeAnalyticsValue).
+	encodedFields map[string]encodedField
+
+	// storedFields records the value of each field the store accepted, so a phase
+	// that re-sends an unchanged value (response phases re-send the request-phase
+	// analytics) does not merge it again.
+	storedFields map[string]any
+
+	// clientPath is the request's :path as the client sent it, before any policy
+	// rewrites it; routedPath is the :path after the latest policy rewrite (empty
+	// when none). Envoy's access-log filter matches collector.ignore_path_prefixes
+	// against x-envoy-original-path, which the router sets from the path after
+	// ext_proc, so either can make Envoy skip the access-log entry.
+	clientPath string
+	routedPath string
+
+	// pathIgnored caches whether clientPath or routedPath is under
+	// collector.ignore_path_prefixes; pathIgnoredKnown is false until it is computed
+	// and again whenever routedPath changes.
+	pathIgnored      bool
+	pathIgnoredKnown bool
+
 	// Analytics metadata to be shared across request and response phases.
 	// Used internally to propagate analytics data between phases without
 	// contaminating the policy-visible metadata map.
@@ -1972,6 +2018,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Scheme:    scheme,
 	}}
 
+	ec.clientPath = path
 	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
 		Headers:       wrappedHeaders,

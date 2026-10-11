@@ -19,7 +19,6 @@ package publishers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,6 +28,7 @@ import (
 	"github.com/moesif/moesifapi-go"
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
@@ -111,7 +111,7 @@ func NewMoesif(moesifCfg *config.MoesifPublisherConfig) *Moesif {
 			case <-ticker.C:
 				moesif.mu.Lock()
 				if len(moesif.events) > 0 {
-					slog.Debug(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
+					slog.Debug("Publishing events to Moesif", "count", len(moesif.events))
 					err := moesif.api.QueueEvents(moesif.events)
 					if err != nil {
 						slog.Error("Error publishing events to Moesif", "error", err)
@@ -202,31 +202,25 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// Headers are only published when the analytics-header-filter policy is configured
 	// and has emitted the (already allow/deny filtered) header set into event metadata.
 	// When it is not configured, no headers are sent at all.
+	//
+	// event.Properties[dto.PropKeyRequestHeaders/PropKeyResponseHeaders] arrives in
+	// any of the shapes hdrs.Flatten handles: a map from the correlation store, or a
+	// JSON string from the access-log entry's own metadata. A repeated header keeps
+	// every value, joined with ", ". Moesif's own model wants
+	// map[string]interface{}, so the flattened map is copied in.
 	headers := map[string]interface{}{}
-	if rawReqHeaders, ok := event.Properties["requestHeaders"]; ok && rawReqHeaders != nil {
-		slog.Debug("Request headers (PUBLISHER): ", "requestHeaders", rawReqHeaders)
-		if jsonStr, ok := rawReqHeaders.(string); ok {
-			var hMap map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
-				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "requestHeaders", hMap)
-				headers = hMap
-			} else if err != nil {
-				slog.Warn("Failed to unmarshal request headers", "error", err)
-			}
+	if h := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); len(h) > 0 {
+		slog.Debug("Request headers (PUBLISHER): ", "requestHeaders", h)
+		for k, v := range h {
+			headers[k] = v
 		}
 	}
 
 	rspHeaders := map[string]interface{}{}
-	if rawRspHeaders, ok := event.Properties["responseHeaders"]; ok && rawRspHeaders != nil {
-		slog.Debug("Response headers (PUBLISHER): ", "responseHeaders", rawRspHeaders)
-		if jsonStr, ok := rawRspHeaders.(string); ok {
-			var hMap map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
-				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "responseHeaders", hMap)
-				rspHeaders = hMap
-			} else if err != nil {
-				slog.Warn("Failed to unmarshal response headers", "error", err)
-			}
+	if h := hdrs.Flatten(event.Properties[dto.PropKeyResponseHeaders]); len(h) > 0 {
+		slog.Debug("Response headers (PUBLISHER): ", "responseHeaders", h)
+		for k, v := range h {
+			rspHeaders[k] = v
 		}
 	}
 
@@ -458,6 +452,5 @@ func (m *Moesif) Publish(event *dto.Event) {
 		A2a:      a2aBlock,
 	}
 	m.events = append(m.events, eventModel)
-	slog.Debug(fmt.Sprintf("Event added to the queue. Queue size: %d", len(m.events)))
-	slog.Debug("Events", "events", m.events)
+	slog.Debug("Event added to the queue", "queueSize", len(m.events))
 }

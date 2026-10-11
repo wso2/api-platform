@@ -42,6 +42,7 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -91,6 +92,14 @@ type ExternalProcessorServer struct {
 	// mediation running over backend errors, where the opposite default would silently
 	// move it.
 	handleUpstreamFaults bool
+
+	// correlationStore carries captured request/response headers and bodies to
+	// the ALS handler, keyed by a per-stream token, instead of round-tripping them
+	// through Envoy dynamic metadata (see storeInProcess and
+	// internal/analytics/correlation's package doc).
+	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
+	// will ever read the store in that case, so nothing writes to it either.
+	correlationStore *correlation.Store
 }
 
 // ServerOption configures an ExternalProcessorServer at construction.
@@ -140,7 +149,9 @@ func WithHandleUpstreamFaults(enabled bool) ServerOption {
 // It takes no resolver registry: resolvers are prepared per route at xDS ingest, so
 // nothing on the request path looks one up by name. A route that could not be prepared
 // never reaches the kernel.
-func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64, opts ...ServerOption) *ExternalProcessorServer {
+//
+// corrStore may be nil (collector disabled): captured data then stays in Envoy metadata.
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64, corrStore *correlation.Store, opts ...ServerOption) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
 	if serviceName == "" {
@@ -169,6 +180,7 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 		maxRequestDecompressedBytes:  maxRequestDecompressedBytes,
 		maxResponseDecompressedBytes: maxResponseDecompressedBytes,
 		errorFormatterKinds:          faultformat.SupportedKinds(),
+		correlationStore:             corrStore,
 	}
 	for _, opt := range opts {
 		opt(srv)
@@ -263,6 +275,15 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// stamped when no phase ever resolved a status (execCtx nil, or the stream
 	// ended before the first message so span is nil); paths that terminate
 	// without an execCtx stamp parentSpan inline instead.
+	// Registered first (and so, by LIFO defer order, run LAST -- after the span
+	// has ended and the terminal outcome has been recorded) since it has nothing
+	// to do with tracing: it marks the request's correlation-store entry complete.
+	// See completeCorrelationEntry.
+	defer func() {
+		if execCtx != nil {
+			s.completeCorrelationEntry(execCtx)
+		}
+	}()
 	defer func() {
 		if span != nil {
 			span.End()
@@ -323,6 +344,9 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
+		if execCtx != nil && endsResponse(req, resp) {
+			execCtx.responseFinished = true
+		}
 
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
@@ -334,7 +358,60 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			}
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
+		if execCtx != nil && execCtx.correlationToken != "" {
+			execCtx.correlationTokenSent = true
+		}
 	}
+}
+
+// completeCorrelationEntry tells the correlation store that execCtx's response has
+// finished, as seen by the ext_proc side. Captured fields were already merged into
+// the store as each phase's response was built (see storeInProcess); completing the
+// entry only makes it eligible for reclaim after the TTL if its access-log entry
+// never arrives.
+//
+// Called from a defer registered before every other per-stream teardown defer in
+// Process, so it runs on every terminal path out of that function. An entry is
+// completed only if the stream saw the response end (responseFinished): when the
+// stream closes first, the response may still be streaming to the client and its
+// access-log entry is still to come, so the entry is left for the ALS handler to
+// take (or for the store's max entry age). Any stream that issued a token is
+// considered, whatever later phases carry -- a loopback hop never stores, so it
+// has no token.
+//
+// A token that never reached Envoy (the phase that issued it failed before its
+// response was sent, and no later response carried it) cannot appear in any
+// access-log entry, so its entry is discarded instead of holding a slot until the
+// max entry age.
+func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
+	if s.correlationStore == nil || execCtx.correlationToken == "" {
+		return
+	}
+	if !execCtx.correlationTokenSent {
+		s.correlationStore.Discard(execCtx.correlationToken)
+		return
+	}
+	if execCtx.responseFinished {
+		s.correlationStore.Complete(execCtx.correlationToken)
+	}
+}
+
+// endsResponse reports whether this exchange ends the response as seen by
+// ext_proc: the gateway answered with an immediate response, or Envoy sent the
+// last response headers/body message (end_of_stream) or the response trailers.
+func endsResponse(req *extprocv3.ProcessingRequest, resp *extprocv3.ProcessingResponse) bool {
+	if resp.GetImmediateResponse() != nil {
+		return true
+	}
+	switch r := req.GetRequest().(type) {
+	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		return r.ResponseHeaders.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseBody:
+		return r.ResponseBody.GetEndOfStream()
+	case *extprocv3.ProcessingRequest_ResponseTrailers:
+		return true
+	}
+	return false
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler

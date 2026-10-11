@@ -101,6 +101,12 @@ const (
 const (
 	// Wso2MetadataPrefix is the prefix for WSO2 metadata.
 	Wso2MetadataPrefix = "x-wso2-"
+	// CorrelationTokenKey carries the ext_proc stream's correlation-store key in
+	// analytics_data. It is the only definition: the ext_proc handler
+	// (internal/kernel) uses it too. It is reserved -- the ext_proc side drops it
+	// from policy-supplied analytics metadata, so a policy cannot point a request's
+	// access-log entry at another request's stored fields.
+	CorrelationTokenKey = Wso2MetadataPrefix + "correlation-token"
 	// APIIDKey is the key for the API ID.
 	APIIDKey = Wso2MetadataPrefix + "api-id"
 	// APICreatorKey is the key for the API creator.
@@ -135,8 +141,6 @@ const (
 	// AppOwnerKey is the key for the application owner.
 	AppOwnerKey = Wso2MetadataPrefix + "application-owner"
 
-	// CorrelationIDKey is the key for the correlation ID.
-	CorrelationIDKey = Wso2MetadataPrefix + "correlation-id"
 	// RegionKey is the key for the region.
 	RegionKey = Wso2MetadataPrefix + "region"
 

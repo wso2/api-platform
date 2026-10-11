@@ -58,6 +58,9 @@ type Log struct {
 	// always returns a usable, possibly-empty evaluator whose resolve() returns
 	// nil when nothing is configured.
 	globalProperties *globalPropertyEvaluator
+	// exclusions is traffic_logging.exclude_fields compiled for the struct-level
+	// fast path (see fieldExclusions). Nil when nothing is excluded.
+	exclusions *fieldExclusions
 	// sinks are the destinations each serialized line is written to, built from
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
@@ -90,6 +93,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
 		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
+		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -124,10 +128,6 @@ func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirect
 		},
 	}
 
-	if len(cfg.ExcludeFields) > 0 {
-		dir.Fields = &dto.TrafficLogFields{Exclude: cfg.ExcludeFields}
-	}
-
 	return dir
 }
 
@@ -135,7 +135,7 @@ func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirect
 // (l.globalDir is guaranteed non-nil by the caller). When global properties are
 // configured, it returns a shallow copy of l.globalDir carrying this request's
 // resolved Properties, so concurrent requests never race on a shared, mutated
-// globalDir.Properties field. The Request/Response/Fields pointers are shared
+// globalDir.Properties field. The Request/Response pointers are shared
 // read-only state and safe to alias across the copy.
 func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective {
 	resolved := l.globalProperties.resolve(event)
@@ -156,6 +156,7 @@ func (l *Log) Publish(event *dto.Event) {
 
 	dir := l.resolveGlobalDirective(event)
 	tl := l.toTrafficLogEvent(event, dir)
+	l.exclusions.applyToStruct(tl)
 
 	data, err := json.Marshal(tl)
 	if err != nil {
@@ -163,7 +164,9 @@ func (l *Log) Publish(event *dto.Event) {
 		return
 	}
 
-	if fields := dir.Fields; fields != nil && len(fields.Exclude) > 0 {
+	// Exclusions applied to the struct above never reach this point; only paths
+	// that need the JSON projection (e.g. into a nested properties object) do.
+	if fields := l.exclusions.residualFields(); fields != nil {
 		// Shallow-decode only the top level; untouched fields stay as raw JSON
 		// bytes and are never deep-decoded or re-encoded.
 		var m map[string]json.RawMessage
@@ -203,35 +206,6 @@ func (l *Log) Close(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// parseHeadersFromString converts the JSON-encoded header value stored in
-// event.Properties (a map[string]string or map[string][]string serialized by the
-// ext_proc layer) into a map[string]string so it embeds as a plain JSON object
-// in the log line. Other publishers (e.g. Moesif) read the raw string directly;
-// the Log publisher calls this only on the local TrafficLogEvent it builds, so
-// the shared event is never modified. Multi-value headers are flattened to their
-// first value. Returns nil on empty input or parse failure.
-func parseHeadersFromString(raw string) map[string]string {
-	if raw == "" {
-		return nil
-	}
-	var single map[string]string
-	if err := json.Unmarshal([]byte(raw), &single); err == nil {
-		return single
-	}
-	// Fallback: multi-value wire format — flatten to first value.
-	var multi map[string][]string
-	if err := json.Unmarshal([]byte(raw), &multi); err == nil {
-		out := make(map[string]string, len(multi))
-		for k, vs := range multi {
-			if len(vs) > 0 {
-				out[k] = vs[0]
-			}
-		}
-		return out
-	}
-	return nil
 }
 
 // truncatePayload returns up to maxPayloadSize bytes of the payload (0 = no
@@ -347,13 +321,28 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 // redacting it; like mask, that comparison is also case-insensitive (see
 // isHeaderField, used by deleteNestedPath), so any casing Envoy delivers matches.
 func maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
+	return filterAndMaskHeaders(headers, mask, nil)
+}
+
+// filterAndMaskHeaders is maskHeaders that also drops the headers named in exclude
+// (lower-cased names, matched case-insensitively), so header-level exclude_fields
+// entries cost nothing beyond the copy masking already makes. Returns nil when
+// every header is excluded, so the field is omitted like the JSON projection does.
+func filterAndMaskHeaders(headers map[string]string, mask, exclude map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
-		if mask[strings.ToLower(name)] {
+		lower := strings.ToLower(name)
+		if exclude[lower] {
+			continue
+		}
+		if mask[lower] {
 			result[name] = maskedHeaderValue
 		} else {
 			result[name] = value
 		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }
