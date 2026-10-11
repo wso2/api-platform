@@ -20,7 +20,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -207,5 +209,190 @@ func TestEnsureWebhookSubscriberOnPortal_RedirectIsNotFollowed(t *testing.T) {
 	}
 	if len(*seen) != 1 {
 		t.Errorf("redirect must not be followed, got %d requests", len(*seen))
+	}
+}
+
+func TestNewWebhookHTTPClient_RefusesRedirectsAndIsBounded(t *testing.T) {
+	c := NewWebhookHTTPClient(false)
+	if c.Timeout != webhookHTTPTimeout {
+		t.Errorf("want timeout %v, got %v", webhookHTTPTimeout, c.Timeout)
+	}
+	if err := c.CheckRedirect(nil, nil); err != http.ErrUseLastResponse {
+		t.Errorf("want redirects refused with ErrUseLastResponse, got %v", err)
+	}
+}
+
+// A portal with a self-signed cert is reachable only when the operator opts in
+// through platform_api.http_client.tls.insecure_skip_verify.
+func TestNewWebhookHTTPClient_TLSVerificationIsOptIn(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := NewWebhookHTTPClient(false).Get(srv.URL); err == nil {
+		t.Error("want certificate verification failure against a self-signed portal by default")
+	}
+	resp, err := NewWebhookHTTPClient(true).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("want self-signed portal reachable with insecure_skip_verify, got %v", err)
+	}
+	_ = resp.Body.Close()
+}
+
+// Each guard runs before any request is sent, so a misconfigured or missing
+// portal never receives the shared key or the webhook secret.
+func TestEnsureWebhookSubscriberOnPortal_PreconditionFailures(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Webhook
+		portal  func(t *testing.T, url string) *model.APIPortal
+		getErr  error
+		wantErr string
+	}{
+		{
+			name:    "receiver url unset",
+			cfg:     config.Webhook{Enabled: true, Secret: "s3cret", AutoSeedSubscribers: true},
+			portal:  seededPortal,
+			wantErr: "receiver_url is not configured",
+		},
+		{
+			name:    "portal lookup fails",
+			cfg:     seedTestWebhookCfg,
+			getErr:  errors.New("db down"),
+			wantErr: "db down",
+		},
+		{
+			name:    "portal not found",
+			cfg:     seedTestWebhookCfg,
+			wantErr: "API_PORTAL_NOT_FOUND",
+		},
+		{
+			name: "portal has no url",
+			cfg:  seedTestWebhookCfg,
+			portal: func(t *testing.T, _ string) *model.APIPortal {
+				return seededPortal(t, "")
+			},
+			wantErr: "has no URL",
+		},
+		{
+			name: "shared key cannot be decrypted",
+			cfg:  seedTestWebhookCfg,
+			portal: func(t *testing.T, url string) *model.APIPortal {
+				p := seededPortal(t, url)
+				p.InternalAuthKey = []byte("not-a-ciphertext")
+				return p
+			},
+			wantErr: "shared-key auth header",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, seen := newSeedTestServer(t, false, http.StatusCreated)
+			repo := &mockAPIPortalRepository{getErr: tc.getErr}
+			if tc.portal != nil {
+				repo.getResult = tc.portal(t, srv.URL)
+			}
+			v := newTestVault(t)
+			svc := NewAPIPortalService(repo, nil, nil, v, NewAPIPortalAuthRegistry(repo, v), nil, tc.cfg, srv.Client(), nil)
+
+			err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1")
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
+			}
+			if len(*seen) != 0 {
+				t.Errorf("want no request sent to the portal, got %d", len(*seen))
+			}
+		})
+	}
+}
+
+func TestEnsureWebhookSubscriberOnPortal_UnreachablePortalIsError(t *testing.T) {
+	srv, _ := newSeedTestServer(t, false, http.StatusCreated)
+	repo := &mockAPIPortalRepository{}
+	repo.getResult = seededPortal(t, srv.URL)
+	svc := newSeedTestService(t, repo, &mockAPIPortalAuditRepository{}, srv.Client())
+	srv.Close()
+
+	err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1")
+	if err == nil || !strings.Contains(err.Error(), "POST") {
+		t.Fatalf("want POST transport error, got %v", err)
+	}
+}
+
+func TestEnsureWebhookSubscriberOnPortal_InvalidPortalURLIsError(t *testing.T) {
+	repo := &mockAPIPortalRepository{}
+	repo.getResult = seededPortal(t, "http://bad host")
+	svc := newSeedTestService(t, repo, &mockAPIPortalAuditRepository{}, nil)
+
+	err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1")
+	if err == nil || !strings.Contains(err.Error(), "POST") {
+		t.Fatalf("want POST request-build error, got %v", err)
+	}
+}
+
+// The portal accepts the POST as a conflict and then drops the connection on the
+// PUT; the update must surface as an error rather than a silent success.
+func TestEnsureWebhookSubscriberOnPortal_PutTransportErrorIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	repo := &mockAPIPortalRepository{}
+	repo.getResult = seededPortal(t, srv.URL)
+	svc := newSeedTestService(t, repo, &mockAPIPortalAuditRepository{}, srv.Client())
+
+	err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1")
+	if err == nil || !strings.Contains(err.Error(), "PUT") {
+		t.Fatalf("want PUT transport error, got %v", err)
+	}
+}
+
+func TestEnsureWebhookSubscriberOnPortal_LongErrorBodyIsTruncated(t *testing.T) {
+	long := strings.Repeat("x", 2048)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(long))
+	}))
+	t.Cleanup(srv.Close)
+	repo := &mockAPIPortalRepository{}
+	repo.getResult = seededPortal(t, srv.URL)
+	svc := newSeedTestService(t, repo, &mockAPIPortalAuditRepository{}, srv.Client())
+
+	err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1")
+	if err == nil || !strings.Contains(err.Error(), "...(truncated)") {
+		t.Fatalf("want truncated body in error, got %v", err)
+	}
+	if strings.Contains(err.Error(), long) {
+		t.Error("full response body leaked into the error")
+	}
+}
+
+// When the rollback delete itself fails the row is orphaned; the Create still
+// fails, and no DELETE audit entry is written for a delete that did not happen.
+func TestCreateAPIPortal_SeedFailureWithFailedRollbackKeepsAuditHonest(t *testing.T) {
+	srv, _ := newSeedTestServer(t, true, http.StatusInternalServerError)
+	repo := &mockAPIPortalRepository{deleteErr: errors.New("db down")}
+	repo.getResult = seededPortal(t, srv.URL)
+	auditRepo := &mockAPIPortalAuditRepository{}
+	v := newTestVault(t)
+	svc := NewAPIPortalService(repo, &mockAPIPortalOrgRepository{result: &model.Organization{}}, auditRepo,
+		v, NewAPIPortalAuthRegistry(repo, v), nil, seedTestWebhookCfg, srv.Client(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	_, err := svc.CreateAPIPortal(testCreateReq{
+		Handle: "acme", Name: "Acme", URL: srv.URL, SharedKey: testSharedKeyHex,
+	}.build(), "org-1", "user-1")
+	if err == nil {
+		t.Fatal("want Create to fail when the seed fails")
+	}
+	if len(auditRepo.records) != 1 || auditRepo.records[0].action != "CREATE" {
+		t.Errorf("want only the CREATE audit record, got %+v", auditRepo.records)
 	}
 }

@@ -27,7 +27,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -109,12 +108,7 @@ func NewAPIPortalService(
 	slogger *slog.Logger,
 ) *APIPortalService {
 	if httpClient == nil {
-		httpClient = &http.Client{
-			Timeout: 10 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
+		httpClient = NewWebhookHTTPClient(false)
 	}
 	return &APIPortalService{
 		portalRepo:        portalRepo,

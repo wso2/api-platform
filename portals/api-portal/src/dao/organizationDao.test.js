@@ -72,3 +72,43 @@ test('the lookup is scoped to this portal', async () => {
     assert.match(queries[0].sql, /WHERE idp_ref_id = \? AND portal_id = \?/);
     assert.deepStrictEqual(queries[0].params, ['acme-id', 'portal-a']);
 });
+
+function loadDaoForWrites(rowCount, statements = []) {
+    require.cache[DRIVER_PATH] = {
+        id: DRIVER_PATH, filename: DRIVER_PATH, loaded: true,
+        exports: { execute: async (sql, params) => { statements.push({ sql, params }); return { rowCount }; } },
+    };
+    delete require.cache[DAO_PATH];
+    try {
+        return require(DAO_PATH);
+    } finally {
+        delete require.cache[DRIVER_PATH];
+        delete require.cache[DAO_PATH];
+    }
+}
+
+test('backfillCpRefId only writes while cp_ref_id is empty, scoped to this portal', async () => {
+    const statements = [];
+    await loadDaoForWrites(1, statements).backfillCpRefId('u-acme', 'acme', 'system');
+    const { sql, params } = statements[0];
+    assert.match(sql, /SET cp_ref_id = \?/);
+    // Never overwrites a value an admin set through settings.
+    assert.match(sql, /\(cp_ref_id IS NULL OR cp_ref_id = ''\)/);
+    assert.match(sql, /WHERE uuid = \? AND portal_id = \?/);
+    assert.strictEqual(params[0], 'acme');
+    assert.strictEqual(params[1], 'system');
+    assert.deepStrictEqual(params.slice(-2), ['u-acme', 'portal-a']);
+});
+
+test('backfillCpRefId reports whether a row was changed', async () => {
+    assert.strictEqual(await loadDaoForWrites(1).backfillCpRefId('u-acme', 'acme', 'system'), true);
+    assert.strictEqual(await loadDaoForWrites(0).backfillCpRefId('u-acme', 'acme', 'system'), false);
+});
+
+test('backfillCpRefId runs on the given transaction', async () => {
+    const dao = loadDaoForWrites(0);
+    const txStatements = [];
+    const tx = { execute: async (sql, params) => { txStatements.push({ sql, params }); return { rowCount: 1 }; } };
+    assert.strictEqual(await dao.backfillCpRefId('u-acme', 'acme', 'system', tx), true);
+    assert.strictEqual(txStatements.length, 1);
+});

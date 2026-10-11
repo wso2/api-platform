@@ -25,11 +25,13 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
@@ -63,6 +65,28 @@ type webhookSubscriberBody struct {
 	Secret      string   `json:"secret"`
 	Events      []string `json:"events"`
 	Enabled     bool     `json:"enabled"`
+}
+
+// webhookHTTPTimeout bounds each seed request so an unresponsive portal cannot
+// stall portal creation.
+const webhookHTTPTimeout = 10 * time.Second
+
+// NewWebhookHTTPClient returns the client used to register platform-api as a
+// webhook subscriber on a portal. It is a dedicated client rather than the
+// SSRF-guarded shared one because the portal URL is provisioned by the plugin
+// and already validated as a portal address. Redirects are refused: the request
+// carries the shared-key Authorization header and the webhook secret, and a 3xx
+// could replay both to an unvalidated target.
+func NewWebhookHTTPClient(insecureSkipVerify bool) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecureSkipVerify} // #nosec G402 -- opt-in via config
+	return &http.Client{
+		Timeout:   webhookHTTPTimeout,
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 // EnsureWebhookSubscriberOnPortal registers (or re-registers via PUT on 409)

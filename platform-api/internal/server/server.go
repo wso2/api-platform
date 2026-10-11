@@ -389,24 +389,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	webhookHTTPClient := &http.Client{
-		Timeout: 10 * time.Second,
-		// Respect the shared platform_api.http_client.tls block so webhook-
-		// subscriber POSTs reach a self-signed portal in local dev the same
-		// way the rest of the SSRF-guarded calls do. Dedicated client rather
-		// than reusing the SSRF-guarded shared one: the portal URL is
-		// provisioned by the plugin and already validated as a user-supplied
-		// portal address, so the hardened guards do not apply here.
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.HTTPClient.TLS.InsecureSkipVerify}, // #nosec G402 -- opt-in via config
-		},
-		// The request carries the shared-key Authorization header and the
-		// webhook secret in its body; a redirect could replay both to an
-		// unvalidated target, so surface the 3xx as a registration failure.
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	// Respects the shared platform_api.http_client.tls block so the seed reaches a
+	// self-signed portal in local dev the same way the other outbound calls do.
+	webhookHTTPClient := service.NewWebhookHTTPClient(cfg.HTTPClient.TLS.InsecureSkipVerify)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, cfg.Webhook, webhookHTTPClient, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
 	if err != nil {
