@@ -38,6 +38,21 @@ name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
 session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
 
+[api_portal.key_manager_provisioning]
+# The REST-API fixture points a key manager at the test container's own mock
+# token endpoint (MOCK_TOKEN_ENDPOINT_URL, http://rest-api-tests:4504), which is
+# both plaintext and a Docker-private address. Both guards default off, so
+# without this opt-in POST /key-managers refuses that endpoint and the mapping
+# the token-generation spec builds on never gets created.
+#
+# This is the same posture configs/config.local.toml takes for a developer
+# pointing at an identity server on localhost — not a relaxation invented for
+# the tests. Nothing in the suite asserts that a private or plaintext endpoint
+# is rejected; the other key-manager specs use a public https endpoint, which
+# passes either way.
+allow_http_endpoints    = true
+allow_private_endpoints = true
+
 [api_portal.organization]
 # The single organization each portal instance serves. Tokenized because the
 # fixture runs a SECOND instance (api-portal-other-org) off this same file with a

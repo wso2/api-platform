@@ -45,7 +45,7 @@ const orgDao = require('../dao/organizationDao');
 const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
-const { NotFoundError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 const sharedKeyAuth = require('./sharedKeyAuth');
 
@@ -196,10 +196,31 @@ async function verifyBearerToken(token, req) {
  * and orgDao resolves all three. Comparing after resolution makes every spelling of
  * this organization match and every spelling of any other organization not match.
  *
+ * In multi-organization mode (orgContext.isMultiOrganizationEnabled) a credential's org
+ * claim is resolved by orgContext.resolveClaimOrg instead, which accepts whichever
+ * organization the claim names. `fromClaim: false` keeps the pinned-org rule regardless:
+ * the `organization` header of an mTLS or shared-key caller is a request header, not
+ * something a verified credential asserted. For shared-key calls this is what keeps
+ * platform-api publishing in the configured organization in multi-organization mode: the
+ * portal holds one shared key for every caller, so it can't vouch for which organization
+ * a call is for.
+ *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
-async function resolveScopedOrg(req, identifier, source) {
+async function resolveScopedOrg(req, identifier, source, { fromClaim = true, provision = false, orgNames } = {}) {
     if (!identifier) return null;
+    if (fromClaim && orgContext.isMultiOrganizationEnabled()) {
+        try {
+            req.orgId = await orgContext.resolveClaimOrg(identifier, source, { provision, orgNames });
+            return null;
+        } catch (e) {
+            const forbidden = e instanceof CustomError && e.statusCode === 403;
+            if (!forbidden) logger.error('Org lookup failed', { error: e.message, source });
+            const err = new Error(forbidden ? 'Forbidden' : 'Internal Server Error');
+            err.status = forbidden ? 403 : 500;
+            return err;
+        }
+    }
     let resolvedUuid;
     try {
         resolvedUuid = await orgDao.getId(identifier);
@@ -244,7 +265,8 @@ async function resolveScopedOrg(req, identifier, source) {
 }
 
 /**
- * Sets req.orgId for credentials that carry no organization of their own (mTLS) —
+ * Sets req.orgId for credentials that carry no organization of their own (mTLS, and
+ * platform-api's shared key) —
  * they are authenticated as this portal's operator, so the only organization they
  * can be acting on is the one this instance serves.
  *
@@ -258,8 +280,30 @@ async function resolveScopedOrg(req, identifier, source) {
 async function resolvePortalOrg(req) {
     const orgHeader = req.headers.organization;
     if (orgHeader) {
-        return resolveScopedOrg(req, orgHeader, 'organization header');
+        return resolveScopedOrg(req, orgHeader, 'organization header', { fromClaim: false });
     }
+    try {
+        req.orgId = await orgContext.getOrgUuid();
+        return null;
+    } catch (e) {
+        logger.error('Configured organization could not be resolved', {
+            error: e.message,
+            handle: orgContext.getHandle(),
+        });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+}
+
+/**
+ * For an IDP-mode credential carrying no organization claim: it is admitted to this
+ * instance's configured organization, in either mode (docs/administer/authentication.md,
+ * "Organization claims").
+ *
+ * @returns {Promise<Error|null>} null on success, or an Error with .status
+ */
+async function resolveMissingOrgClaim(req) {
     try {
         req.orgId = await orgContext.getOrgUuid();
         return null;
@@ -358,14 +402,14 @@ async function authResolver(req, res, next) {
             // gate on config.auth.idp.claims.orgId, which has no default and is unset
             // in typical IDP configs, which would leave req.orgId empty and break every
             // tenant-scoped operation (reads return the wrong scope; writes fail the
-            // org_uuid foreign key). Fail closed when no org claim is present.
+            // org_uuid foreign key).
+            // No claim: admitted to the configured organization (resolveMissingOrgClaim).
+            // A login without a claim already records the configured organization's
+            // (passportConfig), so this covers sessions from before it did.
             const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-            if (!sessionOrgClaim) {
-                const err = new Error('Missing organization claim in session');
-                err.status = 403;
-                return next(err);
-            }
-            const orgErr = await resolveScopedOrg(req, sessionOrgClaim, 'idp session');
+            const orgErr = sessionOrgClaim
+                ? await resolveScopedOrg(req, sessionOrgClaim, 'idp session')
+                : await resolveMissingOrgClaim(req);
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
@@ -398,13 +442,26 @@ async function authResolver(req, res, next) {
             // platform-JWT tokens carry no org claim.
             if (config.auth.mode === 'idp') {
                 const orgClaimKey = config.auth.claimMappings?.organization;
-                const tokenOrgClaim = (orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined) || decoded.org_handle;
-                if (!tokenOrgClaim) {
-                    const err = new Error('Missing organization claim in token');
-                    err.status = 403;
-                    return next(err);
+                const mappedOrgClaim = orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined;
+                // Multi-organization mode matches claims against idp_ref_id only, so a
+                // handle is never a stand-in for the organization id there; the
+                // org_handle fallback stays for single-organization mode, whose lookup
+                // also accepts a handle.
+                let tokenOrgClaim = mappedOrgClaim
+                    || (orgContext.isMultiOrganizationEnabled() ? undefined : decoded.org_handle);
+                if (orgContext.isMultiOrganizationEnabled()) {
+                    try {
+                        tokenOrgClaim = orgContext.normalizeOrgClaim(tokenOrgClaim);
+                    } catch {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
                 }
-                const orgErr = await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim');
+                const orgErr = tokenOrgClaim
+                    ? await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim',
+                        { provision: 'bearer', orgNames: orgContext.orgNameClaims(decoded) })
+                    : await resolveMissingOrgClaim(req);
                 if (orgErr) return next(orgErr);
             } else if (decoded.org_handle) {
                 const orgErr = await resolveScopedOrg(req, decoded.org_handle, 'bearer token org_handle');

@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -117,6 +118,7 @@ func NewArtifactImportService(
 	templateRepo repository.LLMProviderTemplateRepository,
 	proxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
+	agentProxyRepo repository.AgentProxyRepository,
 	artifactRepo repository.ArtifactRepository,
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
@@ -124,6 +126,7 @@ func NewArtifactImportService(
 	cfg *config.Server,
 	slogger *slog.Logger,
 	mcpServerInfo MCPServerInfoFetcher,
+	agentCardCache AgentCardCacheInvalidator,
 ) *ArtifactImportService {
 	s := &ArtifactImportService{
 		gatewayRepo:    gatewayRepo,
@@ -140,8 +143,24 @@ func NewArtifactImportService(
 		constants.LLMProviderTemplate: newLLMProviderTemplateImporter(templateRepo),
 		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, providerRepo, artifactRepo),
 		constants.MCPProxy:            newMCPProxyImporter(mcpProxyRepo, artifactRepo, mcpServerInfo),
+		// Keyed by the kind the gateway pushes (Agent); the importer stores it as
+		// the control-plane kind AgentProxy. AgentProxy itself is deliberately not
+		// a key: it is never a gateway artifact kind.
+		constants.GatewayKindAgent: newAgentProxyImporter(agentProxyRepo, agentCardCache, slogger),
 	}
 	return s
+}
+
+// storedArtifactKind maps an incoming gateway artifact kind to the kind the control
+// plane stores it under (artifacts.type). The two differ only for Agent, which is
+// stored as AgentProxy. A kind with no registered mapping — the organization-level
+// LLM Provider Template, which is not an artifacts-table kind — is compared as
+// sent, which is what the handle-reuse guard did before the mapping existed.
+func storedArtifactKind(gatewayKind string) string {
+	if platformKind, ok := gatewaytranslator.PlatformKindForGatewayKind(gatewayKind); ok {
+		return platformKind
+	}
+	return gatewayKind
 }
 
 // ImportArtifacts imports a batch of gateway-pushed artifacts. It creates them in dependency
@@ -330,8 +349,10 @@ func (s *ArtifactImportService) resolveAndImport(
 	}
 	if existing != nil {
 		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
-		// the Type field (the artifacts.type column).
-		if existing.Type != kind {
+		// the Type field (the artifacts.type column), which holds the control-plane kind —
+		// so the pushed gateway kind is mapped before comparing (a gateway Agent is stored
+		// as AgentProxy).
+		if existing.Type != storedArtifactKind(kind) {
 			return nil, apperror.ArtifactExists.New().WithLogMessage(
 				fmt.Sprintf("artifact %q already exists with kind %s", handle, existing.Type))
 		}
@@ -457,6 +478,16 @@ func (s *ArtifactImportService) handleUndeploy(orgID, gatewayID string, req dto.
 		// undeploy; the artifact is not created on an undeploy push.
 		s.slogger.Warn("Undeploy push for unknown artifact; ignoring",
 			"handle", handle, "dpId", req.DPID, "kind", req.Configuration.Kind, "gatewayId", gatewayID)
+		return resp, nil
+	}
+	// A handle is looked up across every kind table, so the match may belong to a
+	// different kind than the one pushed; an undeploy for one kind must never mark
+	// another kind's artifact undeployed. The pushed kind is mapped to the stored one
+	// first (a gateway Agent is stored as AgentProxy).
+	if existing.Type != storedArtifactKind(req.Configuration.Kind) {
+		s.slogger.Warn("Undeploy push names an artifact of a different kind; ignoring",
+			"handle", handle, "dpId", req.DPID, "kind", req.Configuration.Kind,
+			"storedKind", existing.Type, "gatewayId", gatewayID)
 		return resp, nil
 	}
 	// Echo the control-plane UUID back to the gateway.

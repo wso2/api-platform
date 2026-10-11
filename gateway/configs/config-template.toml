@@ -483,6 +483,26 @@ skip_verify = false
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
+# handle_upstream_faults routes a failure the UPSTREAM or the ROUTER produced through
+# the fault flow instead of the ordinary response policies.
+#
+# Off by default. Every previous generation of this gateway ran an upstream
+# error through the response policies, so enabling this moves where existing
+# mediation runs — a backend 503 that reaches a response transformer or a
+# response guardrail would stop reaching it.
+#
+# Off: an upstream or router error is an ordinary response. The response
+#      policies run over it as before, the analytics collector among them, and
+#      the fault policies do not run.
+# On:  the fault policies handle it instead. No response policy runs over that
+#      response — the fault chain replaces them.
+#
+# A policy's OWN rejection always reaches its fault policies and is unaffected
+# by this setting. Recognition is by status alone (>= 400); GraphQL and A2A
+# report a failure inside a 200 body and are not covered yet.
+[policy_engine.fault_policies]
+handle_upstream_faults = false
+
 # max_decompressed_bytes caps decompressed bytes buffered per body (buffered
 # mode) or per chunk (streaming) — not cumulative, so long-lived streams such
 # as SSE are unaffected. Each direction is configured independently.

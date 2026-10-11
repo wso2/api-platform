@@ -73,16 +73,136 @@ async function reconcileIdpOrgId(org) {
 }
 
 /**
+ * Creates an organization if it doesn't exist yet, then makes sure its dependent
+ * defaults exist: the default label, the default view, the label-view link, and
+ * (when organization.auto_create_subscription_plans is on) the default subscription
+ * plans. Each default is checked/created individually, so an existing org with
+ * missing defaults is repaired without skipping the rest.
+ *
+ * Lookup is by exact handle, not orgDao.get()'s handle→display_name→idp_ref_id
+ * ladder: in a shared database the looser match could resolve to
+ * a *different* organization that happens to carry this handle as its display name,
+ * and the seed would then adopt that row.
+ *
+ * An organization that already exists is left as previously configured. Safe to
+ * call concurrently for the same handle — replicas starting together, or two logins
+ * provisioning the same org: a create that loses the race surfaces as a duplicate
+ * key and is resolved by re-reading the row the winner created.
+ *
+ * @param {{ handle: string, displayName: string, idpRefId: string, cpRefId?: string }} org
+ * @param {string} operation name recorded in log entries
+ * @returns {Promise<{ org: object, existed: boolean }>}
+ * @throws when the organization can neither be found nor created
+ */
+async function seedOrg({ handle, displayName, idpRefId, cpRefId }, operation = 'seedOrg') {
+    const payload = {
+        displayName,
+        handle,
+        idpRefId,
+        cpRefId,
+        configuration: {},
+        createdBy: constants.SYSTEM_ACTOR,
+    };
+
+    let org;
+    let existed = true;
+    try {
+        org = await orgDao.getByHandle(handle);
+    } catch (notFound) {
+        if (!(notFound instanceof NotFoundError)) {
+            logger.error('Failed to look up organization', { error: notFound.message, handle, operation });
+            throw notFound;
+        }
+        existed = false;
+        try {
+            org = await orgDao.create(payload);
+        } catch (createError) {
+            if (!db.isDuplicateKeyError(createError)) {
+                logger.error('Failed to seed organization', {
+                    error: createError.message,
+                    stack: createError.stack,
+                    handle,
+                    operation,
+                });
+                throw createError;
+            }
+            // Another process created the same handle first. Re-read it; if the
+            // collision was on some other unique column instead (a display name
+            // already used by a different org), there is no row under this handle
+            // and the NotFoundError propagates to the caller.
+            org = await orgDao.getByHandle(handle);
+            existed = true;
+        }
+    }
+
+    await seedOrgDefaults(org.uuid, operation);
+    return { org, existed };
+}
+
+/**
+ * The default label, view, label-view link and subscription plans for an org. Best
+ * effort: a failure is logged and stops the remaining steps that depend on it, but
+ * does not fail the caller — the org itself exists and is usable.
+ */
+async function seedOrgDefaults(orgId, operation) {
+    let labelId;
+    try {
+        const label = await labelDao.update(orgId, { handle: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
+        labelId = label.uuid;
+    } catch (error) {
+        logger.error('Failed to seed default label', {
+            error: error.message,
+            operation,
+        });
+        return;
+    }
+
+    let viewId;
+    try {
+        const view = await viewDao.update(orgId, 'default', 'default', constants.SYSTEM_ACTOR);
+        viewId = view.uuid;
+    } catch (error) {
+        logger.error('Failed to seed default view', {
+            error: error.message,
+            operation,
+        });
+        return;
+    }
+
+    try {
+        await labelDao.addToView(orgId, labelId, viewId, constants.SYSTEM_ACTOR);
+    } catch (error) {
+        if (!db.isDuplicateKeyError(error)) {
+            logger.error('Failed to seed label-view link', {
+                error: error.message,
+                operation,
+            });
+            return;
+        }
+    }
+
+    if (config.organization.autoCreateSubscriptionPlans) {
+        for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
+            try {
+                await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
+            } catch (error) {
+                if (!db.isDuplicateKeyError(error)) {
+                    logger.error('Failed to seed subscription plan', {
+                        error: error.message,
+                        operation,
+                        plan: plan.displayName,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/**
  * Seeds this instance's organization and its dependent resources on startup.
- * Each resource is checked/created individually so an existing org with
- * missing defaults is repaired without skipping the rest of the seed.
  *
  * The organization is the one named by config.organization.handle — the single org
- * this instance serves (see src/utils/orgContext.js). Lookup is by exact handle,
- * not orgDao.get()'s handle→display_name→idp_ref_id ladder: in a shared
- * multi-organization database the looser match could resolve to a *different*
- * organization that happens to carry this handle as its display name, and the
- * seeder would then adopt that row as this instance's org.
+ * this instance serves (see src/utils/orgContext.js).
  *
  * An organization that already exists is left as the operator has since configured it
  * through the settings UI, with two exceptions: idp_ref_id, which auth.idp_org_id owns
@@ -93,9 +213,13 @@ async function seedDefaultOrg() {
     const orgName = orgContext.getHandle();
     if (!orgName) return;
 
-    const payload = {
-        displayName: orgContext.getDisplayName(),
+    // Rethrown rather than continued past: without this row the portal has no
+    // organization to scope anything to, so every request would 500 while the
+    // process still reported itself healthy. startServer awaits this before binding
+    // the listener, so the failure stops startup instead.
+    const { org, existed } = await seedOrg({
         handle: orgName,
+        displayName: orgContext.getDisplayName(),
         // Defaults to the handle (getIdpOrgId falls back when unset) — override via
         // auth.idp_org_id when the IdP asserts an org claim that differs from the URL
         // handle. Config owns this field: the admin API refuses to change it, and
@@ -110,16 +234,11 @@ async function seedDefaultOrg() {
         // override via settings; on later boots the seeder only fills it in
         // while it is still empty.
         cpRefId: orgName,
-        configuration: {},
-        createdBy: constants.SYSTEM_ACTOR,
-    };
+    }, 'seedDefaultOrg');
 
-    let orgId;
-    try {
-        const existing = await orgDao.getByHandle(orgName);
-        orgId = existing.uuid;
+    if (existed) {
         try {
-            await reconcileIdpOrgId(existing);
+            await reconcileIdpOrgId(org);
         } catch (error) {
             // Non-fatal, unlike a failed lookup or create: the organization exists and
             // the portal can serve it with the previously stored value. Logins whose
@@ -133,7 +252,7 @@ async function seedDefaultOrg() {
             });
         }
         try {
-            if (await orgDao.backfillCpRefId(existing.uuid, payload.cpRefId, constants.SYSTEM_ACTOR)) {
+            if (await orgDao.backfillCpRefId(org.uuid, orgName, constants.SYSTEM_ACTOR)) {
                 logger.info('Org: cp_ref_id was empty; defaulted to the organization handle', {
                     handle: orgName,
                     operation: 'seedDefaultOrg',
@@ -148,81 +267,6 @@ async function seedDefaultOrg() {
                 operation: 'seedDefaultOrg',
             });
         }
-    } catch (notFound) {
-        if (!(notFound instanceof NotFoundError)) {
-            // Rethrow rather than continue: without this row the portal has no
-            // organization to scope anything to, so every request would 500 while the
-            // process still reported itself healthy. startServer awaits this before
-            // binding the listener, so the failure stops startup instead.
-            logger.error('Failed to look up default organization', {
-                error: notFound.message,
-                operation: 'seedDefaultOrg',
-            });
-            throw notFound;
-        }
-        try {
-            const organization = await orgDao.create(payload);
-            orgId = organization.uuid;
-        } catch (createError) {
-            logger.error('Failed to seed default organization', {
-                error: createError.message,
-                stack: createError.stack,
-                operation: 'seedDefaultOrg',
-            });
-            throw createError;
-        }
-    }
-
-    let labelId;
-    try {
-        const label = await labelDao.update(orgId, { handle: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
-        labelId = label.uuid;
-    } catch (error) {
-        logger.error('Failed to seed default label', {
-            error: error.message,
-            operation: 'seedDefaultOrg',
-        });
-        return;
-    }
-
-    let viewId;
-    try {
-        const view = await viewDao.update(orgId, 'default', 'default', constants.SYSTEM_ACTOR);
-        viewId = view.uuid;
-    } catch (error) {
-        logger.error('Failed to seed default view', {
-            error: error.message,
-            operation: 'seedDefaultOrg',
-        });
-        return;
-    }
-
-    try {
-        await labelDao.addToView(orgId, labelId, viewId, constants.SYSTEM_ACTOR);
-    } catch (error) {
-        if (!db.isDuplicateKeyError(error)) {
-            logger.error('Failed to seed label-view link', {
-                error: error.message,
-                operation: 'seedDefaultOrg',
-            });
-            return;
-        }
-    }
-
-    if (config.organization.autoCreateSubscriptionPlans) {
-        for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
-            try {
-                await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
-            } catch (error) {
-                if (!db.isDuplicateKeyError(error)) {
-                    logger.error('Failed to seed subscription plan', {
-                        error: error.message,
-                        operation: 'seedDefaultOrg',
-                        plan: plan.displayName,
-                    });
-                }
-            }
-        }
     }
 
     // Drop any uuid orgContext resolved before the org row existed, so the first
@@ -232,4 +276,4 @@ async function seedDefaultOrg() {
     logger.info('Org: organization seeded ✓', { handle: orgName });
 }
 
-module.exports = { seedDefaultOrg };
+module.exports = { seedDefaultOrg, seedOrg };

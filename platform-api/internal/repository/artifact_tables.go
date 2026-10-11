@@ -37,14 +37,14 @@ type ArtifactTableEntry struct {
 }
 
 // ArtifactTableRegistry maintains the set of kind-specific tables that back artifact rows.
-// Core tables (rest_apis, llm_providers, llm_proxies, mcp_proxies) are pre-registered;
-// plugins call Register during Init to contribute their own tables.
+// Core tables (rest_apis, llm_providers, llm_proxies, mcp_proxies, agent_proxies) are
+// pre-registered; plugins call Register during Init to contribute their own tables.
 type ArtifactTableRegistry struct {
 	mu      sync.RWMutex
 	entries []ArtifactTableEntry
 }
 
-// NewArtifactTableRegistry returns a registry pre-seeded with the four core artifact tables.
+// NewArtifactTableRegistry returns a registry pre-seeded with the core artifact tables.
 func NewArtifactTableRegistry() *ArtifactTableRegistry {
 	r := &ArtifactTableRegistry{}
 	r.Register(ArtifactTableEntry{
@@ -66,6 +66,11 @@ func NewArtifactTableRegistry() *ArtifactTableRegistry {
 		Table:     "mcp_proxies",
 		KindAlias: "Mcp",
 		KindKeys:  []string{"mcp-proxy", "MCPProxy", "Mcp"},
+	})
+	r.Register(ArtifactTableEntry{
+		Table:     "agent_proxies",
+		KindAlias: "AgentProxy",
+		KindKeys:  []string{"agent-proxy", "AgentProxy"},
 	})
 	return r
 }

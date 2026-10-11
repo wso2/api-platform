@@ -7,12 +7,12 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
-  Avatar,
   Box,
   Button,
   Card,
+  CardContent,
   Chip,
   CircularProgress,
   Dialog,
@@ -26,20 +26,24 @@ import {
   PageContent,
   PageTitle,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
-} from '@wso2/oxygen-ui';
-import { ExternalLink, PanelTop, Pencil, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+} from "@wso2/oxygen-ui";
+import {
+  ExternalLink,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "@wso2/oxygen-ui-icons-react";
 
-import { useManagedPortalList, useOrgEnvironments } from './hooks';
-import type { ManagedPortal } from './types';
+import { useManagedPortalList } from "./hooks";
+import type { ManagedPortal } from "./types";
+import { PortalIllustration } from "./PortalIllustration";
+
+const devportalLogo = new URL("./images/devportal-logo.png", import.meta.url)
+  .href;
 
 export type ManagedPortalsListProps = {
   /** Switches parent to the create view; create is a full page, not a modal. */
@@ -50,16 +54,16 @@ export type ManagedPortalsListProps = {
 
 /**
  * Short relative-time formatter local to this feature so the package stays
- * dependency-free. Picks the coarsest unit that fits a table cell ("3h ago",
+ * dependency-free. Picks the coarsest unit that fits a portal card ("3h ago",
  * "5d ago", "2mo ago"). Clock skew that puts the stamp in the future collapses
  * to "just now" rather than the misleading "3h ago".
  */
 function shortRelative(iso: string | null | undefined): string {
-  if (!iso) return '';
+  if (!iso) return "";
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
+  if (Number.isNaN(then)) return "";
   const seconds = Math.round((Date.now() - then) / 1000);
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return "just now";
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
   if (seconds < 2592000) return `${Math.round(seconds / 86400)}d ago`;
@@ -67,20 +71,15 @@ function shortRelative(iso: string | null | undefined): string {
   return `${Math.round(seconds / 31536000)}y ago`;
 }
 
-export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsListProps) {
+export default function ManagedPortalsList({
+  onCreate,
+  onEdit,
+}: ManagedPortalsListProps) {
   const { portals, isLoading, error, remove } = useManagedPortalList();
-  // Env count drives whether the "Login environment" column shows; a single-env
-  // org has no meaningful choice to display and the column becomes noise.
-  // When the env list errors we can't tell how many envs the org has, so we
-  // fall back to SHOWING the column - hiding it would swallow real per-portal
-  // env info the user might need (esp. when debugging why the picker failed).
-  const { environments, error: envsError } = useOrgEnvironments();
-  const showEnvColumn = envsError ? true : environments.length > 1;
-
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   const filteredPortals = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -109,17 +108,35 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
 
   return (
     <PageContent fullWidth>
-      <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
+      <Grid container spacing={2} sx={{ width: "100%", m: 0 }}>
         <Grid size={{ xs: 12 }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              flexWrap: "nowrap",
+              gap: 2,
+            }}
+          >
             <PageTitle sx={{ minWidth: 0, flex: 1 }}>
               <PageTitle.Header>Portals</PageTitle.Header>
-              <PageTitle.SubHeader>Manage the portals for this organization.</PageTitle.SubHeader>
+              <PageTitle.SubHeader>
+                Manage the portals for this organization.
+              </PageTitle.SubHeader>
             </PageTitle>
 
-            <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ ml: "auto", flexShrink: 0 }}
+            >
               {portals.length > 0 ? (
-                <Button variant="contained" onClick={onCreate} startIcon={<Plus size={20} />}>
+                <Button
+                  variant="contained"
+                  onClick={onCreate}
+                  startIcon={<Plus size={20} />}
+                >
                   Add Portal
                 </Button>
               ) : null}
@@ -141,15 +158,38 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
           </Grid>
         ) : portals.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
-              <Stack spacing={1.5} alignItems="center" justifyContent="center" sx={{ textAlign: 'center' }}>
-                <PanelTop size={64} color="var(--mui-palette-action-disabled)" />
-                <Typography variant="body1" color="text.secondary">
-                  No available portals
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "50vh",
+                px: 3,
+                py: 6,
+              }}
+            >
+              <Stack
+                spacing={1}
+                alignItems="center"
+                sx={{ maxWidth: 440, textAlign: "center" }}
+              >
+                <PortalIllustration />
+                <Typography variant="h5" sx={{ fontWeight: 700, pt: 2 }}>
+                  Create your first portal
                 </Typography>
-                <Button variant="contained" onClick={onCreate} startIcon={<Plus size={20} />}>
-                  Add Portal
-                </Button>
+                <Typography variant="body1" color="text.secondary" sx={{ opacity: 0.7 }}>
+                  Set up a developer portal to help developers discover your APIs
+                  and get started with your services.
+                </Typography>
+                <Box sx={{ pt: 2 }}>
+                  <Button
+                    variant="contained"
+                    onClick={onCreate}
+                    startIcon={<Plus size={20} />}
+                  >
+                    Create Portal
+                  </Button>
+                </Box>
               </Stack>
             </Box>
           </Grid>
@@ -158,10 +198,12 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
             <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
-                placeholder="Search portals..."
+                size="medium"
+                placeholder="Search Portals..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 slotProps={{
+                  htmlInput: { "aria-label": "Search portals" },
                   input: {
                     startAdornment: (
                       <InputAdornment position="start">
@@ -174,200 +216,267 @@ export default function ManagedPortalsList({ onCreate, onEdit }: ManagedPortalsL
             </Grid>
 
             <Grid size={{ xs: 12 }}>
-              <Card>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Name</TableCell>
-                        <TableCell>Description</TableCell>
-                        {showEnvColumn ? (
-                          <TableCell>
-                            <Tooltip title="The data-plane environment whose auth server backs portal-user login." arrow>
-                              <span>Login environment</span>
-                            </Tooltip>
-                          </TableCell>
-                        ) : null}
-                        <TableCell>Updated</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredPortals.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={showEnvColumn ? 5 : 4}>
-                            <Typography variant="body2" color="text.secondary">
-                              No portals found.
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredPortals.map((portal) => {
-                          const status = portal.status ?? 'active';
-                          const canVisit = status === 'active' && Boolean(portal.url);
-                          return (
-                          <TableRow key={portal.id}>
-                            <TableCell sx={{ minWidth: 220 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Avatar
-                                  sx={{
-                                    width: 36,
-                                    height: 36,
-                                    backgroundColor: 'primary.light',
-                                    color: 'primary.contrastText',
-                                    fontSize: 16,
-                                  }}
-                                >
-                                  {portal.name.trim().slice(0, 2).toUpperCase()}
-                                </Avatar>
-                                <Stack spacing={0.25}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                      {portal.name}
-                                    </Typography>
-                                    {/* State + visit affordance live INSIDE the name cell, matching gateway's */}
-                                    {/* "Default" chip placement. Active shows the external-link icon as the visit */}
-                                    {/* affordance (clickable name pattern) - no separate labeled button. Pending */}
-                                    {/* shows a spinner chip. Failed shows a red chip. Missing status ≡ active so */}
-                                    {/* pre-status backends still expose the link. */}
-                                    {canVisit ? (
-                                      <Tooltip title="Visit portal (opens in a new tab)" arrow>
-                                        <IconButton
-                                          size="small"
-                                          aria-label={`Visit ${portal.name}`}
-                                          component="a"
-                                          href={portal.url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          sx={{ p: 0.25 }}
-                                        >
-                                          <ExternalLink size={16} />
-                                        </IconButton>
-                                      </Tooltip>
-                                    ) : status === 'pending' ? (
-                                      <Tooltip title="Portal is being set up. Usually takes under a minute." arrow>
-                                        <Chip
-                                          icon={<CircularProgress size={10} color="inherit" />}
-                                          label="Pending"
-                                          size="small"
-                                          color="warning"
-                                          variant="outlined"
-                                          sx={{ height: 20, fontSize: '0.7rem' }}
-                                        />
-                                      </Tooltip>
-                                    ) : status === 'failed' ? (
-                                      <Tooltip title="Portal did not become reachable within 10 minutes. Delete and try again." arrow>
-                                        <Chip
-                                          label="Failed"
-                                          size="small"
-                                          color="error"
-                                          variant="outlined"
-                                          sx={{ height: 20, fontSize: '0.7rem' }}
-                                        />
-                                      </Tooltip>
-                                    ) : null}
-                                  </Box>
-                                  <Tooltip title="URL-friendly identifier. Set on create and cannot be changed later." arrow placement="bottom-start">
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                                      {portal.handle}
-                                    </Typography>
-                                  </Tooltip>
-                                </Stack>
-                              </Box>
-                            </TableCell>
-                            <TableCell>
+              {filteredPortals.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No portals found.
+                </Typography>
+              ) : (
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      md: "repeat(2, minmax(0, 1fr))",
+                      xl: "repeat(3, minmax(0, 1fr))",
+                    },
+                    gap: 3,
+                  }}
+                >
+                  {filteredPortals.map((portal) => {
+                    const status = portal.status ?? "active";
+                    const canVisit = status === "active" && Boolean(portal.url);
+                    const isPending = status === "pending";
+                    return (
+                      <Card
+                        key={portal.id}
+                        variant="outlined"
+                        sx={{ display: "flex", minWidth: 0 }}
+                      >
+                        <CardContent
+                          sx={{
+                            p: 2.5,
+                            "&:last-child": { pb: 2.5 },
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 2,
+                            flex: 1,
+                            minWidth: 0,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 2,
+                              flex: 1,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: { xs: 64, sm: 72 },
+                                height: { xs: 64, sm: 72 },
+                                flexShrink: 0,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                border: 1,
+                                borderColor: "divider",
+                                borderRadius: 1,
+                                bgcolor: "action.hover",
+                                opacity: isPending ? 0.4 : 1,
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={devportalLogo}
+                                alt=""
+                                sx={{
+                                  width: "75%",
+                                  height: "75%",
+                                  objectFit: "contain",
+                                }}
+                              />
+                            </Box>
+                            <Stack
+                              spacing={0.5}
+                              sx={{ flex: 1, minWidth: 0, pt: 0.5 }}
+                            >
+                              <Typography
+                                variant="h6"
+                                sx={{ fontWeight: 600, overflowWrap: "anywhere" }}
+                              >
+                                {portal.name}
+                              </Typography>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
-                                sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}
+                                sx={{
+                                  overflowWrap: "anywhere",
+                                  display: "-webkit-box",
+                                  WebkitBoxOrient: "vertical",
+                                  WebkitLineClamp: 2,
+                                  overflow: "hidden",
+                                  lineHeight: 1.5,
+                                  minHeight: "3em",
+                                }}
                               >
-                                {portal.description || '-'}
+                                {portal.description || ""}
                               </Typography>
-                            </TableCell>
-                            {showEnvColumn ? (
-                              <TableCell>
-                                {portal.loginEnvironment ? (
-                                  <Chip label={portal.loginEnvironment} size="small" variant="outlined" />
-                                ) : (
-                                  <Typography variant="body2" color="text.secondary">
-                                    -
-                                  </Typography>
-                                )}
-                              </TableCell>
-                            ) : null}
-                            <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {shortRelative(portal.updatedAt) || '-'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="right">
-                              {/* Edit is only meaningful when the portal is settled and healthy: */}
-                              {/* pending → the metadata isn't reconciled yet; failed → the portal never */}
-                              {/* provisioned so a rename won't recover it, only delete + recreate. Delete */}
-                              {/* stays enabled in every state so a stuck row is always recoverable. */}
-                              {/* Tooltip wraps a span for disabled state because MUI drops tooltips on */}
-                              {/* disabled buttons; the span keeps hover events reachable. */}
-                              <Tooltip
-                                title={
-                                  status === 'pending'
-                                    ? 'Editing is available once provisioning completes.'
-                                    : status === 'failed'
-                                      ? 'Editing is disabled while the portal is in a failed state. Delete and re-create.'
-                                      : 'Edit portal'
-                                }
-                                arrow
-                              >
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    aria-label={`Edit ${portal.name}`}
-                                    onClick={() => onEdit(portal)}
-                                    disabled={status !== 'active'}
-                                  >
-                                    <Pencil size={16} />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                              <Tooltip title="Delete portal" arrow>
+                            </Stack>
+                            <Tooltip
+                              title={
+                                isPending
+                                  ? "Editing is available once provisioning completes."
+                                  : status === "failed"
+                                    ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
+                                    : "Edit portal"
+                              }
+                              arrow
+                            >
+                              <span>
                                 <IconButton
                                   size="small"
-                                  color="error"
-                                  aria-label={`Delete ${portal.name}`}
-                                  onClick={() => setDeleteTarget(portal)}
+                                  aria-label={`Edit ${portal.name}`}
+                                  onClick={() => onEdit(portal)}
+                                  disabled={status !== "active"}
                                 >
-                                  <Trash2 size={16} />
+                                  <Pencil size={16} />
                                 </IconButton>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Card>
+                              </span>
+                            </Tooltip>
+                          </Box>
+
+                          <Stack
+                            spacing={2}
+                            sx={{ borderTop: 1, borderColor: "divider", pt: 2 }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 2,
+                              }}
+                            >
+                              <Typography variant="body1" color="text.secondary">
+                                Login environment
+                              </Typography>
+                              {portal.loginEnvironment ? (
+                                <Chip
+                                  label={portal.loginEnvironment}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ maxWidth: "55%" }}
+                                />
+                              ) : (
+                                <Typography
+                                  variant="body1"
+                                  color="text.secondary"
+                                >
+                                  -
+                                </Typography>
+                              )}
+                            </Box>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 2,
+                              }}
+                            >
+                              <Typography variant="body1" color="text.secondary">
+                                Updated
+                              </Typography>
+                              <Typography variant="body1">
+                                {shortRelative(portal.updatedAt) || "-"}
+                              </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Stack direction="row" spacing={1}>
+                            {canVisit ? (
+                              <Button
+                                fullWidth
+                                size="small"
+                                sx={{ height: 36, minHeight: 36, py: 0.5 }}
+                                variant="contained"
+                                component="a"
+                                href={portal.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                startIcon={<ExternalLink size={16} />}
+                              >
+                                Open Portal
+                              </Button>
+                            ) : (
+                              <Button
+                                fullWidth
+                                size="small"
+                                sx={{ height: 36, minHeight: 36, py: 0.5 }}
+                                variant="contained"
+                                disabled
+                                startIcon={
+                                  isPending ? (
+                                    <CircularProgress size={16} color="inherit" />
+                                  ) : undefined
+                                }
+                              >
+                                {isPending
+                                  ? "Creating portal..."
+                                  : status === "failed"
+                                    ? "Creation failed"
+                                    : "Portal unavailable"}
+                              </Button>
+                            )}
+                            {/* Keep deletion available so pending or failed portals can be recovered. */}
+                            <Tooltip title="Delete portal" arrow>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                aria-label={`Delete ${portal.name}`}
+                                onClick={() => setDeleteTarget(portal)}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Box>
+              )}
             </Grid>
           </>
         )}
       </Grid>
 
-      <Dialog open={Boolean(deleteTarget)} onClose={deleting ? undefined : () => setDeleteTarget(null)}>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={deleting ? undefined : () => setDeleteTarget(null)}
+      >
         <DialogTitle>Delete Portal</DialogTitle>
         <DialogContent>
-          <DialogContentText>Are you sure you want to delete {deleteTarget?.name}?</DialogContentText>
+          <DialogContentText>
+            Are you sure you want to delete {deleteTarget?.name}?
+          </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} variant="outlined" color="secondary" disabled={deleting}>
+          <Button
+            onClick={() => setDeleteTarget(null)}
+            variant="outlined"
+            color="secondary"
+            disabled={deleting}
+          >
             Cancel
           </Button>
           <Button
             color="error"
             onClick={handleDeleteConfirm}
             disabled={deleting}
-            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
+            startIcon={
+              deleting ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : undefined
+            }
           >
-            {deleting ? 'Deleting…' : 'Delete'}
+            {deleting ? "Deleting…" : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>

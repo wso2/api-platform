@@ -389,7 +389,7 @@ async function send(
   method: string,
   path: string,
   options: RequestOptions,
-  responseType?: 'text'
+  responseType?: 'text' | 'blob'
 ): Promise<AxiosResponse<unknown>> {
   const verb = method.toUpperCase();
   const requestId = newRequestId();
@@ -491,6 +491,37 @@ export async function requestText(
   };
 }
 
+/** A binary response body, with the content type the server labelled it with. */
+export type BlobResponse = {
+  blob: Blob;
+  contentType: string;
+};
+
+/**
+ * Like {@link request}, for endpoints that return raw bytes (images, PDFs, ...).
+ * The body comes back as a `Blob` so the caller can `URL.createObjectURL(blob)`
+ * for an `<img>` or save it to disk. Errors are still `ApiError`.
+ *
+ * Returns `null` for 204/205 No Content — endpoints that use the empty response
+ * as a typed "not set" signal (e.g. `GET /thumbnail` when no thumbnail exists).
+ */
+export async function requestBlob(
+  method: string,
+  path: string,
+  options: RequestOptions = {}
+): Promise<BlobResponse | null> {
+  const response = await send(method, path, options, 'blob');
+  if (response.status === 204 || response.status === 205) {
+    return null;
+  }
+  const contentType = String(response.headers['content-type'] ?? '');
+  const blob =
+    response.data instanceof Blob
+      ? response.data
+      : new Blob([response.data as BlobPart], { type: contentType });
+  return { blob, contentType };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Public surface                                                              */
 /* -------------------------------------------------------------------------- */
@@ -512,6 +543,10 @@ export const http = {
   /** GET a stored document as text plus its content type, without parsing it. */
   getText: (path: string, options?: BodylessOptions) =>
     requestText('GET', path, options),
+
+  /** GET raw bytes as a Blob plus its content type (images, downloads, etc.). */
+  getBlob: (path: string, options?: BodylessOptions) =>
+    requestBlob('GET', path, options),
 
   post: <T>(path: string, body?: unknown, options?: BodylessOptions) =>
     request<T>('POST', path, { ...options, body }),

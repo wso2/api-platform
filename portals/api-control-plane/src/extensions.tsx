@@ -160,6 +160,17 @@ export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
  */
 export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
 
+/**
+ * Slot for an entry in the app header's action area, rendered before the
+ * built-in controls. Consumed directly by `AppHeader` (via `useSlot`) — not by
+ * the sidebar or Settings-tab filters, which only match `sidebar.*` /
+ * `settings.*.tabs`, nor by `isPageOverride`, which matches `page.*`. A header
+ * entry therefore rides the same `ApiControlPlaneExtension` shape with no new
+ * nav plumbing; only its `render` is used and its `routePath`/`level` are
+ * inert, the same arrangement the `page.*` slots use.
+ */
+export const HEADER_ACTIONS_SLOT = 'header.actions';
+
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
@@ -199,11 +210,32 @@ export const settingsTabExtensions = (
     )
     .sort((left, right) => left.order - right.order);
 
+/**
+ * A header action: an entry with nothing but a render.
+ *
+ * It has no route and no nav presence, so it carries none of the fields
+ * `ApiControlPlaneExtension` needs — declaring them inert would say this entry
+ * has a page when it does not. Mirrors `AIWorkspaceHeaderAction`, so the same
+ * feature registers the same way in either portal.
+ */
+export type ApiControlPlaneHeaderAction = SlotEntry & {
+  render: ExtensionRender;
+};
+
+/**
+ * Every registered cloud entry — nav items, page overrides and header actions
+ * share one slot registry (see `slots/index.tsx`), filtered by `slot` at each
+ * consumption site.
+ */
+export type ApiControlPlaneCloudEntry =
+  | ApiControlPlaneExtension
+  | ApiControlPlaneHeaderAction;
+
 export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly ApiControlPlaneExtension[];
+  extensions: readonly ApiControlPlaneCloudEntry[];
   children: ReactNode;
 }) {
   return (

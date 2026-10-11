@@ -111,8 +111,58 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
 }
 
 /**
+ * Write FAILED delivery rows, within the caller's transaction, for subscribers the event
+ * can't be delivered to at all (their secret can't be decrypted). The rows keep the event
+ * from reading as delivered to everyone, and show the reason in its delivery details.
+ */
+async function recordUndeliverable(eventId, subscribers, reason, transaction) {
+    const exec = transaction || db;
+    const portalId = getPortalId();
+    for (const sub of subscribers) {
+        await exec.execute(
+            `INSERT INTO ${DELIVERIES_TABLE} (uuid, portal_id, event_uuid, subscriber_id, target_url, status, last_error)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [crypto.randomUUID(), portalId, eventId, sub.id, sub.url, 'FAILED', String(reason).slice(0, 255)]
+        );
+    }
+}
+
+/**
+ * Row-lock hints that make a claim SELECT skip rows another transaction is already
+ * claiming. Postgres takes them as a trailing clause (`FOR UPDATE SKIP LOCKED`);
+ * MSSQL takes them as a table hint right after the table name. SQLite has neither
+ * and needs neither: its adapter runs every transaction on one serialized connection.
+ */
+function claimLockHints() {
+    const dialect = db.getDialect();
+    return {
+        tableHint: dialect === 'mssql' ? ' WITH (UPDLOCK, READPAST, ROWLOCK)' : '',
+        trailing: dialect === 'postgres' ? ' FOR UPDATE SKIP LOCKED' : '',
+    };
+}
+
+/**
+ * Flips each selected row from PENDING to `status` one at a time, guarded on it
+ * still being PENDING, and returns only the rows this call actually moved. The lock
+ * hints above already keep two claimers apart on Postgres and MSSQL; this guard is
+ * what guarantees it regardless of dialect or isolation level, so a row can never be
+ * handed to two claimers and delivered twice.
+ */
+async function claimRows(tx, table, rows, setClause, setParams) {
+    const claimed = [];
+    for (const row of rows) {
+        const { rowCount } = await tx.execute(
+            `UPDATE ${table} SET ${setClause} WHERE uuid = ? AND portal_id = ? AND status = ?`,
+            [...setParams, row.uuid, getPortalId(), 'PENDING']
+        );
+        if (rowCount === 1) claimed.push(row);
+    }
+    return claimed;
+}
+
+/**
  * Claim a batch of this organization's PENDING events using SELECT FOR UPDATE SKIP
- * LOCKED. Returns events with their delivery rows.
+ * LOCKED (or its MSSQL equivalent). Returns events with their delivery rows.
  *
  * Scoped to `orgUuid` because the events table is shared: every portal instance
  * pointed at this database runs its own dispatcher, and an unscoped claim would let
@@ -121,24 +171,22 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
  * look broken — it would just be the wrong instance doing the work, outside whatever
  * network policy that organization's deployment has.
  */
+// `orgUuid` null/undefined claims across every organization of this portal_id —
+// multi-organization mode, where this instance delivers for all of them (see
+// dispatcher.js).
 async function claimPending(batchSize, orgUuid) {
-    const isPostgres = db.getDialect() === 'postgres';
+    const { tableHint, trailing } = claimLockHints();
+    const orgFilter = orgUuid ? ' AND org_uuid = ?' : '';
     return db.withTransaction(async (tx) => {
-        const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
         const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const events = await tx.query(
-            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? AND portal_id = ? ORDER BY occurred_at ASC ${clause}${lockClause}`,
-            ['PENDING', orgUuid, getPortalId(), ...pageParams]
+            `SELECT * FROM ${EVENTS_TABLE}${tableHint} WHERE status = ? AND portal_id = ?${orgFilter} ORDER BY occurred_at ASC ${clause}${trailing}`,
+            ['PENDING', getPortalId(), ...(orgUuid ? [orgUuid] : []), ...pageParams]
         );
         if (events.length === 0) return [];
 
-        const ids = events.map((e) => e.uuid);
-        const placeholders = ids.map(() => '?').join(', ');
-        await tx.execute(
-            `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid IN (${placeholders}) AND portal_id = ?`,
-            ['DISPATCHED', ...ids, getPortalId()]
-        );
-        return events.map(parseEventRow);
+        const claimed = await claimRows(tx, EVENTS_TABLE, events, 'status = ?', ['DISPATCHED']);
+        return claimed.map(parseEventRow);
     });
 }
 
@@ -155,37 +203,41 @@ async function claimPending(batchSize, orgUuid) {
  * organization through events. Postgres needs `FOR UPDATE OF d` here: with a join
  * in play, a bare FOR UPDATE would also try to lock the events rows.
  */
+// `orgUuid` null/undefined claims, and sweeps stale rows, across every organization of
+// this portal_id — multi-organization mode, where this deployment is the only one using
+// that portal_id. The sweep is safe without an org filter there: its five-minute
+// threshold is far past any subscriber timeout, so a row that old is abandoned, not in
+// flight on some replica.
 async function claimDueDeliveries(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
+    const { tableHint } = claimLockHints();
     return db.withTransaction(async (tx) => {
         // Recover stale IN_FLIGHT rows left by a crashed or stopped worker. Any delivery
         // that has been IN_FLIGHT for more than 5 minutes without a terminal update is
         // marked FAILED so it re-enters PENDING on the next dispatch cycle.
         const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+        const orgParams = orgUuid ? [orgUuid] : [];
         await tx.execute(
             `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ?
-             WHERE status = ? AND last_attempt_at < ?
-               AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ? AND portal_id = ?)`,
-            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, orgUuid, getPortalId()]
+             WHERE status = ? AND last_attempt_at < ? AND portal_id = ?${orgUuid
+                ? ` AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ? AND portal_id = ?)` : ''}`,
+            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, getPortalId(),
+                ...(orgUuid ? [orgUuid, getPortalId()] : [])]
         );
 
         const lockClause = isPostgres ? ' FOR UPDATE OF d SKIP LOCKED' : '';
         const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const rows = await tx.query(
-            `SELECT d.* FROM ${DELIVERIES_TABLE} d
+            `SELECT d.* FROM ${DELIVERIES_TABLE} d${tableHint}
              JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid AND d.portal_id = e.portal_id
-             WHERE d.status = ? AND e.org_uuid = ? AND e.portal_id = ? ORDER BY e.occurred_at ASC ${clause}${lockClause}`,
-            ['PENDING', orgUuid, getPortalId(), ...pageParams]
+             WHERE d.status = ? AND e.portal_id = ?${orgUuid ? ' AND e.org_uuid = ?' : ''} ORDER BY e.occurred_at ASC ${clause}${lockClause}`,
+            ['PENDING', getPortalId(), ...orgParams, ...pageParams]
         );
         if (rows.length === 0) return [];
 
-        const ids = rows.map((r) => r.uuid);
-        const placeholders = ids.map(() => '?').join(', ');
-        await tx.execute(
-            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_attempt_at = ? WHERE uuid IN (${placeholders}) AND portal_id = ?`,
-            ['IN_FLIGHT', new Date(), ...ids, getPortalId()]
-        );
-        return rows.map(parseDeliveryRow);
+        const claimed = await claimRows(tx, DELIVERIES_TABLE, rows,
+            'status = ?, last_attempt_at = ?', ['IN_FLIGHT', new Date()]);
+        return claimed.map(parseDeliveryRow);
     });
 }
 
@@ -219,7 +271,8 @@ async function markFailed(deliveryId, { httpStatus, error }) {
  */
 async function reconcile(delivery) {
     if (!delivery) return;
-    const all = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [delivery.event_uuid]);
+    const all = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ? AND portal_id = ?`,
+        [delivery.event_uuid, getPortalId()]);
     if (all.length === 0) return;
     const terminal = all.every((d) => d.status === 'DELIVERED' || d.status === 'FAILED');
     if (!terminal) return;
@@ -260,8 +313,8 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
     const ids = events.map((e) => e.uuid);
     const placeholders = ids.map(() => '?').join(', ');
     const deliveries = await db.query(
-        `SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid IN (${placeholders})`,
-        ids
+        `SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid IN (${placeholders}) AND portal_id = ?`,
+        [...ids, getPortalId()]
     );
     const deliveriesByEvent = groupBy(deliveries, 'event_uuid');
 
@@ -279,7 +332,8 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
 async function get(eventId) {
     const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ? AND portal_id = ?`, [eventId, getPortalId()]);
     if (!event) return null;
-    const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [eventId]);
+    const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ? AND portal_id = ?`,
+        [eventId, getPortalId()]);
     return parseEventRow({ ...event, event_deliveries: deliveries.map(parseDeliveryRow) });
 }
 
@@ -305,7 +359,7 @@ async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
 }
 
 module.exports = {
-    create, createDeliveries,
+    create, createDeliveries, recordUndeliverable,
     claimPending, claimDueDeliveries,
     markDelivered, markFailed,
     list, get, listDeliveriesForSubscriber,

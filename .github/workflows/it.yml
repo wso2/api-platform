@@ -113,6 +113,9 @@ jobs:
           # The released 1.2.0 Gateway.
           - leg: gateway-1.2.0
             suite_flags: '-gateway-version=1.2.0'
+          # The released 1.1.0 Gateway.
+          - leg: gateway-1.1.0
+            suite_flags: '-gateway-version=1.1.0 -host=docker.io/isurangaws'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -143,6 +146,12 @@ jobs:
 
       - name: Build testbench image
         run: make -C tests/framework testbench
+
+      - name: Build A2A trip-planner image
+        run: make -C tests/framework a2a-trip-planner
+
+      - name: Build ap CLI binary
+        run: make -C tests/framework ap-cli
 
       - name: Run the integration suite
         working-directory: tests/framework
@@ -217,3 +226,16 @@ jobs:
           disable_search: true
           files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt
           flags: platform-api-integration
+
+      # Its own flag, not the UI suite's api-portal-server-integration: carryforward is per
+      # flag, so a shared one would replace the UI suite's report rather than carry it
+      # forward on a commit the UI suite does not run for.
+      - name: Upload API Portal server integration coverage to Codecov
+        if: matrix.leg == 'gateway-latest'
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/api-portal/server/lcov.info
+          flags: api-portal-server-it

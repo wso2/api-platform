@@ -1,0 +1,14 @@
+apiVersion: ${VALUE:apiVersion}
+kind: Agent
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
+  version: v1.0
+  context: ${VALUE:context}
+  upstream:
+    url: ${VALUE:upstreamUrl}
+  a2a:
+    protocolVersion: "1.0"
+    operationConfigs:
+      transports: ${VALUE:transports}

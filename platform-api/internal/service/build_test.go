@@ -697,3 +697,7 @@ func TestDeployAPI_SandboxVhostFollowsTheDeployedArtifactNotTheCurrentAPI(t *tes
 			depRepo.created.Content)
 	}
 }
+
+func (m *buildTestDeploymentRepo) FailCurrentDeployment(string, string, string, string, string) (int64, error) {
+	return 0, nil
+}

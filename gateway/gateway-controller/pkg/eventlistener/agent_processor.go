@@ -75,6 +75,11 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	if storedConfig.DesiredState == models.StateUndeployed {
+		l.handleAgentUndeployed(storedConfig, event)
+		return
+	}
+
 	// No hydrate step: an Agent is stored in its deployable shape, so the read
 	// above already populates both Configuration and SourceConfiguration (see
 	// unmarshalSourceConfig). Only rendering stands between the row and the
@@ -97,21 +102,8 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 		}
 	}
 
-	existing, _ := l.store.Get(entityID)
-	if existing != nil {
-		if err := l.store.Update(storedConfig); err != nil {
-			l.logger.Error("Failed to update Agent in memory store",
-				slog.String("agent_id", entityID),
-				slog.Any("error", err))
-			return
-		}
-	} else {
-		if err := l.store.Add(storedConfig); err != nil {
-			l.logger.Error("Failed to add Agent to memory store",
-				slog.String("agent_id", entityID),
-				slog.Any("error", err))
-			return
-		}
+	if !l.putAgentInStore(storedConfig) {
+		return
 	}
 
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after Agent replica sync")
@@ -120,6 +112,63 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 	l.logger.Info("Successfully processed Agent create/update event",
 		slog.String("agent_id", entityID),
 		slog.String("event_id", event.EventID))
+}
+
+// handleAgentUndeployed converges this replica on an Agent taken out of service:
+// the configuration stays in the store, so a later redeploy and the management
+// API still see it, but its routes leave the Envoy snapshot (the translator skips
+// undeployed configurations) and its runtime deploy config leaves the policy
+// snapshot. The chains are dropped rather than kept for a redeploy — every
+// redeploy transforms the artifact afresh, and chains left behind would keep the
+// policy engine resolving routes that Envoy no longer serves.
+//
+// The configuration is deliberately not rendered here. Taking an Agent out of
+// service must not depend on its templates still resolving: a secret deleted
+// since the deploy would otherwise fail the render, and the Agent would keep
+// serving traffic the control plane believes is stopped. Nothing consumes the
+// rendered form of an undeployed Agent, so the stored source is kept as is.
+func (l *EventListener) handleAgentUndeployed(storedConfig *models.StoredConfig, event eventhub.Event) {
+	entityID := storedConfig.UUID
+
+	if !l.putAgentInStore(storedConfig) {
+		return
+	}
+
+	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after Agent undeployment")
+
+	if l.policyManager != nil {
+		if err := l.policyManager.DeleteAPIConfig(storedConfig.Kind, storedConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after Agent undeployment",
+				slog.String("agent_id", entityID),
+				slog.Any("error", err))
+		}
+	}
+
+	l.logger.Info("Successfully processed Agent undeployment event",
+		slog.String("agent_id", entityID),
+		slog.String("event_id", event.EventID))
+}
+
+// putAgentInStore adds or replaces cfg in the in-memory store, reporting whether
+// it succeeded.
+func (l *EventListener) putAgentInStore(cfg *models.StoredConfig) bool {
+	existing, _ := l.store.Get(cfg.UUID)
+	if existing != nil {
+		if err := l.store.Update(cfg); err != nil {
+			l.logger.Error("Failed to update Agent in memory store",
+				slog.String("agent_id", cfg.UUID),
+				slog.Any("error", err))
+			return false
+		}
+		return true
+	}
+	if err := l.store.Add(cfg); err != nil {
+		l.logger.Error("Failed to add Agent to memory store",
+			slog.String("agent_id", cfg.UUID),
+			slog.Any("error", err))
+		return false
+	}
+	return true
 }
 
 // handleAgentDelete drops an Agent's local state: the configuration the Envoy

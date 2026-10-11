@@ -397,6 +397,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProxy, "/llm-proxies")
 	registerControllerDeleter(reg, topo, client, cleanup.KindLLMProviderTemplate, "/llm-provider-templates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindMCPProxy, "/mcp-proxies")
+	registerControllerDeleter(reg, topo, client, cleanup.KindAgent, "/agents")
 	registerControllerDeleter(reg, topo, client, cleanup.KindCertificate, "/certificates")
 	registerControllerDeleter(reg, topo, client, cleanup.KindSecret, "/secrets")
 }
@@ -452,7 +453,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 	}
 	require.NotEmpty(t, variants)
 	for source, got := range variants {
-		if source == "devportal-webhook" || source == "multigateway" {
+		if source == "devportal-webhook" || source == "multigateway" || source == "ai-workspace-cli" {
 			require.Len(t, got, 1, "single-engine block %q", source)
 			continue
 		}

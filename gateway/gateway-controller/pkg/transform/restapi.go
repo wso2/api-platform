@@ -107,6 +107,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
+	// The API-level fault policies are resolved once; each route then prepends its own
+	// operation-level entries (see mergeFaultPolicies). Order is preserved and duplicates
+	// are kept: a sequence may legitimately repeat a policy (two notifications to two
+	// destinations).
+	apiFaultPolicies := t.collectFaultPolicies(apiData.FaultPolicies, policyv1alpha.LevelAPI)
+	// Resolved once for the whole API rather than per route: the parameters come from the
+	// runtime config, so every route would build an identical list.
+	faultSystemPolicies := sdkChainToModel(utils.FaultSystemPolicies(t.systemConfig, nil)).Policies
 
 	// An MCP proxy carries every logical operation — tools/call, tools/list,
 	// server/discover — on one POST endpoint, so that route's policy chain is selected
@@ -251,7 +259,31 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
-			rdc.PolicyChains[chainKey] = sdkChainToModel(injected)
+			routeChain := sdkChainToModel(injected)
+			// Fault policies: this operation's entries then the API's, which is the order
+			// they execute in, and then the fault-path system policies LAST.
+			//
+			// NOT InjectSystemPolicies: that prepends every enabled system policy, and
+			// both halves are wrong here. Prepending would run the collector before the
+			// operator's handlers, publishing the failure as it looked before they shaped
+			// it; and only a system policy that implements the FaultPolicy contract can
+			// run here at all, which is what FaultPath opts into.
+			//
+			// Protocol-specific error formatting is still not a chain entry — it is a
+			// default the engine applies after this chain runs (policy-engine
+			// internal/faultformat) — so an API with no fault policies of its own gets a
+			// body its client can parse, and now also gets its failure recorded.
+			routeChain.FaultPolicies = appendFaultSystemPolicies(
+				mergeFaultPolicies(
+					t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					apiFaultPolicies,
+				),
+				faultSystemPolicies,
+			)
+			// Keyed by chainKey, not routeKey: an MCP multiplexed POST route files its
+			// chain under a resolver-generated key, and fault policies have to land on
+			// the same chain the engine will look up.
+			rdc.PolicyChains[chainKey] = routeChain
 		}
 	}
 
@@ -451,6 +483,93 @@ func resolvePolicyInstances(
 		result = append(result, convertAPIPolicyToSDK(p, level, versionutil.MajorVersion(resolved)))
 	}
 	return result
+}
+
+// collectFaultPolicies resolves one level's fault policies into the model policies that
+// travel to the engine. Unlike collectAPIPolicies the result is returned as models.Policy
+// directly, because fault policies bypass buildPolicyChain and InjectSystemPolicies
+// entirely: it is the authored list, in the order declared.
+//
+// An entry whose version cannot be resolved is dropped with an error logged, matching the
+// normal chain — a bad failure-path entry must not stop the API deploying.
+func (t *RestAPITransformer) collectFaultPolicies(
+	faultPolicies *[]api.Policy,
+	level policyv1alpha.Level,
+) []models.Policy {
+	return collectFaultPolicies(t.policyDefinitions, t.latestVersions, faultPolicies, level)
+}
+
+// collectFaultPolicies resolves a fault list against the policy registry.
+//
+// A free function rather than a method because two transformers need it and they are
+// different types: a REST API and an Agent resolve the same list the same way, and the only
+// thing either brings is the registry to resolve against. Duplicating it per transformer is
+// how the two would drift on which errors are skipped versus fatal.
+func collectFaultPolicies(
+	policyDefinitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	faultPolicies *[]api.Policy,
+	level policyv1alpha.Level,
+) []models.Policy {
+	if faultPolicies == nil || len(*faultPolicies) == 0 {
+		return nil
+	}
+	result := make([]models.Policy, 0, len(*faultPolicies))
+	for _, p := range *faultPolicies {
+		resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+		if err != nil {
+			slog.Error("Failed to resolve policy version for fault-policies policy",
+				"policy_name", p.Name, "level", string(level), "error", err)
+			continue
+		}
+		inst := convertAPIPolicyToSDK(p, level, versionutil.MajorVersion(resolved))
+		result = append(result, models.Policy{
+			Name:               inst.Name,
+			Version:            inst.Version,
+			Params:             inst.Parameters,
+			ExecutionCondition: inst.ExecutionCondition,
+		})
+	}
+	return result
+}
+
+// mergeFaultPolicies combines an operation's fault entries with the API's, in the order
+// they will EXECUTE: operation-level first, then API-level.
+//
+// The construction order is the opposite of buildPolicyChain's because a fault list executes
+// FORWARD, while the response chain is built API-then-operation and executed back to front.
+// Both end up running the operation's entries first.
+//
+// Both levels run; the operation does not override the API. A fault entry is a handler rather
+// than a setting, so two of them are additive.
+func mergeFaultPolicies(opFault, apiFault []models.Policy) []models.Policy {
+	if len(opFault) == 0 {
+		return apiFault
+	}
+	if len(apiFault) == 0 {
+		return opFault
+	}
+	merged := make([]models.Policy, 0, len(opFault)+len(apiFault))
+	merged = append(merged, opFault...)
+	merged = append(merged, apiFault...)
+	return merged
+}
+
+// appendFaultSystemPolicies puts the fault-path system policies after the operator's own.
+//
+// A separate function from mergeFaultPolicies because the two answer different questions.
+// mergeFaultPolicies decides precedence between two levels an operator authored, and either
+// side may legitimately be empty. This appends entries the operator did not author and
+// cannot reorder, and it must hold even when the operator authored nothing — an API with no
+// fault policies still has its failures recorded.
+func appendFaultSystemPolicies(authored, systemFault []models.Policy) []models.Policy {
+	if len(systemFault) == 0 {
+		return authored
+	}
+	out := make([]models.Policy, 0, len(authored)+len(systemFault))
+	out = append(out, authored...)
+	out = append(out, systemFault...)
+	return out
 }
 
 // buildPolicyChain builds a merged list: API-level + operation-level policies (SDK format).

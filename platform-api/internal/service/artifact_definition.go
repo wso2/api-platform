@@ -284,3 +284,47 @@ func (d *mcpProxyDefinition) Decode(content []byte) (any, error) {
 	}
 	return definition, nil
 }
+
+// agentProxyDefinition renders Agent proxies. The artifact row carries the
+// control-plane kind (AgentProxy); what it renders is the gateway's kind: Agent
+// document.
+type agentProxyDefinition struct {
+	proxyRepo  repository.AgentProxyRepository
+	agentUtils *utils.AgentProxyUtils
+}
+
+// NewAgentProxyDefinition returns the ArtifactDefinition for Agent proxies.
+func NewAgentProxyDefinition(proxyRepo repository.AgentProxyRepository, agentUtils *utils.AgentProxyUtils) ArtifactDefinition {
+	return &agentProxyDefinition{proxyRepo: proxyRepo, agentUtils: agentUtils}
+}
+
+func (d *agentProxyDefinition) Kind() string { return constants.AgentProxy }
+
+// Current renders from the persisted model, never a redacted response: the
+// upstream credential must reach the artifact as stored.
+func (d *agentProxyDefinition) Current(artifact *model.Artifact) (*ArtifactSnapshot, error) {
+	proxy, err := d.proxyRepo.GetByUUID(artifact.UUID, artifact.OrganizationUUID)
+	if err != nil {
+		return nil, err
+	}
+	if proxy == nil {
+		return nil, apperror.AgentProxyNotFound.New()
+	}
+	definition, err := d.agentUtils.BuildAgentProxyDeploymentYAML(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Agent proxy deployment YAML: %w", err)
+	}
+	return &ArtifactSnapshot{
+		Definition:  definition,
+		DataVersion: proxy.DataVersion,
+		Origin:      proxy.Origin,
+	}, nil
+}
+
+func (d *agentProxyDefinition) Decode(content []byte) (any, error) {
+	definition := &model.AgentProxyDeploymentYAML{}
+	if err := yaml.Unmarshal(content, definition); err != nil {
+		return nil, fmt.Errorf("failed to parse stored Agent proxy deployment YAML: %w", err)
+	}
+	return definition, nil
+}

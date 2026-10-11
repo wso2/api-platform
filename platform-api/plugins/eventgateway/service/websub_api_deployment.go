@@ -181,6 +181,11 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.WebSubApi, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiUUID, orgID)
 	if err != nil {
@@ -202,10 +207,11 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if req.Base == "current" {
 		d := buildWebSubAPIDeploymentYAML(websubAPI)
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(websubAPI.DataVersion)
-		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-		if err := gatewaytranslator.Translate(constants.WebSubApi, sourceDataVersion, targetDataVersion, d); err != nil {
+		translation, err := gatewaytranslator.Translate(constants.WebSubApi, sourceDataVersion, gateway.Version, d)
+		if err != nil {
 			return nil, fmt.Errorf("failed to transform WebSub API deployment for gateway %s: %w", gateway.Version, err)
 		}
+		coreservice.LogTranslationWarnings(s.slogger, translation, constants.WebSubApi, deploymentID, gatewayID, gateway.Version)
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal WebSub API deployment YAML: %w", err)
@@ -425,6 +431,10 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.WebSubApi, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
