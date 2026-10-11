@@ -364,6 +364,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.HTTPClient.TLS.InsecureSkipVerify}, // #nosec G402 -- opt-in via config
 		},
+		// The request carries the shared-key Authorization header and the
+		// webhook secret in its body; a redirect could replay both to an
+		// unvalidated target, so surface the 3xx as a registration failure.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, cfg.Webhook, webhookHTTPClient, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)

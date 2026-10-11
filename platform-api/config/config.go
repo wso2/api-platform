@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -1263,6 +1264,14 @@ func validateWebhookConfig(w *Webhook) error {
 	// row at every Create.
 	if w.AutoSeedSubscribers && w.ReceiverURL == "" {
 		return fmt.Errorf("webhook.auto_seed_subscribers=true requires webhook.receiver_url to be configured")
+	}
+	// Deliveries carry event payloads, so hold the seeded target to the same
+	// https rule the portal URL itself must satisfy.
+	if w.AutoSeedSubscribers {
+		u, err := url.Parse(w.ReceiverURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
+			return fmt.Errorf("webhook.receiver_url must be an absolute https URL when webhook.auto_seed_subscribers=true")
+		}
 	}
 	return nil
 }

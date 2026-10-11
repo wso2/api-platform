@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -94,8 +95,8 @@ type APIPortalService struct {
 
 // NewAPIPortalService constructs an APIPortalService. webhookCfg + httpClient
 // drive the webhook subscriber auto-seed path (EnsureWebhookSubscriberOnPortal);
-// a nil httpClient falls back to http.DefaultClient and is adequate for the
-// one-shot POST/PUT the seed does.
+// a nil httpClient falls back to a bounded client that refuses redirects, so a
+// hung portal cannot stall Create and credentials are never replayed elsewhere.
 func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
@@ -108,7 +109,12 @@ func NewAPIPortalService(
 	slogger *slog.Logger,
 ) *APIPortalService {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{
+			Timeout: 10 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	return &APIPortalService{
 		portalRepo:        portalRepo,
@@ -250,6 +256,8 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 				s.slogger.Error("portal webhook-subscriber auto-seed rollback failed; portal row orphaned",
 					slog.String("portalID", portal.ID), slog.String("handle", portal.Handle), slog.String("orgID", orgID),
 					slog.Any("seedErr", seedErr), slog.Any("rollbackErr", delErr))
+			} else {
+				_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, actor)
 			}
 			return nil, apperror.Internal.Wrap(seedErr).
 				WithLogMessage(fmt.Sprintf("portal webhook-subscriber auto-seed failed for handle %q", portal.Handle))
