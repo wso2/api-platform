@@ -92,16 +92,11 @@ func newDocsAssistantClient(hc config.HTTPClientConfig, timeout time.Duration) (
 	return &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
-		// Every request carries the API key, so never follow a redirect that drops TLS.
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) > 0 && via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing redirect from https to %s://%s (would send credentials in cleartext)",
-					req.URL.Scheme, req.URL.Host)
-			}
-			if len(via) >= 10 {
-				return errors.New("stopped after 10 redirects")
-			}
-			return nil
+		// Never follow a redirect: every request carries the API key in a custom header,
+		// which net/http (unlike Authorization) copies onto a redirect to another host.
+		// The chat call never needs one, so a 3xx is reported as an upstream error.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}, nil
 }

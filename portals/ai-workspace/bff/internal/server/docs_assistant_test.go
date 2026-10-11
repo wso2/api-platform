@@ -333,6 +333,32 @@ func TestDocsAssistantChat_TimeoutIs504(t *testing.T) {
 	}
 }
 
+// A redirect is never followed: the API key is a custom header, which net/http would
+// copy onto a redirect to another host.
+func TestDocsAssistantChat_DoesNotFollowRedirects(t *testing.T) {
+	var gotKey string
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("api-key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"content":"from elsewhere"}`)
+	}))
+	t.Cleanup(elsewhere.Close)
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/chat", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirecting.Close)
+	platform, _ := fakeSessionCheck(t, http.StatusOK)
+	s := docsTestServer(t, platform.URL, redirecting.URL, 5*time.Second)
+
+	rec := postChat(t, s, docsTestJWT, chatBody(docsTestQuestion, ""))
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 for a redirect", rec.Code)
+	}
+	if gotKey != "" {
+		t.Errorf("the API key was sent to the redirect target")
+	}
+}
+
 // Questions, context, answers and the API key are never logged, on success or failure.
 func TestDocsAssistantChat_DoesNotLogUserContentOrKey(t *testing.T) {
 	var logs bytes.Buffer
