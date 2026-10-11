@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 )
@@ -67,7 +68,7 @@ func TestBuildAnalyticsStruct_StoresCapturedHeadersBeforeResponse(t *testing.T) 
 	assert.Equal(t, execCtx.correlationToken, token)
 	payload, ok := store.Take(token)
 	require.True(t, ok, "stored synchronously, before the response is sent")
-	assert.Equal(t, "example.com", payload.RequestHeaders["host"])
+	assert.Equal(t, "example.com", headers.Flatten(payload.RequestHeaders)["host"])
 }
 
 // Each phase merges its own fields into the request's single entry.
@@ -84,9 +85,9 @@ func TestBuildAnalyticsStruct_MergesPhasesIntoOneEntry(t *testing.T) {
 
 	payload, ok := store.Take(execCtx.correlationToken)
 	require.True(t, ok)
-	assert.Equal(t, "1", payload.RequestHeaders["a"])
+	assert.Equal(t, "1", headers.Flatten(payload.RequestHeaders)["a"])
 	assert.Equal(t, "body", payload.RequestBody)
-	assert.Equal(t, "2", payload.ResponseHeaders["b"])
+	assert.Equal(t, "2", headers.Flatten(payload.ResponseHeaders)["b"])
 }
 
 // Whenever the store does not take a field, it must stay in Envoy metadata.
@@ -136,8 +137,8 @@ func TestCorrelation_DuplicateRequestIDsGetSeparateEntries(t *testing.T) {
 	require.True(t, ok)
 	gotB, ok := store.Take(tokenB)
 	require.True(t, ok)
-	assert.Equal(t, "a", gotA.RequestHeaders["who"])
-	assert.Equal(t, "b", gotB.RequestHeaders["who"])
+	assert.Equal(t, "a", headers.Flatten(gotA.RequestHeaders)["who"])
+	assert.Equal(t, "b", headers.Flatten(gotB.RequestHeaders)["who"])
 }
 
 // The LLM proxy's internal loopback hop keeps its data in Envoy metadata (its own
@@ -167,7 +168,7 @@ func TestCorrelation_LoopbackHopDoesNotTouchOuterEntry(t *testing.T) {
 		"outer entry is still in flight, so its slot is not reclaimable")
 	payload, ok := store.Take(outer.correlationToken)
 	require.True(t, ok)
-	assert.Equal(t, "outer", payload.RequestHeaders["who"], "outer entry untouched")
+	assert.Equal(t, "outer", headers.Flatten(payload.RequestHeaders)["who"], "outer entry untouched")
 }
 
 // Completing a finished request makes its unread entry reclaimable after the TTL.
@@ -205,7 +206,7 @@ func TestCompleteCorrelationEntry_WaitsForResponseEnd(t *testing.T) {
 		"an entry whose response may still be streaming is not reclaimable")
 	payload, ok := store.Take(execCtx.correlationToken)
 	require.True(t, ok, "the ALS handler still finds it")
-	assert.Equal(t, "b", payload.RequestHeaders["a"])
+	assert.Equal(t, "b", headers.Flatten(payload.RequestHeaders)["a"])
 }
 
 func TestEndsResponse(t *testing.T) {
@@ -266,7 +267,7 @@ func TestStoreInProcess_KeepsRepeatedHeaderValues(t *testing.T) {
 	require.NoError(t, err)
 	payload, ok := store.Take(execCtx.correlationToken)
 	require.True(t, ok)
-	assert.Equal(t, "a=1, b=2", payload.RequestHeaders["set-cookie"])
+	assert.Equal(t, "a=1, b=2", headers.Flatten(payload.RequestHeaders)["set-cookie"])
 }
 
 func TestCompleteCorrelationEntry_NilStoreIsNoop(t *testing.T) {

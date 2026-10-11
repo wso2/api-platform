@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -736,7 +737,7 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetad
 	// ...because the store already holds it for the ALS handler.
 	stored, ok := store.Take(analyticsData.GetFields()[analytics.CorrelationTokenKey].GetStringValue())
 	require.True(t, ok)
-	assert.Equal(t, "req-1", stored.RequestHeaders["x-request-id"])
+	assert.Equal(t, "req-1", headers.Flatten(stored.RequestHeaders)["x-request-id"])
 	// The immediate response's own (non-header) analytics metadata survives the
 	// short-circuit and IS still sent to Envoy, exactly as before.
 	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())

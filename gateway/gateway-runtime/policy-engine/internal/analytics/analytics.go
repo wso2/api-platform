@@ -33,6 +33,7 @@ import (
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+	hdrs "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	analytics_publisher "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/publishers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
@@ -69,9 +70,15 @@ const (
 	// OTelAnalyticsPublisher represents the OpenTelemetry analytics publisher
 	OTelAnalyticsPublisher = "otel"
 
-	// HeaderKeys represents the header keys.
+	// RequestHeadersKey, ResponseHeadersKey, RequestPayloadKey and
+	// ResponsePayloadKey are the analytics_data keys that carry captured headers
+	// and bodies. The analytics system policy writes them, the ext_proc handler
+	// (internal/kernel) hands them to the correlation store, and the ALS side reads
+	// them back. This is their only definition in the policy engine.
 	RequestHeadersKey  = "request_headers"
 	ResponseHeadersKey = "response_headers"
+	RequestPayloadKey  = "request_payload"
+	ResponsePayloadKey = "response_payload"
 
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.
 	PromptTokenCountMetadataKey string = "aitoken:prompttokencount"
@@ -311,7 +318,9 @@ func (c *Analytics) GetFaultType() FaultCategory {
 // bodies from the ext_proc↔ALS correlation store. The key is the stream's
 // correlation token (CorrelationTokenKey), which the ext_proc handler puts in
 // analytics_data whenever it stored anything -- not Envoy's request id, which a
-// client can supply and repeat across concurrent requests.
+// client can supply and repeat across concurrent requests. The token is read only
+// from analytics_data, which the engine alone writes: a same-named top-level
+// ext_proc metadata key is ignored.
 //
 // Returns ok=false when the store was never wired in (collector disabled, or a
 // caller that never called SetCorrelationStore), the entry carries no token (no
@@ -319,11 +328,10 @@ func (c *Analytics) GetFaultType() FaultCategory {
 // or the store has no entry for it. None of these are errors: anything the store
 // did not take is still in the entry's own metadata. A hit removes the entry,
 // releasing any body it carries immediately.
-func (c *Analytics) lookupCorrelationPayload(metadata map[string]string) (correlation.Payload, bool) {
+func (c *Analytics) lookupCorrelationPayload(token string) (correlation.Payload, bool) {
 	if c.correlationStore == nil {
 		return correlation.Payload{}, false
 	}
-	token := metadata[CorrelationTokenKey]
 	if token == "" {
 		return correlation.Payload{}, false
 	}
@@ -333,6 +341,7 @@ func (c *Analytics) lookupCorrelationPayload(metadata map[string]string) (correl
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
 	keyValuePairsFromMetadata := make(map[string]string)
 	typedValuePairsFromMetadata := make(map[string]interface{})
+	var correlationToken string
 
 	// Structured arguments only: slog formats them (including the prototext of the
 	// metadata struct below) only when debug logging is enabled.
@@ -349,6 +358,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 							if analyticsStruct := value.GetStructValue(); analyticsStruct != nil {
 								for analyticsKey, analyticsValue := range analyticsStruct.Fields {
 									if analyticsValue != nil {
+										if analyticsKey == CorrelationTokenKey {
+											correlationToken = analyticsValue.GetStringValue()
+											continue
+										}
 										metadataValue := analyticsValue.AsInterface()
 										typedValuePairsFromMetadata[analyticsKey] = metadataValue
 										if stringValue, ok := metadataValue.(string); ok {
@@ -359,6 +372,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 									}
 								}
 							}
+						} else if key == CorrelationTokenKey {
+							// Reserved for analytics_data: a top-level key of this name
+							// comes from a policy and must not select a stored entry.
+							continue
 						} else {
 							// Handle regular string values
 							metadataValue := value.AsInterface()
@@ -378,7 +395,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// Consulted once here and used below where request/response headers are
 	// attached to the event; every other field in this function is unaffected
 	// and continues to come from the ALS-decoded metadata above.
-	storedPayload, storeHit := c.lookupCorrelationPayload(keyValuePairsFromMetadata)
+	storedPayload, storeHit := c.lookupCorrelationPayload(correlationToken)
 
 	event := &dto.Event{}
 	slog.Debug("Analytics metadata", "values", keyValuePairsFromMetadata)
@@ -695,7 +712,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// Adding request and response headers for the analytics event. The
 	// correlation-store hit is the steady-state path (see lookupCorrelationPayload
-	// above): headers arrive already typed as map[string]string, so no
+	// above): headers arrive already typed (map[string]string, or
+	// map[string][]string when a header filter kept repeated values), so no
 	// JSON-decode is needed here at all. Each direction falls back independently
 	// to the ALS-decoded metadata (kept for requests the store never had -- e.g.
 	// no ext_proc stream at all -- or a genuine store miss), which is always a
@@ -704,14 +722,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// A stored empty map is a deliberate "no headers" (filtered out in a later phase)
 	// and must not fall back to metadata.
 	if storeHit && storedPayload.RequestHeaders != nil {
-		if len(storedPayload.RequestHeaders) > 0 {
+		if hdrs.Count(storedPayload.RequestHeaders) > 0 {
 			event.Properties[dto.PropKeyRequestHeaders] = storedPayload.RequestHeaders
 		}
 	} else if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
 		event.Properties[dto.PropKeyRequestHeaders] = requestHeaders
 	}
 	if storeHit && storedPayload.ResponseHeaders != nil {
-		if len(storedPayload.ResponseHeaders) > 0 {
+		if hdrs.Count(storedPayload.ResponseHeaders) > 0 {
 			event.Properties[dto.PropKeyResponseHeaders] = storedPayload.ResponseHeaders
 		}
 	} else if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
@@ -719,12 +737,12 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Optionally attach request and response payloads when enabled via the collector.
-	// Bodies within the correlation store's limit arrive through it (see
-	// kernel.inProcessBody); larger ones are still in the access-log metadata.
+	// Bodies within the correlation store's limits arrive through it; larger ones,
+	// and ones it refused, are still in the access-log metadata.
 	if c.cfg.Collector.RequestBody {
 		if storeHit && storedPayload.RequestBody != "" {
 			event.Properties[dto.PropKeyRequestPayload] = storedPayload.RequestBody
-		} else if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
+		} else if requestPayload, ok := keyValuePairsFromMetadata[RequestPayloadKey]; ok && requestPayload != "" {
 			event.Properties[dto.PropKeyRequestPayload] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
@@ -732,7 +750,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if c.cfg.Collector.ResponseBody {
 		if storeHit && storedPayload.ResponseBody != "" {
 			event.Properties[dto.PropKeyResponsePayload] = storedPayload.ResponseBody
-		} else if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
+		} else if responsePayload, ok := keyValuePairsFromMetadata[ResponsePayloadKey]; ok && responsePayload != "" {
 			event.Properties[dto.PropKeyResponsePayload] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))
 		}

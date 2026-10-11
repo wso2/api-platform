@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/headers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
@@ -44,13 +45,13 @@ func TestMain(m *testing.M) {
 func TestStore_PutTake_Hit(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
 	p := Payload{RequestHeaders: map[string]string{"host": "example.com"}}
-	s.Put("req-1", p)
+	putCompleted(s, "req-1", p)
 
 	got, ok := s.Take("req-1")
 	if !ok {
 		t.Fatal("expected a hit")
 	}
-	if got.RequestHeaders["host"] != "example.com" {
+	if headers.Flatten(got.RequestHeaders)["host"] != "example.com" {
 		t.Fatalf("unexpected payload: %+v", got)
 	}
 }
@@ -74,7 +75,7 @@ func TestStore_Take_MissForEmptyKey(t *testing.T) {
 
 func TestStore_Put_EmptyPayloadIsNoop(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
-	s.Put("req-1", Payload{})
+	putCompleted(s, "req-1", Payload{})
 	if s.Has("req-1") {
 		t.Fatal("expected an empty payload to never be stored")
 	}
@@ -82,7 +83,7 @@ func TestStore_Put_EmptyPayloadIsNoop(t *testing.T) {
 
 func TestStore_Put_EmptyKeyIsNoop(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
-	s.Put("", Payload{RequestHeaders: map[string]string{"a": "b"}})
+	putCompleted(s, "", Payload{RequestHeaders: map[string]string{"a": "b"}})
 	if s.Has("") {
 		t.Fatal("expected an empty key to never be stored")
 	}
@@ -92,7 +93,7 @@ func TestStore_Put_EmptyKeyIsNoop(t *testing.T) {
 // taken or its slot is reclaimed for a new request.
 func TestStore_TTLMakesCompletedEntryReclaimableNotInvisible(t *testing.T) {
 	s := NewStore(1, 10*time.Millisecond, 1)
-	s.Put("req-1", Payload{RequestHeaders: map[string]string{"host": "example.com"}})
+	putCompleted(s, "req-1", Payload{RequestHeaders: map[string]string{"host": "example.com"}})
 
 	time.Sleep(30 * time.Millisecond)
 	if !s.Has("req-1") {
@@ -152,21 +153,21 @@ func TestStore_MergeIntoExistingEntryOnFullShard(t *testing.T) {
 		t.Fatal("expected merge into the existing entry to succeed")
 	}
 	got, ok := s.Take("req-1")
-	if !ok || got.RequestHeaders["a"] != "1" || got.ResponseHeaders["b"] != "2" {
+	if !ok || headers.Flatten(got.RequestHeaders)["a"] != "1" || headers.Flatten(got.ResponseHeaders)["b"] != "2" {
 		t.Fatalf("expected both phases merged, got %+v (ok=%v)", got, ok)
 	}
 }
 
 func TestStore_PutTwiceUpdatesInPlace(t *testing.T) {
 	s := NewStore(100, time.Minute, 4)
-	s.Put("req-1", Payload{RequestHeaders: map[string]string{"v": "1"}})
-	s.Put("req-1", Payload{RequestHeaders: map[string]string{"v": "2"}})
+	putCompleted(s, "req-1", Payload{RequestHeaders: map[string]string{"v": "1"}})
+	putCompleted(s, "req-1", Payload{RequestHeaders: map[string]string{"v": "2"}})
 
 	got, ok := s.Take("req-1")
 	if !ok {
 		t.Fatal("expected a hit")
 	}
-	if got.RequestHeaders["v"] != "2" {
+	if headers.Flatten(got.RequestHeaders)["v"] != "2" {
 		t.Fatalf("expected the second write to win, got %+v", got)
 	}
 }
@@ -188,7 +189,7 @@ func TestStore_ConcurrentPutHas(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < opsPerGoroutine; i++ {
 				key := fmt.Sprintf("g%d-req-%d", g, i)
-				s.Put(key, Payload{
+				putCompleted(s, key, Payload{
 					RequestHeaders:  map[string]string{"host": "example.com"},
 					ResponseHeaders: map[string]string{"content-type": "application/json"},
 				})
@@ -201,25 +202,25 @@ func TestStore_ConcurrentPutHas(t *testing.T) {
 
 func TestStore_Take_RemovesEntryAndFreesSlot(t *testing.T) {
 	s := NewStore(1, time.Minute, 1)
-	s.Put("a", Payload{RequestHeaders: map[string]string{"h": "1"}})
+	putCompleted(s, "a", Payload{RequestHeaders: map[string]string{"h": "1"}})
 
 	got, ok := s.Take("a")
 	require.True(t, ok)
-	assert.Equal(t, "1", got.RequestHeaders["h"])
+	assert.Equal(t, "1", headers.Flatten(got.RequestHeaders)["h"])
 
 	assert.False(t, s.Has("a"), "taken entry must be gone")
 
 	// The single ring slot was freed by Take, so this write must not count as an
 	// eviction of "a" and must not disturb a different, live key.
-	s.Put("b", Payload{RequestHeaders: map[string]string{"h": "2"}})
+	putCompleted(s, "b", Payload{RequestHeaders: map[string]string{"h": "2"}})
 	got, ok = s.Take("b")
 	require.True(t, ok)
-	assert.Equal(t, "2", got.RequestHeaders["h"])
+	assert.Equal(t, "2", headers.Flatten(got.RequestHeaders)["h"])
 }
 
 func TestStore_Has_DoesNotRemove(t *testing.T) {
 	s := NewStoreWithBodyLimits(10, time.Minute, 1, 10, 100)
-	s.Put("a", Payload{RequestBody: "x"})
+	putCompleted(s, "a", Payload{RequestBody: "x"})
 	assert.True(t, s.Has("a"))
 	assert.True(t, s.Has("a"), "Has only reports presence")
 	got, ok := s.Take("a")
@@ -237,13 +238,13 @@ func TestStore_BodyBudget_RefusesOrReclaimsStale(t *testing.T) {
 	assert.False(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "no room, and the existing body is in flight")
 	_, ok := s.Take("new")
 	assert.False(t, ok, "a refused merge stores nothing")
-	assert.True(t, s.Merge("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}}), "headers are not charged")
+	assert.True(t, s.Merge("headers-only", Payload{RequestHeaders: map[string]string{"h": "v"}}), "2 header bytes still fit")
 
 	s.Complete("in-flight")
 	time.Sleep(30 * time.Millisecond)
 	assert.True(t, s.Merge("new", Payload{RequestBody: "abcdef"}), "stale completed body reclaimed")
 	assert.False(t, s.Has("in-flight"))
-	assert.Equal(t, int64(6), s.shards[0].bodyBytes)
+	assert.Equal(t, int64(8), s.shards[0].bytes, "6 body bytes plus 2 header bytes")
 }
 
 // A body over the per-body limit is refused outright.
@@ -255,11 +256,11 @@ func TestStore_BodyOverLimitRefused(t *testing.T) {
 
 func TestStore_BodyBudget_TakeReleasesBytes(t *testing.T) {
 	s := NewStoreWithBodyLimits(100, time.Minute, 1, 10, 10)
-	s.Put("a", Payload{RequestBody: "123456"})
+	putCompleted(s, "a", Payload{RequestBody: "123456"})
 	_, ok := s.Take("a")
 	require.True(t, ok)
-	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
-	s.Put("b", Payload{RequestBody: "abcdef"})
+	assert.Equal(t, int64(0), s.shards[0].bytes)
+	putCompleted(s, "b", Payload{RequestBody: "abcdef"})
 	assert.True(t, s.Has("b"))
 }
 
@@ -268,10 +269,10 @@ func TestStore_BodyBudget_UpdateInPlaceAccounting(t *testing.T) {
 	require.True(t, s.Merge("a", Payload{RequestBody: "1234"}))
 	require.True(t, s.Merge("a", Payload{RequestBody: "12"})) // replaces the request body
 	require.True(t, s.Merge("a", Payload{ResponseBody: "123"}))
-	assert.Equal(t, int64(5), s.shards[0].bodyBytes)
+	assert.Equal(t, int64(5), s.shards[0].bytes)
 	_, ok := s.Take("a")
 	require.True(t, ok)
-	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
+	assert.Equal(t, int64(0), s.shards[0].bytes)
 }
 
 func TestStore_MaxPayloadBytes(t *testing.T) {
@@ -283,24 +284,33 @@ func TestStore_MaxPayloadBytes(t *testing.T) {
 	assert.Equal(t, 50, NewStoreWithBodyLimits(10, time.Minute, 4, 100, 200).MaxPayloadBytes())
 }
 
-// An entry that never completes is not reclaimable by the TTL, only by the hard
-// cap -- the access-log entry of a long streamed response must still find it.
-func TestStore_IncompleteEntryOnlyReclaimedAfterHardCap(t *testing.T) {
+// An entry that never completes is not reclaimable by the TTL, only after the max
+// entry age -- the access-log entry of a long streamed response must still find it.
+func TestStore_IncompleteEntryOnlyReclaimedAfterMaxEntryAge(t *testing.T) {
 	s := NewStore(1, time.Nanosecond, 1)
+	s.maxIncompleteAge = 50 * time.Millisecond
 	require.True(t, s.Merge("streaming", Payload{RequestHeaders: map[string]string{"h": "1"}}))
 	time.Sleep(time.Millisecond)
 	assert.False(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}),
 		"past the TTL but never completed: not reclaimable")
 
-	s.maxIncompleteAge = time.Millisecond
-	time.Sleep(2 * time.Millisecond)
-	assert.True(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}), "past the hard cap: reclaimed")
+	time.Sleep(60 * time.Millisecond)
+	assert.True(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}), "past the max entry age: reclaimed")
 	assert.False(t, s.Has("streaming"))
 }
 
-func TestStore_HardCapIsAtLeastTTL(t *testing.T) {
-	assert.Equal(t, incompleteEntryMaxAge, NewStore(10, time.Minute, 1).maxIncompleteAge)
+func TestStore_MaxEntryAgeDefaultsAndIsAtLeastTTL(t *testing.T) {
+	assert.Equal(t, defaultMaxEntryAge, NewStore(10, time.Minute, 1).maxIncompleteAge)
 	assert.Equal(t, 2*time.Hour, NewStore(10, 2*time.Hour, 1).maxIncompleteAge)
+
+	s := NewStoreFromConfig(config.CollectorConfig{CorrelationStore: config.CorrelationStoreConfig{
+		Capacity: 10, TTL: time.Minute, Shards: 1, MaxEntryAge: 10 * time.Minute,
+	}})
+	assert.Equal(t, 10*time.Minute, s.maxIncompleteAge)
+	s = NewStoreFromConfig(config.CollectorConfig{CorrelationStore: config.CorrelationStoreConfig{
+		Capacity: 10, TTL: time.Minute, Shards: 1, MaxEntryAge: time.Second,
+	}})
+	assert.Equal(t, time.Minute, s.maxIncompleteAge, "never below the TTL")
 }
 
 func totalSlots(s *Store) int {
@@ -378,8 +388,8 @@ func TestStore_NilHeaderMapKeepsStoredHeaders(t *testing.T) {
 
 	got, ok := s.Take("req-1")
 	require.True(t, ok)
-	assert.Equal(t, "b", got.RequestHeaders["a"])
-	assert.Equal(t, "d", got.ResponseHeaders["c"])
+	assert.Equal(t, "b", headers.Flatten(got.RequestHeaders)["a"])
+	assert.Equal(t, "d", headers.Flatten(got.ResponseHeaders)["c"])
 }
 
 func TestStore_UpdateNeverCreatesAnEntry(t *testing.T) {
@@ -391,7 +401,7 @@ func TestStore_UpdateNeverCreatesAnEntry(t *testing.T) {
 	assert.True(t, s.Update("req-1", Payload{ResponseHeaders: map[string]string{"c": "d"}}))
 	got, ok := s.Take("req-1")
 	require.True(t, ok)
-	assert.Equal(t, "d", got.ResponseHeaders["c"])
+	assert.Equal(t, "d", headers.Flatten(got.ResponseHeaders)["c"])
 }
 
 func TestStore_DiscardRemovesEntryAndBodyBytes(t *testing.T) {
@@ -399,7 +409,7 @@ func TestStore_DiscardRemovesEntryAndBodyBytes(t *testing.T) {
 	require.True(t, s.Merge("req-1", Payload{RequestBody: "body"}))
 	s.Discard("req-1")
 	assert.False(t, s.Has("req-1"))
-	assert.Equal(t, int64(0), s.shards[0].bodyBytes)
+	assert.Equal(t, int64(0), s.shards[0].bytes)
 }
 
 type countingCounter struct{ n float64 }
@@ -421,4 +431,99 @@ func TestStore_DisabledBodiesAreNotCountedAsRejected(t *testing.T) {
 	limited.rejectedBudgetTotal = budget
 	assert.False(t, limited.Merge("req-1", Payload{RequestBody: "too long"}))
 	assert.Equal(t, float64(1), budget.n, "a body over the per-body limit is still counted")
+}
+
+// putCompleted stores payload under key and marks its response finished, the way a
+// request whose response ended is handed over.
+func putCompleted(s *Store, key string, payload Payload) bool {
+	if !s.Merge(key, payload) {
+		return false
+	}
+	s.Complete(key)
+	return true
+}
+
+// A header filter's multi-value map is kept as it is, so repeated values stay
+// separate for consumers that export them separately (OTel).
+func TestStore_KeepsMultiValueHeaders(t *testing.T) {
+	s := NewStore(10, time.Minute, 1)
+	require.True(t, s.Merge("k", Payload{RequestHeaders: map[string][]string{"x-multi": {"a", "b"}}}))
+	got, ok := s.Take("k")
+	require.True(t, ok)
+	assert.Equal(t, map[string][]string{"x-multi": {"a", "b"}}, got.RequestHeaders)
+}
+
+// Header names and values count toward the byte budget, so header memory is
+// bounded like body memory; headers that do not fit stay in metadata.
+func TestStore_HeadersCountTowardByteBudget(t *testing.T) {
+	s := NewStoreWithBodyLimits(10, time.Minute, 1, 8, 8)
+	require.True(t, s.Merge("a", Payload{RequestHeaders: map[string]string{"k": "1234"}}), "5 bytes fit")
+	assert.Equal(t, int64(5), s.shards[0].bytes)
+	assert.False(t, s.Merge("b", Payload{RequestHeaders: map[string]string{"k": "1234"}}), "5 more do not")
+	assert.True(t, s.Merge("a", Payload{RequestHeaders: map[string]string{"k": "1"}}), "a smaller replacement always fits")
+	assert.Equal(t, int64(2), s.shards[0].bytes)
+	_, _ = s.Take("a")
+	assert.Equal(t, int64(0), s.shards[0].bytes)
+}
+
+// A completed entry follows the TTL only: a long stream that finishes after the max
+// entry age is not reclaimable until the TTL has passed since completion.
+func TestStore_CompletedEntryFollowsTTLOnly(t *testing.T) {
+	s := NewStore(1, 50*time.Millisecond, 1)
+	s.maxIncompleteAge = 50 * time.Millisecond
+	require.True(t, s.Merge("long-stream", Payload{RequestHeaders: map[string]string{"h": "1"}}))
+	time.Sleep(60 * time.Millisecond) // older than the max entry age
+	s.Complete("long-stream")
+	assert.False(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}),
+		"just completed: the ALS handler must still find it")
+	assert.True(t, s.Has("long-stream"))
+
+	time.Sleep(60 * time.Millisecond)
+	assert.True(t, s.Merge("next", Payload{RequestHeaders: map[string]string{"h": "2"}}), "TTL after completion passed")
+}
+
+func TestStore_ClearUnsetsOneField(t *testing.T) {
+	s := NewStoreWithBodyLimits(10, time.Minute, 1, 100, 100)
+	require.True(t, s.Merge("k", Payload{RequestHeaders: map[string]string{"h": "v"}, ResponseBody: "older-body"}))
+	s.Clear("k", FieldResponseBody)
+	got, ok := s.Take("k")
+	require.True(t, ok)
+	assert.Empty(t, got.ResponseBody)
+	assert.Equal(t, map[string]string{"h": "v"}, got.RequestHeaders)
+	assert.Equal(t, int64(0), s.shards[0].bytes)
+	s.Clear("missing", FieldRequestBody) // no entry: no-op
+}
+
+// A full shard with nothing reclaimable is not rescanned on every write: the
+// earliest reclaim time is remembered, and completing an entry resets it.
+func TestStore_FullShardSkipsRescanUntilReclaimable(t *testing.T) {
+	s := NewStore(1, time.Millisecond, 1)
+	require.True(t, s.Merge("a", Payload{RequestHeaders: map[string]string{"h": "1"}}))
+	assert.False(t, s.Merge("b", Payload{RequestHeaders: map[string]string{"h": "2"}}))
+	sh := s.shards[0]
+	assert.False(t, sh.noSlotBefore.IsZero(), "the failed scan recorded when to look again")
+	assert.WithinDuration(t, time.Now().Add(defaultMaxEntryAge), sh.noSlotBefore, time.Second)
+
+	s.Complete("a")
+	assert.True(t, sh.noSlotBefore.IsZero(), "completion can make an entry reclaimable sooner")
+	time.Sleep(5 * time.Millisecond)
+	assert.True(t, s.Merge("b", Payload{RequestHeaders: map[string]string{"h": "2"}}))
+}
+
+// Evictions are counted by why the entry was reclaimable.
+func TestStore_EvictionsCountedByReason(t *testing.T) {
+	s := NewStore(1, time.Millisecond, 1)
+	s.maxIncompleteAge = 20 * time.Millisecond
+	ttl, age := &countingCounter{}, &countingCounter{}
+	s.evictedTTLTotal, s.evictedMaxAgeTotal = ttl, age
+
+	require.True(t, s.Merge("never-finished", Payload{RequestHeaders: map[string]string{"h": "1"}}))
+	time.Sleep(30 * time.Millisecond)
+	require.True(t, s.Merge("finished", Payload{RequestHeaders: map[string]string{"h": "2"}}))
+	assert.Equal(t, float64(1), age.n)
+
+	s.Complete("finished")
+	time.Sleep(5 * time.Millisecond)
+	require.True(t, s.Merge("third", Payload{RequestHeaders: map[string]string{"h": "3"}}))
+	assert.Equal(t, float64(1), ttl.n)
 }

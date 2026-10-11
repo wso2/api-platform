@@ -819,10 +819,16 @@ capacity = 20000
 # before its slot may be reused for another request. The read normally follows
 # about a second after the request ends. An entry reused before it is read loses
 # its captured headers and bodies (counted by the evictions metric), so keep this
-# well above collector.server.buffer_flush_interval (validated) and any backlog of
-# the access-log consumers. An entry whose response is still streaming is not
-# affected (one-hour hard cap instead).
+# well above collector.server.buffer_flush_interval and any backlog of the
+# access-log consumers. A ttl not longer than the flush interval is raised to twice
+# the flush interval at startup, with a warning. An entry whose response is still
+# streaming is not affected (max_entry_age instead).
 ttl = "30s"
+# How long an entry whose response was never seen to finish may hold its slot
+# before it can be reused. Such entries are mostly requests whose access-log entry
+# Envoy dropped, but a response that keeps streaming longer than this can lose its
+# captured fields if the store needs the slot. Raised to ttl if lower.
+max_entry_age = "5m"
 # Independently-locked partitions, selected by hashing the per-stream correlation
 # token. Rounded up to the next power of two if not one already; at most 1024 and
 # at most capacity (capacity must be >= shards; capacity at most 10,000,000).
@@ -831,9 +837,9 @@ shards = 32
 # carried in-process instead of through Envoy dynamic metadata. Larger bodies use
 # the metadata path. 0 keeps every body in metadata.
 max_payload_bytes = 262144
-# Total body bytes the store may hold. Bodies are released as soon as their
-# access-log entry is processed; a body that does not fit stays in metadata.
-# 0 keeps every body in metadata.
+# Total bytes of captured headers and bodies the store may hold. They are released
+# as soon as their access-log entry is processed; a field that does not fit stays
+# in metadata. 0 keeps every body in metadata (headers then share a 16 MiB budget).
 max_body_bytes = 16777216
 
 # =============================================================================

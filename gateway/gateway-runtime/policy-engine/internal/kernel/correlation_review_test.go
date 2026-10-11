@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
 
 // A later phase that filters every captured header out (an analytics header
@@ -180,4 +181,82 @@ func TestBuildAnalyticsStruct_LateRewriteIntoIgnoredPathReleasesEntry(t *testing
 	// Header maps travel through metadata as a JSON string, as on the pre-store path.
 	assert.JSONEq(t, `{"a":"b"}`, st.GetFields()["request_headers"].GetStringValue())
 	assert.Equal(t, "body", st.GetFields()["request_payload"].GetStringValue())
+}
+
+// No token is allocated while the store refuses a stream's fields, so its
+// access-log entry is not counted as a store miss.
+func TestBuildAnalyticsStruct_NoTokenWhenFirstFieldRefused(t *testing.T) {
+	store := correlation.NewStore(1, time.Minute, 1)
+	server := newTestServerWithStore(t, store)
+	_, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"a": "b"}}, correlatedExecCtx(server, "fills-the-store"))
+	require.NoError(t, err)
+
+	refused := correlatedExecCtx(server, "refused")
+	st, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string]string{"c": "d"}}, refused)
+	require.NoError(t, err)
+	assert.Contains(t, st.GetFields(), "request_headers")
+	assert.NotContains(t, st.GetFields(), analytics.CorrelationTokenKey)
+	assert.Empty(t, refused.correlationToken)
+}
+
+// When a newer value of an already stored field is refused (a streamed response
+// body that outgrew max_payload_bytes), the older stored copy is cleared so the
+// newer value in metadata is the one logged.
+func TestBuildAnalyticsStruct_RefusedNewerBodyClearsStoredOne(t *testing.T) {
+	store := correlation.NewStoreWithBodyLimits(10, time.Minute, 1, 8, 1024)
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
+
+	_, err := buildAnalyticsStruct(map[string]any{"response_payload": "chunk1"}, execCtx)
+	require.NoError(t, err)
+	st, err := buildAnalyticsStruct(map[string]any{"response_payload": "chunk1chunk2"}, execCtx)
+	require.NoError(t, err)
+	assert.Equal(t, "chunk1chunk2", st.GetFields()["response_payload"].GetStringValue())
+
+	payload, ok := store.Take(execCtx.correlationToken)
+	require.True(t, ok)
+	assert.Empty(t, payload.ResponseBody, "the truncated older copy is not logged")
+}
+
+// A header filter's repeated values reach the store unflattened.
+func TestBuildAnalyticsStruct_KeepsMultiValueHeaders(t *testing.T) {
+	store := correlation.NewStore(10, time.Minute, 1)
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, store), "req-1")
+	_, err := buildAnalyticsStruct(map[string]any{
+		"request_headers": map[string][]string{"x-multi": {"a=1", "b=2"}},
+	}, execCtx)
+	require.NoError(t, err)
+	payload, ok := store.Take(execCtx.correlationToken)
+	require.True(t, ok)
+	assert.Equal(t, map[string][]string{"x-multi": {"a=1", "b=2"}}, payload.RequestHeaders)
+}
+
+// A policy cannot set the token as a top-level key of the ext_proc metadata
+// namespace either.
+func TestBuildDynamicMetadata_DropsPolicySuppliedToken(t *testing.T) {
+	md := buildDynamicMetadata(nil, nil, map[string]map[string]interface{}{
+		constants.ExtProcFilterName: {
+			analytics.CorrelationTokenKey: "someone-elses-token",
+			"policy-key":                  "kept",
+		},
+	})
+	ns := md.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, ns)
+	assert.NotContains(t, ns.GetFields(), analytics.CorrelationTokenKey)
+	assert.Equal(t, "kept", ns.GetFields()["policy-key"].GetStringValue())
+}
+
+// With the store off, an unchanged header map re-sent by a later phase reuses its
+// encoding instead of being JSON-encoded again.
+func TestBuildAnalyticsStruct_ReusesEncodingOfUnchangedFields(t *testing.T) {
+	execCtx := correlatedExecCtx(newTestServerWithStore(t, nil), "req-1")
+	reqHeaders := map[string][]string{"x-multi": {"a", "b"}}
+	first, err := buildAnalyticsStruct(map[string]any{"request_headers": reqHeaders}, execCtx)
+	require.NoError(t, err)
+	second, err := buildAnalyticsStruct(map[string]any{"request_headers": reqHeaders}, execCtx)
+	require.NoError(t, err)
+	assert.Same(t, first.GetFields()["request_headers"], second.GetFields()["request_headers"])
+
+	third, err := buildAnalyticsStruct(map[string]any{"request_headers": map[string][]string{"x-multi": {"c"}}}, execCtx)
+	require.NoError(t, err)
+	assert.NotSame(t, first.GetFields()["request_headers"], third.GetFields()["request_headers"], "a new value is encoded")
 }

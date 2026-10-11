@@ -76,19 +76,11 @@ const (
 	TerminalReasonKey = Wso2MetadataPrefix + "terminal-reason"
 )
 
-// analyticsRequestHeadersKey / analyticsResponseHeadersKey are the analytics-metadata
-// keys the analytics system policy (gateway/system-policies/analytics) uses to carry
-// captured request/response headers. They are excluded from what buildAnalyticsStruct
-// sends to Envoy -- see its doc comment -- so they must be spelled out here rather than
-// imported: the system policy is a separate Go module with no shared dependency on this
-// package, and the two sides agree on the key names only by (documented) convention.
+// The captured header and body keys (request_headers, response_headers,
+// request_payload, response_payload) are defined once, in internal/analytics, and
+// shared with the ALS side. The analytics system policy is a separate Go module and
+// spells out the same names by documented convention.
 const (
-	analyticsRequestHeadersKey  = "request_headers"
-	analyticsResponseHeadersKey = "response_headers"
-	// analyticsRequestPayloadKey / analyticsResponsePayloadKey carry captured bodies
-	// (collector.request_body / collector.response_body), by the same convention.
-	analyticsRequestPayloadKey  = "request_payload"
-	analyticsResponsePayloadKey = "response_payload"
 	// analyticsInternalLoopbackKey is the marker the analytics system policy stamps
 	// on the LLM proxy's internal loopback hop, by the same convention.
 	analyticsInternalLoopbackKey = "x-wso2-internal-loopback"
@@ -107,15 +99,11 @@ var (
 	correlationTokenSeq atomic.Uint64
 )
 
-// correlationKey returns this stream's correlation-store key, creating it on
-// first use. The request id cannot serve as the key: Envoy keeps a client-supplied
-// x-request-id, so concurrent requests can share one and would overwrite or
-// consume each other's entry.
-func (ec *PolicyExecutionContext) correlationKey() string {
-	if ec.correlationToken == "" {
-		ec.correlationToken = correlationTokenPrefix + strconv.FormatUint(correlationTokenSeq.Add(1), 36)
-	}
-	return ec.correlationToken
+// newCorrelationToken returns a fresh correlation-store key. The request id cannot
+// serve as the key: Envoy keeps a client-supplied x-request-id, so concurrent
+// requests can share one and would overwrite or consume each other's entry.
+func newCorrelationToken() string {
+	return correlationTokenPrefix + strconv.FormatUint(correlationTokenSeq.Add(1), 36)
 }
 
 // correlatesInProcess reports whether this request may hand captured data to the
@@ -139,8 +127,8 @@ func correlatesInProcess(execCtx *PolicyExecutionContext, data map[string]any) b
 // fields the correlation store carries.
 func isCorrelatedField(key string) bool {
 	switch key {
-	case analyticsRequestHeadersKey, analyticsResponseHeadersKey,
-		analyticsRequestPayloadKey, analyticsResponsePayloadKey:
+	case analytics.RequestHeadersKey, analytics.ResponseHeadersKey,
+		analytics.RequestPayloadKey, analytics.ResponsePayloadKey:
 		return true
 	}
 	return false
@@ -189,50 +177,78 @@ func sameFieldValue(a, b any) bool {
 // of Envoy metadata. It runs while the ext_proc response for this phase is being
 // built, before that response is sent, so Envoy cannot emit the request's
 // access-log entry before the data is in the store. A field the store refuses (no
-// free slot, a body over the size or byte budget) stays in metadata, the
-// pre-store path. The caller has already checked that key is a correlated field
-// and that the request's path is not ignored.
+// free slot, a body over the size limit, headers and bodies over the byte budget)
+// stays in metadata, the pre-store path. The caller has already checked that key
+// is a correlated field and that the request's path is not ignored.
+//
+// The stream's token is created only when the store accepts its first field, so a
+// stream whose fields all stay in metadata sends no token and its access-log entry
+// is not counted as a store miss.
 //
 // A header field always replaces the stored one, even when it is empty or of a
 // shape that cannot be decoded: a later phase may have filtered the headers an
 // earlier phase captured (analytics header filter), and the stored copy must not
-// outlive that. An empty or undecodable value is logged as no headers either way.
+// outlive that. When a newer value of an already stored field is refused, the
+// stored copy is cleared, so the newer value left in metadata is the one logged.
 func storeInProcess(execCtx *PolicyExecutionContext, key string, value any) bool {
 	if prev, ok := execCtx.storedFields[key]; ok && sameFieldValue(prev, value) {
 		return true
 	}
 	var p correlation.Payload
+	var field correlation.Field
 	switch key {
-	case analyticsRequestHeadersKey:
-		p.RequestHeaders = flattenOrEmpty(value)
-	case analyticsResponseHeadersKey:
-		p.ResponseHeaders = flattenOrEmpty(value)
-	case analyticsRequestPayloadKey:
+	case analytics.RequestHeadersKey:
+		p.RequestHeaders, field = capturedHeaders(value), correlation.FieldRequestHeaders
+	case analytics.ResponseHeadersKey:
+		p.ResponseHeaders, field = capturedHeaders(value), correlation.FieldResponseHeaders
+	case analytics.RequestPayloadKey:
 		p.RequestBody, _ = value.(string)
-	case analyticsResponsePayloadKey:
+		field = correlation.FieldRequestBody
+	case analytics.ResponsePayloadKey:
 		p.ResponseBody, _ = value.(string)
+		field = correlation.FieldResponseBody
 	}
 	store := execCtx.server.correlationStore
 	var ok bool
-	if execCtx.correlationEntryCreated {
+	if execCtx.correlationToken != "" {
 		ok = store.Update(execCtx.correlationToken, p)
-	} else if ok = store.Merge(execCtx.correlationKey(), p); ok {
-		execCtx.correlationEntryCreated = true
+	} else if token := newCorrelationToken(); store.Merge(token, p) {
+		execCtx.correlationToken, ok = token, true
 	}
-	if ok {
-		if execCtx.storedFields == nil {
-			execCtx.storedFields = make(map[string]any, 4)
+	if !ok {
+		if _, stored := execCtx.storedFields[key]; stored {
+			store.Clear(execCtx.correlationToken, field)
+			delete(execCtx.storedFields, key)
 		}
-		execCtx.storedFields[key] = value
+		return false
 	}
-	return ok
+	if execCtx.storedFields == nil {
+		execCtx.storedFields = make(map[string]any, 4)
+	}
+	execCtx.storedFields[key] = value
+	return true
 }
 
-// flattenOrEmpty is headers.Flatten that returns an empty, non-nil map instead of
-// nil, so the store records "no headers" rather than ignoring the field.
-func flattenOrEmpty(value any) map[string]string {
-	if h := headers.Flatten(value); h != nil {
-		return h
+// capturedHeaders returns a captured header value in a shape the store and every
+// publisher understand, keeping repeated values separate when the source did
+// (analytics header filter): map[string]string and map[string][]string are kept
+// as they are, anything else is decoded with headers.Values. An empty or
+// undecodable value becomes an empty map: "no headers", which still replaces an
+// earlier stored value.
+func capturedHeaders(value any) any {
+	switch h := value.(type) {
+	case map[string]string:
+		if h != nil {
+			return h
+		}
+	case map[string][]string:
+		if h != nil {
+			return h
+		}
+	default:
+		if v := headers.Values(value); v != nil {
+			return v
+		}
 	}
 	return map[string]string{}
 }
@@ -247,7 +263,6 @@ func flattenOrEmpty(value any) map[string]string {
 func releaseCorrelationEntry(execCtx *PolicyExecutionContext, analyticsData map[string]any, fields map[string]*structpb.Value) {
 	stored, ok := execCtx.server.correlationStore.Take(execCtx.correlationToken)
 	execCtx.correlationToken = ""
-	execCtx.correlationEntryCreated = false
 	execCtx.storedFields = nil
 	if !ok {
 		return
@@ -260,10 +275,39 @@ func releaseCorrelationEntry(execCtx *PolicyExecutionContext, analyticsData map[
 			fields[key] = v
 		}
 	}
-	restore(analyticsRequestHeadersKey, stored.RequestHeaders, stored.RequestHeaders != nil)
-	restore(analyticsResponseHeadersKey, stored.ResponseHeaders, stored.ResponseHeaders != nil)
-	restore(analyticsRequestPayloadKey, stored.RequestBody, stored.RequestBody != "")
-	restore(analyticsResponsePayloadKey, stored.ResponseBody, stored.ResponseBody != "")
+	restore(analytics.RequestHeadersKey, stored.RequestHeaders, stored.RequestHeaders != nil)
+	restore(analytics.ResponseHeadersKey, stored.ResponseHeaders, stored.ResponseHeaders != nil)
+	restore(analytics.RequestPayloadKey, stored.RequestBody, stored.RequestBody != "")
+	restore(analytics.ResponsePayloadKey, stored.ResponseBody, stored.ResponseBody != "")
+}
+
+// encodeAnalyticsValue is convertToStructValue that, for captured header and body
+// fields, reuses the previous phase's encoding when the same value is sent again.
+// Later phases re-send the request-phase analytics unchanged, and a header map is
+// JSON-encoded on each send when it stays in metadata (store off, TCP mode, or a
+// refused field).
+func encodeAnalyticsValue(execCtx *PolicyExecutionContext, key string, value any, correlated bool) (*structpb.Value, error) {
+	if !correlated || execCtx == nil {
+		return convertToStructValue(value)
+	}
+	if prev, ok := execCtx.encodedFields[key]; ok && sameFieldValue(prev.value, value) {
+		return prev.encoded, nil
+	}
+	val, err := convertToStructValue(value)
+	if err != nil {
+		return nil, err
+	}
+	if execCtx.encodedFields == nil {
+		execCtx.encodedFields = make(map[string]encodedField, 4)
+	}
+	execCtx.encodedFields[key] = encodedField{value: value, encoded: val}
+	return val, nil
+}
+
+// encodedField is a captured field's value and its encoding for analytics_data.
+type encodedField struct {
+	value   any
+	encoded *structpb.Value
 }
 
 // convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
@@ -313,10 +357,11 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		if key == analytics.CorrelationTokenKey {
 			continue
 		}
-		if inProcess && !ignored && isCorrelatedField(key) && storeInProcess(execCtx, key, value) {
+		correlated := isCorrelatedField(key)
+		if inProcess && !ignored && correlated && storeInProcess(execCtx, key, value) {
 			continue
 		}
-		val, err := convertToStructValue(value)
+		val, err := encodeAnalyticsValue(execCtx, key, value, correlated)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert analytics value for key %s: %w", key, err)
 		}

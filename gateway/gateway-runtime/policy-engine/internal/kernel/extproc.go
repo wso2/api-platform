@@ -375,14 +375,14 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 // completed only if the stream saw the response end (responseFinished): when the
 // stream closes first, the response may still be streaming to the client and its
 // access-log entry is still to come, so the entry is left for the ALS handler to
-// take (or for the store's hard cap). Any stream that issued a token is
+// take (or for the store's max entry age). Any stream that issued a token is
 // considered, whatever later phases carry -- a loopback hop never stores, so it
 // has no token.
 //
 // A token that never reached Envoy (the phase that issued it failed before its
 // response was sent, and no later response carried it) cannot appear in any
 // access-log entry, so its entry is discarded instead of holding a slot until the
-// hard cap.
+// max entry age.
 func (s *ExternalProcessorServer) completeCorrelationEntry(execCtx *PolicyExecutionContext) {
 	if s.correlationStore == nil || execCtx.correlationToken == "" {
 		return
