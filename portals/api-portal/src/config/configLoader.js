@@ -691,8 +691,9 @@ function validateIdpConfig(cfg) {
     // accepted tokens. jose's createRemoteJWKSet does not enforce HTTPS itself.
     const jwksUrlRaw = String(cfg.auth.idp.jwksUrl).trim();
     let jwksProtocol;
+    let jwksHostname;
     try {
-        jwksProtocol = new URL(jwksUrlRaw).protocol;
+        ({ protocol: jwksProtocol, hostname: jwksHostname } = new URL(jwksUrlRaw));
     } catch (_) {
         process.stderr.write(
             `[FATAL] auth.idp.jwks_url is not a valid URL: ${jwksUrlRaw}\n`
@@ -702,8 +703,13 @@ function validateIdpConfig(cfg) {
     if (jwksProtocol !== 'https:') {
         // TEMP local-dev escape: Thunder on local k3d is served over plain http://openchoreoapis.localhost
         // only. Opt-in via APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true so prod stays strict by default.
-        // Remove once local Thunder is TLS-terminated.
-        if (String(process.env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS || '').toLowerCase() !== 'true') {
+        // Remove once local Thunder is TLS-terminated. Limited to *.localhost so
+        // the flag can never expose a remote key set to an on-path attacker.
+        const devHttpAllowed =
+            String(process.env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS || '').toLowerCase() === 'true' &&
+            jwksProtocol === 'http:' &&
+            (jwksHostname === 'localhost' || jwksHostname.endsWith('.localhost'));
+        if (!devHttpAllowed) {
             process.stderr.write(
                 `[FATAL] auth.idp.jwks_url must use https:// (got ${jwksProtocol}//${jwksUrlRaw.replace(/^\S+?:\/\//, '')}). ` +
                 'A plain http:// JWKS URL lets a network attacker substitute the key set and sign accepted tokens.\n'
@@ -711,7 +717,7 @@ function validateIdpConfig(cfg) {
             process.exit(1);
         }
         process.stderr.write(
-            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true. Local-dev only.\n`
+            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true and the host is local. Local-dev only.\n`
         );
     }
 }

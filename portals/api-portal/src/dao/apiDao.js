@@ -229,21 +229,21 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const owners = apiMetadata.owners || {};
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
-    // Preserve the create-time default: an update that omits referenceId must
-    // not blank out a ref_id a previous create / publisher push wrote. Falling
-    // back to the handle keeps portal-authored APIs resolvable on the Platform
-    // API side even when the caller never populates referenceId.
-    const referenceId = apiMetadata.referenceId || apiMetadata.handle;
+    // An update that omits referenceId keeps the stored ref_id (a publisher
+    // push may have set one that differs from the portal handle); the handle
+    // is only a fallback for rows that never had one, so portal-authored APIs
+    // stay resolvable on the Platform API side.
+    const referenceId = apiMetadata.referenceId || null;
 
     const portalId = getPortalId();
     const { rowCount } = await exec.execute(
         `UPDATE ${API_METADATA_TABLE}
-         SET ref_id = ?, status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
+         SET ref_id = COALESCE(?, ref_id, ?), status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
              technical_owner = ?, technical_owner_email = ?, business_owner_email = ?, business_owner = ?,
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
          WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
-            referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
+            referenceId, apiMetadata.handle || null, apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,

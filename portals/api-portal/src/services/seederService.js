@@ -85,8 +85,9 @@ async function reconcileIdpOrgId(org) {
  * seeder would then adopt that row as this instance's org.
  *
  * An organization that already exists is left as the operator has since configured it
- * through the settings UI, with one exception: idp_ref_id, which auth.idp_org_id owns
- * outright and reconcileIdpOrgId re-applies on every boot.
+ * through the settings UI, with two exceptions: idp_ref_id, which auth.idp_org_id owns
+ * outright and reconcileIdpOrgId re-applies on every boot, and an empty cp_ref_id,
+ * which is filled with the handle.
  */
 async function seedDefaultOrg() {
     const orgName = orgContext.getHandle();
@@ -106,8 +107,8 @@ async function seedDefaultOrg() {
         // sends the portal's internal org UUID instead and every event
         // 404s with ORGANIZATION_NOT_FOUND. Defaults to the handle because
         // that is what Platform API's org row carries. Admin API can
-        // override via settings; this seed value is only applied on org
-        // creation, not reconciled on later boots.
+        // override via settings; on later boots the seeder only fills it in
+        // while it is still empty.
         cpRefId: orgName,
         configuration: {},
         createdBy: constants.SYSTEM_ACTOR,
@@ -126,6 +127,22 @@ async function seedDefaultOrg() {
             // write succeeds, which the operator needs to see rather than have startup
             // aborted underneath a working deployment.
             logger.error('Failed to reconcile organization idp_ref_id from configuration', {
+                error: error.message,
+                handle: orgName,
+                operation: 'seedDefaultOrg',
+            });
+        }
+        try {
+            if (await orgDao.backfillCpRefId(existing.uuid, payload.cpRefId, constants.SYSTEM_ACTOR)) {
+                logger.info('Org: cp_ref_id was empty; defaulted to the organization handle', {
+                    handle: orgName,
+                    operation: 'seedDefaultOrg',
+                });
+            }
+        } catch (error) {
+            // Non-fatal for the same reason as above; webhook events keep
+            // carrying the portal org uuid until the write succeeds.
+            logger.error('Failed to backfill organization cp_ref_id', {
                 error: error.message,
                 handle: orgName,
                 operation: 'seedDefaultOrg',
