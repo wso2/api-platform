@@ -80,8 +80,8 @@ describe('subscriptions webhook events', () => {
             subscription_id: create.body.subscriptionId,
             subscriber_id: expect.any(String),
             status: create.body.status,
-            subscription_plan: { ref_id: null, name: 'Gold' },
-            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
+            subscription_plan: { ref_id: 'Gold', name: 'Gold' },
+            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
         });
     });
 
@@ -104,9 +104,9 @@ describe('subscriptions webhook events', () => {
             subscription_id: create.body.subscriptionId,
             subscriber_id: expect.any(String),
             status: create.body.status,
-            subscription_plan: { ref_id: null, name: 'Silver' },
-            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
-            previous_plan: { ref_id: null, name: 'Gold' },
+            subscription_plan: { ref_id: 'Silver', name: 'Silver' },
+            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
+            previous_plan: { ref_id: 'Gold', name: 'Gold' },
         });
     });
 
@@ -133,8 +133,8 @@ describe('subscriptions webhook events', () => {
             subscription_id: create.body.subscriptionId,
             subscriber_id: expect.any(String),
             status: create.body.status,
-            subscription_plan: { ref_id: null, name: 'Gold' },
-            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
+            subscription_plan: { ref_id: 'Gold', name: 'Gold' },
+            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
         });
         expect(received.body.data.token).toBeUndefined();
     });
@@ -158,8 +158,8 @@ describe('subscriptions webhook events', () => {
             subscription_id: create.body.subscriptionId,
             subscriber_id: expect.any(String),
             status: create.body.status,
-            subscription_plan: { ref_id: null, name: 'Gold' },
-            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
+            subscription_plan: { ref_id: 'Gold', name: 'Gold' },
+            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
         });
     });
 

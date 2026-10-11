@@ -184,6 +184,11 @@ async function attachAssociations(apiRows, t) {
     return apiRows;
 }
 
+// A null ref_id marks an MCP server authored in this portal: the MCP registry
+// (mcpRegistryService) and filterAllowedAPIs only treat a server as registry-managed
+// while ref_id is null, so the handle default must not reach MCP rows.
+const defaultRefId = (type, handle) => (type === constants.API_TYPE.MCP ? null : handle);
+
 const create = async (orgId, apiMetadata, createdBy, t) => {
     const exec = t || db;
     const owners = apiMetadata.owners || {};
@@ -197,7 +202,7 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
     // this with the publisher's own apiHandle; portal-authored APIs otherwise
     // left ref_id null and every subscription/apikey event 400'd Platform API
     // with "data.api.ref_id is required".
-    const referenceId = apiMetadata.referenceId || handle;
+    const referenceId = apiMetadata.referenceId || defaultRefId(apiMetadata.type, handle);
 
     const portalId = getPortalId();
     await exec.execute(
@@ -243,7 +248,7 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
          WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
-            referenceId, apiMetadata.handle || null, apiMetadata.status, apiMetadata.name, apiMetadata.description,
+            referenceId, defaultRefId(apiMetadata.type, apiMetadata.handle || null), apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,
