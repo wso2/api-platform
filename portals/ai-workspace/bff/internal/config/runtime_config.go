@@ -109,5 +109,11 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 		out[runtimeKey("billing_proxy_enabled")] = "true"
 	}
 
+	// Whether Ask AI is available, as a bare boolean. The endpoint, API key, product
+	// and branch stay server-side: the SPA only calls <base>/api/docs-assistant/chat.
+	if cfg.DocsAssistant.Enabled() {
+		out[runtimeKey("docs_assistant_enabled")] = "true"
+	}
+
 	return out
 }
