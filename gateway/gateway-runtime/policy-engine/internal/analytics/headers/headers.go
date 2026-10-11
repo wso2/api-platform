@@ -186,3 +186,15 @@ func listValue(v interface{}) ([]string, bool) {
 		return nil, false
 	}
 }
+
+// Count returns how many headers v holds, for any shape Flatten accepts. The two
+// typed map shapes the correlation store carries are counted without decoding.
+func Count(v any) int {
+	switch h := v.(type) {
+	case map[string]string:
+		return len(h)
+	case map[string][]string:
+		return len(h)
+	}
+	return len(Flatten(v))
+}

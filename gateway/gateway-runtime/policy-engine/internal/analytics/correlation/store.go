@@ -35,23 +35,24 @@
 // it, and Merge runs before the ext_proc response that would otherwise have
 // carried the field is sent. Envoy cannot log the request before it has that
 // response, so the access-log entry can never arrive ahead of the data. When the
-// store cannot accept a field (no free slot, or a body over the size or byte
-// budget), Merge refuses it and the caller keeps it in metadata, the pre-store
-// path.
+// store cannot accept a field (no free slot, a body over the per-body limit, or
+// headers and bodies over the byte budget), Merge refuses it and the caller keeps
+// it in metadata, the pre-store path. When a newer value of a field that is already
+// stored is refused, the caller clears the stored copy (Clear), so the newer value
+// in metadata is the one logged.
 //
 // Retention: an unread entry is never dropped while it is fresh. It becomes
-// reclaimable, and only when its slot or body bytes are needed for another
-// request, once (a) the ext_proc side saw the response finish (Complete) more
-// than the TTL ago, or (b) it has existed for longer than the hard cap (an hour,
-// or the TTL if longer). The ext_proc stream can end before the response does
-// (when body processing is skipped, Envoy closes it after the response headers
-// while the body is still streaming), so stream end alone never starts the TTL.
-// Fields of a reclaimed entry are gone: they were already left out of metadata.
-// That happens only under store pressure combined with an access-log entry that
-// is late by more than the TTL (a stalled ALS consumer, or an Envoy access-log
-// flush interval above the TTL, which config validation rejects) or with a
-// response that streams for longer than the hard cap. Each case is counted by
-// the evictions metric.
+// reclaimable, and only when its slot or bytes are needed for another request,
+// once (a) the ext_proc side saw the response finish (Complete) more than the TTL
+// ago, or (b) the response was never seen to finish and the entry is older than
+// max_entry_age. A completed entry follows the TTL only, however old it is. The
+// ext_proc stream can end before the response does (when body processing is
+// skipped, Envoy closes it after the response headers while the body is still
+// streaming), so stream end alone never starts the TTL. Fields of a reclaimed
+// entry are gone: they were already left out of metadata. That happens only under
+// store pressure combined with an access-log entry that is late by more than the
+// TTL (a stalled ALS consumer) or a response that streams for longer than
+// max_entry_age. The evictions metric counts each case by reason.
 //
 // Scope: the store only works when the ext_proc stream and the ALS stream for a
 // request reach the same policy-engine process. The policy engine enables it only
@@ -88,16 +89,19 @@ import (
 // defensive copy, to avoid an allocation on every access-log entry); callers must
 // likewise only read them, never mutate in place.
 type Payload struct {
-	// RequestHeaders/ResponseHeaders are nil when not captured. A non-nil empty map
-	// is a deliberate "no headers" (for example, every header filtered out by an
-	// analytics header filter in a later phase) and replaces any earlier value.
-	RequestHeaders  map[string]string
-	ResponseHeaders map[string]string
+	// RequestHeaders/ResponseHeaders hold captured headers in the shape the
+	// analytics data carried them: map[string]string, or map[string][]string when
+	// an analytics header filter kept repeated values separate. Consumers decode
+	// either shape with internal/analytics/headers. nil means not captured; an
+	// empty map is a deliberate "no headers" (for example, every header filtered
+	// out in a later phase) and replaces any earlier value.
+	RequestHeaders  any
+	ResponseHeaders any
 	// RequestBody/ResponseBody are captured payloads (collector.request_body /
-	// collector.response_body). Unlike headers they can be large, and every byte
-	// left in Envoy dynamic metadata is re-serialized on each later ext_proc message
-	// and again in the access-log entry, so they are carried here whenever they fit
-	// under the store's per-body limit and byte budget.
+	// collector.response_body). Every byte left in Envoy dynamic metadata is
+	// re-serialized on each later ext_proc message and again in the access-log
+	// entry, so they are carried here whenever they fit under the store's per-body
+	// limit and byte budget.
 	RequestBody  string
 	ResponseBody string
 }
@@ -108,10 +112,30 @@ func (p Payload) IsEmpty() bool {
 		p.RequestBody == "" && p.ResponseBody == ""
 }
 
-// bodyBytes is what an entry is charged against its shard's byte budget. Headers
-// are small and already bounded by the entry count, so only bodies are counted.
-func (p Payload) bodyBytes() int64 {
-	return int64(len(p.RequestBody) + len(p.ResponseBody))
+// size is what an entry is charged against its shard's byte budget: the captured
+// header names and values and both bodies.
+func (p Payload) size() int64 {
+	return headerBytes(p.RequestHeaders) + headerBytes(p.ResponseHeaders) +
+		int64(len(p.RequestBody)+len(p.ResponseBody))
+}
+
+// headerBytes is the total length of a captured header map's names and values.
+func headerBytes(h any) int64 {
+	var n int
+	switch m := h.(type) {
+	case map[string]string:
+		for k, v := range m {
+			n += len(k) + len(v)
+		}
+	case map[string][]string:
+		for k, vs := range m {
+			n += len(k)
+			for _, v := range vs {
+				n += len(v)
+			}
+		}
+	}
+	return int64(n)
 }
 
 // mergeInto overlays p's set fields onto dst, field by field, so the request and
@@ -133,19 +157,55 @@ func (p Payload) mergeInto(dst *Payload) {
 	}
 }
 
+// Field names one captured field of a Payload, for Clear.
+type Field int
+
+const (
+	FieldRequestHeaders Field = iota
+	FieldResponseHeaders
+	FieldRequestBody
+	FieldResponseBody
+)
+
+// clear unsets field f.
+func (p *Payload) clear(f Field) {
+	switch f {
+	case FieldRequestHeaders:
+		p.RequestHeaders = nil
+	case FieldResponseHeaders:
+		p.ResponseHeaders = nil
+	case FieldRequestBody:
+		p.RequestBody = ""
+	case FieldResponseBody:
+		p.ResponseBody = ""
+	}
+}
+
 // entry is one stored record. Fields are only ever read or written while the
 // owning shard's mutex is held (see shard).
 type entry struct {
 	key     string
 	payload Payload
+	// size is payload.size(), kept so the shard's byte accounting never recomputes it.
+	size int64
 	// createdAt is when the entry was first written. An entry that never completes
-	// becomes reclaimable once it is older than the store's hard cap.
+	// becomes reclaimable once it is older than the store's max entry age.
 	createdAt time.Time
 	// completedAt is when the ext_proc side saw the response finish (Complete).
 	// Zero until then; the TTL only counts from this point.
 	completedAt time.Time
 	// slot is this entry's index in its shard's ring.
 	slot int
+}
+
+// reclaimAt is when e, still unread, may first be dropped to make room: the TTL
+// after its response finished, or, for a response never seen to finish, the max
+// entry age after it was created. A completed entry follows the TTL only.
+func (e *entry) reclaimAt(s *Store) time.Time {
+	if !e.completedAt.IsZero() {
+		return e.completedAt.Add(s.ttl)
+	}
+	return e.createdAt.Add(s.maxIncompleteAge)
 }
 
 // shard is one independently-locked partition of the store. entries is the
@@ -155,10 +215,20 @@ type shard struct {
 	mu      sync.Mutex
 	entries map[string]*entry
 	ring    []*entry
-	next    int
-	// bodyBytes is the body bytes currently held; never above maxBodyBytes.
-	bodyBytes    int64
-	maxBodyBytes int64
+	// free lists the empty ring slots, so finding one never scans the ring.
+	free []int
+	// next is where the next reclaim scan starts.
+	next int
+	// bytes is the header and body bytes currently held; never above maxBytes.
+	bytes    int64
+	maxBytes int64
+	// noSlotBefore / noBytesBefore: a reclaim scan that found nothing to drop
+	// records when the earliest candidate becomes reclaimable, so writes that
+	// cannot fit fail immediately until then instead of rescanning the full shard
+	// each time. Complete resets them, since completing an entry can move its
+	// reclaim time earlier.
+	noSlotBefore  time.Time
+	noBytesBefore time.Time
 }
 
 // Store is a bounded, sharded key/value store from correlation token to Payload. The
@@ -170,8 +240,8 @@ type Store struct {
 	// slot may be reclaimed.
 	ttl  time.Duration
 	seed maphash.Seed
-	// maxIncompleteAge is the hard cap after which an entry that never completed
-	// may be reclaimed: max(incompleteEntryMaxAge, ttl).
+	// maxIncompleteAge is how long an entry whose response was never seen to finish
+	// may hold its slot: max(collector.correlation_store.max_entry_age, ttl).
 	maxIncompleteAge time.Duration
 	// maxPayloadBytes is the largest single body the store accepts (0 = bodies are
 	// never stored and always stay in Envoy metadata).
@@ -182,28 +252,29 @@ type Store struct {
 
 	// Metric children resolved once, so the hot path does no label lookups.
 	storedTotal, rejectedFullTotal, rejectedBudgetTotal metrics.Counter
-	hitTotal, missTotal, evictionsTotal                 metrics.Counter
+	hitTotal, missTotal                                 metrics.Counter
+	evictedTTLTotal, evictedMaxAgeTotal                 metrics.Counter
 }
 
-// incompleteEntryMaxAge is the hard cap for an entry whose response was never seen
-// to finish: long enough for any realistic streamed response, short enough that an
-// access-log entry that never arrives cannot hold a slot indefinitely.
-const incompleteEntryMaxAge = time.Hour
+// defaultMaxEntryAge is the max entry age for a store built without configuration
+// (config.CorrelationStoreConfig.MaxEntryAge's default).
+const defaultMaxEntryAge = 5 * time.Minute
 
 // NewStore builds a Store with capacity entries spread across numShards
-// independently-locked shards (rounded up to the next power of two). Non-positive
-// inputs fall back to a minimal usable value rather than panicking --
-// config.Validate is the fail-closed gate for a genuinely misconfigured
-// deployment; this constructor stays defensive so a caller that skipped validation
-// (a unit test, a future call site) still gets a working, bounded store.
+// independently-locked shards (rounded up to the next power of two), holding
+// headers only (bodies stay in Envoy metadata). Non-positive inputs fall back to a
+// minimal usable value rather than panicking -- config.Validate is the
+// fail-closed gate for a genuinely misconfigured deployment; this constructor
+// stays defensive so a caller that skipped validation (a unit test, a future call
+// site) still gets a working, bounded store.
 func NewStore(capacity int, ttl time.Duration, numShards int) *Store {
 	return NewStoreWithBodyLimits(capacity, ttl, numShards, 0, 0)
 }
 
 // NewStoreWithBodyLimits is NewStore that can also carry request/response bodies:
-// at most maxPayloadBytes per body, and maxBodyBytes of bodies across the whole
-// store (split evenly across shards). Either limit <= 0 disables body storage, and
-// bodies then keep travelling through Envoy dynamic metadata as before.
+// at most maxPayloadBytes per body, and maxBodyBytes of captured headers and bodies
+// across the whole store (split evenly across shards). Either limit <= 0 disables
+// body storage; headers then share config.DefaultCorrelationStoreHeaderBytes.
 func NewStoreWithBodyLimits(capacity int, ttl time.Duration, numShards, maxPayloadBytes int, maxBodyBytes int64) *Store {
 	if capacity <= 0 {
 		capacity = 1
@@ -230,34 +301,34 @@ func NewStoreWithBodyLimits(capacity int, ttl time.Duration, numShards, maxPaylo
 		perShard = 1
 	}
 
-	perShardBodyBytes := maxBodyBytes / int64(numShards)
-	if maxPayloadBytes <= 0 || perShardBodyBytes <= 0 {
-		maxPayloadBytes, perShardBodyBytes = 0, 0
-	} else if int64(maxPayloadBytes) > perShardBodyBytes {
+	perShardBytes := maxBodyBytes / int64(numShards)
+	if maxPayloadBytes <= 0 || perShardBytes <= 0 {
+		maxPayloadBytes = 0
+		perShardBytes = config.DefaultCorrelationStoreHeaderBytes / int64(numShards)
+	} else if int64(maxPayloadBytes) > perShardBytes {
 		// A body larger than one shard's budget could never be held; cap the limit so
 		// such bodies are refused up front and stay in metadata.
-		maxPayloadBytes = int(perShardBodyBytes)
+		maxPayloadBytes = int(perShardBytes)
 	}
 
 	shards := make([]*shard, numShards)
 	for i := range shards {
+		free := make([]int, perShard)
+		for j := range free {
+			free[j] = perShard - 1 - j // popped from the end: slot 0 first
+		}
 		shards[i] = &shard{
-			entries:      make(map[string]*entry, perShard),
-			ring:         make([]*entry, perShard),
-			maxBodyBytes: perShardBodyBytes,
+			entries:  make(map[string]*entry, perShard),
+			ring:     make([]*entry, perShard),
+			free:     free,
+			maxBytes: perShardBytes,
 		}
 	}
 
-	maxIncompleteAge := incompleteEntryMaxAge
-	if ttl > maxIncompleteAge {
-		maxIncompleteAge = ttl
-	}
-
-	return &Store{
+	s := &Store{
 		shards:              shards,
 		mask:                uint64(numShards - 1),
 		ttl:                 ttl,
-		maxIncompleteAge:    maxIncompleteAge,
 		seed:                maphash.MakeSeed(),
 		maxPayloadBytes:     maxPayloadBytes,
 		storedTotal:         metrics.CorrelationStoreWritesTotal.WithLabelValues("stored"),
@@ -265,8 +336,20 @@ func NewStoreWithBodyLimits(capacity int, ttl time.Duration, numShards, maxPaylo
 		rejectedBudgetTotal: metrics.CorrelationStoreWritesTotal.WithLabelValues("rejected_budget"),
 		hitTotal:            metrics.CorrelationStoreReadsTotal.WithLabelValues("hit"),
 		missTotal:           metrics.CorrelationStoreReadsTotal.WithLabelValues("miss"),
-		evictionsTotal:      metrics.CorrelationStoreEvictionsTotal,
+		evictedTTLTotal:     metrics.CorrelationStoreEvictionsTotal.WithLabelValues("ttl"),
+		evictedMaxAgeTotal:  metrics.CorrelationStoreEvictionsTotal.WithLabelValues("max_age"),
 	}
+	s.setMaxEntryAge(defaultMaxEntryAge)
+	return s
+}
+
+// setMaxEntryAge sets how long an entry whose response was never seen to finish
+// may hold its slot; never below the TTL.
+func (s *Store) setMaxEntryAge(age time.Duration) {
+	if age < s.ttl {
+		age = s.ttl
+	}
+	s.maxIncompleteAge = age
 }
 
 // MaxPayloadBytes is the largest body the store accepts. Safe to call on a nil
@@ -284,6 +367,9 @@ func (s *Store) MaxPayloadBytes() int {
 func NewStoreFromConfig(cfg config.CollectorConfig) *Store {
 	c := cfg.CorrelationStore
 	s := NewStoreWithBodyLimits(c.Capacity, c.TTL, c.Shards, c.MaxPayloadBytes, c.MaxBodyBytes)
+	if c.MaxEntryAge > 0 {
+		s.setMaxEntryAge(c.MaxEntryAge)
+	}
 	for _, prefix := range cfg.IgnorePathPrefixes {
 		if prefix = strings.TrimSpace(prefix); prefix != "" {
 			s.ignoredPathPrefixes = append(s.ignoredPathPrefixes, prefix)
@@ -325,11 +411,12 @@ func (s *Store) shardFor(key string) *shard {
 	return s.shards[h&s.mask]
 }
 
-// Merge records p's non-empty fields under key, creating the entry if needed, and
+// Merge records p's set fields under key, creating the entry if needed, and
 // reports whether it did. It refuses -- storing nothing from p -- when a body is
-// over the per-body limit or does not fit the shard's byte budget, or when a new
-// entry is needed and the shard has no free or reclaimable slot. On false the
-// caller must keep those fields in Envoy metadata.
+// over the per-body limit or body storage is disabled, when the fields do not fit
+// the shard's byte budget, or when a new entry is needed and the shard has no free
+// or reclaimable slot. On false the caller must keep those fields in Envoy
+// metadata.
 //
 // Merge never evicts an entry the ALS handler has not read, other than a
 // reclaimable one (see the package doc).
@@ -372,15 +459,14 @@ func (s *Store) merge(key string, p Payload, create bool) bool {
 	if e == nil && !create {
 		return false
 	}
-	var delta int64
+	var updated Payload
+	var oldSize int64
 	if e != nil {
-		updated := e.payload
-		p.mergeInto(&updated)
-		delta = updated.bodyBytes() - e.payload.bodyBytes()
-	} else {
-		delta = p.bodyBytes()
+		updated, oldSize = e.payload, e.size
 	}
-	if delta > 0 && !sh.makeBodyRoom(s, delta, e, now) {
+	p.mergeInto(&updated)
+	newSize := updated.size()
+	if delta := newSize - oldSize; delta > 0 && !sh.makeRoom(s, delta, e, now) {
 		s.rejectedBudgetTotal.Inc()
 		return false
 	}
@@ -394,12 +480,30 @@ func (s *Store) merge(key string, p Payload, create bool) bool {
 		e = &entry{key: key, slot: slot, createdAt: now}
 		sh.ring[slot] = e
 		sh.entries[key] = e
-		sh.next = (slot + 1) % len(sh.ring)
 	}
-	p.mergeInto(&e.payload)
-	sh.bodyBytes += delta
+	e.payload = updated
+	sh.bytes += newSize - e.size
+	e.size = newSize
 	s.storedTotal.Inc()
 	return true
+}
+
+// Clear unsets one field of key's entry, if the entry exists. The ext_proc side
+// calls it when a newer value of a field it already stored is refused, so the
+// stored, older copy is not logged in place of the newer one left in metadata.
+func (s *Store) Clear(key string, f Field) {
+	if key == "" {
+		return
+	}
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	if e, ok := sh.entries[key]; ok {
+		e.payload.clear(f)
+		size := e.payload.size()
+		sh.bytes += size - e.size
+		e.size = size
+	}
+	sh.mu.Unlock()
 }
 
 // Complete marks key's response as finished, as seen by the ext_proc side. From
@@ -415,97 +519,115 @@ func (s *Store) Complete(key string) {
 	sh.mu.Lock()
 	if e, ok := sh.entries[key]; ok && e.completedAt.IsZero() {
 		e.completedAt = time.Now()
+		// Completion can move this entry's reclaim time earlier.
+		sh.noSlotBefore, sh.noBytesBefore = time.Time{}, time.Time{}
 	}
 	sh.mu.Unlock()
 }
 
-// Put is Merge followed by Complete, for a caller that hands over a request whose
-// response has already finished, in one step.
-func (s *Store) Put(key string, payload Payload) bool {
-	if !s.Merge(key, payload) {
-		return false
+// evict drops a reclaimable entry and counts it by reason. Caller holds mu.
+func (sh *shard) evict(s *Store, e *entry) {
+	if e.completedAt.IsZero() {
+		s.evictedMaxAgeTotal.Inc()
+	} else {
+		s.evictedTTLTotal.Inc()
 	}
-	s.Complete(key)
-	return true
+	sh.remove(e)
 }
 
-// reclaimable reports whether e, still unread, may be dropped to make room: its
-// response finished more than the TTL ago, or it is older than the hard cap for
-// entries that never complete.
-func (e *entry) reclaimable(s *Store, now time.Time) bool {
-	if !e.completedAt.IsZero() && now.Sub(e.completedAt) >= s.ttl {
-		return true
-	}
-	return now.Sub(e.createdAt) >= s.maxIncompleteAge
-}
-
-// freeSlot returns an empty ring slot, reclaiming a reclaimable entry if that is
-// the only way to get one. Slots are visited from next, the oldest write, so a
-// full scan only happens when the shard is close to full. Caller holds mu.
+// freeSlot returns an empty ring slot, reclaiming one reclaimable entry if that is
+// the only way to get one. A scan that finds nothing to reclaim records when the
+// earliest entry becomes reclaimable, and later calls fail immediately until then.
+// Caller holds mu.
 func (sh *shard) freeSlot(s *Store, now time.Time) (int, bool) {
-	stale := -1
-	for i := 0; i < len(sh.ring); i++ {
-		idx := (sh.next + i) % len(sh.ring)
-		occupant := sh.ring[idx]
-		if occupant == nil {
-			return idx, true
-		}
-		if stale < 0 && occupant.reclaimable(s, now) {
-			stale = idx
-		}
+	if n := len(sh.free); n > 0 {
+		slot := sh.free[n-1]
+		sh.free = sh.free[:n-1]
+		return slot, true
 	}
-	if stale < 0 {
+	if now.Before(sh.noSlotBefore) {
 		return 0, false
 	}
-	sh.remove(sh.ring[stale])
-	s.evictionsTotal.Inc()
-	return stale, true
+	var earliest time.Time
+	for i := 0; i < len(sh.ring); i++ {
+		idx := (sh.next + i) % len(sh.ring)
+		e := sh.ring[idx]
+		at := e.reclaimAt(s)
+		if !now.Before(at) {
+			sh.evict(s, e)
+			sh.next = (idx + 1) % len(sh.ring)
+			slot := sh.free[len(sh.free)-1]
+			sh.free = sh.free[:len(sh.free)-1]
+			return slot, true
+		}
+		if earliest.IsZero() || at.Before(earliest) {
+			earliest = at
+		}
+	}
+	sh.noSlotBefore = earliest
+	return 0, false
 }
 
-// makeBodyRoom ensures need more body bytes fit in the shard's budget, reclaiming
-// reclaimable entries that hold bodies (never keep) if necessary. It changes
-// nothing and returns false when the room cannot be made. Caller holds mu.
-func (sh *shard) makeBodyRoom(s *Store, need int64, keep *entry, now time.Time) bool {
-	if sh.bodyBytes+need <= sh.maxBodyBytes {
+// makeRoom ensures need more bytes fit in the shard's budget, reclaiming
+// reclaimable entries that hold bytes (never keep) if necessary. It changes nothing
+// and returns false when the room cannot be made; it then records when the earliest
+// other candidate becomes reclaimable, and later calls fail immediately until then.
+// Caller holds mu.
+func (sh *shard) makeRoom(s *Store, need int64, keep *entry, now time.Time) bool {
+	if sh.bytes+need <= sh.maxBytes {
 		return true
+	}
+	if now.Before(sh.noBytesBefore) {
+		return false
 	}
 	var free int64
 	var victims []*entry
-	for i := 0; i < len(sh.ring) && sh.bodyBytes-free+need > sh.maxBodyBytes; i++ {
+	var earliest time.Time
+	for i := 0; i < len(sh.ring) && sh.bytes-free+need > sh.maxBytes; i++ {
 		e := sh.ring[(sh.next+i)%len(sh.ring)]
-		if e == nil || e == keep || e.payload.bodyBytes() == 0 || !e.reclaimable(s, now) {
+		if e == nil || e == keep || e.size == 0 {
+			continue
+		}
+		if at := e.reclaimAt(s); now.Before(at) {
+			if earliest.IsZero() || at.Before(earliest) {
+				earliest = at
+			}
 			continue
 		}
 		victims = append(victims, e)
-		free += e.payload.bodyBytes()
+		free += e.size
 	}
-	if sh.bodyBytes-free+need > sh.maxBodyBytes {
+	if sh.bytes-free+need > sh.maxBytes {
+		if len(victims) == 0 {
+			sh.noBytesBefore = earliest
+		}
 		return false
 	}
 	for _, e := range victims {
-		sh.remove(e)
-		s.evictionsTotal.Inc()
+		sh.evict(s, e)
 	}
 	return true
 }
 
-// remove drops e from the shard's index, ring and byte accounting. Caller holds mu.
+// remove drops e from the shard's index, ring and byte accounting, and returns its
+// slot to the free list. Caller holds mu.
 func (sh *shard) remove(e *entry) {
 	if sh.entries[e.key] == e {
 		delete(sh.entries, e.key)
 	}
 	if sh.ring[e.slot] == e {
 		sh.ring[e.slot] = nil
+		sh.free = append(sh.free, e.slot)
 	}
-	sh.bodyBytes -= e.payload.bodyBytes()
+	sh.bytes -= e.size
 }
 
-// Take looks up key and removes its entry, releasing its slot and body bytes as
-// soon as the access-log entry it was waiting for has been processed. The ALS
-// handler reads each request's entry exactly once, so this keeps the store's
-// footprint at the in-flight window instead of the full capacity. There is
-// deliberately no non-consuming read of the payload: an entry that is read but
-// left in place would keep its slot until reclaimed.
+// Take looks up key and removes its entry, releasing its slot and bytes as soon as
+// the access-log entry it was waiting for has been processed. The ALS handler
+// reads each request's entry exactly once, so this keeps the store's footprint at
+// the in-flight window instead of the full capacity. There is deliberately no
+// non-consuming read of the payload: an entry that is read but left in place would
+// keep its slot until reclaimed.
 func (s *Store) Take(key string) (Payload, bool) {
 	if key == "" {
 		s.missTotal.Inc()

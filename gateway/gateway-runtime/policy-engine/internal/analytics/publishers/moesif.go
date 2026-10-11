@@ -453,5 +453,4 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 	m.events = append(m.events, eventModel)
 	slog.Debug("Event added to the queue", "queueSize", len(m.events))
-	slog.Debug("Events", "events", m.events)
 }

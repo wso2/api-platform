@@ -97,7 +97,7 @@ var (
 
 	CorrelationStoreWritesTotal    CounterVec
 	CorrelationStoreReadsTotal     CounterVec
-	CorrelationStoreEvictionsTotal Counter
+	CorrelationStoreEvictionsTotal CounterVec
 )
 
 // initMetrics initializes all metric variables.
@@ -474,7 +474,8 @@ func initMetrics() {
 			Namespace: namespace,
 			Name:      "correlation_store_writes_total",
 			Help: "Total number of captured fields offered to the correlation store, by result " +
-				"(stored; rejected_full or rejected_budget, which keep the field in Envoy metadata)",
+				"(stored; rejected_full or rejected_budget, which keep the field in Envoy metadata). " +
+				"Fields refused while body storage is disabled are not counted.",
 		},
 		[]string{"result"},
 	)
@@ -488,12 +489,15 @@ func initMetrics() {
 		[]string{"result"},
 	)
 
-	CorrelationStoreEvictionsTotal = newCounter(
+	CorrelationStoreEvictionsTotal = newCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "correlation_store_evictions_total",
-			Help:      "Total number of unread correlation-store entries reclaimed to make room: response finished more than the TTL ago, or older than the one-hour hard cap",
+			Help: "Total number of unread correlation-store entries reclaimed to make room, by reason " +
+				"(ttl: response finished more than the TTL ago; max_age: response never seen to finish " +
+				"within max_entry_age, usually an access-log entry Envoy dropped)",
 		},
+		[]string{"reason"},
 	)
 }
 
@@ -610,7 +614,7 @@ func initRegistry() {
 	registerCounterVec(AnalyticsExportErrorsTotal)
 	registerCounterVec(CorrelationStoreWritesTotal)
 	registerCounterVec(CorrelationStoreReadsTotal)
-	registerCounter(CorrelationStoreEvictionsTotal)
+	registerCounterVec(CorrelationStoreEvictionsTotal)
 
 	registerCounterVec(ResolutionFailuresTotal)
 	registerCounterVec(RouteResolutionIngestFailuresTotal)

@@ -79,6 +79,10 @@ const (
 	// more concurrency than this.
 	DefaultMaxConcurrentStreams uint32 = 10000
 
+	// DefaultCorrelationStoreHeaderBytes is the captured-header budget used when
+	// collector.correlation_store.max_body_bytes is 0 (body storage disabled).
+	DefaultCorrelationStoreHeaderBytes int64 = 16 << 20
+
 	// CorrelationStoreMode* are the values of collector.correlation_store.mode.
 	CorrelationStoreModeAuto = "auto"
 	CorrelationStoreModeOn   = "on"
@@ -183,12 +187,13 @@ type CorrelationStoreConfig struct {
 	// for its access-log entry before its slot may be reclaimed for a new request.
 	// The ALS handler normally reads an entry about a second after the request ends
 	// (Envoy's 1s/16KiB access-log buffer). An entry reclaimed before it is read
-	// loses its fields, so the TTL must exceed collector.server.buffer_flush_interval
-	// (validated) plus any backlog of the access-log consumers. An entry whose
-	// response was not seen to finish (for example a long streamed response after
-	// the ext_proc stream closed) is not affected by the TTL; it may only be
-	// reclaimed after a one-hour hard cap. Reclaiming happens only when the slot or
-	// body bytes are needed, and is counted by the evictions metric. Paths in
+	// loses its fields, so the TTL should comfortably exceed the access-log flush
+	// interval plus any backlog of the access-log consumers; a TTL not longer than
+	// the flush interval is raised to twice it at startup, with a warning. An entry
+	// whose response was not seen to finish (for example a long streamed response
+	// after the ext_proc stream closed) is not affected by the TTL; it may only be
+	// reclaimed after MaxEntryAge. Reclaiming happens only when the slot or bytes are
+	// needed, and is counted by the evictions metric. Paths in
 	// collector.ignore_path_prefixes are not stored at all.
 	TTL time.Duration `koanf:"ttl"`
 	// Shards is the number of independently-locked partitions the store is split
@@ -206,10 +211,17 @@ type CorrelationStoreConfig struct {
 	// them in-process matters most for exactly the large bodies body logging is
 	// configured for. 0 disables body storage.
 	MaxPayloadBytes int `koanf:"max_payload_bytes"`
-	// MaxBodyBytes bounds the body bytes held across all shards combined. Bodies are
-	// removed as soon as their access-log entry is processed; a body that does not
-	// fit stays in Envoy metadata. 0 disables body storage.
+	// MaxBodyBytes bounds the captured bytes -- headers and bodies -- held across
+	// all shards combined. Entries are removed as soon as their access-log entry is
+	// processed; a field that does not fit stays in Envoy metadata. 0 disables body
+	// storage; headers then share DefaultCorrelationStoreHeaderBytes instead.
 	MaxBodyBytes int64 `koanf:"max_body_bytes"`
+	// MaxEntryAge is how long an entry whose response was never seen to finish may
+	// hold its slot before it can be reclaimed for another request. Such entries
+	// are mostly requests whose access-log entry Envoy dropped, but a response that
+	// keeps streaming longer than this can also lose its captured fields if the
+	// store needs the slot. Raised to the TTL if lower; 0 means the default (5m).
+	MaxEntryAge time.Duration `koanf:"max_entry_age"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -1257,6 +1269,7 @@ func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 		Shards:          32,
 		MaxPayloadBytes: 256 << 10,
 		MaxBodyBytes:    16 << 20,
+		MaxEntryAge:     5 * time.Minute,
 	}
 }
 
@@ -1642,6 +1655,7 @@ func (c *Config) Validate() error {
 		if err := c.validateCorrelationStoreConfig(); err != nil {
 			return err
 		}
+		c.adjustCorrelationStoreTTL()
 	}
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
@@ -1972,13 +1986,57 @@ func (c *Config) validateCorrelationStoreConfig() error {
 	if corr.MaxBodyBytes < 0 {
 		return fmt.Errorf("collector.correlation_store.max_body_bytes must not be negative, got %d", corr.MaxBodyBytes)
 	}
-	// An entry is reclaimable once its response finished more than the TTL ago, so a
-	// TTL at or below Envoy's access-log flush interval could reclaim entries before
-	// their access-log entry is even sent.
-	if flush := time.Duration(c.Collector.Server.BufferFlushInterval); flush > 0 && corr.TTL <= flush {
-		return fmt.Errorf("collector.correlation_store.ttl (%s) must be longer than collector.server.buffer_flush_interval (%s)", corr.TTL, flush)
+	if corr.MaxEntryAge < 0 {
+		return fmt.Errorf("collector.correlation_store.max_entry_age must not be negative, got %s", corr.MaxEntryAge)
 	}
 	return nil
+}
+
+// alsFlushInterval is the access-log flush interval Envoy is configured with:
+// collector.server.buffer_flush_interval, or the deprecated
+// [analytics.grpc_event_server] value, which the gateway-controller still honors
+// while analytics is enabled (see collector.MigrateDeprecatedTransport). The larger
+// of the two is used, so the TTL adjustment below can only err on the long side.
+func (c *Config) alsFlushInterval() time.Duration {
+	flush := time.Duration(c.Collector.Server.BufferFlushInterval)
+	if c.Analytics.Enabled {
+		if v, ok := durationNanos(c.Analytics.GRPCEventServerCfg["buffer_flush_interval"]); ok && v > flush {
+			flush = v
+		}
+	}
+	return flush
+}
+
+// durationNanos reads a nanosecond count that koanf may have decoded as any
+// numeric type.
+func durationNanos(v interface{}) (time.Duration, bool) {
+	switch n := v.(type) {
+	case int:
+		return time.Duration(n), true
+	case int64:
+		return time.Duration(n), true
+	case float64:
+		return time.Duration(n), true
+	}
+	return 0, false
+}
+
+// adjustCorrelationStoreTTL makes sure an entry's TTL outlasts Envoy's access-log
+// flush interval, or completed entries could be reclaimed before their access-log
+// entry is even sent. It never fails startup: an existing configuration with a long
+// flush interval keeps working, with the TTL raised to twice the flush interval and
+// a warning. Only applies while the store is in use.
+func (c *Config) adjustCorrelationStoreTTL() {
+	if !c.CorrelationStoreEnabled() {
+		return
+	}
+	corr := &c.Collector.CorrelationStore
+	if flush := c.alsFlushInterval(); flush > 0 && corr.TTL <= flush {
+		raised := 2 * flush
+		slog.Warn("collector.correlation_store.ttl is not longer than the access-log flush interval; raising it",
+			"ttl", corr.TTL, "buffer_flush_interval", flush, "effective_ttl", raised)
+		corr.TTL = raised
+	}
 }
 
 // CorrelationStoreEnabled reports whether the ext_proc->ALS correlation store is

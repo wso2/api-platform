@@ -1669,17 +1669,26 @@ func TestBuildRecordHeaderAttributesFromStoreMap(t *testing.T) {
 	}
 }
 
-// A repeated header from the analytics-header-filter path keeps every value.
+// A repeated header kept separate by an analytics header filter exports one array
+// element per value, whether it arrives through Envoy metadata (a JSON string) or
+// the correlation store (a map).
 func TestBuildRecordHeaderAttributesKeepRepeatedValues(t *testing.T) {
-	event := restEvent()
-	event.Properties[dto.PropKeyRequestHeaders] = `{"x-multi":["a=1","b=2"]}`
+	for name, raw := range map[string]interface{}{
+		"metadata": `{"x-multi":["a=1","b=2"]}`,
+		"store":    map[string][]string{"x-multi": {"a=1", "b=2"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			event := restEvent()
+			event.Properties[dto.PropKeyRequestHeaders] = raw
 
-	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
-	got := attrMap(t, o.buildRecord(event))
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
 
-	values, ok := got["http.request.header.x-multi"].([]string)
-	if !ok || len(values) != 2 || values[0] != "a=1" || values[1] != "b=2" {
-		t.Errorf("http.request.header.x-multi = %#v, want [\"a=1\" \"b=2\"]", got["http.request.header.x-multi"])
+			values, ok := got["http.request.header.x-multi"].([]string)
+			if !ok || len(values) != 2 || values[0] != "a=1" || values[1] != "b=2" {
+				t.Errorf("http.request.header.x-multi = %#v, want [\"a=1\" \"b=2\"]", got["http.request.header.x-multi"])
+			}
+		})
 	}
 }
 

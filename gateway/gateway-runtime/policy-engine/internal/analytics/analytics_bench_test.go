@@ -241,7 +241,7 @@ func BenchmarkAnalytics_Process_CorrelationStoreHit(b *testing.B) {
 	cfg := benchmarkTrafficLoggingConfig(b)
 	a := NewAnalytics(cfg)
 	store := correlation.NewStore(1000, time.Minute, 16)
-	store.Put("req-bench-0001", correlation.Payload{
+	putCompleted(store, "req-bench-0001", correlation.Payload{
 		RequestHeaders:  headersFromJSON(b, benchmarkHeadersJSON("req")),
 		ResponseHeaders: headersFromJSON(b, benchmarkHeadersJSON("resp")),
 	})

@@ -41,6 +41,7 @@ ttl = "45s"
 shards = 64
 max_payload_bytes = 131072
 max_body_bytes = 67108864
+max_entry_age = "10m"
 `)
 	cfg, err := Load(path)
 	require.NoError(t, err)
@@ -52,6 +53,7 @@ max_body_bytes = 67108864
 	assert.Equal(t, 64, c.Shards, "shards")
 	assert.Equal(t, 131072, c.MaxPayloadBytes, "max_payload_bytes")
 	assert.Equal(t, int64(67108864), c.MaxBodyBytes, "max_body_bytes")
+	assert.Equal(t, 10*time.Minute, c.MaxEntryAge, "max_entry_age")
 }
 
 func TestLoad_CorrelationStore_OmittedSectionKeepsDefaults(t *testing.T) {
@@ -86,7 +88,7 @@ func TestValidate_CorrelationStoreBounds(t *testing.T) {
 		"capacity over the limit": {"capacity = 20000000", "collector.correlation_store.capacity must not exceed 10000000"},
 		"capacity below shards":   {"capacity = 8\nshards = 64", "collector.correlation_store.capacity (8) must be at least shards (64)"},
 		"unknown mode":            {`mode = "sometimes"`, `collector.correlation_store.mode must be "auto", "on" or "off", got "sometimes"`},
-		"ttl within flush":        {`ttl = "1s"`, "collector.correlation_store.ttl (1s) must be longer than collector.server.buffer_flush_interval (1s)"},
+		"negative max_entry_age":  {`max_entry_age = "-1s"`, "collector.correlation_store.max_entry_age must not be negative"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -111,22 +113,33 @@ ignore_path_prefixes = ["/_gateway-health", "/metrics"]
 	assert.Equal(t, []string{"/_gateway-health", "/metrics"}, cfg.Collector.IgnorePathPrefixes)
 }
 
-// The TTL must outlast Envoy's access-log flush interval, which the gateway
-// controller reads from the same [collector.server] section.
-func TestValidate_CorrelationStoreTTLAgainstConfiguredFlushInterval(t *testing.T) {
-	path := writeOTelTOML(t, `
-[traffic_logging]
-enabled = true
-
-[collector.server]
-buffer_flush_interval = 60000000000
-
-[collector.correlation_store]
-ttl = "30s"
-`)
-	_, err := Load(path)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be longer than collector.server.buffer_flush_interval (1m0s)")
+// A TTL not longer than Envoy's access-log flush interval never fails startup: while
+// the store is in use it is raised to twice the flush interval; with the store off
+// it is left alone. The flush interval also honors the deprecated
+// [analytics.grpc_event_server] setting the gateway-controller still applies.
+func TestCorrelationStoreTTLAgainstFlushInterval(t *testing.T) {
+	cases := map[string]struct {
+		toml string
+		want time.Duration
+	}{
+		"default ttl, default flush": {"", 30 * time.Second},
+		"ttl at the flush interval":  {"[collector.correlation_store]\nttl = \"1s\"\n", 2 * time.Second},
+		"long flush interval": {
+			"[collector.server]\nbuffer_flush_interval = 60000000000\n", 2 * time.Minute},
+		"long flush, store off": {
+			"[collector.server]\nbuffer_flush_interval = 60000000000\n\n[collector.correlation_store]\nmode = \"off\"\n", 30 * time.Second},
+		"long flush, TCP (auto mode)": {
+			"[collector.server]\nmode = \"tcp\"\nbuffer_flush_interval = 60000000000\n", 30 * time.Second},
+		"deprecated flush setting": {
+			"[analytics]\nenabled = true\n\n[analytics.publishers.moesif]\napplication_id = \"placeholder\"\n\n[analytics.grpc_event_server]\nbuffer_flush_interval = 45000000000\n", 90 * time.Second},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := Load(writeOTelTOML(t, "[traffic_logging]\nenabled = true\n\n"+tc.toml))
+			require.NoError(t, err, "startup must not fail")
+			assert.Equal(t, tc.want, cfg.Collector.CorrelationStore.TTL)
+		})
+	}
 }
 
 // The store needs the ext_proc and ALS streams of a request to reach this process,

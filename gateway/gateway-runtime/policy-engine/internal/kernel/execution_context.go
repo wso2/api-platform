@@ -102,9 +102,11 @@ type PolicyExecutionContext struct {
 	requestID string
 
 	// correlationToken keys this stream's correlation-store entry. It is unique
-	// per ext_proc stream (see correlationKey) rather than the request id, which a
-	// client can supply and repeat. Empty until the first captured field is
-	// offered to the store.
+	// per ext_proc stream (see newCorrelationToken) rather than the request id,
+	// which a client can supply and repeat. Empty until the store accepts the
+	// stream's first captured field; once set, later fields only update that entry
+	// (correlation.Store.Update), so a phase that runs after the ALS handler took
+	// the entry cannot leave an orphan behind.
 	correlationToken string
 
 	// responseFinished is set once this stream has seen the end of the response:
@@ -116,16 +118,15 @@ type PolicyExecutionContext struct {
 	// client -- and that must not start the entry's TTL.
 	responseFinished bool
 
-	// correlationEntryCreated is set once the store accepted a field for this
-	// stream, which creates its entry. Later fields only update that entry (see
-	// correlation.Store.Update), so a phase that runs after the ALS handler already
-	// took it cannot leave an orphan behind.
-	correlationEntryCreated bool
-
 	// correlationTokenSent is set once a response carrying the correlation token
 	// reached Envoy. A stream that ends with a token Envoy never received has an
 	// entry no access-log entry can point to, so its entry is discarded.
 	correlationTokenSent bool
+
+	// encodedFields caches the analytics_data encoding of captured fields that stay
+	// in metadata, so an unchanged value re-sent by a later phase is not encoded
+	// again (see encodeAnalyticsValue).
+	encodedFields map[string]encodedField
 
 	// storedFields records the value of each field the store accepted, so a phase
 	// that re-sends an unchanged value (response phases re-send the request-phase

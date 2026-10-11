@@ -67,7 +67,7 @@ func TestPrepareAnalyticEvent_CorrelationStoreHit(t *testing.T) {
 	a := NewAnalytics(cfg)
 
 	store := correlation.NewStore(100, time.Minute, 4)
-	store.Put("token-hit-1", correlation.Payload{
+	putCompleted(store, "token-hit-1", correlation.Payload{
 		RequestHeaders:  map[string]string{"host": "example.com"},
 		ResponseHeaders: map[string]string{"content-type": "application/json"},
 	})
@@ -144,7 +144,7 @@ func TestPrepareAnalyticEvent_NoCorrelationStore(t *testing.T) {
 func TestPrepareAnalyticEvent_KeyedByTokenNotRequestID(t *testing.T) {
 	a := NewAnalytics(&config.Config{})
 	store := correlation.NewStore(100, time.Minute, 4)
-	store.Put("req-1", correlation.Payload{RequestHeaders: map[string]string{"host": "should-never-be-used"}})
+	putCompleted(store, "req-1", correlation.Payload{RequestHeaders: map[string]string{"host": "should-never-be-used"}})
 	a.SetCorrelationStore(store)
 
 	event := a.prepareAnalyticEvent(createLogEntryWithRequestID("req-1"))
@@ -159,8 +159,8 @@ func TestPrepareAnalyticEvent_KeyedByTokenNotRequestID(t *testing.T) {
 func TestPrepareAnalyticEvent_SameRequestIDDifferentTokens(t *testing.T) {
 	a := NewAnalytics(&config.Config{})
 	store := correlation.NewStore(100, time.Minute, 4)
-	store.Put("token-a", correlation.Payload{RequestHeaders: map[string]string{"who": "a"}})
-	store.Put("token-b", correlation.Payload{RequestHeaders: map[string]string{"who": "b"}})
+	putCompleted(store, "token-a", correlation.Payload{RequestHeaders: map[string]string{"who": "a"}})
+	putCompleted(store, "token-b", correlation.Payload{RequestHeaders: map[string]string{"who": "b"}})
 	a.SetCorrelationStore(store)
 
 	eventB := a.prepareAnalyticEvent(createLogEntryWithToken(t, "dup", "token-b"))
@@ -225,7 +225,7 @@ func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
 	cfg.Collector.ResponseBody = true
 	a := NewAnalytics(cfg)
 	store := correlation.NewStoreWithBodyLimits(100, time.Minute, 1, 1024, 4096)
-	store.Put("token-body-1", correlation.Payload{RequestBody: "from-store"})
+	putCompleted(store, "token-body-1", correlation.Payload{RequestBody: "from-store"})
 	a.SetCorrelationStore(store)
 
 	entry := withAnalyticsData(t, createLogEntryWithToken(t, "req-body-1", "token-body-1"),
@@ -243,7 +243,7 @@ func TestPrepareAnalyticEvent_StoredBodyUsedAndEntryTaken(t *testing.T) {
 func TestPrepareAnalyticEvent_StoredEmptyHeadersDoNotFallBackToMetadata(t *testing.T) {
 	a := NewAnalytics(&config.Config{})
 	store := correlation.NewStore(100, time.Minute, 1)
-	store.Put("token-filtered", correlation.Payload{RequestHeaders: map[string]string{}})
+	putCompleted(store, "token-filtered", correlation.Payload{RequestHeaders: map[string]string{}})
 	a.SetCorrelationStore(store)
 
 	entry := withAnalyticsData(t, createLogEntryWithToken(t, "req-filtered", "token-filtered"),
@@ -251,4 +251,43 @@ func TestPrepareAnalyticEvent_StoredEmptyHeadersDoNotFallBackToMetadata(t *testi
 	event := a.prepareAnalyticEvent(entry)
 
 	assert.NotContains(t, event.Properties, dto.PropKeyRequestHeaders)
+}
+
+// putCompleted stores payload under key and marks its response finished, the way a
+// request whose response ended is handed over.
+func putCompleted(s *correlation.Store, key string, payload correlation.Payload) bool {
+	if !s.Merge(key, payload) {
+		return false
+	}
+	s.Complete(key)
+	return true
+}
+
+// The token is read only from analytics_data: a same-named top-level ext_proc
+// metadata key, which a policy can set, must not select another request's entry.
+func TestPrepareAnalyticEvent_IgnoresTopLevelTokenKey(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
+	store := correlation.NewStore(100, time.Minute, 1)
+	putCompleted(store, "victim-token", correlation.Payload{RequestHeaders: map[string]string{"x-secret": "victim"}})
+	a.SetCorrelationStore(store)
+
+	entry := createLogEntryWithRequestID("attacker")
+	entry = withAnalyticsData(t, entry, map[string]any{"source": "policy"})
+	entry.CommonProperties.Metadata.FilterMetadata[constants.ExtProcFilterName].Fields[CorrelationTokenKey] =
+		structpb.NewStringValue("victim-token")
+	event := a.prepareAnalyticEvent(entry)
+
+	assert.NotContains(t, event.Properties, dto.PropKeyRequestHeaders)
+	assert.True(t, store.Has("victim-token"), "the victim's entry is untouched")
+}
+
+// Repeated values kept separate in the store reach the event unchanged.
+func TestPrepareAnalyticEvent_StoredMultiValueHeaders(t *testing.T) {
+	a := NewAnalytics(&config.Config{})
+	store := correlation.NewStore(100, time.Minute, 1)
+	putCompleted(store, "token-multi", correlation.Payload{RequestHeaders: map[string][]string{"x-multi": {"a", "b"}}})
+	a.SetCorrelationStore(store)
+
+	event := a.prepareAnalyticEvent(createLogEntryWithToken(t, "req-multi", "token-multi"))
+	assert.Equal(t, map[string][]string{"x-multi": {"a", "b"}}, event.Properties[dto.PropKeyRequestHeaders])
 }
