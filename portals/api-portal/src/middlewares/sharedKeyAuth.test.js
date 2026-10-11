@@ -298,6 +298,7 @@ test('tryAuthenticate verifies against the configured hash and returns the full 
         'dp:mcp_server:manage',
         'dp:mcp_server_content:manage',
         'dp:subscription_plan:manage',
+        'dp:webhook_subscriber:manage',
     ]);
 });
 
