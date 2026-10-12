@@ -63,10 +63,14 @@ function fixture(name, contents) {
     return file;
 }
 
-function boot(jwksUrl, { insecureFlag } = {}) {
+// allowLocalHttp is the TOML value text for allow_local_http_jwks, e.g. 'true' or '"yes"'.
+function boot(jwksUrl, { allowLocalHttp, extraEnv = {} } = {}) {
     const base = fixture('base.toml', BASE_CONFIG);
-    const overlay = fixture(`overlay-${Buffer.from(jwksUrl).toString('hex')}.toml`,
-        `[api_portal.auth.idp]\njwks_url = ${JSON.stringify(jwksUrl)}\n`);
+    let overlayToml = `[api_portal.auth.idp]\njwks_url = ${JSON.stringify(jwksUrl)}\n`;
+    if (allowLocalHttp !== undefined) {
+        overlayToml += `allow_local_http_jwks = ${allowLocalHttp}\n`;
+    }
+    const overlay = fixture(`overlay-${Buffer.from(overlayToml).toString('hex').slice(0, 120)}.toml`, overlayToml);
     const runner = fixture('runner.js', `
         require(${JSON.stringify(path.join(__dirname, 'configLoader.js'))});
         process.stdout.write('BOOTED\\n');
@@ -74,7 +78,7 @@ function boot(jwksUrl, { insecureFlag } = {}) {
     const env = { PATH: process.env.PATH, HOME: process.env.HOME };
     // Keeps the child's coverage in the parent run's report.
     if (process.env.NODE_V8_COVERAGE) env.NODE_V8_COVERAGE = process.env.NODE_V8_COVERAGE;
-    if (insecureFlag !== undefined) env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS = insecureFlag;
+    Object.assign(env, extraEnv);
     const result = spawnSync(process.execPath, [runner, '--config', base, '--config', overlay], {
         cwd: PROJECT_ROOT,
         encoding: 'utf8',
@@ -108,28 +112,37 @@ test('an unparseable JWKS URL refuses to start', () => {
 
 test('the dev escape allows http on localhost and *.localhost, with a warning', () => {
     for (const url of ['http://localhost:8090/oauth2/jwks', 'http://idp.dev.localhost:8090/oauth2/jwks']) {
-        const { status, booted, stderr } = boot(url, { insecureFlag: 'true' });
+        const { status, booted, stderr } = boot(url, { allowLocalHttp: 'true' });
         assert.equal(status, 0, url);
         assert.ok(booted, url);
-        assert.match(stderr, /\[WARN\] auth\.idp\.jwks_url is plain http/, url);
+        assert.match(stderr, /\[WARN\] auth\.idp\.jwks_url is plain http.*allow_local_http_jwks/, url);
     }
 });
 
 test('the dev escape never allows a remote host', () => {
     // A look-alike suffix must not pass for a .localhost host.
     for (const url of ['http://idp.example.com/oauth2/jwks', 'http://localhost.example.com/oauth2/jwks']) {
-        const { status, stderr } = boot(url, { insecureFlag: 'true' });
+        const { status, stderr } = boot(url, { allowLocalHttp: 'true' });
         assert.equal(status, 1, url);
         assert.match(stderr, /jwks_url must use https:\/\//, url);
     }
 });
 
 test('the dev escape covers http only, not other schemes', () => {
-    const { status } = boot('ftp://localhost/oauth2/jwks', { insecureFlag: 'true' });
+    const { status } = boot('ftp://localhost/oauth2/jwks', { allowLocalHttp: 'true' });
     assert.equal(status, 1);
 });
 
-test('the dev escape needs the flag set to true', () => {
-    const { status } = boot('http://localhost:8090/oauth2/jwks', { insecureFlag: 'yes' });
+test('the dev escape needs a boolean true', () => {
+    const { status } = boot('http://localhost:8090/oauth2/jwks', { allowLocalHttp: '"yes"' });
     assert.equal(status, 1);
 });
+
+// How a deployment turns it on: config.toml templates the key from an env var.
+test('the key can be templated from an env var', () => {
+    const templated = `'{{ env "APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS" "false" }}'`;
+    const url = 'http://idp.dev.localhost:8090/oauth2/jwks';
+    assert.equal(boot(url, { allowLocalHttp: templated, extraEnv: { APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS: 'true' } }).status, 0);
+    assert.equal(boot(url, { allowLocalHttp: templated }).status, 1);
+});
+

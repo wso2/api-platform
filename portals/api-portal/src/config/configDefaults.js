@@ -253,6 +253,8 @@ const DEFAULTS = {
             logoutRedirectUri: '',
             certificate: '',
             jwksUrl: '',
+            // Development only: accept a plain-http jwks_url on localhost or *.localhost.
+            allowLocalHttpJwks: false,
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted

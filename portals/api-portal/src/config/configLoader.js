@@ -709,7 +709,7 @@ function validateIdpConfig(cfg) {
         // Development-only opt-in. Limited to localhost hosts so the flag can
         // never expose a remote key set to an on-path attacker.
         const devHttpAllowed =
-            String(process.env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS || '').toLowerCase() === 'true' &&
+            cfg.auth.idp.allowLocalHttpJwks === true &&
             jwksProtocol === 'http:' &&
             (jwksHostname === 'localhost' || jwksHostname.endsWith('.localhost'));
         if (!devHttpAllowed) {
@@ -720,7 +720,7 @@ function validateIdpConfig(cfg) {
             process.exit(1);
         }
         process.stderr.write(
-            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true and the host is local. Local-dev only.\n`
+            `[WARN] auth.idp.jwks_url is plain http:// (${jwksUrlRaw}); allowed because auth.idp.allow_local_http_jwks=true and the host is local. Development only.\n`
         );
     }
 }
