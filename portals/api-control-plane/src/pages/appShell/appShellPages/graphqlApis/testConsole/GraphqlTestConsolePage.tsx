@@ -31,7 +31,6 @@ import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
 import { isApiError } from '@/api/core/errors';
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 import { useNow } from '@/hooks/useNow';
@@ -81,9 +80,9 @@ const messages = defineMessages({
   fetchFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed',
     defaultMessage:
-      'Could not reach the test console service. Check your connection and try again.',
+      'Could not reach the gateway. Check that the API has a CORS policy allowing this console, and that your browser trusts the gateway’s certificate.',
     description:
-      'Shown when the browser fetch to this app\'s own backend fails below the HTTP level (network error) — a bare "Failed to fetch" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API\'s gateway, so this is not a CORS or gateway-certificate problem.',
+      'Shown when the browser request to the API\'s gateway fails with no HTTP response — the browser reports only "Failed to fetch". The console calls the gateway directly, so a missing CORS policy, an untrusted gateway certificate or an unreachable gateway all end up here.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
@@ -252,26 +251,25 @@ function GraphqlTestConsolePageContent() {
   );
 
   const api = apiQuery.data;
-  // The real gateway URL — shown/copyable so it can be called directly (e.g.
-  // from curl), but not what the browser talks to; see invokeProxyUrl.
+  // The gateway's invoke URL — shown and copyable, and what GraphiQL calls.
   const endpointUrl =
     selectedGateway && api
       ? buildInvokeUrl(gatewayEndpoint(selectedGateway), api.context, api.version)
       : '';
-  // The browser never calls the gateway directly — it would need the
-  // gateway's own CORS policy configured and, for a dev/self-signed
-  // certificate, to be trusted first. Instead this same-origin BFF route
-  // resolves and proxies to the real gateway endpoint server-side (see
-  // bff/internal/server/graphql_invoke.go), so the query/variables/headers
-  // the user enters reach the gateway exactly as typed while the browser
-  // request itself stays same-origin. A query-parameter credential rides on
-  // this URL; the BFF forwards the query string to the gateway unchanged.
-  const invokeProxyUrl = useMemo(() => {
-    if (!graphqlApiHandler || !selectedGateway?.id) return '';
-    const base = `/api/graphql-console/${encodeURIComponent(graphqlApiHandler)}/gateways/${encodeURIComponent(selectedGateway.id)}/invoke`;
-    if (!credential || credentialIn !== 'query') return base;
-    return `${base}?${new URLSearchParams({ [credential.name]: credential.value }).toString()}`;
-  }, [credential, credentialIn, graphqlApiHandler, selectedGateway?.id]);
+  // The browser calls the gateway directly, so the API needs a CORS policy
+  // that allows this console's origin (and the key header, when one is sent),
+  // and the browser must trust the gateway's certificate. A query-parameter
+  // credential rides on the URL itself.
+  const invokeUrl = useMemo(() => {
+    if (!endpointUrl || !credential || credentialIn !== 'query') return endpointUrl;
+    try {
+      const url = new URL(endpointUrl);
+      url.searchParams.set(credential.name, credential.value);
+      return url.toString();
+    } catch {
+      return endpointUrl;
+    }
+  }, [credential, credentialIn, endpointUrl]);
   // Supplies a wrapped `fetch` to createGraphiQLFetcher rather than wrapping
   // the fetcher's own return value: the toolkit doesn't always resolve a
   // plain Promise<ExecutionResult> (it can wrap even a non-subscription
@@ -279,15 +277,13 @@ function GraphqlTestConsolePageContent() {
   // try/catch around calling the fetcher never sees the underlying fetch()
   // rejection. `fetch` itself is the one place a network-level failure (no
   // HTTP response at all) surfaces as a plain rejected promise, so
-  // intercepting there is what actually works. Since the request target is
-  // this app's own same-origin BFF route, such a failure means the BFF
-  // itself couldn't be reached — not a CORS or gateway-certificate issue,
-  // both of which this proxy already sidesteps. An HTTP error response
-  // (4xx/5xx, including a GraphQL "errors" body, or the BFF's own structured
-  // error for a resolution failure) resolves normally and is untouched here —
-  // GraphiQL's own response panel keeps showing those as it always has. The
-  // error is rethrown either way so GraphiQL's panel still reflects the
-  // failure; this only adds the toast alongside it.
+  // intercepting there is what actually works. For a cross-origin call that
+  // is what a CORS rejection, an untrusted certificate or an unreachable
+  // gateway all look like, so the toast names the likely causes. An HTTP
+  // error response (4xx/5xx, including a GraphQL "errors" body) resolves
+  // normally and is untouched here — GraphiQL's own response panel keeps
+  // showing those. The error is rethrown either way so GraphiQL's panel still
+  // reflects the failure; this only adds the toast alongside it.
   const guardedFetch = useMemo<typeof fetch>(
     () =>
       async (...args) => {
@@ -309,14 +305,11 @@ function GraphqlTestConsolePageContent() {
   const fetcher: Fetcher = useMemo(() => {
     const baseFetcher = createGraphiQLFetcher({
       fetch: guardedFetch,
-      headers: {
-        [CSRF_HEADER]: CSRF_HEADER_VALUE,
-        ...(credentialHeaderName ? { [credentialHeaderName]: credentialHeaderValue } : {}),
-      },
-      url: invokeProxyUrl,
+      headers: credentialHeaderName ? { [credentialHeaderName]: credentialHeaderValue } : {},
+      url: invokeUrl,
     });
     return (params, opts) => baseFetcher(withValidOperationName(params), opts);
-  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeProxyUrl]);
+  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeUrl]);
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;

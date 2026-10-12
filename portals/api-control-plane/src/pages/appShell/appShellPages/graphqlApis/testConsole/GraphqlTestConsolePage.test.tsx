@@ -23,7 +23,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
 import { aDeployment, aGateway, aGraphQLApiDetail, apiUrl, collection, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
@@ -180,24 +179,18 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     expect(lastGraphiQLProps?.defaultQuery).toContain('# Welcome to GraphiQL');
   });
 
-  // The browser must never call the gateway directly (its CORS policy and,
-  // for a dev/self-signed certificate, its TLS trust are both out of this
-  // app's control) — the fetcher is built against this app's own same-origin
-  // BFF route instead, which resolves and proxies to the real gateway
-  // endpoint server-side. The CSRF header is required because GraphiQL's own
-  // fetch doesn't go through this app's normal HTTP client, which is what
-  // adds it automatically for every other mutating request.
-  it('points the fetcher at the same-origin BFF invoke proxy, not the gateway directly', async () => {
+  // The console calls the gateway directly — the API's CORS policy must allow
+  // it — so the fetcher targets the same invoke URL the page shows, with no
+  // console-internal headers such as the BFF's CSRF header.
+  it('points the fetcher at the gateway’s invoke URL', async () => {
     serveApi([deployment]);
 
     renderPage();
 
     await screen.findByText('GraphiQL ready with schema');
     expect(lastGraphiQLProps?.fetcher).toBeInstanceOf(Function);
-    expect(lastFetcherOptions?.url).toBe(
-      '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke',
-    );
-    expect(lastFetcherOptions?.headers).toMatchObject({ [CSRF_HEADER]: CSRF_HEADER_VALUE });
+    expect(lastFetcherOptions?.url).toBe('https://gw.example.com/countries-graphql-api/v1.0.0');
+    expect(lastFetcherOptions?.headers).toEqual({});
   });
 
   // GraphiQL only strips the Headers tab from what it writes to `storage`
@@ -213,8 +206,8 @@ describe('GraphqlTestConsolePage — once deployed', () => {
     expect(lastGraphiQLProps?.shouldPersistHeaders).toBeFalsy();
   });
 
-  // Regression test: a network-level fetch failure (e.g. the BFF itself being
-  // unreachable) used to surface as nothing but GraphiQL's own cryptic
+  // Regression test: a network-level fetch failure (a CORS rejection, an
+  // untrusted certificate or an unreachable gateway) used to surface as nothing but GraphiQL's own cryptic
   // "Failed to fetch" — no guidance anywhere in this page. The fetcher this
   // page builds now catches that specific failure class and shows an
   // actionable toast, while still rethrowing so GraphiQL's own panel keeps
@@ -245,9 +238,7 @@ describe('GraphqlTestConsolePage — once deployed', () => {
         }
       });
 
-      expect(
-        await screen.findByText(/Could not reach the test console service/),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Could not reach the gateway/)).toBeInTheDocument();
     } finally {
       global.fetch = originalFetch;
     }
@@ -337,14 +328,9 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
 
     await screen.findByText('GraphiQL ready with schema');
     await vi.waitFor(() =>
-      expect(lastFetcherOptions?.headers).toMatchObject({
-        [CSRF_HEADER]: CSRF_HEADER_VALUE,
-        'X-Api-Key': 'graphql-test-credential',
-      }),
+      expect(lastFetcherOptions?.headers).toEqual({ 'X-Api-Key': 'graphql-test-credential' }),
     );
-    expect(lastFetcherOptions?.url).toBe(
-      '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke',
-    );
+    expect(lastFetcherOptions?.url).toBe('https://gw.example.com/countries-graphql-api/v1.0.0');
     expect(mints()).toBe(1);
   });
 
@@ -357,7 +343,7 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
     await screen.findByText('GraphiQL ready with schema');
     await vi.waitFor(() =>
       expect(lastFetcherOptions?.url).toBe(
-        '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke?apikey=graphql-test-credential',
+        'https://gw.example.com/countries-graphql-api/v1.0.0?apikey=graphql-test-credential',
       ),
     );
     expect(lastFetcherOptions?.headers).not.toHaveProperty('apikey');
