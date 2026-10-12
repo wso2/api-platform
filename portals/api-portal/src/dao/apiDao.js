@@ -184,9 +184,8 @@ async function attachAssociations(apiRows, t) {
     return apiRows;
 }
 
-// A null ref_id marks an MCP server authored in this portal: the MCP registry
-// (mcpRegistryService) and filterAllowedAPIs only treat a server as registry-managed
-// while ref_id is null, so the handle default must not reach MCP rows.
+// A null ref_id marks an MCP server authored in this portal (see
+// mcpRegistryService and filterAllowedAPIs), so MCP rows get no handle default.
 const defaultRefId = (type, handle) => (type === constants.API_TYPE.MCP ? null : handle);
 
 const create = async (orgId, apiMetadata, createdBy, t) => {
@@ -196,12 +195,8 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
     const now = new Date();
     const handle = apiMetadata.handle || `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`;
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
-    // Default ref_id to the handle so outbound webhook events (which carry
-    // data.api.ref_id) resolve on Platform API's side without a dedicated
-    // publication record wiring the id. Publisher-side pushes still override
-    // this with the publisher's own apiHandle; portal-authored APIs otherwise
-    // left ref_id null and every subscription/apikey event 400'd Platform API
-    // with "data.api.ref_id is required".
+    // Platform API resolves api.ref_id in webhook events by handle, so a
+    // portal-authored API defaults it to its handle; a publisher push sets its own.
     const referenceId = apiMetadata.referenceId || defaultRefId(apiMetadata.type, handle);
 
     const portalId = getPortalId();
@@ -234,12 +229,8 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const owners = apiMetadata.owners || {};
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
-    // An update that omits referenceId keeps the stored ref_id (a publisher
-    // push may have set one that differs from the portal handle); the stored
-    // handle is only a fallback for rows that never had one, so portal-authored
-    // APIs stay resolvable on the Platform API side. Read from the row rather than
-    // the payload, which need not carry the handle; MCP rows keep a null ref_id
-    // (see defaultRefId).
+    // An update without referenceId keeps the stored ref_id and only fills an
+    // empty one from the stored handle (the payload may omit it); MCP rows stay null.
     const referenceId = apiMetadata.referenceId || null;
 
     const portalId = getPortalId();

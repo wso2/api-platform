@@ -35,11 +35,8 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     handle: plan.handle,
     display_name: plan.displayName,
     description: plan.description,
-    // Default ref_id to the handle so outbound subscription webhook events
-    // (which carry subscription_plan.ref_id) resolve on Platform API's side.
-    // Platform API's CreateSubscription treats this value as the plan handle
-    // and looks it up via GetByHandleAndOrg; a null ref_id ships as null and
-    // the subscription insert fails with the plan_uuid foreign key violation.
+    // Platform API resolves subscription_plan.ref_id in webhook events as the
+    // plan handle, so it defaults to the handle.
     ref_id: plan.refId ?? plan.handle ?? null,
   };
 };
@@ -175,13 +172,8 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   const row = buildSubscriptionPlanRow(orgId, plan);
   const updatedAt = new Date();
 
-  // org_uuid never changes. ref_id is written unconditionally with the row's
-  // computed value (which defaults to handle in buildSubscriptionPlanRow), so
-  // a save from the admin UI - which omits refId from the payload - still
-  // backfills a null ref_id instead of leaving the plan unresolvable by
-  // Platform API's subscription webhook handler. Explicitly passing refId
-  // overrides the default; passing refId=null falls through to the handle too,
-  // so there is no admin API path that lands a null ref_id.
+  // org_uuid never changes. ref_id is always written, so a save that omits
+  // refId (the admin UI does) still falls back to the handle instead of null.
   const setCols = ['handle = ?', 'display_name = ?', 'description = ?', 'ref_id = ?'];
   const params = [row.handle, row.display_name, row.description, row.ref_id];
   setCols.push('updated_by = ?', 'updated_at = ?');

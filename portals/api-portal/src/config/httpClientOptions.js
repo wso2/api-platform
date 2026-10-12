@@ -60,10 +60,7 @@ function buildOutboundAgents(config) {
     const httpClientCfg = config.httpClient || {};
     const tlsCfg = httpClientCfg.tls || {};
     const tlsOptions = buildTLSOptions(tlsCfg);
-    // Opt-in bypass for peer cert verification on OUTBOUND calls. Required
-    // in local dev where Platform API serves a self-signed cert; webhook
-    // delivery to it otherwise fails with "self-signed certificate".
-    // Default (and prod) is rejectUnauthorized: true.
+    // Opt-in only; certificates are verified by default.
     if (tlsCfg.insecureSkipVerify === true) {
         tlsOptions.rejectUnauthorized = false;
     }

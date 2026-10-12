@@ -706,10 +706,8 @@ function validateIdpConfig(cfg) {
         process.exit(1);
     }
     if (jwksProtocol !== 'https:') {
-        // TEMP local-dev escape: Thunder on local k3d is served over plain http://openchoreoapis.localhost
-        // only. Opt-in via APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS=true so prod stays strict by default.
-        // Remove once local Thunder is TLS-terminated. Limited to *.localhost so
-        // the flag can never expose a remote key set to an on-path attacker.
+        // Development-only opt-in. Limited to localhost hosts so the flag can
+        // never expose a remote key set to an on-path attacker.
         const devHttpAllowed =
             String(process.env.APIP_AP_AUTH_IDP_DEV_INSECURE_JWKS || '').toLowerCase() === 'true' &&
             jwksProtocol === 'http:' &&

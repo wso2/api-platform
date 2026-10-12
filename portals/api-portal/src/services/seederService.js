@@ -225,14 +225,8 @@ async function seedDefaultOrg() {
         // handle. Config owns this field: the admin API refuses to change it, and
         // reconcileIdpOrgId re-applies the configured value on later boots.
         idpRefId: orgContext.getIdpOrgId(),
-        // Platform API's organization identifier that outbound webhook events
-        // carry in org.ref_id (deliveryWorker.js). Platform API's receiver
-        // resolves this handle to its own org UUID; a missing cp_ref_id
-        // sends the portal's internal org UUID instead and every event
-        // 404s with ORGANIZATION_NOT_FOUND. Defaults to the handle because
-        // that is what Platform API's org row carries. Admin API can
-        // override via settings; on later boots the seeder only fills it in
-        // while it is still empty.
+        // Sent as org.ref_id in webhook events, which Platform API resolves by
+        // handle. Settings can override it; later boots only fill an empty one.
         cpRefId: orgName,
     }, 'seedDefaultOrg');
 
@@ -259,8 +253,7 @@ async function seedDefaultOrg() {
                 });
             }
         } catch (error) {
-            // Non-fatal for the same reason as above; webhook events keep
-            // carrying the portal org uuid until the write succeeds.
+            // Non-fatal for the same reason as above.
             logger.error('Failed to backfill organization cp_ref_id', {
                 error: error.message,
                 handle: orgName,

@@ -22,7 +22,7 @@
  *
  * The JWKS URL feeds token signature verification, so a plain http:// URL lets a
  * network attacker substitute the key set. The portal must refuse to start on one,
- * except for the opt-in local-dev escape that is limited to localhost hosts.
+ * except for a development-only opt-in that is limited to localhost hosts.
  * Driven through a child process like internalAuthConfig.test.js, because the
  * check runs at module load and fails closed via process.exit.
  */
@@ -107,7 +107,7 @@ test('an unparseable JWKS URL refuses to start', () => {
 });
 
 test('the dev escape allows http on localhost and *.localhost, with a warning', () => {
-    for (const url of ['http://localhost:8090/oauth2/jwks', 'http://tid-acme.openchoreoapis.localhost:19080/oauth2/jwks']) {
+    for (const url of ['http://localhost:8090/oauth2/jwks', 'http://idp.dev.localhost:8090/oauth2/jwks']) {
         const { status, booted, stderr } = boot(url, { insecureFlag: 'true' });
         assert.equal(status, 0, url);
         assert.ok(booted, url);
