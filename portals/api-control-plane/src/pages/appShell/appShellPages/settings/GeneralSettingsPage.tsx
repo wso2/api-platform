@@ -22,7 +22,7 @@ import { BoxIcon, Building, Clock, Copy, Globe } from '@wso2/oxygen-ui-icons-rea
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useNotifications } from '@/components/Notifications';
-import { LoadingState } from '@/components/StateViews';
+import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 
@@ -50,6 +50,14 @@ const messages = defineMessages({
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.loading',
     defaultMessage: 'Loading settings',
+  },
+  projectNotFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectNotFound',
+    defaultMessage: 'Project not found',
+  },
+  organizationNotFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationNotFound',
+    defaultMessage: 'Organization not found',
   },
   projectDetailsTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectDetailsTitle',
@@ -98,8 +106,12 @@ function EntityGeneralCard({ icon, displayName, id, details = [] }: EntityGenera
   const { notify } = useNotifications();
 
   const copyId = () => {
+    if (!navigator.clipboard) {
+      notify(intl.formatMessage(messages.copyFailed), 'error');
+      return;
+    }
     navigator.clipboard
-      ?.writeText(id)
+      .writeText(id)
       .then(() => notify(intl.formatMessage(messages.copySucceeded), 'success'))
       .catch(() => notify(intl.formatMessage(messages.copyFailed), 'error'));
   };
@@ -152,7 +164,8 @@ export function GeneralSettingsPage() {
   const { isLoading, organization, params, project } = useConsoleScope();
 
   if (params.projectHandler) {
-    if (!project) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    if (isLoading) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    if (!project) return <ErrorState title={intl.formatMessage(messages.projectNotFound)} />;
 
     const details: Detail[] = [];
     if (project.createdAt) {
@@ -179,9 +192,8 @@ export function GeneralSettingsPage() {
     );
   }
 
-  if (isLoading || !organization) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
-  }
+  if (isLoading) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  if (!organization) return <ErrorState title={intl.formatMessage(messages.organizationNotFound)} />;
 
   const details: Detail[] = [];
   if (organization.createdAt) {
