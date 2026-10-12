@@ -176,7 +176,9 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   // when the caller explicitly supplied it.
   const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
   const params = [row.handle, row.display_name, row.description];
-  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
+  // undefined counts as absent: the YAML mapper sets refId from spec.refId even
+  // when the document has none.
+  if (plan.refId !== undefined) {
     setCols.push('ref_id = ?');
     params.push(plan.refId ?? null);
   }

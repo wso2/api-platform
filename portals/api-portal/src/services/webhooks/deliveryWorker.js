@@ -109,7 +109,6 @@ async function post(delivery, event) {
         const parsedUrl = new URL(delivery.target_url);
         const isHttps = parsedUrl.protocol === 'https:';
         const transport = isHttps ? https : http;
-        const agents = buildOutboundAgents(config);
         const options = {
             hostname: parsedUrl.hostname,
             port: parsedUrl.port || (isHttps ? 443 : 80),
@@ -119,7 +118,7 @@ async function post(delivery, event) {
             timeout: timeoutMs,
             // Pooled agents: reuse TCP+TLS handshakes across deliveries to the same
             // subscriber and carry the configured cipher/curve/version tuning.
-            agent: isHttps ? deliveryHttpsAgent(config) : agents.httpAgent,
+            agent: isHttps ? deliveryHttpsAgent(config) : buildOutboundAgents(config).httpAgent,
         };
 
         const req = transport.request(options, (res) => {

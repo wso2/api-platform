@@ -747,6 +747,22 @@ func TestAPIPortalService_UpdateAPIPortal_PendingURLChangeRejected(t *testing.T)
 	}
 }
 
+// A full write-back that repeats the current URL is not a URL change.
+func TestAPIPortalService_UpdateAPIPortal_PendingAllowsUnchangedURL(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.portals.example.com", Status: constants.APIPortalStatusPending,
+	}
+	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	got, err := svc.UpdateAPIPortal("acme", testUpdateReq{
+		Name: apiPortalStrPtr("Renamed"),
+		URL:  apiPortalStrPtr("https://acme.portals.example.com"),
+	}.build(), "org-1", "editor")
+	if err != nil || got.Name != "Renamed" {
+		t.Fatalf("want the rename to apply with the unchanged URL, got %+v, %v", got, err)
+	}
+}
+
 // Other fields of a pending portal, and the URL of a portal that is no longer
 // pending, can still be changed.
 func TestAPIPortalService_UpdateAPIPortal_PendingGuardIsURLOnly(t *testing.T) {

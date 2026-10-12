@@ -88,3 +88,10 @@ test('an update with refId writes exactly that value, null included', async () =
         assert.strictEqual(params[3], refId, String(refId));
     }
 });
+
+test('an update whose refId is undefined (YAML without spec.refId) leaves ref_id untouched', async () => {
+    const statements = [];
+    await loadDao(statements).update('org-1', 'plan-1', { handle: 'Gold', displayName: 'Gold', refId: undefined }, 'admin');
+    assert.doesNotMatch(updateOf(statements).sql, /ref_id/);
+});
+
