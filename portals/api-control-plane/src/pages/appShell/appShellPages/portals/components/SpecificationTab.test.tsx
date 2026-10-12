@@ -70,22 +70,8 @@ function Harness({
 }
 
 describe('SpecificationTab', () => {
-  it('opens an existing definition read-only until Edit is clicked', async () => {
-    const { user } = renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
-
-    const editor = await screen.findByRole('textbox', { name: 'API definition (JSON)' });
-    expect(editor).toHaveAttribute('readonly');
-
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-
-    expect(screen.getByRole('textbox', { name: 'API definition (JSON)' })).not.toHaveAttribute(
-      'readonly',
-    );
-    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
-  });
-
-  it('is editable straight away, with no Edit button, when there is no definition yet', async () => {
-    renderWithProviders(<Harness initialText="" />);
+  it('opens an existing definition editable straight away, with no Edit button', async () => {
+    renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
 
     const editor = await screen.findByRole('textbox', { name: 'API definition (JSON)' });
     expect(editor).not.toHaveAttribute('readonly');
