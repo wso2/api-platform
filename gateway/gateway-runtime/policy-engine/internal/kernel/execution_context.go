@@ -30,6 +30,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -1042,6 +1043,11 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	if f, isFault := faultFromRequestHeaders(execResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	// The ctx is deliberately dropped: the callee takes none, and the span ends
+	// with this call rather than containing later work.
+	_, span := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
 	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
 }
 
@@ -1147,6 +1153,9 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	if f, isFault := faultFromRequestBody(bodyResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	_, span := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
@@ -1519,7 +1528,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		// response through untouched rather than dereferencing a nil chain.
 		return ec.noChainPassThroughResponseHeaders(), nil
 	}
+	_, buildSpan := ec.server.tracer.Start(ctx, constants.SpanBuildResponseContext,
+		trace.WithSpanKind(trace.SpanKindInternal))
 	ec.buildResponseContexts(headers)
+	buildSpan.End()
 
 	// Reject here, at the last point an HTTP status can still be chosen: response
 	// headers have not been forwarded downstream yet, so this becomes a clean 502
@@ -1590,7 +1602,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	if f, isFault := faultFromResponseHeaders(execResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	_, translateSpan := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
+	translateSpan.End()
 	if err != nil {
 		return nil, err
 	}

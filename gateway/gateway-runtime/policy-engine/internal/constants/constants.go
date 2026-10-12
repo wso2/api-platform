@@ -90,6 +90,9 @@ const (
 	SpanProcessRequestBody        = "external_processing.process_request_body"
 	SpanProcessResponseHeaders    = "external_processing.process_response_headers"
 	SpanProcessResponseBody       = "external_processing.process_response_body"
+	SpanBindRoute                 = "external_processing.bind_route"
+	SpanBuildResponseContext      = "external_processing.build_response_context"
+	SpanTranslateActions          = "external_processing.translate_actions"
 	SpanPolicyRequestFormat       = "policy.request.%s"
 	SpanPolicyResponseFormat      = "policy.response.%s"
 
