@@ -412,13 +412,12 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
-	// AutoSeedSubscribers makes CreateAPIPortal auto-register platform-api as
-	// a webhook subscriber on the new portal (POST /webhook-subscribers)
-	// instead of leaving the operator to run curl afterwards. OSS Create fails
-	// closed with row rollback on seed failure. The cloud managed-portal path
-	// does the same seed asynchronously via its provisioning poller. Default
-	// off to preserve the current OSS behavior where operators own the
-	// subscriber configuration.
+	// AutoSeedSubscribers lets EnsureWebhookSubscriberOnPortal register
+	// platform-api as a webhook subscriber on a portal (POST
+	// /webhook-subscribers). Only plugin callers that provision the portal URL
+	// themselves invoke it; portals created through POST /api-portals are never
+	// seeded, because the request carries the shared webhook secret and that
+	// URL is caller-supplied. Default off.
 	AutoSeedSubscribers bool `koanf:"auto_seed_subscribers"`
 	// ReceiverURL is the full URL the portal POSTs webhook deliveries to -
 	// usually "<platform-api-public-base>/api/internal/v0.9/webhook/events".

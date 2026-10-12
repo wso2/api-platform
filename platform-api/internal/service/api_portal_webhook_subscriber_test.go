@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,27 +170,6 @@ func TestEnsureWebhookSubscriberOnPortal_NoOpWhenDisabled(t *testing.T) {
 	// repo has no stubbed portal; reaching the lookup would return nil and error.
 	if err := svc.EnsureWebhookSubscriberOnPortal(context.Background(), "acme", "org-1"); err != nil {
 		t.Fatalf("want no-op when auto-seed is off, got %v", err)
-	}
-}
-
-func TestCreateAPIPortal_SeedFailureRollsBackAndAudits(t *testing.T) {
-	srv, _ := newSeedTestServer(t, true, http.StatusInternalServerError)
-	repo := &mockAPIPortalRepository{}
-	repo.getResult = seededPortal(t, srv.URL)
-	auditRepo := &mockAPIPortalAuditRepository{}
-	svc := newSeedTestService(t, repo, auditRepo, srv.Client())
-
-	_, err := svc.CreateAPIPortal(testCreateReq{
-		Handle: "acme", Name: "Acme", URL: srv.URL, SharedKey: testSharedKeyHex,
-	}.build(), "org-1", "user-1")
-	if err == nil {
-		t.Fatal("want Create to fail closed when the seed fails")
-	}
-	if repo.createCapturedInput == nil || repo.deleteCalledWith[0] != repo.createCapturedInput.ID {
-		t.Errorf("want rollback delete of the created row, got %v", repo.deleteCalledWith)
-	}
-	if len(auditRepo.records) != 2 || auditRepo.records[0].action != "CREATE" || auditRepo.records[1].action != "DELETE" {
-		t.Errorf("want CREATE then DELETE audit records, got %+v", auditRepo.records)
 	}
 }
 
@@ -375,24 +353,21 @@ func TestEnsureWebhookSubscriberOnPortal_LongErrorBodyIsTruncated(t *testing.T) 
 	}
 }
 
-// When the rollback delete itself fails the row is orphaned; the Create still
-// fails, and no DELETE audit entry is written for a delete that did not happen.
-func TestCreateAPIPortal_SeedFailureWithFailedRollbackKeepsAuditHonest(t *testing.T) {
-	srv, _ := newSeedTestServer(t, true, http.StatusInternalServerError)
-	repo := &mockAPIPortalRepository{deleteErr: errors.New("db down")}
+// Creating a portal through POST /api-portals must never contact the portal URL,
+// even with auto-seed on: the URL is caller-supplied and the seed request carries
+// the shared webhook secret.
+func TestCreateAPIPortal_NeverSeedsCallerSuppliedURL(t *testing.T) {
+	srv, seen := newSeedTestServer(t, true, http.StatusCreated)
+	repo := &mockAPIPortalRepository{}
 	repo.getResult = seededPortal(t, srv.URL)
-	auditRepo := &mockAPIPortalAuditRepository{}
-	v := newTestVault(t)
-	svc := NewAPIPortalService(repo, &mockAPIPortalOrgRepository{result: &model.Organization{}}, auditRepo,
-		v, NewAPIPortalAuthRegistry(repo, v), nil, seedTestWebhookCfg, srv.Client(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc := newSeedTestService(t, repo, &mockAPIPortalAuditRepository{}, srv.Client())
 
-	_, err := svc.CreateAPIPortal(testCreateReq{
+	if _, err := svc.CreateAPIPortal(testCreateReq{
 		Handle: "acme", Name: "Acme", URL: srv.URL, SharedKey: testSharedKeyHex,
-	}.build(), "org-1", "user-1")
-	if err == nil {
-		t.Fatal("want Create to fail when the seed fails")
+	}.build(), "org-1", "user-1"); err != nil {
+		t.Fatalf("Create: %v", err)
 	}
-	if len(auditRepo.records) != 1 || auditRepo.records[0].action != "CREATE" {
-		t.Errorf("want only the CREATE audit record, got %+v", auditRepo.records)
+	if len(*seen) != 0 {
+		t.Errorf("want no request to the caller-supplied portal URL, got %d", len(*seen))
 	}
 }

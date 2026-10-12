@@ -93,9 +93,9 @@ type APIPortalService struct {
 }
 
 // NewAPIPortalService constructs an APIPortalService. webhookCfg + httpClient
-// drive the webhook subscriber auto-seed path (EnsureWebhookSubscriberOnPortal);
-// a nil httpClient falls back to a bounded client that refuses redirects, so a
-// hung portal cannot stall Create and credentials are never replayed elsewhere.
+// drive EnsureWebhookSubscriberOnPortal; a nil httpClient falls back to a
+// bounded client that refuses redirects, so a hung portal cannot stall the
+// caller and credentials are never replayed elsewhere.
 func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
@@ -236,27 +236,6 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
-
-	// Sync webhook-subscriber seed, OSS-create path only. Gating on
-	// status==active skips cloud-plugin callers that write status=pending for
-	// portals whose pods are not reachable yet - those run the same seed
-	// asynchronously through the provisioning poller after the pod boots.
-	// Fail-closed with row rollback: a half-configured portal (row exists but
-	// cannot notify platform-api of events) is worse than a visible failure
-	// the operator can retry.
-	if status == constants.APIPortalStatusActive && s.webhookCfg.Enabled && s.webhookCfg.AutoSeedSubscribers {
-		if seedErr := s.EnsureWebhookSubscriberOnPortal(context.Background(), portal.Handle, orgID); seedErr != nil {
-			if delErr := s.portalRepo.Delete(portal.ID, orgID); delErr != nil {
-				s.slogger.Error("portal webhook-subscriber auto-seed rollback failed; portal row orphaned",
-					slog.String("portalID", portal.ID), slog.String("handle", portal.Handle), slog.String("orgID", orgID),
-					slog.Any("seedErr", seedErr), slog.Any("rollbackErr", delErr))
-			} else {
-				_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, actor)
-			}
-			return nil, apperror.Internal.Wrap(seedErr).
-				WithLogMessage(fmt.Sprintf("portal webhook-subscriber auto-seed failed for handle %q", portal.Handle))
-		}
-	}
 
 	return ModelToAPIPortalResponse(portal), nil
 }

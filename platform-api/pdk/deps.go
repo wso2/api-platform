@@ -96,10 +96,10 @@ type Projects interface {
 // EnsureWebhookSubscriberOnPortal is an internal Go-only method used by the
 // webhook-subscriber auto-seed path: platform-api registers itself as a
 // webhook subscriber on each portal so apikey / subscription events reach it.
-// Not exposed on the REST DTO. Consumed by (a) OSS Service.CreateAPIPortal
-// when platform_api.webhook.auto_seed_subscribers is true (synchronous call,
-// fail-closed with row rollback) and (b) the cloud plugin's provisioning
-// poller when a portal transitions to active (asynchronous call, best-effort).
+// Not exposed on the REST DTO. Callers must own the portal URL: the request
+// carries the shared webhook secret, so it is only for portals whose URL the
+// plugin provisioned (the cloud provisioning poller calls it once a portal
+// turns active). POST /api-portals never seeds.
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
 	CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error)
