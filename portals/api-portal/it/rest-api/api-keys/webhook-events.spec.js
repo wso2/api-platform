@@ -85,7 +85,7 @@ describe('api-keys webhook events', () => {
             handle: keyId,
             display_name: keyId,
             expires_at: null,
-            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
+            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
         });
         expect(received.body.data.key).toBeUndefined();
     });
@@ -112,7 +112,7 @@ describe('api-keys webhook events', () => {
             handle: keyId,
             display_name: keyId,
             expires_at: null,
-            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
+            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
         });
         expect(received.body.data.key).toBeUndefined();
     });
@@ -137,7 +137,7 @@ describe('api-keys webhook events', () => {
             key_id: event.aggregate_uuid, // key's internal uuid; not exposed in the REST response
             handle: keyId,
             display_name: keyId,
-            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
+            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
         });
     });
 
@@ -168,7 +168,7 @@ describe('api-keys webhook events', () => {
             key_id: event.aggregate_uuid, // key's internal uuid; not exposed in the REST response
             handle: keyId,
             display_name: keyId,
-            api: { name: api.name, version: api.version, ref_id: api.refId || api.id, type: api.type },
+            api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
             // application.id is the app's internal uuid (never exposed over REST); its handle
             // is the checkable external identifier, so pin id only by shape.
             application: { id: expect.any(String), display_name: 'Assoc App', handle: appId },

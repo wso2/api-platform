@@ -18,10 +18,9 @@
 'use strict';
 
 /*
- * ref_id defaults for API rows. Outbound webhook events carry data.api.ref_id, which
- * Platform API resolves by handle, so a portal-authored API defaults ref_id to its
- * handle. MCP servers are the exception: a null ref_id is what marks a server as
- * authored in this portal (mcpRegistryService only exposes those), so they keep it null.
+ * ref_id on API updates. A publisher push sets ref_id (Platform API sends its API
+ * handle as referenceId) and webhook events carry it, so an update that omits
+ * referenceId, such as an edit in the portal UI, must keep the stored value.
  */
 
 const test = require('node:test');
@@ -67,42 +66,38 @@ const metadata = (overrides = {}) => ({
     ...overrides,
 });
 
-// The INSERT binds ref_id second, right after the generated uuid.
-const insertedRefId = (statements) => statements[0].params[1];
-
-test('a portal-authored API defaults ref_id to its handle', async () => {
-    const statements = [];
-    const row = await loadDao(statements).create('org-1', metadata(), 'admin');
-    assert.strictEqual(row.ref_id, 'pets-v1');
-    assert.strictEqual(insertedRefId(statements), 'pets-v1');
-});
-
-test('an explicit referenceId wins over the handle', async () => {
-    const statements = [];
-    const row = await loadDao(statements).create('org-1', metadata({ referenceId: 'cp-pets' }), 'admin');
-    assert.strictEqual(row.ref_id, 'cp-pets');
-});
-
-test('a portal-authored MCP server keeps a null ref_id so the registry still exposes it', async () => {
-    const statements = [];
-    const row = await loadDao(statements).create('org-1', metadata({ type: 'Mcp', handle: 'weather-v1' }), 'admin');
-    assert.strictEqual(row.ref_id, null);
-    assert.strictEqual(insertedRefId(statements), null);
-});
-
-test('an update without referenceId keeps the stored ref_id, falling back to the stored handle', async () => {
-    const statements = [];
-    // The payload need not carry the handle; the fallback reads it from the row.
-    const { handle: _omitted, ...withoutHandle } = metadata();
-    await loadDao(statements).update('org-1', 'api-1', withoutHandle, 'admin');
-    const { sql, params } = statements[0];
-    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id, CASE WHEN type = \? THEN NULL ELSE handle END\)/);
-    // MCP rows are excluded by their stored type, so the registry still sees them as portal-authored.
-    assert.deepStrictEqual(params.slice(0, 2), [null, 'Mcp']);
-});
-
-test('an explicit referenceId on update is written as-is', async () => {
+test('an update with referenceId writes it', async () => {
     const statements = [];
     await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: 'cp-pets' }), 'admin');
-    assert.strictEqual(statements[0].params[0], 'cp-pets');
+    const { sql, params } = statements[0];
+    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id\)/);
+    assert.strictEqual(params[0], 'cp-pets');
+});
+
+test('an update without referenceId keeps the stored ref_id', async () => {
+    const statements = [];
+    await loadDao(statements).update('org-1', 'api-1', metadata(), 'admin');
+    const { sql, params } = statements[0];
+    // COALESCE(NULL, ref_id) leaves the column as it was.
+    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id\)/);
+    assert.strictEqual(params[0], null);
+    // The next bind is status: no extra fallback parameter.
+    assert.strictEqual(params[1], 'PUBLISHED');
+});
+
+test('an empty referenceId on update is treated as omitted', async () => {
+    const statements = [];
+    await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: '' }), 'admin');
+    assert.strictEqual(statements[0].params[0], null);
+});
+
+test('create writes the given referenceId and no default', async () => {
+    const withRef = [];
+    await loadDao(withRef).create('org-1', metadata({ referenceId: 'cp-pets' }), 'admin');
+    assert.strictEqual(withRef[0].params[1], 'cp-pets');
+
+    const withoutRef = [];
+    const row = await loadDao(withoutRef).create('org-1', metadata(), 'admin');
+    assert.strictEqual(withoutRef[0].params[1], undefined);
+    assert.strictEqual(row.ref_id, undefined);
 });

@@ -184,10 +184,6 @@ async function attachAssociations(apiRows, t) {
     return apiRows;
 }
 
-// A null ref_id marks an MCP server authored in this portal (see
-// mcpRegistryService and filterAllowedAPIs), so MCP rows get no handle default.
-const defaultRefId = (type, handle) => (type === constants.API_TYPE.MCP ? null : handle);
-
 const create = async (orgId, apiMetadata, createdBy, t) => {
     const exec = t || db;
     const owners = apiMetadata.owners || {};
@@ -195,9 +191,6 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
     const now = new Date();
     const handle = apiMetadata.handle || `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`;
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
-    // Platform API resolves api.ref_id in webhook events by handle, so a
-    // portal-authored API defaults it to its handle; a publisher push sets its own.
-    const referenceId = apiMetadata.referenceId || defaultRefId(apiMetadata.type, handle);
 
     const portalId = getPortalId();
     await exec.execute(
@@ -207,14 +200,14 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
              sandbox_url, production_url, metadata_search, org_uuid, portal_id, created_by, updated_by, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            uuid, referenceId, apiMetadata.status, apiMetadata.name, handle, apiMetadata.description,
+            uuid, apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, handle, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner, owners.technicalOwnerEmail,
             owners.businessOwnerEmail, owners.businessOwner, apiMetadata.endPoints.sandboxURL,
             apiMetadata.endPoints.productionURL, apiMetadata, orgId, portalId, createdBy, createdBy, now, now,
         ]
     );
     return {
-        uuid, ref_id: referenceId, status: apiMetadata.status, name: apiMetadata.name, handle,
+        uuid, ref_id: apiMetadata.referenceId, status: apiMetadata.status, name: apiMetadata.name, handle,
         description: apiMetadata.description, version: apiMetadata.version, type: apiMetadata.type,
         agent_visibility: agentVisibility, technical_owner: owners.technicalOwner,
         technical_owner_email: owners.technicalOwnerEmail, business_owner_email: owners.businessOwnerEmail,
@@ -229,19 +222,19 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const owners = apiMetadata.owners || {};
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
-    // An update without referenceId keeps the stored ref_id and only fills an
-    // empty one from the stored handle (the payload may omit it); MCP rows stay null.
+    // An update without referenceId (e.g. an edit in the portal UI) keeps the
+    // ref_id a publisher set; writing it unconditionally would clear it.
     const referenceId = apiMetadata.referenceId || null;
 
     const portalId = getPortalId();
     const { rowCount } = await exec.execute(
         `UPDATE ${API_METADATA_TABLE}
-         SET ref_id = COALESCE(?, ref_id, CASE WHEN type = ? THEN NULL ELSE handle END), status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
+         SET ref_id = COALESCE(?, ref_id), status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
              technical_owner = ?, technical_owner_email = ?, business_owner_email = ?, business_owner = ?,
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
          WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
-            referenceId, constants.API_TYPE.MCP, apiMetadata.status, apiMetadata.name, apiMetadata.description,
+            referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,
