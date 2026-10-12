@@ -127,14 +127,12 @@ func TestGraphQLDeployAPI_Current_Success(t *testing.T) {
 	}
 }
 
-// TestGraphQLDeployAPI_LegacyGateway_DownConvertsApiVersion pins the fix for
-// the gap found auditing deployments/gateways/api-keys wiring for GraphQL:
-// DeployGraphQLAPI previously stamped constants.GatewayApiVersion
-// unconditionally and never called gatewaytranslator.Translate, so a
-// gateway older than gatewaytranslator.MinGatewayV1Version ("1.2.0") would
-// silently receive a v1 artifact it can't parse — unlike RestApi, MCP, and
-// LLM Provider/Proxy, which all down-convert via Translate before deploying.
-func TestGraphQLDeployAPI_LegacyGateway_DownConvertsApiVersion(t *testing.T) {
+// TestGraphQLDeployAPI_LTSGateway_Refused verifies that a deploy to an LTS
+// gateway release, none of which has the GraphQLApi artifact kind
+// (gwversion.MinGraphQLKindGatewayVersion), is refused with
+// DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY before any deployment row is written
+// or event sent, instead of shipping an artifact the gateway cannot run.
+func TestGraphQLDeployAPI_LTSGateway_Refused(t *testing.T) {
 	ctx := "/countries"
 	stored := &model.GraphQLAPI{
 		ID:             "gql-uuid-1",
@@ -154,9 +152,53 @@ func TestGraphQLDeployAPI_LegacyGateway_DownConvertsApiVersion(t *testing.T) {
 		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 		getByUUIDFunc:   func(uuid, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
 	}
-	// Below gatewaytranslator.MinGatewayV1Version ("1.2.0") — must down-convert.
-	legacyGateway := &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway", Version: "1.1.0"}
-	gatewayRepo := &mockGatewayRepository{getByNameResult: legacyGateway, getByUUIDResult: legacyGateway}
+	for _, version := range []string{"1.0.0", "1.1.0", "1.2.0"} {
+		t.Run(version, func(t *testing.T) {
+			ltsGateway := &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway", Version: version}
+			gatewayRepo := &mockGatewayRepository{getByNameResult: ltsGateway, getByUUIDResult: ltsGateway}
+			deploymentRepo := &mockDeploymentRepo{setCurrentUpdatedAt: time.Now()}
+
+			svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+
+			req := &api.DeployRequest{Name: "prod-deployment", Base: "current", GatewayId: "prod-gateway"}
+			_, err := svc.DeployGraphQLAPI("countries-graphql-api", req, "org-1", "creator-uuid")
+			if err == nil {
+				t.Fatalf("expected deploying to gateway %s to be refused", version)
+			}
+			if code := graphQLCatalogCode(t, err); code != apperror.CodeDeploymentKindUnsupportedByGateway {
+				t.Errorf("expected %s, got %s", apperror.CodeDeploymentKindUnsupportedByGateway, code)
+			}
+			if deploymentRepo.createdDeployment != nil || deploymentRepo.setCurrentCalled {
+				t.Error("expected nothing to be written for a refused deploy")
+			}
+		})
+	}
+}
+
+// TestGraphQLDeployAPI_STSGateway_Allowed verifies a date-named (STS) gateway
+// release, such as the cloud's, is treated as a current build and passes the
+// GraphQLApi kind gate.
+func TestGraphQLDeployAPI_STSGateway_Allowed(t *testing.T) {
+	ctx := "/countries"
+	stored := &model.GraphQLAPI{
+		ID:             "gql-uuid-1",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		Name:           "Countries GraphQL API",
+		Version:        "v1.0",
+		Configuration: model.GraphQLAPIConfig{
+			SDL:     validCountriesGraphQLSDL,
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+	}
+	stsGateway := &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway", Version: "2026.09.24"}
+	gatewayRepo := &mockGatewayRepository{getByNameResult: stsGateway, getByUUIDResult: stsGateway}
 	deploymentRepo := &mockDeploymentRepo{setCurrentUpdatedAt: time.Now()}
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
@@ -168,12 +210,8 @@ func TestGraphQLDeployAPI_LegacyGateway_DownConvertsApiVersion(t *testing.T) {
 	if deploymentRepo.createdDeployment == nil {
 		t.Fatal("expected a deployment to be created")
 	}
-	content := string(deploymentRepo.createdDeployment.Content)
-	if !strings.Contains(content, constants.GatewayApiVersionV1Alpha1) {
-		t.Errorf("expected deployment content to use %q for a legacy gateway, got:\n%s", constants.GatewayApiVersionV1Alpha1, content)
-	}
-	if strings.Contains(content, constants.GatewayApiVersion+"\n") {
-		t.Errorf("expected deployment content NOT to use latest %q for a legacy gateway, got:\n%s", constants.GatewayApiVersion, content)
+	if !strings.Contains(string(deploymentRepo.createdDeployment.Content), constants.GatewayApiVersion) {
+		t.Errorf("expected deployment content to use %q for a current gateway", constants.GatewayApiVersion)
 	}
 }
 
@@ -532,6 +570,44 @@ func TestGraphQLRestoreDeployment_Success(t *testing.T) {
 	}
 	if string(resp.Status) != string(model.DeploymentStatusDeploying) {
 		t.Errorf("expected initial status DEPLOYING, got %s", resp.Status)
+	}
+}
+
+// TestGraphQLRestoreDeployment_LTSGateway_Refused verifies a restore is gated on
+// the GraphQLApi kind the same way a deploy is: an LTS gateway release is
+// refused before the deployment is made current again.
+func TestGraphQLRestoreDeployment_LTSGateway_Refused(t *testing.T) {
+	stored := &model.GraphQLAPI{ID: "gql-uuid-1", Handle: "countries-graphql-api", OrganizationID: "org-1"}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+	}
+	gateway := graphQLDeploymentTestGateway()
+	gateway.Version = "1.2.0"
+	gatewayRepo := &mockGatewayRepository{getByNameResult: gateway, getByUUIDResult: gateway}
+	deploymentRepo := &mockDeploymentRepo{
+		deploymentWithContent: &model.Deployment{
+			DeploymentID: "dep-1",
+			Name:         "prod-deployment",
+			ArtifactID:   stored.ID,
+			GatewayID:    gateway.ID,
+			Content:      []byte("apiVersion: v1"),
+		},
+		currentDeploymentID: "dep-0",
+		currentStatus:       model.DeploymentStatusUndeployed,
+		setCurrentUpdatedAt: time.Now(),
+	}
+
+	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+
+	_, err := svc.RestoreGraphQLAPIDeployment("countries-graphql-api", "dep-1", "prod-gateway", "org-1")
+	if err == nil {
+		t.Fatal("expected restoring onto an LTS gateway to be refused")
+	}
+	if code := graphQLCatalogCode(t, err); code != apperror.CodeDeploymentKindUnsupportedByGateway {
+		t.Errorf("expected %s, got %s", apperror.CodeDeploymentKindUnsupportedByGateway, code)
+	}
+	if deploymentRepo.setCurrentCalled {
+		t.Error("expected the deployment not to be made current for a refused restore")
 	}
 }
 

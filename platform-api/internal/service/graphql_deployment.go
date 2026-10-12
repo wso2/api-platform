@@ -254,6 +254,12 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 		return nil, apperror.GraphQLAPINotFound.New()
 	}
 
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.GraphQLApi, gateway.Version); err != nil {
+		return nil, err
+	}
+
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
@@ -425,6 +431,9 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploym
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	if err := gatewaytranslator.EnsureKindSupported(constants.GraphQLApi, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	initialStatus := model.DeploymentStatusDeploying
