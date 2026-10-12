@@ -37,6 +37,7 @@ import {
   hasRender,
   isSidebarExtension,
   PAGE_API_DEPLOY_SLOT,
+  PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
   settingsTabExtensions,
@@ -322,11 +323,33 @@ function ExtensionAliasRedirect({
  * the first override registered against `slot` when there is one, otherwise the
  * built-in page. For a page that owns nested routes see `GatewaysRoute`.
  */
-function OverridablePage({ children, slot }: { children: ReactNode; slot: string }) {
+function OverridablePage({
+  artifactHandle,
+  children,
+  slot,
+}: {
+  /** The page's artifact, for one the Port does not carry (a GraphQL API). */
+  artifactHandle?: string;
+  children: ReactNode;
+  slot: string;
+}) {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
-  if (override) return <>{override.render(port)}</>;
+  if (override) return <>{override.render(port, artifactHandle)}</>;
   return <Hideable name={slot}>{children}</Hideable>;
+}
+
+/**
+ * The GraphQL API Deploy route: the same override arrangement as the REST
+ * `apiDeploy` route, handing the override the GraphQL API's handle from the URL.
+ */
+function GraphqlDeployRoute() {
+  const { graphqlApiHandler } = useParams();
+  return (
+    <OverridablePage artifactHandle={graphqlApiHandler} slot={PAGE_GRAPHQL_API_DEPLOY_SLOT}>
+      <GraphqlDeployPage />
+    </OverridablePage>
+  );
 }
 
 /**
@@ -477,7 +500,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           */}
           <Route path={routes.graphqlApi()} element={<GraphqlApiDetailPage />} />
           <Route path={routes.graphqlApiEdit()} element={<GraphqlApiEditPage />} />
-          <Route path={routes.graphqlApiDeploy()} element={<GraphqlDeployPage />} />
+          <Route path={routes.graphqlApiDeploy()} element={<GraphqlDeployRoute />} />
           <Route path={routes.graphqlApiTestConsole()} element={<GraphqlTestConsolePage />} />
           <Route
             path={routes.graphqlApiDevelopPolicies()}
