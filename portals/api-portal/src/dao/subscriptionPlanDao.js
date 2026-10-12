@@ -36,7 +36,7 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     display_name: plan.displayName,
     description: plan.description,
     // Platform API resolves subscription_plan.ref_id in webhook events as the
-    // plan handle, so it defaults to the handle.
+    // plan handle, so a new plan defaults to it; updates keep the stored value.
     ref_id: plan.refId ?? plan.handle ?? null,
   };
 };
@@ -172,10 +172,14 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   const row = buildSubscriptionPlanRow(orgId, plan);
   const updatedAt = new Date();
 
-  // org_uuid never changes. ref_id is always written, so a save that omits
-  // refId (the admin UI does) still falls back to the handle instead of null.
-  const setCols = ['handle = ?', 'display_name = ?', 'description = ?', 'ref_id = ?'];
-  const params = [row.handle, row.display_name, row.description, row.ref_id];
+  // Don't update primary keys — org_uuid never changes; ref_id only changes
+  // when the caller explicitly supplied it.
+  const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
+  const params = [row.handle, row.display_name, row.description];
+  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
+    setCols.push('ref_id = ?');
+    params.push(plan.refId ?? null);
+  }
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
 
