@@ -166,25 +166,102 @@ func openAITypeFor(faultType string, status int) string {
 
 // ─── Reshaping a body a policy wrote ─────────────────────────────────────────
 
-// OpenAIPolicyBodyMessage reshapes a body the PRODUCING policy wrote without describing the
-// failure: it returns the message to describe the failure with instead, and true when the body
-// is to be replaced by the OpenAI envelope rather than kept.
+// OpenAIPolicyBodyFault reshapes a body the PRODUCING policy wrote without describing the
+// failure: it returns the description to render instead, and true when the body is to be
+// replaced by the OpenAI envelope rather than kept.
 //
 // Every other shape treats such a body as the policy's decision, because their clients can
 // read a plain JSON body. An OpenAI SDK cannot: it reads `error.message`, and a
 // `{"error":"Unauthorized"}` from a policy written for REST APIs surfaces as an error with no
 // message. The operator turning llm_openai_compatible_errors on is the decision that every LLM
-// error is to be readable by those SDKs, and the policy catalogue has not all moved its
-// messages into FaultDetails yet — so the caller describes the failure with the body's own
-// message and the formatter renders that. A body already in the OpenAI envelope is kept:
-// reshaping it could only lose what its author put in `param` or `code`. So is an explicitly
-// empty body: that is the policy's decision that the client gets nothing, the same as a
-// provider's bodyless error.
-func OpenAIPolicyBodyMessage(body []byte) (string, bool) {
+// error is to be readable by those SDKs, and the policy catalogue has not all moved into
+// FaultDetails yet — so the caller describes the failure from the body and the formatter
+// renders that. Usually that is only the body's message; a guardrail's body carries the whole
+// intervention, and all of it is kept (see legacyGuardrailFault). A body already in the OpenAI
+// envelope is kept: reshaping it could only lose what its author put in `param` or `code`. So
+// is an explicitly empty body: that is the policy's decision that the client gets nothing, the
+// same as a provider's bodyless error.
+func OpenAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
 	if len(body) == 0 || isOpenAIBody(body) {
-		return "", false
+		return policy.FaultDetails{}, false
 	}
-	return legacyMessage(body), true
+	if fault, ok := legacyGuardrailFault(body); ok {
+		return fault, true
+	}
+	return policy.FaultDetails{Message: legacyMessage(body)}, true
+}
+
+// legacyGuardrailFault describes a guardrail's intervention from the body the shipped
+// guardrails write, which they all share:
+//
+//	{"type":"WORD_COUNT_GUARDRAIL","message":{"action":"GUARDRAIL_INTERVENED",
+//	  "interveningGuardrail":"word-count-guardrail","direction":"REQUEST",
+//	  "actionReason":"…","assessments":…}}
+//
+// interveningGuardrail is what marks the shape; without it the body is an ordinary one.
+//
+// assessments is present only when the operator set the guardrail's showAssessment, so
+// carrying it keeps that opt-in rather than widening it. The guardrails write it as a string,
+// an array or an object, while GuardrailDetails.Assessments is an object: an object is carried
+// as it is, and anything else is carried under "details".
+func legacyGuardrailFault(body []byte) (policy.FaultDetails, bool) {
+	var envelope struct {
+		Message *struct {
+			Action               string          `json:"action"`
+			InterveningGuardrail string          `json:"interveningGuardrail"`
+			Direction            string          `json:"direction"`
+			ActionReason         string          `json:"actionReason"`
+			Assessments          json.RawMessage `json:"assessments"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Message == nil {
+		return policy.FaultDetails{}, false
+	}
+	m := envelope.Message
+	if strings.TrimSpace(m.InterveningGuardrail) == "" {
+		return policy.FaultDetails{}, false
+	}
+	return policy.FaultDetails{
+		Type:      policy.FaultTypeGuardrail,
+		Direction: legacyGuardrailDirection(m.Direction),
+		Message:   strings.TrimSpace(m.ActionReason),
+		Guardrail: &policy.GuardrailDetails{
+			InterveningGuardrail: m.InterveningGuardrail,
+			Action:               m.Action,
+			ActionReason:         m.ActionReason,
+			Assessments:          legacyAssessments(m.Assessments),
+		},
+	}, true
+}
+
+// legacyGuardrailDirection maps the guardrails' "REQUEST"/"RESPONSE" onto the SDK's spelling,
+// and leaves anything else unset rather than guessing.
+func legacyGuardrailDirection(d string) string {
+	switch strings.ToUpper(strings.TrimSpace(d)) {
+	case "REQUEST":
+		return policy.DirectionRequest
+	case "RESPONSE":
+		return policy.DirectionResponse
+	default:
+		return ""
+	}
+}
+
+// legacyAssessments fits a guardrail's assessments into GuardrailDetails.Assessments. Absent or
+// null is nil, so the block omits the field.
+func legacyAssessments(raw json.RawMessage) map[string]any {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal(trimmed, &value); err != nil {
+		return nil
+	}
+	if obj, ok := value.(map[string]any); ok {
+		return obj
+	}
+	return map[string]any{"details": value}
 }
 
 // isOpenAIBody reports whether a body already is the OpenAI envelope, so reshaping it could

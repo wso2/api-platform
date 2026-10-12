@@ -324,6 +324,26 @@ func TestLLMOpenAIErrors_BuffersOnlyAnErrorBodyOnARouteWithNoBodyPolicy(t *testi
 	backend := llmRouteNoBodyPolicy(t, true, "429", codeDetailsViaUpstream)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, backend.getModeOverride().GetResponseBodyMode(),
 		"a backend's own error passes through, so buffering it would cost a buffer for nothing")
+
+	unknown := llmRouteNoBodyPolicy(t, true, "500", "")
+	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, unknown.getModeOverride().GetResponseBodyMode(),
+		"an error of unreported provenance may be the provider's, so it is not buffered to be rewritten")
+}
+
+// Without code_details there is no proof the router produced an error, and it may be the
+// provider's own document — which an OpenAI route never rewrites.
+func TestLLMOpenAIErrors_UnattributedUpstreamErrorPassesThrough(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	withRejectedBody(ec, 418)
+	ec.responseCodeDetails = ""
+	ec.responseBodyCtx.ResponseBody = &policy.Body{
+		Content: []byte(`{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`), Present: true,
+	}
+
+	execResult := &executor.ResponseExecutionResult{}
+	ec.runFaultPoliciesOnResponse(context.Background(), execResult, originUpstream)
+
+	assert.Nil(t, formattedResult(execResult))
 }
 
 func TestLLMOpenAIErrors_RouterFailureReachesTheWireOnARouteWithNoBodyPolicy(t *testing.T) {
@@ -391,4 +411,140 @@ func TestLLMOpenAIErrors_BodylessBackendErrorStaysEmpty(t *testing.T) {
 				"a backend %s with no body is passed through as it is (route reads bodies: %v)", status, requiresBody)
 		}
 	}
+}
+
+func TestActionBody_ReadsTheBodyOfEitherResponseAction(t *testing.T) {
+	assert.Equal(t, []byte("rejected"), actionBody(policy.ImmediateResponse{StatusCode: 403, Body: []byte("rejected")}))
+	assert.Equal(t, []byte("modified"), actionBody(policy.DownstreamResponseModifications{Body: []byte("modified")}))
+	assert.Nil(t, actionBody(nil), "no action carries no body")
+}
+
+// The body the shipped guardrails write, as word-count-guardrail v1.0.2 sends it.
+func legacyGuardrailBody(direction string) []byte {
+	return []byte(`{"message":{"action":"GUARDRAIL_INTERVENED",` +
+		`"actionReason":"Violation of applied word count constraints detected",` +
+		`"assessments":"Expected between 1 and 5 words.",` +
+		`"direction":"` + direction + `","interveningGuardrail":"word-count-guardrail"},"type":"WORD_COUNT_GUARDRAIL"}`)
+}
+
+func TestLLMOpenAIErrors_RequestGuardrailBodyKeepsTheGuardrailBlock(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 422,
+		Headers:    map[string]string{contentTypeHeader: "application/json"},
+		Body:       legacyGuardrailBody("REQUEST"),
+	})
+
+	inner := openAIErrorOf(t, out.Body)
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	assert.Equal(t, "invalid_request_error", inner["type"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok, "the guardrail block is carried: %s", out.Body)
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+	assert.Equal(t, "REQUEST", g["direction"])
+	assert.Equal(t, map[string]any{"details": "Expected between 1 and 5 words."}, g["assessments"])
+	assert.Equal(t, 422, out.StatusCode)
+}
+
+func TestLLMOpenAIErrors_ResponseGuardrailBodyKeepsTheGuardrailBlock(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	withRejectedBody(ec, 422)
+
+	execResult := bodyRejection(422)
+	execResult.Results[0].Action = policy.DownstreamResponseModifications{
+		StatusCode:   execResult.Results[0].Action.(policy.DownstreamResponseModifications).StatusCode,
+		Body:         legacyGuardrailBody("RESPONSE"),
+		HeadersToSet: map[string]string{"Content-Type": "application/json"},
+	}
+	require.True(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originGateway))
+
+	formatted := formattedResult(execResult)
+	require.NotNil(t, formatted)
+	inner := openAIErrorOf(t, formatted)
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok, "the guardrail block is carried: %s", formatted)
+	assert.Equal(t, "RESPONSE", g["direction"])
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+}
+
+// A fault entry's re-description that names no guardrail gets the body's block; everything it
+// did set stays.
+func TestLLMOpenAIErrors_GuardrailBodyFillsARedescriptionWithoutABlock(t *testing.T) {
+	redescription := &policy.FaultDetails{Code: "906201", Message: "Blocked by policy"}
+	ec := llmCtx(t, []policy.Policy{&faultRedescriberPolicy{fault: redescription}}, specs(1))
+	withRejectedBody(ec, 422)
+
+	execResult := bodyRejection(422)
+	execResult.Results[0].Action = policy.DownstreamResponseModifications{
+		StatusCode: execResult.Results[0].Action.(policy.DownstreamResponseModifications).StatusCode,
+		Body:       legacyGuardrailBody("RESPONSE"),
+	}
+	require.True(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originGateway))
+
+	inner := openAIErrorOf(t, formattedResult(execResult))
+	assert.Equal(t, "Blocked by policy", inner["message"], "the re-description's message stands")
+	assert.Equal(t, "906201", inner["code"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+	assert.Nil(t, redescription.Guardrail, "the fault entry's own description is not mutated")
+}
+
+func TestWithFallbackDetails(t *testing.T) {
+	fallback := policy.FaultDetails{
+		Message: "from body", Type: policy.FaultTypeGuardrail, Direction: policy.DirectionResponse,
+		Guardrail: &policy.GuardrailDetails{InterveningGuardrail: "body-guardrail"},
+	}
+
+	assert.Equal(t, &fallback, withFallbackDetails(nil, fallback), "no description: the body's stands")
+
+	declared := &policy.FaultDetails{
+		Message: "declared", Type: policy.FaultTypeAuthorization, Direction: policy.DirectionRequest,
+		Guardrail: &policy.GuardrailDetails{InterveningGuardrail: "declared-guardrail"},
+	}
+	assert.Equal(t, declared, withFallbackDetails(declared, fallback), "nothing declared is replaced")
+}
+
+// A fault entry is handed what the gateway read out of the producer's body, so one that only
+// adds a code keeps the guardrail block and message.
+func TestLLMOpenAIErrors_FaultEntrySeesTheDescriptionLiftedFromARejectionBody(t *testing.T) {
+	seen := &policy.FaultDetails{}
+	ec := llmCtx(t, []policy.Policy{&faultObserverPolicy{seen: seen, code: "999004"}}, specs(1))
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 422,
+		Headers:    map[string]string{contentTypeHeader: "application/json"},
+		Body:       legacyGuardrailBody("REQUEST"),
+	})
+
+	require.NotNil(t, seen.Guardrail, "the entry saw the lifted description")
+	assert.Equal(t, "word-count-guardrail", seen.Guardrail.InterveningGuardrail)
+
+	inner := openAIErrorOf(t, out.Body)
+	assert.Equal(t, "999004", inner["code"])
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok, "the guardrail block survives the re-description: %s", out.Body)
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+}
+
+// faultObserverPolicy records the description it was handed and re-describes it with a code,
+// keeping everything else — what an operator's "add our code" fault policy does.
+type faultObserverPolicy struct {
+	seen *policy.FaultDetails
+	code string
+}
+
+func (p *faultObserverPolicy) Mode() policy.ProcessingMode { return policy.ProcessingMode{} }
+
+func (p *faultObserverPolicy) OnFault(_ context.Context, fc *policy.FaultContext, _ map[string]interface{}) *policy.FaultResponse {
+	if fc.Fault == nil {
+		return nil
+	}
+	*p.seen = *fc.Fault
+	redescribed := *fc.Fault
+	redescribed.Code = p.code
+	return &policy.FaultResponse{Fault: &redescribed}
 }

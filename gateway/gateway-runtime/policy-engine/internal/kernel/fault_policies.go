@@ -63,10 +63,13 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 	// DESCRIBED the failure, in which case the body is a fallback for a gateway that cannot
 	// render one and this gateway renders instead. See faultformat.ShouldFormat.
 	if immResp.Body != nil && immResp.Fault == nil {
-		// On an OpenAI route the body is reshaped rather than kept: its message becomes the
-		// description, which the formatter then renders. See faultformat.OpenAIPolicyBodyMessage.
-		if msg, ok := ec.openAIPolicyBodyMessage(immResp.Body); ok {
-			immResp.Fault = &policy.FaultDetails{Message: msg}
+		// On an OpenAI route the body is reshaped rather than kept: what it says becomes the
+		// description, which the formatter then renders. See faultformat.OpenAIPolicyBodyFault.
+		// It is also what the fault entries are handed, as on the response path: an entry that
+		// adds a code to the failure must find the guardrail block and message there.
+		if fault, ok := ec.openAIPolicyBodyFault(immResp.Body); ok {
+			immResp.Fault = &fault
+			ec.faultDeclared = &fault
 		} else {
 			ec.faultBodyAuthored = true
 		}
@@ -278,10 +281,10 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 		if faultformat.BodyAuthored(r.Action) && !faultformat.DescribedError(r.Action) {
 			// As on the rejection path: an OpenAI route reshapes the body instead of keeping it.
 			// The fault entries have already run here, so a re-description of theirs is the
-			// final account of the failure: the body's message only fills a gap in it, and
+			// final account of the failure: what the body says only fills gaps in it, and
 			// is never a reason to replace it.
-			if msg, ok := ec.openAIPolicyBodyMessage(actionBody(r.Action)); ok {
-				ec.faultDeclared = withFallbackMessage(ec.faultDeclared, msg)
+			if fault, ok := ec.openAIPolicyBodyFault(actionBody(r.Action)); ok {
+				ec.faultDeclared = withFallbackDetails(ec.faultDeclared, fault)
 			} else {
 				ec.faultBodyAuthored = true
 			}
@@ -290,19 +293,28 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 	}
 }
 
-// withFallbackMessage returns declared with msg as its message when it has none, and a new
-// description carrying only msg when there is no description at all. Every other field of
-// declared is kept. declared itself is never modified: the same pointer is shared with the
-// FaultContext the fault entries saw.
-func withFallbackMessage(declared *policy.FaultDetails, msg string) *policy.FaultDetails {
+// withFallbackDetails returns declared with its empty fields filled from fallback, and fallback
+// itself when there is no description at all. A field declared set is never replaced; the
+// guardrail block is filled only as a whole, so a declared one is not mixed with the body's.
+// declared itself is never modified: the same pointer is shared with the FaultContext the
+// fault entries saw.
+func withFallbackDetails(declared *policy.FaultDetails, fallback policy.FaultDetails) *policy.FaultDetails {
 	if declared == nil {
-		return &policy.FaultDetails{Message: msg}
-	}
-	if declared.Message != "" || msg == "" {
-		return declared
+		return &fallback
 	}
 	out := *declared
-	out.Message = msg
+	if out.Message == "" {
+		out.Message = fallback.Message
+	}
+	if out.Type == "" {
+		out.Type = fallback.Type
+	}
+	if out.Direction == "" {
+		out.Direction = fallback.Direction
+	}
+	if out.Guardrail == nil {
+		out.Guardrail = fallback.Guardrail
+	}
 	return &out
 }
 
