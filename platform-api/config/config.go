@@ -1290,6 +1290,11 @@ func warnRemovedConfigKeys(k *koanf.Koanf) {
 
 func validateWebhookConfig(w *Webhook) error {
 	if !w.Enabled {
+		// Seeding registers a subscriber that delivers to this webhook endpoint, so
+		// the opt-in must not appear active while the endpoint is off.
+		if w.AutoSeedSubscribers {
+			return fmt.Errorf("webhook.auto_seed_subscribers=true requires webhook.enabled=true")
+		}
 		return nil
 	}
 	if w.Secret == "" {
@@ -1315,7 +1320,7 @@ func validateWebhookConfig(w *Webhook) error {
 	// https rule the portal URL itself must satisfy.
 	if w.AutoSeedSubscribers {
 		u, err := url.Parse(w.ReceiverURL)
-		if err != nil || u.Scheme != "https" || u.Host == "" {
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" {
 			return fmt.Errorf("webhook.receiver_url must be an absolute https URL when webhook.auto_seed_subscribers=true")
 		}
 	}

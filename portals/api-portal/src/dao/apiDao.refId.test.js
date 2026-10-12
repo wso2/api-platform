@@ -90,16 +90,19 @@ test('a portal-authored MCP server keeps a null ref_id so the registry still exp
     assert.strictEqual(insertedRefId(statements), null);
 });
 
-test('an update without referenceId keeps the stored ref_id, falling back to the handle', async () => {
+test('an update without referenceId keeps the stored ref_id, falling back to the stored handle', async () => {
     const statements = [];
-    await loadDao(statements).update('org-1', 'api-1', metadata(), 'admin');
+    // The payload need not carry the handle; the fallback reads it from the row.
+    const { handle: _omitted, ...withoutHandle } = metadata();
+    await loadDao(statements).update('org-1', 'api-1', withoutHandle, 'admin');
     const { sql, params } = statements[0];
-    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id, \?\)/);
-    assert.deepStrictEqual(params.slice(0, 2), [null, 'pets-v1']);
+    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id, CASE WHEN type = \? THEN NULL ELSE handle END\)/);
+    // MCP rows are excluded by their stored type, so the registry still sees them as portal-authored.
+    assert.deepStrictEqual(params.slice(0, 2), [null, 'Mcp']);
 });
 
-test('an MCP update never backfills ref_id with the handle', async () => {
+test('an explicit referenceId on update is written as-is', async () => {
     const statements = [];
-    await loadDao(statements).update('org-1', 'api-1', metadata({ type: 'Mcp', handle: 'weather-v1' }), 'admin');
-    assert.deepStrictEqual(statements[0].params.slice(0, 2), [null, null]);
+    await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: 'cp-pets' }), 'admin');
+    assert.strictEqual(statements[0].params[0], 'cp-pets');
 });

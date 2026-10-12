@@ -34,6 +34,7 @@ func TestValidateWebhookConfig_AutoSeedReceiverURL(t *testing.T) {
 		{"plain http", "http://platform-api.example.com/api/internal/v0.9/webhook/events", "absolute https URL"},
 		{"relative", "/api/internal/v0.9/webhook/events", "absolute https URL"},
 		{"no host", "https:///api/internal/v0.9/webhook/events", "absolute https URL"},
+		{"port without hostname", "https://:443/api/internal/v0.9/webhook/events", "absolute https URL"},
 		{"unparseable", "https://exa mple.com/%zz", "absolute https URL"},
 		{"https", "https://platform-api.example.com/api/internal/v0.9/webhook/events", ""},
 	}
@@ -56,4 +57,11 @@ func TestValidateWebhookConfig_AutoSeedReceiverURL(t *testing.T) {
 func TestValidateWebhookConfig_ReceiverURLIgnoredWithoutAutoSeed(t *testing.T) {
 	w := &Webhook{Enabled: true, Secret: "s3cret", ReceiverURL: "http://not-checked.example.com"}
 	require.NoError(t, validateWebhookConfig(w))
+}
+
+func TestValidateWebhookConfig_AutoSeedRequiresEnabledWebhooks(t *testing.T) {
+	w := &Webhook{AutoSeedSubscribers: true, ReceiverURL: "https://platform-api.example.com/api/internal/v0.9/webhook/events"}
+	err := validateWebhookConfig(w)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires webhook.enabled=true")
 }
