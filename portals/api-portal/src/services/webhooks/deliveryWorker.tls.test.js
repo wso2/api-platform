@@ -24,14 +24,20 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const https = require('node:https');
+const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const r = (p) => path.resolve(__dirname, p);
+// Mutated per test: deliveryWorker reads its config from this module's export.
+const workerConfig = {};
 const STUBBED = {
-    [r('../../config/configLoader.js')]: { config: {} },
+    [r('../../config/configLoader.js')]: { config: workerConfig },
     [r('../../db/driver.js')]: {},
     [r('../../dao/eventDao.js')]: {},
-    [r('./subscriberRegistry.js')]: { getSubscriber: () => null },
+    [r('./subscriberRegistry.js')]: { getSubscriber: async (id) => (id === 'sub-1' ? { id } : null) },
     [r('./signer.js')]: { sign: () => ({}) },
     [r('../../config/logger.js')]: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
     [r('../../utils/orgContext.js')]: {},
@@ -81,3 +87,56 @@ test('only a boolean true skips verification', () => {
     const { worker } = loadWorker();
     assert.notStrictEqual(worker.deliveryHttpsAgent(cfg('true')).options.rejectUnauthorized, false);
 });
+
+// A delivery to an HTTPS subscriber with a self-signed certificate: rejected by
+// default, accepted with tlsSkipVerify. The certificate is generated per run
+// rather than committed.
+function selfSignedCert() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ap-delivery-tls-'));
+    const key = path.join(dir, 'key.pem');
+    const cert = path.join(dir, 'cert.pem');
+    const res = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+        '-subj', '/CN=localhost', '-keyout', key, '-out', cert], { encoding: 'utf8' });
+    if (res.status !== 0) return null;
+    const out = { key: fs.readFileSync(key), cert: fs.readFileSync(cert) };
+    fs.rmSync(dir, { recursive: true, force: true });
+    return out;
+}
+
+async function deliverToSelfSignedSubscriber(tlsSkipVerify) {
+    const pem = selfSignedCert();
+    if (!pem) return null;
+    const received = [];
+    const server = https.createServer(pem, (req, res) => {
+        received.push(req.headers['x-api-portal-event']);
+        res.writeHead(204).end();
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+        Object.assign(workerConfig, cfg(tlsSkipVerify));
+        const { worker } = loadWorker();
+        const result = await worker.post(
+            { uuid: 'd-1', subscriber_id: 'sub-1', target_url: `https://127.0.0.1:${server.address().port}/hook` },
+            { uuid: 'e-1', type: 'subscription.created', occurred_at: new Date().toISOString(), org_uuid: 'org-1', payload: {} },
+        );
+        return { result, received };
+    } finally {
+        server.close();
+    }
+}
+
+test('delivery to a self-signed subscriber fails by default', async (t) => {
+    const out = await deliverToSelfSignedSubscriber(false);
+    if (!out) return t.skip('openssl not available');
+    assert.strictEqual(out.result.ok, false);
+    assert.deepStrictEqual(out.received, []);
+});
+
+test('delivery to a self-signed subscriber succeeds with tlsSkipVerify', async (t) => {
+    const out = await deliverToSelfSignedSubscriber(true);
+    if (!out) return t.skip('openssl not available');
+    assert.strictEqual(out.result.ok, true);
+    assert.strictEqual(out.result.status, 204);
+    assert.deepStrictEqual(out.received, ['subscription.created']);
+});
+

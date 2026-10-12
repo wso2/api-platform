@@ -117,9 +117,8 @@ async function post(delivery, event) {
             method: 'POST',
             headers,
             timeout: timeoutMs,
-            // Shared, pooled agent: reuses TCP+TLS handshakes across deliveries to the
-            // same subscriber instead of paying a fresh one per delivery, and carries
-            // the configured cipher/curve/version tuning on the HTTPS side.
+            // Pooled agents: reuse TCP+TLS handshakes across deliveries to the same
+            // subscriber and carry the configured cipher/curve/version tuning.
             agent: isHttps ? deliveryHttpsAgent(config) : agents.httpAgent,
         };
 
@@ -242,4 +241,4 @@ function stop() {
     }
 }
 
-module.exports = { start, stop, deliveryHttpsAgent };
+module.exports = { start, stop, deliveryHttpsAgent, post };
