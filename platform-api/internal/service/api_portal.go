@@ -401,8 +401,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	if portal == nil {
 		return nil, apperror.APIPortalNotFound.New()
 	}
-	// A pending portal's URL is the one its provisioner set; the webhook seed
-	// that runs on activation sends the shared secret there.
+	// A pending portal's URL is owned by its provisioner until it is active.
 	if req.Url != nil && portal.IsPending() {
 		return nil, apperror.ValidationFailed.New("The url field cannot be changed while the API Portal is pending.")
 	}
