@@ -17,7 +17,14 @@
 
 package gatewaytranslator
 
-import "github.com/wso2/api-platform/platform-api/internal/constants"
+import (
+	"fmt"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/kinds"
+)
 
 // platformToGatewayKind maps each control-plane artifact kind to the kind its
 // deployment artifact carries on the gateway. Every kind is listed explicitly —
@@ -69,4 +76,37 @@ func ComputeDataVersionForGatewayKind(gatewayKind string, apiVersion string) Pla
 		return defaultPlatformDataVersion
 	}
 	return ComputeDataVersion(platformKind, apiVersion)
+}
+
+// MinGatewayVersionForKind returns the first gateway release that has the
+// given gateway kind, or "" when every release has it. ok is false for a kind
+// with no translator definition.
+func MinGatewayVersionForKind(gatewayKind string) (string, bool) {
+	k, ok := kinds.Lookup(gatewayKind)
+	if !ok {
+		return "", false
+	}
+	return k.MinGatewayVersion, true
+}
+
+// EnsureKindSupported refuses to deploy an artifact of gatewayKind to a gateway
+// that positively reports a release older than the kind's first supporting
+// release. Deploy and restore services call it right after resolving the
+// gateway, before any row is written or event sent, so a refused deploy leaves
+// nothing behind. A blank or non-semver version is a current build and passes;
+// so does a kind without a definition, which Translate then rejects.
+//
+// The error is apperror.DeploymentKindUnsupportedByGateway (400) and names the
+// control-plane kind the user knows (AgentProxy, not Agent).
+func EnsureKindSupported(gatewayKind, gatewayVersion string) error {
+	min, ok := MinGatewayVersionForKind(gatewayKind)
+	if !ok || min == "" || gwversion.AtLeast(gatewayVersion, min) {
+		return nil
+	}
+	displayKind := gatewayKind
+	if platformKind, ok := PlatformKindForGatewayKind(gatewayKind); ok {
+		displayKind = platformKind
+	}
+	return apperror.DeploymentKindUnsupportedByGateway.New(displayKind, gwversion.Requirement(min)).
+		WithLogMessage(fmt.Sprintf("gateway reports version %q but kind %s needs minimum %q", gatewayVersion, gatewayKind, min))
 }

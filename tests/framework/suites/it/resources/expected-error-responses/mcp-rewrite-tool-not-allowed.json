@@ -1,0 +1,14 @@
+{
+  "body": {
+    "error": {
+      "code": -32602,
+      "message": "MCP tools 'echo' is not allowed"
+    },
+    "id": 31,
+    "jsonrpc": "2.0"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 403
+}

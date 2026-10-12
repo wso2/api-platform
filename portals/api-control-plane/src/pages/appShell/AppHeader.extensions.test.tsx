@@ -34,6 +34,7 @@ const port: CloudHostPort = {
   navigate: () => {},
   notify: () => {},
   apiFetch: async () => undefined as never,
+  billing: { organization: async () => null },
 };
 
 const headerEntry: ApiControlPlaneHeaderAction = {

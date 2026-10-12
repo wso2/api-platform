@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -1273,4 +1274,39 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// An operation-level fault entry gets the same validation as any other policy reference.
+// Without this it would be the one policy list in the spec that deploys unchecked.
+func TestPolicyValidator_OperationLevelFaultPoliciesAreValidated(t *testing.T) {
+	validator := NewPolicyValidator(map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"},
+	}, nil)
+
+	apiConfig := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API", Version: "v1.0", Context: "/test",
+			Operations: []api.Operation{{
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/hello"),
+				FaultPolicies: &[]api.Policy{
+					{Name: "set-headers", Version: "v1"},
+					{Name: "no-such-policy", Version: "v1"},
+				},
+			}},
+		},
+	}
+
+	errs := validator.ValidateRestAPIPolicies(apiConfig)
+	require.NotEmpty(t, errs, "an unresolvable operation-level fault entry must be reported")
+
+	var found bool
+	for _, e := range errs {
+		if strings.HasPrefix(e.Field, "spec.operations[0].faultPolicies[1]") {
+			found = true
+		}
+	}
+	assert.True(t, found, "the error must identify the operation and the entry index, got %+v", errs)
 }

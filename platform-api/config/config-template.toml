@@ -519,3 +519,26 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
+
+# ---------------------------------------------------------------------------
+# Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)
+# ---------------------------------------------------------------------------
+# While enabled, EVERY organization is read-only — its POST/PUT/PATCH/DELETE
+# requests are rejected with HTTP 503 (error code ORGANIZATION_READ_ONLY) while
+# GET requests keep working — except the organizations listed in
+# writable_organizations. While disabled the feature is fully off and the list
+# has no effect. Used to test the migrated Platform API v2 with write access
+# limited to a defined set of organizations; removed once the migration is done
+# (see README.md "Read-only (maintenance) mode — temporary").
+#
+# Organizations are identified by their platform UUID (the organization_uuid
+# column — the value the token's organization claim resolves to), never by
+# handle: a non-UUID entry fails startup. Restart-time setting: every replica
+# must get identical values; the startup log announces the mode and the list.
+#
+# Env example:
+#   enabled                = '{{ env "APIP_CP_READ_ONLY_ENABLED" "false" }}'
+#   writable_organizations = '{{ env "APIP_CP_READ_ONLY_WRITABLE_ORGANIZATIONS" "" }}'   # comma-separated UUIDs
+[platform_api.read_only]
+enabled                = false
+writable_organizations = []

@@ -178,6 +178,44 @@ func TestPolicyValidator_MtlsAuthRefusedOutsideRestAPI(t *testing.T) {
 	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
 }
 
+// mtls-auth in a fault policy list is refused on every kind: on a non-REST kind
+// for the same reason as anywhere else on it, and on a RestApi because a fault
+// policy runs after the request was let through and could never deny it.
+func TestPolicyValidator_MtlsAuthRefusedAsFaultPolicy(t *testing.T) {
+	validator := NewPolicyValidator(ratelimitDefs(), nil)
+	mtls := []api.Policy{{Name: MtlsAuthPolicyName, Version: "v1"}}
+
+	llm := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+		GlobalFaultPolicies: &mtls,
+	}}
+	errs := validator.ValidateLLMProxyPolicies(llm)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.globalFaultPolicies[0]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
+
+	mcp := &api.MCPProxyConfiguration{Spec: api.MCPProxyConfigData{FaultPolicies: &mtls}}
+	errs = validator.ValidateMCPProxyPolicies(mcp)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.faultPolicies[0]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
+
+	rest := &api.RestAPI{Kind: api.RestAPIKindRestApi, Spec: api.APIConfigData{
+		FaultPolicies: &mtls,
+		Operations: []api.Operation{{
+			Method:        api.Ptr(api.OperationMethod("GET")),
+			Path:          api.Ptr("/hello"),
+			FaultPolicies: &mtls,
+		}},
+	}}
+	errs = validator.ValidateRestAPIPolicies(rest)
+	require.Len(t, errs, 2)
+	assert.Equal(t, "spec.faultPolicies[0]", errs[0].Field)
+	assert.Equal(t, "spec.operations[0].faultPolicies[0]", errs[1].Field)
+	for _, e := range errs {
+		assert.Equal(t, "mtls-auth cannot be a fault policy", e.Message)
+	}
+}
+
 // paramDefs returns definitions whose "token-based-ratelimit" policy declares a parameter
 // schema, so per-path params on operation-level and deprecated policies can be exercised.
 // additionalProperties:false mirrors the shipped policy definitions.

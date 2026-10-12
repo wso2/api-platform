@@ -42,6 +42,10 @@ var browserSafeKeys = []string{
 	"gateway.platform_gateway_versions",
 	"logging.browser_debug",
 
+	// Per-feature switches, one key each. Absent means off, so a deployment only
+	// names a feature it is ready to serve.
+	"feature_flags.agent_proxy_enabled",
+
 	// Claim names the SPA displays user/org identity from. The keys mirror the
 	// Platform API's [auth.claim_mappings] exactly — same claim, same name. Shared
 	// by both auth modes, so it lives under [auth.claim_mappings], not nested in

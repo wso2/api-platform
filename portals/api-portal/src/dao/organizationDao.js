@@ -110,7 +110,7 @@ const getByUuid = async (uuid, t) => {
 
 // Exact handle match only — no fallback to display_name/idp_ref_id. Used to resolve
 // the single organization this instance is pinned to (src/utils/orgContext.js): in a
-// shared multi-organization database, one org's handle can legitimately equal
+// shared database, one org's handle can legitimately equal
 // another's display name, so findOrgByIdentifier's priority ladder is too loose to
 // establish the pin itself.
 const getByHandle = async (handle, t) => {
@@ -122,6 +122,28 @@ const getByHandle = async (handle, t) => {
         throw new NotFoundError('Organization not found');
     }
     return organization;
+};
+
+// Every organization of this portal whose idp_ref_id is exactly `idpRefId` — no handle/display_name
+// fallback. Returns all matches rather than the first, because idp_ref_id carries no
+// unique constraint: a caller matching a token's org claim must be able to tell "one
+// organization" from "ambiguous" instead of silently picking one.
+//
+// "Exactly" is enforced here, not left to the database: SQL Server's default
+// collation compares case-insensitively and ignores trailing spaces, so on MSSQL the
+// query alone would also return the row for "acme" given "ACME" or "acme " — letting a
+// token whose org claim merely differs in case act as another organization.
+const listByIdpRefId = async (idpRefId, t) => {
+    const exec = t || db;
+    const rows = await exec.query(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ? AND portal_id = ?`, [idpRefId, getPortalId()]);
+    return rows.filter((row) => row.idp_ref_id === idpRefId).map(normalizeOrgRow);
+};
+
+// This portal's organization whose display name is exactly `displayName`, or null.
+// display_name is unique per portal, so a caller creating an organization checks here first.
+const findByDisplayName = async (displayName, t) => {
+    const exec = t || db;
+    return normalizeOrgRow(await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ? AND portal_id = ?`, [displayName, getPortalId()]));
 };
 
 const getId = async (orgName) => {
@@ -195,7 +217,7 @@ const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
  * Returns another organization that findOrgByIdentifier would resolve `value` to —
  * i.e. one whose handle, display_name, or idp_ref_id already equals it — or null.
  *
- * A shared multi-organization database is the case this guards: pointing this
+ * A shared database is the case this guards: pointing this
  * instance's idp_ref_id at a value another organization already answers to would
  * shadow that organization's own identifier resolution, so the seeder refuses the
  * change rather than breaking a neighbouring tenant.
@@ -258,6 +280,31 @@ const deleteOrgDependents = async (orgUuid, t) => {
         }
         await exec.execute(`DELETE FROM app_key_mappings WHERE ${conditions.join(' OR ')}`, params);
     }
+    /*
+     * OAuth2 keys, before the organization row they point at.
+     *
+     * `oauth2_consumer_keys` carries ON DELETE NO ACTION to organizations -- a
+     * key is a client that exists at an identity server, so the database must
+     * not quietly drop the portal's only record of one. That makes deleting an
+     * organization with keys fail outright unless they go first.
+     *
+     * Their application mappings cascade from both sides, so deleting the keys is
+     * enough; the explicit delete below covers a mapping whose key was already
+     * removed but whose row survived an earlier partial failure.
+     *
+     * Note this does NOT delete the clients at the key manager: nothing here can,
+     * since the provisioning credential is going away with the key manager row.
+     * An operator deleting an organization is accepting that those clients remain
+     * at the identity server, which is the same bargain every other upstream
+     * artifact here is subject to.
+     */
+    await exec.execute(
+        `DELETE FROM oauth2_consumer_key_app_mappings
+          WHERE key_uuid IN (SELECT uuid FROM oauth2_consumer_keys WHERE org_uuid = ?)`,
+        [orgUuid]
+    );
+    await exec.execute('DELETE FROM oauth2_consumer_keys WHERE org_uuid = ?', [orgUuid]);
+
     await exec.execute('DELETE FROM applications WHERE org_uuid = ?', [orgUuid]);
     await exec.execute('DELETE FROM key_managers WHERE org_uuid = ?', [orgUuid]);
 
@@ -403,6 +450,8 @@ module.exports = {
     getByUuid,
     getByHandle,
     getId,
+    listByIdpRefId,
+    findByDisplayName,
     list,
     update,
     updateIdpRefId,

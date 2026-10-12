@@ -63,8 +63,11 @@ var (
 	// gateway-controller's own Agent resource (the "/agents" collection). It deletes before the
 	// control plane's imported AgentProxy copy, which platform-api only lets go once the
 	// gateway has reported the Agent undeployed.
-	KindAgent       = Kind{Name: "agent", Order: 52}
-	KindMCPServer   = Kind{Name: "mcp-server", Order: 55}
+	KindAgent     = Kind{Name: "agent", Order: 52}
+	KindMCPServer = Kind{Name: "mcp-server", Order: 55}
+	// An Agent proxy can hold its upstream credential as a {{ secret "handle" }}
+	// placeholder, so it deletes before KindSecret.
+	KindAgentProxy  = Kind{Name: "agent-proxy", Order: 56}
 	KindPolicy      = Kind{Name: "policy", Order: 60}
 	KindSharedScope = Kind{Name: "shared-scope", Order: 70}
 	KindCertificate = Kind{Name: "certificate", Order: 80}

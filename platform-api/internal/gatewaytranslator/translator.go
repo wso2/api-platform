@@ -15,46 +15,52 @@
  *
  */
 
-// Package gatewaytranslator adapts a deployment artifact between two version
-// axes:
-//
-//   - the platform data version the artifact was generated from (the shape
-//     platform-api stored it as — see PlatformDataVersion), and
-//   - the gateway data version the target gateway accepts (its CRD apiVersion,
-//     derived from its semver — see GatewayDataVersion).
-//
-// Generators always produce the canonical, gateway-latest artifact shape.
-// Translate first normalizes the artifact up to that shape (a no-op unless
-// the stored source lags behind), then — only if the target gateway is older
-// than latest — down-converts to whatever shape that gateway understands.
-// This is invoked in the deploy orchestration layer, before the artifact is
-// marshalled and stored; the deploy services call only Translate.
 package gatewaytranslator
 
 import (
 	"fmt"
 
-	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/normalizer"
-	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/versiontranslator"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/kinds"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/translate"
 )
 
+// Report lists the lossy decisions one translation took. Deploy services log
+// it with the deployment and gateway it belongs to (service.LogTranslationWarnings).
+type Report = translate.Report
+
+// Warning is one entry of a Report.
+type Warning = translate.Warning
+
+// MinGatewayV1Version is re-exported for callers that only need the apiVersion
+// boundary and should not have to import gwversion for it.
+const MinGatewayV1Version = gwversion.MinGatewayV1Version
+
+// RequiresInlineSecrets reports whether a gateway that reported gatewayVersion
+// needs {{ secret }} placeholders replaced with plaintext before it fetches an
+// artifact. It is the delivery path's gate for secretinline.Render.
+func RequiresInlineSecrets(gatewayVersion string) bool {
+	return gwversion.RequiresInlineSecrets(gatewayVersion)
+}
+
 // Translate adapts artifact (a pointer to one of the *DeploymentYAML structs,
-// mutated in place) so the target gateway can consume it.
+// mutated in place) for the gateway that reported gatewayVersion.
 //
-//   - kind is the artifact kind (e.g. constants.LLMProvider).
-//   - sourceDataVersion is the platform data version the artifact was
-//     generated from.
-//   - targetDataVersion is the gateway data version the target gateway
-//     accepts (see TargetGatewayDataVersion).
-func Translate(kind string, sourceDataVersion PlatformDataVersion, targetDataVersion GatewayDataVersion, artifact any) error {
-	if err := normalizer.Normalize(kind, string(sourceDataVersion), artifact); err != nil {
-		return fmt.Errorf("gatewaytranslator: normalize %q: %w", kind, err)
+//   - kind is the artifact kind as the gateway names it (constants.RestApi,
+//     constants.MCPProxy, ..., constants.GatewayKindAgent).
+//   - sourceDataVersion is the platform data version the artifact was stored
+//     at (the build's or artifact row's data_version).
+//   - gatewayVersion is model.Gateway.Version as reported; blank or non-semver
+//     means a current build and only the up-conversion runs.
+//
+// It is invoked in the deploy orchestration layer, before the artifact is
+// marshalled and stored. A kind without a definition is an error: every kind
+// the control plane can deploy is listed in kinds.All, and a test keeps that
+// table and the kind-name map in step.
+func Translate(kind string, sourceDataVersion PlatformDataVersion, gatewayVersion string, artifact any) (Report, error) {
+	k, ok := kinds.Lookup(kind)
+	if !ok {
+		return Report{}, fmt.Errorf("gatewaytranslator: no translator registered for kind %q", kind)
 	}
-	if targetDataVersion == GatewayDataVersionV1 {
-		return nil
-	}
-	if err := versiontranslator.DownConvert(kind, string(targetDataVersion), artifact); err != nil {
-		return fmt.Errorf("gatewaytranslator: down-convert %q to %s: %w", kind, targetDataVersion, err)
-	}
-	return nil
+	return translate.Run(k, string(sourceDataVersion), gatewayVersion, artifact)
 }

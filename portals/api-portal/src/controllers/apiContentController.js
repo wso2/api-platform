@@ -107,7 +107,7 @@ const loadAPIs = async (req, res, next) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
-                    isAdmin: req.user.isAdmin,
+                    isAdmin: req.user.isAdmin && !req.foreignOrgSession,
                 }
             }
             const isMcpPage = req.originalUrl.includes("/mcps");
@@ -366,7 +366,7 @@ const loadAPIContent = async (req, res, next) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
-                    isAdmin: req.user.isAdmin,
+                    isAdmin: req.user.isAdmin && !req.foreignOrgSession,
                 }
             }
             // Build the definition download link from the file that is actually stored, resolved
@@ -544,7 +544,7 @@ const loadDocsPage = async (req, res, next) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
-                    isAdmin: req.user.isAdmin,
+                    isAdmin: req.user.isAdmin && !req.foreignOrgSession,
                 }
             }
 
@@ -816,7 +816,7 @@ const loadDocument = async (req, res, next) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
-                    isAdmin: req.user.isAdmin,
+                    isAdmin: req.user.isAdmin && !req.foreignOrgSession,
                 }
             }
             templateContent.profile = req.isAuthenticated() ? profile : null;

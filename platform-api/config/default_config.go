@@ -216,5 +216,11 @@ func defaultConfig() *Server {
 			MaxEntries:  512,
 			MaxBytes:    32 << 20, // 32 MiB — 512 entries cannot all be 1 MiB cards
 		},
+		// TEMP-READ-ONLY-MODE: remove with config/readonly.go. Off by default — the
+		// read-only (maintenance) mode is an explicit, operator-driven posture.
+		ReadOnly: ReadOnly{
+			Enabled:               false,
+			WritableOrganizations: nil,
+		},
 	}
 }

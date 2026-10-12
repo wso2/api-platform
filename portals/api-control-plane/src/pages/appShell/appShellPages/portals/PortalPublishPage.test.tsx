@@ -119,7 +119,7 @@ function definitionTierRecorders() {
   };
 }
 
-/** The five reads the page makes before it can render the form. */
+/** The reads the page makes before it can render the form. */
 function servePublicationState({
   draft,
   publication,
@@ -166,6 +166,14 @@ beforeEach(() => {
 
 const API_NAME = 'Loan Management Service';
 
+/** Save Draft is off until something changes; a trailing space does, and is trimmed away on save. */
+const makeEdit = (user: ReturnType<typeof renderPage>['user']) =>
+  user.type(screen.getByRole('textbox', { name: /^Name/ }), ' ');
+
+/** A live API opens on its published version; the actions and the editable form are on the draft. */
+const showDraft = async (user: ReturnType<typeof renderPage>['user']) =>
+  user.click(await screen.findByRole('button', { name: 'Draft' }));
+
 /** Types the API name the dialog asks for, then confirms. */
 async function confirmInDialog(user: ReturnType<typeof renderPage>['user']) {
   const dialog = await screen.findByRole('dialog');
@@ -195,6 +203,35 @@ describe('PortalPublishPage', () => {
     expect(screen.getByDisplayValue('https://backend.internal/loans')).toBeInTheDocument();
   });
 
+  it('rejects a Production URL that is not a full URL', async () => {
+    servePublicationState();
+    const { user } = renderPage();
+
+    const production = await screen.findByRole('combobox', { name: 'Production URL' });
+    await user.clear(production);
+    await user.type(production, 'gw.example.com');
+    await user.tab();
+
+    expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
+  });
+
+  it('shows a URL error only after the field is left, not while it is being edited', async () => {
+    servePublicationState();
+    const { user } = renderPage();
+
+    const production = await screen.findByRole('combobox', { name: 'Production URL' });
+    await user.clear(production);
+    await user.type(production, 'gw');
+    await user.tab();
+    expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
+
+    await user.type(production, '.');
+    expect(screen.queryByText('Enter a full URL, for example https://api.example.com.')).not.toBeInTheDocument();
+
+    await user.tab();
+    expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
+  });
+
   it('disables Subscription Plans, Documentation and Landing Page for this alpha', async () => {
     servePublicationState();
 
@@ -219,6 +256,7 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     expect(await screen.findByText(/Unable to save the draft/)).toBeInTheDocument();
@@ -238,6 +276,7 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(draftRequests.count()).toBe(1));
@@ -245,6 +284,7 @@ describe('PortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
       displayName: 'Loan Management Service',
       version: '1.0.0',
+      agentVisibility: 'VISIBLE',
     });
   });
 
@@ -284,6 +324,7 @@ describe('PortalPublishPage', () => {
 
     await screen.findByDisplayValue('Loan Management Service');
     expect(screen.queryByText('portals listing')).not.toBeInTheDocument();
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(definitionRequests.count()).toBe(1));
@@ -357,7 +398,6 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
     await user.type(
       await screen.findByRole('textbox', { name: 'API definition (YAML)' }),
       '\n  bad: [[',
@@ -387,6 +427,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(definitionRequests.count()).toBe(1));
@@ -404,6 +445,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(definitionRequests.count()).toBe(1));
@@ -428,6 +470,7 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(definitionRequests.count()).toBe(1));
@@ -451,6 +494,7 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(definitionRequests.count()).toBe(1));
@@ -503,7 +547,6 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
     await user.type(
       await screen.findByRole('textbox', { name: 'API definition (YAML)' }),
       '\n  bad: [[',
@@ -525,6 +568,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     const unpublishItem = await screen.findByRole('menuitem', { name: 'Unpublish' });
@@ -550,6 +594,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     // Published, so the primary button reads Republish, not Publish.
     expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
@@ -588,6 +633,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     // Deprecated, not published, so the primary button reads Publish, not Republish.
     expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
@@ -608,6 +654,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
@@ -626,6 +673,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
@@ -644,6 +692,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
@@ -659,6 +708,7 @@ describe('PortalPublishPage', () => {
     servePublicationState({ publication: aPublication() });
 
     const { user } = renderPage();
+    await showDraft(user);
 
     await screen.findByDisplayValue(API_NAME);
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
@@ -679,6 +729,7 @@ describe('PortalPublishPage', () => {
       );
 
       const { user } = renderPage();
+      await showDraft(user);
 
       await screen.findByDisplayValue(API_NAME);
       await user.click(screen.getByRole('button', { name: 'More publish actions' }));
@@ -712,6 +763,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
@@ -729,6 +781,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unpublish' }));
@@ -750,6 +803,7 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
 
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('button', { name: 'More publish actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
@@ -779,6 +833,7 @@ describe('PortalPublishPage', () => {
       servePublicationState({ publication: aPublication() });
 
       const { user } = renderPage();
+      await showDraft(user);
 
       await screen.findByDisplayValue('Loan Management Service');
       await user.click(screen.getByRole('button', { name: 'More publish actions' }));
@@ -802,6 +857,7 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled());
@@ -903,7 +959,32 @@ describe('PortalPublishPage — viewing the published version', () => {
     await screen.findByDisplayValue('Draft Name');
     expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Draft version')).toBeInTheDocument();
+  });
+
+  it('opens on the published version when the API is live, with the draft one click away', async () => {
+    servePublicationState({ draft, publication: published });
+
+    const { user } = renderPage();
+
+    expect(await screen.findByDisplayValue('Published Name')).toHaveAttribute('readonly');
+    expect(screen.getByRole('button', { name: 'Published' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Draft' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+
+    expect(screen.getByDisplayValue('Draft Name')).not.toHaveAttribute('readonly');
+  });
+
+  it('can switch to the draft of a live API that has none saved yet', async () => {
+    servePublicationState({ publication: published });
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Published Name');
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+
+    expect(screen.getByDisplayValue('Published Name')).not.toHaveAttribute('readonly');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeInTheDocument();
   });
 
   it('shows the live details read-only from what is already loaded, and brings the draft back untouched', async () => {
@@ -913,15 +994,15 @@ describe('PortalPublishPage — viewing the published version', () => {
 
     const { user } = renderPage();
 
-    const draftName = await screen.findByDisplayValue('Draft Name');
-    await user.type(draftName, ' edited');
+    expect(await screen.findByDisplayValue('Published Name')).toHaveAttribute('readonly');
+    expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+    await user.type(screen.getByDisplayValue('Draft Name'), ' edited');
     await user.click(screen.getByRole('button', { name: 'Published' }));
 
     expect(screen.getByRole('button', { name: 'Published' })).toHaveAttribute('aria-pressed', 'true');
-    const publishedName = screen.getByDisplayValue('Published Name');
-    expect(publishedName).toHaveAttribute('readonly');
-    expect(screen.getByText('Published version')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Published Name')).toHaveAttribute('readonly');
 
     await user.click(screen.getByRole('button', { name: 'Draft' }));
 
@@ -944,9 +1025,8 @@ describe('PortalPublishPage — viewing the published version', () => {
 
     const { user } = renderPage();
 
-    await screen.findByDisplayValue('Draft Name');
+    await screen.findByDisplayValue('Published Name');
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
-    await user.click(screen.getByRole('button', { name: 'Published' }));
 
     const editor = await screen.findByLabelText(/API definition/);
     await waitFor(() => expect((editor as HTMLTextAreaElement).value).toContain('Published Name'));
@@ -969,8 +1049,7 @@ describe('PortalPublishPage — version banner', () => {
 
     renderPage();
 
-    expect(await screen.findByText('v3.0.0 · edited 2 hours ago')).toBeInTheDocument();
-    expect(screen.getByText('Draft version')).toBeInTheDocument();
+    expect(await screen.findByText('Edited 2 hours ago')).toBeInTheDocument();
   });
 
   it('shows no banner for a draft that was never saved', async () => {
@@ -979,53 +1058,50 @@ describe('PortalPublishPage — version banner', () => {
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
     expect(screen.queryByText(/not saved yet/)).not.toBeInTheDocument();
   });
 
-  it('shows no banner on the draft side when only the published version exists, but does on the published side', async () => {
+  it('shows the published banner on the published side only, and no draft banner when none is saved', async () => {
     servePublicationState({ publication: aPublication({ version: '2.0.0' }) });
 
     const { user } = renderPage();
-    await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Published' }));
-
-    expect(await screen.findByText('Published version')).toBeInTheDocument();
+    expect(await screen.findByText(/^Updated/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Draft' }));
 
-    expect(screen.queryByText('Published version')).not.toBeInTheDocument();
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
   });
 
-  it('dates the published banner from the live publication', async () => {
+  it('dates the published banner from the live publication, and the draft one from the draft', async () => {
     servePublicationState({
-      draft: aPublicationDraftDetails(),
+      draft: aPublicationDraftDetails({ version: '3.0.0', updatedAt: hoursAgo(2) }),
       publication: aPublication({ version: '2.0.0', updatedAt: hoursAgo(48) }),
     });
 
     const { user } = renderPage();
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('button', { name: 'Published' }));
 
-    expect(await screen.findByText('v2.0.0 · updated 2 days ago')).toBeInTheDocument();
-    expect(screen.getByText('Published version')).toBeInTheDocument();
+    expect(await screen.findByText('Updated 2 days ago')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+
+    expect(screen.getByText('Edited 2 hours ago')).toBeInTheDocument();
+    expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument();
   });
 
-  it('calls a deprecated listing deprecated, not published', async () => {
+  it('calls a deprecated listing deprecated, not updated', async () => {
     servePublicationState({
       draft: aPublicationDraftDetails(),
-      publication: aPublication({ status: 'DEPRECATED' }),
+      publication: aPublication({ status: 'DEPRECATED', version: '2.0.0' }),
     });
 
-    const { user } = renderPage();
-    await screen.findByDisplayValue('Loan Management Service');
-    await user.click(screen.getByRole('button', { name: 'Published' }));
+    renderPage();
 
-    expect(await screen.findByText('Deprecated version')).toBeInTheDocument();
-    expect(screen.queryByText('Published version')).not.toBeInTheDocument();
+    expect(await screen.findByText(/^Deprecated/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Updated/)).not.toBeInTheDocument();
   });
 });
 
@@ -1036,9 +1112,8 @@ describe('PortalPublishPage — published specification', () => {
 
   async function openPublishedSpecification() {
     const view = renderPage();
-    await screen.findByDisplayValue('Draft Name');
+    await screen.findByDisplayValue('Published Name');
     await view.user.click(screen.getByRole('tab', { name: 'Specification' }));
-    await view.user.click(screen.getByRole('button', { name: 'Published' }));
     return view;
   }
 
@@ -1094,9 +1169,11 @@ describe('PortalPublishPage — version toggle while an action runs', () => {
     );
 
     const { user } = renderPage();
+    await showDraft(user);
     await screen.findByDisplayValue('Loan Management Service');
     expect(screen.getByRole('button', { name: 'Published' })).toBeEnabled();
 
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled());
@@ -1111,7 +1188,7 @@ describe('PortalPublishPage — after a publish consumed the draft', () => {
     servePublicationState({ draft });
     const first = renderPage(queryClient);
     await screen.findByDisplayValue('Old Draft Name');
-    expect(screen.getByText('Draft version')).toBeInTheDocument();
+    expect(screen.getByText(/^Edited/)).toBeInTheDocument();
     first.unmount();
 
     // The publish promoted the draft: the server no longer has one, and the
@@ -1122,7 +1199,7 @@ describe('PortalPublishPage — after a publish consumed the draft', () => {
 
     expect(await screen.findByDisplayValue('Live Name')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Old Draft Name')).not.toBeInTheDocument();
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
   });
 });
 
@@ -1166,14 +1243,14 @@ describe('PortalPublishPage — while a publish runs', () => {
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Publish' }));
     // Both saves have gone through; the publish call is still in flight.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled());
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Republish' })).not.toBeInTheDocument();
     expect(await screen.findByText('portals listing')).toBeInTheDocument();
@@ -1191,6 +1268,44 @@ describe('PortalPublishPage — while a publish runs', () => {
     // One read each when the page opened, none for the three writes after it.
     expect(reads.draft.count()).toBe(1);
     expect(reads.publication.count()).toBe(1);
+  });
+});
+
+describe('PortalPublishPage — unsaved changes', () => {
+  it('keeps Save Draft off until something is edited, and says so in the banner', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ updatedAt: new Date().toISOString() }) });
+    server.use(accepts('put', DRAFT_PATH, aPublicationDraftDetails()), accepts('put', DRAFT_DEFINITION_PATH, undefined));
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+
+    await makeEdit(user);
+
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.getByText(/^Edited .* ·/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+  });
+
+  it('reports unsaved changes alone when no draft has been saved yet, and again once an edit is undone', async () => {
+    servePublicationState();
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+
+    await makeEdit(user);
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.type(screen.getByRole('textbox', { name: /^Name/ }), '{Backspace}');
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
   });
 });
 
@@ -1212,11 +1327,12 @@ describe('PortalPublishPage — saving a draft', () => {
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.queryByText('Draft version')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
 
+    await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
-    expect(await screen.findByText('Draft version')).toBeInTheDocument();
+    expect(await screen.findByText(/^Edited/)).toBeInTheDocument();
     expect(draftReads.count()).toBe(1);
   });
 });

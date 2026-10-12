@@ -78,7 +78,7 @@ func defaultConfig() *Config {
 			},
 		},
 		Session: SessionConfig{
-			Store:       "memory",
+			Store:       SessionStoreCookie,
 			IdleTimeout: 30 * time.Minute,
 			AbsoluteTTL: 8 * time.Hour,
 		},

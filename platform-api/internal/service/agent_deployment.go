@@ -156,6 +156,16 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 		return nil, err
 	}
 
+	// The gateway must have the Agent kind at all; a release that predates it
+	// is refused before anything is stored or sent.
+	gatewayKind, err := agentGatewayKind()
+	if err != nil {
+		return nil, err
+	}
+	if err := gatewaytranslator.EnsureKindSupported(gatewayKind, gateway.Version); err != nil {
+		return nil, err
+	}
+
 	// What this deploy ships: a build prepared earlier, or a snapshot of the
 	// Agent proxy as it stands now. The snapshot comes back unstored so it
 	// commits with the deployment below.
@@ -170,7 +180,7 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 		return nil, fmt.Errorf("artifact %s did not render as an Agent proxy definition", proxyUUID)
 	}
 
-	contentBytes, targetDataVersion, err := s.translateForGateway(definition, source.DataVersion, gateway)
+	contentBytes, targetDataVersion, translation, err := s.translateForGateway(gatewayKind, definition, source.DataVersion, gateway)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +259,7 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 		"deploymentID", deploymentID, "artifactUUID", proxyUUID,
 		"gatewayID", gateway.ID, "gatewayVersion", gateway.Version,
 		"sourceDataVersion", source.DataVersion, "targetDataVersion", targetDataVersion)
+	LogTranslationWarnings(s.slogger, translation, gatewayKind, deploymentID, gateway.ID, gateway.Version)
 
 	// Send deployment event to gateway
 	if s.gatewayEventsService != nil {
@@ -284,29 +295,26 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 // translateForGateway produces the bytes a deployment stores for one gateway.
 //
 // The translator consumes deployment YAML, which is in the gateway's vocabulary,
-// so it is keyed by the gateway kind (Agent), never the control-plane kind.
-//
-// Existing kinds down-convert silently. Agent does not get to: it has no older
-// shape to fall back to, so the target data version is returned for the caller
-// to log against the deployment. The stored content's apiVersion is the durable
-// record of the same fact.
-func (s *AgentDeploymentService) translateForGateway(definition *model.AgentProxyDeploymentYAML,
-	sourceDataVersion string, gateway *model.Gateway) ([]byte, gatewaytranslator.GatewayDataVersion, error) {
+// so it is keyed by the gateway kind (Agent), never the control-plane kind. The
+// caller has already confirmed the gateway has the Agent kind at all
+// (EnsureKindSupported), so translation only brings the stored shape up to
+// date. The target data version is returned for the caller to log against the
+// deployment; the stored content's apiVersion is the durable record of the same
+// fact.
+func (s *AgentDeploymentService) translateForGateway(gatewayKind string, definition *model.AgentProxyDeploymentYAML,
+	sourceDataVersion string, gateway *model.Gateway) ([]byte, gatewaytranslator.GatewayDataVersion, gatewaytranslator.Report, error) {
 
-	gatewayKind, ok := gatewaytranslator.GatewayKindForPlatformKind(constants.AgentProxy)
-	if !ok {
-		return nil, "", fmt.Errorf("no gateway kind registered for %s", constants.AgentProxy)
-	}
 	source := gatewaytranslator.PlatformDataVersion(sourceDataVersion)
 	target := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(gatewayKind, source, target, definition); err != nil {
-		return nil, "", fmt.Errorf("failed to transform Agent proxy deployment for gateway %s: %w", gateway.Version, err)
+	translation, err := gatewaytranslator.Translate(gatewayKind, source, gateway.Version, definition)
+	if err != nil {
+		return nil, "", translation, fmt.Errorf("failed to transform Agent proxy deployment for gateway %s: %w", gateway.Version, err)
 	}
 	contentBytes, err := yaml.Marshal(definition)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to marshal Agent proxy deployment YAML: %w", err)
+		return nil, "", translation, fmt.Errorf("failed to marshal Agent proxy deployment YAML: %w", err)
 	}
-	return contentBytes, target, nil
+	return contentBytes, target, translation, nil
 }
 
 // UndeployByHandle begins undeploying a deployment from its bound gateway. The
@@ -395,10 +403,11 @@ func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHa
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
 		return nil, err
 	}
-	gatewayUUID, err := s.resolveGatewayUUID(gatewayHandle, orgUUID)
+	gateway, err := s.resolveGateway(gatewayHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
+	gatewayUUID := gateway.ID
 
 	target, err := s.deploymentRepo.GetWithContent(deploymentID, proxyUUID, orgUUID)
 	if err != nil {
@@ -409,6 +418,14 @@ func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHa
 	}
 	if target.GatewayID != gatewayUUID {
 		return nil, apperror.DeploymentGatewayMismatch.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	gatewayKind, err := agentGatewayKind()
+	if err != nil {
+		return nil, err
+	}
+	if err := gatewaytranslator.EnsureKindSupported(gatewayKind, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	currentDeploymentID, status, _, err := s.deploymentRepo.GetStatus(proxyUUID, orgUUID, target.GatewayID)
@@ -634,16 +651,34 @@ func (s *AgentDeploymentService) resolveAgentProxy(handle, orgUUID string) (*mod
 // resolveGatewayUUID turns a gateway handle into the gateway UUID deployments
 // store, within the caller's organization.
 func (s *AgentDeploymentService) resolveGatewayUUID(gatewayHandle, orgUUID string) (string, error) {
+	gateway, err := s.resolveGateway(gatewayHandle, orgUUID)
+	if err != nil {
+		return "", err
+	}
+	return gateway.ID, nil
+}
+
+// resolveGateway loads the gateway a handle names within the organization.
+func (s *AgentDeploymentService) resolveGateway(gatewayHandle, orgUUID string) (*model.Gateway, error) {
 	gatewayHandle = strings.TrimSpace(gatewayHandle)
 	if gatewayHandle == "" {
-		return "", apperror.AgentProxyDeploymentValidationFailed.New("A gatewayId is required.")
+		return nil, apperror.AgentProxyDeploymentValidationFailed.New("A gatewayId is required.")
 	}
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgUUID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get gateway: %w", err)
+		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return "", apperror.GatewayNotFound.New()
+		return nil, apperror.GatewayNotFound.New()
 	}
-	return gateway.ID, nil
+	return gateway, nil
+}
+
+// agentGatewayKind is the kind an Agent proxy is deployed as on the gateway.
+func agentGatewayKind() (string, error) {
+	gatewayKind, ok := gatewaytranslator.GatewayKindForPlatformKind(constants.AgentProxy)
+	if !ok {
+		return "", fmt.Errorf("no gateway kind registered for %s", constants.AgentProxy)
+	}
+	return gatewayKind, nil
 }

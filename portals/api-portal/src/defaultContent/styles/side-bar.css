@@ -75,8 +75,20 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+    /* Bootstrap ships `.nav { display:flex; flex-wrap:wrap }` and this element carries
+       that same class name, so the wrap is inherited unless it is reset here. On a
+       column flex container wrapping means a SECOND COLUMN: once the items no longer
+       fit the sidebar's height, the overflow lands beside the nav instead of below it,
+       rendering as stray links floating over the page. It went unnoticed while the item
+       count happened to fit. */
+    flex-wrap: nowrap;
     gap: 0.25rem;
-    overflow: hidden;
+    /* With wrapping off a tall nav overflows instead, so it scrolls rather than being
+       clipped — otherwise the last items become unreachable on a short viewport.
+       min-height:0 is what allows a flex child to shrink below its content and scroll. */
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .nav-link {
@@ -164,7 +176,8 @@
 
 .nav-link.has-active-submenu .sidebar-chevron,
 #apis.has-active-submenu .sidebar-chevron,
-#mcps.has-active-submenu .sidebar-chevron {
+#mcps.has-active-submenu .sidebar-chevron,
+#keys.has-active-submenu .sidebar-chevron {
     transform: rotate(90deg);
 }
 
@@ -185,7 +198,8 @@
 
 /* Parent item when submenu is open */
 #apis.has-active-submenu,
-#mcps.has-active-submenu {
+#mcps.has-active-submenu,
+#keys.has-active-submenu {
     background: var(--overlay);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;

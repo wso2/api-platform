@@ -53,6 +53,15 @@ func TripPlanner() *components.Definition {
 			// The agent advertises this base in its own card; a passthrough card is rewritten
 			// by the gateway, so the value only needs to be the agent's in-network address.
 			"TRIP_PUBLIC_URL": "http://" + Name + ":" + strconv.Itoa(Port),
+			// Streams are paced so a client observes an event arriving well before the task
+			// completes, which is what tells a stream from a buffered response, and fast enough
+			// not to dominate suite time.
+			"TRIP_STREAM_STEPS":      "3",
+			"TRIP_STREAM_STEP_DELAY": "0.5",
+			// A "plan ... slowly" task stays live long enough for GetTask, ListTasks, CancelTask
+			// and SubscribeToTask to act on a running task rather than a finished one.
+			"TRIP_SLOW_HOLD_SECONDS": "60",
+			"TRIP_SLOW_TICK":         "1.0",
 		},
 		Endpoints: []components.Endpoint{
 			{Name: "http", Port: Port, Scheme: "http", AwaitListening: true},

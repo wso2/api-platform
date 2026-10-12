@@ -96,5 +96,9 @@ func (s *Server) routes() http.Handler {
 		logRequests,
 		securityHeaders,
 		s.requireCSRF,
+		// Innermost, so every handler below — auth endpoints, composite handlers and
+		// the proxy alike — reaches the same session state through the request
+		// context. A no-op unless the cookie store is in use.
+		s.withSessionState,
 	)
 }

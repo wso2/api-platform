@@ -32,6 +32,7 @@ func validatableConfig(moesifURL string) *Config {
 	c.Auth.Authorization.Mode = AuthzModeScope
 	c.Server.HTTP.Enabled = true
 	c.Server.HTTP.Port = 8080
+	c.Session.Store = SessionStoreCookie
 	c.Session.IdleTimeout = 30 * time.Minute
 	c.Session.AbsoluteTTL = 8 * time.Hour
 	c.ControlPlane.URL = "https://control-plane.example.com"

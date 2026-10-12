@@ -357,6 +357,22 @@ type Definition struct {
 
 	// Shared starts one instance for all blocks that declare the component.
 	Shared bool
+
+	// SourceProduct names the product whose source build supplies this component's image,
+	// for a component that runs another product's image under its own name. Empty means
+	// the product named Name.
+	SourceProduct string
+}
+
+// Product returns the product whose source build supplies this component's image.
+func (d *Definition) Product() string {
+	if d == nil {
+		return ""
+	}
+	if d.SourceProduct != "" {
+		return d.SourceProduct
+	}
+	return d.Name
 }
 
 // WithImageVersion returns a copy whose image references use version.

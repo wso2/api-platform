@@ -3714,6 +3714,11 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			constants.ExtProcRequestAttributeConnectionRequestedServerName,
 			constants.ExtProcRequestAttributeConnectionPeerCertificateValid,
 		},
+		// Response attributes tell the engine WHO produced an error response. Without
+		// them a backend's own 503 and the router's "no healthy upstream" 503 are
+		// indistinguishable, so error handling can only approximate the split with a
+		// status threshold.
+		ResponseAttributes: []string{constants.ExtProcResponseAttributeCodeDetails},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,
 		},

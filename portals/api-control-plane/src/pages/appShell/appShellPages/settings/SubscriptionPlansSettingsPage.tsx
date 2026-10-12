@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Chip,
@@ -26,6 +26,7 @@ import {
   SearchBar,
   Stack,
   Switch,
+  TablePagination,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -41,8 +42,12 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
 import { SubscriptionPlanFormDialog } from './components/SubscriptionPlanFormDialog';
+
+const PAGE_SIZE_OPTIONS = [5, 10, 15, 20];
+const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
   activated: {
@@ -135,6 +140,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.loading',
     defaultMessage: 'Loading subscription plans',
   },
+  nextPage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.next',
+    defaultMessage: 'Next page',
+  },
   noMatchesDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.description',
     defaultMessage: 'Try a different search term.',
@@ -142,6 +151,19 @@ const messages = defineMessages({
   noMatchesTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.title',
     defaultMessage: 'No matching plans',
+  },
+  pageRange: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.range',
+    defaultMessage: '{from}–{to} of {count, number}',
+    description: 'Pager summary: the plan rows shown on this page out of the total.',
+  },
+  previousPage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.previous',
+    defaultMessage: 'Previous page',
+  },
+  rowsPerPage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.rowsPerPage',
+    defaultMessage: 'Plans per page',
   },
   searchPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.searchPlaceholder',
@@ -196,21 +218,38 @@ const useLimitChipLabels = () => {
 export function SubscriptionPlansSettingsPage() {
   const intl = useIntl();
   const { notify } = useNotifications();
-  const plansQuery = useSubscriptionPlans();
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
+
+  const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
+
+  const plansQuery = useSubscriptionPlans({
+    limit: rowsPerPage,
+    offset: page * rowsPerPage,
+    query: debouncedSearch || undefined,
+  });
   const updateMutation = useUpdateSubscriptionPlan();
   const deleteMutation = useDeleteSubscriptionPlan();
   const limitChipLabels = useLimitChipLabels();
 
-  const [search, setSearch] = useState('');
   const [dialogTarget, setDialogTarget] = useState<'create' | SubscriptionPlan | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(null);
 
   const plans = plansQuery.data?.list ?? [];
-  const term = search.trim().toLowerCase();
-  const filtered = term
-    ? plans.filter((plan) => `${plan.displayName} ${plan.id ?? ''}`.toLowerCase().includes(term))
-    : plans;
-  const isFirstRun = plans.length === 0;
+  const total = plansQuery.data?.pagination.total ?? 0;
+  const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
+  const currentPage = Math.min(page, lastPage);
+  // The create prompt is for an organization with no plans, not for an empty search.
+  const isFirstRun = total === 0 && debouncedSearch === '';
+
+  // A new search starts from the first page.
+  useEffect(() => setPage(0), [debouncedSearch]);
+
+  // Deleting the only row on the last page leaves `page` past the end.
+  useEffect(() => {
+    if (page > lastPage) setPage(lastPage);
+  }, [page, lastPage]);
 
   const toggleStatus = (plan: SubscriptionPlan) => {
     if (!plan.id) return;
@@ -299,7 +338,7 @@ export function SubscriptionPlansSettingsPage() {
             value={search}
           />
 
-          {filtered.length === 0 ? (
+          {plans.length === 0 ? (
             <EmptyState
               description={intl.formatMessage(messages.noMatchesDescription)}
               title={intl.formatMessage(messages.noMatchesTitle)}
@@ -325,7 +364,7 @@ export function SubscriptionPlansSettingsPage() {
                     </ListingTable.Row>
                   </ListingTable.Head>
                   <ListingTable.Body>
-                    {filtered.map((plan) => (
+                    {plans.map((plan) => (
                       <ListingTable.Row key={plan.id ?? plan.displayName}>
                         <ListingTable.Cell>
                           <Typography sx={{ fontWeight: 600 }} variant="body2">
@@ -415,6 +454,28 @@ export function SubscriptionPlansSettingsPage() {
                 </ListingTable>
               </ListingTable.Container>
             </ListingTable.Provider>
+          )}
+
+          {total > PAGE_SIZE_OPTIONS[0] && (
+            <TablePagination
+              component="div"
+              count={total}
+              getItemAriaLabel={(type) =>
+                intl.formatMessage(type === 'next' ? messages.nextPage : messages.previousPage)
+              }
+              labelDisplayedRows={({ count, from, to }) =>
+                intl.formatMessage(messages.pageRange, { count, from, to })
+              }
+              labelRowsPerPage={intl.formatMessage(messages.rowsPerPage)}
+              onPageChange={(_, nextPage) => setPage(nextPage)}
+              onRowsPerPageChange={(event) => {
+                setRowsPerPage(parseInt(event.target.value, 10));
+                setPage(0);
+              }}
+              page={currentPage}
+              rowsPerPage={rowsPerPage}
+              rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+            />
           )}
         </Stack>
       )}

@@ -160,6 +160,9 @@ func TestAgentCard_InterfacesMatchingTheTransportsAreAccepted(t *testing.T) {
 			// deliberate change to a failing test, not a silent one.
 			return cardWith(agentInterface(api.JSONRPC, "https://somewhere.else.example.com/weather/rpc"))
 		},
+		"plain http is accepted": func() api.AgentConfiguration {
+			return cardWith(agentInterface(api.JSONRPC, "http://agents.example.com/weather/rpc"))
+		},
 		"port is part of the host, not the path": func() api.AgentConfiguration {
 			return cardWith(agentInterface(api.JSONRPC, "https://agents.example.com:8443/weather/rpc"))
 		},
@@ -340,12 +343,12 @@ func TestAgentCard_InterfaceMismatches(t *testing.T) {
 			message: "absolute URL",
 		},
 		{
-			name: "url uses http",
+			name: "url uses a scheme other than http or https",
 			build: func() api.AgentConfiguration {
-				return cardWith(agentInterface(api.JSONRPC, "http://agents.example.com/weather/rpc"))
+				return cardWith(agentInterface(api.JSONRPC, "ws://agents.example.com/weather/rpc"))
 			},
 			field:   "spec.a2a.agentCard.public.content.supportedInterfaces[0].url",
-			message: "must use https",
+			message: "must use http or https",
 		},
 		{
 			name: "url carries userinfo",
