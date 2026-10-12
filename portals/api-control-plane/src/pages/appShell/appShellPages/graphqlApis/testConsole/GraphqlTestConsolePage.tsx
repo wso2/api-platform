@@ -16,62 +16,67 @@
  * under the License.
  */
 
-import {
-  Alert,
-  Box,
-  FormControl,
-  IconButton,
-  InputAdornment,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Tooltip,
-} from '@wso2/oxygen-ui';
-import { Copy } from '@wso2/oxygen-ui-icons-react';
+import { Box, Card, PageTitle, Stack } from '@wso2/oxygen-ui';
+import { Rocket } from '@wso2/oxygen-ui-icons-react';
 import { createGraphiQLFetcher, createLocalStorage, type Fetcher } from '@graphiql/toolkit';
 import { GraphiQL } from 'graphiql';
 import 'graphiql/setup-workers/vite';
 import 'graphiql/style.css';
 import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
-import { useGateways, type Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
+import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
+import { isApiError } from '@/api/core/errors';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
+import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
+import { useNow } from '@/hooks/useNow';
 import { useNotifications } from '@/components/Notifications';
-import { ErrorState, LoadingState } from '@/components/StateViews';
-import { buildInvokeUrl } from '../../apis/overview/InvokeUrlPanel';
-import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 import { parseGraphQLSdl } from '../../apis/create/utils/graphqlSchema';
+import { GatewaySection } from '../../test/components/GatewaySection';
+import { TestKeySection } from '../../test/components/TestKeySection';
+import { apiKeyAuthOf } from '../../test/utils/apiKeyAuth';
+import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
+import { gatewayOptionLabel } from '../../test/utils/gatewayOptionLabel';
+import {
+  isTestKeyExpired,
+  KEY_COUNTDOWN_TICK_MS,
+  testKeyRemainingMs,
+} from '../../test/utils/testApiKey';
+import { useGraphQLTestApiKey } from '../../test/utils/useTestApiKey';
 import { GraphiqlThemeStyles } from './GraphiqlThemeStyles';
 import { withValidOperationName } from './withValidOperationName';
 
+// The REST test page's messages are reused by ID where the copy is identical,
+// so the two pages read the same and share their translations.
 const messages = defineMessages({
   apiNotFound: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
-  copyEndpoint: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.copyEndpoint',
-    defaultMessage: 'Copy endpoint URL',
-    description: 'Accessible label for the button copying the gateway invoke URL.',
+  deployAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deployAction',
+    defaultMessage: 'Deploy API',
+    description: 'Button in the not-deployed banner that opens the Deploy page. A command.',
   },
-  copyEndpointFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointFailed',
-    defaultMessage: 'Failed to copy the endpoint URL.',
+  definitionUnavailable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.definitionUnavailable',
+    defaultMessage: 'This API’s definition could not be loaded.',
+    description:
+      "Shown when fetching or parsing the API's OpenAPI definition failed — distinct from the API simply not having one.",
   },
-  copyEndpointSucceeded: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded',
-    defaultMessage: 'Endpoint URL copied to clipboard.',
-  },
-  endpointLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointLabel',
-    defaultMessage: 'Endpoint URL',
+  deploymentUnavailable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deploymentUnavailable',
+    defaultMessage: 'This API’s deployments could not be loaded.',
+    description:
+      'Shown when fetching the gateways or deployments failed — distinct from the API genuinely not being deployed anywhere.',
   },
   fetchFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed',
@@ -80,23 +85,29 @@ const messages = defineMessages({
     description:
       'Shown when the browser fetch to this app\'s own backend fails below the HTTP level (network error) — a bare "Failed to fetch" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API\'s gateway, so this is not a CORS or gateway-certificate problem.',
   },
-  gatewayLabel: {
-    id: 'apiControlPlane.pages.test.console.GatewaySection.gatewayLabel',
-    defaultMessage: 'Gateway',
-    description: 'Label of the picker choosing which deployed gateway to test against.',
-  },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
     defaultMessage: 'Loading test console',
     description: 'Shown while the API and its definition are being fetched.',
   },
-  noDeployment: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment',
-    defaultMessage: 'Deploy this API to a gateway before testing it here.',
+  notDeployedTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.notDeployedTitle',
+    defaultMessage: 'You must deploy the API to start testing.',
+    description:
+      'Heading of the empty state shown when the API is not deployed anywhere, so there is no endpoint to send requests to.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.subtitle',
+    defaultMessage: 'Send queries and mutations to a deployed gateway.',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.title',
+    defaultMessage: 'Test',
+    description: 'Page heading.',
   },
 });
 
-const GRAPHIQL_HEIGHT = 'calc(100vh - 280px)';
+const GRAPHIQL_HEIGHT = 'calc(100vh - 380px)';
 const GRAPHIQL_MIN_HEIGHT = 560;
 
 /**
@@ -141,11 +152,13 @@ query Schema {
 `;
 
 /**
- * GraphQL Test console, built on the real `graphiql`/`@graphiql/toolkit`
- * packages rather than a bespoke editor — matches the console devportal
- * embeds for the same APIs. No `ScopeGate`: this route lives outside
- * `ConsoleScopeProvider`'s REST-only api-scope matching (see
- * `graphqlApiPath`), so it guards on its own route param instead.
+ * GraphQL Test console: the REST test page's layout — heading, gateway card,
+ * test key and not-deployed state — with GraphiQL in place of the cURL
+ * builder. Built on the real `graphiql`/`@graphiql/toolkit` packages rather
+ * than a bespoke editor, matching the console devportal embeds for the same
+ * APIs. No `ScopeGate`: this route lives outside `ConsoleScopeProvider`'s
+ * REST-only api-scope matching (see `graphqlApiPath`), so it guards on its
+ * own route param instead.
  *
  * The schema is passed in directly from the API's stored SDL (parsed with
  * the same `parseGraphQLSdl` the wizard/overview pages use) so GraphiQL
@@ -162,29 +175,59 @@ export function GraphqlTestConsolePage() {
 
 function GraphqlTestConsolePageContent() {
   const intl = useIntl();
+  const navigate = useNavigate();
   const { notify } = useNotifications();
-  const { graphqlApiHandler } = useParams();
+  const { graphqlApiHandler, orgHandle, projectHandler } = useParams();
   const isDark = useIsDarkScheme();
 
   const apiQuery = useGraphQLApi(graphqlApiHandler);
   const sdlQuery = useGraphQLApiSdl(graphqlApiHandler);
-  const gatewaysQuery = useGateways();
+  // The API's own gateway associations, as the REST test page reads them —
+  // scoped to the API, so this needs no organization-wide gateway access.
+  const gatewaysQuery = useGraphQLApiGateways(graphqlApiHandler);
   const deploymentsQuery = useDeployments(graphqlApiHandler);
 
-  const deployedGateways = useMemo((): Gateway[] => {
-    const gateways = gatewaysQuery.data?.list ?? [];
-    const deployedIds = new Set(
-      (deploymentsQuery.data?.list ?? [])
-        .filter((deployment) => deployment.status === 'DEPLOYED')
-        .map((deployment) => deployment.gatewayId),
-    );
-    return gateways.filter((gateway) => deployedIds.has(gateway.id ?? ''));
-  }, [gatewaysQuery.data, deploymentsQuery.data]);
+  /** API `api-key-auth` configuration, if present. */
+  const apiKeyAuth = useMemo(() => apiKeyAuthOf(apiQuery.data), [apiQuery.data]);
+  const needsApiKey = apiKeyAuth !== undefined;
+
+  const gateways = useMemo(
+    () => deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
+    [deploymentsQuery.data, gatewaysQuery.data],
+  );
+
+  /** True while we still do not know whether the API is deployed. */
+  const deploymentUnknown = gatewaysQuery.isPending || deploymentsQuery.isPending;
+  /** True when either deployment lookup failed. */
+  const deploymentFailed = Boolean(gatewaysQuery.error || deploymentsQuery.error);
+  /** True when both deployment lookups settled and no gateway has the API. */
+  const notDeployed = !deploymentUnknown && !deploymentFailed && gateways.length === 0;
+  /** True when a request can be sent. */
+  const deploymentReady = !deploymentUnknown && !deploymentFailed && gateways.length > 0;
+
+  /** Mint only when a required key has a gateway to use. */
+  const testApiKey = useGraphQLTestApiKey(graphqlApiHandler, needsApiKey && deploymentReady);
+  const testKey = testApiKey.key;
+  /** State-driven tick for the key countdown and expiry. */
+  const now = useNow(testKey ? KEY_COUNTDOWN_TICK_MS : 0);
+  const keyName = apiKeyAuth?.name ?? '';
+  const credentialIn = apiKeyAuth?.in ?? 'header';
+  /** The credential sent with every request, once a live key exists. */
+  const credential =
+    needsApiKey && testKey && !isTestKeyExpired(testKey, now) && keyName.trim() !== ''
+      ? { name: keyName, value: testKey.value }
+      : undefined;
 
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
-
   const selectedGateway =
-    deployedGateways.find((gateway) => gateway.id === selectedGatewayId) ?? deployedGateways[0];
+    gateways.find((gateway) => gateway.id === selectedGatewayId) ?? gateways[0];
+
+  /**
+   * True when the API has no stored SDL (`404`). Unlike REST's missing
+   * definition this does not block testing: GraphiQL falls back to
+   * introspecting the endpoint for its schema.
+   */
+  const sdlMissing = !sdlQuery.isPending && isApiError(sdlQuery.error) && sdlQuery.error.isNotFound;
 
   const schema = useMemo(() => {
     if (!sdlQuery.data) return undefined;
@@ -210,7 +253,7 @@ function GraphqlTestConsolePageContent() {
 
   const api = apiQuery.data;
   // The real gateway URL — shown/copyable so it can be called directly (e.g.
-  // from curl), but no longer what the browser talks to; see invokeProxyUrl.
+  // from curl), but not what the browser talks to; see invokeProxyUrl.
   const endpointUrl =
     selectedGateway && api
       ? buildInvokeUrl(gatewayEndpoint(selectedGateway), api.context, api.version)
@@ -221,11 +264,14 @@ function GraphqlTestConsolePageContent() {
   // resolves and proxies to the real gateway endpoint server-side (see
   // bff/internal/server/graphql_invoke.go), so the query/variables/headers
   // the user enters reach the gateway exactly as typed while the browser
-  // request itself stays same-origin.
-  const invokeProxyUrl =
-    graphqlApiHandler && selectedGateway?.id
-      ? `/api/graphql-console/${encodeURIComponent(graphqlApiHandler)}/gateways/${encodeURIComponent(selectedGateway.id)}/invoke`
-      : '';
+  // request itself stays same-origin. A query-parameter credential rides on
+  // this URL; the BFF forwards the query string to the gateway unchanged.
+  const invokeProxyUrl = useMemo(() => {
+    if (!graphqlApiHandler || !selectedGateway?.id) return '';
+    const base = `/api/graphql-console/${encodeURIComponent(graphqlApiHandler)}/gateways/${encodeURIComponent(selectedGateway.id)}/invoke`;
+    if (!credential || credentialIn !== 'query') return base;
+    return `${base}?${new URLSearchParams({ [credential.name]: credential.value }).toString()}`;
+  }, [credential, credentialIn, graphqlApiHandler, selectedGateway?.id]);
   // Supplies a wrapped `fetch` to createGraphiQLFetcher rather than wrapping
   // the fetcher's own return value: the toolkit doesn't always resolve a
   // plain Promise<ExecutionResult> (it can wrap even a non-subscription
@@ -256,118 +302,146 @@ function GraphqlTestConsolePageContent() {
       },
     [notify, intl],
   );
+  // A header credential is a base header: GraphiQL's own Headers tab is
+  // applied after it, so a value typed there still overrides the test key.
+  const credentialHeaderName = credential && credentialIn === 'header' ? credential.name : '';
+  const credentialHeaderValue = credential && credentialIn === 'header' ? credential.value : '';
   const fetcher: Fetcher = useMemo(() => {
     const baseFetcher = createGraphiQLFetcher({
       fetch: guardedFetch,
-      headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE },
+      headers: {
+        [CSRF_HEADER]: CSRF_HEADER_VALUE,
+        ...(credentialHeaderName ? { [credentialHeaderName]: credentialHeaderValue } : {}),
+      },
       url: invokeProxyUrl,
     });
     return (params, opts) => baseFetcher(withValidOperationName(params), opts);
-  }, [invokeProxyUrl, guardedFetch]);
+  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeProxyUrl]);
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
   }
-  if (apiQuery.isPending || gatewaysQuery.isPending || deploymentsQuery.isPending) {
+  // Wait for deployment state too, so the page never flashes the console
+  // before knowing there is an endpoint to send to.
+  if (apiQuery.isPending || deploymentUnknown) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (!api) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
 
-  const copyEndpoint = () => {
-    if (!endpointUrl) return;
-    navigator.clipboard
-      ?.writeText(endpointUrl)
-      .then(() => notify(intl.formatMessage(messages.copyEndpointSucceeded), 'success'))
-      .catch(() => notify(intl.formatMessage(messages.copyEndpointFailed), 'error'));
-  };
+  /** Shared by the empty states and the page itself, so they cannot drift. */
+  const heading = (
+    <PageTitle.Header>
+      <Stack alignItems="baseline" direction="row" spacing={1.5}>
+        <FormattedMessage {...messages.title} /> {api.displayName}
+      </Stack>
+    </PageTitle.Header>
+  );
+
+  if (deploymentFailed) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <ErrorState title={intl.formatMessage(messages.deploymentUnavailable)} />
+      </>
+    );
+  }
+
+  if (notDeployed) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <EmptyState
+          actionIcon={<Rocket size={18} />}
+          actionLabel={intl.formatMessage(messages.deployAction)}
+          illustration={<GatewayIllustration />}
+          onAction={() =>
+            navigate(
+              routes.graphqlApiDeploy(orgHandle ?? '', projectHandler ?? null, graphqlApiHandler),
+            )
+          }
+          title={intl.formatMessage(messages.notDeployedTitle)}
+        />
+      </>
+    );
+  }
+
+  // Wait for the schema, as REST waits for its definition: rendering GraphiQL
+  // without one makes it introspect the endpoint in the meantime. Checked
+  // after deployment so an undeployed API needs no schema yet.
+  if (sdlQuery.isPending) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  }
+  if (sdlQuery.error && !sdlMissing) {
+    return (
+      <>
+        <PageTitle>{heading}</PageTitle>
+        <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
+      </>
+    );
+  }
 
   return (
     <>
-      {deployedGateways.length === 0 ? (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <FormattedMessage {...messages.noDeployment} />
-        </Alert>
-      ) : (
-        <>
-          <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mb: 2 }}>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <Select
-                inputProps={{ 'aria-label': intl.formatMessage(messages.gatewayLabel) }}
-                onChange={(event) => setSelectedGatewayId(String(event.target.value))}
-                value={selectedGateway?.id || ''}
-              >
-                {deployedGateways.map((gateway) => (
-                  <MenuItem key={gateway.id} value={gateway.id ?? ''}>
-                    {gateway.displayName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              size="small"
-              slotProps={{
-                htmlInput: {
-                  'aria-label': intl.formatMessage(messages.endpointLabel),
-                  sx: { fontFamily: 'monospace' },
-                },
-                input: {
-                  readOnly: true,
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip title={intl.formatMessage(messages.copyEndpoint)}>
-                        <span>
-                          <IconButton
-                            aria-label={intl.formatMessage(messages.copyEndpoint)}
-                            disabled={!endpointUrl}
-                            onClick={copyEndpoint}
-                            size="small"
-                          >
-                            <Copy size={16} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              // Sized for an invoke URL rather than stretched across the row;
-              // shrinks with the row on a narrow screen.
-              sx={{ maxWidth: '100%', minWidth: 0, width: 600 }}
-              value={endpointUrl}
-            />
-          </Stack>
+      <PageTitle>
+        {heading}
+        <PageTitle.SubHeader>
+          <FormattedMessage {...messages.subtitle} />
+        </PageTitle.SubHeader>
+      </PageTitle>
 
-          <Box
-            sx={{
-              border: '1px solid',
-              borderColor: 'divider',
-              height: GRAPHIQL_HEIGHT,
-              minHeight: GRAPHIQL_MIN_HEIGHT,
-              overflow: 'hidden',
-            }}
-          >
-            {/*
-              No `shouldPersistHeaders`: GraphiQL's own default (false) strips
-              the Headers tab out of the tab state it writes to `storage`
-              (@graphiql/react's serializeTabState). `storage` above is real
-              `localStorage` — persisting headers would write whatever
-              Authorization/API-key value the user typed there to disk in
-              cleartext. Do not re-add this prop; the query/variables tabs are
-              still persisted either way, only headers are excluded.
-            */}
-            {/* GraphiQL in the console's own colours and font, following its
-                light/dark scheme rather than the operating system's. */}
-            <GraphiqlThemeStyles />
-            <GraphiQL
-              defaultQuery={DEFAULT_QUERY}
-              fetcher={fetcher}
-              forcedTheme={isDark ? 'dark' : 'light'}
-              schema={schema}
-              storage={storage}
+      <Stack spacing={2}>
+        <Card variant="outlined">
+          <GatewaySection
+            endpoint={endpointUrl}
+            gateways={gateways}
+            onSelect={setSelectedGatewayId}
+            optionLabel={gatewayOptionLabel}
+            selectedGatewayId={selectedGateway?.id ?? ''}
+          />
+          {needsApiKey && (
+            <TestKeySection
+              error={Boolean(testApiKey.error)}
+              keyName={keyName}
+              loading={testApiKey.isPending}
+              location={credentialIn}
+              onRegenerate={testApiKey.regenerate}
+              regenerating={testApiKey.isRegenerating}
+              remainingMs={testKeyRemainingMs(testKey, now)}
+              value={testKey?.value}
             />
-          </Box>
-        </>
-      )}
+          )}
+        </Card>
+
+        <Box
+          sx={{
+            border: '1px solid',
+            borderColor: 'divider',
+            height: GRAPHIQL_HEIGHT,
+            minHeight: GRAPHIQL_MIN_HEIGHT,
+            overflow: 'hidden',
+          }}
+        >
+          {/*
+            No `shouldPersistHeaders`: GraphiQL's own default (false) strips
+            the Headers tab out of the tab state it writes to `storage`
+            (@graphiql/react's serializeTabState). `storage` above is real
+            `localStorage` — persisting headers would write whatever
+            Authorization/API-key value the user typed there to disk in
+            cleartext. Do not re-add this prop; the query/variables tabs are
+            still persisted either way, only headers are excluded.
+          */}
+          {/* GraphiQL in the console's own colours and font, following its
+              light/dark scheme rather than the operating system's. */}
+          <GraphiqlThemeStyles />
+          <GraphiQL
+            defaultQuery={DEFAULT_QUERY}
+            fetcher={fetcher}
+            forcedTheme={isDark ? 'dark' : 'light'}
+            schema={schema}
+            storage={storage}
+          />
+        </Box>
+      </Stack>
     </>
   );
 }

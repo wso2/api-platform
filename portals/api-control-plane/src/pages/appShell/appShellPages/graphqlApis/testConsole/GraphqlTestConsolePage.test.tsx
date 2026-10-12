@@ -17,16 +17,18 @@
  */
 
 import { act } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
-import { aDeployment, aGateway, aGraphQLApiDetail, collection, resource } from '@/test/msw';
+import { aDeployment, aGateway, aGraphQLApiDetail, apiUrl, collection, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
+import { resetTestApiKeys } from '../../test/utils/useTestApiKey';
 import { GraphqlTestConsolePage } from './GraphqlTestConsolePage';
 
 const ORG = 'api-platform-demo';
@@ -103,11 +105,14 @@ function renderPage() {
   );
 }
 
-const serveApi = (deployments: ReturnType<typeof aDeployment>[] = []) => {
+const serveApi = (
+  deployments: ReturnType<typeof aDeployment>[] = [],
+  served: ReturnType<typeof aGraphQLApiDetail> = api,
+) => {
   server.use(
-    resource('/graphql-apis/:graphqlApiId', api),
+    resource('/graphql-apis/:graphqlApiId', served),
     resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-    collection('/gateways', [gateway]),
+    collection('/graphql-apis/:graphqlApiId/gateways', [gateway]),
     collection('/graphql-apis/:graphqlApiId/deployments', deployments),
   );
 };
@@ -116,17 +121,19 @@ beforeEach(() => {
   resetHttpClient();
   lastGraphiQLProps = undefined;
   lastFetcherOptions = undefined;
+  resetTestApiKeys();
 });
 
 describe('GraphqlTestConsolePage — before anything is deployed', () => {
-  it('says to deploy first and renders no console', async () => {
+  it('says to deploy first, offers the Deploy page, and renders no console', async () => {
     serveApi([]);
 
     renderPage();
 
     expect(
-      await screen.findByText('Deploy this API to a gateway before testing it here.'),
+      await screen.findByText('You must deploy the API to start testing.'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deploy API' })).toBeInTheDocument();
     expect(screen.queryByText(/GraphiQL ready/)).not.toBeInTheDocument();
   });
 });
@@ -299,12 +306,129 @@ describe('GraphqlTestConsolePage — once deployed', () => {
   });
 });
 
+describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
+  const deployment = aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' });
+  const securedApi = (params?: Record<string, string>) =>
+    aGraphQLApiDetail({
+      ...api,
+      policies: [{ name: 'api-key-auth', version: 'v1', ...(params ? { params } : {}) }],
+    });
+  const serveKeyMint = () => {
+    let mints = 0;
+    server.use(
+      http.post(apiUrl('/graphql-apis/:graphqlApiId/api-keys'), () => {
+        mints += 1;
+        return HttpResponse.json({
+          apiKey: 'graphql-test-credential',
+          keyId: 'k1',
+          message: 'ok',
+          status: 'success',
+        });
+      }),
+    );
+    return () => mints;
+  };
+
+  it('mints a test key and sends it as the policy’s header', async () => {
+    serveApi([deployment], securedApi({ in: 'header', key: 'X-Api-Key' }));
+    const mints = serveKeyMint();
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    await vi.waitFor(() =>
+      expect(lastFetcherOptions?.headers).toMatchObject({
+        [CSRF_HEADER]: CSRF_HEADER_VALUE,
+        'X-Api-Key': 'graphql-test-credential',
+      }),
+    );
+    expect(lastFetcherOptions?.url).toBe(
+      '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke',
+    );
+    expect(mints()).toBe(1);
+  });
+
+  it('sends the key as a query parameter when the policy says so', async () => {
+    serveApi([deployment], securedApi({ in: 'query', key: 'apikey' }));
+    serveKeyMint();
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    await vi.waitFor(() =>
+      expect(lastFetcherOptions?.url).toBe(
+        '/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke?apikey=graphql-test-credential',
+      ),
+    );
+    expect(lastFetcherOptions?.headers).not.toHaveProperty('apikey');
+  });
+});
+
+describe('GraphqlTestConsolePage — without an api-key-auth policy', () => {
+  it('mints no key and titles the page after the API', async () => {
+    serveApi([aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' })]);
+    let mints = 0;
+    server.use(
+      http.post(apiUrl('/graphql-apis/:graphqlApiId/api-keys'), () => {
+        mints += 1;
+        return HttpResponse.json({ apiKey: 'k', keyId: 'k1', message: 'ok', status: 'success' });
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText('GraphiQL ready with schema');
+    expect(
+      screen.getByRole('heading', { name: /Test\s+Countries GraphQL API/ }),
+    ).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mints).toBe(0);
+  });
+});
+
+describe('GraphqlTestConsolePage — the stored schema', () => {
+  const deployment = aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' });
+
+  it('still opens the console when the API has no stored schema', async () => {
+    serveApi([deployment]);
+    server.use(
+      resource(
+        '/graphql-apis/:graphqlApiId/sdl',
+        { code: 'NOT_FOUND', message: 'not found', status: 'error' },
+        { status: 404 },
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('GraphiQL ready, no schema')).toBeInTheDocument();
+  });
+
+  it('shows an error state when the schema fails to load', async () => {
+    serveApi([deployment]);
+    server.use(
+      resource(
+        '/graphql-apis/:graphqlApiId/sdl',
+        { code: 'INTERNAL_ERROR', message: 'boom', status: 'error' },
+        { status: 500 },
+      ),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByText('This API’s definition could not be loaded.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/GraphiQL ready/)).not.toBeInTheDocument();
+  });
+});
+
 describe('GraphqlTestConsolePage — the API cannot be found', () => {
   it('shows an error state', async () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', { status: 'error' }, { status: 404 }),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 

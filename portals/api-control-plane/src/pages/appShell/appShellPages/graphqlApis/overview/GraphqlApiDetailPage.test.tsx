@@ -82,7 +82,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', api),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 
@@ -118,7 +118,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', { ...api, readOnly: true }),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 
@@ -133,7 +133,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', readOnlyApi),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 
@@ -149,7 +149,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', api),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', [gateway]),
+      collection('/graphql-apis/:graphqlApiId/gateways', [gateway]),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 
@@ -174,7 +174,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', api),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', [gateway]),
+      collection('/graphql-apis/:graphqlApiId/gateways', [gateway]),
       collection('/graphql-apis/:graphqlApiId/deployments', [deployment]),
       collection('/me/api-keys', []),
     );
@@ -187,11 +187,27 @@ describe('GraphqlApiDetailPage', () => {
     expect(screen.getAllByText('Edge Gateway').length).toBeGreaterThan(0);
   });
 
+  // REST's overview counts a gateway the API reports as deployed even before a
+  // deployment record says DEPLOYED; this page reads the same API-scoped list.
+  it('treats a gateway the API reports as deployed as deployed', async () => {
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/graphql-apis/:graphqlApiId/gateways', [{ ...gateway, isDeployed: true }]),
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+      collection('/me/api-keys', []),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
+  });
+
   it('opens the endpoint editor pre-filled with the current URL', async () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', api),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 
@@ -213,7 +229,7 @@ describe('GraphqlApiDetailPage', () => {
     server.use(
       resource('/graphql-apis/:graphqlApiId', api),
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
       accepts(
         'put',
@@ -244,7 +260,7 @@ describe('GraphqlApiDetailPage', () => {
       // hooks — they fire regardless of whether the detail query itself
       // errored, so each still needs a handler here.
       resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
       collection('/graphql-apis/:graphqlApiId/deployments', []),
     );
 

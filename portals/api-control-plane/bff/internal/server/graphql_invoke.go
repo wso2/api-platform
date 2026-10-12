@@ -152,6 +152,14 @@ func (s *Server) handleGraphQLInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The caller's query string travels too: an api-key-auth policy can take
+	// its credential as a query parameter instead of a header.
+	invokeURL, err = withCallerQuery(invokeURL, r.URL.RawQuery)
+	if err != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid query string")
+		return
+	}
+
 	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, invokeURL, bytes.NewReader(reqBody))
 	if err != nil {
 		slog.Error("graphql invoke: failed to build upstream request", "err", err)
@@ -389,4 +397,26 @@ func buildGraphQLInvokeURL(endpoint, apiContext, version string) string {
 		resolvedContext = "/" + resolvedContext
 	}
 	return base + resolvedContext
+}
+
+// withCallerQuery appends the caller's raw query string to the resolved invoke
+// URL. Only the query changes — the scheme, host and path stay exactly what
+// the platform API resolved, so a caller cannot redirect the request.
+func withCallerQuery(invokeURL, rawQuery string) (string, error) {
+	if rawQuery == "" {
+		return invokeURL, nil
+	}
+	if _, err := url.ParseQuery(rawQuery); err != nil {
+		return "", fmt.Errorf("parse caller query: %w", err)
+	}
+	u, err := url.Parse(invokeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse invoke url: %w", err)
+	}
+	if u.RawQuery == "" {
+		u.RawQuery = rawQuery
+	} else {
+		u.RawQuery += "&" + rawQuery
+	}
+	return u.String(), nil
 }

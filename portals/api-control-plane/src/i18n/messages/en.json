@@ -2378,18 +2378,12 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointFailed": {
-    "defaultMessage": "Failed to copy the endpoint URL."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.copyEndpointSucceeded": {
-    "defaultMessage": "Endpoint URL copied to clipboard."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed": {
     "defaultMessage": "Could not reach the test console service. Check your connection and try again.",
     "description": "Shown when the browser fetch to this app's own backend fails below the HTTP level (network error) — a bare \"Failed to fetch\" the browser gives no further detail on. The request never leaves this origin: it is proxied server-side to the API's gateway, so this is not a CORS or gateway-certificate problem."
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.noDeployment": {
-    "defaultMessage": "Deploy this API to a gateway before testing it here."
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.subtitle": {
+    "defaultMessage": "Send queries and mutations to a deployed gateway."
   },
   "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action": {
     "defaultMessage": "Open Moesif Insights",

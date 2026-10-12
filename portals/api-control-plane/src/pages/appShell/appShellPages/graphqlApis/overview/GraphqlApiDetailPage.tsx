@@ -17,23 +17,15 @@
  */
 
 import { useMemo } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  Chip,
-  IconButton,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@wso2/oxygen-ui';
+import { Box, Button, Card, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Clock, Copy, Edit, Lock, Rocket } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
-import { useGateways, type Gateway } from '@/api/resources/gateways';
+import type { Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
+import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useFormatters } from '@/i18n/useFormatters';
@@ -41,6 +33,7 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { versionLabel } from '@/utils/versionLabel';
 import { GraphqlIcon } from '../../apis/create/uiConfig';
+import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { GraphqlOverviewTab } from './GraphqlOverviewTab';
 import { GraphqlProgressBanner } from './GraphqlProgressBanner';
 
@@ -168,28 +161,18 @@ function GraphqlApiDetailPageContent() {
 
   const apiQuery = useGraphQLApi(graphqlApiHandler);
   const sdlQuery = useGraphQLApiSdl(graphqlApiHandler);
-  const gatewaysQuery = useGateways();
+  // The API's own gateway associations, as REST's overview reads them —
+  // scoped to the API, so this needs no organization-wide gateway access.
+  const gatewaysQuery = useGraphQLApiGateways(graphqlApiHandler);
   const deploymentsQuery = useDeployments(graphqlApiHandler);
 
-  const deployedGateways = useMemo((): Gateway[] => {
-    const gateways = gatewaysQuery.data?.list ?? [];
-    const deployments = deploymentsQuery.data?.list ?? [];
-    const latestByGateway = new Map<string, number>();
-    deployments
-      .filter((deployment) => deployment.status === 'DEPLOYED')
-      .forEach((deployment) => {
-        const time = new Date(deployment.createdAt || 0).getTime();
-        const current = latestByGateway.get(deployment.gatewayId);
-        if (current === undefined || time > current) {
-          latestByGateway.set(deployment.gatewayId, time);
-        }
-      });
-    return gateways
-      .filter((gateway) => latestByGateway.has(gateway.id ?? ''))
-      .sort(
-        (a, b) => (latestByGateway.get(b.id ?? '') || 0) - (latestByGateway.get(a.id ?? '') || 0),
-      );
-  }, [gatewaysQuery.data, deploymentsQuery.data]);
+  // Deployed here, most recently deployed first — the same rule the Test
+  // page applies, so the two never disagree on where the API runs.
+  const deployedGateways = useMemo(
+    (): Gateway[] =>
+      deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
+    [gatewaysQuery.data, deploymentsQuery.data],
+  );
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.notFound)} />;

@@ -27,9 +27,9 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"strings"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,6 +172,74 @@ func TestGraphQLInvoke_ForwardsCallerAuthAndResolvesRealGatewayURL(t *testing.T)
 	body, _ := io.ReadAll(res.Body)
 	if !strings.Contains(string(body), `"__typename":"Query"`) {
 		t.Errorf("response body = %q, want the gateway's response relayed back", body)
+	}
+}
+
+func TestGraphQLInvoke_ForwardsCallerQueryString(t *testing.T) {
+	tok := makeJWT(map[string]any{"username": "admin"})
+
+	var gotPath, gotQuery string
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"__typename": "Query"}})
+	}))
+	defer gateway.Close()
+
+	platform := newGraphQLInvokeTestPlatform(t, tok, gateway.URL, true)
+	defer platform.Close()
+
+	cfg := newTestConfig(platform.URL)
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	client := loginTestClient(t, bff.URL)
+
+	invokeReq, _ := http.NewRequest(http.MethodPost,
+		bff.URL+"/api/graphql-console/countries-graphql-api/gateways/edge-gateway/invoke?api-key=test-value",
+		strings.NewReader(`{"query":"{ __typename }"}`))
+	invokeReq.Header.Set("Content-Type", "application/json")
+	invokeReq.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err := client.Do(invokeReq)
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	assertStatus(t, res, http.StatusOK)
+
+	if gotQuery != "api-key=test-value" {
+		t.Errorf("gateway query = %q, want the caller's query string forwarded", gotQuery)
+	}
+	if gotPath != "/countries-graphql-api" {
+		t.Errorf("gateway path = %q, want the resolved path unchanged by the query", gotPath)
+	}
+}
+
+func TestWithCallerQuery(t *testing.T) {
+	cases := []struct {
+		name, url, query, want string
+		wantErr                bool
+	}{
+		{name: "no query", url: "https://gw:8443/api", query: "", want: "https://gw:8443/api"},
+		{name: "appended", url: "https://gw:8443/api", query: "k=v", want: "https://gw:8443/api?k=v"},
+		{name: "merged", url: "https://gw:8443/api?a=1", query: "k=v", want: "https://gw:8443/api?a=1&k=v"},
+		{name: "malformed", url: "https://gw:8443/api", query: "k=%zz", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := withCallerQuery(tc.url, tc.query)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
