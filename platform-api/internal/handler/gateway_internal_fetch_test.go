@@ -137,7 +137,7 @@ func allKindsRouter(env *gatewaySecretTestEnv) http.Handler {
 	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(env.db))
 	gatewayRepo := repository.NewGatewayRepo(env.db)
 	gatewaySvc := service.NewGatewayService(gatewayRepo, nil, nil, nil, nil, slog.Default(), false, false, nil, identity)
-	svc := service.NewGatewayInternalAPIService(nil, nil, nil, nil, nil, stubMCPRepo{}, stubAgentRepo{},
+	svc := service.NewGatewayInternalAPIService(nil, nil, nil, nil, nil, stubMCPRepo{}, stubAgentRepo{}, nil,
 		repository.NewDeploymentRepo(env.db, repository.NewArtifactTableRegistry()), gatewayRepo,
 		nil, nil, nil, nil, repository.NewSecretRepo(env.db), &config.Server{}, slog.Default())
 	svc.SetSecretService(env.svc)

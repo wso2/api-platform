@@ -611,6 +611,10 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage" +
 	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
 	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore" +
+	" ap:graphql_api:read ap:graphql_api:create ap:graphql_api:update ap:graphql_api:delete ap:graphql_api:manage" +
+	" ap:graphql_api:gateway:read ap:graphql_api:gateway:create ap:graphql_api:gateway:manage" +
+	" ap:graphql_api:api_key:create ap:graphql_api:api_key:update ap:graphql_api:api_key:delete ap:graphql_api:api_key:manage" +
+	" ap:graphql_api:deployment:read ap:graphql_api:deployment:create ap:graphql_api:deployment:delete ap:graphql_api:deployment:manage ap:graphql_api:deployment:undeploy ap:graphql_api:deployment:restore" +
 	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
 	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
 	" ap:api_portal:publication:read" +
