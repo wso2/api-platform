@@ -103,6 +103,7 @@ To install these components as one product, use an umbrella chart and add the co
        repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
        condition: api-portal-ui.enabled
    ```
+   Then run `helm dependency update ./ai-workspace-helm-chart` to download the subchart.
 
 2. Install the `ai-workspace` chart. Follow the steps in the [`ai-workspace` README](ai-workspace-helm-chart/README.md), with these changes.
    - When you generate the secrets by running the script, set `API_PORTAL=true`, so that the script also creates the API Portal secret.
