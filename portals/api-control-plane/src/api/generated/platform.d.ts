@@ -4654,7 +4654,7 @@ export interface components {
              * @description Timestamp when the deployment artifact was created
              */
             createdAt: string;
-            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment in its startup sync and a referenced secret could not be resolved; the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
+            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
             statusReason?: string | null;
             /**
              * Format: date-time
@@ -5573,9 +5573,20 @@ export interface components {
              * @example api.openai.com
              */
             vhost?: string;
-            provider: components["schemas"]["LLMProxyProvider"];
-            /** @description Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. */
+            provider?: components["schemas"]["LLMProxyProvider"];
+            /** @description Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. Legacy shape: prefer `providers`, which expresses the same thing uniformly. Always populated on a read alongside `providers`. */
             additionalProviders?: components["schemas"]["LLMProxyAdditionalProvider"][];
+            /**
+             * @description Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`, which supplies the proxy's provider identity and default upstream.
+             *     On a request this is an alternative to the legacy `provider` plus `additionalProviders` pair, not an addition to it: when both are supplied `providers` wins and the legacy fields are ignored, so a client can write back a response it just read. Whichever shape arrives, only this one is stored.
+             *     On a response both representations are always populated and always agree, so a client written against either contract works.
+             */
+            providers?: components["schemas"]["LLMProxyProviderEntry"][];
+            /**
+             * @description Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+             * @example openai
+             */
+            inboundTemplate?: string;
             /**
              * @description OpenAPI specification (JSON or YAML) for the proxy endpoint
              * @example openapi: 3.0.3
@@ -5679,13 +5690,20 @@ export interface components {
             list: components["schemas"]["LLMProxyListItem"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /** @description The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list. */
         LLMProxyProvider: {
             /**
              * @description Unique id of a deployed llm provider
              * @example wso2-openai-provider
              */
             id: string;
+            /**
+             * @description Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted. The same field as `alias` in the canonical shape.
+             * @example openai-upstream
+             */
+            as?: string;
             auth?: components["schemas"]["UpstreamAuth"];
+            transformer?: components["schemas"]["LLMProxyTransformer"];
         };
         /** @description Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). */
         LLMProxyAdditionalProvider: {
@@ -5699,6 +5717,27 @@ export interface components {
              * @example anthropic-upstream
              */
             as?: string;
+            auth?: components["schemas"]["UpstreamAuth"];
+            transformer?: components["schemas"]["LLMProxyTransformer"];
+        };
+        /** @description One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported. */
+        LLMProxyProviderEntry: {
+            /**
+             * @description Unique id of a deployed llm provider
+             * @example anthropic-provider
+             */
+            id: string;
+            /**
+             * @description Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+             * @example anthropic-upstream
+             */
+            alias?: string;
+            /**
+             * @description Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true. Required on every entry, so a non-primary entry sends false explicitly rather than omitting it.
+             * @example true
+             */
+            isPrimary: boolean;
+            auth?: components["schemas"]["UpstreamAuth"];
             transformer?: components["schemas"]["LLMProxyTransformer"];
         };
         /** @description Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream. */
