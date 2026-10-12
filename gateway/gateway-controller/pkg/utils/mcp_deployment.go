@@ -498,6 +498,7 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
+	s.pushArtifactUndeploy(cfg, logger)
 	return cfg, nil
 }
 
@@ -563,4 +564,23 @@ func (s *MCPDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 func (s *MCPDeploymentService) canPushToControlPlane() bool {
 	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
 		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
+}
+
+// pushArtifactUndeploy tells the control plane a gateway-originated MCP proxy was
+// deleted from this gateway. The control plane keeps the artifact and marks it
+// undeployed (it can be re-deployed later).
+func (s *MCPDeploymentService) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg == nil || cfg.Origin != models.OriginGatewayAPI || !s.canPushToControlPlane() {
+		return
+	}
+	undeploy := *cfg
+	undeploy.DesiredState = models.StateUndeployed
+	pusher := s.controlPlaneClient
+	pusher.SubmitArtifactPush(func() {
+		uc := undeploy
+		if err := pusher.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
+			log.Error("Failed to push artifact undeploy to control plane",
+				slog.String("artifact_id", uc.UUID), slog.Any("error", err))
+		}
+	})
 }

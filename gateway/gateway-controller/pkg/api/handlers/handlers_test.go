@@ -48,9 +48,11 @@ import (
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
 func init() {
@@ -1388,7 +1390,9 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, hub, gatewayID, nil, server.httpClient)
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
 	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
+	server.subscriptionService = nil
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID, nil, policyVersionResolver)
+
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		server.store,
 		server.db,
@@ -3262,10 +3266,11 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
-	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	// Wire a control-plane client with sync enabled so the DP->CP undeploy push runs.
+	// The push lives in the service layer, so the mock goes on the service instance
+	// attachTestEventHub just built.
 	mockCP := &MockControlPlaneClient{connected: true}
-	server.controlPlaneClient = mockCP
-	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	server.llmDeploymentService.SetControlPlanePusher(mockCP, true)
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-provider-id-0000-000000000000",
@@ -3346,10 +3351,11 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 	mockHub := &mockEventHub{}
 	attachTestEventHub(server, mockHub, "test-gateway")
-	// Wire a control-plane client and enable sync so the DP->CP undeploy push runs.
+	// Wire a control-plane client with sync enabled so the DP->CP undeploy push runs.
+	// The push lives in the service layer, so the mock goes on the service instance
+	// attachTestEventHub just built.
 	mockCP := &MockControlPlaneClient{connected: true}
-	server.controlPlaneClient = mockCP
-	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	server.llmDeploymentService.SetControlPlanePusher(mockCP, true)
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-proxy-id-0000-000000000000",
@@ -3411,6 +3417,78 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProxyInternalError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+// TestDeleteRestAPIPushesUndeployExactlyOnce guards the move of the DP->CP undeploy
+// push from the REST handler into RestAPIService.Delete: the push must still happen,
+// and the handler must not add a second one on top of the service.
+func TestDeleteRestAPIPushesUndeployExactlyOnce(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled = true
+	restAPIService := restapi.NewRestAPIService(
+		server.store, server.db, nil, nil,
+		server.deploymentService, server.apiKeyXDSManager, mockCP,
+		server.routerConfig, server.systemConfig,
+		server.httpClient, server.parser, server.validator, server.logger, mockHub, nil,
+	)
+	server.restAPIService = restAPIService
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
+
+	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "test-api", "v1.0.0", "/test")
+	cfg.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(cfg))
+
+	w, r := createTestContext("DELETE", "/rest-apis/test-handle", nil)
+	server.DeleteRestAPI(w, r, "test-handle")
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Wait for at least one push, then check no second one arrives. Waiting for
+	// exactly 1 would misreport a double push as "never pushed", since both async
+	// pushes can land before the first poll.
+	require.Eventually(t, func() bool { return mockCP.PushCount() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the deleted DP-origin REST API to be pushed to the control plane as an undeploy")
+	require.Never(t, func() bool { return mockCP.PushCount() > 1 }, 200*time.Millisecond, 10*time.Millisecond,
+		"the undeploy must be pushed once, by the service, not again by the handler")
+	require.Equal(t, 1, mockCP.PushCount())
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
+}
+
+// TestMcpDeleteMCPProxyPushesUndeployExactlyOnce checks that deleting through the
+// MCP tool layer still notifies the control plane now that the push lives in the
+// service layer rather than in an MCP-side hook.
+func TestMcpDeleteMCPProxyPushesUndeployExactlyOnce(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	attachTestEventHub(server, &mockEventHub{}, "test-gateway")
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.mcpDeploymentService.SetControlPlanePusher(mockCP, true)
+
+	cfg := createTestMCPStoredConfig(t, "0000-mcp-delete-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
+	require.NoError(t, mockDB.SaveConfig(cfg))
+	require.NoError(t, server.store.Add(cfg))
+
+	h := &McpHandler{mcpDeploymentService: server.mcpDeploymentService, logger: server.logger}
+	require.NoError(t, h.mcpProxyOps().Delete("test-mcp", "corr-id-mcp-tool-delete", server.logger))
+
+	// Wait for at least one push, then check no second one arrives (see
+	// TestDeleteRestAPIPushesUndeployExactlyOnce for why not "exactly 1" here).
+	require.Eventually(t, func() bool { return mockCP.PushCount() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"expected the MCP-deleted DP-origin proxy to be pushed to the control plane as an undeploy")
+	require.Never(t, func() bool { return mockCP.PushCount() > 1 }, 200*time.Millisecond, 10*time.Millisecond,
+		"the undeploy must be pushed exactly once")
+	require.Equal(t, 1, mockCP.PushCount())
+	pushed, ok := mockCP.LastPushedConfig()
+	require.True(t, ok)
+	assert.Equal(t, cfg.UUID, pushed.UUID)
+	assert.Equal(t, models.StateUndeployed, pushed.DesiredState)
 }
 
 func TestCreateSubscriptionWithDBAndEventHub(t *testing.T) {
@@ -4170,4 +4248,254 @@ func TestPolicyRemovalErrorHandling(t *testing.T) {
 			assert.Equal(t, tt.want, storage.IsPolicyNotFoundError(err))
 		})
 	}
+}
+
+// newSnapshotManagerWithCertStore builds a real xDS snapshot manager whose
+// translator holds a custom cert store. LoadCertificates needs at least one
+// readable source, so the trusted-cert file stands in for the system bundle.
+func newSnapshotManagerWithCertStore(t *testing.T, db storage.Storage) *xds.SnapshotManager {
+	t.Helper()
+	trusted := t.TempDir() + "/ca-bundle.pem"
+	require.NoError(t, os.WriteFile(trusted, []byte("test-ca-bundle"), 0o600))
+
+	cfg := &config.Config{}
+	cfg.Router.Upstream.TLS.CustomCertsPath = t.TempDir()
+	cfg.Router.Upstream.TLS.TrustedCertPath = trusted
+	sm := xds.NewSnapshotManager(storage.NewConfigStore(), slog.New(slog.DiscardHandler), &cfg.Router, db, cfg)
+	require.NotNil(t, sm.GetTranslator().GetCertStore(), "fixture must produce a cert store")
+	return sm
+}
+
+func TestNewAPIServerBuildsSubscriptionAndCertificateServices(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	store := storage.NewConfigStore()
+	db := NewMockStorage()
+	systemCfg := &config.Config{}
+	systemCfg.Controller.Server.GatewayID = "test-gateway"
+	sm := xds.NewSnapshotManager(store, logger, &systemCfg.Router, db, systemCfg)
+
+	server, err := NewAPIServer(store, db, sm, nil, nil, logger, nil, nil, nil,
+		config.NewAPIValidator(), nil, systemCfg, &mockEventHub{}, nil, nil, nil, http.DefaultClient, nil)
+	require.NoError(t, err)
+
+	require.NotNil(t, server.subscriptionService)
+	require.NotNil(t, server.certificateService)
+	// The getters must hand back what the constructor built, not build a second instance.
+	assert.Same(t, server.subscriptionService, server.getSubscriptionService())
+	assert.Same(t, server.certificateService, server.getCertificateService())
+}
+
+func TestGetSubscriptionService(t *testing.T) {
+	t.Run("builds once and caches", func(t *testing.T) {
+		server := createTestAPIServer()
+		require.Nil(t, server.subscriptionService)
+
+		first := server.getSubscriptionService()
+
+		require.NotNil(t, first)
+		assert.Same(t, first, server.subscriptionService)
+		assert.Same(t, first, server.getSubscriptionService())
+	})
+
+	t.Run("builds the resource service too when it is missing", func(t *testing.T) {
+		// NewSubscriptionService panics on a nil resource service, so this only
+		// succeeds because the getter goes through getSubscriptionResourceService.
+		server := &APIServer{db: NewMockStorage(), eventHub: &mockEventHub{}, gatewayID: "test-gateway"}
+
+		require.NotNil(t, server.getSubscriptionService())
+		assert.NotNil(t, server.subscriptionResourceService)
+	})
+
+	t.Run("returns an instance that is already set", func(t *testing.T) {
+		server := createTestAPIServer()
+		preset := server.getSubscriptionService()
+		server.subscriptionResourceService = nil
+
+		assert.Same(t, preset, server.getSubscriptionService())
+		assert.Nil(t, server.subscriptionResourceService, "a cached service must not rebuild its dependencies")
+	})
+}
+
+func TestGetCertificateService(t *testing.T) {
+	t.Run("builds once and caches", func(t *testing.T) {
+		server := createTestAPIServer()
+		require.Nil(t, server.certificateService)
+
+		first := server.getCertificateService()
+
+		require.NotNil(t, first)
+		assert.Same(t, first, server.certificateService)
+		assert.Same(t, first, server.getCertificateService())
+	})
+
+	t.Run("a server without xDS reports the store as not configured instead of panicking", func(t *testing.T) {
+		server := &APIServer{db: NewMockStorage(), logger: slog.New(slog.DiscardHandler)}
+
+		_, err := server.getCertificateService().Reload(certificate.ReloadParams{})
+
+		assert.ErrorIs(t, err, certificate.ErrCertStoreNotConfigured)
+	})
+}
+
+func TestResolveCertXDS(t *testing.T) {
+	t.Run("no snapshot manager", func(t *testing.T) {
+		server := &APIServer{}
+		assert.Nil(t, server.resolveCertXDS())
+	})
+
+	t.Run("snapshot manager without a translator", func(t *testing.T) {
+		server := &APIServer{snapshotManager: &xds.SnapshotManager{}}
+		assert.Nil(t, server.resolveCertXDS())
+	})
+
+	t.Run("no custom cert store configured", func(t *testing.T) {
+		cfg := &config.Config{}
+		sm := xds.NewSnapshotManager(storage.NewConfigStore(), slog.New(slog.DiscardHandler), &cfg.Router, NewMockStorage(), cfg)
+		require.Nil(t, sm.GetTranslator().GetCertStore())
+		server := &APIServer{snapshotManager: sm}
+
+		// Must be a nil *XDSTargets, not a struct wrapping a typed-nil store:
+		// the certificate service's nil checks cannot see through the latter.
+		assert.Nil(t, server.resolveCertXDS())
+	})
+
+	t.Run("custom cert store configured", func(t *testing.T) {
+		db := NewMockStorage()
+		sm := newSnapshotManagerWithCertStore(t, db)
+		server := &APIServer{snapshotManager: sm, db: db}
+
+		targets := server.resolveCertXDS()
+
+		require.NotNil(t, targets)
+		assert.Same(t, sm.GetTranslator().GetCertStore(), targets.Store)
+		assert.Same(t, sm, targets.Snapshot)
+	})
+}
+
+func TestHandleMcpReturnsNotFoundWhenMCPIsDisabled(t *testing.T) {
+	server := createTestAPIServer()
+
+	w, r := createTestContext(http.MethodPost, "/api/management/v1/mcp",
+		[]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	server.HandleMcp(w, r)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.Equal(t, "not_found", body["code"])
+	assert.Equal(t, "The requested resource was not found.", body["message"])
+}
+
+func TestEnableMCP(t *testing.T) {
+	const metadataURL = "https://gw.example.com/.well-known/oauth-protected-resource/api/management/v1/mcp"
+	resourceRoles := map[string][]string{
+		"POST /rest-apis":     {"admin", "developer"},
+		"POST /llm-providers": {"admin"},
+	}
+	roleMapping := map[string][]string{"admin": {"gw-admin"}, "developer": {"gw-dev"}}
+
+	t.Run("HandleMcp serves through the enabled handler", func(t *testing.T) {
+		server := createTestAPIServer()
+		h := server.EnableMCP(resourceRoles, roleMapping, metadataURL)
+		require.Same(t, h, server.mcpHandler)
+
+		// A developer may not create an LlmProvider, so the gate denies with a
+		// challenge built from the roles, mapping and URL EnableMCP passed in.
+		developer := &commonmodels.AuthContext{UserID: "alice", Roles: []string{"developer"}}
+		rec := mcpPost(t, http.HandlerFunc(server.HandleMcp), developer, "tools/call", map[string]any{
+			"name":      "wso2_apip_gw_deploy_api",
+			"arguments": map[string]any{"kind": "LlmProvider", "yaml": "kind: LlmProvider\n"},
+		})
+
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+		challenge := rec.Header().Get("WWW-Authenticate")
+		assert.Contains(t, challenge, `scope="gw-admin"`)
+		assert.Contains(t, challenge, `resource_metadata="`+metadataURL+`"`)
+	})
+
+	t.Run("wires the server's certificate and subscription services", func(t *testing.T) {
+		server := createTestAPIServer()
+		h := server.EnableMCP(resourceRoles, roleMapping, "")
+
+		assert.Same(t, server.certificateService, h.certificateService)
+		assert.Same(t, server.subscriptionService, h.subscriptionService)
+		assert.Same(t, server.restAPIService, h.restAPIService)
+		assert.Same(t, server.mcpDeploymentService, h.mcpDeploymentService)
+		assert.Same(t, server.llmDeploymentService, h.llmDeploymentService)
+		assert.Same(t, server.agentService, h.agentService)
+		assert.Same(t, server.apiKeyService, h.apiKeyService)
+		// Both tools are registered only when their service is non-nil.
+		assert.Subset(t, registeredToolNames(t, h),
+			[]string{"wso2_apip_gw_manage_certificates", "wso2_apip_gw_manage_subscriptions"})
+	})
+
+	t.Run("copies immutable mode and the request size limit from config", func(t *testing.T) {
+		server := createTestAPIServer()
+		server.systemConfig.ImmutableGateway.Enabled = true
+		server.systemConfig.Controller.Server.MCPServer.MaxRequestBytes = 4096
+
+		h := server.EnableMCP(resourceRoles, roleMapping, "")
+
+		assert.True(t, h.immutable)
+		assert.Equal(t, int64(4096), h.authz.maxRequestBytes)
+	})
+}
+
+func TestEnableAdminMCP(t *testing.T) {
+	const metadataURL = "https://gw.example.com/.well-known/oauth-protected-resource/api/admin/v1/mcp"
+	resourceRoles := map[string][]string{"GET /config_dump": {"admin"}, "GET /xds_sync_status": {"admin"}}
+	roleMapping := map[string][]string{"admin": {"gw-admin"}}
+
+	t.Run("uses the server as its status source", func(t *testing.T) {
+		server := createTestAPIServer()
+		h := server.EnableAdminMCP(resourceRoles, roleMapping, "")
+
+		assert.Same(t, server, h.status)
+	})
+
+	t.Run("passes roles, mapping and metadata URL to the gate", func(t *testing.T) {
+		server := createTestAPIServer()
+		server.systemConfig.Controller.AdminServer.ConfigDump.Enabled = true
+		h := server.EnableAdminMCP(resourceRoles, roleMapping, metadataURL)
+
+		rec := callAdminTool(t, h,
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+toolAdminConfigDump+`","arguments":{}}}`,
+			[]string{"developer"})
+
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+		challenge := rec.Header().Get("WWW-Authenticate")
+		assert.Contains(t, challenge, `scope="gw-admin"`)
+		assert.Contains(t, challenge, `resource_metadata="`+metadataURL+`"`)
+	})
+
+	t.Run("registers the config dump tool only when config dump is enabled", func(t *testing.T) {
+		server := createTestAPIServer()
+
+		server.systemConfig.Controller.AdminServer.ConfigDump.Enabled = false
+		assert.ElementsMatch(t, []string{toolAdminGatewayStatus},
+			registeredToolNames(t, server.EnableAdminMCP(resourceRoles, roleMapping, "")))
+
+		server.systemConfig.Controller.AdminServer.ConfigDump.Enabled = true
+		assert.ElementsMatch(t, []string{toolAdminGatewayStatus, toolAdminConfigDump},
+			registeredToolNames(t, server.EnableAdminMCP(resourceRoles, roleMapping, "")))
+	})
+
+	t.Run("copies the admin request size limit from config", func(t *testing.T) {
+		server := createTestAPIServer()
+		server.systemConfig.Controller.AdminServer.MCPServer.MaxRequestBytes = 2048
+
+		h := server.EnableAdminMCP(resourceRoles, roleMapping, "")
+
+		assert.Equal(t, int64(2048), h.authz.maxRequestBytes)
+	})
+
+	t.Run("does not enable the management MCP endpoint", func(t *testing.T) {
+		server := createTestAPIServer()
+		server.EnableAdminMCP(resourceRoles, roleMapping, "")
+
+		assert.Nil(t, server.mcpHandler)
+		w, r := createTestContext(http.MethodPost, "/api/management/v1/mcp", []byte(`{}`))
+		server.HandleMcp(w, r)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
 }

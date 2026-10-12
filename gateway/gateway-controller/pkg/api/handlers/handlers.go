@@ -45,7 +45,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/certificate"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -82,6 +84,9 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+	subscriptionService         *subscription.SubscriptionService
+	certificateService          *certificate.CertificateService
+	mcpHandler                  *McpHandler
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -154,10 +159,11 @@ func NewAPIServer(
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	// Wire the DP->CP push into the LLM/MCP deployment services so create flows push to the
-	// control plane from the service layer (mirroring the REST API service), instead of the
-	// handler doing it. This keeps the push behavior identical whether an artifact is created
-	// via these handlers or directly through the service layer (e.g. the immutable loader).
+	// Wire the DP->CP push into the LLM/MCP deployment services so create, update and delete
+	// flows push to the control plane from the service layer (mirroring the REST API service),
+	// instead of the handler doing it. This keeps the push behavior identical whether an
+	// artifact is changed via these handlers, the MCP tools, or directly through the service
+	// layer (e.g. the immutable loader).
 	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
 	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
@@ -167,9 +173,9 @@ func NewAPIServer(
 
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
-	// Wire the shared control-plane (DP->CP) push hooks so REST APIs use the same push
-	// path (APIServer.waitForDeploymentAndPush / pushArtifactUndeploy) as all other kinds.
-	server.RestAPIHandler.pushArtifactUndeploy = server.pushArtifactUndeploy
+
+	server.subscriptionService = subscription.NewSubscriptionService(db, subscriptionResourceService)
+	server.certificateService = certificate.NewCertificateService(db, server.resolveCertXDS, logger)
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -185,6 +191,57 @@ func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResource
 	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
 
 	return s.subscriptionResourceService
+}
+
+// getSubscriptionService returns the subscription business-logic service,
+// building it on first use so a hand-constructed APIServer (as in tests) works
+// without going through NewAPIServer. It delegates to
+// getSubscriptionResourceService so both services can never be built against
+// different event hubs.
+func (s *APIServer) getSubscriptionService() *subscription.SubscriptionService {
+	if s.subscriptionService != nil {
+		return s.subscriptionService
+	}
+
+	s.subscriptionService = subscription.NewSubscriptionService(s.db, s.getSubscriptionResourceService())
+
+	return s.subscriptionService
+}
+
+// resolveCertXDS returns the live cert store and snapshot manager, or nil when
+// this gateway has no custom cert store. It is handed to the certificate
+// service as a function so that service never has to know the snapshot manager
+// is a concrete type whose GetTranslator panics on a nil receiver — a shape
+// every hand-constructed APIServer in the tests has.
+func (s *APIServer) resolveCertXDS() *certificate.XDSTargets {
+	if s.snapshotManager == nil {
+		return nil
+	}
+	translator := s.snapshotManager.GetTranslator()
+	if translator == nil {
+		return nil
+	}
+	store := translator.GetCertStore()
+	if store == nil {
+		// Explicit nil: returning a typed-nil *certstore.CertStore inside the
+		// interface would make every nil check downstream wrongly succeed.
+		return nil
+	}
+
+	return &certificate.XDSTargets{Store: store, Snapshot: s.snapshotManager}
+}
+
+// getCertificateService returns the certificate service, building it on first
+// use so a hand-constructed APIServer (as in tests) works without going through
+// NewAPIServer.
+func (s *APIServer) getCertificateService() *certificate.CertificateService {
+	if s.certificateService != nil {
+		return s.certificateService
+	}
+
+	s.certificateService = certificate.NewCertificateService(s.db, s.resolveCertXDS, s.logger)
+
+	return s.certificateService
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
@@ -339,24 +396,16 @@ func (s *APIServer) GetAPIByNameVersion(w http.ResponseWriter, r *http.Request, 
 	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
-// pushArtifactUndeploy notifies the control plane that a gateway-originated artifact
-// has been deleted from this gateway. The control plane keeps the artifact but marks
-// it undeployed (it is not removed and can be re-deployed later). It is a no-op for
-// control-plane-originated artifacts or when push is disabled / disconnected.
 // deploymentPusher builds the handlerkit.DeploymentPusher for this server's
-// current dependencies. pushArtifactUndeploy/waitForDeploymentAndPush delegate
-// to it so the shared push logic lives in one place (handlerkit), reusable by
-// any binary that imports gateway-controller as a library.
+// current dependencies. waitForDeploymentAndPush delegates to it so the shared
+// push logic lives in one place (handlerkit), reusable by any binary that
+// imports gateway-controller as a library.
 func (s *APIServer) deploymentPusher() *handlerkit.DeploymentPusher {
 	return &handlerkit.DeploymentPusher{
 		Store:              s.store,
 		ControlPlaneClient: s.controlPlaneClient,
 		SystemConfig:       s.systemConfig,
 	}
-}
-
-func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
-	s.deploymentPusher().PushArtifactUndeploy(cfg, log)
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
@@ -629,4 +678,64 @@ func toGenericMap(value interface{}) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// HandleMcp implements ServerInterface.HandleMcp (POST /mcp).
+// The route is registered unconditionally by the generated router, so the
+// disabled case is handled here rather than by skipping registration. It
+// answers 404 rather than 501: a gateway with MCP switched off should be
+// indistinguishable from one that does not implement it.
+func (s *APIServer) HandleMcp(w http.ResponseWriter, r *http.Request) {
+	if s.mcpHandler == nil {
+		httputil.WriteError(w, http.StatusNotFound, "not_found", "The requested resource was not found.")
+		return
+	}
+	s.mcpHandler.ServeHTTP(w, r)
+}
+
+// EnableMCP builds the MCP endpoint handler. Called from main only when
+// controller.server.mcp_server.enabled is true, so the whole MCP surface — including
+// the SDK — stays inert in a default deployment.
+func (s *APIServer) EnableMCP(
+	resourceRoles map[string][]string,
+	roleMapping map[string][]string,
+	resourceMetadataURL string,
+) *McpHandler {
+	h := newMcpHandler(McpHandlerParams{
+		RestAPIService:       s.restAPIService,
+		MCPDeploymentService: s.mcpDeploymentService,
+		LLMDeploymentService: s.llmDeploymentService,
+		AgentService:         s.agentService,
+		SecretService:        s.secretService,
+		APIKeyService:        s.apiKeyService,
+		CertificateService:   s.getCertificateService(),
+		SubscriptionService:  s.getSubscriptionService(),
+		ResourceRoles:        resourceRoles,
+		RoleMapping:          roleMapping,
+		ResourceMetadataURL:  resourceMetadataURL,
+		Immutable:            s.systemConfig.ImmutableGateway.Enabled,
+		MaxRequestBytes:      s.systemConfig.Controller.Server.MCPServer.MaxRequestBytes,
+		Logger:               s.logger,
+	})
+	s.mcpHandler = h
+	return h
+}
+
+// EnableAdminMCP builds the administrative MCP endpoint handler. Called from
+// main only when controller.admin_server.mcp_server.enabled is true, so this
+// surface too stays inert in a default deployment.
+func (s *APIServer) EnableAdminMCP(
+	resourceRoles map[string][]string,
+	roleMapping map[string][]string,
+	resourceMetadataURL string,
+) *AdminMcpHandler {
+	return NewAdminMcpHandler(AdminMcpHandlerParams{
+		Status:              s,
+		ResourceRoles:       resourceRoles,
+		RoleMapping:         roleMapping,
+		ResourceMetadataURL: resourceMetadataURL,
+		MaxRequestBytes:     s.systemConfig.Controller.AdminServer.MCPServer.MaxRequestBytes,
+		ConfigDumpEnabled:   s.systemConfig.Controller.AdminServer.ConfigDump.Enabled,
+		Logger:              s.logger,
+	})
 }

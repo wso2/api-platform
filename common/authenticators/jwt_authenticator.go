@@ -252,6 +252,8 @@ func (j *JWTAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
 	}, nil
 }
 
+// Its outbound inverse is MapRolesToScopes (role_mapping.go): every scope this gateway advertises is built there.
+// If you change how the mapping is interpreted here that function must follow, or clients are told to request scopes that resolve to nothing.
 func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	var permissions []string
 	// Try string first
