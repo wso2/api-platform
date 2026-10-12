@@ -1924,6 +1924,127 @@ paths:
         '503':
           $ref: '#/components/responses/PortalUnavailable'
 
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish GraphQL API to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishGraphQLApiToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:publish
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationPublishBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish GraphQL API from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishGraphQLApiFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:unpublish
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate GraphQL API on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateGraphQLApiOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:deprecate
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
   /apis/{apiType}/{apiId}/docs:
     parameters:
       - $ref: '#/components/parameters/apiType'
@@ -8750,6 +8871,10 @@ components:
             ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
+            ap:api_portal:graphql_api:deprecate: Close a GraphQL API's live listing to new subscriptions
+            ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
+            ap:api_portal:graphql_api:publish: Publish, or re-publish, a GraphQL API's current draft to a portal
+            ap:api_portal:graphql_api:unpublish: Remove a GraphQL API's live listing from a portal
             ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
             ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
@@ -15302,7 +15427,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:
@@ -15345,7 +15470,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:

@@ -290,6 +290,14 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
   ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'publish'),
+  // One portal's publish page for a GraphQL API — `apiPortalPublish`'s
+  // counterpart, nested under the API's own Publish (portals list) page.
+  graphqlApiPortalPublish: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
+    apiPortalId = ':apiPortalId',
+  ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, `publish/${apiPortalId}`),
   // Insights/Observability's GraphQL siblings — same doubled-`api` naming note
   // as `apiInsightsApi` above applies here too.
   graphqlApiInsightsApi: (

@@ -16,27 +16,17 @@
  * under the License.
  */
 
-import { PageTitle } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { useMemo } from 'react';
+import { defineMessages, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useGraphQLApi } from '@/api/resources/graphqlApis';
-import { ComingSoon } from '@/components/ComingSoon';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { ApiPortalPublicationsList } from '../../portals/ApiPortalPublicationsList';
+import { graphqlPublishTarget } from '../../portals/publishTarget';
 
 const messages = defineMessages({
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title',
-    defaultMessage: 'Publish {apiName}',
-    description:
-      'Page heading. {apiName} is the API display name, user-supplied; do not translate it.',
-  },
-  subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle',
-    defaultMessage:
-      'List this API in the Developer Portal for consumers to discover and subscribe to.',
-  },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.edit.ApiEditPage.loading',
     defaultMessage: 'Loading API',
@@ -46,23 +36,14 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound',
     defaultMessage: 'GraphQL API not found',
   },
-  feature: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.feature',
-    defaultMessage: 'Publishing this API to the Developer Portal',
-  },
 });
 
 /**
- * Fork of `manage/LifeCyclePage.tsx` ("Publish to Devportal") for a GraphQL
- * API. REST's own stepper step is itself just a `ComingSoon` placeholder
- * today — `GraphQLAPIDetail` (like `RESTAPI`, in this respect) has no
- * lifecycle-status field to drive a real publish flow, and the actual
- * dev-portal listing lives entirely in the separate, unwired `api-portal`
- * service (see `ProjectStatistics.tsx`'s comment on the same gap). This
- * mirrors REST's own current (non-functional) parity, not a new backend
- * capability. No `ScopeGate`: this route lives outside `ConsoleScopeProvider`'s
- * REST-only api-scope matching (see `graphqlApiPath`), so it guards on its own
- * route param instead.
+ * A GraphQL API's Publish page: REST's Portals list — every API Portal, with
+ * this API's publication status on each — over the GraphQL API's own
+ * publications. No `ScopeGate`: this route lives outside
+ * `ConsoleScopeProvider`'s REST-only api-scope matching (see
+ * `graphqlApiPath`), so it guards on its own route param instead.
  */
 export function GraphqlPublishPage() {
   return (
@@ -74,8 +55,12 @@ export function GraphqlPublishPage() {
 
 function GraphqlPublishPageContent() {
   const intl = useIntl();
-  const { graphqlApiHandler } = useParams();
-  const apiQuery = useGraphQLApi(graphqlApiHandler);
+  const { graphqlApiHandler = '', orgHandle = '', projectHandler = '' } = useParams();
+  const apiQuery = useGraphQLApi(graphqlApiHandler || undefined);
+  const target = useMemo(
+    () => graphqlPublishTarget(orgHandle, projectHandler, graphqlApiHandler),
+    [graphqlApiHandler, orgHandle, projectHandler],
+  );
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
@@ -83,19 +68,5 @@ function GraphqlPublishPageContent() {
   if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
   if (!apiQuery.data) return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
 
-  const api = apiQuery.data;
-
-  return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} values={{ apiName: api.displayName }} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subtitle} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <ComingSoon feature={<FormattedMessage {...messages.feature} />} />
-    </>
-  );
+  return <ApiPortalPublicationsList apiName={apiQuery.data.displayName} target={target} />;
 }

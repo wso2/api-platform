@@ -506,6 +506,7 @@ export const navigationRegistry: NavigationDefinition[] = [
       ...apiScopedPaths(routes.apiPortals),
       routes.apiPortalPublish(),
       routes.graphqlApiPublish(':orgHandle', ':projectHandler', ':graphqlApiHandler'),
+      routes.graphqlApiPortalPublish(),
     ),
   },
   {

@@ -5935,7 +5935,7 @@ type SaveApiPublicationDraftThumbnailMultipartBody struct {
 
 // ListApiPublicationsParams defines parameters for ListApiPublications.
 type ListApiPublicationsParams struct {
-	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
 	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
 
 	// ApiId The API's handle, unique per organization within its own type.

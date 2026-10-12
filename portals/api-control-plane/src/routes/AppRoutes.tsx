@@ -156,6 +156,11 @@ const GraphqlDevelopDocumentsPage = lazy(() =>
     (m) => ({ default: m.GraphqlDevelopDocumentsPage }),
   ),
 );
+const GraphqlPortalPublishPage = lazy(() =>
+  import('../pages/appShell/appShellPages/graphqlApis/publish/GraphqlPortalPublishPage').then(
+    (m) => ({ default: m.GraphqlPortalPublishPage }),
+  ),
+);
 const GraphqlPublishPage = lazy(() =>
   import('../pages/appShell/appShellPages/graphqlApis/publish/GraphqlPublishPage').then((m) => ({
     default: m.GraphqlPublishPage,
@@ -511,6 +516,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             element={<GraphqlDevelopDocumentsPage />}
           />
           <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
+          <Route path={routes.graphqlApiPortalPublish()} element={<GraphqlPortalPublishPage />} />
           <Route path={routes.graphqlApiInsightsApi()} element={<GraphqlInsightsPage />} />
           <Route
             path={routes.graphqlApiInsightsCompliance()}

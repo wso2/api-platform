@@ -21,7 +21,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aGraphQLApiDetail, resource } from '@/test/msw';
+import {
+  aGraphQLApiDetail,
+  aPublicationSummary,
+  collection,
+  recorder,
+  resource,
+} from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -55,17 +61,31 @@ beforeEach(() => {
 });
 
 describe('GraphqlPublishPage', () => {
-  it('shows the coming-soon placeholder for the named API', async () => {
-    server.use(resource('/graphql-apis/:graphqlApiId', api));
+  it('lists the API Portals with this GraphQL API’s own publication status', async () => {
+    const requests = recorder();
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      collection(
+        '/api-publications',
+        [aPublicationSummary({ apiPortalId: 'partner-portal', apiPortalName: 'Partner Portal' })],
+        { record: requests },
+      ),
+    );
 
     renderPage();
 
     expect(
       await screen.findByRole('heading', { name: 'Publish Countries GraphQL API' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Publishing this API to the Developer Portal will be available soon.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Partner Portal')).toBeInTheDocument();
+    expect(Object.fromEntries(requests.last()!.params)).toMatchObject({
+      apiId: API,
+      apiType: 'graphql-api',
+    });
+    expect(screen.getByRole('link', { name: 'Go to publish' })).toHaveAttribute(
+      'href',
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/publish/partner-portal`,
+    );
   });
 
   it('shows an error state when the API cannot be found', async () => {

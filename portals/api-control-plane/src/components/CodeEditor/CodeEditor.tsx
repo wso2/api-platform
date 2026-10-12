@@ -90,7 +90,7 @@ window.MonacoEnvironment = {
  * above), so a caller wanting to report errors in `xml`, `yaml` or `plaintext`
  * has to validate the text itself.
  */
-export type CodeEditorLanguage = 'json' | 'plaintext' | 'xml' | 'yaml';
+export type CodeEditorLanguage = 'graphql' | 'json' | 'plaintext' | 'xml' | 'yaml';
 
 export type CodeEditorProps = {
   /**

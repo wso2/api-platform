@@ -34,9 +34,9 @@ import { resetHttpClient } from '../../core/http';
 import {
   useApiPublicationDraft,
   useApiPublications,
-  usePublishRestApiToApiPortal,
+  usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
-  useUnpublishRestApiFromApiPortal,
+  useUnpublishApiFromApiPortal,
 } from './apiPublications.hooks';
 
 /**
@@ -69,10 +69,10 @@ beforeEach(() => {
 /** A screen that has read the rollup and the draft, then offers the writes. */
 const useScreen = () => ({
   draft: useApiPublicationDraft(PORTAL, TYPE, API),
-  publish: usePublishRestApiToApiPortal(),
+  publish: usePublishApiToApiPortal(),
   rollup: useApiPublications(TYPE, API, { limit: 100 }),
   save: useSaveApiPublicationDraft(),
-  unpublish: useUnpublishRestApiFromApiPortal(),
+  unpublish: useUnpublishApiFromApiPortal(),
 });
 
 async function renderLoadedScreen() {
@@ -89,7 +89,7 @@ describe('publishing', () => {
     server.use(accepts('post', `/api-portals/${PORTAL}/apis/${TYPE}/${API}/publish`, aPublication()));
     const { result } = await renderLoadedScreen();
 
-    await act(() => result.current.publish.mutateAsync({ apiPortalId: PORTAL, apiId: API }));
+    await act(() => result.current.publish.mutateAsync({ apiPortalId: PORTAL, apiType: 'rest-api', apiId: API }));
 
     expect(rollupReads.count()).toBe(2);
     expect(draftReads.count()).toBe(1);
@@ -120,7 +120,7 @@ describe('a status change that fails', () => {
     server.use(failure('post', `/api-portals/${PORTAL}/apis/${TYPE}/${API}/unpublish`, 409, 'PUBLICATION_STATE_CONFLICT'));
     const { result } = await renderLoadedScreen();
 
-    await act(() => result.current.unpublish.mutateAsync({ apiPortalId: PORTAL, apiId: API }).catch(() => undefined));
+    await act(() => result.current.unpublish.mutateAsync({ apiPortalId: PORTAL, apiType: 'rest-api', apiId: API }).catch(() => undefined));
 
     await waitFor(() => expect(draftReads.count()).toBe(2));
   });
@@ -129,7 +129,7 @@ describe('a status change that fails', () => {
     server.use(failure('post', `/api-portals/${PORTAL}/apis/${TYPE}/${API}/publish`, 409, 'PUBLICATION_STATE_CONFLICT'));
     const { result } = await renderLoadedScreen();
 
-    await act(() => result.current.publish.mutateAsync({ apiPortalId: PORTAL, apiId: API }).catch(() => undefined));
+    await act(() => result.current.publish.mutateAsync({ apiPortalId: PORTAL, apiType: 'rest-api', apiId: API }).catch(() => undefined));
 
     await waitFor(() => expect(draftReads.count()).toBe(2));
   });

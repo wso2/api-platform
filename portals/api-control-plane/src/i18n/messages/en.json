@@ -2361,12 +2361,6 @@
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.feature": {
-    "defaultMessage": "Publishing this API to the Developer Portal"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.subtitle": {
-    "defaultMessage": "List this API in the Developer Portal for consumers to discover and subscribe to."
-  },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"
   },
@@ -2759,7 +2753,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",
-    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON or YAML."
+    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON, YAML or GraphQL."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
     "defaultMessage": "Loading editor"
@@ -2770,7 +2764,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
-    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
+    "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",

@@ -81,6 +81,10 @@ const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 // artifact's kind column, this one is the lowercase-hyphenated URL segment.
 const PublicationAPITypeRestAPI = "rest-api"
 
+// PublicationAPITypeGraphQLAPI is PublicationAPITypeRestAPI's counterpart for
+// GraphQLApi: the URL segment its publication routes use.
+const PublicationAPITypeGraphQLAPI = "graphql-api"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"

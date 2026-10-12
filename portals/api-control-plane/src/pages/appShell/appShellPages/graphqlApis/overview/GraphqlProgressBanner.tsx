@@ -20,6 +20,7 @@ import { FilePlus2, FlaskConical, Globe, Rocket } from '@wso2/oxygen-ui-icons-re
 import { useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { GRAPHQL_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import { routes } from '@/routes/paths';
 import {
   ProgressStepper,
@@ -33,13 +34,26 @@ import {
  * real completion (Create is always done; Deploy reflects whether the API is
  * live on any gateway): `GraphQLAPIDetail` carries no `lifeCycleStatus`, so
  * there is no honest signal for "tested" the way REST's stepper has. Test is
- * offered once deployed but never marked complete. Publish stays disabled: it
- * leads to a `ComingSoon` stub with nothing behind it yet.
+ * offered once deployed but never marked complete. Publish, as on REST's
+ * stepper, opens the API's Portals list and completes once it is PUBLISHED on
+ * at least one API Portal.
  */
+// Same cap REST's banner uses to read every portal in one page.
+const LIST_LIMIT = 100;
+
 export function GraphqlProgressBanner({ deployed }: { deployed: boolean }) {
   const { orgHandle = '', projectHandler = '', graphqlApiHandler = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
+
+  const publicationsQuery = useApiPublications(GRAPHQL_API_TYPE, graphqlApiHandler || undefined, {
+    limit: LIST_LIMIT,
+  });
+  // isPlaceholderData excludes the previous API's publish status left over from keepPreviousData.
+  const published =
+    !publicationsQuery.isPlaceholderData &&
+    (publicationsQuery.data?.list.some((publication) => publication.status === 'PUBLISHED') ??
+      false);
 
   const steps: ProgressStep[] = [
     {
@@ -69,7 +83,9 @@ export function GraphqlProgressBanner({ deployed }: { deployed: boolean }) {
       key: 'publish',
       label: intl.formatMessage(progressStepMessages.stepPublish),
       Icon: Globe,
-      complete: false,
+      complete: published,
+      onClick: () =>
+        navigate(routes.graphqlApiPublish(orgHandle, projectHandler, graphqlApiHandler)),
     },
   ];
 

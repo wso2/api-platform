@@ -37,6 +37,7 @@ function renderBanner(deployed: boolean) {
       />
       <Route element={<div>DEPLOY PAGE</div>} path={`${BASE}/deploy`} />
       <Route element={<div>TEST CONSOLE PAGE</div>} path={`${BASE}/test/console`} />
+      <Route element={<div>PUBLISH PAGE</div>} path={`${BASE}/publish`} />
     </Routes>,
     { route: BASE },
   );
@@ -48,10 +49,10 @@ describe('GraphqlProgressBanner — before anything is deployed', () => {
 
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
-    // Test/Publish have no honest "done" signal for a GraphQL API, so they
-    // stay disabled next-next steps rather than clickable pills before deploy.
+    // Test needs a deployed endpoint; Publish, as on REST's stepper, is
+    // always reachable — its Portals list is where publishing starts.
     expect(screen.getByRole('button', { name: 'Test' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
   });
 
   it('navigates to the Deploy page when the Deploy pill is clicked', async () => {
@@ -64,14 +65,12 @@ describe('GraphqlProgressBanner — before anything is deployed', () => {
 });
 
 describe('GraphqlProgressBanner — once deployed', () => {
-  it('marks Deploy complete, offers Test as a next action, and keeps Publish disabled', () => {
+  it('marks Deploy complete and offers Test and Publish as next actions', () => {
     renderBanner(true);
 
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled();
-    // Publish leads to a `ComingSoon` stub with nothing behind it yet, so —
-    // unlike Test — it never becomes a real next action, deployed or not.
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
   });
 
   it('navigates to the Test console when the Test pill is clicked', async () => {
@@ -80,5 +79,15 @@ describe('GraphqlProgressBanner — once deployed', () => {
     await user.click(screen.getByRole('button', { name: 'Test' }));
 
     expect(await screen.findByText('TEST CONSOLE PAGE')).toBeInTheDocument();
+  });
+});
+
+describe('GraphqlProgressBanner — publishing', () => {
+  it('opens the API’s Portals list when the Publish pill is clicked', async () => {
+    const { user } = renderBanner(true);
+
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('PUBLISH PAGE')).toBeInTheDocument();
   });
 });

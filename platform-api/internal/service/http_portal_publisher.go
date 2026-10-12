@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/client"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
 	"gopkg.in/yaml.v3"
@@ -150,7 +151,7 @@ func apiURL(portal *model.APIPortal, apiHandle string) string {
 }
 
 // Publish implements PortalPublisher.
-func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
+func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
 	exists, err := p.checkExists(ctx, portal, apiHandle)
 	if err != nil {
 		return err
@@ -165,19 +166,19 @@ func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPort
 	if definition == nil {
 		definition = &model.PublicationContent{}
 	}
-	return p.pushMetadata(ctx, portal, method, path, apiHandle, model.PublicationStatusPublished, pub, definition)
+	return p.pushMetadata(ctx, portal, method, path, apiType, apiHandle, model.PublicationStatusPublished, pub, definition)
 }
 
 // Deprecate implements PortalPublisher. The portal has no status-only call, so the
 // live metadata is re-sent unchanged apart from the status; no definition is sent.
-func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error {
-	return p.pushMetadata(ctx, portal, http.MethodPut, apiURL(portal, apiHandle), apiHandle, model.PublicationStatusDeprecated, live, nil)
+func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, live *model.Publication) error {
+	return p.pushMetadata(ctx, portal, http.MethodPut, apiURL(portal, apiHandle), apiType, apiHandle, model.PublicationStatusDeprecated, live, nil)
 }
 
 // pushMetadata sends the metadata (and the definition, if non-nil) to path and maps
 // the portal's response to the PortalPublisher error contract.
-func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.APIPortal, method, path, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) error {
-	body, contentType, err := buildPortalMetadataMultipart(apiHandle, status, pub, definition)
+func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.APIPortal, method, path, apiType, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) error {
+	body, contentType, err := buildPortalMetadataMultipart(apiType, apiHandle, status, pub, definition)
 	if err != nil {
 		return err
 	}
@@ -336,15 +337,27 @@ type portalMetadataBusinessInfo struct {
 	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail,omitempty"`
 }
 
+// portalAPIKinds maps a publication apiType to how the API Portal lists it: the
+// envelope's kind and the spec's type keyword (REST, GRAPHQL, ...). A type
+// with no entry cannot be pushed — it is refused rather than listed as REST.
+var portalAPIKinds = map[string]struct{ kind, typeKeyword string }{
+	constants.PublicationAPITypeRestAPI:    {kind: "RestApi", typeKeyword: "REST"},
+	constants.PublicationAPITypeGraphQLAPI: {kind: "GraphQLApi", typeKeyword: "GRAPHQL"},
+}
+
 // buildPortalMetadataMultipart builds the request body: a "metadata" part and,
 // when definition is non-nil, a "definition" part.
-func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
+func buildPortalMetadataMultipart(apiType, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
+	portalKind, ok := portalAPIKinds[apiType]
+	if !ok {
+		return nil, "", fmt.Errorf("API type %q has no API Portal listing type", apiType)
+	}
 	envelope := portalMetadataEnvelope{
 		APIVersion: "api-portal.api-platform.wso2.com/v1",
-		Kind:       "RestApi",
+		Kind:       portalKind.kind,
 		Metadata:   portalMetadataName{Name: apiHandle},
 		Spec: portalMetadataSpecBody{
-			Type:            "REST",
+			Type:            portalKind.typeKeyword,
 			DisplayName:     pub.DisplayName,
 			Version:         pub.Version,
 			Description:     pub.Description,

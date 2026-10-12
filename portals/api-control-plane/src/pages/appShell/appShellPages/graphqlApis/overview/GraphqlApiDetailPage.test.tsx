@@ -85,6 +85,8 @@ beforeEach(() => {
       () => new HttpResponse(null, { status: 204 }),
     ),
     collection('/apis/:apiType/:apiId/docs', []),
+    // The progress stepper's Publish step reads the API's publications.
+    collection('/api-publications', []),
   );
 });
 
