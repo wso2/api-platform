@@ -138,6 +138,14 @@ var (
 	DeploymentGatewayMismatch = def(CodeDeploymentGatewayMismatch, http.StatusBadRequest, "Deployment is bound to a different gateway.")
 	DeploymentActive          = def(CodeDeploymentActive, http.StatusConflict, "Cannot delete an active deployment - undeploy it first.")
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
+	// Args: the control-plane kind name, what the gateway would need (gwversion.Requirement).
+	DeploymentKindUnsupportedByGateway = def(CodeDeploymentKindUnsupportedByGateway, http.StatusBadRequest,
+		"This gateway does not support %s artifacts; %s.")
+	// Raised by the gateway-facing fetch of a deployment whose {{ secret }}
+	// placeholder platform-api had to inline and could not (missing, deprecated
+	// or undecryptable secret). The message names no handle.
+	DeploymentSecretResolutionFailed = def(CodeDeploymentSecretResolutionFailed, http.StatusUnprocessableEntity,
+		"A secret referenced by this deployment could not be resolved for the gateway.")
 )
 
 // MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
@@ -288,4 +296,10 @@ var (
 	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
+)
+
+// API document entries.
+var (
+	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
+		"A document with this name already exists for this API.")
 )

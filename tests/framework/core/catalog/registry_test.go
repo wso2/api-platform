@@ -208,6 +208,26 @@ func TestSourceProductsResolveVersionsForEveryBlock(t *testing.T) {
 		resolved.Blocks[1].Components[0].Version)
 }
 
+func TestSourceProductsBuildAComponentFromItsSourceProduct(t *testing.T) {
+	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{
+		{Components: []topology.ResolvedComponent{
+			{Def: &components.Definition{Name: "api-portal-multi-organization", SourceProduct: "api-portal"}},
+			{Def: &components.Definition{Name: "api-portal-other-variant", SourceProduct: "api-portal"}},
+			{Def: &components.Definition{Name: "testbench"}},
+		}},
+	}}
+
+	products, err := sourceProducts(resolved)
+	require.NoError(t, err)
+	require.Len(t, products, 1, "components sharing a source product build it once")
+	require.Equal(t, "api-portal", products[0].Spec.Component)
+	version, ok := shared.SourceVersion("api-portal")
+	require.True(t, ok)
+	require.Equal(t, version, resolved.Blocks[0].Components[0].Version)
+	require.Equal(t, version, resolved.Blocks[0].Components[1].Version)
+	require.Empty(t, resolved.Blocks[0].Components[2].Version)
+}
+
 func TestPolicyProductsResolveSourceAndVersionedBuilds(t *testing.T) {
 	source := "../gateway-controllers/policies"
 	t.Run("source build", func(t *testing.T) {
@@ -305,4 +325,41 @@ func TestPolicyBuildsMatchComponentsByBuildMode(t *testing.T) {
 		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGController])
 	require.Equal(t, versionedImages.Runtime,
 		resolved.Blocks[0].Components[1].Def.Compose.Env[platformgatewaycatalog.EnvImagePGRuntime])
+}
+
+func TestPolicyBuildsMatchComponentsByReleasedPoliciesOnly(t *testing.T) {
+	source := "../gateway-controllers/policies"
+	version := "1.2.0"
+	resolved := &topology.Resolved{Blocks: []topology.ResolvedBlock{
+		{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source},
+		}},
+		{Components: []topology.ResolvedComponent{
+			{Def: platformgatewaycatalog.PlatformGateway().WithImageVersion(version), Version: version, AddPoliciesFrom: source,
+				ReleasedPoliciesOnly: true},
+		}},
+	}}
+
+	products, err := policyProducts(resolved)
+	require.NoError(t, err)
+	require.Len(t, products, 2)
+	require.False(t, products[0].releasedOnly)
+	require.True(t, products[1].releasedOnly)
+
+	allImages := platformgatewaycatalog.DerivedImages{Controller: "local/controller:all", Runtime: "local/runtime:all"}
+	releasedImages := platformgatewaycatalog.DerivedImages{Controller: "local/controller:released", Runtime: "local/runtime:released"}
+	setPlatformGatewayImages(resolved, products[0], allImages)
+	setPlatformGatewayImages(resolved, products[1], releasedImages)
+
+	env := func(block int) map[string]string { return resolved.Blocks[block].Components[0].Def.Compose.Env }
+	require.Equal(t, allImages.Controller, env(0)[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, allImages.Runtime, env(0)[platformgatewaycatalog.EnvImagePGRuntime])
+	require.Equal(t, releasedImages.Controller, env(1)[platformgatewaycatalog.EnvImagePGController])
+	require.Equal(t, releasedImages.Runtime, env(1)[platformgatewaycatalog.EnvImagePGRuntime])
+
+	setPlatformGatewayImages(resolved, products[0], allImages)
+	_, _, err = platformGatewayBaseImages(resolved, products[1])
+	require.NoError(t, err)
+	require.Equal(t, releasedImages.Controller, env(1)[platformgatewaycatalog.EnvImagePGController],
+		"a build for one setting never rewrites a component with the other")
 }

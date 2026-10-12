@@ -302,6 +302,22 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 	return nil
 }
 
+// ErrSecretDeprecated and ErrSecretUndecryptable classify a Decrypt failure a
+// retry cannot fix, as opposed to a repository error. With apperror
+// SecretNotFound they are the cases a caller may treat as "this secret cannot
+// be resolved" (see SecretUnresolvable).
+var (
+	ErrSecretDeprecated    = errors.New("secret is deprecated")
+	ErrSecretUndecryptable = errors.New("secret cannot be decrypted")
+)
+
+// SecretUnresolvable reports whether err from Decrypt means the secret itself
+// cannot be resolved (missing, deprecated or undecryptable), rather than the
+// lookup having failed for a reason unrelated to the secret.
+func SecretUnresolvable(err error) bool {
+	return apperror.SecretNotFound.Is(err) || errors.Is(err, ErrSecretDeprecated) || errors.Is(err, ErrSecretUndecryptable)
+}
+
 // Decrypt returns the plaintext value of a secret — intended for internal GW use only.
 func (s *SecretService) Decrypt(orgID, handle string) (string, error) {
 	secret, err := s.repo.GetByHandle(orgID, handle)
@@ -309,9 +325,13 @@ func (s *SecretService) Decrypt(orgID, handle string) (string, error) {
 		return "", err
 	}
 	if secret.Status == model.SecretStatusDeprecated {
-		return "", errors.New("secret is deprecated")
+		return "", ErrSecretDeprecated
 	}
-	return s.vault.Decrypt(context.Background(), secret.Ciphertext)
+	plaintext, err := s.vault.Decrypt(context.Background(), secret.Ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrSecretUndecryptable, err)
+	}
+	return plaintext, nil
 }
 
 // DecryptCiphertext decrypts an already-fetched ciphertext blob directly, without a

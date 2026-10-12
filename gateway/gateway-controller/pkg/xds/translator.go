@@ -3235,6 +3235,11 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		// (skip/buffered/streamed); without this Envoy would ignore it and never send bodies.
 		AllowModeOverride: true,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+		// Response attributes tell the engine WHO produced an error response. Without
+		// them a backend's own 503 and the router's "no healthy upstream" 503 are
+		// indistinguishable, so error handling can only approximate the split with a
+		// status threshold.
+		ResponseAttributes: []string{constants.ExtProcResponseAttributeCodeDetails},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,
 		},

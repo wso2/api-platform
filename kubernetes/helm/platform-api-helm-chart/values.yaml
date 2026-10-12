@@ -175,6 +175,8 @@ config:
             # Ownership override — every user's API keys, not just the caller's.
             # Never implied by ap:api_key:read, so it is listed explicitly.
             - ap:api_key:all:manage
+            - ap:docs:manage
+            - ap:thumbnail:manage
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization

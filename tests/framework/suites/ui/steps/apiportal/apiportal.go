@@ -30,7 +30,6 @@ import (
 	"strings"
 
 	"github.com/cucumber/godog"
-	"github.com/golang-jwt/jwt/v5"
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
@@ -80,7 +79,7 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the API Portal has a settings label fixture$`, u.seedSettingsLabelFixture)
 	sc.Step(`^the API Portal has a settings view fixture$`, u.seedSettingsViewFixture)
 	sc.Step(`^the administrator creates a key manager and a developer application$`, u.createKeyManagerAndDeveloperApplication)
-	sc.Step(`^the developer application shows key-generation controls$`, u.developerApplicationShowsKeyGenerationControls)
+	sc.Step(`^the developer can choose that key manager when creating an OAuth2 key$`, u.developerCanChooseKeyManagerForOAuth2Key)
 	sc.Step(`^the user creates a view from a display name$`, u.createSettingsView)
 	sc.Step(`^the user renames the settings view$`, u.renameSettingsView)
 	sc.Step(`^the default view has an enabled delete control$`, u.defaultViewHasEnabledDeleteControl)
@@ -114,17 +113,7 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the MCP listing search excludes the REST API$`, u.mcpListingSearchExcludesREST)
 	sc.Step(`^the API Portal has an application fixture$`, u.seedApplicationFixture)
 	sc.Step(`^the user creates edits and deletes the application$`, u.applicationCRUD)
-	sc.Step(`^the application detail shows no key manager and the key association section$`, u.applicationHasNoKeyManager)
-	sc.Step(`^the API Portal has a key manager fixture$`, u.seedKeyManagerFixture)
-	sc.Step(`^the application detail shows key manager controls$`, u.applicationHasKeyManager)
-	sc.Step(`^the user adds generates and revokes application credentials$`, u.applicationCredentialsLifecycle)
-	sc.Step(`^the API Portal has two key manager fixtures$`, u.seedTwoKeyManagerFixtures)
-	sc.Step(`^the application page shows isolated controls for both key managers$`, u.multipleKeyManagersHaveIsolatedControls)
-	sc.Step(`^the user links separate clients to both key managers$`, u.linkSeparateKeyManagerClients)
-	sc.Step(`^the user generates a token from the second key manager$`, u.generateTokenFromSecondKeyManager)
-	sc.Step(`^the user generates a token from the first key manager$`, u.generateTokenFromFirstKeyManager)
-	sc.Step(`^the user generates a token with an invalid secret from the second key manager$`, u.invalidSecondKeyManagerToken)
-	sc.Step(`^the user revokes only the second key manager credentials$`, u.revokeSecondKeyManagerCredentials)
+	sc.Step(`^the application detail shows the key association sections$`, u.applicationHasKeyAssociationSections)
 	sc.Step(`^the user opens the seeded REST API overview and sees its details$`, u.openRESTAPIOverview)
 	sc.Step(`^the user opens the seeded REST API specification and sees its OpenAPI document$`, u.openRESTAPISpecification)
 	sc.Step(`^the user opens the seeded REST API documentation and sees the additional document$`, u.openRESTAPIDocumentation)
@@ -683,6 +672,15 @@ func (u *Steps) createKeyManagerAndDeveloperApplication(ctx context.Context) err
 	if err := page.Locator("#km-display").Fill(name); err != nil {
 		return err
 	}
+	// "In the identity server": this key manager only proxies token requests for
+	// applications registered at the identity server, so it needs no registration
+	// endpoint or provisioning credential. The form opens on "In the portal",
+	// which now refuses a blank registration block rather than silently
+	// saving an importing key manager — so a token-proxy-only key manager has to
+	// say so explicitly.
+	if err := page.Locator("#km-mode-import").Check(); err != nil {
+		return fmt.Errorf("choosing the import key-creation mode: %w", err)
+	}
 	if err := page.Locator("#km-token-endpoint").Fill("https://idp.example.invalid/oauth2/token"); err != nil {
 		return err
 	}
@@ -803,15 +801,9 @@ func (u *Steps) keyManagerListed(page playwright.Page, expectedName, expectedID 
 	return false, nil
 }
 
-func (u *Steps) developerApplicationShowsKeyGenerationControls(ctx context.Context) error {
-	page, _, _, err := u.applicationDetails(ctx)
+func (u *Steps) developerCanChooseKeyManagerForOAuth2Key(ctx context.Context) error {
+	page, err := u.page(ctx)
 	if err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#production .mk-unavailable")).ToHaveCount(0); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#production .mk-km-card")).ToBeAttached(); err != nil {
 		return err
 	}
 	nameValue, ok := tcontext.Get(ctx, keyAPIPortalKeyManagerName)
@@ -822,10 +814,34 @@ func (u *Steps) developerApplicationShowsKeyGenerationControls(ctx context.Conte
 	if !ok || name == "" {
 		return fmt.Errorf("API Portal key manager fixture name has unexpected type %T", nameValue)
 	}
-	if err := u.expect.Locator(page.Locator("#production .mk-km-name")).ToContainText(name); err != nil {
+	// The key manager is offered on the OAuth2 Keys page, not on the developer's
+	// application — a key is created there and associated with an application
+	// afterwards, so this is where "available to this developer" is observable.
+	if err := u.openAPIPortalPath(ctx, "/oauth2-keys"); err != nil {
 		return err
 	}
-	return u.expect.Locator(page.Locator(`#production [id^="addClientIdBtn-"]`)).ToBeAttached()
+	/*
+	 * The key manager this scenario created manages its applications in the
+	 * identity server, so it is offered by the "Add existing key" entry point
+	 * rather than "Generate key" -- each lists only the key managers that can
+	 * serve it.
+	 *
+	 * The listing renders either the toolbar button or, with no keys yet, the one
+	 * in the empty state, so accept either. Both ship hidden and are revealed by
+	 * the page script once the key-manager metadata has loaded, which is why this
+	 * waits for the button to be visible instead of clicking as soon as it exists.
+	 */
+	addKey := page.Locator("#ok-import-btn, #ok-import-btn-empty").First()
+	if err := u.expect.Locator(addKey).ToBeVisible(); err != nil {
+		return fmt.Errorf("waiting for the add-existing-key entry point: %w", err)
+	}
+	if err := addKey.Click(); err != nil {
+		return fmt.Errorf("opening the add-OAuth2-key form: %w", err)
+	}
+	if err := u.expect.Locator(page.Locator("#ok-add-modal")).ToBeVisible(); err != nil {
+		return err
+	}
+	return u.expect.Locator(page.Locator("#ok-km-select")).ToContainText(name)
 }
 
 func (u *Steps) seedPortalAccessFixtures(ctx context.Context) error {
@@ -1392,517 +1408,85 @@ func (u *Steps) applicationCRUD(ctx context.Context) error {
 	return nil
 }
 
-func (u *Steps) applicationHasNoKeyManager(ctx context.Context) error {
-	page, _, _, err := u.applicationDetails(ctx)
+// applicationHasKeyAssociationSections asserts what the application detail page
+// does now: it associates keys that were created elsewhere.
+//
+// It used to assert a "Manage Keys" card per key manager, and an "unavailable"
+// message when none was configured. Both are gone — key generation moved to its
+// own page and a key manager is no longer bound to an application — so there is
+// no longer a key-manager-dependent state on this page to assert.
+func (u *Steps) applicationHasKeyAssociationSections(ctx context.Context) error {
+	page, _, name, err := u.applicationDetails(ctx)
 	if err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator(".mk-title")).ToContainText("Manage Keys"); err != nil {
-		return err
+	// Establish that this IS the detail page before asserting anything inside it.
+	// Without this the step cannot tell "the key sections are missing" from "the
+	// document is not the application detail page at all" — a blank or error
+	// response fails on .ak-title with an empty snapshot, which reads as the
+	// former and is the latter.
+	if err := u.expect.Locator(page.Locator("#applicationName")).ToContainText(name); err != nil {
+		return fmt.Errorf("application detail page did not render for %q (url %s): %w", name, page.URL(), err)
 	}
-	if err := u.expect.Locator(page.Locator("#production .mk-unavailable")).ToContainText("Key generation is unavailable"); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator(".mk-km-card")).ToHaveCount(0); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator(".ak-title")).ToBeAttached(); err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator("#btn-open-associate-key")).ToBeAttached()
-}
-
-func (u *Steps) seedKeyManagerFixture(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	id, err := unique.Unique(ctx, "api-portal-key-manager")
-	if err != nil {
-		return err
-	}
-	name := "IT Key Manager " + id
-	result, err := page.Evaluate(`async ({id, name}) => {
-        const token = document.cookie.split('; ').find(v => v.startsWith('XSRF-TOKEN='));
-        const response = await fetch('/api-portal/api/v0.9/key-managers', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json', organization: 'default',
-                'X-CSRF-Token': token ? decodeURIComponent(token.split('=').slice(1).join('=')) : '',
-            },
-		    body: JSON.stringify({ id, displayName: name, tokenEndpoint: 'http://testbench:3001/token', enabled: true }),
-        });
-        return { status: response.status };
-	}`, map[string]any{"id": id, "name": name})
-	if err != nil {
-		return fmt.Errorf("creating API Portal key manager: %w", err)
-	}
-	var response struct {
-		Status int `json:"status"`
-	}
-	raw, err := json.Marshal(result)
-	if err != nil {
-		return fmt.Errorf("reading API Portal key manager response: %w", err)
-	}
-	if err := json.Unmarshal(raw, &response); err != nil {
-		return fmt.Errorf("decoding API Portal key manager response: %w", err)
-	}
-	if response.Status < 200 || response.Status >= 300 {
-		return fmt.Errorf("API Portal key manager creation returned HTTP status %d", response.Status)
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalKeyManager, ID: id, Actor: u.topo.Admin.Username}); err != nil {
-		_ = u.deletePortalArtifact(ctx, "key-managers", id)
-		return fmt.Errorf("registering API Portal key manager for cleanup: %w", err)
-	}
-	if err := retry.Await(ctx, retry.Options{}, func(context.Context) (bool, error) {
-		return u.keyManagerListed(page, name, id)
-	}, func(listed bool) bool { return listed }, "waiting for API Portal key manager visibility"); err != nil {
-		return err
-	}
-	if err := tcontext.Set(ctx, keyAPIPortalKeyManager, id); err != nil {
-		_ = u.deletePortalArtifact(ctx, "key-managers", id)
-		return err
-	}
-	return tcontext.Set(ctx, keyAPIPortalKeyManagerName, name)
-}
-
-func (u *Steps) seedTwoKeyManagerFixtures(ctx context.Context) error {
-	for _, item := range []struct {
-		key, nameKey, secretKey, base string
-	}{
-		{keyAPIPortalKeyManagerA, keyAPIPortalKeyManagerAName, keyAPIPortalKeyManagerASecret, "api-portal-key-manager-alpha"},
-		{keyAPIPortalKeyManagerB, keyAPIPortalKeyManagerBName, keyAPIPortalKeyManagerBSecret, "api-portal-key-manager-beta"},
+	/*
+	 * Both sections render their heading with the same .ak-title class, so that
+	 * class on its own matches two elements. A Playwright attachment assertion
+	 * resolves its locator strictly: two matches never resolve, and the failure
+	 * surfaces as "expected to be attached" with a nil received value -- which
+	 * reads as "the heading is missing" when the page in fact has two of them.
+	 *
+	 * So address each section by the text of its own heading, and each control
+	 * by its own id. That also makes the assertion say what the scenario means:
+	 * both association sections are present, not merely that something with this
+	 * class is.
+	 */
+	for _, section := range []struct{ heading, control string }{
+		{"API keys", "#btn-open-associate-key"},
+		{"OAuth2 keys", "#btn-open-associate-oauth2-key"},
 	} {
-		id, err := unique.Unique(ctx, item.base)
-		if err != nil {
-			return err
+		heading := page.Locator(".ak-title").Filter(playwright.LocatorFilterOptions{
+			HasText: regexp.MustCompile(regexp.QuoteMeta(section.heading)),
+		})
+		if err := u.expect.Locator(heading).ToBeAttached(); err != nil {
+			return fmt.Errorf("%q section heading is missing on %s [%s]: %w",
+				section.heading, page.URL(), describeKeySectionDOM(page), err)
 		}
-		name, err := unique.Unique(ctx, item.base+"-name")
-		if err != nil {
-			return err
-		}
-		secret, err := unique.Unique(ctx, item.base+"-secret")
-		if err != nil {
-			return err
-		}
-		result, err := u.page(ctx)
-		if err != nil {
-			return err
-		}
-		endpoint := "http://testbench:3001/token?expected_secret=" + url.QueryEscape(secret)
-		response, err := result.Evaluate(`async ({id, name, endpoint}) => {
-            const token = document.cookie.split('; ').find(v => v.startsWith('XSRF-TOKEN='));
-            const response = await fetch('/api-portal/api/v0.9/key-managers', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json', organization: 'default',
-                    'X-CSRF-Token': token ? decodeURIComponent(token.split('=').slice(1).join('=')) : '',
-                },
-                body: JSON.stringify({ id, displayName: name, tokenEndpoint: endpoint, enabled: true }),
-            });
-            return { status: response.status };
-        }`, map[string]any{"id": id, "name": name, "endpoint": endpoint})
-		if err != nil {
-			return fmt.Errorf("creating API Portal key manager: %w", err)
-		}
-		var status struct {
-			Status int `json:"status"`
-		}
-		raw, err := json.Marshal(response)
-		if err != nil {
-			return err
-		}
-		if err := json.Unmarshal(raw, &status); err != nil {
-			return err
-		}
-		if status.Status < 200 || status.Status >= 300 {
-			return fmt.Errorf("API Portal key manager creation returned HTTP status %d", status.Status)
-		}
-		if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalKeyManager, ID: id, Actor: u.topo.Admin.Username}); err != nil {
-			_ = u.deletePortalArtifact(ctx, "key-managers", id)
-			return fmt.Errorf("registering API Portal key manager for cleanup: %w", err)
-		}
-		for key, value := range map[string]any{item.key: id, item.nameKey: name, item.secretKey: secret} {
-			if err := tcontext.Set(ctx, key, value); err != nil {
-				_ = u.deletePortalArtifact(ctx, "key-managers", id)
-				return err
-			}
+		if err := u.expect.Locator(page.Locator(section.control)).ToBeAttached(); err != nil {
+			return fmt.Errorf("%q association control (%s) is missing on %s: %w",
+				section.heading, section.control, page.URL(), err)
 		}
 	}
 	return nil
 }
 
-func (u *Steps) multipleKeyManagerValues(ctx context.Context) (playwright.Page, string, string, string, error) {
-	page, appID, _, err := u.applicationDetails(ctx)
-	if err != nil {
-		return nil, "", "", "", err
+// describeKeySectionDOM reports what the document actually holds when the key
+// association assertion fails.
+//
+// The failure it exists for is contradictory on its face: browser coverage shows
+// application-api-keys.js finding #application-api-keys-config on every load of
+// this page, and .ak-title sits nine lines below that element in the same
+// partial — so both are present or neither is. This prints the counts side by
+// side, plus whether the page is still open, which separates "the section is
+// genuinely missing" from "the assertion ran against a page that was going away".
+func describeKeySectionDOM(page playwright.Page) string {
+	if page.IsClosed() {
+		return "page closed"
 	}
-	get := func(key string) (string, error) {
-		value, ok := tcontext.Get(ctx, key)
-		if !ok {
-			return "", fmt.Errorf("API Portal multiple key manager fixture is missing %s", key)
-		}
-		result, ok := value.(string)
-		if !ok || result == "" {
-			return "", fmt.Errorf("API Portal multiple key manager fixture has invalid %s", key)
-		}
-		return result, nil
-	}
-	a, err := get(keyAPIPortalKeyManagerA)
-	if err != nil {
-		return nil, "", "", "", err
-	}
-	b, err := get(keyAPIPortalKeyManagerB)
-	if err != nil {
-		return nil, "", "", "", err
-	}
-	return page, appID, a, b, nil
-}
-
-func (u *Steps) multipleKeyManagerClients(ctx context.Context) (playwright.Page, string, string, string, string, string, error) {
-	page, appID, a, b, err := u.multipleKeyManagerValues(ctx)
-	if err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	clientA, err := unique.Unique(ctx, "api-portal-client-alpha")
-	if err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	clientB, err := unique.Unique(ctx, "api-portal-client-beta")
-	if err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	add := func(km, mappingKey, client string) error {
-		if err := page.Locator("#addClientIdInput-" + km + "-PRODUCTION").Fill(client); err != nil {
-			return err
-		}
-		if err := page.Locator("#addClientIdBtn-" + km + "-PRODUCTION").Click(); err != nil {
-			return err
-		}
-		if err := u.expect.Locator(page.Locator("#consumer-key-" + km + "-PRODUCTION-view")).ToHaveValue(client); err != nil {
-			return err
-		}
-		mappingID, err := page.Locator("#key-map-" + km + "-PRODUCTION").GetAttribute("value")
-		if err != nil || mappingID == "" {
-			return fmt.Errorf("created application credential has no identifier")
-		}
-		if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalApplicationKey, ID: appID + "/" + mappingID, Actor: u.topo.Admin.Username}); err != nil {
-			_ = u.deletePortalApplicationKey(ctx, appID, mappingID)
-			return fmt.Errorf("registering application credential for cleanup: %w", err)
-		}
-		return tcontext.Set(ctx, mappingKey, mappingID)
-	}
-	if err := add(a, keyAPIPortalKeyManagerAMapping, clientA); err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	if err := u.openAPIPortalPath(ctx, "/applications/"+url.PathEscape(appID)); err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	if err := add(b, keyAPIPortalKeyManagerBMapping, clientB); err != nil {
-		return nil, "", "", "", "", "", err
-	}
-	return page, a, b, clientA, clientB, appID, nil
-}
-
-func (u *Steps) multipleKeyManagersHaveIsolatedControls(ctx context.Context) error {
-	page, _, a, b, err := u.multipleKeyManagerValues(ctx)
-	if err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#production .mk-km-card")).ToHaveCount(2); err != nil {
-		return err
-	}
-	for _, selector := range []string{"#tokenKeyBtn-" + a + "-PRODUCTION", "#tokenKeyBtn-" + b + "-PRODUCTION", "#keysTokenModal-" + a + "-PRODUCTION", "#keysTokenModal-" + b + "-PRODUCTION"} {
-		if err := u.expect.Locator(page.Locator(selector)).ToBeAttached(); err != nil {
-			return err
+	counts := map[string]any{}
+	for _, sel := range []string{".ak-title", "#application-api-keys-config", "#applicationName", "section"} {
+		if n, err := page.Locator(sel).Count(); err == nil {
+			counts[sel] = n
+		} else {
+			counts[sel] = "count error: " + err.Error()
 		}
 	}
-	result, err := page.Evaluate(`() => { const ids = [...document.querySelectorAll('[id]')].map(el => el.id); return ids.filter((id, i) => ids.indexOf(id) !== i); }`)
-	if err != nil {
-		return err
-	}
-	duplicates, ok := result.([]any)
-	if !ok || len(duplicates) != 0 {
-		return fmt.Errorf("application page contains duplicate element identifiers")
-	}
-	return nil
-}
-
-func (u *Steps) linkSeparateKeyManagerClients(ctx context.Context) error {
-	page, a, b, clientA, clientB, _, err := u.multipleKeyManagerClients(ctx)
-	if err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#consumer-key-" + a + "-PRODUCTION-view")).ToHaveValue(clientA); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#app-ref-" + a + "-PRODUCTION")).ToHaveValue(clientA); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#app-ref-" + b + "-PRODUCTION")).ToHaveValue(clientB); err != nil {
-		return err
-	}
-	mappingA, err := page.Locator("#key-map-" + a + "-PRODUCTION").GetAttribute("value")
-	if err != nil {
-		return err
-	}
-	mappingB, err := page.Locator("#key-map-" + b + "-PRODUCTION").GetAttribute("value")
-	if err != nil {
-		return err
-	}
-	if mappingA == "" || mappingA == mappingB {
-		return fmt.Errorf("key managers do not have distinct application mappings")
-	}
-	return nil
-}
-
-func (u *Steps) generateTokenForKeyManager(ctx context.Context, kmKey, secretKey string) error {
-	page, _, a, b, err := u.multipleKeyManagerValues(ctx)
-	if err != nil {
-		return err
-	}
-	km := a
-	other := b
-	if kmKey == keyAPIPortalKeyManagerB {
-		km, other = b, a
-	}
-	if _, _, _, _, _, _, err := u.multipleKeyManagerClients(ctx); err != nil {
-		return err
-	}
-	if err := page.Locator("#tab-btn-token-" + km + "-PRODUCTION").Click(); err != nil {
-		return err
-	}
-	if err := page.Locator("#tokenKeyBtn-" + km + "-PRODUCTION").Click(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#generateTokenPromptModal")).ToBeVisible(); err != nil {
-		return err
-	}
-	secretValue, ok := tcontext.Get(ctx, secretKey)
-	if !ok {
-		return fmt.Errorf("API Portal key manager secret is unavailable")
-	}
-	secret, ok := secretValue.(string)
-	if !ok || secret == "" {
-		return fmt.Errorf("API Portal key manager secret has invalid type")
-	}
-	if err := page.Locator("#generateTokenPromptSecretInput").Fill(secret); err != nil {
-		return err
-	}
-	if err := page.Locator("#generateTokenPromptConfirmBtn").Click(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#keysTokenModal-" + km + "-PRODUCTION")).ToBeVisible(); err != nil {
-		return err
-	}
-	if err := u.assertTestbenchToken(ctx, page.Locator("#token_"+km+"_PRODUCTION")); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#keysTokenModal-" + other + "-PRODUCTION")).Not().ToBeVisible(); err != nil {
-		return err
-	}
-	return page.Locator(`[data-cyid="keysTokenModal-` + km + `-PRODUCTION-close"]`).Click()
-}
-
-func (u *Steps) assertTestbenchToken(_ context.Context, locator playwright.Locator) error {
-	if err := u.expect.Locator(locator).ToContainText("eyJ"); err != nil {
-		return fmt.Errorf("waiting for generated access token: %w", err)
-	}
-	raw, err := locator.TextContent()
-	if err != nil {
-		return fmt.Errorf("reading generated access token: %w", err)
-	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("generated access token is empty")
-	}
-	claims := jwt.MapClaims{}
-	parsed, _, err := new(jwt.Parser).ParseUnverified(raw, &claims)
-	if err != nil {
-		return fmt.Errorf("parsing generated access token: %w", err)
-	}
-	if parsed.Method.Alg() != jwt.SigningMethodRS256.Alg() {
-		return fmt.Errorf("generated access token uses an unexpected signing algorithm")
-	}
-	if claims["sub"] != "test-user" {
-		return fmt.Errorf("generated access token has an unexpected subject")
-	}
-	return nil
-}
-
-func (u *Steps) generateTokenFromSecondKeyManager(ctx context.Context) error {
-	return u.generateTokenForKeyManager(ctx, keyAPIPortalKeyManagerB, keyAPIPortalKeyManagerBSecret)
-}
-
-func (u *Steps) generateTokenFromFirstKeyManager(ctx context.Context) error {
-	return u.generateTokenForKeyManager(ctx, keyAPIPortalKeyManagerA, keyAPIPortalKeyManagerASecret)
-}
-
-func (u *Steps) invalidSecondKeyManagerToken(ctx context.Context) error {
-	page, _, a, b, err := u.multipleKeyManagerValues(ctx)
-	if err != nil {
-		return err
-	}
-	if _, _, _, _, _, _, err := u.multipleKeyManagerClients(ctx); err != nil {
-		return err
-	}
-	if err := page.Locator("#tab-btn-token-" + b + "-PRODUCTION").Click(); err != nil {
-		return err
-	}
-	if err := page.Locator("#tokenKeyBtn-" + b + "-PRODUCTION").Click(); err != nil {
-		return err
-	}
-	if err := page.Locator("#generateTokenPromptSecretInput").Fill("invalid-secret"); err != nil {
-		return err
-	}
-	if err := page.Locator("#generateTokenPromptConfirmBtn").Click(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#keyGenerationErrorContainer-" + b + "-PRODUCTION")).ToBeVisible(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#keyGenerationErrorContainer-" + a + "-PRODUCTION")).Not().ToBeVisible(); err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator("#keysTokenModal-" + b + "-PRODUCTION")).Not().ToBeVisible()
-}
-
-func (u *Steps) revokeSecondKeyManagerCredentials(ctx context.Context) error {
-	page, a, b, clientA, _, appID, err := u.multipleKeyManagerClients(ctx)
-	if err != nil {
-		return err
-	}
-	if err := page.Locator("#tab-btn-creds-" + b + "-PRODUCTION").Click(); err != nil {
-		return err
-	}
-	if err := page.Locator("#keyActionsContainer-" + b + "-PRODUCTION .mk-btn-danger").Click(); err != nil {
-		return err
-	}
-	if err := page.Locator("#deleteConfirmationBtn").Click(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#addClientIdBtn-" + b + "-PRODUCTION")).ToBeAttached(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#consumer-key-" + b + "-PRODUCTION-view")).ToHaveValue(""); err != nil {
-		return err
-	}
-	if mapping, ok := tcontext.Get(ctx, keyAPIPortalKeyManagerBMapping); ok {
-		if mappingID, ok := mapping.(string); ok {
-			reg, err := cleanup.Of(ctx)
-			if err != nil {
-				return err
-			}
-			reg.Deregister(KindAPIPortalApplicationKey, appID+"/"+mappingID)
-		}
-	}
-	return u.expect.Locator(page.Locator("#consumer-key-" + a + "-PRODUCTION-view")).ToHaveValue(clientA)
-}
-
-func (u *Steps) applicationHasKeyManager(ctx context.Context) error {
-	page, _, _, err := u.applicationDetails(ctx)
-	if err != nil {
-		return err
-	}
-	nameValue, ok := tcontext.Get(ctx, keyAPIPortalKeyManagerName)
-	if !ok {
-		return fmt.Errorf("API Portal key manager fixture name is unavailable")
-	}
-	name, ok := nameValue.(string)
-	if !ok || name == "" {
-		return fmt.Errorf("API Portal key manager fixture has unexpected name type %T", nameValue)
-	}
-	if err := u.expect.Locator(page.Locator(".mk-unavailable")).ToHaveCount(0); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#production .mk-km-card")).ToBeAttached(); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator("#production .mk-km-name")).ToContainText(name); err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator("#production [id^='addClientIdBtn-']")).ToBeAttached()
-}
-
-func (u *Steps) applicationCredentialsLifecycle(ctx context.Context) error {
-	page, applicationID, _, err := u.applicationDetails(ctx)
-	if err != nil {
-		return err
-	}
-	idValue, _ := tcontext.Get(ctx, keyAPIPortalKeyManager)
-	kmID, ok := idValue.(string)
-	if !ok || kmID == "" {
-		return fmt.Errorf("API Portal key manager fixture has unexpected identifier")
-	}
-	clientID, err := unique.Unique(ctx, "api-portal-client")
-	if err != nil {
-		return err
-	}
-	if err := page.Locator("#addClientIdInput-" + kmID + "-PRODUCTION").Fill(clientID); err != nil {
-		return fmt.Errorf("entering application client ID: %w", err)
-	}
-	if err := page.Locator("#addClientIdBtn-" + kmID + "-PRODUCTION").Click(); err != nil {
-		return fmt.Errorf("adding application client ID: %w", err)
-	}
-	if err := u.expect.Locator(page.Locator("#consumer-key-" + kmID + "-PRODUCTION-view")).ToHaveValue(clientID); err != nil {
-		return err
-	}
-	mappingID, err := page.Locator("#key-map-" + kmID + "-PRODUCTION").GetAttribute("value")
-	if err != nil || mappingID == "" {
-		return fmt.Errorf("created application credential has no identifier")
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: KindAPIPortalApplicationKey, ID: applicationID + "/" + mappingID, Actor: u.topo.Admin.Username,
-	}); err != nil {
-		_ = u.deletePortalApplicationKey(ctx, applicationID, mappingID)
-		return fmt.Errorf("registering API Portal application credential for cleanup: %w", err)
-	}
-	if err := page.Locator("#tab-btn-token-" + kmID + "-PRODUCTION").Click(); err != nil {
-		return fmt.Errorf("opening token controls: %w", err)
-	}
-	if err := page.Locator("#tokenKeyBtn-" + kmID + "-PRODUCTION").Click(); err != nil {
-		return fmt.Errorf("opening token generation: %w", err)
-	}
-	if err := u.expect.Locator(page.Locator("#generateTokenPromptModal")).ToBeVisible(); err != nil {
-		return err
-	}
-	secret, err := unique.Unique(ctx, "api-portal-client-secret")
-	if err != nil {
-		return err
-	}
-	if err := page.Locator("#generateTokenPromptSecretInput").Fill(secret); err != nil {
-		return fmt.Errorf("entering token secret: %w", err)
-	}
-	if err := page.Locator("#generateTokenPromptConfirmBtn").Click(); err != nil {
-		return fmt.Errorf("generating application token: %w", err)
-	}
-	if err := u.assertTestbenchToken(ctx, page.Locator("#token_"+kmID+"_PRODUCTION")); err != nil {
-		return err
-	}
-	if err := page.Locator(`[data-cyid="keysTokenModal-` + kmID + `-PRODUCTION-close"]`).Click(); err != nil {
-		return fmt.Errorf("closing token dialog: %w", err)
-	}
-	if err := page.Locator("#tab-btn-creds-" + kmID + "-PRODUCTION").Click(); err != nil {
-		return fmt.Errorf("opening application credentials: %w", err)
-	}
-	if err := page.Locator("#keyActionsContainer-" + kmID + "-PRODUCTION .mk-btn-danger").Click(); err != nil {
-		return fmt.Errorf("opening credential removal: %w", err)
-	}
-	if err := u.expect.Locator(page.Locator("#deleteConfirmation")).ToBeVisible(); err != nil {
-		return err
-	}
-	if err := page.Locator("#deleteConfirmationBtn").Click(); err != nil {
-		return fmt.Errorf("revoking application credentials: %w", err)
-	}
-	reg, err := cleanup.Of(ctx)
-	if err != nil {
-		return err
-	}
-	reg.Deregister(KindAPIPortalApplicationKey, applicationID+"/"+mappingID)
-	if err := u.expect.Locator(page.Locator("#addClientIdBtn-" + kmID + "-PRODUCTION")).ToBeAttached(); err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator("#consumer-key-" + kmID + "-PRODUCTION-view")).ToHaveValue("")
+	body := -1
+	if html, err := page.Content(); err == nil {
+		body = len(html)
+	}
+	return fmt.Sprintf("open, html=%dB, .ak-title=%v, config-div=%v, #applicationName=%v, section=%v",
+		body, counts[".ak-title"], counts["#application-api-keys-config"],
+		counts["#applicationName"], counts["section"])
 }
 
 func (u *Steps) searchAPIListing(ctx context.Context, query, mustContain, mustNotContain string) error {
@@ -2294,38 +1878,6 @@ func (u *Steps) deletePortalArtifact(ctx context.Context, collection, id string)
 	}
 	if response.Status != 404 && (response.Status < 200 || response.Status >= 300) {
 		return fmt.Errorf("API Portal deletion returned HTTP status %d", response.Status)
-	}
-	return nil
-}
-
-func (u *Steps) deletePortalApplicationKey(ctx context.Context, applicationID, mappingID string) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	result, err := page.Evaluate(`async ({applicationID, mappingID}) => {
-        const token = document.cookie.split('; ').find(v => v.startsWith('XSRF-TOKEN='));
-        const response = await fetch('/api-portal/api/v0.9/applications/' + encodeURIComponent(applicationID) + '/oauth-keys/' + encodeURIComponent(mappingID), {
-            method: 'DELETE',
-            headers: { organization: 'default', 'X-CSRF-Token': token ? decodeURIComponent(token.split('=').slice(1).join('=')) : '' },
-        });
-        return { status: response.status };
-    }`, map[string]any{"applicationID": applicationID, "mappingID": mappingID})
-	if err != nil {
-		return err
-	}
-	var response struct {
-		Status int `json:"status"`
-	}
-	raw, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(raw, &response); err != nil {
-		return err
-	}
-	if response.Status != http.StatusNotFound && (response.Status < 200 || response.Status >= 300) {
-		return fmt.Errorf("API Portal application credential deletion returned HTTP status %d", response.Status)
 	}
 	return nil
 }

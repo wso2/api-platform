@@ -120,15 +120,20 @@ func (h *AgentProxyHandler) ListAgentProxies(w http.ResponseWriter, r *http.Requ
 
 	limit, offset := parsePagination(r)
 
-	// Presence, not emptiness: "?protocol=" is a supplied filter with an invalid
-	// value, which the service rejects, while an absent parameter lists every
-	// protocol. Query().Get collapses both to "", so the raw map is read instead.
-	var protocol *string
-	if values, present := r.URL.Query()["protocol"]; present && len(values) > 0 {
+	// Presence, not emptiness: "?protocol=" or "?projectId=" is a supplied filter
+	// with an invalid value, which the service rejects, while an absent parameter
+	// does not filter. Query().Get collapses both to "", so the raw map is read
+	// instead.
+	query := r.URL.Query()
+	var protocol, projectID *string
+	if values, present := query["protocol"]; present && len(values) > 0 {
 		protocol = &values[0]
 	}
+	if values, present := query["projectId"]; present && len(values) > 0 {
+		projectID = &values[0]
+	}
 
-	resp, err := h.service.List(orgID, protocol, limit, offset)
+	resp, err := h.service.List(orgID, protocol, projectID, limit, offset)
 	if err != nil {
 		return h.mapServiceError(err)
 	}

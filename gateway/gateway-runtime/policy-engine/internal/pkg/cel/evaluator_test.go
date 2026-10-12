@@ -415,6 +415,70 @@ func TestEvaluateResponseCondition_NonBooleanResult(t *testing.T) {
 // Caching Tests
 // =============================================================================
 
+// EvaluateFaultCondition must agree with EvaluateResponseBodyCondition on equivalent state.
+//
+// That equivalence is the whole basis for the fault chain evaluating conditions against an
+// FaultContext: the activation is built from the same-named fields and emits the same keys,
+// so no new CEL variable had to be declared and every expression an operator already wrote
+// for a fault policy keeps its meaning. Asserting the two AGREE — rather than restating
+// expected values a second time — is what catches the two activations drifting apart.
+//
+// The mocks in the executor tests cannot catch that: they answer both calls from the same
+// field by construction. This is the only test that exercises the real activation.
+func TestEvaluateErrorCondition_AgreesWithTheResponseEvaluator(t *testing.T) {
+	evaluator, err := NewCELEvaluator()
+	require.NoError(t, err)
+
+	for _, status := range []int{200, 401, 429, 503} {
+		respCtx := testutils.NewTestResponseContextWithStatus(status)
+		faultCtx := &policy.FaultContext{
+			SharedContext:   respCtx.SharedContext,
+			RequestHeaders:  respCtx.RequestHeaders,
+			RequestBody:     respCtx.RequestBody,
+			RequestPath:     respCtx.RequestPath,
+			RequestMethod:   respCtx.RequestMethod,
+			ResponseHeaders: respCtx.ResponseHeaders,
+			ResponseBody:    respCtx.ResponseBody,
+			ResponseStatus:  respCtx.ResponseStatus,
+			Downstream:      respCtx.Downstream,
+			Upstream:        respCtx.Upstream,
+		}
+
+		for _, expression := range []string{
+			`response.ResponseStatus == 401`,
+			`response.ResponseStatus >= 400`,
+			`response.RequestPath.startsWith("/")`,
+			`response.RequestMethod == "GET"`,
+			`request.Path.startsWith("/")`,
+			`"content-type" in response.ResponseHeaders`,
+			`processing.phase == "response_body"`,
+		} {
+			wantResult, wantErr := evaluator.EvaluateResponseBodyCondition(expression, respCtx)
+			gotResult, gotErr := evaluator.EvaluateFaultCondition(expression, faultCtx)
+
+			assert.Equal(t, wantErr == nil, gotErr == nil,
+				"status %d, %q: error-ness must match (response=%v, error=%v)",
+				status, expression, wantErr, gotErr)
+			assert.Equal(t, wantResult, gotResult,
+				"status %d, %q: the two evaluators must agree", status, expression)
+		}
+	}
+}
+
+// A malformed expression must fail the same way on the fault path, so a bad condition is
+// reported rather than silently treated as "do not run".
+func TestEvaluateErrorCondition_InvalidExpression(t *testing.T) {
+	evaluator, err := NewCELEvaluator()
+	require.NoError(t, err)
+
+	_, evalErr := evaluator.EvaluateFaultCondition(`response.ResponseStatus ===`, &policy.FaultContext{
+		SharedContext:   &policy.SharedContext{},
+		RequestHeaders:  policy.NewHeaders(nil),
+		ResponseHeaders: policy.NewHeaders(nil),
+	})
+	assert.Error(t, evalErr)
+}
+
 func TestCELEvaluator_ProgramCaching(t *testing.T) {
 	evaluator, err := NewCELEvaluator()
 	require.NoError(t, err)

@@ -37,10 +37,12 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
@@ -81,6 +83,10 @@ func services() ([]testbench.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building jwks service: %w", err)
 	}
+	oidcSvc, err := oidc.FromEnvironment()
+	if err != nil {
+		return nil, fmt.Errorf("building oidc service: %w", err)
+	}
 	return []testbench.Service{
 		jwksSvc,
 		echo.New(),
@@ -97,6 +103,8 @@ func services() ([]testbench.Service, error) {
 		oauth2.New(),
 		webhook.New(),
 		agentcard.New(),
+		oidcSvc,
+		guardian.New(),
 	}, nil
 }
 

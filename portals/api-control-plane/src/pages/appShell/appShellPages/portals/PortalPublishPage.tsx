@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
-import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
+import { useEffect, useState, type ReactNode } from 'react';
+import { alpha, Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -43,7 +43,7 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { parseSpecText, type SpecFormat } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
-import { PublicationVersionCard } from './components/PublicationVersionCard';
+import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
 import { PublicationVersionToggle } from './components/PublicationVersionToggle';
 import { PublishActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
@@ -71,13 +71,15 @@ const messages = defineMessages({
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title',
-    defaultMessage: 'Publish to {portalName}',
-    description: 'Page heading. {portalName} is the API Portal display name; do not translate it.',
+    defaultMessage: 'Publish <name>{apiName}</name>',
+    description:
+      'Page heading. {apiName} is the API display name, user-supplied; do not translate it. <name> sets it in bold.',
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle',
-    defaultMessage: '{apiName} · v{version}',
-    description: 'Byline under the heading. Both values are user-supplied; do not translate them.',
+    defaultMessage: 'To <name>{portalName}</name>',
+    description:
+      'Byline under the heading, naming the portal being published to. {portalName} is the API Portal display name, user-supplied; do not translate it. <name> sets it in bold.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.loading',
@@ -111,30 +113,32 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabLandingPage',
     defaultMessage: 'Landing Page',
   },
-  draftBannerTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerTitle',
-    defaultMessage: 'Draft version',
-    description: 'Banner over the fields being edited: this is the working copy, not what is live.',
-  },
   draftBannerMeta: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta',
-    defaultMessage: 'v{version} · edited {time}',
-    description: 'Banner byline. {version} is user-supplied; {time} is a relative time such as "5 minutes ago".',
+    defaultMessage: 'Edited {time}',
+    description: 'Banner byline. {time} is a relative time such as "5 minutes ago".',
   },
-  publishedBannerTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerTitle',
-    defaultMessage: 'Published version',
-    description: 'Banner over the read-only fields showing what is live on the portal.',
+  draftBannerMetaUnsaved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMetaUnsaved',
+    defaultMessage: 'Edited {time} · <unsaved>Unsaved changes</unsaved>',
+    description:
+      'Banner byline when the fields on screen differ from the saved draft. {time} is a relative time such as "5 minutes ago". <unsaved> sets the warning in colour.',
   },
-  deprecatedBannerTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerTitle',
-    defaultMessage: 'Deprecated version',
-    description: 'Banner over the read-only fields when the live listing is flagged as deprecated.',
+  unsavedBannerMeta: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unsavedBannerMeta',
+    defaultMessage: '<unsaved>Unsaved changes</unsaved>',
+    description:
+      'Banner byline when the fields on screen have been edited but no draft has been saved yet. <unsaved> sets the warning in colour.',
   },
   publishedBannerMeta: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta',
-    defaultMessage: 'v{version} · updated {time}',
-    description: 'Banner byline. {version} is user-supplied; {time} is a relative time such as "2 days ago".',
+    defaultMessage: 'Updated {time}',
+    description: 'Banner byline. {time} is a relative time such as "2 days ago".',
+  },
+  deprecatedBannerMeta: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta',
+    defaultMessage: 'Deprecated {time}',
+    description: 'Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as "2 days ago".',
   },
   draftMissing: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
@@ -191,6 +195,33 @@ const messages = defineMessages({
 });
 
 /**
+ * The banner's unsaved-changes warning: a tinted highlight on the text itself. An inline
+ * span's padding does not take part in line layout, so it cannot make the banner larger.
+ */
+const unsaved = (text: ReactNode) => (
+  <Box
+    component="span"
+    sx={(theme) => ({
+      bgcolor: alpha(theme.palette.warning.main, 0.16),
+      borderRadius: 1,
+      color: 'warning.dark',
+      fontWeight: 600,
+      mx: 0.5,
+      px: 1,
+      py: 0.25,
+    })}
+  >
+    {text}
+  </Box>
+);
+
+const bold = (name: ReactNode) => (
+  <Box component="span" sx={{ fontWeight: 700 }}>
+    {name}
+  </Box>
+);
+
+/**
  * A failed API call is already reported by the global mutation snackbar, so the
  * action handlers only need to stop it from surfacing again as an unhandled
  * rejection. Anything that is not an `ApiError` is a real bug and still throws.
@@ -198,6 +229,9 @@ const messages = defineMessages({
 const rethrowUnreported = (error: unknown): void => {
   if (!isApiError(error)) throw error;
 };
+
+/** The fields that show a validation message. */
+const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
 type PublishTab = 'details' | 'specification';
 
@@ -246,8 +280,9 @@ function PortalPublishPageContent() {
   const portalName = (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
 
   const [tab, setTab] = useState<PublishTab>('details');
-  const [viewingPublished, setViewingPublished] = useState(false);
-  const data = usePublishPageData(apiPortalId, apiHandler, viewingPublished && tab === 'specification');
+  // Which version the user picked; until they pick, the live version if there is one, else the draft.
+  const [chosenView, setChosenView] = useState<PublicationVersionTone>();
+  const data = usePublishPageData(apiPortalId, apiHandler, chosenView !== 'draft' && tab === 'specification');
 
   const saveDraftMutation = useSaveApiPublicationDraft();
   const saveDefinitionMutation = useSaveApiPublicationDraftDefinition({ handlesErrors: true });
@@ -260,6 +295,8 @@ function PortalPublishPageContent() {
   const [definitionText, setDefinitionText] = useState('');
   const [definitionFormat, setDefinitionFormat] = useState<SpecFormat>('json');
   const [definitionParseError, setDefinitionParseError] = useState<string>();
+  // What the server holds for the fields shown, so edits made since can be told apart.
+  const [saved, setSaved] = useState({ definitionText: '', values: emptyDraftFormValues });
   const [pendingAction, setPendingAction] = useState<PendingAction>('idle');
   // An action saves in steps, each refetching these; they are shown once, when it ends.
   const draft = useFrozenWhile(data.draft, pendingAction !== 'idle');
@@ -274,6 +311,7 @@ function PortalPublishPageContent() {
     if (initialized || !data.seed) return;
     setValues(data.seed.values);
     setDefinitionText(data.seed.definition?.text ?? '');
+    setSaved({ definitionText: data.seed.definition?.text ?? '', values: data.seed.values });
     setDefinitionFormat(data.seed.definition?.format ?? 'json');
     setInitialized(true);
   }, [initialized, data.seed]);
@@ -293,9 +331,14 @@ function PortalPublishPageContent() {
   const { api } = data;
   const isPublished = Boolean(publication);
   const canDeprecate = publication?.status === 'PUBLISHED';
-  // The switch is off while there is nothing live, so an unpublish that lands
+  // Published is off the switch while there is nothing live, so an unpublish that lands
   // while the published version is on screen falls back to the draft.
-  const showingPublished = viewingPublished && isPublished;
+  const pick = chosenView === 'published' && !isPublished ? undefined : chosenView;
+  const view: PublicationVersionTone = pick ?? (isPublished ? 'published' : 'draft');
+  const showingPublished = view === 'published';
+  const hasUnsavedChanges =
+    definitionText !== saved.definitionText ||
+    (Object.keys(values) as (keyof DraftFormValues)[]).some((field) => values[field] !== saved.values[field]);
   const errors = validateDraftFormValues(values);
   const errorFor = (field: DraftFormField) => (touched[field] ? errors[field] : undefined);
   const formInvalid = Object.keys(errors).length > 0;
@@ -303,8 +346,14 @@ function PortalPublishPageContent() {
   const markTouched = (field: DraftFormField) =>
     setTouched((current) => ({ ...current, [field]: true }));
 
-  const touchAllFields = () =>
-    setTouched({ displayName: true, version: true, productionUrl: true, sandboxUrl: true });
+  const touchAllFields = () => setTouched(Object.fromEntries(FORM_FIELDS.map((field) => [field, true])));
+
+  /** An edited field's message waits for its next blur, so it never flashes while the user is still typing. */
+  const handleChange = (next: DraftFormValues) => {
+    const edited = FORM_FIELDS.filter((field) => next[field] !== values[field]);
+    setTouched((current) => ({ ...current, ...Object.fromEntries(edited.map((field) => [field, false])) }));
+    setValues(next);
+  };
 
   /**
    * Reads the definition buffer into the object the server expects. A draft
@@ -359,6 +408,7 @@ function PortalPublishPageContent() {
       apiId: apiHandler,
       body: draftFormValuesToInput(values),
     });
+    setSaved((current) => ({ ...current, values }));
     return true;
   };
 
@@ -378,6 +428,7 @@ function PortalPublishPageContent() {
         body: definitionDocument,
       }),
     );
+    setSaved((current) => ({ ...current, definitionText }));
     return true;
   };
 
@@ -446,24 +497,22 @@ function PortalPublishPageContent() {
   };
 
   const publishedValues = resolveDraftFormValues(undefined, publication, undefined);
-  // A draft that was never saved has nothing to describe, so it gets no banner.
+  // Only when it last changed: the switch already says which version this is, and the form shows its number.
+  const draftBannerMeta = (() => {
+    if (!hasUnsavedChanges) return draft && intl.formatMessage(messages.draftBannerMeta, { time: relativeTime(draft.updatedAt) });
+    return draft
+      ? intl.formatMessage(messages.draftBannerMetaUnsaved, { time: relativeTime(draft.updatedAt), unsaved })
+      : intl.formatMessage(messages.unsavedBannerMeta, { unsaved });
+  })();
   const banner = showingPublished
     ? {
-        meta: intl.formatMessage(messages.publishedBannerMeta, {
+        meta: intl.formatMessage(canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta, {
           time: relativeTime(publication?.updatedAt),
-          version: publication?.version,
         }),
-        title: intl.formatMessage(
-          canDeprecate ? messages.publishedBannerTitle : messages.deprecatedBannerTitle,
-        ),
       }
-    : draft && {
-        meta: intl.formatMessage(messages.draftBannerMeta, {
-          time: relativeTime(draft.updatedAt),
-          version: draft.version,
-        }),
-        title: intl.formatMessage(messages.draftBannerTitle),
-      };
+    : draftBannerMeta
+      ? { meta: draftBannerMeta }
+      : undefined;
 
   const renderContent = () => {
     if (showingPublished) {
@@ -487,7 +536,7 @@ function PortalPublishPageContent() {
           sandboxUrl: errorFor('sandboxUrl'),
         }}
         onBlurField={markTouched}
-        onChange={setValues}
+        onChange={handleChange}
         values={values}
       />
     ) : (
@@ -513,13 +562,10 @@ function PortalPublishPageContent() {
             <FormattedMessage {...messages.back} />
           </PageTitle.BackButton>
           <PageTitle.Header>
-            <FormattedMessage {...messages.title} values={{ portalName }} />
+            <FormattedMessage {...messages.title} values={{ apiName: api.displayName, name: bold }} />
           </PageTitle.Header>
           <PageTitle.SubHeader>
-            <FormattedMessage
-              {...messages.subtitle}
-              values={{ apiName: api.displayName, version: api.version }}
-            />
+            <FormattedMessage {...messages.subtitle} values={{ name: bold, portalName }} />
           </PageTitle.SubHeader>
         </PageTitle>
 
@@ -547,13 +593,13 @@ function PortalPublishPageContent() {
             </Tabs>
             <PublicationVersionToggle
               disabled={pendingAction !== 'idle'}
-              onChange={(version) => setViewingPublished(version === 'published')}
+              onChange={setChosenView}
               publishedAvailable={isPublished}
-              value={showingPublished ? 'published' : 'draft'}
+              value={view}
             />
           </Stack>
 
-          <PublicationVersionCard banner={banner} tone={showingPublished ? 'published' : 'draft'}>
+          <PublicationVersionCard banner={banner} tone={view}>
             {renderContent()}
           </PublicationVersionCard>
 
@@ -562,6 +608,7 @@ function PortalPublishPageContent() {
             {!showingPublished && (
               <PublishActionsBar
                 canDeprecate={canDeprecate}
+                canSaveDraft={hasUnsavedChanges}
                 deprecating={pendingAction === 'deprecating'}
                 isPublished={isPublished}
                 onDeprecate={() => setConfirmingDeprecate(true)}

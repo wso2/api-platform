@@ -65,11 +65,28 @@
       <i class="bi bi-receipt sidebar-icon"></i>
       <span class="nav-text">Subscriptions</span>
     </a>
+    {{!-- Keys: every credential a developer can hold for calling an API, whichever
+          side issued it — API keys the portal mints itself, and OAuth2 keys created
+          on an external identity server. The parent navigates to its first child;
+          the submenu opens on arrival, as the APIs and MCP Servers sections do. --}}
     <a {{#unless (designMode)}}href="{{baseUrl}}/api-keys"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
-      class="nav-link{{#if (designMode)}} design-disabled{{/if}}" id="api-keys">
-      <i class="bi bi-key sidebar-icon"></i>
-      <span class="nav-text">API Keys</span>
+      class="nav-link{{#if (designMode)}} design-disabled{{/if}}" id="keys">
+      <i class="bi bi-shield-lock sidebar-icon"></i>
+      <span class="nav-text">Keys</span>
+      <i class="bi bi-chevron-right sidebar-chevron nav-text"></i>
     </a>
+    <div class="submenu" id="keys-submenu">
+      <a {{#unless (designMode)}}href="{{baseUrl}}/api-keys"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+        class="nav-link submenu-link fw-light{{#if (designMode)}} design-disabled{{/if}}" id="api-keys">
+        <i class="bi bi-key submenu-icon"></i>
+        <span class="nav-text">API Keys</span>
+      </a>
+      <a {{#unless (designMode)}}href="{{baseUrl}}/oauth2-keys"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+        class="nav-link submenu-link fw-light{{#if (designMode)}} design-disabled{{/if}}" id="oauth2-keys-nav">
+        <i class="bi bi-shield-lock submenu-icon"></i>
+        <span class="nav-text">OAuth2 Keys</span>
+      </a>
+    </div>
   </nav>
 
   {{#if profile.isAdmin}}

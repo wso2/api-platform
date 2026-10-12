@@ -1,21 +1,22 @@
 {{#pageHead}}
   <link rel='stylesheet' href='{{basePath}}/technical-styles/application.css' />
-  <link rel="stylesheet" href="{{basePath}}/technical-styles/oauth2-key-generation.css" />
   <link rel="stylesheet" href="{{basePath}}/technical-styles/api-keys-page.css" />
 {{/pageHead}}
 {{#pageScripts}}
   <script src='{{basePath}}/technical-scripts/subscription.js' defer></script>
-  <script src="{{basePath}}/technical-scripts/oauth2-key-generation.js" defer></script>
   <script src="{{basePath}}/technical-scripts/edit-application-form.js" defer></script>
   <script src="{{basePath}}/technical-scripts/subscription-modal.js" defer></script>
   <script src="{{basePath}}/technical-scripts/application-api-keys.js" defer></script>
+  <script src="{{basePath}}/technical-scripts/application-oauth2-keys.js" defer></script>
 {{/pageScripts}}
+{{!-- The old "Manage Keys" section is gone. It mapped an OAuth client_id created
+      by hand in the key manager onto this application, which is a different thing
+      from the keys below: those the portal registers itself, over Dynamic Client
+      Registration, and can manage afterwards. Keys are created under
+      Keys → OAuth2 Keys; this page associates them. --}}
 <div class="page-container">
 {{> overview }}
-{{> manage-keys }}
-{{> keys-token }}
-{{> keys-instructions }}
-{{> keys-generate-token-prompt }}
 {{> api-keys }}
+{{> oauth2-keys }}
 {{> alert }}
 </div>

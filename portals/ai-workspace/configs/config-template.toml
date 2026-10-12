@@ -295,8 +295,38 @@ platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc
 # ---------------------------------------------------------------------------
 [ai_workspace.session]
 
-# Session store. Only "memory" is supported today ("redis" is future).
-store = "memory"
+# Where the session's server-side state lives — the OIDC refresh/id tokens, the
+# cached exchanged token, and the organization the user selected.
+#
+# "cookie" is the only supported value. Nothing is kept in the BFF process: the
+# record is sealed (AES-256-GCM) and carried by the browser in HttpOnly cookies,
+# so ANY replica can serve ANY request. That is what lets this run with more than
+# one replica behind an ordinary load balancer — no shared store to operate, no
+# sticky sessions, and nothing extra to deploy on-prem.
+#
+# File-based (basic) auth keeps no server-side session at all: its JWT is
+# self-contained in the session cookie pair, so that mode needs none of this and
+# no encryption_key.
+#
+# The sealed record adds roughly 1-2 KB to every request. Check the request-header
+# buffers of anything in front of this BFF (nginx: large_client_header_buffers;
+# its 8k default leaves ample room for the ~6 KB this produces at the default
+# scope set).
+store = "cookie"
+
+# Key material the session-state cookies and the OIDC login transaction are sealed
+# under. REQUIRED when store = "cookie" (startup fails without it), minimum 32
+# characters, and EVERY REPLICA MUST SEE THE SAME VALUE.
+#
+#     openssl rand -base64 32
+#
+# Deliberately not defaulted to the OIDC client secret: reusing that would make one
+# secret both authenticate this client to the IDP and protect every session record,
+# so its exposure would widen from "can impersonate the client" to "can also open any
+# session cookie". Changing this value logs everyone out once.
+[ai_workspace.session.cookie]
+
+encryption_key = "{{ env \"APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY\" \"\" }}"
 
 # Sliding idle window (Go duration, e.g. "30m"). Reserved — not enforced yet.
 idle_timeout = "30m"

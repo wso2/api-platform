@@ -284,14 +284,20 @@ func (r *SubscriptionPlanRepo) GetHandlesByIDs(planUUIDs []string, orgUUID strin
 	return m, rows.Err()
 }
 
-// ListByOrganization returns subscription plans for an organization with pagination
-func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset int) ([]*model.SubscriptionPlan, error) {
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+// ListByOrganization returns subscription plans for an organization with pagination,
+// optionally filtered by a case-insensitive match on the plan name or handle.
+func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error) {
 	query := `SELECT ` + planSelectColumns + `
-		WHERE p.organization_uuid = ?
-		ORDER BY p.created_at DESC
-		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
+		WHERE p.organization_uuid = ?`
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY p.created_at DESC " + pageClause
+	args = append(args, pageArgs...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list subscription plans: %w", err)
 	}
@@ -308,12 +314,17 @@ func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset 
 	return list, rows.Err()
 }
 
-// CountByOrganization returns the total number of subscription plans in an
-// organization, independent of any pagination applied by ListByOrganization.
-func (r *SubscriptionPlanRepo) CountByOrganization(orgUUID string) (int, error) {
+// CountByOrganization returns the number of subscription plans in an organization
+// that match the same search as ListByOrganization, independent of pagination.
+func (r *SubscriptionPlanRepo) CountByOrganization(orgUUID, search string) (int, error) {
 	var total int
 	query := `SELECT COUNT(*) FROM subscription_plans WHERE organization_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID).Scan(&total); err != nil {
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("failed to count subscription plans: %w", err)
 	}
 	return total, nil

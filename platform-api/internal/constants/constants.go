@@ -17,7 +17,10 @@
 
 package constants
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // SecretPlaceholderRe matches {{ secret "handle" }} (and the escaped-quote variant
 // {{ secret \"handle\" }}) in artifact config blobs.  A single definition here ensures
@@ -159,6 +162,14 @@ const (
 	GatewayApiVersion         = "gateway.api-platform.wso2.com/v1"
 )
 
+// MCP specification revisions named in more than one place: the MCP client in
+// utils speaks them, and the gateway translator folds a proxy's declared list
+// down to them for gateways that accept a single spec version.
+const (
+	MCPSpecVersion20250618 = "2025-06-18"
+	MCPSpecVersion20251125 = "2025-11-25"
+)
+
 // Platform-api resource URL version. APIBasePath is the single source of truth for
 // the prefix every handler route group is mounted under. NOTE: this is a DIFFERENT
 // axis from GatewayApiVersion* (the gateway artifact apiVersion) — the two are
@@ -174,6 +185,17 @@ const (
 // ownership check for any key. It is an organization-wide, admin-like grant —
 // keep it out of self-service/developer roles.
 const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
+
+// ScopeDocsRead and ScopeDocsManage govern the /apis/{apiType}/{apiId}/docs endpoints.
+const (
+	ScopeDocsRead   = "ap:docs:read"
+	ScopeDocsManage = "ap:docs:manage"
+)
+
+const (
+	ScopeThumbnailRead   = "ap:thumbnail:read"
+	ScopeThumbnailManage = "ap:thumbnail:manage"
+)
 
 // Custom Policy ManagedBy constants
 const (
@@ -291,6 +313,9 @@ var ValidThrottleLimitUnits = map[string]bool{
 // upload or fetch when OpenAPISpecMaxFetchBytes is not set in config.
 const DefaultOpenAPISpecMaxBytes int64 = 5 << 20 // 5 MiB
 
+// DefaultThumbnailMaxBytes bounds a single thumbnail upload.
+const DefaultThumbnailMaxBytes int64 = 1 << 20 // 1 MiB
+
 // DefaultOpenAPISpecFileName is the filename persisted for a spec that was
 // fetched by URL but whose URL has no usable last path segment to name the
 // file after.
@@ -300,10 +325,61 @@ const DefaultOpenAPISpecJSONFileName = "openapi.json"
 // API document type and handle constants for the singleton doc types
 // Currently only the OpenAPI definition is a singleton doc type
 const (
-	DocumentTypeDefinition   = "DEFINITION"
-	DocumentHandleDefinition = "api-definition"
+	DocumentTypeDefinition        = "DEFINITION"
+	DocumentHandleDefinition      = "api-definition"
 	DocumentDisplayNameDefinition = "OpenAPI Definition"
 )
+
+const (
+	DocumentTypeThumbnail        = "THUMBNAIL"
+	DocumentHandleThumbnail      = "api-thumbnail"
+	DocumentDisplayNameThumbnail = "API Thumbnail"
+)
+
+const (
+	DocumentTypeHowTo        = "HowTo"
+	DocumentTypeSamples      = "Samples"
+	DocumentTypeSupportForum = "SupportForum"
+	DocumentTypePublicForum  = "PublicForum"
+	DocumentTypeOther        = "Other"
+	DocumentTypePrefix     = "DOC_"
+)
+
+var ValidAPIDocumentUserTypes = map[string]bool{
+	DocumentTypeHowTo:        true,
+	DocumentTypeSamples:      true,
+	DocumentTypeSupportForum: true,
+	DocumentTypePublicForum:  true,
+	DocumentTypeOther:        true,
+}
+
+// Fixed types (HowTo, Samples, …) are stored with the DOC_ prefix to be compatible with the api-portal.
+var FixedAPIDocumentStoredTypes = []string{
+	DocumentTypePrefix + DocumentTypeHowTo,
+	DocumentTypePrefix + DocumentTypeSamples,
+	DocumentTypePrefix + DocumentTypeSupportForum,
+	DocumentTypePrefix + DocumentTypePublicForum,
+}
+
+var ReservedAPIDocumentTypes = []string{
+	DocumentTypeDefinition,
+	DocumentTypeThumbnail,
+}
+
+var ReservedAPIDocumentHandles = map[string]bool{
+	DocumentHandleDefinition: true,
+	DocumentHandleThumbnail:  true,
+}
+
+var ForbiddenOtherTypeNames = map[string]bool{
+	strings.ToLower(DocumentTypeDefinition):   true,
+	strings.ToLower(DocumentTypeThumbnail):    true,
+	strings.ToLower(DocumentTypeHowTo):        true,
+	strings.ToLower(DocumentTypeSamples):      true,
+	strings.ToLower(DocumentTypeSupportForum): true,
+	strings.ToLower(DocumentTypePublicForum):  true,
+	strings.ToLower(DocumentTypeOther):        true,
+}
 
 // Metadata key constants for deployment metadata
 const (

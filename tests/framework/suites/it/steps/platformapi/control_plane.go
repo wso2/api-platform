@@ -83,6 +83,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	sc.Step(`^the control plane should have (deployed|undeployed) the "(Mcp|Agent)" artifact "([^"]*)"$`,
 		s.artifactDeploymentStatus)
 	sc.Step(`^I create a project "([^"]*)" on the control plane$`, s.createProject)
+	sc.Step(`^I register a gateway "([^"]*)" on the control plane$`, s.registerGateway)
 	sc.Step(`^platform-api reports the subscription for API "([^"]*)" using plan "([^"]*)"$`, s.subscriptionPlanMatches)
 	RegisterDeploy(sc, s)
 	RegisterAgentProxy(sc, s)
@@ -106,6 +107,27 @@ func InternalBaseURL(topo *runtime.Topology) (string, error) {
 		return "", err
 	}
 	return inst.InternalURL("https")
+}
+
+// createdArtifactKinds maps a gateway artifact kind to the cleanup kind that removes its
+// control-plane copy, for artifacts created outside this package's own steps.
+var createdArtifactKinds = map[string]cleanup.Kind{
+	"LlmProvider": platformProviderKind,
+	"LlmProxy":    platformProxyKind,
+	"Mcp":         platformMCPKind,
+}
+
+// RegisterCreatedArtifact registers cleanup for a control-plane artifact that another step
+// package created, such as one published by the ap CLI. kind is the gateway artifact kind
+// (LlmProvider, LlmProxy or Mcp); the artifact is deleted as the administrator once its
+// scenario finishes.
+func RegisterCreatedArtifact(ctx context.Context, topo *runtime.Topology, funnel *httpx.Funnel, kind, id string) error {
+	cleanupKind, ok := createdArtifactKinds[kind]
+	if !ok {
+		return fmt.Errorf("no control-plane cleanup is defined for artifact kind %q", kind)
+	}
+	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
+	return s.registerPlatformResource(ctx, cleanupKind, id, "/"+artifactPaths[kind])
 }
 
 // SubscriptionPlanUUID returns the control-plane identifier needed by API Portal's plan link.
@@ -488,4 +510,27 @@ func (s *Steps) createProject(ctx context.Context, handle string) error {
 		return fmt.Errorf("creating control-plane project %q: %s", resolvedHandle, resp.Describe())
 	}
 	return s.registerPlatformResource(ctx, platformProjectKind, resolvedHandle, "/projects")
+}
+
+// registerGateway registers a control-plane gateway by handle. Artifact gateway associations
+// are validated against registered gateways, so a scenario that associates an artifact with a
+// gateway must register it first. The gateway is not connected to any runtime.
+func (s *Steps) registerGateway(ctx context.Context, handle string) error {
+	resolvedHandle, err := stepscommon.Expand(ctx, handle)
+	if err != nil {
+		return err
+	}
+	base, bearer, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.postJSON(ctx, base, bearer, "/gateways", map[string]any{
+		"id":                resolvedHandle,
+		"displayName":       resolvedHandle,
+		"endpoints":         []string{"http://" + resolvedHandle + ".example.com"},
+		"functionalityType": "regular",
+	}, nil); err != nil {
+		return fmt.Errorf("registering control-plane gateway %q: %w", resolvedHandle, err)
+	}
+	return s.registerPlatformResource(ctx, platformGatewayKind, resolvedHandle, "/gateways")
 }

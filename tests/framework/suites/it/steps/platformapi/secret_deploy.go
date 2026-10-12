@@ -64,6 +64,7 @@ var (
 	platformApplicationKind      = cleanup.Kind{Name: "platform-api-application", Order: 20}
 	platformSecuredAPIKind       = cleanup.Kind{Name: "platform-api-secured-rest-api", Order: 51}
 	platformSubscriptionPlanKind = cleanup.Kind{Name: "platform-api-subscription-plan", Order: 90}
+	platformGatewayKind          = cleanup.Kind{Name: "platform-api-gateway", Order: 88}
 	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
 )
 

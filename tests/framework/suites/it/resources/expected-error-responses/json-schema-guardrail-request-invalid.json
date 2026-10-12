@@ -1,0 +1,15 @@
+{
+  "body": {
+    "message": {
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Violation of JSON schema detected.",
+      "direction": "REQUEST",
+      "interveningGuardrail": "json-schema-guardrail"
+    },
+    "type": "JSON_SCHEMA_GUARDRAIL"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 422
+}

@@ -103,7 +103,7 @@ func (m *gatewaysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resour
 		if err := insertRow(ctx, q, "gateways",
 			[]string{"uuid", "organization_uuid", "handle", "display_name", "description", "properties",
 				"is_critical", "gateway_functionality_type", "version", "is_active", "created_by", "updated_by", "created_at", "updated_at"},
-			[]any{r.uuid, r.orgUUID, handle, nullOrString(r.displayName), nullOrString(r.description), nullOrBytes(r.properties),
+			[]any{r.uuid, r.orgUUID, handle, nullOrString(r.displayName), textOrEmpty(r.description), nullOrBytes(r.properties),
 				boolToSmallint(r.isCritical), nullOrString(r.functionalityType), nullOrString(r.version), boolToSmallint(r.isActive),
 				actor, actor, tsToTstz(r.createdAt, rc.Kernels.appZone()), tsToTstz(r.updatedAt, rc.Kernels.appZone())},
 			conflictUUIDNothing); err != nil {

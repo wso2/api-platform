@@ -175,6 +175,24 @@ export const SCOPES = {
   MCP_PROXY_API_PORTAL_UNPUBLISH: 'ap:api_portal:mcp_proxy:unpublish',
   MCP_PROXY_API_PORTAL_MANAGE:    'ap:api_portal:mcp_proxy:manage',
 
+  // Agent Proxies
+  AGENT_PROXY_READ:                'ap:agent_proxy:read',
+  AGENT_PROXY_CREATE:              'ap:agent_proxy:create',
+  AGENT_PROXY_UPDATE:              'ap:agent_proxy:update',
+  AGENT_PROXY_DELETE:              'ap:agent_proxy:delete',
+  AGENT_PROXY_MANAGE:              'ap:agent_proxy:manage',
+  AGENT_PROXY_DEPLOYMENT_READ:     'ap:agent_proxy:deployment:read',
+  AGENT_PROXY_DEPLOYMENT_CREATE:   'ap:agent_proxy:deployment:create',
+  AGENT_PROXY_DEPLOYMENT_DELETE:   'ap:agent_proxy:deployment:delete',
+  AGENT_PROXY_DEPLOYMENT_UNDEPLOY: 'ap:agent_proxy:deployment:undeploy',
+  AGENT_PROXY_DEPLOYMENT_RESTORE:  'ap:agent_proxy:deployment:restore',
+  AGENT_PROXY_DEPLOYMENT_MANAGE:   'ap:agent_proxy:deployment:manage',
+  AGENT_PROXY_API_KEY_READ:        'ap:agent_proxy:api_key:read',
+  AGENT_PROXY_API_KEY_CREATE:      'ap:agent_proxy:api_key:create',
+  AGENT_PROXY_API_KEY_UPDATE:      'ap:agent_proxy:api_key:update',
+  AGENT_PROXY_API_KEY_DELETE:      'ap:agent_proxy:api_key:delete',
+  AGENT_PROXY_API_KEY_MANAGE:      'ap:agent_proxy:api_key:manage',
+
   // WebSub APIs
   WEBSUB_API_READ:              'ap:websub_api:read',
   WEBSUB_API_CREATE:            'ap:websub_api:create',
@@ -225,6 +243,11 @@ export const DEPLOYMENT_SCOPES = {
     read: SCOPES.MCP_PROXY_DEPLOYMENT_READ,
     create: SCOPES.MCP_PROXY_DEPLOYMENT_CREATE,
     delete: SCOPES.MCP_PROXY_DEPLOYMENT_DELETE,
+  },
+  'agent-proxy': {
+    read: SCOPES.AGENT_PROXY_DEPLOYMENT_READ,
+    create: SCOPES.AGENT_PROXY_DEPLOYMENT_CREATE,
+    delete: SCOPES.AGENT_PROXY_DEPLOYMENT_DELETE,
   },
 } as const;
 

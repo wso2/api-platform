@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": "Bad Gateway",
+    "message": "failed to authenticate request to upstream service"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 502
+}

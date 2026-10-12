@@ -71,25 +71,11 @@ blocks:
         features:
           - features/apiportal_api_workflows.feature
 
-  # This scenario asserts that no key manager exists in the portal. It needs its
-  # own API Portal/database stack because other application scenarios create
-  # key managers as shared portal-level resources.
-  - name: api-portal-application-no-key-manager
-    components:
-      - name: platform-api
-        db: postgres
-      - name: api-portal
-        db: postgres
-        dependsOn: [platform-api]
-      - name: testbench
-      - name: browser
-    runners:
-      - name: application-no-key-manager
-        features:
-          - features/apiportal_application_no_key_manager.feature
-
-  # Key managers are portal-global resources. Keep their application scenarios
-  # on a dedicated stack and serialize them to avoid cross-runner interference.
+  # Key managers are portal-global resources, so the scenario that creates one
+  # keeps a dedicated stack and runs serialized. apiportal_applications.feature
+  # no longer creates any — it shares this stack only because both runners drive
+  # the same portal; it could move to api-portal-core if that stack's parallelism
+  # is ever worth the churn.
   - name: api-portal-key-manager
     parallel: 1
     components:
@@ -120,6 +106,7 @@ blocks:
         dependsOn: [platform-api]
       - name: testbench
       - name: ai-workspace
+        overlay: tests/framework/core/catalog/overlays/ai-workspace-agent-proxy.toml
       - name: browser
     runners:
       - name: smoke
@@ -140,6 +127,12 @@ blocks:
       - name: mcp-proxy
         features:
           - features/mcp_proxy.feature
+      - name: agent-proxy
+        features:
+          - features/agent_proxy.feature
+      - name: agent-proxy-configuration
+        features:
+          - features/agent_proxy_configuration.feature
       - name: mcp-secrets
         features:
           - features/mcp_secret_management.feature

@@ -65,4 +65,27 @@ type PolicyChain struct {
 	// control Envoy header transport (headers always flow for lifecycle reasons).
 	// It reflects callback participation intent.
 	RequiresResponseHeader bool
+
+	// FaultPolicies is the API's fault policies: an ordered list of policies that
+	// run ONLY on the fault path, never on a successful response. They are executed
+	// over a ResponseHeaderContext describing the error, so the existing policy
+	// catalogue works unchanged — no fault-specific policy interface is required.
+	//
+	// Kept separate from Policies rather than flagged within it, so a fault policy
+	// can never accidentally execute in the normal request/response phases.
+	FaultPolicies []policy.Policy
+
+	// FaultPolicySpecs holds the specs aligned with FaultPolicies (same ordering),
+	// carrying each entry's parameters and optional CEL execution condition.
+	FaultPolicySpecs []policy.PolicySpec
+
+	// Computed flag: true when FaultPolicies is non-empty. Lets the kernel skip
+	// all fault-policies work — including context synthesis — for the common case
+	// of an API that configures none.
+	HasFaultPolicies bool
+
+	// Computed flag: true if any FAULT policy declares a CEL execution condition.
+	// Tracked separately from HasExecutionConditions so evaluating the normal chain
+	// and the fault chain stay independent.
+	FaultHasExecutionConditions bool
 }

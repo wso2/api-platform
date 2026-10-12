@@ -18,11 +18,13 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  AdapterDateFns,
   Alert,
   AlertTitle,
   Box,
   Button,
   Chip,
+  DatePickers,
   Dialog,
   DialogActions,
   DialogContent,
@@ -30,6 +32,7 @@ import {
   Divider,
   Form,
   FormControl,
+  FormControlLabel,
   FormHelperText,
   FormLabel,
   IconButton,
@@ -50,6 +53,7 @@ import {
   type SubscriptionPlan,
 } from '@/api/resources/subscriptionPlans';
 import { useNotifications } from '@/components/Notifications';
+import { popupPaperSx } from '@/theme/receipes';
 
 /** One entry of `SubscriptionPlan['limits']`, generated from the spec. */
 type SubscriptionPlanLimit = NonNullable<SubscriptionPlan['limits']>[number];
@@ -65,8 +69,9 @@ type FormState = {
   displayName: string;
   limits: LimitDraft[];
   stopOnQuotaReach: boolean;
-  /** `yyyy-mm-dd`, or `''` for no expiry — the shape a native date input holds. */
-  expiryDate: string;
+  /** The picked calendar day (local), or `null` for no expiry. Holds an Invalid
+   * Date while the user is partway through typing one. */
+  expiryDate: Date | null;
 };
 
 /** Tracks whether a field was edited and then blurred, so a validation error
@@ -83,7 +88,7 @@ const EXPIRY_FIELD = 'subscription-plan-expiry';
 
 const emptyForm = (): FormState => ({
   displayName: '',
-  expiryDate: '',
+  expiryDate: null,
   limits: [],
   stopOnQuotaReach: true,
 });
@@ -95,6 +100,16 @@ const slugify = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+
+/** The picked calendar day, as that day at UTC midnight. */
+const toExpiryTime = (date: Date): string =>
+  new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).toISOString();
+
+/** The calendar day of a stored expiry timestamp, as a local `Date`. */
+const fromExpiryTime = (timestamp: string): Date => {
+  const utc = new Date(timestamp);
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+};
 
 const isPositiveInteger = (value: string): boolean => /^[1-9]\d*$/.test(value.trim());
 
@@ -141,6 +156,10 @@ const messages = defineMessages({
   editTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.edit',
     defaultMessage: 'Edit subscription plan',
+  },
+  expiryInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.error.invalid',
+    defaultMessage: 'Enter a valid date',
   },
   expiryHelper: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.helper',
@@ -327,7 +346,7 @@ export function SubscriptionPlanFormDialog({
       plan
         ? {
             displayName: plan.displayName,
-            expiryDate: plan.expiryTime ? plan.expiryTime.slice(0, 10) : '',
+            expiryDate: plan.expiryTime ? fromExpiryTime(plan.expiryTime) : null,
             limits: (plan.limits ?? []).map((limit) => ({
               key: nextLimitKey.current++,
               limitCount: String(limit.limitCount),
@@ -386,7 +405,8 @@ export function SubscriptionPlanFormDialog({
 
   const showNameError = (submitted || settled(nameVisit)) && hasNameError;
   const showLimitError = (submitted || settled(limitVisit)) && hasLimitError;
-  const canSubmit = !hasNameError && !hasLimitError && !mutation.isPending;
+  const hasExpiryError = form.expiryDate !== null && Number.isNaN(form.expiryDate.getTime());
+  const canSubmit = !hasNameError && !hasLimitError && !hasExpiryError && !mutation.isPending;
 
   // A 409 surfaces as an inline field error (the name is likely the culprit);
   // anything else is a generic toast. Shared so create and update can't drift
@@ -403,7 +423,7 @@ export function SubscriptionPlanFormDialog({
     // A real submit, so Enter in the name field saves the plan.
     event.preventDefault();
     setSubmitted(true);
-    if (hasNameError || hasLimitError || mutation.isPending) return;
+    if (hasNameError || hasLimitError || hasExpiryError || mutation.isPending) return;
 
     const limits: SubscriptionPlanLimit[] = form.limits.map((limit) => ({
       limitCount: Number(limit.limitCount),
@@ -414,12 +434,14 @@ export function SubscriptionPlanFormDialog({
       timeAmount: 1,
       timeUnit: limit.timeUnit,
     }));
-    const expiryTime = form.expiryDate ? `${form.expiryDate}T00:00:00Z` : undefined;
+    const expiryTime = form.expiryDate ? toExpiryTime(form.expiryDate) : undefined;
 
     if (isEdit && plan) {
       updateMutation.mutate(
         {
-          body: { ...plan, displayName: trimmedName, expiryTime, limits },
+          // null, not undefined: an omitted expiryTime means "keep", so clearing
+          // the date has to be sent explicitly.
+          body: { ...plan, displayName: trimmedName, expiryTime: expiryTime ?? null, limits },
           subscriptionPlanId: plan.id ?? '',
         },
         {
@@ -470,7 +492,7 @@ export function SubscriptionPlanFormDialog({
       </DialogTitle>
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogContent>
-          <Stack spacing={3}>
+          <Form.Stack spacing={3}>
             {conflict && (
               <Alert severity="error">
                 <AlertTitle sx={{ fontWeight: 600 }}>
@@ -612,47 +634,53 @@ export function SubscriptionPlanFormDialog({
 
             <Divider />
 
-            <Stack
-              alignItems="flex-start"
-              direction="row"
-              justifyContent="space-between"
-              spacing={2}
-            >
-              <Box>
-                <Typography sx={{ fontWeight: 600 }} variant="body2">
-                  <FormattedMessage {...messages.stopLabel} />
-                </Typography>
-                <Typography color="text.secondary" variant="caption">
-                  <FormattedMessage {...messages.stopHelper} />
-                </Typography>
-              </Box>
-              <Switch
-                checked={form.stopOnQuotaReach}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, stopOnQuotaReach: event.target.checked }))
-                }
-                slotProps={{ input: { 'aria-label': intl.formatMessage(messages.stopLabel) } }}
-              />
-            </Stack>
-
             <FormControl fullWidth>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={form.stopOnQuotaReach}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, stopOnQuotaReach: event.target.checked }))
+                    }
+                  />
+                }
+                label={<FormattedMessage {...messages.stopLabel} />}
+                labelPlacement="start"
+                sx={{ justifyContent: 'space-between', ml: 0 }}
+              />
+              <FormHelperText>
+                <FormattedMessage {...messages.stopHelper} />
+              </FormHelperText>
+            </FormControl>
+
+            <FormControl error={hasExpiryError} fullWidth>
               <FormLabel htmlFor={EXPIRY_FIELD}>
                 <FormattedMessage {...messages.expiryLabel} />
               </FormLabel>
-              <OutlinedInput
-                aria-describedby={`${EXPIRY_FIELD}-helper-text`}
-                id={EXPIRY_FIELD}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, expiryDate: event.target.value }))
-                }
-                type="date"
-                value={form.expiryDate}
-              />
+              <DatePickers.LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePickers.DatePicker
+                  disablePast
+                  onChange={(date) => setForm((current) => ({ ...current, expiryDate: date }))}
+                  slotProps={{
+                    desktopPaper: { sx: popupPaperSx },
+                    field: { clearable: true },
+                    mobilePaper: { sx: popupPaperSx },
+                    textField: {
+                      error: hasExpiryError,
+                      id: EXPIRY_FIELD,
+                      inputProps: { 'aria-describedby': `${EXPIRY_FIELD}-helper-text` },
+                    },
+                  }}
+                  value={form.expiryDate}
+                />
+              </DatePickers.LocalizationProvider>
               <FormHelperText id={`${EXPIRY_FIELD}-helper-text`}>
-                <FormattedMessage {...messages.expiryHelper} />
+                <FormattedMessage
+                  {...(hasExpiryError ? messages.expiryInvalid : messages.expiryHelper)}
+                />
               </FormHelperText>
             </FormControl>
-          </Stack>
+          </Form.Stack>
         </DialogContent>
         <Divider />
         <DialogActions>

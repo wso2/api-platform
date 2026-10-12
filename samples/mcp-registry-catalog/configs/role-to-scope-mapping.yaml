@@ -79,6 +79,8 @@ roles:
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage
+      - ap:docs:manage
+      - ap:thumbnail:manage
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
       # API Portal & MCP Hub

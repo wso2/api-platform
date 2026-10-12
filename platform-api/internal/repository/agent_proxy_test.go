@@ -591,6 +591,31 @@ func TestAgentProxyProjectScopedListAndCount(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("count by project = %d, want 1", count)
 	}
+
+	// The paginated list path applies the same project filter, alone and
+	// combined with the protocol filter, to the page and the total alike.
+	for _, opts := range []AgentProxyListOptions{
+		{Limit: 10, ProjectUUID: "proj-1"},
+		{Limit: 10, ProjectUUID: "proj-1", Protocol: model.AgentProxyProtocolA2A},
+	} {
+		page, err := repo.List("org-1", opts)
+		if err != nil {
+			t.Fatalf("list %+v: %v", opts, err)
+		}
+		if len(page) != 1 || page[0].Handle != "agent-a" {
+			t.Fatalf("list %+v = %+v, want only agent-a", opts, page)
+		}
+		total, err := repo.Count("org-1", opts)
+		if err != nil {
+			t.Fatalf("count %+v: %v", opts, err)
+		}
+		if total != 1 {
+			t.Fatalf("count %+v = %d, want 1", opts, total)
+		}
+	}
+	if all, err := repo.Count("org-1", AgentProxyListOptions{}); err != nil || all != 2 {
+		t.Fatalf("unfiltered count = %d (%v), want 2", all, err)
+	}
 }
 
 func TestAgentProxyRejectsCrossOrganizationProject(t *testing.T) {
