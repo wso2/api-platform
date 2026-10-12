@@ -53,7 +53,7 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
     path: '/v1/messages',
     extraHeaders: { 'anthropic-version': '2023-06-01' },
     body: {
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5-5',
       max_tokens: 1024,
       messages: [{ role: 'user', content: 'Say hello!' }],
     },
