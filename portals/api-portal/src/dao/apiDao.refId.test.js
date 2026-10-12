@@ -19,8 +19,9 @@
 
 /*
  * ref_id on API updates. A publisher push sets ref_id (Platform API sends its API
- * handle as referenceId) and webhook events carry it, so an update that omits
- * referenceId, such as an edit in the portal UI, must keep the stored value.
+ * handle as referenceId) and webhook events carry it. An update that omits the
+ * referenceId key, such as an edit in the portal UI, keeps the stored value; one
+ * that sends it, null included, writes it.
  */
 
 const test = require('node:test');
@@ -66,29 +67,37 @@ const metadata = (overrides = {}) => ({
     ...overrides,
 });
 
+test('an update without referenceId leaves ref_id untouched', async () => {
+    const statements = [];
+    await loadDao(statements).update('org-1', 'api-1', metadata(), 'admin');
+    const { sql, params } = statements[0];
+    assert.doesNotMatch(sql, /ref_id/);
+    assert.strictEqual(params[0], 'PUBLISHED');
+});
+
+test('an undefined referenceId (YAML without the key) leaves ref_id untouched', async () => {
+    const statements = [];
+    await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: undefined }), 'admin');
+    assert.doesNotMatch(statements[0].sql, /ref_id/);
+});
+
 test('an update with referenceId writes it', async () => {
     const statements = [];
     await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: 'cp-pets' }), 'admin');
     const { sql, params } = statements[0];
-    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id\)/);
+    assert.match(sql, /SET ref_id = \?, status = \?/);
     assert.strictEqual(params[0], 'cp-pets');
-});
-
-test('an update without referenceId keeps the stored ref_id', async () => {
-    const statements = [];
-    await loadDao(statements).update('org-1', 'api-1', metadata(), 'admin');
-    const { sql, params } = statements[0];
-    // COALESCE(NULL, ref_id) leaves the column as it was.
-    assert.match(sql, /SET ref_id = COALESCE\(\?, ref_id\)/);
-    assert.strictEqual(params[0], null);
-    // The next bind is status: no extra fallback parameter.
     assert.strictEqual(params[1], 'PUBLISHED');
 });
 
-test('an empty referenceId on update is treated as omitted', async () => {
-    const statements = [];
-    await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId: '' }), 'admin');
-    assert.strictEqual(statements[0].params[0], null);
+test('an explicit null or empty referenceId clears ref_id', async () => {
+    for (const referenceId of [null, '']) {
+        const statements = [];
+        await loadDao(statements).update('org-1', 'api-1', metadata({ referenceId }), 'admin');
+        const { sql, params } = statements[0];
+        assert.match(sql, /SET ref_id = \?/, JSON.stringify(referenceId));
+        assert.strictEqual(params[0], null, JSON.stringify(referenceId));
+    }
 });
 
 test('create writes the given referenceId and no default', async () => {
