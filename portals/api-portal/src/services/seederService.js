@@ -205,9 +205,8 @@ async function seedOrgDefaults(orgId, operation) {
  * this instance serves (see src/utils/orgContext.js).
  *
  * An organization that already exists is left as the operator has since configured it
- * through the settings UI, with two exceptions: idp_ref_id, which auth.idp_org_id owns
- * outright and reconcileIdpOrgId re-applies on every boot, and an empty cp_ref_id,
- * which is filled with the handle.
+ * through the settings UI, with one exception: idp_ref_id, which auth.idp_org_id owns
+ * outright and reconcileIdpOrgId re-applies on every boot.
  */
 async function seedDefaultOrg() {
     const orgName = orgContext.getHandle();
@@ -226,7 +225,7 @@ async function seedDefaultOrg() {
         // reconcileIdpOrgId re-applies the configured value on later boots.
         idpRefId: orgContext.getIdpOrgId(),
         // Sent as org.ref_id in webhook events, which Platform API resolves by
-        // handle. Settings can override it; later boots only fill an empty one.
+        // handle. Set on create only; settings can override it.
         cpRefId: orgName,
     }, 'seedDefaultOrg');
 
@@ -240,21 +239,6 @@ async function seedDefaultOrg() {
             // write succeeds, which the operator needs to see rather than have startup
             // aborted underneath a working deployment.
             logger.error('Failed to reconcile organization idp_ref_id from configuration', {
-                error: error.message,
-                handle: orgName,
-                operation: 'seedDefaultOrg',
-            });
-        }
-        try {
-            if (await orgDao.backfillCpRefId(org.uuid, orgName, constants.SYSTEM_ACTOR)) {
-                logger.info('Org: cp_ref_id was empty; defaulted to the organization handle', {
-                    handle: orgName,
-                    operation: 'seedDefaultOrg',
-                });
-            }
-        } catch (error) {
-            // Non-fatal for the same reason as above.
-            logger.error('Failed to backfill organization cp_ref_id', {
                 error: error.message,
                 handle: orgName,
                 operation: 'seedDefaultOrg',

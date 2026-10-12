@@ -47,7 +47,7 @@ function duplicateKeyError() {
 }
 
 /** `orgRows` is the mutable "table"; `onCreate` decides what create() does. */
-function loadSeeder({ orgRows, onCreate, orgDao = {}, orgContext = {}, logger = {} }) {
+function loadSeeder({ orgRows, onCreate, orgContext = {} }) {
     const calls = { create: 0, label: 0, view: 0 };
     const stubs = {
         orgDao: {
@@ -57,7 +57,6 @@ function loadSeeder({ orgRows, onCreate, orgDao = {}, orgContext = {}, logger = 
                 return row;
             },
             create: async (payload) => { calls.create++; return onCreate(payload); },
-            ...orgDao,
         },
         labelDao: {
             update: async () => { calls.label++; return { uuid: 'label-1' }; },
@@ -67,7 +66,7 @@ function loadSeeder({ orgRows, onCreate, orgDao = {}, orgContext = {}, logger = 
         planDao: { createMany: async () => {} },
         configLoader: { config: { organization: { autoCreateSubscriptionPlans: false } } },
         orgContext,
-        logger: { error: () => {}, warn: () => {}, info: () => {}, ...logger },
+        logger: { error: () => {}, warn: () => {}, info: () => {} },
         driver: { isDuplicateKeyError: (e) => !!e.duplicate },
     };
     for (const [k, exports] of Object.entries(stubs)) {
@@ -142,74 +141,27 @@ function defaultOrgContext(handle = 'acme') {
     };
 }
 
-function recordingLogger() {
-    const logs = { info: [], error: [] };
-    return {
-        logs,
-        logger: {
-            info: (msg, meta) => logs.info.push({ msg, meta }),
-            error: (msg, meta) => logs.error.push({ msg, meta }),
-        },
-    };
-}
-
 test('a new default org is created with cp_ref_id defaulted to its handle', async () => {
     const rows = [];
-    let backfilled = false;
     const { seeder } = loadSeeder({
         orgRows: rows,
         onCreate: (payload) => { const row = { uuid: 'u-new', ...payload }; rows.push(row); return row; },
-        orgDao: { backfillCpRefId: async () => { backfilled = true; return false; } },
         orgContext: defaultOrgContext(),
     });
     await seeder.seedDefaultOrg();
     assert.strictEqual(rows[0].cpRefId, 'acme');
-    assert.strictEqual(backfilled, false, 'a freshly created row needs no backfill');
 });
 
-test('an existing default org with an empty cp_ref_id is backfilled with the handle', async () => {
-    const row = { uuid: 'u-acme', handle: 'acme', idp_ref_id: 'acme-id', cp_ref_id: null };
-    const backfillCalls = [];
-    const { logs, logger } = recordingLogger();
-    const { seeder } = loadSeeder({
-        orgRows: [row],
-        onCreate: () => assert.fail('must not create'),
-        orgDao: { backfillCpRefId: async (...args) => { backfillCalls.push(args); return true; } },
-        orgContext: defaultOrgContext(),
-        logger,
-    });
-    await seeder.seedDefaultOrg();
-    assert.deepStrictEqual(backfillCalls.map((a) => a.slice(0, 2)), [['u-acme', 'acme']]);
-    assert.ok(logs.info.some((l) => /cp_ref_id was empty/.test(l.msg)));
-});
-
-test('an existing default org whose cp_ref_id is already set is left alone', async () => {
-    const row = { uuid: 'u-acme', handle: 'acme', idp_ref_id: 'acme-id', cp_ref_id: 'custom-ref' };
-    const { logs, logger } = recordingLogger();
-    const { seeder } = loadSeeder({
-        orgRows: [row],
-        onCreate: () => assert.fail('must not create'),
-        // The DAO only writes while the column is empty, so it reports no change here.
-        orgDao: { backfillCpRefId: async () => false },
-        orgContext: defaultOrgContext(),
-        logger,
-    });
-    await seeder.seedDefaultOrg();
-    assert.ok(!logs.info.some((l) => /cp_ref_id was empty/.test(l.msg)));
-});
-
-test('a failed cp_ref_id backfill is logged and does not stop startup', async () => {
+// cp_ref_id is set on create only, so a value an admin set (or cleared) in settings
+// survives restarts.
+test('an existing default org keeps its cp_ref_id across restarts', async () => {
     const row = { uuid: 'u-acme', handle: 'acme', idp_ref_id: 'acme-id', cp_ref_id: '' };
-    const { logs, logger } = recordingLogger();
-    const { seeder } = loadSeeder({
+    const { seeder, calls } = loadSeeder({
         orgRows: [row],
         onCreate: () => assert.fail('must not create'),
-        orgDao: { backfillCpRefId: async () => { throw new Error('db down'); } },
         orgContext: defaultOrgContext(),
-        logger,
     });
     await seeder.seedDefaultOrg();
-    const failure = logs.error.find((l) => /backfill organization cp_ref_id/.test(l.msg));
-    assert.ok(failure, 'expected the backfill failure to be logged');
-    assert.strictEqual(failure.meta.error, 'db down');
+    assert.strictEqual(calls.create, 0);
+    assert.strictEqual(row.cp_ref_id, '');
 });

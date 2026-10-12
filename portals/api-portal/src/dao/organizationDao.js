@@ -214,21 +214,6 @@ const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
 };
 
 /**
- * Fills cp_ref_id only while it is empty, so the seeder can repair rows that
- * predate the handle default without overwriting a value set in settings.
- * Returns whether a row was changed.
- */
-const backfillCpRefId = async (orgUuid, cpRefId, actor, t) => {
-    const exec = t || db;
-    const { rowCount } = await exec.execute(
-        `UPDATE ${ORG_TABLE} SET cp_ref_id = ?, updated_by = ?, updated_at = ?
-         WHERE uuid = ? AND portal_id = ? AND (cp_ref_id IS NULL OR cp_ref_id = '')`,
-        [cpRefId, actor, new Date(), orgUuid, getPortalId()]
-    );
-    return rowCount > 0;
-};
-
-/**
  * Returns another organization that findOrgByIdentifier would resolve `value` to —
  * i.e. one whose handle, display_name, or idp_ref_id already equals it — or null.
  *
@@ -470,7 +455,6 @@ module.exports = {
     list,
     update,
     updateIdpRefId,
-    backfillCpRefId,
     findOtherOrgClaimingIdentifier,
     delete: deleteOrg,
     createContent,
