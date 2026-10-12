@@ -93,9 +93,6 @@ const DEFAULTS = {
             maximumProtocolVersion: 'TLS1_3',
             ciphers: '',
             ecdhCurves: 'X25519,P-256',
-            // Skips peer certificate verification on outbound calls (webhook
-            // delivery, Platform API login, IDP token). Non-production only.
-            insecureSkipVerify: false,
         },
     },
     // driver selects the dialect adapter in db/driver.js. Aliases are accepted
@@ -352,6 +349,9 @@ const DEFAULTS = {
             pollIntervalMs: 2000,
             batchSize: 50,
             signatureToleranceSec: 300,
+            // Skips certificate verification for webhook delivery only, e.g. to a
+            // self-signed subscriber. Development only.
+            tlsSkipVerify: false,
         },
     },
     // Upload and archive-extraction limits.

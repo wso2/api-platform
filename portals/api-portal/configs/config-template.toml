@@ -474,6 +474,9 @@ enabled_types = ["apis", "mcp-servers", "api-workflows"]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300
+# Development only: skip certificate verification when delivering to a
+# subscriber with a self-signed certificate. Other outbound calls stay verified.
+tls_skip_verify = false
 
 # =============================================================================
 # UPLOAD LIMITS

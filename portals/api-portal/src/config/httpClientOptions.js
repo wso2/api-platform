@@ -58,12 +58,7 @@ function buildOutboundAgents(config) {
     }
 
     const httpClientCfg = config.httpClient || {};
-    const tlsCfg = httpClientCfg.tls || {};
-    const tlsOptions = buildTLSOptions(tlsCfg);
-    // Opt-in only; certificates are verified by default.
-    if (tlsCfg.insecureSkipVerify === true) {
-        tlsOptions.rejectUnauthorized = false;
-    }
+    const tlsOptions = buildTLSOptions(httpClientCfg.tls || {});
 
     const pooling = {
         keepAlive: httpClientCfg.keepAlive !== false,

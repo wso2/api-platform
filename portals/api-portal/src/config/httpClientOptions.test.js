@@ -58,18 +58,3 @@ test('buildOutboundAgents fails closed on an invalid cipher/curve/version', () =
         httpClient: { ...DEFAULTS.httpClient, tls: { ...DEFAULTS.httpClient.tls, ecdhCurves: 'not-a-curve' } },
     }));
 });
-
-test('outbound certificate verification stays on unless insecure_skip_verify is set', () => {
-    const verified = freshModule().buildOutboundAgents({ httpClient: DEFAULTS.httpClient });
-    assert.notEqual(verified.httpsAgent.options.rejectUnauthorized, false);
-
-    const httpClient = { ...DEFAULTS.httpClient, tls: { ...DEFAULTS.httpClient.tls, insecureSkipVerify: true } };
-    const skipped = freshModule().buildOutboundAgents({ httpClient });
-    assert.equal(skipped.httpsAgent.options.rejectUnauthorized, false);
-});
-
-test('only a boolean true disables outbound certificate verification', () => {
-    const httpClient = { ...DEFAULTS.httpClient, tls: { ...DEFAULTS.httpClient.tls, insecureSkipVerify: 'true' } };
-    const { httpsAgent } = freshModule().buildOutboundAgents({ httpClient });
-    assert.notEqual(httpsAgent.options.rejectUnauthorized, false);
-});

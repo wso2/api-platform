@@ -29,6 +29,20 @@ const orgContext = require('../../utils/orgContext');
 const { buildOutboundAgents } = require('../../config/httpClientOptions');
 
 let running = false;
+let insecureDeliveryAgent = null;
+
+// Webhook delivery's HTTPS agent. tlsSkipVerify gets its own agent so the shared
+// one that other outbound calls use keeps verifying certificates.
+function deliveryHttpsAgent(cfg) {
+    const { httpsAgent, tlsOptions, pooling } = buildOutboundAgents(cfg);
+    if (cfg.webhooks?.delivery?.tlsSkipVerify !== true) {
+        return httpsAgent;
+    }
+    if (!insecureDeliveryAgent) {
+        insecureDeliveryAgent = new https.Agent({ ...pooling, ...tlsOptions, rejectUnauthorized: false });
+    }
+    return insecureDeliveryAgent;
+}
 
 /** The organization to claim work for, or null for every organization (multi-organization mode). */
 async function claimScope() {
@@ -106,7 +120,7 @@ async function post(delivery, event) {
             // Shared, pooled agent: reuses TCP+TLS handshakes across deliveries to the
             // same subscriber instead of paying a fresh one per delivery, and carries
             // the configured cipher/curve/version tuning on the HTTPS side.
-            agent: isHttps ? agents.httpsAgent : agents.httpAgent,
+            agent: isHttps ? deliveryHttpsAgent(config) : agents.httpAgent,
         };
 
         const req = transport.request(options, (res) => {
@@ -228,4 +242,4 @@ function stop() {
     }
 }
 
-module.exports = { start, stop };
+module.exports = { start, stop, deliveryHttpsAgent };
