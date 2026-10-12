@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -26,6 +27,7 @@ import {
   aDeployment,
   aGateway,
   aGraphQLApiDetail,
+  apiUrl,
   collection,
   recorder,
   resource,
@@ -75,6 +77,15 @@ let requests: Recorder;
 beforeEach(() => {
   resetHttpClient();
   requests = recorder();
+  // The shared header reads the API's thumbnail and the overview lists its
+  // documents; neither is what these tests are about, so both default empty.
+  server.use(
+    http.get(
+      apiUrl('/apis/:apiType/:apiId/thumbnail'),
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+    collection('/apis/:apiType/:apiId/docs', []),
+  );
 });
 
 describe('GraphqlApiDetailPage', () => {
@@ -251,6 +262,22 @@ describe('GraphqlApiDetailPage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.method).toBe('PUT');
+  });
+
+  it('lists the API’s documents under the graphql-api type', async () => {
+    const docs = recorder();
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/graphql-apis/:graphqlApiId/gateways', []),
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+      collection('/apis/:apiType/:apiId/docs', [], { record: docs }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('No Documents available for this API')).toBeInTheDocument();
+    expect(docs.last()?.url.pathname).toBe('/api/v0.9/apis/graphql-api/countries-graphql-api/docs');
   });
 
   it('shows an error state when the API cannot be found', async () => {

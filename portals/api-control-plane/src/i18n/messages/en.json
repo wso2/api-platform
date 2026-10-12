@@ -1385,7 +1385,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.publish": {
     "defaultMessage": "Publish",
-    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal."
+    "description": "Fourth step of the API progress stepper — the API is listed in the developer portal. A stage name, not a button command."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.test": {
     "defaultMessage": "Test",
@@ -2357,14 +2357,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
     "defaultMessage": "GraphQL API not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.next": {
-    "defaultMessage": "Next: {step}",
-    "description": "The next incomplete lifecycle step shown beside the progress counter."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlProgressBanner.progress": {
-    "defaultMessage": "{completed} of {total} completed",
-    "description": "Counter beside the lifecycle steps, e.g. \"2 of 4 completed\". Counts the steps of getting an API live, not APIs."
   },
   "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound": {
     "defaultMessage": "GraphQL API not found"

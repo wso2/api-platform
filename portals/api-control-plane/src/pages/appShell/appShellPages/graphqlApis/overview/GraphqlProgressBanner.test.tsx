@@ -52,12 +52,6 @@ describe('GraphqlProgressBanner — before anything is deployed', () => {
     // stay disabled next-next steps rather than clickable pills before deploy.
     expect(screen.getByRole('button', { name: 'Test' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
-    expect(screen.getByText('1 of 4 completed')).toBeInTheDocument();
-    // "Next: " and the step name land in separate nodes (the step name is
-    // wrapped in its own bolded span) — matched via a substring text function
-    // rather than an exact string, and via a prefix (not "Deploy" alone,
-    // which would also match the stepper pill's own label).
-    expect(screen.getByText((_, element) => element?.textContent === 'Next: Deploy')).toBeInTheDocument();
   });
 
   it('navigates to the Deploy page when the Deploy pill is clicked', async () => {
@@ -78,10 +72,6 @@ describe('GraphqlProgressBanner — once deployed', () => {
     // Publish leads to a `ComingSoon` stub with nothing behind it yet, so —
     // unlike Test — it never becomes a real next action, deployed or not.
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
-    // Caps at "2 of 4" and stays there: Test/Publish never mark complete, so
-    // there is no further real signal to advance the counter with.
-    expect(screen.getByText('2 of 4 completed')).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === 'Next: Test')).toBeInTheDocument();
   });
 
   it('navigates to the Test console when the Test pill is clicked', async () => {
