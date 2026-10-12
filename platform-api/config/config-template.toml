@@ -519,14 +519,6 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
-# Lets plugins that provision API Portals themselves register platform-api as
-# a webhook subscriber on them. Portals created through POST /api-portals are
-# not seeded; add the subscriber on those portals by hand.
-auto_seed_subscribers = false
-# Absolute https URL the portal delivers events to, typically
-# "<platform-api-public-base>/api/internal/v0.9/webhook/events". REQUIRED when
-# auto_seed_subscribers = true.
-receiver_url = ""
 
 # ---------------------------------------------------------------------------
 # Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)

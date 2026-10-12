@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -31,7 +30,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -81,21 +79,16 @@ func validateAndEncryptSharedKey(v vault.SecretVault, raw string) ([]byte, error
 
 // APIPortalService encapsulates business logic for the /api-portals resource.
 type APIPortalService struct {
-	portalRepo        repository.APIPortalRepository
-	orgRepo           repository.OrganizationRepository
-	auditRepo         repository.AuditRepository
-	vault             vault.SecretVault
-	authRegistry      *APIPortalAuthRegistry
-	identity          *IdentityService
-	slogger           *slog.Logger
-	webhookCfg        config.Webhook
-	webhookHTTPClient *http.Client
+	portalRepo   repository.APIPortalRepository
+	orgRepo      repository.OrganizationRepository
+	auditRepo    repository.AuditRepository
+	vault        vault.SecretVault
+	authRegistry *APIPortalAuthRegistry
+	identity     *IdentityService
+	slogger      *slog.Logger
 }
 
-// NewAPIPortalService constructs an APIPortalService. webhookCfg + httpClient
-// drive EnsureWebhookSubscriberOnPortal; a nil httpClient falls back to a
-// bounded client that refuses redirects, so a hung portal cannot stall the
-// caller and credentials are never replayed elsewhere.
+// NewAPIPortalService constructs an APIPortalService.
 func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
@@ -103,23 +96,16 @@ func NewAPIPortalService(
 	secretVault vault.SecretVault,
 	authRegistry *APIPortalAuthRegistry,
 	identity *IdentityService,
-	webhookCfg config.Webhook,
-	httpClient *http.Client,
 	slogger *slog.Logger,
 ) *APIPortalService {
-	if httpClient == nil {
-		httpClient = NewWebhookHTTPClient(false)
-	}
 	return &APIPortalService{
-		portalRepo:        portalRepo,
-		orgRepo:           orgRepo,
-		auditRepo:         auditRepo,
-		vault:             secretVault,
-		authRegistry:      authRegistry,
-		identity:          identity,
-		slogger:           slogger,
-		webhookCfg:        webhookCfg,
-		webhookHTTPClient: httpClient,
+		portalRepo:   portalRepo,
+		orgRepo:      orgRepo,
+		auditRepo:    auditRepo,
+		vault:        secretVault,
+		authRegistry: authRegistry,
+		identity:     identity,
+		slogger:      slogger,
 	}
 }
 
@@ -236,7 +222,6 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
-
 	return ModelToAPIPortalResponse(portal), nil
 }
 

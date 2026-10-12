@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -412,20 +411,6 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
-	// AutoSeedSubscribers lets EnsureWebhookSubscriberOnPortal register
-	// platform-api as a webhook subscriber on a portal (POST
-	// /webhook-subscribers). Only plugin callers that provision the portal URL
-	// themselves invoke it; portals created through POST /api-portals are never
-	// seeded, because the request carries the shared webhook secret and that
-	// URL is caller-supplied. Default off.
-	AutoSeedSubscribers bool `koanf:"auto_seed_subscribers"`
-	// ReceiverURL is the full URL the portal POSTs webhook deliveries to -
-	// usually "<platform-api-public-base>/api/internal/v0.9/webhook/events".
-	// Only consulted when AutoSeedSubscribers is true. Deliberately explicit
-	// instead of derived from server.base_url: platform-api's inbound
-	// listener may sit behind a reverse proxy / gateway whose outside-world
-	// hostname is not knowable from the listener config.
-	ReceiverURL string `koanf:"receiver_url"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -1289,11 +1274,6 @@ func warnRemovedConfigKeys(k *koanf.Koanf) {
 
 func validateWebhookConfig(w *Webhook) error {
 	if !w.Enabled {
-		// Seeding registers a subscriber that delivers to this webhook endpoint, so
-		// the opt-in must not appear active while the endpoint is off.
-		if w.AutoSeedSubscribers {
-			return fmt.Errorf("webhook.auto_seed_subscribers=true requires webhook.enabled=true")
-		}
 		return nil
 	}
 	if w.Secret == "" {
@@ -1307,21 +1287,6 @@ func validateWebhookConfig(w *Webhook) error {
 	}
 	if w.SignatureHeader == "" {
 		w.SignatureHeader = "X-Api-Portal-Signature"
-	}
-	// AutoSeedSubscribers needs a reachable receiver URL for the portal to
-	// POST deliveries to; without it the seeded subscriber row would be a
-	// no-op. Fail-closed at boot rather than silently seeding an unusable
-	// row at every Create.
-	if w.AutoSeedSubscribers && w.ReceiverURL == "" {
-		return fmt.Errorf("webhook.auto_seed_subscribers=true requires webhook.receiver_url to be configured")
-	}
-	// Deliveries carry event payloads, so hold the seeded target to the same
-	// https rule the portal URL itself must satisfy.
-	if w.AutoSeedSubscribers {
-		u, err := url.Parse(w.ReceiverURL)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" {
-			return fmt.Errorf("webhook.receiver_url must be an absolute https URL when webhook.auto_seed_subscribers=true")
-		}
 	}
 	return nil
 }

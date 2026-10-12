@@ -389,10 +389,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	// Respects the shared platform_api.http_client.tls block so the seed reaches a
-	// self-signed portal in local dev the same way the other outbound calls do.
-	webhookHTTPClient := service.NewWebhookHTTPClient(cfg.HTTPClient.TLS.InsecureSkipVerify)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, cfg.Webhook, webhookHTTPClient, slogger)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
