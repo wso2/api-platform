@@ -27,9 +27,11 @@ import { routes } from '@/routes/paths';
 import {
   accepts,
   apiUrl,
+  aGateway,
   aPublication,
   aPublicationDraftDetails,
   aRestApi,
+  collection,
   failure,
   noContent,
   recorder,
@@ -75,7 +77,8 @@ const api = aRestApi({
   displayName: 'Loan Management Service',
   id: API,
   projectId: PROJECT,
-  upstream: { main: { url: 'https://backend.internal/loans' } },
+  context: '/loans',
+  upstream: { main: { url: 'https://backend.internal/loans' }, sandbox: { url: 'https://sandbox.backend.internal/loans' } },
   version: '1.0.0',
 });
 
@@ -109,6 +112,14 @@ const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
 const DEPRECATE_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/deprecate`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
+const GATEWAYS_PATH = `/rest-apis/${API}/gateways`;
+
+/** A gateway the API is deployed to, as the API's gateway list returns it. */
+const deployedGateway = (id: string, displayName: string, endpoint: string) => ({
+  ...aGateway({ displayName, endpoints: [endpoint], id }),
+  associatedAt: '2026-01-01T00:00:00Z',
+  isDeployed: true,
+});
 
 /** The definition chain's three tiers, each with its own call recorder. */
 function definitionTierRecorders() {
@@ -124,13 +135,16 @@ function servePublicationState({
   draft,
   publication,
   definitionRecorders = definitionTierRecorders(),
+  gateways = [],
 }: {
   draft?: PublicationDraftDetailsFixture;
   publication?: PublicationFixture;
   definitionRecorders?: ReturnType<typeof definitionTierRecorders>;
+  gateways?: ReturnType<typeof deployedGateway>[];
 } = {}) {
   server.use(
     resource('/rest-apis/:restApiId', api),
+    collection(GATEWAYS_PATH, gateways),
     draft ? resource(DRAFT_PATH, draft) : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
     failure('get', DRAFT_DEFINITION_PATH, 404, 'DRAFT_NOT_FOUND', {
       record: definitionRecorders.draftDefinition,
@@ -199,8 +213,65 @@ describe('PortalPublishPage', () => {
 
     expect(await screen.findByDisplayValue('Loan Management Service')).toBeInTheDocument();
     expect(screen.getByDisplayValue('1.0.0')).toBeInTheDocument();
-    // Falls back to the API's own upstream URL, not a draft/publication one.
-    expect(screen.getByDisplayValue('https://backend.internal/loans')).toBeInTheDocument();
+    // No gateway to default to, and the backend URLs are not exposed.
+    expect(screen.getByRole('combobox', { name: 'Production URL' })).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Sandbox URL' })).toHaveValue('');
+    expect(screen.queryByDisplayValue('https://backend.internal/loans')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('https://sandbox.backend.internal/loans')).not.toBeInTheDocument();
+  });
+
+  it('still opens, with no Production URL default, when the gateways cannot be read', async () => {
+    servePublicationState();
+    server.use(failure('get', GATEWAYS_PATH, 500, 'INTERNAL_ERROR'));
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue('Loan Management Service')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Production URL' })).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'Show gateway URLs' })).not.toBeInTheDocument();
+  });
+
+  it('defaults the Production URL to the first gateway the API is deployed to', async () => {
+    servePublicationState({
+      gateways: [
+        deployedGateway('gw-1', 'Gateway One', 'https://gw-one.test/'),
+        deployedGateway('gw-2', 'Gateway Two', 'https://gw-two.test'),
+      ],
+    });
+    const { user } = renderPage();
+
+    const production = await screen.findByRole('combobox', { name: 'Production URL' });
+    expect(production).toHaveValue('https://gw-one.test/loans');
+
+    await user.click(screen.getByRole('button', { name: 'Show gateway URLs' }));
+    expect(await screen.findByText('https://gw-two.test/loans')).toBeInTheDocument();
+  });
+
+  it('offers only gateways the API is deployed to', async () => {
+    servePublicationState({
+      gateways: [
+        { ...deployedGateway('gw-1', 'Gateway One', 'https://gw-one.test'), isDeployed: false },
+        deployedGateway('gw-2', 'Gateway Two', 'https://gw-two.test'),
+      ],
+    });
+    const { user } = renderPage();
+
+    expect(await screen.findByRole('combobox', { name: 'Production URL' })).toHaveValue('https://gw-two.test/loans');
+
+    await user.click(screen.getByRole('button', { name: 'Show gateway URLs' }));
+    expect(await screen.findByText('Gateway Two')).toBeInTheDocument();
+    expect(screen.queryByText('Gateway One')).not.toBeInTheDocument();
+  });
+
+  it('keeps the saved Production URL over a gateway default', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails(),
+      gateways: [deployedGateway('gw-1', 'Gateway One', 'https://gw-one.test')],
+    });
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue('https://api.example.com/loans')).toBeInTheDocument();
   });
 
   it('rejects a Production URL that is not a full URL', async () => {

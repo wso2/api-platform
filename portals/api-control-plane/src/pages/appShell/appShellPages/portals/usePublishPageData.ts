@@ -27,7 +27,12 @@ import {
 } from '@/api/resources/apiPublications';
 import { isApiError } from '@/api/core/errors';
 import { useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
-import { resolveDraftFormValues, type DraftFormValues } from './utils/publicationForm';
+import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import {
+  buildProductionUrlOptions,
+  resolveDraftFormValues,
+  type DraftFormValues,
+} from './utils/publicationForm';
 import { readStoredDefinition, type StoredDefinition } from './utils/storedDefinition';
 
 /** What the editor opens with: the details and the definition, from the freshest tier that has them. */
@@ -54,6 +59,10 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  * (draft definition, then publication definition, then the API's own spec);
  * passing `undefined` for the API handle keeps a tier's query disabled.
  *
+ * The API's gateways are read too, for the Production URL's choices and its
+ * default (the first); they gate the seed so the default is there when it is
+ * made, but a failed read only leaves the choices empty.
+ *
  * The published definition is also fetched, on demand, when `wantPublishedDefinition`
  * is set and the API is live — the same query as the fallback tier, so a definition already read
  * for the pre-fill is reused, and one read for the viewer is not read again
@@ -65,6 +74,7 @@ const liveData = <T,>(query: { data: T | undefined; error: unknown }): T | undef
  */
 export function usePublishPageData(apiPortalId: string, apiHandler: string, wantPublishedDefinition: boolean) {
   const apiQuery = useRestApi(apiHandler);
+  const gatewaysQuery = useRestApiGateways(apiHandler);
   const draftQuery = useApiPublicationDraft(apiPortalId, REST_API_TYPE, apiHandler);
   const publicationQuery = useApiPublication(apiPortalId, REST_API_TYPE, apiHandler);
   const draftDefinitionQuery = useApiPublicationDraftDefinition(apiPortalId, REST_API_TYPE, apiHandler);
@@ -86,10 +96,18 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
   // has ever been uploaded.
   const apiOpenApiQuery = useRestApiOpenApi(publicationDefinitionAbsent ? apiHandler : undefined);
 
+  // Where the API is served; the first is the Production URL's default.
+  // A failed read just leaves the list empty, so it never blocks the page.
+  const productionUrlOptions = useMemo(
+    () => buildProductionUrlOptions(gatewaysQuery.data?.list ?? [], apiQuery.data?.context),
+    [apiQuery.data?.context, gatewaysQuery.data],
+  );
+
   // A disabled query stays `isPending` forever, so a definition tier only blocks
   // the page once its predecessor is confirmed absent and it is actually running.
   const isPending =
     apiQuery.isPending ||
+    gatewaysQuery.isPending ||
     draftQuery.isPending ||
     publicationQuery.isPending ||
     draftDefinitionQuery.isPending ||
@@ -97,6 +115,7 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
     (publicationDefinitionAbsent && apiOpenApiQuery.isPending);
   const isRevalidating = [
     apiQuery,
+    gatewaysQuery,
     draftQuery,
     publicationQuery,
     draftDefinitionQuery,
@@ -144,14 +163,24 @@ export function usePublishPageData(apiPortalId: string, apiHandler: string, want
       (draftDefinitionData && readStoredDefinition(draftDefinitionData.text, draftDefinitionData.contentType)) ??
       publishedDefinition ??
       (apiOpenApiData ? readStoredDefinition(apiOpenApiData.content) : undefined);
-    return { definition, values: resolveDraftFormValues(draft, publication, apiQuery.data) };
-  }, [isLoading, apiQuery.data, draft, publication, draftDefinitionData, publishedDefinition, apiOpenApiData]);
+    return { definition, values: resolveDraftFormValues(draft, publication, apiQuery.data, productionUrlOptions[0]?.url) };
+  }, [
+    isLoading,
+    apiQuery.data,
+    draft,
+    publication,
+    draftDefinitionData,
+    publishedDefinition,
+    apiOpenApiData,
+    productionUrlOptions,
+  ]);
 
   return {
     api: apiQuery.data,
     draft,
     error,
     isLoading,
+    productionUrlOptions,
     publication,
     publishedDefinition: {
       definition: publishedDefinition,

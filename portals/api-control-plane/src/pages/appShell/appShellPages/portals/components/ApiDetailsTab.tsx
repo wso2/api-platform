@@ -42,7 +42,12 @@ import { useState, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { apiInitials } from '../../apis/utils/restApiDisplay';
-import type { DraftFormField, DraftFormValues, FormFieldErrors } from '../utils/publicationForm';
+import type {
+  DraftFormField,
+  DraftFormValues,
+  FormFieldErrors,
+  GatewayUrlOption,
+} from '../utils/publicationForm';
 
 const messages = defineMessages({
   nameLabel: {
@@ -100,9 +105,6 @@ const THUMBNAIL_WIDTH = 72;
 const THUMBNAIL_MIN_HEIGHT = 64;
 const THUMBNAIL_FONT_SIZE = 28;
 const THUMBNAIL_ICON_SIZE = 24;
-
-/** A URL the Production URL can be picked from, and the gateway that serves it. */
-export type GatewayUrlOption = { gatewayName: string; url: string };
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
