@@ -17,7 +17,7 @@
  */
 
 import { Box, ComplexSelect, Header, IconButton } from '@wso2/oxygen-ui';
-import { Boxes, Building, Layers, X } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, BoxIcon, Building, X } from '@wso2/oxygen-ui-icons-react';
 import { useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -197,7 +197,7 @@ export function HeaderScopeSwitchers() {
             renderOptionContent={(option) => (
               <>
                 <ComplexSelect.MenuItem.Icon>
-                  <Layers size={18} />
+                  <BoxIcon size={18} />
                 </ComplexSelect.MenuItem.Icon>
                 <ComplexSelect.MenuItem.Text
                   primary={option.name}

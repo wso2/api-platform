@@ -19,6 +19,7 @@
 import { useIntl } from 'react-intl';
 import { defineMessages } from 'react-intl';
 
+import { AppPage } from '@/components/AppPage';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -36,13 +37,15 @@ export function DefinitionPage() {
   const { params } = useConsoleScope();
 
   return (
-    <ScopeGate
-      prompt={intl.formatMessage(messages.scopePrompt)}
-      requires="api"
-      to={routes.apiDevelopDefinition}
-    >
-      {/* key remounts the panel when the API changes, resetting all editor state. */}
-      <DefinitionPanel key={params.apiHandler} />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt={intl.formatMessage(messages.scopePrompt)}
+        requires="api"
+        to={routes.apiDevelopDefinition}
+      >
+        {/* key remounts the panel when the API changes, resetting all editor state. */}
+        <DefinitionPanel key={params.apiHandler} />
+      </ScopeGate>
+    </AppPage>
   );
 }

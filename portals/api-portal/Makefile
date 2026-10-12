@@ -71,10 +71,16 @@ help: ## Show this help message
 # Build Targets
 
 .PHONY: build
-build: ## Build API Portal Docker image
-	@echo "Building API Portal Docker image ($(VERSION))..."
+# ENABLE_COVERAGE=true instruments the browser scripts and creates /coverage in
+# the image, which is what the integration suite's coverage run needs. Off by
+# default: an instrumented image is for measuring, never for shipping.
+ENABLE_COVERAGE ?= false
+
+build: ## Build API Portal Docker image (ENABLE_COVERAGE=true to instrument it)
+	@echo "Building API Portal Docker image ($(VERSION), coverage=$(ENABLE_COVERAGE))..."
 	docker buildx build \
 		--build-context coverage-scripts=../../tests/framework/tools \
+		--build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--load \
 		.

@@ -25,6 +25,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 )
 
 // Selection narrows the blocks, runners, and coverage mode used for a run.
@@ -55,6 +58,10 @@ type Selection struct {
 	// GatewayVersion overrides the image version for platform-gateway components.
 	GatewayVersion string
 
+	// GatewayHost overrides the image repository prefix for platform-gateway
+	// controller and runtime images.
+	GatewayHost string
+
 	// CloudEnvironment selects the external cloud environment used by cloud-console.
 	CloudEnvironment string
 }
@@ -80,8 +87,61 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 		"build instrumented source images and collect runtime coverage")
 	fs.StringVar(&s.GatewayVersion, "gateway-version", "",
 		"override the platform-gateway image version for this run")
+	fs.StringVar(&s.GatewayHost, "host", "",
+		"override the platform-gateway image repository prefix (requires -gateway-version)")
 	fs.StringVar(&s.CloudEnvironment, "cloud-env", "",
 		"select the cloud environment for external cloud-console components")
+}
+
+func normalizeGatewayHost(raw string) (string, error) {
+	host := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if host == "" {
+		return "", nil
+	}
+	if strings.Contains(host, "://") || strings.ContainsAny(host, " \t\r\n?#") {
+		return "", fmt.Errorf("topology: -host must be an image repository prefix such as docker.io/isurangaws")
+	}
+	return host, nil
+}
+
+func withGatewayHost(def *components.Definition, host string) *components.Definition {
+	if def == nil || host == "" {
+		return def
+	}
+	out := *def
+	out.Image = withGatewayImageHost(def.Image, host)
+	if def.Compose == nil {
+		return &out
+	}
+	compose := *def.Compose
+	if def.Compose.Env != nil {
+		compose.Env = maps.Clone(def.Compose.Env)
+		for key, ref := range compose.Env {
+			if strings.HasSuffix(key, "_IMAGE") {
+				compose.Env[key] = rewriteGatewayImageHost(ref, host)
+			}
+		}
+	}
+	out.Compose = &compose
+	return &out
+}
+
+func withGatewayImageHost(image components.ImageRef, host string) components.ImageRef {
+	image.Ref = rewriteGatewayImageHost(image.Ref, host)
+	if len(image.ByArch) > 0 {
+		image.ByArch = maps.Clone(image.ByArch)
+		for arch, ref := range image.ByArch {
+			image.ByArch[arch] = rewriteGatewayImageHost(ref, host)
+		}
+	}
+	return image
+}
+
+func rewriteGatewayImageHost(ref, host string) string {
+	if !strings.HasPrefix(ref, shared.GatewayReleaseRegistry+"/") {
+		return ref
+	}
+	return host + strings.TrimPrefix(ref, shared.GatewayReleaseRegistry)
 }
 
 func splitList(v string) []string {
@@ -108,6 +168,13 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 	if strings.TrimSpace(s.GatewayVersion) != "" && s.Coverage {
 		return nil, fmt.Errorf("topology: -gateway-version cannot be combined with -coverage; coverage requires framework-built gateway images")
+	}
+	gatewayHost, err := normalizeGatewayHost(s.GatewayHost)
+	if err != nil {
+		return nil, err
+	}
+	if gatewayHost != "" && strings.TrimSpace(s.GatewayVersion) == "" {
+		return nil, fmt.Errorf("topology: -host requires -gateway-version")
 	}
 	out := &Resolved{
 		Name:     resolved.Name,
@@ -141,6 +208,9 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 					component.Def, err = component.Def.WithReleaseVersion(version)
 					if err != nil {
 						return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+					}
+					if gatewayHost != "" {
+						component.Def = withGatewayHost(component.Def, gatewayHost)
 					}
 					component.Version = version
 					component.BuildFromSource = false

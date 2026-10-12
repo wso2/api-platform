@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGateways } from '@/api/resources/gateways';
 import { useRestApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
+import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -81,9 +82,15 @@ const messages = defineMessages({
  */
 export function DeployPage() {
   return (
-    <ScopeGate prompt="Deployments are made for a single API." requires="api" to={routes.apiDeploy}>
-      <Deploy />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Deployments are made for a single API."
+        requires="api"
+        to={routes.apiDeploy}
+      >
+        <Deploy />
+      </ScopeGate>
+    </AppPage>
   );
 }
 

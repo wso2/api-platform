@@ -413,11 +413,12 @@ Feature: Presenting a gateway identity to backends that require a client certifi
     When I create Agent from "resources/templates/agent.yaml" with values:
       | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:agentName} |
-      | spec.displayName         | Outbound Refused Agent |
-      | spec.version             | v1.0 |
-      | spec.context             | ${CTX:agentContext} |
+      | displayName              | Outbound Refused Agent |
+      | context                  | ${CTX:agentContext} |
+      | upstreamUrl              | https://tls-backend:8443 |
+      | transports               | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
       | spec.upstreamDefinitions | [{"name":"partner-a","upstreams":[{"url":"https://tls-backend:8443"}],"tls":{"identity":"out-missing"}}] |
-      | spec.upstream.ref        | partner-a |
+      | spec.upstream            | {"ref":"partner-a"} |
       | spec.a2a                 | {"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC","pathPrefix":"/"}]},"agentCard":{"public":{"mode":"passthrough"}}} |
     Then the response status should be 400
     And the response should list a validation error for field "spec.upstreamDefinitions[0].tls.identity" with message "no gateway identity named out-missing exists on this gateway"
@@ -428,11 +429,12 @@ Feature: Presenting a gateway identity to backends that require a client certifi
     When I create Agent from "resources/templates/agent.yaml" with values:
       | apiVersion               | ${CTX:gatewaySpecVersion} |
       | name                     | ${CTX:agentName} |
-      | spec.displayName         | Outbound Partner Agent |
-      | spec.version             | v1.0 |
-      | spec.context             | ${CTX:agentContext} |
+      | displayName              | Outbound Partner Agent |
+      | context                  | ${CTX:agentContext} |
+      | upstreamUrl              | https://tls-backend:8443 |
+      | transports               | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
       | spec.upstreamDefinitions | [{"name":"partner-a","upstreams":[{"url":"https://tls-backend:8443"}],"tls":{"identity":"${CTX:identityA}","trustedCAs":["${CTX:backendCA}"]}}] |
-      | spec.upstream.ref        | partner-a |
+      | spec.upstream            | {"ref":"partner-a"} |
       | spec.a2a                 | {"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC","pathPrefix":"/"}]},"agentCard":{"public":{"mode":"passthrough"}}} |
     Then the response should be successful
     When I delete the gateway identity named "${CTX:identityA}"

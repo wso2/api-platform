@@ -234,8 +234,8 @@ func parseGatewayVersionConstraint(raw string) (gatewayVersionConstraint, error)
 // a four-part released tag such as 1.2.0.6, which compares on its first
 // three parts.
 func parseGatewayReleaseVersion(raw string) (gatewayReleaseVersion, error) {
-	raw = strings.TrimPrefix(raw, "v")
-	parts := strings.Split(raw, ".")
+	trimmed := strings.TrimPrefix(raw, "v")
+	parts := strings.Split(trimmed, ".")
 	if len(parts) != 3 && len(parts) != 4 {
 		return gatewayReleaseVersion{}, fmt.Errorf("gateway version %q must be a release SemVer (major.minor.patch) or a four-part released tag", raw)
 	}

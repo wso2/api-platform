@@ -224,6 +224,12 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, apperror.RESTAPINotFound.New()
 	}
 
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(apiModel.Kind, gateway.Version); err != nil {
+		return nil, err
+	}
+
 	// DP-originated artifacts are read-only in the control plane and cannot be
 	// (re)deployed from the CP.
 	if err := ensureOriginMutable(apiModel.Origin); err != nil {
@@ -357,10 +363,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	// target gateway's data version. Builds are stored at a platform data version,
 	// so a build prepared before a gateway upgrade still deploys onto it.
 	applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
+	translation, err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, gateway.Version, apiDeployment)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
 	}
+	LogTranslationWarnings(s.slogger, translation, apiModel.Kind, deploymentID, gatewayID, gateway.Version)
 	contentBytes, err := yaml.Marshal(apiDeployment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
@@ -517,6 +524,10 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
 		return nil, apperror.GatewayNotFound.New()
+	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.RestApi, gateway.Version); err != nil {
+		return nil, err
 	}
 
 	// Transitional until the gateway acknowledges the artifact.
@@ -707,10 +718,11 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 
 	if ack.Status == "failed" {
 		// Failure ack: overwrite any status (DEPLOYING, DEPLOYED, UNDEPLOYING) to FAILED
-		// as long as performed_at matches
+		// as long as performed_at matches. The gateway's errorCode is stored and
+		// served as statusReason, so only a code-shaped value is kept.
 		rowsAffected, err := s.deploymentRepo.UpdateStatusWithPerformedAtGuard(
 			ack.ArtifactID, orgID, gatewayID,
-			model.DeploymentStatusFailed, ack.ErrorCode,
+			model.DeploymentStatusFailed, sanitizeDeploymentStatusReason(ack.ErrorCode),
 			ack.PerformedAt, nil,
 		)
 		if err != nil {
@@ -755,6 +767,27 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 	}
 
 	return fmt.Errorf("unknown ack status: %s", ack.Status)
+}
+
+// maxStatusReasonLen is the width of deployment_status.status_reason.
+const maxStatusReasonLen = 50
+
+// statusReasonShape is the only form a stored status reason may take: an error
+// code. Free text — an error string, a value that happens to carry a credential
+// — is never persisted or served as a deployment's statusReason.
+var statusReasonShape = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+// sanitizeDeploymentStatusReason keeps a gateway-supplied reason only if it is
+// shaped like a code and fits the column. An empty reason stays empty (stored as
+// NULL); anything malformed becomes GATEWAY_PROCESSING_ERROR.
+func sanitizeDeploymentStatusReason(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if len(raw) > maxStatusReasonLen || !statusReasonShape.MatchString(raw) {
+		return model.DeploymentErrorGatewayFailure
+	}
+	return raw
 }
 
 // validateEndpointURL validates the format of an endpoint URL

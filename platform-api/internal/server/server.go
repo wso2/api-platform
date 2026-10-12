@@ -100,6 +100,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, err
 	}
 
+	// TEMP-READ-ONLY-MODE: announce the mode up front, before any startup writer
+	// runs. It is a per-process, restart-time setting, so this line is also what
+	// makes per-replica config drift visible in the logs. Remove with config/readonly.go.
+	if cfg.ReadOnly.Enabled {
+		slogger.Warn("READ-ONLY MODE ENABLED — write operations are rejected with HTTP 503 for every organization "+
+			"except the writable ones listed here",
+			slog.Int("writableOrganizationCount", len(cfg.ReadOnly.WritableOrganizations)),
+			slog.Any("writableOrganizations", cfg.ReadOnly.WritableOrganizations))
+	} else if len(cfg.ReadOnly.WritableOrganizations) > 0 {
+		slogger.Warn("read_only.writable_organizations is set but read_only.enabled is false — the list has no effect",
+			slog.Int("writableOrganizationCount", len(cfg.ReadOnly.WritableOrganizations)))
+	}
+	// TEMP-READ-ONLY-MODE: end
+
 	// Initialize database using configuration
 	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
@@ -139,9 +153,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
+	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
-	secretRepo := repository.NewSecretRepo(db)
+	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
 	apiPortalRepo := repository.NewAPIPortalRepo(db)
 	documentRepo := repository.NewDocumentRepo(db)
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
@@ -193,6 +208,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			}
 			for _, org := range orgs {
 				if org == nil || org.ID == "" {
+					continue
+				}
+				if cfg.ReadOnly.IsReadOnlyOrg(org.ID) { // TEMP-READ-ONLY-MODE: remove with config/readonly.go
+					slogger.Debug("Read-only mode: skipping LLM template seeding", "orgID", org.ID)
 					continue
 				}
 				if seedErr := llmTemplateSeeder.SeedForOrg(org.ID); seedErr != nil {
@@ -249,16 +268,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
 		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo, identityService)
-	apiDocumentService := service.NewAPIDocumentService(documentRepo, auditRepo, slogger)
+	apiDocumentService := service.NewAPIDocumentService(documentRepo, artifactRepo, auditRepo, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	// One definition per artifact kind, indexed by the kind the artifact row
 	// carries. Builds and deployments are shared across kinds; rendering is the
@@ -268,6 +287,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
 		service.NewLLMProxyDefinition(llmProxyRepo),
 		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
+		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 	)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
@@ -275,6 +295,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -294,6 +315,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	)
 	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	agentProxyAPIKeyService := service.NewAgentProxyAPIKeyService(agentProxyRepo, apiKeyRepo, identityService)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
@@ -319,6 +341,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
+	agentDeploymentService := service.NewAgentDeploymentService(
+		agentProxyRepo,
+		deploymentRepo,
+		gatewayRepo,
+		artifactRepo,
+		apiKeyRepo,
+		gatewayEventsService,
+		artifactDefinitions,
+		cfg,
+		slogger,
+	)
 	// One place that knows which service serves which artifact kind, so plugins and
 	// the per-kind paths reach the same code.
 	deploymentsByKind := service.NewDeploymentsByKind(
@@ -326,6 +359,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		mcpDeploymentService,
 		llmProxyDeploymentService,
 		llmProviderDeploymentService,
+		agentDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -333,6 +367,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmTemplateRepo,
 		llmProxyRepo,
 		mcpProxyRepo,
+		agentProxyRepo,
 		artifactRepo,
 		deploymentRepo,
 		gatewayRepo,
@@ -340,6 +375,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 		mcpProxyService,
+		agentProxyService,
 	)
 
 	// Initialize secret vault and service using the single configured encryption key.
@@ -364,6 +400,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
+	apiDocumentHandler := handler.NewAPIDocumentHandler(apiDocumentService, identityService, slogger, cfg)
+	apiThumbnailHandler := handler.NewAPIThumbnailHandler(apiDocumentService, identityService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
@@ -381,13 +419,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
+	agentProxyHandler := handler.NewAgentProxyHandler(agentProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
+	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
+	agentProxyAPIKeyHandler := handler.NewAgentProxyAPIKeyHandler(apiKeyService, agentProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
+	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
+	// Gateways older than the secret-sync release receive artifacts with the
+	// placeholders already resolved; the internal fetch path needs the store for that.
+	internalGatewayService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
@@ -396,6 +441,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Timeout:  time.Duration(cfg.Deployments.TimeoutDuration) * time.Second,
 	}
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
+
+	// TEMP-READ-ONLY-MODE: wire the read-only mode into the components that write
+	// outside the HTTP guard (gateway-token routes, the WebSocket connection, the
+	// timeout job; the webhook receiver is wired where it is built). Remove this
+	// block together with the *_readonly.go files.
+	wsHandler.SetReadOnly(&cfg.ReadOnly)
+	internalGatewayHandler.SetReadOnly(&cfg.ReadOnly)
+	timeoutService.SetReadOnly(&cfg.ReadOnly)
+	// TEMP-READ-ONLY-MODE: end
 
 	slogger.Info("Initialized all services and handlers successfully")
 
@@ -428,6 +482,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	appHandler.RegisterRoutes(core)
 	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
+	apiDocumentHandler.RegisterRoutes(core)
+	apiThumbnailHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
@@ -444,6 +500,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProxyDeploymentHandler.RegisterRoutes(core)
 	mcpProxyHandler.RegisterRoutes(core)
 	mcpProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyHandler.RegisterRoutes(core)
+	agentProxyDeploymentHandler.RegisterRoutes(core)
+	agentProxyAPIKeyHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
@@ -571,6 +630,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize webhook receiver: %w", err)
 		}
+		webhookReceiver.SetReadOnly(&cfg.ReadOnly) // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
 		webhookReceiver.RegisterRoutes(mux)
 		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
 	}
@@ -579,7 +639,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Build the middleware chain that wraps the mux.
 	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
-	//        [plugin postChain] → mux
+	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
 	var chain []func(http.Handler) http.Handler
 
 	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
@@ -666,6 +726,27 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
 	}
 	chain = append(chain, scopeEnforcer)
+
+	// TEMP-READ-ONLY-MODE: reject write requests for organizations in read-only
+	// mode. Registered after authentication, organization resolution and scope
+	// enforcement so those behave exactly as before; only would-be-successful
+	// writes become 503s. The exempt read-style routes are checked against the
+	// mux at startup, whether or not the mode is enabled, so a renamed route
+	// cannot leave a stale exemption behind. Remove with middleware/readonly.go.
+	if err := middleware.ValidateReadOnlyExemptRoutes(mux); err != nil {
+		return nil, err
+	}
+	readOnlyGuard, err := middleware.ReadOnlyGuard(middleware.ReadOnlyGuardConfig{
+		ReadOnly:  &cfg.ReadOnly,
+		Routes:    mux,
+		SkipPaths: cfg.Auth.SkipPaths,
+		Logger:    slogger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build read-only guard: %w", err)
+	}
+	chain = append(chain, readOnlyGuard)
+	// TEMP-READ-ONLY-MODE: end
 
 	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
 	// before the mux. The authenticated org/identity are in the context here and

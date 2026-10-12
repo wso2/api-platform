@@ -199,6 +199,11 @@ services:
       # Reachable from inside the compose network by the webhook dispatcher.
       WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
       MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
+      # The mock Dynamic Client Registration server the oauth2-keys spec stands
+      # up. Addressed by container name because the PORTAL dials it: a key
+      # manager created in that spec points here, so the portal registers real
+      # clients against it over RFC 7591/7592 with no identity server involved.
+      MOCK_DCR_ENDPOINT_URL: "http://rest-api-tests:4505"
     volumes:
       - ./rest-api:/rest-api
       - ./reports:/rest-api/reports

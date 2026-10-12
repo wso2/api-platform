@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/builder"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/a2aagent"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
@@ -82,20 +83,21 @@ func sourceProducts(resolved *topology.Resolved) ([]builder.Product, error) {
 			if component.Def == nil || component.Version != "" || component.AddPoliciesFrom != "" {
 				continue
 			}
-			version, ok := shared.SourceVersion(component.Def.Name)
+			product := component.Def.Product()
+			version, ok := shared.SourceVersion(product)
 			if !ok {
 				continue
 			}
 			component.Version = version
-			if seen[component.Def.Name] {
+			if seen[product] {
 				continue
 			}
-			spec, err := BuildSpec(component.Def.Name, version)
+			spec, err := BuildSpec(product, version)
 			if err != nil {
 				return nil, fmt.Errorf("catalog: preparing source build for %s: %w", component.Def.Name, err)
 			}
 			products = append(products, builder.Product{Spec: spec, Version: version})
-			seen[component.Def.Name] = true
+			seen[product] = true
 		}
 	}
 	return products, nil
@@ -106,6 +108,7 @@ type policyProduct struct {
 	version         string
 	source          string
 	buildFromSource bool
+	releasedOnly    bool
 }
 
 func buildPolicyProducts(
@@ -133,6 +136,7 @@ func buildPolicyProducts(
 			}
 			images, buildErr := platformgateway.BuildVersionedWithPolicies(
 				ctx, root, product.version, product.source, baseController, baseRuntime, runner,
+				product.releasedOnly,
 			)
 			if buildErr != nil {
 				return fmt.Errorf("catalog: extending %s:%s with policies from %q: %w",
@@ -167,7 +171,8 @@ func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
 				}
 				component.Version = version
 			}
-			key := component.Def.Name + "\x00" + version + "\x00" + component.AddPoliciesFrom + "\x00" + fmt.Sprint(fromSource)
+			key := component.Def.Name + "\x00" + version + "\x00" + component.AddPoliciesFrom + "\x00" +
+				fmt.Sprint(fromSource) + "\x00" + fmt.Sprint(component.ReleasedPoliciesOnly)
 			if seen[key] {
 				continue
 			}
@@ -175,6 +180,7 @@ func policyProducts(resolved *topology.Resolved) ([]policyProduct, error) {
 			products = append(products, policyProduct{
 				component: component.Def.Name, version: version,
 				source: component.AddPoliciesFrom, buildFromSource: fromSource,
+				releasedOnly: component.ReleasedPoliciesOnly,
 			})
 		}
 	}
@@ -187,7 +193,7 @@ func platformGatewayBaseImages(resolved *topology.Resolved, product policyProduc
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			if component.Def.Compose == nil {
@@ -210,7 +216,7 @@ func setPlatformGatewayImages(resolved *topology.Resolved, product policyProduct
 			component := &resolved.Blocks[blockIndex].Components[componentIndex]
 			if component.Def == nil || component.Def.Name != product.component ||
 				component.Version != product.version || component.BuildFromSource != product.buildFromSource ||
-				component.AddPoliciesFrom != product.source {
+				component.AddPoliciesFrom != product.source || component.ReleasedPoliciesOnly != product.releasedOnly {
 				continue
 			}
 			def := *component.Def
@@ -234,12 +240,14 @@ func All() []*components.Definition {
 		platformapi.PlatformAPI(),
 		apiportal.APIPortal(),
 		apiportal.APIPortalOtherOrg(),
+		apiportal.APIPortalMultiOrganization(),
 		aiworkspace.AIWorkspace(),
 		browser.Browser(),
 		cloudconsole.CloudConsole(),
 		testbench.Testbench(),
 		tlsbackend.TLSBackend(),
 		infrastructure.Redis(),
+		a2aagent.TripPlanner(),
 	}
 }
 

@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -405,38 +404,5 @@ func (g *Gateway) firstLLMProviderPolicyIs(ctx context.Context, wantName, wantVe
 }
 
 func (g *Gateway) templatePath(name string) (string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", fmt.Errorf("resource template path is required")
-	}
-	if filepath.IsAbs(name) {
-		return "", fmt.Errorf("resource template path must be relative: %q", name)
-	}
-	root := g.featureRoot
-	if root == "" {
-		return "", fmt.Errorf("resource template root is not configured")
-	}
-	root, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve resource template root: %w", err)
-	}
-	clean := filepath.Clean(name)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
-	}
-	path := filepath.Join(root, clean)
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve resource template root: %w", err)
-	}
-	resolvedPath, err := filepath.EvalSymlinks(path)
-	if err == nil && !isWithinPath(resolvedRoot, resolvedPath) {
-		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
-	}
-	return path, nil
-}
-
-func isWithinPath(root, path string) bool {
-	relative, err := filepath.Rel(root, path)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return stepscommon.ResourceTemplatePath(g.featureRoot, name)
 }

@@ -3504,6 +3504,17 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every operation.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
         operations:
@@ -3639,6 +3650,13 @@ components:
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Fault policies that apply only to this operation, in addition to any declared at
+            the API level. Both levels run, operation-level entries first.
           items:
             $ref: "#/components/schemas/Policy"
         resilience:
@@ -4412,6 +4430,17 @@ components:
           description: List of MCP Proxy level policies applied
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every operation.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
         tools:
           type: array
           items:
@@ -4771,6 +4800,19 @@ components:
             route.
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every A2A operation, and like policies above it does not
+            apply to the public Agent Card discovery route — that route declares its own
+            under agentCard.public.faultPolicies.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
         operations:
           type: array
           description: >
@@ -4854,6 +4896,18 @@ components:
             operation is selected.
           items:
             $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when this operation fails, over the
+            error response.
+
+
+            Both levels run and the operation-level entries run FIRST. They are additive
+            rather than an override: a fault entry is a handler, not a setting, so an
+            operation-specific notification and an agent-wide audit hook both fire.
+          items:
+            $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
 
@@ -4929,6 +4983,19 @@ components:
         policies:
           type: array
           description: Ordered policies applied only to public Agent Card serving.
+          items:
+            $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when serving the public Agent Card
+            fails, over the error response.
+
+
+            Separate from spec.a2a.operationConfigs.faultPolicies for the same reason the
+            policies list is: discovery is reachable before any operation is invoked, and
+            an agent that leaves its card unauthenticated while guarding its operations
+            would otherwise have the operations' handlers fire for a discovery failure.
           items:
             $ref: "#/components/schemas/Policy"
         rewriteUrls:
@@ -5554,6 +5621,24 @@ components:
           description: DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
           items:
             $ref: "#/components/schemas/LLMPolicy"
+        globalFaultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every operation.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
+        operationFaultPolicies:
+          type: array
+          description: >
+            Fault policies that apply only to this operation, in addition to any declared at
+            the API level. Both levels run, operation-level entries first.
+          items:
+            $ref: "#/components/schemas/OperationPolicy"
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.
@@ -6111,6 +6196,24 @@ components:
           description: DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).
           items:
             $ref: "#/components/schemas/LLMPolicy"
+        globalFaultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request fails, over the error
+            response. Applies to every operation.
+
+
+            Each entry is labelled with the source of the failure, so an entry that should
+            see only some failures narrows with executionCondition.
+          items:
+            $ref: "#/components/schemas/Policy"
+        operationFaultPolicies:
+          type: array
+          description: >
+            Fault policies that apply only to this operation, in addition to any declared at
+            the API level. Both levels run, operation-level entries first.
+          items:
+            $ref: "#/components/schemas/OperationPolicy"
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.

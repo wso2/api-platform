@@ -185,6 +185,11 @@ const GeneralSettingsPage = lazy(() =>
     default: m.GeneralSettingsPage,
   })),
 );
+const SubscriptionPlansSettingsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/settings/SubscriptionPlansSettingsPage').then((m) => ({
+    default: m.SubscriptionPlansSettingsPage,
+  })),
+);
 
 export type AppRoutesProps = {
   extensions?: readonly ApiControlPlaneExtension[];
@@ -448,6 +453,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.settings()} element={<SettingsLayout level="organization" />}>
             <Route index element={<GeneralSettingsPage />} />
             <Route path="general" element={<GeneralSettingsPage />} />
+            {/* Organization-scoped only — platform-api has no project-level
+                subscription-plan endpoint, so this isn't registered below. */}
+            <Route path="subscription-plans" element={<SubscriptionPlansSettingsPage />} />
             {settingsTabRoutes('organization')}
           </Route>
           <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>

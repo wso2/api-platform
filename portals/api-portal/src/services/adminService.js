@@ -262,8 +262,8 @@ const updateOrganization = async (req, res) => {
     });
     try {
         // Only this instance's own organization is updatable, whatever else the
-        // shared database holds.
-        await orgContext.requirePinnedOrg(orgId);
+        // shared database holds — in multi-organization mode, only the caller's own.
+        const targetOrgUuid = await orgContext.requireCallerOrg(orgId, req.orgId);
 
         const payload = req.body;
         if (payload.id) {
@@ -279,11 +279,17 @@ const updateOrganization = async (req, res) => {
         // Renaming either here would leave the running instance pointing at an
         // organization it can no longer find — every page 404ing and every login
         // 403ing until an operator edits config to match. Reject instead.
-        const currentHandle = orgContext.getHandle();
+        //
+        // In multi-organization mode the same holds for every organization, not just the
+        // configured one: page URLs resolve by handle and token claims by idp_ref_id,
+        // so both stay fixed to the target row's current values.
+        const targetOrg = orgContext.isMultiOrganizationEnabled() ? await orgDao.getByUuid(targetOrgUuid) : null;
+        const currentHandle = targetOrg ? targetOrg.handle : orgContext.getHandle();
         if (payload.handle !== undefined && String(payload.handle).toLowerCase() !== currentHandle) {
-            return util.sendError(res, 400,
-                `The organization handle cannot be changed; it is fixed to '${currentHandle}' by this ` +
-                "portal's organization.handle configuration.");
+            return util.sendError(res, 400, targetOrg
+                ? `The organization handle cannot be changed; it is fixed to '${currentHandle}'.`
+                : `The organization handle cannot be changed; it is fixed to '${currentHandle}' by this ` +
+                    "portal's organization.handle configuration.");
         }
         // idp_ref_id stays config-owned rather than immutable: auth.idp_org_id is
         // re-applied by the startup seeder (seederService.reconcileIdpOrgId), so a
@@ -291,12 +297,16 @@ const updateOrganization = async (req, res) => {
         // config the single writer also means the value cannot drift between the file an
         // operator reads and the row incoming token claims are matched against.
         if (payload.idpRefId !== undefined) {
-            const existingIdpRefId = (await orgDao.getByHandle(currentHandle)).idp_ref_id;
+            const existingIdpRefId = targetOrg ? targetOrg.idp_ref_id : (await orgDao.getByHandle(currentHandle)).idp_ref_id;
             if (payload.idpRefId !== existingIdpRefId) {
+                // Only the configured organization's value comes from auth.idp_org_id; a
+                // provisioned one's is the IDP organization claim it was created from.
+                const provisioned = targetOrg && targetOrg.uuid !== await orgContext.getOrgUuid();
                 return util.sendError(res, 400,
                     'The organization IDP reference cannot be changed through this API; it is what ' +
-                    "incoming tokens are matched against and is set by this portal's auth.idp_org_id " +
-                    'configuration.');
+                    'incoming tokens are matched against and is ' + (provisioned
+                        ? 'the IDP organization claim this organization was provisioned from.'
+                        : "set by this portal's auth.idp_org_id configuration."));
             }
         }
 

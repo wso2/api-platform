@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { Avatar, Box, Divider, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Layers, Settings } from '@wso2/oxygen-ui-icons-react';
+import { BoxIcon, Settings } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -92,7 +92,7 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
             }}
             variant="rounded"
           >
-            <Layers size={28} />
+            <BoxIcon size={28} />
           </Avatar>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box sx={{ minWidth: 0 }}>

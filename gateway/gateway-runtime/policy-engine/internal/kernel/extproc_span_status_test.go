@@ -185,6 +185,9 @@ func (m *mockEvaluatorError) EvaluateResponseHeaderCondition(_ string, _ *policy
 func (m *mockEvaluatorError) EvaluateResponseBodyCondition(_ string, _ *policy.ResponseContext) (bool, error) {
 	return false, errors.New("injected evaluator error")
 }
+func (m *mockEvaluatorError) EvaluateFaultCondition(_ string, _ *policy.FaultContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
 func (m *mockEvaluatorError) EvaluateStreamingRequestCondition(_ string, _ *policy.RequestStreamContext) (bool, error) {
 	return false, errors.New("injected evaluator error")
 }

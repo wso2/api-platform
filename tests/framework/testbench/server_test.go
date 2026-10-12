@@ -17,8 +17,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/wso2/api-platform/tests/framework/core/util/testpki"
 )
 
 type fakeService struct {
@@ -36,6 +34,14 @@ func (s *fakeService) Stateful() bool        { return s.stateful }
 func (s *fakeService) PartitionKey() string  { return s.partition }
 
 type unpartitionedService fakeService
+
+// tlsService is a fakeService that serves HTTPS with the given configuration.
+type tlsService struct {
+	fakeService
+	config *tls.Config
+}
+
+func (s *tlsService) TLSConfig() *tls.Config { return s.config }
 
 func (s *unpartitionedService) Name() string          { return s.name }
 func (s *unpartitionedService) Port() int             { return s.port }
@@ -352,45 +358,35 @@ func TestFailLogsStructuredDetailAlongsideTheResponse(t *testing.T) {
 	require.Contains(t, out, `"message":"invalid client credentials"`)
 }
 
-type tlsFakeService struct {
-	fakeService
-	config *tls.Config
-}
-
-func (s *tlsFakeService) TLSConfig() *tls.Config { return s.config }
-
-func TestRegistryRejectsATLSServiceWithoutConfiguration(t *testing.T) {
-	err := (&Registry{}).Register(&tlsFakeService{
-		fakeService: fakeService{name: "tls", port: 1, handler: http.NotFoundHandler()},
-	})
-	if !containsError(err, "serves TLS without a configuration") {
-		t.Fatalf("Register() error = %v, want a missing TLS configuration error", err)
+func TestRegistryRejectsATLSServiceWithoutACertificate(t *testing.T) {
+	for name, config := range map[string]*tls.Config{"nil config": nil, "no certificate": {}} {
+		t.Run(name, func(t *testing.T) {
+			err := (&Registry{}).Register(&tlsService{
+				fakeService: fakeService{name: "secure", port: 1, handler: http.NotFoundHandler()},
+				config:      config,
+			})
+			require.ErrorContains(t, err, "has no certificate")
+		})
 	}
 }
 
-func TestServeTerminatesTLSForATLSService(t *testing.T) {
-	set, err := testpki.Generate(time.Now())
-	require.NoError(t, err)
-	server, err := set.Get("backend-server-a")
-	require.NoError(t, err)
-	cert, err := server.TLSCertificate(false)
-	require.NoError(t, err)
+func TestServeServesATLSServiceOverHTTPS(t *testing.T) {
+	probe := httptest.NewTLSServer(http.NotFoundHandler())
+	certificate := probe.TLS.Certificates[0]
+	pool := probe.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	probe.Close()
 
-	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	port := probe.Addr().(*net.TCPAddr).Port
-	require.NoError(t, probe.Close())
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
 
 	registry := &Registry{}
-	require.NoError(t, registry.Register(&tlsFakeService{
-		fakeService: fakeService{name: "tls", port: port, handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.TLS == nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusTeapot)
+	require.NoError(t, registry.Register(&tlsService{
+		fakeService: fakeService{name: "secure", port: port, handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("secure"))
 		})},
-		config: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+		config: &tls.Config{Certificates: []tls.Certificate{certificate}},
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -400,22 +396,25 @@ func TestServeTerminatesTLSForATLSService(t *testing.T) {
 		require.NoError(t, <-done)
 	}()
 
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, //nolint:gosec // self-signed test listener
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "example.com"},
 	}}
-	url := "https://127.0.0.1:" + strconv.Itoa(port) + "/"
+	var body []byte
 	require.Eventually(t, func() bool {
-		resp, err := client.Get(url)
+		resp, err := client.Get("https://127.0.0.1:" + strconv.Itoa(port) + "/anything")
 		if err != nil {
 			return false
 		}
-		_ = resp.Body.Close()
-		return resp.StatusCode == http.StatusTeapot
+		defer resp.Body.Close()
+		body, _ = io.ReadAll(resp.Body)
+		return resp.StatusCode == http.StatusOK
 	}, 5*time.Second, 50*time.Millisecond)
+	require.Equal(t, "secure", string(body))
 
-	plain, err := (&http.Client{Timeout: 5 * time.Second}).Get("http://127.0.0.1:" + strconv.Itoa(port) + "/")
+	plain := &http.Client{Timeout: time.Second}
+	resp, err := plain.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/anything")
 	if err == nil {
-		_ = plain.Body.Close()
-		require.Equal(t, http.StatusBadRequest, plain.StatusCode, "a plaintext request reached the handler")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a plain HTTP request must not be served")
 	}
 }

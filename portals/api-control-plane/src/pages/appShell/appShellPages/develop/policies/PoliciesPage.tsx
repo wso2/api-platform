@@ -20,6 +20,7 @@ import { Box } from '@wso2/oxygen-ui';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { useRestApi } from '@/api/resources/restApis';
+import { AppPage } from '@/components/AppPage';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -64,12 +65,14 @@ export function PoliciesPage() {
   );
 
   return (
-    <ScopeGate
-      prompt={intl.formatMessage(messages.scopePrompt)}
-      requires="api"
-      to={routes.apiDevelopPolicies}
-    >
-      {content}
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt={intl.formatMessage(messages.scopePrompt)}
+        requires="api"
+        to={routes.apiDevelopPolicies}
+      >
+        {content}
+      </ScopeGate>
+    </AppPage>
   );
 }

@@ -261,10 +261,10 @@ Feature: Presenting a default client certificate to backends
     When I create Agent from "resources/templates/agent.yaml" with values:
       | apiVersion        | ${CTX:gatewaySpecVersion}  |
       | name              | ${CTX:agentName}           |
-      | spec.displayName  | ${CTX:agentName}           |
-      | spec.version      | v1.0                       |
-      | spec.context      | ${CTX:agentContext}        |
-      | spec.upstream.url | ${CTX:optionalBackend}     |
+      | displayName       | ${CTX:agentName}           |
+      | context           | ${CTX:agentContext}        |
+      | upstreamUrl       | ${CTX:optionalBackend}     |
+      | transports        | [{"protocolBinding":"JSONRPC"}] |
       | spec.a2a          | {"protocolVersion":"1.0","operationConfigs":{"transports":[{"protocolBinding":"JSONRPC"}]},"agentCard":{"public":{"mode":"passthrough","rewriteUrls":false}}} |
     Then the response should be successful
     And I send a "GET" request to "${CTX:agentContext}/.well-known/agent-card.json" until the backend sees the client certificate of "gw-identity-a"

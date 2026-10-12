@@ -37,6 +37,7 @@ import {
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { routes } from '@/routes/paths';
@@ -243,6 +244,14 @@ const SERVER_FIELD_MAP: Record<string, ValidatedField> = {
 };
 
 export function GatewayCreatePage() {
+  return (
+    <AppPage hideBreadcrumbs>
+      <GatewayCreatePageContent />
+    </AppPage>
+  );
+}
+
+function GatewayCreatePageContent() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();

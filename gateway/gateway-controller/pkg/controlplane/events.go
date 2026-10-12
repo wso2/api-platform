@@ -31,7 +31,7 @@ type DeploymentAckMessage struct {
 type DeploymentAckPayload struct {
 	DeploymentID string    `json:"deploymentId"`
 	ArtifactID   string    `json:"artifactId"`
-	ResourceType string    `json:"resourceType"` // "api", "llmprovider", "llmproxy", "mcpproxy", "agentproxy"
+	ResourceType string    `json:"resourceType"` // "api", "llmprovider", "llmproxy", "mcpproxy", "Agent"
 	Action       string    `json:"action"`       // "deploy", "undeploy"
 	Status       string    `json:"status"`       // "success", "failed"
 	PerformedAt  time.Time `json:"performedAt"`

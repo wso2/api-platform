@@ -48,12 +48,12 @@ func (b *bridge) buildRequestHeadersRequest(
 ) (*proto.StreamRequest, error) {
 	payload := &proto.RequestHeadersPayload{
 		Context: &proto.RequestHeaderContext{
-			Headers:   b.translator.ToProtoHeaders(reqCtx.Headers),
-			Path:      reqCtx.Path,
-			Method:    reqCtx.Method,
-			Authority: reqCtx.Authority,
-			Scheme:    reqCtx.Scheme,
-			Vhost:     reqCtx.Vhost,
+			Headers:    b.translator.ToProtoHeaders(reqCtx.Headers),
+			Path:       reqCtx.Path,
+			Method:     reqCtx.Method,
+			Authority:  reqCtx.Authority,
+			Scheme:     reqCtx.Scheme,
+			Vhost:      reqCtx.Vhost,
 			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
 			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
@@ -70,13 +70,13 @@ func (b *bridge) buildRequestBodyRequest(
 ) (*proto.StreamRequest, error) {
 	payload := &proto.RequestBodyPayload{
 		Context: &proto.RequestContext{
-			Headers:   b.translator.ToProtoHeaders(reqCtx.Headers),
-			Body:      b.translator.ToProtoBody(reqCtx.Body),
-			Path:      reqCtx.Path,
-			Method:    reqCtx.Method,
-			Authority: reqCtx.Authority,
-			Scheme:    reqCtx.Scheme,
-			Vhost:     reqCtx.Vhost,
+			Headers:    b.translator.ToProtoHeaders(reqCtx.Headers),
+			Body:       b.translator.ToProtoBody(reqCtx.Body),
+			Path:       reqCtx.Path,
+			Method:     reqCtx.Method,
+			Authority:  reqCtx.Authority,
+			Scheme:     reqCtx.Scheme,
+			Vhost:      reqCtx.Vhost,
 			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
 			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
@@ -135,6 +135,55 @@ func (b *bridge) buildResponseBodyRequest(
 	})
 }
 
+// buildErrorRequest packs an FaultContext for the fault phase.
+//
+// The embedded response view is carried as a nested message because proto has no embedding,
+// and is built exactly like the response-body payload so a fault handler reads the same
+// fields it would read in on_response_body. The fields around it describe WHY the fault flow
+// is running.
+func (b *bridge) buildErrorRequest(
+	ctx context.Context,
+	faultCtx *policy.FaultContext,
+	params map[string]interface{},
+) (*proto.StreamRequest, error) {
+	if faultCtx == nil {
+		return nil, fmt.Errorf("error context is required")
+	}
+
+	protoCtx := &proto.FaultContext{
+		OriginalStatus:    int32(faultCtx.OriginalStatus),
+		Policy:            faultCtx.Policy,
+		PolicyVersion:     faultCtx.PolicyVersion,
+		PolicyPhase:       faultCtx.PolicyPhase,
+		ResponseCommitted: faultCtx.ResponseCommitted,
+		RouteKey:          faultCtx.RouteKey,
+		Source:            faultCtx.Source,
+		Fault:             toProtoErrorResponse(faultCtx.Fault),
+	}
+
+	// Flat, matching the SDK: there is no nested response view to guard against being nil
+	// any more, so the fields are copied unconditionally and the nil-able ones are handled
+	// by the translator helpers, as everywhere else.
+	protoCtx.RequestHeaders = b.translator.ToProtoHeaders(faultCtx.RequestHeaders)
+	protoCtx.RequestBody = b.translator.ToProtoBody(faultCtx.RequestBody)
+	protoCtx.RequestPath = faultCtx.RequestPath
+	protoCtx.RequestMethod = faultCtx.RequestMethod
+	protoCtx.ResponseHeaders = b.translator.ToProtoHeaders(faultCtx.ResponseHeaders)
+	protoCtx.ResponseBody = b.translator.ToProtoBody(faultCtx.ResponseBody)
+	protoCtx.ResponseStatus = int32(faultCtx.ResponseStatus)
+	protoCtx.Downstream = b.translator.ToProtoDownstream(faultCtx.Downstream)
+	protoCtx.Upstream = b.translator.ToProtoUpstream(faultCtx.Upstream)
+	protoCtx.RequestAuthority = faultCtx.RequestAuthority
+	protoCtx.RequestScheme = faultCtx.RequestScheme
+	protoCtx.RequestVhost = faultCtx.RequestVhost
+
+	shared := faultCtx.SharedContext
+
+	return b.newStreamRequest(ctx, shared, params, proto.Phase_PHASE_FAULT, &proto.StreamRequest_FaultContext{
+		FaultContext: &proto.FaultPayload{Context: protoCtx},
+	})
+}
+
 func (b *bridge) buildNeedsMoreRequestDataRequest(
 	ctx context.Context,
 	accumulated []byte,
@@ -154,12 +203,12 @@ func (b *bridge) buildRequestChunkRequest(
 ) (*proto.StreamRequest, error) {
 	payload := &proto.RequestChunkPayload{
 		Context: &proto.RequestStreamContext{
-			Headers:   b.translator.ToProtoHeaders(reqCtx.Headers),
-			Path:      reqCtx.Path,
-			Method:    reqCtx.Method,
-			Authority: reqCtx.Authority,
-			Scheme:    reqCtx.Scheme,
-			Vhost:     reqCtx.Vhost,
+			Headers:    b.translator.ToProtoHeaders(reqCtx.Headers),
+			Path:       reqCtx.Path,
+			Method:     reqCtx.Method,
+			Authority:  reqCtx.Authority,
+			Scheme:     reqCtx.Scheme,
+			Vhost:      reqCtx.Vhost,
 			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
 			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
@@ -252,6 +301,8 @@ func (b *bridge) newStreamRequest(
 	case *proto.StreamRequest_ResponseChunk:
 		req.Payload = concrete
 	case *proto.StreamRequest_CancelExecution:
+		req.Payload = concrete
+	case *proto.StreamRequest_FaultContext:
 		req.Payload = concrete
 	default:
 		return nil, fmt.Errorf("unsupported stream request payload: %T", payload)

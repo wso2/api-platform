@@ -391,7 +391,7 @@ func registerDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
 		// A 404 means it is already gone, which is success for a sweep. Anything else is a
 		// real leak signal and is reported.
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return awaitDeletionApplied(ctx, topo, client, version, res.ID)
 		}
 		return errFromResponse(resp)
 	})
@@ -432,7 +432,7 @@ func registerControllerDeleter(
 			return err
 		}
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
-			return nil
+			return awaitDeletionApplied(ctx, topo, client, version, res.ID)
 		}
 		return errFromResponse(resp)
 	})
@@ -476,6 +476,18 @@ func deleteWaitingOutConflicts(ctx context.Context, client *httpx.Client, url, a
 	return errFromResponse(resp)
 }
 
+// awaitDeletionApplied waits until the controller has applied a gateway deletion, on releases
+// where the next scenario's resource could otherwise lose its route to the snapshot race.
+func awaitDeletionApplied(
+	ctx context.Context, topo *frameworkruntime.Topology, client *httpx.Client, version, handle string,
+) error {
+	admin, err := topo.URL("platform-gateway", "admin")
+	if err != nil {
+		return err
+	}
+	return platformgateway.AwaitDeletionApplied(ctx, client, admin, version, basicAuthFor(topo), handle)
+}
+
 func basicAuthFor(topo *frameworkruntime.Topology) string {
 	return steps.BasicAuthHeader(topo.Admin.Username, topo.Admin.Password)
 }
@@ -508,7 +520,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 
 // singleEngineBlocks are the gateway blocks that run one engine by design, with that engine.
 // The webhook block follows its control plane's PostgreSQL store, the multigateway block
-// runs two gateway stacks rather than an engine matrix, and the two-controller block needs
+// runs two gateway stacks rather than an engine matrix, the AI Workspace CLI block runs one
+// SQLite stack, and the two-controller block needs
 // a database server both controllers share. The hostname blocks that set their own
 // downstream_tls settings run one engine: the settings do not depend on the database, and the
 // default block of the feature repeats on every engine. So do the trust-any, observability and
@@ -516,6 +529,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 var singleEngineBlocks = map[string]components.DBType{
 	"devportal-webhook":                               components.Postgres,
 	"multigateway":                                    components.SQLite,
+	"ai-workspace-cli":                                components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,
 	"gateway-mtls-hostnames-required":                 components.SQLite,
 	"gateway-mtls-hostnames-all-connections":          components.SQLite,

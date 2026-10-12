@@ -1,0 +1,10 @@
+{
+  "body": {
+    "message": "Empty request body",
+    "type": "PROMPT_DECORATOR_ERROR"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 500
+}

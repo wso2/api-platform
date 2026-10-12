@@ -56,6 +56,10 @@ const (
 	EventTypeMCPProxyUndeployed = "mcpproxy.undeployed"
 	EventTypeMCPProxyDeleted    = "mcpproxy.deleted"
 
+	EventTypeAgentDeployed   = "agent.deployed"
+	EventTypeAgentUndeployed = "agent.undeployed"
+	EventTypeAgentDeleted    = "agent.deleted"
+
 	EventTypeWebSubAPIDeployed   = "websub.deployed"
 	EventTypeWebSubAPIUndeployed = "websub.undeployed"
 	EventTypeWebSubAPIDeleted    = "websub.deleted"
@@ -147,6 +151,22 @@ func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID stri
 // BroadcastMCPProxyDeletionEvent sends an MCP proxy deletion event to target gateway.
 func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeMCPProxyDeleted, deletion)
+}
+
+// BroadcastAgentDeploymentEvent sends an Agent proxy deployment event to target gateway.
+// Restoring a deployment sends the same event.
+func (s *GatewayEventsService) BroadcastAgentDeploymentEvent(gatewayID string, deployment *model.AgentDeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeAgentDeployed, deployment)
+}
+
+// BroadcastAgentUndeploymentEvent sends an Agent proxy undeployment event to target gateway.
+func (s *GatewayEventsService) BroadcastAgentUndeploymentEvent(gatewayID string, undeployment *model.AgentUndeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeAgentUndeployed, undeployment)
+}
+
+// BroadcastAgentDeletionEvent sends an Agent proxy deletion event to target gateway.
+func (s *GatewayEventsService) BroadcastAgentDeletionEvent(gatewayID string, deletion *model.AgentDeletionEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeAgentDeleted, deletion)
 }
 
 // BroadcastWebSubAPIDeploymentEvent sends a WebSub API deployment event to target gateway.

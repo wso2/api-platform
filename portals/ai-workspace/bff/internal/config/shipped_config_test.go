@@ -125,6 +125,8 @@ func TestShippedConfig_TemplateEditedForOIDC(t *testing.T) {
 	}
 	edited := strings.NewReplacer(
 		`mode = "basic"`, `mode = "oidc"`,
+		`encryption_key = "{{ env \"APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY\" \"\" }}"`,
+		`encryption_key = "test-session-key-at-least-32-characters"`,
 		`authority = "https://accounts.example.com"`, `authority = "https://idp.example.com"`,
 		`client_id = "your-client-id"`, `client_id = "client-id"`,
 		`client_secret = ""`, `client_secret = "s3cr3t"`,
@@ -168,4 +170,71 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 	if cfg.ControlPlane.TLSSkipVerify {
 		t.Error("ControlPlane.TLSSkipVerify = true, want false — the template must default to a verified upstream")
 	}
+}
+
+// The shipped config must actually read the key scripts/setup.sh generates. The two
+// sides are a string in a shell script and a token in a TOML file, so nothing but a
+// test connects them — get the name wrong and an OIDC deployment fails at startup with
+// "encryption_key is required" while the operator can see the value in their env file.
+//
+// Asserted on the template, which always carries the OIDC tables. The quickstart
+// config.toml is covered by the subtest below, which skips while that file is still
+// basic-auth-only (see skipWithoutOIDCTables).
+func TestShippedConfig_ReadsTheGeneratedSessionKey(t *testing.T) {
+	const generated = "51e97c3a355ec9b8ffcb9bb0fdec8f1b9a7b1b3bef7d352e71d3f71ff2a484e0"
+
+	t.Run("template", func(t *testing.T) {
+		templateBytes, err := os.ReadFile(templateConfig)
+		if err != nil {
+			t.Fatalf("read %s: %v", templateConfig, err)
+		}
+		if !strings.Contains(string(templateBytes), "APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY") {
+			t.Fatal("config-template.toml does not read APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY — " +
+				"scripts/setup.sh writes that name to api-platform.env")
+		}
+		edited := strings.NewReplacer(
+			`mode = "basic"`, `mode = "oidc"`,
+			`authority = "https://accounts.example.com"`, `authority = "https://idp.example.com"`,
+			`client_id = "your-client-id"`, `client_id = "client-id"`,
+			`client_secret = ""`, `client_secret = "s3cr3t"`,
+		).Replace(string(templateBytes))
+
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+			t.Fatalf("write edited template: %v", err)
+		}
+		t.Setenv("APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY", generated)
+
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load(edited template) error = %v", err)
+		}
+		if cfg.Session.Cookie.EncryptionKey != generated {
+			t.Errorf("Session.EncryptionKey = %q, want the generated value", cfg.Session.Cookie.EncryptionKey)
+		}
+		if cfg.Session.Store != SessionStoreCookie {
+			t.Errorf("Session.Store = %q, want %q", cfg.Session.Store, SessionStoreCookie)
+		}
+		if _, ok := cfg.RuntimeConfig["APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY"]; ok {
+			t.Error("the session encryption key leaked into the browser runtime config")
+		}
+	})
+
+	t.Run("quickstart", func(t *testing.T) {
+		skipWithoutOIDCTables(t, hasOIDCTables(t, quickstartConfig), quickstartConfig)
+		t.Setenv("APIP_AIW_SESSION_COOKIE_ENCRYPTION_KEY", generated)
+		t.Setenv("APIP_AIW_AUTH_MODE", "oidc")
+		t.Setenv("APIP_AIW_AUTH_OIDC_AUTHORITY", "https://idp.example.com")
+		t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_ID", "client-id")
+		t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "client-secret")
+
+		cfg, err := Load(quickstartConfig)
+		if err != nil {
+			t.Fatalf("Load(configs/config.toml) in OIDC mode error = %v — the shipped config "+
+				"must read the key scripts/setup.sh writes to api-platform.env", err)
+		}
+		if cfg.Session.Cookie.EncryptionKey != generated {
+			t.Errorf("Session.EncryptionKey = %q, want the generated value", cfg.Session.Cookie.EncryptionKey)
+		}
+	})
 }

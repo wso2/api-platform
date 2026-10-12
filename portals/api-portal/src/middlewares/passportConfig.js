@@ -65,47 +65,50 @@ async function verifyIdpJwt(token, audience) {
 }
 
 /**
- * Checks an IDP-asserted organization claim against the organization this instance
- * serves.
+ * Checks an IDP-asserted organization claim against the organization(s) this
+ * instance serves — its configured one, or in multi-organization mode any that exists.
  *
- * The decision itself is orgContext.requirePinnedOrg's — deliberately, rather than
+ * The decision itself is orgContext.resolveClaimOrg's — deliberately, rather than
  * a second resolve-and-compare written out here. There is no IDP in the integration
  * fixture, so this path can only be reached in a real IDP deployment; sharing the
  * helper means the rule being applied is the one the REST-API suite already
  * exercises end-to-end (organizations.spec.js's 403s), and this function is reduced
- * to translating its outcome into a login failure. It also resolves the claim
- * before comparing, so a handle, display name, or idp_ref_id spelling of the same
- * organization all match — which matters here because the flavour of the mapped
- * claim is IDP-specific.
+ * to translating its outcome into a login failure. In the default mode it also
+ * resolves the claim before comparing, so a handle, display name, or idp_ref_id
+ * spelling of the same organization all match — which matters here because the
+ * flavour of the mapped claim is IDP-specific. In multi-organization mode only an exact
+ * idp_ref_id match counts (see resolveClaimOrg for why).
  *
  * A rejection is a flat 403 whether the organization is unknown or merely someone
- * else's (requirePinnedOrg collapses the two), so a login attempt can't be used to
+ * else's (resolveClaimOrg collapses the two), so a login attempt can't be used to
  * probe which organizations exist in the shared database.
  *
  * @param {string} organizationId the mapped organization claim from the ID token
- * @returns {Promise<Error|null>} null when the login may proceed, else an Error
- *   carrying the status the callback route should render
+ * @param {{ name?: string, handle?: string }} orgNames the organization-name and -handle
+ *   claims (orgContext.orgNameClaims), for naming an organization this login provisions
+ * @returns {Promise<{ orgUuid?: string, error?: Error }>} the organization the login
+ *   belongs to, or an Error carrying the status the callback route should render
  */
-async function assertLoginOrgAllowed(organizationId) {
+async function assertLoginOrgAllowed(organizationId, orgNames) {
     try {
-        await orgContext.requirePinnedOrg(organizationId);
-        return null;
+        const orgUuid = await orgContext.resolveClaimOrg(organizationId, 'idp login claim', { provision: 'login', orgNames });
+        return { orgUuid };
     } catch (err) {
         if (err instanceof CustomError && err.statusCode === 403) {
-            logger.warn('Rejected login: token organization is not this portal\'s', {
-                expected: orgContext.getHandle(),
+            logger.warn('Rejected login: token organization is not served by this portal', {
+                expected: orgContext.isMultiOrganizationEnabled() ? 'any known organization' : orgContext.getHandle(),
                 asserted: organizationId,
             });
             const failure = new Error('Forbidden');
             failure.status = 403;
-            return failure;
+            return { error: failure };
         }
         // A database/lookup fault, not a verdict about the organization — don't let
         // it read as "your organization is wrong".
         logger.error('Organization lookup failed during login', { error: err.message });
         const failure = new Error('Login failed');
         failure.status = 500;
-        return failure;
+        return { error: failure };
     }
 }
 
@@ -151,14 +154,36 @@ function configurePassport(SERVER_ID) {
                 });
                 return done(new Error('Login failed: token verification error'));
             }
-            const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
+            const multiOrganization = orgContext.isMultiOrganizationEnabled();
+            // In multi-organization mode, users are commonly provisioned with a username
+            // only, so fall back through the standard username claims rather than show a
+            // blank name.
+            const firstName = decodedJWT['given_name'] || decodedJWT['nickname'] || (multiOrganization
+                ? decodedJWT['preferred_username'] || decodedJWT['username'] || decodedJWT['sub']
+                : undefined);
             const lastName = decodedJWT['family_name'];
-            const organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
-            const rawRoles = getNestedClaim(decodedJWT, config.auth.claimMappings.roles) ?? '';
+            let organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
+            if (multiOrganization) {
+                try {
+                    organizationId = orgContext.normalizeOrgClaim(organizationId);
+                } catch {
+                    const failure = new Error('Forbidden');
+                    failure.status = 403;
+                    return done(failure);
+                }
+            }
+            // Multi-organization mode reads roles/groups from the access token first:
+            // that is the token authResolver's bearer path authorizes, and some IDPs
+            // (WSO2 IS for B2B organization users among them) put the role assignment
+            // there without it reaching the ID token.
+            const fromTokens = (claim) => (multiOrganization
+                ? getNestedClaim(decodedAccessToken || {}, claim) ?? getNestedClaim(decodedJWT, claim)
+                : getNestedClaim(decodedJWT, claim));
+            const rawRoles = fromTokens(config.auth.claimMappings.roles) ?? '';
             const roles = Array.isArray(rawRoles)
                 ? rawRoles
                 : String(rawRoles).split(/[\s,]+/).filter(Boolean);
-            const rawGroups = getNestedClaim(decodedJWT, config.auth.claimMappings.groups) ?? '';
+            const rawGroups = fromTokens(config.auth.claimMappings.groups) ?? '';
             const groups = Array.isArray(rawGroups)
                 ? rawGroups
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);
@@ -172,12 +197,28 @@ function configurePassport(SERVER_ID) {
             // the mapped organization claim against the one this instance is pinned
             // to and refuse the login otherwise — authResolver would reject each
             // subsequent request anyway, leaving the user with a session that 403s
-            // on every page. Skipped when the claim is absent: that case is already
-            // failed closed by authResolver, which needs an organization claim in
-            // IDP mode.
+            // on every page. (In multi-organization mode: any organization it serves, and
+            // one it doesn't have yet is provisioned.)
+            //
+            // An absent claim means the login belongs to the configured organization, and
+            // the session records that organization's claim so every later check
+            // (authResolver, ensureAuthenticated.belongsToTargetOrg) treats it exactly
+            // like a login that asserted it.
+            let loginOrgUuid;
             if (organizationId) {
-                const orgErr = await assertLoginOrgAllowed(organizationId);
-                if (orgErr) return done(orgErr);
+                const allowed = await assertLoginOrgAllowed(organizationId, orgContext.orgNameClaims(decodedJWT));
+                if (allowed.error) return done(allowed.error);
+                loginOrgUuid = allowed.orgUuid;
+            } else {
+                try {
+                    organizationId = await orgContext.getConfiguredOrgIdpRefId();
+                    loginOrgUuid = await orgContext.getOrgUuid();
+                } catch (err) {
+                    logger.error('Configured organization could not be resolved during login', { error: err.message });
+                    const failure = new Error('Login failed');
+                    failure.status = 500;
+                    return done(failure);
+                }
             }
 
             const returnTo = req.session.returnTo;
@@ -210,6 +251,14 @@ function configurePassport(SERVER_ID) {
                 [constants.USER_ID]: decodedAccessToken?.[constants.USER_ID],
                 serverId: SERVER_ID,
                 imageURL,
+                // Multi-organization mode: the organization this login resolved to, so
+                // the callback can land the user in it (authController.handleCallback).
+                // Deliberately not kept by serializeUser below — nothing after that one
+                // redirect needs it.
+                ...(multiOrganization && loginOrgUuid && { loginOrgUuid }),
+                // Whether this login is handleSilentSSO's prompt=none round trip — read
+                // here because the session (and its flag) is regenerated just below.
+                ...(multiOrganization && req.session.silentLoginInFlight && { silentLogin: true }),
             };
             req.session.regenerate((err) => {
                 if (err) {

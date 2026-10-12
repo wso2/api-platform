@@ -41,6 +41,7 @@ type WebSocketHandler struct {
 	manager           *ws.Manager
 	gatewayService    *service.GatewayService
 	deploymentService *service.DeploymentService
+	readOnly          readOnlyMode // TEMP-READ-ONLY-MODE: remove with websocket_readonly.go
 	upgrader          websocket.Upgrader
 	slogger           *slog.Logger
 
@@ -151,9 +152,11 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 	h.slogger.Info("WebSocket connection established", "gatewayID", gateway.ID, "connectionID", connection.ConnectionID)
 
 	// Update gateway active status to true when connection is established
-	if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, true); err != nil {
-		h.slogger.Error("Failed to update gateway active status to true", "gatewayID", gateway.ID, "error", err)
-	}
+	if !h.skipActiveStatusUpdate(gateway) { // TEMP-READ-ONLY-MODE: drop this wrapper and its closing brace when removing the mode
+		if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, true); err != nil {
+			h.slogger.Error("Failed to update gateway active status to true", "gatewayID", gateway.ID, "error", err)
+		}
+	} // TEMP-READ-ONLY-MODE: end
 
 	// Start reading messages (blocks until connection closes)
 	// This keeps the handler goroutine alive to maintain the connection
@@ -165,9 +168,11 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 
 	// Only set inactive if no remaining connections for this gateway
 	if len(h.manager.GetConnections(gateway.ID)) == 0 {
-		if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, false); err != nil {
-			h.slogger.Error("Failed to update gateway active status to false", "gatewayID", gateway.ID, "error", err)
-		}
+		if !h.skipActiveStatusUpdate(gateway) { // TEMP-READ-ONLY-MODE: drop this wrapper and its closing brace when removing the mode
+			if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, false); err != nil {
+				h.slogger.Error("Failed to update gateway active status to false", "gatewayID", gateway.ID, "error", err)
+			}
+		} // TEMP-READ-ONLY-MODE: end
 	}
 	return nil
 }
@@ -233,6 +238,10 @@ func (h *WebSocketHandler) handleDeploymentAck(conn *ws.Connection, payload json
 		"gatewayID", conn.GatewayID, "artifactID", ack.ArtifactID,
 		"deploymentID", ack.DeploymentID, "action", ack.Action,
 		"status", ack.Status, "performedAt", ack.PerformedAt)
+
+	if h.dropDeploymentAck(conn, &ack) { // TEMP-READ-ONLY-MODE: remove with websocket_readonly.go
+		return
+	}
 
 	if h.deploymentService == nil {
 		h.slogger.Error("DeploymentService not available for ack handling",

@@ -160,6 +160,9 @@ func New(b Backend) (*Service, error) {
 			ClientAuth:       tls.RequestClientCert,
 			MinVersion:       tls.VersionTLS12,
 			CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256},
+			// HTTP/1.1 only: X-Close-Connection closes the connection after a response, which
+			// HTTP/2 multiplexing would not honour.
+			NextProtos: []string{"http/1.1"},
 		},
 		clientCAs: pool,
 		optional:  b.Optional,

@@ -101,7 +101,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 
 	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
 	sc.Step(`^I create a synthetic managed APIP gateway$`, s.createManagedGateway)
-	sc.Step(`^the managed APIP gateway should be retrievable through the gateways endpoint$`, s.getManagedGateway)
+	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
 	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
 }
