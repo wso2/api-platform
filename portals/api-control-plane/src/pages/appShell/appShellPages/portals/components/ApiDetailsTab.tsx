@@ -24,7 +24,6 @@ import {
   Divider,
   Form,
   FormControl,
-  FormControlLabel,
   FormHelperText,
   FormLabel,
   Grid,
@@ -383,22 +382,20 @@ export function ApiDetailsTab({
         </Grid>
 
         <Stack alignItems="center" direction="row" spacing={1}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={values.agentVisibility === 'VISIBLE'}
-                disabled={disabled || readOnly}
-                onChange={(event) => setField('agentVisibility', event.target.checked ? 'VISIBLE' : 'HIDDEN')}
-              />
-            }
-            label={<FormattedMessage {...messages.agentVisibilityTitle} />}
-            sx={{ m: 0 }}
-          />
+          <Typography color={disabled || readOnly ? 'text.disabled' : 'text.primary'} component="label" htmlFor="publicationAgentVisibility">
+            <FormattedMessage {...messages.agentVisibilityTitle} />
+          </Typography>
           <Tooltip title={intl.formatMessage(messages.agentVisibilityDescription)}>
             <Box sx={{ color: 'text.secondary', display: 'flex' }}>
               <Info size={16} />
             </Box>
           </Tooltip>
+          <Switch
+            checked={values.agentVisibility === 'VISIBLE'}
+            disabled={disabled || readOnly}
+            id="publicationAgentVisibility"
+            onChange={(event) => setField('agentVisibility', event.target.checked ? 'VISIBLE' : 'HIDDEN')}
+          />
         </Stack>
       </Form.Stack>
     </Box>
