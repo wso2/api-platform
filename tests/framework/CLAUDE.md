@@ -176,6 +176,28 @@ Before adding a helper, step, or dependency:
   version information. A new supported version must include its contract
   behavior before it is added to suite configuration.
 
+## Module Consumption and Embedded Assets
+
+The framework is imported as a Go module by projects that have no api-platform checkout, so
+every repository file the engine reads at run time must be available without one.
+
+- Read a repository-relative file through `core/assets` (`assets.Resolve`), never with
+  `filepath.Join(repoRoot, ...)` and `os.ReadFile`. It prefers the workspace copy and falls back
+  to the embedded copy.
+- A file under `tests/framework` that the engine reads (compose files, version profiles,
+  overlays) must be listed in the `go:embed` directive of `assets.go`.
+- A file outside the module (database schemas, data files) needs a snapshot under `snapshots/`
+  at its repository-relative path and an entry in `assets.SnapshotSources`. Refresh snapshots
+  with `make snapshots`; `TestSnapshotsMatchTheRepositorySource` fails when one is stale.
+- Never snapshot key material, certificates or secrets. Generate them per process in
+  `core/catalog/shared` (as `GatewayListenerTLS` and `GatewayEncryptionKey` do) and mount them
+  through `GeneratedFiles` or a content-backed `FileMount`; the repository ignores `*.key` and a
+  secret scanner would flag an embedded copy.
+- Do not add `runtime.Caller` or checkout-relative lookups to code a released-gateway run reaches.
+  Such code works in the checkout and fails for every consumer.
+- Keep the public API of `core/suiterun` and the packages a consumer imports stable; the module
+  is versioned and consumers pin it.
+
 ## Components and Runtime
 
 - Keep component definitions declarative and independent of runtime orchestration.
