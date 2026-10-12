@@ -148,7 +148,7 @@ func WithHandleUpstreamFaults(enabled bool) ServerOption {
 // after WithErrorFormatterKinds, which replaces the set.
 //
 // Turning it on also reshapes a body a policy wrote itself (see
-// faultformat.OpenAIPolicyBodyMessage); an operator's fault policy body and a backend's own error
+// faultformat.OpenAIPolicyBodyFault); an operator's fault policy body and a backend's own error
 // still pass through.
 func WithLLMOpenAIErrors(enabled bool) ServerOption {
 	return func(s *ExternalProcessorServer) {

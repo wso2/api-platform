@@ -264,14 +264,14 @@ func (ec *PolicyExecutionContext) llmOpenAIErrors() bool {
 		slices.Contains(faultformat.OpenAIErrorKinds(), ec.apiKind())
 }
 
-// openAIPolicyBodyMessage returns the message to describe a failure with when the policy that
-// produced it wrote a body but no Fault, and true when that body is to be reshaped rather
-// than kept. Always false off an OpenAI route. See faultformat.OpenAIPolicyBodyMessage.
-func (ec *PolicyExecutionContext) openAIPolicyBodyMessage(body []byte) (string, bool) {
+// openAIPolicyBodyFault returns the description of a failure whose producing policy wrote a
+// body without describing it, and true when that body is to be replaced by the OpenAI envelope
+// rather than kept. Always false off an OpenAI route. See faultformat.OpenAIPolicyBodyFault.
+func (ec *PolicyExecutionContext) openAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
 	if !ec.llmOpenAIErrors() {
-		return "", false
+		return policy.FaultDetails{}, false
 	}
-	return faultformat.OpenAIPolicyBodyMessage(body)
+	return faultformat.OpenAIPolicyBodyFault(body)
 }
 
 // ─── Sterile engine failures ─────────────────────────────────────────────────

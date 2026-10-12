@@ -20,8 +20,11 @@ package faultformat
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +77,11 @@ func TestKindSet_WithAddsKindsWithoutTouchingTheOriginal(t *testing.T) {
 	assert.False(t, base.Enabled(policy.APIKindLlmProxy), "With must not mutate the receiver")
 }
 
+func TestKindSet_WithNothingIsStillNoKinds(t *testing.T) {
+	assert.Nil(t, KindSet(nil).With(), "an empty set stays nil, so Enabled reads it as no kinds")
+	assert.Nil(t, KindSet(nil).With(""), "a blank kind is not a kind")
+}
+
 func TestRender_OpenAI_CarriesTheFaultInTheSDKEnvelope(t *testing.T) {
 	body, contentType, ok := NewRegistry().Render(ShapeOpenAI, RenderInput{
 		Err: policy.FaultDetails{
@@ -110,6 +118,14 @@ func TestRender_OpenAI_SparseErrorStillHasEveryField(t *testing.T) {
 	assert.Nil(t, inner["code"], "an unclassified error sends an explicit null code")
 	assert.Contains(t, inner, "param")
 	assert.NotContains(t, inner, "error_id")
+}
+
+// A status Go has no text for (a backend's private 599) still gets a sentence, not "".
+func TestRender_OpenAI_UnnamedStatusFallsBackToTheGenericMessage(t *testing.T) {
+	body, _, ok := NewRegistry().Render(ShapeOpenAI, RenderInput{Status: 599})
+	require.True(t, ok)
+
+	assert.Equal(t, "An unexpected error occurred.", decodeOpenAI(t, body)["message"])
 }
 
 func TestRender_OpenAI_TypeFollowsTheFaultClassThenTheStatus(t *testing.T) {
@@ -171,6 +187,29 @@ func TestRender_OpenAI_GuardrailBlockSitsInsideTheErrorObject(t *testing.T) {
 	assert.Equal(t, map[string]any{"limit": float64(10)}, g["assessments"])
 }
 
+// A guardrail can fill its assessments with a value JSON cannot carry. The client still gets
+// an envelope it can parse rather than an empty body.
+func TestRender_OpenAI_UnmarshalableAssessmentStillYieldsAnEnvelope(t *testing.T) {
+	body, _, ok := NewRegistry().Render(ShapeOpenAI, RenderInput{
+		Err: policy.FaultDetails{
+			Type:    policy.FaultTypeGuardrail,
+			Message: "Blocked by content guardrail",
+			Guardrail: &policy.GuardrailDetails{
+				InterveningGuardrail: "word-count-guardrail",
+				Assessments:          map[string]any{"score": math.NaN()},
+			},
+		},
+		Status: http.StatusUnprocessableEntity,
+	})
+	require.True(t, ok)
+
+	inner := decodeOpenAI(t, body)
+	assert.Equal(t, "server_error", inner["type"])
+	assert.NotEmpty(t, inner["message"])
+	assert.Contains(t, inner, "param")
+	assert.Contains(t, inner, "code")
+}
+
 // ─── Reshaping a body a policy wrote ─────────────────────────────────────────
 
 func llmInput() Input {
@@ -184,13 +223,13 @@ func llmInput() Input {
 // The point of the option: on an LLM route a policy that still writes its own JSON does not
 // get to hand an OpenAI SDK a body it cannot parse. The kernel describes the failure with the
 // body's own message, and ShouldFormat renders that description.
-func TestOpenAIPolicyBodyMessage_LiftsThePolicysMessage(t *testing.T) {
-	msg, ok := OpenAIPolicyBodyMessage([]byte(`{"error":"Unauthorized","message":"Invalid or missing API key"}`))
+func TestOpenAIPolicyBodyFault_LiftsThePolicysMessage(t *testing.T) {
+	fault, ok := OpenAIPolicyBodyFault([]byte(`{"error":"Unauthorized","message":"Invalid or missing API key"}`))
 	require.True(t, ok)
-	assert.Equal(t, "Invalid or missing API key", msg)
+	assert.Equal(t, policy.FaultDetails{Message: "Invalid or missing API key"}, fault)
 
 	in := llmInput()
-	in.Err = policy.FaultDetails{Message: msg}
+	in.Err = fault
 	in.PolicyDescribed = true
 	d := ShouldFormat(NewRegistry(), in)
 	require.True(t, d.Format, d.Reason)
@@ -200,22 +239,115 @@ func TestOpenAIPolicyBodyMessage_LiftsThePolicysMessage(t *testing.T) {
 }
 
 // A body with no usable message is still reshaped: the envelope falls back to the status text.
-func TestOpenAIPolicyBodyMessage_BodyWithoutAMessageIsStillReshaped(t *testing.T) {
-	msg, ok := OpenAIPolicyBodyMessage([]byte(`<html>denied</html>`))
+func TestOpenAIPolicyBodyFault_BodyWithoutAMessageIsStillReshaped(t *testing.T) {
+	fault, ok := OpenAIPolicyBodyFault([]byte(`<html>denied</html>`))
 	assert.True(t, ok)
-	assert.Empty(t, msg)
+	assert.Equal(t, policy.FaultDetails{}, fault)
 }
 
-func TestOpenAIPolicyBodyMessage_KeepsAnExplicitlyEmptyBody(t *testing.T) {
-	_, ok := OpenAIPolicyBodyMessage([]byte{})
+func TestOpenAIPolicyBodyFault_KeepsAnExplicitlyEmptyBody(t *testing.T) {
+	_, ok := OpenAIPolicyBodyFault([]byte{})
 	assert.False(t, ok)
 }
 
 // A body that is already the OpenAI envelope — an LLM-only policy that writes it natively —
 // is kept byte-for-byte, so a richer `code`/`param` it set is not flattened.
-func TestOpenAIPolicyBodyMessage_KeepsAnAlreadyOpenAIBody(t *testing.T) {
-	_, ok := OpenAIPolicyBodyMessage([]byte(`{"error":{"message":"model not allowed","type":"invalid_request_error","param":"model","code":"model_not_found"}}`))
+func TestOpenAIPolicyBodyFault_KeepsAnAlreadyOpenAIBody(t *testing.T) {
+	_, ok := OpenAIPolicyBodyFault([]byte(`{"error":{"message":"model not allowed","type":"invalid_request_error","param":"model","code":"model_not_found"}}`))
 	assert.False(t, ok)
+}
+
+// The body every shipped guardrail writes, exactly as word-count-guardrail v1.0.2 sends it.
+const legacyWordCountBody = `{"message":{"action":"GUARDRAIL_INTERVENED",` +
+	`"actionReason":"Violation of applied word count constraints detected",` +
+	`"direction":"REQUEST","interveningGuardrail":"word-count-guardrail"},"type":"WORD_COUNT_GUARDRAIL"}`
+
+// A guardrail's body carries the whole intervention; lifting only a message would drop it.
+func TestOpenAIPolicyBodyFault_GuardrailBodyBecomesAGuardrailFault(t *testing.T) {
+	fault, ok := OpenAIPolicyBodyFault([]byte(legacyWordCountBody))
+	require.True(t, ok)
+
+	assert.Equal(t, policy.FaultDetails{
+		Type:      policy.FaultTypeGuardrail,
+		Direction: policy.DirectionRequest,
+		Message:   "Violation of applied word count constraints detected",
+		Guardrail: &policy.GuardrailDetails{
+			InterveningGuardrail: "word-count-guardrail",
+			Action:               policy.GuardrailActionIntervened,
+			ActionReason:         "Violation of applied word count constraints detected",
+		},
+	}, fault)
+}
+
+func TestOpenAIPolicyBodyFault_GuardrailRendersTheGuardrailBlock(t *testing.T) {
+	fault, ok := OpenAIPolicyBodyFault([]byte(legacyWordCountBody))
+	require.True(t, ok)
+
+	in := llmInput()
+	in.Status = http.StatusUnprocessableEntity
+	in.Err = fault
+	in.PolicyDescribed = true
+	d := ShouldFormat(NewRegistry(), in)
+	require.True(t, d.Format, d.Reason)
+
+	inner := decodeOpenAI(t, d.Body)
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	assert.Equal(t, "invalid_request_error", inner["type"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok, "the guardrail block is carried: %s", d.Body)
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+	assert.Equal(t, "GUARDRAIL_INTERVENED", g["action"])
+	assert.Equal(t, "Violation of applied word count constraints detected", g["actionReason"])
+	assert.Equal(t, "REQUEST", g["direction"])
+	assert.NotContains(t, g, "assessments", "absent unless the guardrail's showAssessment put it there")
+}
+
+// The guardrails write assessments as a string, an array or an object; GuardrailDetails holds
+// an object. An object is carried as it is, anything else under "details".
+func TestOpenAIPolicyBodyFault_GuardrailAssessments(t *testing.T) {
+	cases := []struct {
+		name        string
+		assessments string
+		want        map[string]any
+	}{
+		{"string", `"Expected between 1 and 5 words."`, map[string]any{"details": "Expected between 1 and 5 words."}},
+		{"array", `["blocked"]`, map[string]any{"details": []any{"blocked"}}},
+		{"array of objects", `[{"field":"model","description":"model is required"}]`,
+			map[string]any{"details": []any{map[string]any{"field": "model", "description": "model is required"}}}},
+		{"object", `{"categories":[{"category":"Hate","severity":4}]}`,
+			map[string]any{"categories": []any{map[string]any{"category": "Hate", "severity": float64(4)}}}},
+		{"null", `null`, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"type":"X_GUARDRAIL","message":{"action":"GUARDRAIL_INTERVENED",` +
+				`"interveningGuardrail":"x-guardrail","direction":"RESPONSE","assessments":` + tc.assessments + `}}`
+			fault, ok := OpenAIPolicyBodyFault([]byte(body))
+			require.True(t, ok)
+			require.NotNil(t, fault.Guardrail)
+			assert.Equal(t, tc.want, fault.Guardrail.Assessments)
+			assert.Equal(t, policy.DirectionResponse, fault.Direction)
+		})
+	}
+}
+
+// Assessments that are not valid JSON on their own are dropped rather than guessed at.
+func TestLegacyAssessments_UnparseableIsDropped(t *testing.T) {
+	assert.Nil(t, legacyAssessments(json.RawMessage(`{"unterminated":`)))
+}
+
+// Without interveningGuardrail an object under `message` is not a guardrail's body, and with no
+// actionReason there is no sentence to lift: both fall back the ordinary way.
+func TestOpenAIPolicyBodyFault_GuardrailShapeNeedsTheGuardrailName(t *testing.T) {
+	fault, ok := OpenAIPolicyBodyFault([]byte(`{"message":{"action":"GUARDRAIL_INTERVENED"}}`))
+	require.True(t, ok)
+	assert.Equal(t, policy.FaultDetails{}, fault)
+
+	fault, ok = OpenAIPolicyBodyFault([]byte(`{"message":{"interveningGuardrail":"g","direction":"sideways"}}`))
+	require.True(t, ok)
+	assert.Equal(t, policy.FaultTypeGuardrail, fault.Type)
+	assert.Empty(t, fault.Message, "no actionReason: the renderer falls back to the status text")
+	assert.Empty(t, fault.Direction, "an unknown direction is left unset, not guessed")
 }
 
 // Authorship still stands in ShouldFormat itself: whatever the kernel leaves marked authored —
@@ -291,6 +423,16 @@ func TestLegacyMessage_PlainTextIsCapped(t *testing.T) {
 		long[i] = 'a'
 	}
 	assert.LessOrEqual(t, len(legacyMessage(long)), maxLegacyMessageBytes)
+}
+
+func TestLegacyMessage_CapDoesNotSplitARune(t *testing.T) {
+	// The two-byte "é" straddles the cap, so a byte cut would leave half of it behind.
+	text := strings.Repeat("a", maxLegacyMessageBytes-1) + "é and more"
+
+	got := legacyMessage([]byte(text))
+
+	assert.True(t, utf8.ValidString(got), "the cut must not leave a split rune")
+	assert.Equal(t, strings.Repeat("a", maxLegacyMessageBytes-1), got)
 }
 
 func TestLegacyMessage_PlainTextIsNotAnHTMLPage(t *testing.T) {
