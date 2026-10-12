@@ -20,10 +20,12 @@ package steps
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -397,4 +399,207 @@ func TestResponseHeaderNotEquals(t *testing.T) {
 	require.ErrorContains(t, base.responseHeaderNotEquals(ctx, "etag", "${CTX:same}"), "not to be")
 	require.NoError(t, base.responseHeaderNotEquals(ctx, "X-Absent", "anything"), "an absent header is not the value")
 	require.Error(t, base.responseHeaderNotEquals(ctx, "ETag", "${CTX:unknown}"))
+}
+
+func TestExpectedErrorPathRejectsUnsafeSegments(t *testing.T) {
+	path, err := expectedErrorPath("root", "1.2.0", "jwt-auth-missing-token")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join("root", "resources", "expected-error-responses", "jwt-auth-missing-token.json"), path)
+
+	for _, id := range []string{"", "../escape", "Upper", "with space", "trailing-", "a/b"} {
+		_, err := expectedErrorPath("root", "1.2.0", id)
+		require.Error(t, err, "id %q", id)
+	}
+	for _, version := range []string{"", "..", "../x", "a/b", ".hidden"} {
+		_, err := expectedErrorPath("root", version, "ok")
+		require.Error(t, err, "version %q", version)
+	}
+	_, err = expectedErrorPath("", "1.2.0", "ok")
+	require.Error(t, err)
+}
+
+func TestExpectedErrorPathPrefersAVersionOverride(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "resources", "expected-error-responses")
+	shared := filepath.Join(dir, "jwt-auth-missing-token.json")
+	override := filepath.Join(dir, "1.1.0", "jwt-auth-missing-token.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(override), 0o755))
+	require.NoError(t, os.WriteFile(override, []byte("{}"), 0o644))
+
+	path, err := expectedErrorPath(root, "1.1.0", "jwt-auth-missing-token")
+	require.NoError(t, err)
+	require.Equal(t, override, path, "the version's own file wins")
+
+	path, err = expectedErrorPath(root, "1.2.0", "jwt-auth-missing-token")
+	require.NoError(t, err)
+	require.Equal(t, shared, path, "a version without an override uses the shared file")
+}
+
+func TestNormalizeErrorResponseKeepsOnlyPinnedHeadersAndMasksVolatileValues(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json")
+	headers.Set("WWW-Authenticate", `Bearer realm="api"`)
+	headers.Set("Date", "Mon, 05 Oct 2026 04:59:35 GMT")
+	headers.Set("X-Request-Id", "3f2a1c9e-1b2c-4d5e-8f90-123456789abc")
+	body := []byte(`{"message":"API orders_abcde_7 rejected at 2026-10-05T04:59:35Z",` +
+		`"id":"3f2a1c9e-1b2c-4d5e-8f90-123456789abc","nested":[{"ctx":"/orders-abcde-12"}],"n":3}`)
+
+	got, err := normalizeErrorResponse(401, headers, body, "abcde")
+	require.NoError(t, err)
+
+	require.Equal(t, 401, got.Status)
+	require.Equal(t, map[string]string{
+		"content-type":     "application/json",
+		"www-authenticate": `Bearer realm="api"`,
+	}, got.Headers)
+	require.JSONEq(t, `{"message":"API orders<unique> rejected at <timestamp>","id":"<uuid>",`+
+		`"nested":[{"ctx":"/orders<unique>"}],"n":3}`, string(got.Body))
+	require.Nil(t, got.BodyText)
+}
+
+func TestNormalizeErrorResponseHandlesTextAndEmptyBodies(t *testing.T) {
+	text, err := normalizeErrorResponse(503, http.Header{}, []byte("no healthy upstream"), "")
+	require.NoError(t, err)
+	require.NotNil(t, text.BodyText)
+	require.Equal(t, "no healthy upstream", *text.BodyText)
+	require.Nil(t, text.Body)
+	require.Nil(t, text.Headers)
+
+	empty, err := normalizeErrorResponse(204, nil, nil, "")
+	require.NoError(t, err)
+	require.Equal(t, normalizedErrorResponse{Status: 204}, empty)
+
+	blank, err := normalizeErrorResponse(200, nil, []byte("  \n"), "")
+	require.NoError(t, err)
+	require.Nil(t, blank.Body)
+	require.Nil(t, blank.BodyText)
+}
+
+func TestMatchExpectedErrorRecordsThenComparesStructurally(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "resources", "expected-error-responses", "1.2.0", "case.json")
+	first, err := normalizeErrorResponse(422, http.Header{"Content-Type": {"application/json"}},
+		[]byte(`{"b":2,"a":1}`), "")
+	require.NoError(t, err)
+
+	require.Error(t, matchExpectedError(path, first, expectedErrorCompare), "a missing expected error response must fail, not record")
+	require.NoError(t, matchExpectedError(path, first, expectedErrorRecord))
+	recorded, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(recorded), `"a": 1`)
+
+	reordered, err := normalizeErrorResponse(422, http.Header{"Content-Type": {"application/json"}},
+		[]byte(`{ "a": 1, "b": 2 }`), "")
+	require.NoError(t, err)
+	require.NoError(t, matchExpectedError(path, reordered, expectedErrorCompare), "key order and whitespace are not a change")
+
+	changed, err := normalizeErrorResponse(422, http.Header{"Content-Type": {"application/json"}},
+		[]byte(`{"a":1,"b":3}`), "")
+	require.NoError(t, err)
+	require.ErrorContains(t, matchExpectedError(path, changed, expectedErrorCompare), "differs")
+
+	status, err := normalizeErrorResponse(400, http.Header{"Content-Type": {"application/json"}},
+		[]byte(`{"a":1,"b":2}`), "")
+	require.NoError(t, err)
+	require.Error(t, matchExpectedError(path, status, expectedErrorCompare), "a different status is a change")
+
+	require.NoError(t, os.WriteFile(path, []byte("not json"), 0o644))
+	require.ErrorContains(t, matchExpectedError(path, first, expectedErrorCompare), "not an expected error response")
+}
+
+func TestExpectedErrorModeRequested(t *testing.T) {
+	cases := []struct {
+		update, accept string
+		want           expectedErrorMode
+	}{
+		{"", "", expectedErrorCompare},
+		{"0", "no", expectedErrorCompare},
+		{"1", "", expectedErrorRecord},
+		{"TRUE", "1", expectedErrorRecord},
+		{"", "true", expectedErrorAccept},
+	}
+	for _, c := range cases {
+		t.Setenv(EnvRecordExpectedErrors, c.update)
+		t.Setenv(EnvAcceptErrorChanges, c.accept)
+		require.Equal(t, c.want, expectedErrorModeRequested(), "update %q accept %q", c.update, c.accept)
+	}
+}
+
+func TestMatchExpectedErrorAcceptsARecordedChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "expected error response", "case.json")
+	accepted := strings.TrimSuffix(path, ".json") + acceptedSuffix
+	released, err := normalizeErrorResponse(401, nil, []byte(`{"error":"Unauthorized"}`), "")
+	require.NoError(t, err)
+	changed, err := normalizeErrorResponse(401, nil, []byte(`{"jsonrpc":"2.0","error":{"code":-32600}}`), "")
+	require.NoError(t, err)
+	other, err := normalizeErrorResponse(401, nil, []byte(`{"error":"something else"}`), "")
+	require.NoError(t, err)
+
+	require.Error(t, matchExpectedError(path, changed, expectedErrorAccept), "accepting needs an expected error response first")
+	require.NoError(t, matchExpectedError(path, released, expectedErrorRecord))
+	require.ErrorContains(t, matchExpectedError(path, changed, expectedErrorCompare), "differs")
+
+	require.NoError(t, matchExpectedError(path, changed, expectedErrorAccept))
+	require.FileExists(t, accepted)
+	require.NoError(t, matchExpectedError(path, changed, expectedErrorCompare), "the accepted change passes")
+	require.NoError(t, matchExpectedError(path, released, expectedErrorCompare), "and so does the expected error response")
+	require.ErrorContains(t, matchExpectedError(path, other, expectedErrorCompare), "matches neither")
+
+	require.NoError(t, matchExpectedError(path, released, expectedErrorAccept))
+	_, statErr := os.Stat(accepted)
+	require.NoError(t, statErr, "a response matching the expected error response leaves the accepted change alone")
+}
+
+func TestNormalizeErrorResponseMasksStreamIdentifiers(t *testing.T) {
+	stream := "data: {\"created\":1791279593,\"id\":\"chatcmpl-388035d47928447293f25cb81cba71ef\"}\n\n"
+	got, err := normalizeErrorResponse(200, nil, []byte(stream), "")
+	require.NoError(t, err)
+	require.NotNil(t, got.BodyText)
+	require.Equal(t, "data: {\"created\":\"<unix-time>\",\"id\":\"chatcmpl-<hex-id>\"}\n\n", *got.BodyText)
+
+	body, err := normalizeErrorResponse(200, nil, []byte(`{"created":1791279593,"count":3}`), "")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"created":"<unix-time>","count":3}`, string(body.Body),
+		"only the created time is masked; other numbers are compared")
+}
+
+func TestNormalizeErrorResponsePinsRateLimitHeaders(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("Content-Type", "application/json")
+	headers.Set("X-RateLimit-Limit", "1")
+	headers.Set("X-RateLimit-Remaining", "0")
+	headers.Set("X-RateLimit-Quota", "default")
+	headers.Set("RateLimit-Policy", `"default";q=1;w=3600`)
+	headers.Set("RateLimit", `"default";r=0;t=1712, "burst";r=4;t=58`)
+	headers.Set("X-RateLimit-Reset", "1791212400")
+	headers.Set("Retry-After", "1712")
+	headers.Set("Location", "https://example.test/moved")
+	headers.Set("X-Envoy-Upstream-Service-Time", "12")
+
+	got, err := normalizeErrorResponse(429, headers, nil, "")
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"content-type":          "application/json",
+		"x-ratelimit-limit":     "1",
+		"x-ratelimit-remaining": "0",
+		"x-ratelimit-quota":     "default",
+		"ratelimit-policy":      `"default";q=1;w=3600`,
+		"ratelimit":             `"default";r=0;t=<seconds>, "burst";r=4;t=<seconds>`,
+		"x-ratelimit-reset":     "<present>",
+		"retry-after":           "<present>",
+		"location":              "https://example.test/moved",
+	}, got.Headers)
+
+	later := headers.Clone()
+	later.Set("RateLimit", `"default";r=0;t=9, "burst";r=4;t=3`)
+	later.Set("X-RateLimit-Reset", "1791216000")
+	later.Set("Retry-After", "9")
+	again, err := normalizeErrorResponse(429, later, nil, "")
+	require.NoError(t, err)
+	require.Equal(t, got, again, "clock-dependent values must not change the expected error response")
+
+	missing := headers.Clone()
+	missing.Del("Retry-After")
+	without, err := normalizeErrorResponse(429, missing, nil, "")
+	require.NoError(t, err)
+	require.NotEqual(t, got, without, "a dropped Retry-After must change the expected error response")
 }

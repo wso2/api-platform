@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": "Unauthorized",
+    "message": "Valid API key required"
+  },
+  "headers": {
+    "content-type": "application/json"
+  },
+  "status": 401
+}

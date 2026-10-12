@@ -189,6 +189,58 @@ The selector uses the same strict Gateway-version syntax as runner tags. Incompa
 variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
 variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
 
+### Policy error compatibility
+
+The `policy-compat` blocks prove that changing a policy in gateway-controllers leaves the error
+response a client receives unchanged — status, contract headers and body — on every supported
+Gateway version. Each scenario drives one policy into its main rejection and checks the response
+with `the response should match the expected error response "<id>"`, against
+`suites/it/resources/expected-error-responses/<id>.json`. One file serves every Gateway version.
+If a version's response genuinely differs, record that version's own file as
+`expected-error-responses/<gateway version>/<id>.json`; it wins for that version. The source build's
+version is the one in `gateway/VERSION`.
+
+The policies under test come from `../gateway-controllers/policies`, a gateway-controllers
+checkout next to this repository: in gateway-controllers' CI that is the pull request. The
+expected responses were recorded from the policies as they were before the change being checked.
+
+On a released Gateway, only the policies that release ships are built (`releasedPoliciesOnly`
+on the block's `platform-gateway`): those are the ones its users would upgrade. The rest of the
+checkout can need what the release's gateway-builder lacks — a newer Go, a newer shared module.
+
+| Runner | Gateway versions | Covers |
+|---|---|---|
+| `policy-errors-from-1-1-0` | 1.1.0 and later | policies every supported release ships |
+| `policy-errors-from-1-2-0` | 1.2.0 and later | policies, and a streamed rejection, first shipped in 1.2.0 |
+| `policy-errors-latest` | the current source build | unreleased policies, the Python guardrails, Agent APIs |
+| `policy-errors-semantic-cache` | 1.1.0 and later | semantic-cache, in its own block with Redis |
+
+Run them alone, for one Gateway version (`-gateway-version` omitted means the source build):
+
+```bash
+cd tests/framework
+B=policy-compat/sqlite,policy-compat-semantic-ai/sqlite
+go test ./suites/it -count=1 -timeout=60m -v -args -blocks=$B -gateway-version=1.2.0
+```
+
+`-blocks` selects only these blocks; the `/sqlite` suffix picks one variant of each block's
+database matrix (drop it to run every database). To run one runner, add
+`-run 'TestIntegrationSuite/policy-compat/sqlite/policy-errors-from-1-2-0'` before `-args`.
+
+**Recording.** Check out the policies from before the change as `../gateway-controllers`, then
+run with `IT_RECORD_EXPECTED_ERRORS=1` on the source build, which runs every scenario. Then run
+the other Gateway versions without it: a difference there is either a real incompatibility or a
+version that genuinely answers differently. For the latter, copy the shared file into
+`<gateway version>/` and record again on that version, which then writes the override. A missing
+expected response fails rather than recording itself. Responses are stored with UUIDs,
+timestamps, hex IDs and the runner's generated names masked, and JSON bodies are compared
+structurally.
+
+**An intended difference** is recorded rather than left failing: run with
+`IT_ACCEPT_ERROR_CHANGES=1` and each differing response is written beside its expected response
+as `<id>.accepted.json`. A response then passes if it matches either file, and the accepted file
+is reviewed like any other change.
+
 ### Docker environment
 
 Nothing here configures docker. The container library reads the environment; on CI
