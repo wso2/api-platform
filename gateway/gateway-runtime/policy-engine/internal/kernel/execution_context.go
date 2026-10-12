@@ -948,7 +948,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
-	if ec.policyChain.RequiresResponseBody {
+	if ec.needsResponseBody() {
 		if ec.isStreamingResponse {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
 			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
@@ -977,6 +977,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
+		"requires_response_body_on_fault", ec.policyChain.RequiresResponseBodyOnFault,
 		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
 		"is_streaming_request", ec.isStreamingRequest,
 		"request_body_mode", mode.RequestBodyMode.String(),
@@ -1097,7 +1098,20 @@ func (ec *PolicyExecutionContext) requestEncodingBlocksBodyPolicies() bool {
 // requestEncodingBlocksBodyPolicies. Header and body phases must agree on it: a response the
 // header phase let through must not be failed later at the body phase.
 func (ec *PolicyExecutionContext) responseEncodingBlocksBodyPolicies() bool {
-	return ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody && !ec.responseHasNoBody()
+	return ec.responseEncodingUnsupported && ec.needsResponseBody() && !ec.responseHasNoBody()
+}
+
+// needsResponseBody reports whether this response's body must reach the policy engine:
+// always when a normal policy needs it, and, when only the fault policies do, for an error
+// response -- the only kind they run on when no policy claimed the response
+// (runFaultPoliciesOnResponse). Before the response headers arrive there is no status yet,
+// so a fault-only chain asks for no response body; the response-headers phase decides.
+func (ec *PolicyExecutionContext) needsResponseBody() bool {
+	if ec.policyChain.RequiresResponseBody {
+		return true
+	}
+	return ec.policyChain.RequiresResponseBodyOnFault && ec.responseHeaderCtx != nil &&
+		isFaultResponse(ec.responseHeaderCtx.ResponseStatus, false)
 }
 
 // processRequestBodyForEmptyRequest executes body policies inline during the headers phase
@@ -1565,11 +1579,11 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	// A pass-through error is handed to the fault policies in the response-BODY phase, not
 	// here, so the error body is available to them (runFaultPoliciesOnResponse). Attaching
-	// fault policies forces RequiresResponseBody so that phase always runs.
+	// fault policies requests the body for error responses so that phase runs for them.
 
 	// For bodyless responses Envoy skips the ResponseBody ext_proc phase entirely.
 	// Execute body policies inline now so they run on every response, receiving a nil body.
-	if !execResult.ShortCircuited && ec.policyChain.RequiresResponseBody && ec.responseHasNoBody() {
+	if !execResult.ShortCircuited && ec.needsResponseBody() && ec.responseHasNoBody() {
 		return ec.processResponseBodyForEmptyResponse(ctx, execResult)
 	}
 
@@ -1618,7 +1632,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		"end_of_stream", body.EndOfStream,
 	)
 
-	if ec.policyChain.RequiresResponseBody {
+	if ec.needsResponseBody() {
 		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
 		bodyContent := body.Body
 		if ec.responseContentEncoding != "" {
